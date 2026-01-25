@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -7,6 +8,27 @@ from src.web.models import AppSettings
 from src.config import Settings
 
 router = APIRouter()
+
+
+def get_app_version() -> str:
+    """获取应用版本号"""
+    # 优先从环境变量读取
+    version = os.getenv("APP_VERSION")
+    if version:
+        return version
+
+    # 从 VERSION 文件读取（支持多个位置）
+    possible_paths = [
+        "VERSION",  # 当前工作目录（开发和生产）
+        os.path.join(os.path.dirname(__file__), "../../../VERSION"),  # 相对于本文件
+    ]
+    for path in possible_paths:
+        try:
+            with open(path, "r") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            continue
+    return "dev"
 
 
 class SettingUpdate(BaseModel):
@@ -77,3 +99,9 @@ def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db
     db.commit()
     db.refresh(setting)
     return setting
+
+
+@router.get("/version")
+def get_version():
+    """获取应用版本号"""
+    return {"version": get_app_version()}

@@ -730,6 +730,16 @@ async def lifespan(app):
     init_db()
     setup_logging()
     setup_ssl()
+
+    # 从环境变量初始化认证（Docker 部署用）
+    from src.web.api.auth import init_auth_from_env
+    db = SessionLocal()
+    try:
+        if init_auth_from_env(db):
+            logger.info("已从环境变量初始化认证账号")
+    finally:
+        db.close()
+
     seed_agents()
     seed_data_sources()
     seed_sample_stocks()

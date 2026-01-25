@@ -9,8 +9,7 @@ NC='\033[0m' # No Color
 
 # 默认值
 VERSION=${1:-"latest"}
-IMAGE_NAME="panwatch"
-REGISTRY=${DOCKER_REGISTRY:-""}
+IMAGE_NAME="sunxiao0721/panwatch"
 
 echo -e "${GREEN}🚀 PanWatch 构建脚本${NC}"
 echo -e "版本: ${YELLOW}${VERSION}${NC}"
@@ -34,23 +33,16 @@ rm -rf static
 mkdir -p static
 cp -r frontend/dist/* static/
 
-# Step 3: 构建 Docker 镜像
-echo -e "${GREEN}🐳 构建 Docker 镜像...${NC}"
+# Step 3: 构建 Docker 镜像（amd64 架构，适配大多数服务器/NAS）
+echo -e "${GREEN}🐳 构建 Docker 镜像 (linux/amd64)...${NC}"
 FULL_IMAGE="${IMAGE_NAME}:${VERSION}"
-if [ -n "$REGISTRY" ]; then
-    FULL_IMAGE="${REGISTRY}/${FULL_IMAGE}"
-fi
 
-docker build -t "${FULL_IMAGE}" .
+docker build --platform linux/amd64 --build-arg VERSION="${VERSION}" -t "${FULL_IMAGE}" .
 
 # 如果版本不是 latest，也打 latest 标签
 if [ "$VERSION" != "latest" ]; then
-    LATEST_IMAGE="${IMAGE_NAME}:latest"
-    if [ -n "$REGISTRY" ]; then
-        LATEST_IMAGE="${REGISTRY}/${LATEST_IMAGE}"
-    fi
-    docker tag "${FULL_IMAGE}" "${LATEST_IMAGE}"
-    echo -e "${GREEN}✅ 镜像已构建: ${YELLOW}${FULL_IMAGE}${NC} 和 ${YELLOW}${LATEST_IMAGE}${NC}"
+    docker tag "${FULL_IMAGE}" "${IMAGE_NAME}:latest"
+    echo -e "${GREEN}✅ 镜像已构建: ${YELLOW}${FULL_IMAGE}${NC} 和 ${YELLOW}${IMAGE_NAME}:latest${NC}"
 else
     echo -e "${GREEN}✅ 镜像已构建: ${YELLOW}${FULL_IMAGE}${NC}"
 fi
@@ -66,3 +58,6 @@ echo -e "  ${YELLOW}docker run -d -p 8000:8000 -v panwatch_data:/app/data ${FULL
 echo ""
 echo "推送镜像:"
 echo -e "  ${YELLOW}docker push ${FULL_IMAGE}${NC}"
+if [ "$VERSION" != "latest" ]; then
+    echo -e "  ${YELLOW}docker push ${IMAGE_NAME}:latest${NC}"
+fi

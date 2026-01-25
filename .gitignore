@@ -12,6 +12,7 @@ data/ca-bundle.pem
 *.egg-info/
 dist/
 build/
+static/
 
 # Frontend
 node_modules/

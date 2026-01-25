@@ -46,11 +46,11 @@ export default function NewsPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('all')
   const [timeRange, setTimeRange] = useState<string>('12')
   const [autoRefresh, setAutoRefresh] = useState(false)
-  const [filterRelated, setFilterRelated] = useState(true)
+  const [filterRelated] = useState(true)
 
   // 加载自选股列表
   useEffect(() => {
-    fetchAPI('/stocks')
+    fetchAPI<Stock[]>('/stocks')
       .then(data => setStocks(data || []))
       .catch(() => {})
   }, [])
@@ -67,7 +67,7 @@ export default function NewsPage() {
       params.set('limit', '100')
       params.set('filter_related', filterRelated.toString())
 
-      const data = await fetchAPI(`/news?${params.toString()}`)
+      const data = await fetchAPI<NewsItem[]>(`/news?${params.toString()}`)
       setNews(data || [])
     } catch (e) {
       toast(e instanceof Error ? e.message : '加载失败', 'error')

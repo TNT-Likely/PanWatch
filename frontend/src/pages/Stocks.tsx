@@ -10,6 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 
+interface AgentResult {
+  title: string
+  content: string
+  should_alert: boolean
+  notified: boolean
+}
+
 interface StockAgentInfo {
   agent_name: string
   schedule: string
@@ -597,10 +604,12 @@ export default function StocksPage() {
     setTriggeringAgent(agentName)
     try {
       // 手动触发时跳过节流，方便测试
-      const resp = await fetchAPI(`/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`, { method: 'POST' })
-      const result = resp.result
-      setAgentResultDialog(result)
-      toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
+      const resp = await fetchAPI<{ result: AgentResult }>(`/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`, { method: 'POST' })
+      const result = resp?.result
+      if (result) {
+        setAgentResultDialog(result)
+        toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : '触发失败', 'error')
     } finally {
@@ -676,13 +685,6 @@ export default function StocksPage() {
       else next.add(id)
       return next
     })
-  }
-
-  // 获取账户中未持有的股票
-  const getAvailableStocksForAccount = (accountId: number) => {
-    const accountPositions = portfolio?.accounts.find(a => a.id === accountId)?.positions || []
-    const heldStockIds = new Set(accountPositions.map(p => p.stock_id))
-    return stocks.filter(s => s.enabled && !heldStockIds.has(s.id))
   }
 
   if (loading) {

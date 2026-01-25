@@ -54,9 +54,19 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+
 function App() {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/version`)
+      .then(res => res.json())
+      .then(data => setVersion(data.data?.version || data.version || ''))
+      .catch(() => {})
+  }, [])
 
   // 登录页面不显示导航
   if (location.pathname === '/login') {
@@ -80,6 +90,7 @@ function App() {
                 <TrendingUp className="w-4 h-4 text-white" />
               </div>
               <span className="text-[15px] font-bold text-foreground">PanWatch</span>
+              {version && <span className="text-[11px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
 
             {/* Nav Links */}
@@ -137,6 +148,7 @@ function App() {
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
               <span className="text-[14px] font-bold text-foreground">PanWatch</span>
+              {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <button
               onClick={toggleTheme}

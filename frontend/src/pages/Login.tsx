@@ -116,7 +116,7 @@ export default function LoginPage() {
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="admin"
+                  placeholder="请输入用户名"
                   className="pl-10"
                   autoFocus
                 />

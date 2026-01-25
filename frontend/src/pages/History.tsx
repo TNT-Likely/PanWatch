@@ -41,8 +41,8 @@ export default function HistoryPage() {
       const params = new URLSearchParams()
       if (selectedAgent && selectedAgent !== 'all') params.set('agent_name', selectedAgent)
       params.set('limit', '50')
-      const data = await fetchAPI(`/history?${params.toString()}`)
-      setRecords(data)
+      const data = await fetchAPI<HistoryRecord[]>(`/history?${params.toString()}`)
+      setRecords(data || [])
     } catch (e) {
       toast(e instanceof Error ? e.message : '加载失败', 'error')
     } finally {

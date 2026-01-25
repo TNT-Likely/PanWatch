@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.web.api import stocks, agents, settings, logs, providers, channels, datasources, accounts, history, news, market, auth
 from src.web.api.auth import get_current_user
+from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(title="PanWatch API", version="0.1.0")
@@ -38,3 +39,9 @@ app.include_router(news.router, prefix="/api/news", tags=["news"], dependencies=
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+async def version():
+    """获取应用版本号（公开接口）"""
+    return {"version": get_app_version()}

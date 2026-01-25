@@ -112,6 +112,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
   const [services, setServices] = useState<AIService[]>([])
   const [channels, setChannels] = useState<NotifyChannel[]>([])
+  const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -140,14 +141,16 @@ export default function SettingsPage() {
 
   const load = async () => {
     try {
-      const [settingsData, servicesData, channelsData] = await Promise.all([
+      const [settingsData, servicesData, channelsData, versionData] = await Promise.all([
         fetchAPI<Setting[]>('/settings'),
         fetchAPI<AIService[]>('/providers/services'),
         fetchAPI<NotifyChannel[]>('/channels'),
+        fetchAPI<{ version: string }>('/settings/version'),
       ])
       setSettings(settingsData)
       setServices(servicesData)
       setChannels(channelsData)
+      setVersion(versionData.version)
     } catch (e) {
       console.error(e)
     } finally {
@@ -721,6 +724,13 @@ export default function SettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Version Footer */}
+      {version && (
+        <div className="mt-8 text-center text-[11px] text-muted-foreground/60">
+          PanWatch v{version}
+        </div>
+      )}
     </div>
   )
 }
