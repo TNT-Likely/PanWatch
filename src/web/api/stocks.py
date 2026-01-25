@@ -81,48 +81,63 @@ def get_market_status():
 
     result = []
     for market_code, market_def in MARKETS.items():
-        now = datetime.now(market_def.get_tz())
-        is_trading = market_def.is_trading_time()
+        try:
+            now = datetime.now(market_def.get_tz())
+            is_trading = market_def.is_trading_time()
 
-        # 获取交易时段描述
-        sessions_desc = []
-        for session in market_def.sessions:
-            sessions_desc.append(f"{session.start.strftime('%H:%M')}-{session.end.strftime('%H:%M')}")
+            # 获取交易时段描述
+            sessions_desc = []
+            for session in market_def.sessions:
+                sessions_desc.append(f"{session.start.strftime('%H:%M')}-{session.end.strftime('%H:%M')}")
 
-        # 判断状态
-        weekday = now.weekday()
-        current_time = now.time()
+            # 判断状态
+            weekday = now.weekday()
+            current_time = now.time()
 
-        if weekday >= 5:
-            status = "closed"
-            status_text = "休市（周末）"
-        elif is_trading:
-            status = "trading"
-            status_text = "交易中"
-        else:
-            # 判断是盘前还是盘后
-            first_session = market_def.sessions[0]
-            last_session = market_def.sessions[-1]
-            if current_time < first_session.start:
-                status = "pre_market"
-                status_text = "盘前"
-            elif current_time > last_session.end:
-                status = "after_hours"
-                status_text = "已收盘"
+            if weekday >= 5:
+                status = "closed"
+                status_text = "休市（周末）"
+            elif is_trading:
+                status = "trading"
+                status_text = "交易中"
             else:
-                status = "break"
-                status_text = "午间休市"
+                # 判断是盘前还是盘后
+                first_session = market_def.sessions[0]
+                last_session = market_def.sessions[-1]
+                if current_time < first_session.start:
+                    status = "pre_market"
+                    status_text = "盘前"
+                elif current_time > last_session.end:
+                    status = "after_hours"
+                    status_text = "已收盘"
+                else:
+                    status = "break"
+                    status_text = "午间休市"
 
-        result.append({
-            "code": market_code.value,
-            "name": market_def.name,
-            "status": status,
-            "status_text": status_text,
-            "is_trading": is_trading,
-            "sessions": sessions_desc,
-            "local_time": now.strftime("%H:%M"),
-            "timezone": market_def.timezone,
-        })
+            result.append({
+                "code": market_code.value,
+                "name": market_def.name,
+                "status": status,
+                "status_text": status_text,
+                "is_trading": is_trading,
+                "sessions": sessions_desc,
+                "local_time": now.strftime("%H:%M"),
+                "timezone": market_def.timezone,
+            })
+        except Exception as e:
+            # 单个市场获取失败不影响其他市场
+            logger.error(f"获取 {market_code.value} 市场状态失败: {e}")
+            result.append({
+                "code": market_code.value,
+                "name": market_def.name,
+                "status": "unknown",
+                "status_text": "未知",
+                "is_trading": False,
+                "sessions": [],
+                "local_time": "--:--",
+                "timezone": market_def.timezone,
+                "error": str(e),
+            })
 
     return result
 

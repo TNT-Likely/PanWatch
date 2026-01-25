@@ -100,8 +100,12 @@ async def test_channel(channel_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(400, f"渠道配置无效: {e}")
 
-    await notifier.notify(
+    result = await notifier.notify_with_result(
         title="测试通知",
         content="这是一条来自盯盘侠的测试通知，如果您收到此消息说明通知渠道配置正确。",
     )
-    return {"ok": True, "message": "测试通知已发送"}
+
+    if result.get("success"):
+        return {"ok": True, "message": "测试通知发送成功"}
+    else:
+        raise HTTPException(500, f"通知发送失败: {result.get('error', '未知错误')}")

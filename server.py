@@ -72,6 +72,50 @@ def setup_logging():
     root.addHandler(db_handler)
 
 
+def setup_playwright():
+    """检查并安装 Playwright 浏览器到 data 目录"""
+    import subprocess
+
+    data_dir = os.environ.get("DATA_DIR", "./data")
+    browser_dir = os.path.join(data_dir, "playwright")
+
+    # 设置 Playwright 浏览器目录（供 playwright 库使用）
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_dir
+
+    # 检查是否已安装
+    if os.path.exists(browser_dir):
+        try:
+            dirs = os.listdir(browser_dir)
+            if any(d.startswith("chromium") for d in dirs if os.path.isdir(os.path.join(browser_dir, d))):
+                logger.info(f"Playwright 浏览器已就绪: {browser_dir}")
+                return
+        except Exception:
+            pass
+
+    # 首次安装
+    logger.info("首次启动，正在安装 Playwright 浏览器（可能需要几分钟）...")
+    os.makedirs(browser_dir, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            ["playwright", "install", "chromium"],
+            env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browser_dir},
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 分钟超时
+        )
+        if result.returncode == 0:
+            logger.info("Playwright 浏览器安装完成")
+        else:
+            logger.error(f"Playwright 安装失败: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        logger.error("Playwright 安装超时（网络问题？）")
+    except FileNotFoundError:
+        logger.warning("Playwright 命令不可用，K线截图功能不可用")
+    except Exception as e:
+        logger.error(f"Playwright 安装失败: {e}")
+
+
 def seed_sample_stocks():
     """首次启动时添加示例股票"""
     db = SessionLocal()
@@ -730,6 +774,7 @@ async def lifespan(app):
     init_db()
     setup_logging()
     setup_ssl()
+    setup_playwright()
 
     # 从环境变量初始化认证（Docker 部署用）
     from src.web.api.auth import init_auth_from_env

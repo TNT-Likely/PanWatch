@@ -42,7 +42,7 @@ def sanitize_for_telegram(content: str) -> str:
 CHANNEL_TYPES = {
     "telegram": {
         "label": "Telegram",
-        "fields": ["bot_token", "chat_id"],
+        "fields": ["bot_token", "chat_id", "proxy"],
     },
     "bark": {
         "label": "Bark",
@@ -78,8 +78,11 @@ CHANNEL_TYPES = {
     },
 }
 
-# 通过 Apprise 支持的渠道类型
+# 通过 Apprise 支持的渠道类型（无代理配置时）
 _APPRISE_TYPES = {"telegram", "bark", "dingtalk", "lark", "discord", "pushover"}
+
+# 自定义实现的渠道类型（带代理或特殊需求）
+_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus"}
 
 # 支持 Markdown 的渠道（不需要 sanitize）
 _MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "discord"}
@@ -88,13 +91,22 @@ _MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "di
 _PLAIN_TEXT_CHANNELS = {"telegram", "bark", "pushover"}
 
 
-def build_apprise_url(channel_type: str, config: dict) -> str:
-    """根据渠道类型和配置构建 Apprise URL"""
+def build_apprise_url(channel_type: str, config: dict) -> str | None:
+    """
+    根据渠道类型和配置构建 Apprise URL
+
+    Returns:
+        Apprise URL 或 None（如果需要使用自定义方式发送，如带代理的 Telegram）
+    """
     if channel_type == "telegram":
         bot_token = config.get("bot_token", "")
         chat_id = config.get("chat_id", "")
         if not bot_token or not chat_id:
             raise ValueError("Telegram 需要 bot_token 和 chat_id")
+        # 如果配置了代理，返回 None，使用自定义方式发送
+        proxy = config.get("proxy", "").strip()
+        if proxy:
+            return None
         return f"tgram://{bot_token}/{chat_id}"
 
     elif channel_type == "bark":
@@ -153,7 +165,12 @@ class NotifierManager:
         try:
             if channel_type in _APPRISE_TYPES:
                 url = build_apprise_url(channel_type, config)
-                if self._ap.add(url):
+                if url is None:
+                    # 需要自定义实现（如带代理的 Telegram）
+                    self._custom_channels.append((channel_type, config))
+                    self._channel_count += 1
+                    logger.info(f"注册自定义通知渠道: {channel_type} (带代理)")
+                elif self._ap.add(url):
                     self._channel_count += 1
                     logger.info(f"注册通知渠道: {channel_type}")
                 else:
@@ -166,10 +183,14 @@ class NotifierManager:
             logger.error(f"注册通知渠道失败: {e}")
 
     async def notify(self, title: str, content: str, images: list[str] | None = None):
-        """向所有已注册渠道发送通知"""
+        """向所有已注册渠道发送通知（忽略错误）"""
+        await self.notify_with_result(title, content, images)
+
+    async def notify_with_result(self, title: str, content: str, images: list[str] | None = None) -> dict:
+        """向所有已注册渠道发送通知，返回结果"""
         if self._channel_count == 0:
             logger.warning("没有可用的通知渠道")
-            return
+            return {"success": False, "error": "没有可用的通知渠道"}
 
         # 准备纯文本版本（用于不支持 Markdown 的渠道）
         plain_content = sanitize_for_telegram(content)
@@ -182,18 +203,27 @@ class NotifierManager:
                 if img_path and os.path.exists(img_path):
                     attachments.add(img_path)
 
+        errors = []
+
         # Apprise 渠道（使用纯文本，因为 Telegram 等不支持 Markdown）
         if len(self._ap) > 0:
-            success = await self._ap.async_notify(
-                title=title,
-                body=plain_content,
-                body_format=apprise.NotifyFormat.TEXT,
-                attach=attachments,
-            )
-            if success:
-                logger.info(f"Apprise 通知发送成功: {title}")
-            else:
-                logger.error(f"Apprise 通知发送失败: {title}")
+            try:
+                success = await self._ap.async_notify(
+                    title=title,
+                    body=plain_content,
+                    body_format=apprise.NotifyFormat.TEXT,
+                    attach=attachments,
+                )
+                if success:
+                    logger.info(f"Apprise 通知发送成功: {title}")
+                else:
+                    error_msg = "Apprise 通知发送失败（可能是网络问题或配置错误）"
+                    logger.error(f"{error_msg}: {title}")
+                    errors.append(error_msg)
+            except Exception as e:
+                error_msg = f"Apprise 通知异常: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
 
         # 自定义渠道（根据渠道类型自动选择格式）
         for ch_type, config in self._custom_channels:
@@ -202,11 +232,19 @@ class NotifierManager:
                 ch_content = content if ch_type in _MARKDOWN_CHANNELS else plain_content
                 await self._send_custom(ch_type, config, title, ch_content)
             except Exception as e:
-                logger.error(f"自定义渠道 {ch_type} 发送失败: {e}")
+                error_msg = f"{ch_type} 发送失败: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        if errors:
+            return {"success": False, "error": "; ".join(errors)}
+        return {"success": True}
 
     async def _send_custom(self, ch_type: str, config: dict, title: str, content: str):
         """发送自定义渠道通知"""
-        if ch_type == "wecom":
+        if ch_type == "telegram":
+            await self._send_telegram(config, title, content)
+        elif ch_type == "wecom":
             await self._send_wecom(config, title, content)
         elif ch_type == "serverchan":
             await self._send_serverchan(config, title, content)
@@ -214,6 +252,49 @@ class NotifierManager:
             await self._send_pushplus(config, title, content)
         else:
             logger.warning(f"未知的自定义渠道类型: {ch_type}")
+
+    async def _send_telegram(self, config: dict, title: str, content: str):
+        """Telegram Bot API（支持代理）"""
+        bot_token = config.get("bot_token", "")
+        chat_id = config.get("chat_id", "")
+        proxy = config.get("proxy", "").strip()
+
+        if not bot_token or not chat_id:
+            raise ValueError("Telegram 需要 bot_token 和 chat_id")
+
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        text = f"*{title}*\n\n{content}" if title else content
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+
+        # 配置代理
+        transport = None
+        if proxy:
+            transport = httpx.AsyncHTTPTransport(proxy=proxy)
+            logger.debug(f"Telegram 使用代理: {proxy}")
+
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.post(url, json=payload)
+                data = resp.json()
+                if not data.get("ok"):
+                    raise RuntimeError(f"Telegram API 错误: {data.get('description')}")
+                logger.info(f"Telegram 通知发送成功: {title}")
+        except httpx.ConnectError as e:
+            if proxy:
+                raise RuntimeError(f"连接代理失败 ({proxy}): {e}")
+            else:
+                raise RuntimeError(f"无法连接 Telegram API（可能需要配置代理）: {e}")
+        except httpx.TimeoutException:
+            raise RuntimeError("请求超时（网络问题或代理配置错误）")
+        except Exception as e:
+            if "ConnectError" in str(type(e).__name__) or "connection" in str(e).lower():
+                if not proxy:
+                    raise RuntimeError(f"网络连接失败，建议配置代理: {e}")
+            raise
 
     async def _send_wecom(self, config: dict, title: str, content: str):
         """企业微信机器人 Webhook"""

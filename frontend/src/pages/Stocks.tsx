@@ -242,22 +242,29 @@ export default function StocksPage() {
 
   const load = async () => {
     try {
-      const [stockData, accountData, agentData, servicesData, channelsData, marketStatusData] = await Promise.all([
+      // 核心数据
+      const [stockData, accountData, agentData, servicesData, channelsData] = await Promise.all([
         fetchAPI<Stock[]>('/stocks'),
         fetchAPI<Account[]>('/accounts'),
         fetchAPI<AgentConfig[]>('/agents'),
         fetchAPI<AIService[]>('/providers/services'),
         fetchAPI<NotifyChannel[]>('/channels'),
-        fetchAPI<MarketStatus[]>('/stocks/markets/status'),
       ])
       setStocks(stockData)
       setAccounts(accountData)
       setAgents(agentData)
       setServices(servicesData)
       setChannels(channelsData)
-      setMarketStatus(marketStatusData)
       // 默认展开所有账户
       setExpandedAccounts(new Set(accountData.map((a: Account) => a.id)))
+
+      // 市场状态（非核心，失败不影响页面）
+      try {
+        const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
+        setMarketStatus(marketStatusData)
+      } catch (e) {
+        console.warn('获取市场状态失败:', e)
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -268,14 +275,21 @@ export default function StocksPage() {
   const loadPortfolio = async () => {
     setPortfolioLoading(true)
     try {
-      const [portfolioData, quotesData, marketStatusData] = await Promise.all([
+      // 核心数据
+      const [portfolioData, quotesData] = await Promise.all([
         fetchAPI<PortfolioSummary>('/portfolio/summary'),
         fetchAPI<Record<string, { current_price: number; change_pct: number }>>('/stocks/quotes'),
-        fetchAPI<MarketStatus[]>('/stocks/markets/status'),
       ])
       setPortfolio(portfolioData)
       setQuotes(quotesData)
-      setMarketStatus(marketStatusData)
+
+      // 市场状态（非核心，失败不影响页面）
+      try {
+        const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
+        setMarketStatus(marketStatusData)
+      } catch (e) {
+        console.warn('获取市场状态失败:', e)
+      }
     } catch (e) {
       console.error(e)
     } finally {
