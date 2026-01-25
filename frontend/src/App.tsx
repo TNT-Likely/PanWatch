@@ -1,6 +1,8 @@
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
+import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
+import { isAuthenticated, logout } from '@/lib/utils'
 import DashboardPage from '@/pages/Dashboard'
 import StocksPage from '@/pages/Stocks'
 import AgentsPage from '@/pages/Agents'
@@ -9,6 +11,7 @@ import LogsPage from '@/pages/Logs'
 import DataSourcesPage from '@/pages/DataSources'
 import HistoryPage from '@/pages/History'
 import NewsPage from '@/pages/News'
+import LoginPage from '@/pages/Login'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -20,11 +23,63 @@ const navItems = [
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 
+// 认证守卫组件
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking')
+  const location = useLocation()
+
+  useEffect(() => {
+    // 检查本地 token
+    if (isAuthenticated()) {
+      setAuthState('authenticated')
+      return
+    }
+
+    // 检查是否需要认证（服务器是否设置了密码）
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.data?.initialized) {
+          // 已设置密码，需要登录
+          setAuthState('unauthenticated')
+        } else {
+          // 未设置密码，允许访问
+          setAuthState('authenticated')
+        }
+      })
+      .catch(() => setAuthState('authenticated'))
+  }, [])
+
+  if (authState === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (authState === 'unauthenticated') {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  return <>{children}</>
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
 
+  // 登录页面不显示导航
+  if (location.pathname === '/login') {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+      </Routes>
+    )
+  }
+
   return (
+    <RequireAuth>
     <div className="min-h-screen pb-16 md:pb-0">
       {/* Desktop Floating Nav */}
       <div className="sticky top-0 z-50 px-4 md:px-6 pt-3 md:pt-4 pb-2 hidden md:block">
@@ -61,13 +116,25 @@ function App() {
               })}
             </nav>
 
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+            {/* Theme Toggle & Logout */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleTheme}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                title={theme === 'dark' ? '切换到亮色' : '切换到暗色'}
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              {isAuthenticated() && (
+                <button
+                  onClick={logout}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                  title="退出登录"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </header>
       </div>
@@ -129,6 +196,7 @@ function App() {
         </Routes>
       </main>
     </div>
+    </RequireAuth>
   )
 }
 

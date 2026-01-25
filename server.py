@@ -757,6 +757,22 @@ async def lifespan(app):
 from src.web.app import app  # noqa: E402
 app.router.lifespan_context = lifespan
 
+# 生产环境静态文件服务
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    # SPA 路由：所有非 API 请求返回 index.html
+    @app.get("/{path:path}")
+    async def serve_spa(path: str):
+        file_path = os.path.join(static_dir, path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+    logger.info(f"静态文件服务已启用: {static_dir}")
+
 
 if __name__ == "__main__":
     print("盯盘侠启动: http://127.0.0.1:8000")

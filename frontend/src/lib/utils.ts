@@ -13,15 +13,55 @@ interface ApiResponse<T> {
   message: string
 }
 
+// 获取存储的 token
+export function getToken(): string | null {
+  return localStorage.getItem('token')
+}
+
+// 清除 token 并跳转登录
+export function logout() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('token_expires')
+  window.location.href = '/login'
+}
+
+// 检查是否已登录
+export function isAuthenticated(): boolean {
+  const token = getToken()
+  if (!token) return false
+
+  const expires = localStorage.getItem('token_expires')
+  if (expires && new Date(expires) < new Date()) {
+    logout()
+    return false
+  }
+  return true
+}
+
 export async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {}
+
+  // 添加 token
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
   if (options?.body) {
     headers['Content-Type'] = 'application/json'
   }
+
   const res = await fetch(`${API_BASE}${path}`, {
     headers,
     ...options,
   })
+
+  // 401 未授权，跳转登录
+  if (res.status === 401) {
+    logout()
+    throw new Error('登录已过期')
+  }
+
   const body: ApiResponse<T> = await res.json().catch(() => ({ code: res.status, data: null as T, message: `HTTP ${res.status}` }))
   if (body.code !== 0) {
     throw new Error(body.message || `HTTP ${res.status}`)
