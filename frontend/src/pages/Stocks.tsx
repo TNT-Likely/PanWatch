@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
@@ -86,6 +87,7 @@ interface PortfolioSummary {
   exchange_rates?: {
     HKD_CNY: number
   }
+  quotes?: Record<string, { current_price: number; change_pct: number }>
 }
 
 interface AgentConfig {
@@ -132,6 +134,24 @@ interface StockSuggestionData {
   symbol: string
   suggestion: SuggestionInfo | null
   kline: KlineSummary | null
+}
+
+// 建议池中的建议（包含来源和时间信息）
+interface PoolSuggestion {
+  id: number
+  stock_symbol: string
+  stock_name: string
+  action: string
+  action_label: string
+  signal: string
+  reason: string
+  agent_name: string
+  agent_label: string
+  created_at: string
+  expires_at: string | null
+  is_expired: boolean
+  prompt_context: string
+  ai_response: string
 }
 
 interface MarketStatus {
@@ -189,6 +209,10 @@ export default function StocksPage() {
   const [suggestions, setSuggestions] = useState<Record<string, StockSuggestionData>>({})
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
 
+  // 建议池建议（来自 /suggestions API）
+  const [poolSuggestions, setPoolSuggestions] = useState<Record<string, PoolSuggestion>>({})
+  const [poolSuggestionsLoading, setPoolSuggestionsLoading] = useState(false)
+
   // News Dialog
   const [newsDialogOpen, setNewsDialogOpen] = useState(false)
   const [newsDialogSymbol, setNewsDialogSymbol] = useState<string>('')  // 空=全部, 否则=指定股票
@@ -237,48 +261,61 @@ export default function StocksPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout>>()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const load = async () => {
+  // 非核心数据后台加载（不阻塞 UI）
+  const loadConfigAsync = async () => {
     try {
-      // 核心数据
-      const [stockData, accountData, agentData, servicesData, channelsData] = await Promise.all([
-        fetchAPI<Stock[]>('/stocks'),
-        fetchAPI<Account[]>('/accounts'),
+      const [agentData, servicesData, channelsData] = await Promise.all([
         fetchAPI<AgentConfig[]>('/agents'),
         fetchAPI<AIService[]>('/providers/services'),
         fetchAPI<NotifyChannel[]>('/channels'),
       ])
-      setStocks(stockData)
-      setAccounts(accountData)
       setAgents(agentData)
       setServices(servicesData)
       setChannels(channelsData)
+    } catch (e) {
+      console.warn('加载配置数据失败:', e)
+    }
+  }
+
+  const load = async () => {
+    try {
+      // 核心数据（立即需要）
+      const [stockData, accountData] = await Promise.all([
+        fetchAPI<Stock[]>('/stocks'),
+        fetchAPI<Account[]>('/accounts'),
+      ])
+      setStocks(stockData)
+      setAccounts(accountData)
       // 默认展开所有账户
       setExpandedAccounts(new Set(accountData.map((a: Account) => a.id)))
-
-      // 市场状态（非核心，失败不影响页面）
-      try {
-        const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
-        setMarketStatus(marketStatusData)
-      } catch (e) {
-        console.warn('获取市场状态失败:', e)
-      }
     } catch (e) {
       console.error(e)
     } finally {
-      setLoading(false)
+      setLoading(false)  // 提前解除阻塞
+    }
+
+    // 非核心数据（后台加载，不阻塞 UI）
+    loadConfigAsync()
+
+    // 市场状态（非核心，失败不影响页面）
+    try {
+      const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
+      setMarketStatus(marketStatusData)
+    } catch (e) {
+      console.warn('获取市场状态失败:', e)
     }
   }
 
   const loadPortfolio = async () => {
     setPortfolioLoading(true)
     try {
-      // 核心数据
-      const [portfolioData, quotesData] = await Promise.all([
-        fetchAPI<PortfolioSummary>('/portfolio/summary'),
-        fetchAPI<Record<string, { current_price: number; change_pct: number }>>('/stocks/quotes'),
-      ])
+      // 核心数据：portfolio/summary 已包含 quotes
+      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary')
       setPortfolio(portfolioData)
-      setQuotes(quotesData)
+      // 使用 portfolio 返回的 quotes（避免额外 API 调用）
+      if (portfolioData.quotes) {
+        setQuotes(portfolioData.quotes)
+      }
 
       // 市场状态（非核心，失败不影响页面）
       try {
@@ -321,6 +358,10 @@ export default function StocksPage() {
       }
       setSuggestions(suggestionsMap)
       setLastRefreshTime(new Date())
+
+      // 扫描完成后重新加载建议池（获取刚保存的建议，包含来源和时间信息）
+      const poolData = await fetchAPI<Record<string, PoolSuggestion>>('/suggestions')
+      setPoolSuggestions(poolData)
     } catch (e) {
       console.error('扫描异动失败:', e)
     } finally {
@@ -328,6 +369,19 @@ export default function StocksPage() {
       setSuggestionsLoading(false)
     }
   }, [enableAIAnalysis])
+
+  // 从建议池加载建议（包含历史建议和多来源建议）
+  const loadPoolSuggestions = useCallback(async () => {
+    setPoolSuggestionsLoading(true)
+    try {
+      const data = await fetchAPI<Record<string, PoolSuggestion>>('/suggestions')
+      setPoolSuggestions(data)
+    } catch (e) {
+      console.warn('加载建议池失败:', e)
+    } finally {
+      setPoolSuggestionsLoading(false)
+    }
+  }, [])
 
   // Load news for specific stock or all watchlist
   const loadNews = useCallback(async (stockName?: string) => {
@@ -354,12 +408,12 @@ export default function StocksPage() {
     loadNews(stockName)
   }, [loadNews])
 
-  // Combined refresh: portfolio + alerts
+  // Combined refresh: portfolio + alerts + pool suggestions
   const handleRefresh = useCallback(async () => {
-    await Promise.all([loadPortfolio(), scanAlerts()])
+    await Promise.all([loadPortfolio(), scanAlerts(), loadPoolSuggestions()])
   }, [scanAlerts])
 
-  useEffect(() => { load(); loadPortfolio() }, [])
+  useEffect(() => { load(); loadPortfolio(); loadPoolSuggestions() }, [])
 
   // 持仓加载后自动获取 AI 建议
   const initialSuggestionsDone = useRef(false)
@@ -718,6 +772,41 @@ export default function StocksPage() {
     return quotes[symbol] || null
   }
 
+  // 获取股票的建议信息（优先使用建议池，包含来源和时间信息）
+  const getSuggestionForStock = (symbol: string): { suggestion: SuggestionInfo | null; kline: KlineSummary | null } => {
+    // 优先使用建议池的建议（包含来源和时间信息）
+    const poolSug = poolSuggestions[symbol]
+    if (poolSug && !poolSug.is_expired) {
+      return {
+        suggestion: {
+          action: poolSug.action,
+          action_label: poolSug.action_label,
+          signal: poolSug.signal,
+          reason: poolSug.reason,
+          should_alert: true,
+          agent_name: poolSug.agent_name,
+          agent_label: poolSug.agent_label,
+          created_at: poolSug.created_at,
+          is_expired: poolSug.is_expired,
+          prompt_context: poolSug.prompt_context,
+          ai_response: poolSug.ai_response,
+        },
+        kline: suggestions[symbol]?.kline || null,  // kline 来自 scan 结果
+      }
+    }
+
+    // 如果没有池建议，使用扫描结果
+    const scanSug = suggestions[symbol]
+    if (scanSug?.suggestion) {
+      return {
+        suggestion: scanSug.suggestion,
+        kline: scanSug.kline,
+      }
+    }
+
+    return { suggestion: null, kline: null }
+  }
+
   const toggleAccountExpanded = (id: number) => {
     setExpandedAccounts(prev => {
       const next = new Set(prev)
@@ -727,10 +816,50 @@ export default function StocksPage() {
     })
   }
 
+  // 骨架屏：初始加载时显示
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <div>
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <Skeleton className="h-6 w-16 mb-2" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+        {/* Summary Cards Skeleton */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-4">
+              <Skeleton className="h-4 w-16 mb-2" />
+              <Skeleton className="h-6 w-24" />
+            </div>
+          ))}
+        </div>
+        {/* Account List Skeleton */}
+        <div className="space-y-4">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="card">
+              <div className="px-4 py-3 border-b border-border/50">
+                <Skeleton className="h-5 w-32" />
+              </div>
+              <div className="divide-y divide-border/50">
+                {[...Array(3)].map((_, j) => (
+                  <div key={j} className="px-4 py-3 flex items-center gap-4">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16 ml-auto" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
@@ -791,8 +920,10 @@ export default function StocksPage() {
                 {suggestionsLoading && (
                   <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 )}
-                {!suggestionsLoading && Object.keys(suggestions).length > 0 && (
-                  <span className="text-[10px] text-primary">{Object.keys(suggestions).length}</span>
+                {!suggestionsLoading && !poolSuggestionsLoading && (Object.keys(suggestions).length > 0 || Object.keys(poolSuggestions).length > 0) && (
+                  <span className="text-[10px] text-primary">
+                    {new Set([...Object.keys(suggestions), ...Object.keys(poolSuggestions)]).size}
+                  </span>
                 )}
               </div>
               {lastRefreshTime && (
@@ -867,7 +998,20 @@ export default function StocksPage() {
       </div>
 
       {/* Portfolio Total Summary */}
-      {portfolio && (
+      {portfolioLoading && !portfolio ? (
+        // 首次加载时显示骨架屏
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-3 w-12" />
+              </div>
+              <Skeleton className="h-6 w-20" />
+            </div>
+          ))}
+        </div>
+      ) : portfolio ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -913,7 +1057,7 @@ export default function StocksPage() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Add Stock Form */}
       {showStockForm && (
@@ -1113,16 +1257,19 @@ export default function StocksPage() {
                                     <span className={`text-[9px] px-1 py-0.5 rounded mr-1.5 ${badge.style}`}>{badge.label}</span>
                                     <span className="font-mono text-[12px] font-semibold text-foreground">{pos.symbol}</span>
                                     <span className="ml-1.5 text-[12px] text-muted-foreground">{pos.name}</span>
-                                    {suggestions[pos.symbol]?.suggestion && (
-                                      <span className="ml-2">
-                                        <SuggestionBadge
-                                          suggestion={suggestions[pos.symbol].suggestion}
-                                          stockName={pos.name}
-                                          stockSymbol={pos.symbol}
-                                          kline={suggestions[pos.symbol].kline}
-                                        />
-                                      </span>
-                                    )}
+                                    {(() => {
+                                      const { suggestion, kline } = getSuggestionForStock(pos.symbol)
+                                      return suggestion ? (
+                                        <span className="ml-2">
+                                          <SuggestionBadge
+                                            suggestion={suggestion}
+                                            stockName={pos.name}
+                                            stockSymbol={pos.symbol}
+                                            kline={kline}
+                                          />
+                                        </span>
+                                      ) : null
+                                    })()}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
@@ -1215,14 +1362,17 @@ export default function StocksPage() {
                                       {pos.trading_style === 'short' ? '短' : pos.trading_style === 'long' ? '长' : '波'}
                                     </span>
                                   )}
-                                  {suggestions[pos.symbol]?.suggestion && (
-                                    <SuggestionBadge
-                                      suggestion={suggestions[pos.symbol].suggestion}
-                                      stockName={pos.name}
-                                      stockSymbol={pos.symbol}
-                                      kline={suggestions[pos.symbol].kline}
-                                    />
-                                  )}
+                                  {(() => {
+                                    const { suggestion, kline } = getSuggestionForStock(pos.symbol)
+                                    return suggestion ? (
+                                      <SuggestionBadge
+                                        suggestion={suggestion}
+                                        stockName={pos.name}
+                                        stockSymbol={pos.symbol}
+                                        kline={kline}
+                                      />
+                                    ) : null
+                                  })()}
                                 </div>
                                 <div className={`font-mono text-[13px] font-medium ${changeColor}`}>
                                   {pos.current_price?.toFixed(2) || '—'}

@@ -2,7 +2,7 @@
 import os
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -82,10 +82,11 @@ def hash_password(password: str) -> str:
 
 def create_token(expires_days: int = JWT_EXPIRE_DAYS) -> tuple[str, datetime]:
     """创建 JWT token"""
-    expires_at = datetime.utcnow() + timedelta(days=expires_days)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=expires_days)
     payload = {
         "exp": expires_at,
-        "iat": datetime.utcnow(),
+        "iat": now,
         "sub": "user",
     }
     token = jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)

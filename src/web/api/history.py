@@ -1,6 +1,6 @@
 """分析历史 API"""
 import logging
-from datetime import date
+from datetime import date, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -8,6 +8,16 @@ from pydantic import BaseModel
 
 from src.web.database import get_db
 from src.web.models import AnalysisHistory
+
+
+def _format_datetime(dt) -> str:
+    """格式化时间为带时区的 ISO 格式"""
+    if not dt:
+        return ""
+    # SQLite 存储的时间没有时区，假设为 UTC
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +65,8 @@ def list_history(
             title=r.title or "",
             content=r.content,
             suggestions=r.raw_data.get("suggestions") if r.raw_data else None,
-            created_at=r.created_at.isoformat() if r.created_at else "",
-            updated_at=r.updated_at.isoformat() if r.updated_at else "",
+            created_at=_format_datetime(r.created_at),
+            updated_at=_format_datetime(r.updated_at),
         )
         for r in records
     ]
@@ -78,8 +88,8 @@ def get_history_detail(history_id: int, db: Session = Depends(get_db)) -> Histor
         title=record.title or "",
         content=record.content,
         suggestions=record.raw_data.get("suggestions") if record.raw_data else None,
-        created_at=record.created_at.isoformat() if record.created_at else "",
-        updated_at=record.updated_at.isoformat() if record.updated_at else "",
+        created_at=_format_datetime(record.created_at),
+        updated_at=_format_datetime(record.updated_at),
     )
 
 

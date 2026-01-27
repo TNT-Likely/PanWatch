@@ -1,5 +1,5 @@
 """日志中心 API"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -7,6 +7,16 @@ from sqlalchemy.orm import Session
 
 from src.web.database import get_db
 from src.web.models import LogEntry
+
+
+def _format_datetime(dt) -> str:
+    """格式化时间为带时区的 ISO 格式"""
+    if not dt:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
 
 router = APIRouter()
 
@@ -77,7 +87,7 @@ def list_logs(
         items=[
             LogEntryResponse(
                 id=item.id,
-                timestamp=item.timestamp.isoformat() if item.timestamp else "",
+                timestamp=_format_datetime(item.timestamp),
                 level=item.level,
                 logger_name=item.logger_name or "",
                 message=item.message or "",

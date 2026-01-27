@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, JSON, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -222,3 +222,35 @@ class AnalysisHistory(Base):
     raw_data = Column(JSON, default={})             # 原始数据快照
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class StockSuggestion(Base):
+    """股票建议池 - 汇总各 Agent 建议"""
+    __tablename__ = "stock_suggestions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_symbol = Column(String, nullable=False, index=True)
+    stock_name = Column(String, default="")
+
+    # 建议内容
+    action = Column(String, nullable=False)       # buy/add/reduce/sell/hold/watch/alert/avoid
+    action_label = Column(String, nullable=False)  # 中文标签：建仓/加仓/减仓/清仓/持有/观望
+    signal = Column(String, default="")            # 信号描述
+    reason = Column(String, default="")            # 建议理由
+
+    # 来源追踪
+    agent_name = Column(String, nullable=False)    # intraday_monitor/daily_report/premarket_outlook
+    agent_label = Column(String, default="")       # 盘中监测/盘后日报/盘前分析
+
+    # 上下文信息
+    prompt_context = Column(String, default="")    # Prompt 上下文摘要
+    ai_response = Column(String, default="")       # AI 原始响应
+
+    # 时间信息
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=True)   # 建议过期时间
+
+    # 索引：按股票+时间快速查询
+    __table_args__ = (
+        Index('ix_suggestion_symbol_time', 'stock_symbol', 'created_at'),
+    )

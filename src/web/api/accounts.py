@@ -471,6 +471,14 @@ def get_portfolio_summary(account_id: int | None = None, db: Session = Depends(g
     grand_pnl_pct = (grand_pnl / grand_total_cost * 100) if grand_total_cost > 0 else 0
     grand_total_assets = grand_total_market_value + grand_available_funds
 
+    # 构建 quotes 字典（用于前端股票列表显示）
+    quotes_dict = {}
+    for symbol, quote in quotes.items():
+        quotes_dict[symbol] = {
+            "current_price": quote.get("current_price"),
+            "change_pct": quote.get("change_pct"),
+        }
+
     return {
         "accounts": account_summaries,
         "total": {
@@ -484,7 +492,8 @@ def get_portfolio_summary(account_id: int | None = None, db: Session = Depends(g
         "exchange_rates": {
             "HKD_CNY": hkd_rate,
             "USD_CNY": usd_rate,
-        }
+        },
+        "quotes": quotes_dict,  # 新增：直接返回行情数据
     }
 
 

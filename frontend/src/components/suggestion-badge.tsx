@@ -8,6 +8,13 @@ export interface SuggestionInfo {
   reason: string
   should_alert: boolean
   raw?: string
+  // 建议池新增字段
+  agent_name?: string     // intraday_monitor/daily_report/premarket_outlook
+  agent_label?: string    // 盘中监测/盘后日报/盘前分析
+  created_at?: string     // ISO 时间戳
+  is_expired?: boolean    // 是否已过期
+  prompt_context?: string // Prompt 上下文
+  ai_response?: string    // AI 原始响应
 }
 
 export interface KlineSummary {
@@ -73,6 +80,42 @@ const actionColors: Record<string, string> = {
   avoid: 'bg-red-600 text-white',  // 暂时回避
 }
 
+// 格式化建议时间（自动转换为本地时区，只显示时:分）
+function formatSuggestionTime(isoTime?: string): string {
+  if (!isoTime) return ''
+  try {
+    const date = new Date(isoTime)
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) return ''
+    // 使用本地时区显示
+    return date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } catch {
+    return ''
+  }
+}
+
+// 格式化完整日期时间（本地时区）
+function formatSuggestionDateTime(isoTime?: string): string {
+  if (!isoTime) return ''
+  try {
+    const date = new Date(isoTime)
+    if (isNaN(date.getTime())) return ''
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } catch {
+    return ''
+  }
+}
+
 export function SuggestionBadge({
   suggestion,
   stockName,
@@ -88,12 +131,21 @@ export function SuggestionBadge({
 
   // Dashboard 模式：行内显示完整信息
   if (showFullInline) {
+    const timeStr = formatSuggestionTime(suggestion.created_at)
     return (
       <div className="pt-3 border-t border-border/30">
         <div className="flex items-start gap-3">
-          <span className={`text-[11px] px-2 py-1 rounded font-medium shrink-0 ${colorClass}`}>
-            {suggestion.action_label}
-          </span>
+          <div className="shrink-0">
+            <span className={`text-[11px] px-2 py-1 rounded font-medium ${colorClass}`}>
+              {suggestion.action_label}
+            </span>
+            {/* 来源和时间 */}
+            {(suggestion.agent_label || timeStr) && (
+              <div className="text-[10px] text-muted-foreground/70 mt-1 text-center">
+                {suggestion.agent_label}{suggestion.agent_label && timeStr && ' · '}{timeStr}
+              </div>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             {suggestion.signal && (
               <p className="text-[12px] font-medium text-foreground mb-0.5">{suggestion.signal}</p>
@@ -110,18 +162,31 @@ export function SuggestionBadge({
   }
 
   // 持仓页模式：小徽章 + 点击弹窗
+  const timeStr = formatSuggestionTime(suggestion.created_at)
+  const sourceInfo = suggestion.agent_label
+    ? `${suggestion.agent_label}${timeStr ? ` · ${timeStr}` : ''}`
+    : ''
+
   return (
     <>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          setDialogOpen(true)
-        }}
-        className={`text-[10px] px-1.5 py-0.5 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity ${colorClass}`}
-        title="点击查看 AI 建议详情"
-      >
-        {suggestion.action_label}
-      </button>
+      <div className="inline-flex flex-col items-start gap-0.5">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setDialogOpen(true)
+          }}
+          className={`text-[10px] px-1.5 py-0.5 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity ${colorClass} ${suggestion.is_expired ? 'opacity-50' : ''}`}
+          title={sourceInfo ? `${sourceInfo} - 点击查看详情` : '点击查看 AI 建议详情'}
+        >
+          {suggestion.action_label}
+        </button>
+        {/* 来源和时间（显示在徽章下方） */}
+        {sourceInfo && (
+          <span className="text-[9px] text-muted-foreground/60">
+            {sourceInfo}
+          </span>
+        )}
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
@@ -136,6 +201,14 @@ export function SuggestionBadge({
                 </span>
               )}
             </DialogTitle>
+            {/* 来源信息 */}
+            {(suggestion.agent_label || suggestion.created_at) && (
+              <div className="text-[11px] text-muted-foreground/70 mt-1">
+                来源: {suggestion.agent_label || '未知'}
+                {suggestion.created_at && ` · ${formatSuggestionDateTime(suggestion.created_at)}`}
+                {suggestion.is_expired && <span className="ml-2 text-amber-500">(已过期)</span>}
+              </div>
+            )}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -246,6 +319,28 @@ export function SuggestionBadge({
                   </div>
                 )}
               </div>
+            )}
+
+            {/* AI 原始响应 */}
+            {suggestion.ai_response && (
+              <div>
+                <div className="text-[11px] text-muted-foreground mb-1">AI 响应</div>
+                <div className="text-[12px] text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto">
+                  {suggestion.ai_response}
+                </div>
+              </div>
+            )}
+
+            {/* Prompt 上下文 */}
+            {suggestion.prompt_context && (
+              <details className="group">
+                <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground">
+                  Prompt 上下文 <span className="text-[10px]">(点击展开)</span>
+                </summary>
+                <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap bg-accent/20 rounded p-2 max-h-48 overflow-y-auto">
+                  {suggestion.prompt_context}
+                </div>
+              </details>
             )}
           </div>
         </DialogContent>

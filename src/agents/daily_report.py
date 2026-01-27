@@ -8,6 +8,7 @@ from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.collectors.capital_flow_collector import CapitalFlowCollector
 from src.core.analysis_history import save_analysis
+from src.core.suggestion_pool import save_suggestion
 from src.models.market import MarketCode, StockData, IndexData
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,23 @@ class DailyReportAgent(BaseAgent):
         # 解析个股建议
         suggestions = self._parse_suggestions(result.content, context.watchlist)
         result.raw_data["suggestions"] = suggestions
+
+        # 保存各股票建议到建议池
+        stock_map = {s.symbol: s for s in context.watchlist}
+        for symbol, sug in suggestions.items():
+            stock = stock_map.get(symbol)
+            if stock:
+                save_suggestion(
+                    stock_symbol=symbol,
+                    stock_name=stock.name,
+                    action=sug["action"],
+                    action_label=sug["action_label"],
+                    signal="",  # 盘后日报无单独信号
+                    reason=sug.get("reason", ""),
+                    agent_name=self.name,
+                    agent_label=self.display_name,
+                    expires_hours=16,  # 盘后建议隔夜有效
+                )
 
         # 保存到历史记录（使用 "*" 表示全局分析）
         # 简化 raw_data，只保存关键信息

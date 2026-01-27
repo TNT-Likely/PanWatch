@@ -53,7 +53,7 @@ class AgentScheduler:
         logger.info(f"注册 Agent: {agent.display_name} (schedule: {schedule})")
 
     def _parse_cron(self, cron: str) -> CronTrigger:
-        """解析 cron 表达式"""
+        """解析 cron 表达式（使用北京时间）"""
         parts = cron.split()
         if len(parts) != 5:
             raise ValueError(f"无效的 cron 表达式: {cron}")
@@ -64,6 +64,7 @@ class AgentScheduler:
             day=parts[2],
             month=parts[3],
             day_of_week=parts[4],
+            timezone="Asia/Shanghai",  # 使用北京时间
         )
 
     def _parse_interval(self, expr: str) -> IntervalTrigger:

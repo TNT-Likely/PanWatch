@@ -1,4 +1,5 @@
 import logging
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +9,16 @@ from src.web.database import get_db
 from src.web.models import AgentConfig, AgentRun
 
 logger = logging.getLogger(__name__)
+
+
+def _format_datetime(dt) -> str:
+    """格式化时间为带时区的 ISO 格式"""
+    if not dt:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
 
 router = APIRouter()
 
@@ -121,13 +132,25 @@ async def trigger_agent_endpoint(agent_name: str, db: Session = Depends(get_db))
 
 @router.get("/{agent_name}/history", response_model=list[AgentRunResponse])
 def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(get_db)):
-    return (
+    runs = (
         db.query(AgentRun)
         .filter(AgentRun.agent_name == agent_name)
         .order_by(AgentRun.created_at.desc())
         .limit(limit)
         .all()
     )
+    return [
+        AgentRunResponse(
+            id=run.id,
+            agent_name=run.agent_name,
+            status=run.status or "",
+            result=run.result or "",
+            error=run.error or "",
+            duration_ms=run.duration_ms or 0,
+            created_at=_format_datetime(run.created_at),
+        )
+        for run in runs
+    ]
 
 
 @router.post("/intraday/scan")

@@ -8,6 +8,7 @@ from src.agents.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.core.analysis_history import get_latest_analysis, get_analysis
+from src.core.suggestion_pool import save_suggestion
 from src.models.market import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
@@ -414,6 +415,21 @@ class IntradayMonitorAgent(BaseAgent):
 
         # 解析操作建议
         suggestion = self._parse_suggestion(content)
+
+        # 保存到建议池（包含 prompt 上下文）
+        save_suggestion(
+            stock_symbol=stock.symbol,
+            stock_name=stock.name,
+            action=suggestion["action"],
+            action_label=suggestion["action_label"],
+            signal=suggestion.get("signal", ""),
+            reason=suggestion.get("reason", ""),
+            agent_name=self.name,
+            agent_label=self.display_name,
+            expires_hours=4,  # 盘中建议 4 小时有效
+            prompt_context=user_content,  # 保存 prompt 上下文
+            ai_response=content,  # 保存 AI 原始响应
+        )
 
         # 构建标题
         title = f"【{self.display_name}】{stock.name} {stock.change_pct:+.2f}%"

@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.web.api import stocks, agents, settings, logs, providers, channels, datasources, accounts, history, news, market, auth
+from src.web.api import stocks, agents, settings, logs, providers, channels, datasources, accounts, history, news, market, auth, suggestions
 from src.web.api.auth import get_current_user
 from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
 
-app = FastAPI(title="PanWatch API", version="0.1.0")
+app = FastAPI(
+    title="PanWatch API",
+    version="0.1.0",
+    redirect_slashes=False,  # 避免重定向丢失 Authorization header
+)
 
 app.add_middleware(ResponseWrapperMiddleware)
 app.add_middleware(
@@ -34,6 +38,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"], d
 app.include_router(logs.router, prefix="/api/logs", tags=["logs"], dependencies=protected)
 app.include_router(history.router, prefix="/api", tags=["history"], dependencies=protected)
 app.include_router(news.router, prefix="/api/news", tags=["news"], dependencies=protected)
+app.include_router(suggestions.router, prefix="/api/suggestions", tags=["suggestions"], dependencies=protected)
 
 
 @app.get("/api/health")
