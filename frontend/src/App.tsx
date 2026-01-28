@@ -7,11 +7,11 @@ import DashboardPage from '@/pages/Dashboard'
 import StocksPage from '@/pages/Stocks'
 import AgentsPage from '@/pages/Agents'
 import SettingsPage from '@/pages/Settings'
-import LogsPage from '@/pages/Logs'
 import DataSourcesPage from '@/pages/DataSources'
 import HistoryPage from '@/pages/History'
 import NewsPage from '@/pages/News'
 import LoginPage from '@/pages/Login'
+import LogsModal from '@/components/logs-modal'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -19,7 +19,6 @@ const navItems = [
   { to: '/agents', icon: Bot, label: 'Agent' },
   { to: '/history', icon: Clock, label: '历史' },
   { to: '/datasources', icon: Database, label: '数据源' },
-  { to: '/logs', icon: ScrollText, label: '日志' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 
@@ -60,6 +59,7 @@ function App() {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
   const [version, setVersion] = useState('')
+  const [logsOpen, setLogsOpen] = useState(false)
 
   useEffect(() => {
     fetch(`${API_BASE}/api/version`)
@@ -119,6 +119,13 @@ function App() {
             {/* Theme Toggle & Logout */}
             <div className="flex items-center gap-1">
               <button
+                onClick={() => setLogsOpen(true)}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                title="查看日志"
+              >
+                <ScrollText className="w-4 h-4" />
+              </button>
+              <button
                 onClick={toggleTheme}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
                 title={theme === 'dark' ? '切换到亮色' : '切换到暗色'}
@@ -150,6 +157,13 @@ function App() {
               <span className="text-[14px] font-bold text-foreground">PanWatch</span>
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
+            <button
+              onClick={() => setLogsOpen(true)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              title="查看日志"
+            >
+              <ScrollText className="w-4 h-4" />
+            </button>
             <button
               onClick={toggleTheme}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
@@ -192,10 +206,10 @@ function App() {
           <Route path="/news" element={<NewsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
-          <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
+      <LogsModal open={logsOpen} onOpenChange={setLogsOpen} />
     </div>
     </RequireAuth>
   )

@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import or_
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -59,7 +60,11 @@ def list_logs(
         query = query.filter(LogEntry.message.contains(q))
 
     if logger:
-        query = query.filter(LogEntry.logger_name.contains(logger))
+        parts = [p.strip() for p in logger.split(",") if p.strip()]
+        if len(parts) == 1:
+            query = query.filter(LogEntry.logger_name.contains(parts[0]))
+        elif parts:
+            query = query.filter(or_(*[LogEntry.logger_name.contains(p) for p in parts]))
 
     if since:
         try:

@@ -25,7 +25,8 @@ class DBLogHandler(logging.Handler):
         entry = {
             "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc),
             "level": record.levelname,
-            "logger_name": record.name,
+            # Persist original module logger name; UI maps to Chinese for display
+            "logger_name": getattr(record, "name", ""),
             "message": self.format(record),
         }
         with self._lock:
