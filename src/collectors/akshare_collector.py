@@ -27,7 +27,7 @@ def _tencent_symbol(symbol: str, market: MarketCode = MarketCode.CN) -> str:
     if market == MarketCode.US:
         return f"us{symbol}"
     # A股: 6开头沪市, 其余深市
-    prefix = "sh" if symbol.startswith("6") or symbol.startswith("000") else "sz"
+    prefix = "sh" if symbol.startswith("6") else "sz"
     return prefix + symbol
 
 
