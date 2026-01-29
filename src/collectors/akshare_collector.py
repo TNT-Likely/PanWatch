@@ -27,9 +27,12 @@ def _tencent_symbol(symbol: str, market: MarketCode = MarketCode.CN) -> str:
     if market == MarketCode.US:
         return f"us{symbol}"
     # A股: 6开头沪市, 其余深市
-    prefix = "sh" if symbol.startswith("6") else "sz"
-    return prefix + symbol
-
+    if symbol.startswith("6"):
+        return "sh" + symbol
+    elif symbol.startswith(("000", "001", "002", "003", "300", "301")):
+        return "sz" + symbol
+    else
+        return "bj" + symbol
 
 def _parse_tencent_line(line: str) -> dict | None:
     """解析腾讯 API 单行响应"""
