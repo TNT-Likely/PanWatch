@@ -31,7 +31,7 @@ def _tencent_symbol(symbol: str, market: MarketCode = MarketCode.CN) -> str:
         return "sh" + symbol
     elif symbol.startswith(("000", "001", "002", "003", "300", "301")):
         return "sz" + symbol
-    else
+    else :
         return "bj" + symbol
 
 def _parse_tencent_line(line: str) -> dict | None:
