@@ -21,14 +21,42 @@ CN_INDICES = [
 
 
 def _tencent_symbol(symbol: str, market: MarketCode = MarketCode.CN) -> str:
-    """转换为腾讯 API 格式: sh600519 / sz000001 / hk00700 / usAAPL"""
+    """转换为腾讯 API 格式: sh600519 / sz000001 / hk00700 / usAAPL / bj430047
+
+    规则：
+    - 港股：hk{symbol}
+      示例：00700（腾讯控股）、03690（美团-W）
+    - 美股：us{symbol}
+      示例：AAPL（Apple）、NVDA（NVIDIA）
+    - A股：
+      - 上交所（含 ETF/LOF/B 股 等）：5/6/900 开头 -> sh{symbol}
+        示例：600519（贵州茅台）、510300（沪深300ETF）、900901（B股示例）
+      - 深交所（主板/中小板/创业板/B 股/ETF 等）：0/1/2/3 开头 -> sz{symbol}
+        示例：000001（平安银行）、300750（宁德时代）
+      - 北交所：920 开头 或 83/87/88 开头 -> bj{symbol}
+        示例：920001（贝特瑞）、836239（诺思兰德）
+      - 其他未知前缀，默认归为深市 sz
+    """
     if market == MarketCode.HK:
+        # 例如：00700（腾讯控股）→ hk00700，03690（美团-W）→ hk03690
         return f"hk{symbol}"
     if market == MarketCode.US:
+        # 例如：AAPL（Apple）→ usAAPL，NVDA（NVIDIA）→ usNVDA
         return f"us{symbol}"
-    # A股: 6开头沪市, 其余深市
-    prefix = "sh" if symbol.startswith("6") or symbol.startswith("000") else "sz"
-    return prefix + symbol
+    # CN 市场代码前缀映射
+    # 先处理北交所（新版与旧版代码段）
+    if symbol.startswith("920") or symbol.startswith(("83", "87", "88")):
+        # 例如：920001（贝特瑞）→ bj920001，836239（诺思兰德）→ bj836239
+        return "bj" + symbol
+    # 上交所：5/6/900 前缀
+    if symbol.startswith(("5", "6")) or symbol.startswith("900"):
+        # 例如：600519（贵州茅台）→ sh600519，510300（沪深300ETF）→ sh510300，900901（B股）→ sh900901
+        return "sh" + symbol
+    if symbol.startswith(("0", "1", "2", "3")):
+        # 例如：000001（平安银行）→ sz000001，300750（宁德时代）→ sz300750
+        return "sz" + symbol
+    # Fallback：未知前缀按深市处理
+    return "sz" + symbol
 
 
 def _parse_tencent_line(line: str) -> dict | None:

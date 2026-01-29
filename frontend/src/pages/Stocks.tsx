@@ -1280,15 +1280,13 @@ export default function StocksPage() {
         </div>
       ) : null}
 
-      {/* Add Stock Form */}
-      {showStockForm && (
-        <div className="mb-6 card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[15px] font-semibold text-foreground">添加股票到自选</h3>
-            <Button variant="ghost" size="icon" onClick={() => { setShowStockForm(false); setSearchQuery(''); setSearchMarket('') }}>
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
+      {/* Add Stock Dialog */}
+      <Dialog open={showStockForm} onOpenChange={(open) => { setShowStockForm(open); if (!open) { setSearchQuery(''); setSearchMarket('') } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>添加股票到自选</DialogTitle>
+            <DialogDescription>搜索并添加到自选股列表</DialogDescription>
+          </DialogHeader>
           <form onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
               <div className="flex items-center gap-2 mb-2">
@@ -1332,7 +1330,7 @@ export default function StocksPage() {
                   )}
                 </button>
               </div>
-              <div className="relative max-w-md">
+              <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
                 <Input
                   value={searchQuery}
@@ -1345,7 +1343,7 @@ export default function StocksPage() {
                 {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
               </div>
               {showDropdown && (
-                <div className="absolute z-50 w-full max-w-md mt-2 max-h-64 overflow-auto card shadow-lg">
+                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto card shadow-lg">
                   {searchResults.map(item => (
                     <button
                       key={`${item.market}-${item.symbol}`}
@@ -1367,13 +1365,13 @@ export default function StocksPage() {
                 </div>
               )}
             </div>
-            <div className="mt-6 flex items-center gap-3">
-              <Button type="submit" disabled={!stockForm.symbol}>确认添加</Button>
+            <div className="mt-6 flex items-center gap-3 justify-end">
               <Button type="button" variant="ghost" onClick={() => { setShowStockForm(false); setSearchQuery('') }}>取消</Button>
+              <Button type="submit" disabled={!stockForm.symbol}>确认添加</Button>
             </div>
           </form>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Accounts & Positions */}
       {portfolio && portfolio.accounts.length === 0 ? (
