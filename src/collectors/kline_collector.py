@@ -1,10 +1,13 @@
 """K线和技术指标采集器 - 基于腾讯 API（更稳定）"""
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
+import time
 
 from src.models.market import MarketCode
 
@@ -12,6 +15,84 @@ logger = logging.getLogger(__name__)
 
 # 腾讯日K线 API
 TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+
+_STOOQ_CACHE: dict[str, tuple[float, list["KlineData"]]] = {}
+_STOOQ_CACHE_TTL_SECONDS = 300
+
+
+def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
+    """Fetch daily US kline from Stooq (CSV, free, no key).
+
+    Endpoint: https://stooq.com/q/d/l/?s=aapl.us&i=d
+    """
+
+    sym = (symbol or "").strip().lower()
+    if not sym:
+        return []
+
+    now = time.time()
+    cached = _STOOQ_CACHE.get(sym)
+    stale = cached[1] if cached else []
+    if cached and (now - cached[0]) < _STOOQ_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    # Stooq uses dot for class shares (e.g., brk.b). Keep as-is.
+    stooq_sym = f"{sym}.us"
+    url = "https://stooq.com/q/d/l/"
+    params = {"s": stooq_sym, "i": "d"}
+    headers = {"User-Agent": "PanWatch/1.0 (+https://github.com/)"}
+    last_err = None
+    text = ""
+    for attempt in range(3):
+        try:
+            timeout = 12 + attempt * 6
+            with httpx.Client(
+                follow_redirects=True, timeout=timeout, headers=headers
+            ) as client:
+                resp = client.get(url, params=params)
+                resp.raise_for_status()
+                text = resp.text
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
+            # Backoff a bit
+            time.sleep(0.4 * (attempt + 1))
+
+    if last_err is not None:
+        logger.warning(f"Stooq 获取 {symbol} K线失败: {last_err}")
+        # Return stale cache if we have any.
+        return stale
+
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) <= 1:
+        return []
+
+    # Header: Date,Open,High,Low,Close,Volume
+    out: list[KlineData] = []
+    for ln in lines[1:]:
+        parts = ln.split(",")
+        if len(parts) < 6:
+            continue
+        date_s, o, h, l, c, v = parts[:6]
+        if not date_s or date_s == "Date":
+            continue
+        try:
+            out.append(
+                KlineData(
+                    date=date_s,
+                    open=float(o),
+                    close=float(c),
+                    high=float(h),
+                    low=float(l),
+                    volume=float(v) if v else 0,
+                )
+            )
+        except Exception:
+            continue
+    _STOOQ_CACHE[sym] = (now, out)
+    return out
 
 
 @dataclass
@@ -352,10 +433,21 @@ class KlineCollector:
                         )
                     )
 
+            # Tencent 对部分美股返回的 day 数据异常偏少（仅 1-2 条），此时使用 Stooq 回退。
+            if self.market == MarketCode.US and len(klines) < max(10, min(days, 30)):
+                fallback = _fetch_stooq_us_klines(symbol)
+                if fallback:
+                    # Stooq 返回全量历史，这里取最后 days 条
+                    return fallback[-days:]
+
             return klines
 
         except Exception as e:
             logger.error(f"获取 {symbol} K线数据失败: {e}")
+            # 美股回退到 Stooq
+            if self.market == MarketCode.US:
+                fb = _fetch_stooq_us_klines(symbol)
+                return fb[-days:] if fb else []
             return []
 
     def get_technical_indicators(self, symbol: str) -> TechnicalIndicators:
