@@ -18,6 +18,7 @@ export interface SuggestionInfo {
   is_expired?: boolean    // 是否已过期
   prompt_context?: string // Prompt 上下文
   ai_response?: string    // AI 原始响应
+  meta?: Record<string, any>
 }
 
 export interface KlineSummary {
@@ -161,6 +162,16 @@ function formatSuggestionDateTime(isoTime?: string): string {
   }
 }
 
+function formatKlineMeta(meta?: Record<string, any>): string {
+  if (!meta) return ''
+  const computedAt = meta?.kline_meta?.computed_at
+  const asof = meta?.kline_meta?.asof
+  const parts: string[] = []
+  if (asof) parts.push(`K线截止 ${asof}`)
+  if (computedAt) parts.push(`计算 ${formatSuggestionTime(computedAt)}`)
+  return parts.join(' · ')
+}
+
 export function SuggestionBadge({
   suggestion,
   stockName,
@@ -185,6 +196,7 @@ export function SuggestionBadge({
     const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
     const techColor = tech ? (actionColors[tech.action] || 'bg-slate-500 text-white') : 'bg-slate-500 text-white'
     const timeStr = formatSuggestionTime(suggestion.created_at)
+    const klineMetaStr = formatKlineMeta(suggestion.meta)
     return (
       <>
         <div className="pt-3 border-t border-border/30">
@@ -231,6 +243,12 @@ export function SuggestionBadge({
                   来源: {suggestion.agent_label || (isAI ? 'AI' : '未知')}
                   {timeStr && ` · ${timeStr}`}
                   {suggestion.is_expired && <span className="ml-1 text-amber-600">(已过期)</span>}
+                </div>
+              )}
+
+              {klineMetaStr && (
+                <div className="mt-1 text-[10px] text-muted-foreground/70">
+                  {klineMetaStr}
                 </div>
               )}
             </div>

@@ -69,7 +69,9 @@ class DailyReportAgent(BaseAgent):
                 flow_collector = CapitalFlowCollector(market_code)
                 for symbol in symbols:
                     try:
-                        capital_flow_data[symbol] = flow_collector.get_capital_flow_summary(symbol)
+                        capital_flow_data[symbol] = (
+                            flow_collector.get_capital_flow_summary(symbol)
+                        )
                     except Exception as e:
                         logger.warning(f"获取 {symbol} 资金流向失败: {e}")
                         capital_flow_data[symbol] = {"error": str(e)}
@@ -82,18 +84,22 @@ class DailyReportAgent(BaseAgent):
             stock_symbols = [s.symbol for s in context.watchlist]
             if stock_symbols:
                 news_collector = NewsCollector.from_database()
-                all_news = await news_collector.fetch_all(symbols=stock_symbols, since_hours=24)
+                all_news = await news_collector.fetch_all(
+                    symbols=stock_symbols, since_hours=24
+                )
                 for news in all_news:
                     if news.symbols or news.importance >= 2:  # 相关新闻或重要新闻
-                        news_items.append({
-                            "source": news.source,
-                            "title": news.title,
-                            "content": news.content[:240] if news.content else "",
-                            "time": news.publish_time.strftime("%m/%d %H:%M"),
-                            "symbols": news.symbols,
-                            "importance": news.importance,
-                            "url": news.url,
-                        })
+                        news_items.append(
+                            {
+                                "source": news.source,
+                                "title": news.title,
+                                "content": news.content[:240] if news.content else "",
+                                "time": news.publish_time.strftime("%m/%d %H:%M"),
+                                "symbols": news.symbols,
+                                "importance": news.importance,
+                                "url": news.url,
+                            }
+                        )
                     if len(news_items) >= 20:
                         break
                 logger.info(f"采集到 {len(news_items)} 条相关新闻/公告")
@@ -129,7 +135,7 @@ class DailyReportAgent(BaseAgent):
             lines.append(
                 f"- {idx.name}: {safe_num(idx.current_price):.2f} "
                 f"{direction} {change_pct:+.2f}% "
-                f"成交额:{safe_num(idx.turnover)/1e8:.0f}亿"
+                f"成交额:{safe_num(idx.turnover) / 1e8:.0f}亿"
             )
 
         # 自选股详情
@@ -142,7 +148,13 @@ class DailyReportAgent(BaseAgent):
         for stock in data["stocks"]:
             change_pct = safe_num(stock.change_pct)
             direction = "↑" if change_pct > 0 else "↓" if change_pct < 0 else "→"
-            stock_name = stock.name or (watchlist_map.get(stock.symbol) and watchlist_map[stock.symbol].name) or stock.symbol
+            stock_name = (
+                stock.name
+                or (
+                    watchlist_map.get(stock.symbol) and watchlist_map[stock.symbol].name
+                )
+                or stock.symbol
+            )
 
             lines.append(f"\n### {stock_name}（{stock.symbol}）")
 
@@ -154,43 +166,59 @@ class DailyReportAgent(BaseAgent):
             turnover = safe_num(stock.turnover)
 
             lines.append(f"- 今日：{current_price:.2f} {direction} {change_pct:+.2f}%")
-            amplitude = (high_price - low_price) / prev_close * 100 if prev_close > 0 else 0
-            lines.append(f"- 振幅：{amplitude:.1f}%  最高{high_price:.2f} 最低{low_price:.2f}")
-            lines.append(f"- 成交额：{turnover/1e8:.2f}亿")
+            amplitude = (
+                (high_price - low_price) / prev_close * 100 if prev_close > 0 else 0
+            )
+            lines.append(
+                f"- 振幅：{amplitude:.1f}%  最高{high_price:.2f} 最低{low_price:.2f}"
+            )
+            lines.append(f"- 成交额：{turnover / 1e8:.2f}亿")
 
             # 技术指标
             tech = technical.get(stock.symbol, {})
             if not tech.get("error"):
-                ma5 = safe_num(tech.get('ma5'))
-                ma10 = safe_num(tech.get('ma10'))
-                ma20 = safe_num(tech.get('ma20'))
+                ma5 = safe_num(tech.get("ma5"))
+                ma10 = safe_num(tech.get("ma10"))
+                ma20 = safe_num(tech.get("ma20"))
                 lines.append(f"- 均线：MA5={ma5:.2f} MA10={ma10:.2f} MA20={ma20:.2f}")
-                lines.append(f"- 趋势：{tech.get('trend', '未知')}，MACD {tech.get('macd_status', '未知')}")
+                lines.append(
+                    f"- 趋势：{tech.get('trend', '未知')}，MACD {tech.get('macd_status', '未知')}"
+                )
                 change_5d = tech.get("change_5d")
                 change_20d = tech.get("change_20d")
                 if change_5d is not None:
-                    lines.append(f"- 近期：5日{change_5d:+.1f}% 20日{safe_num(change_20d):+.1f}%")
+                    lines.append(
+                        f"- 近期：5日{change_5d:+.1f}% 20日{safe_num(change_20d):+.1f}%"
+                    )
                 # 量能
                 if tech.get("volume_trend"):
                     vol_ratio = tech.get("volume_ratio")
-                    ratio_str = f"（量比{vol_ratio:.2f}）" if vol_ratio is not None else ""
+                    ratio_str = (
+                        f"（量比{vol_ratio:.2f}）" if vol_ratio is not None else ""
+                    )
                     lines.append(f"- 量能：{tech.get('volume_trend')}{ratio_str}")
                 # RSI / KDJ / 布林
                 if tech.get("rsi6") is not None and tech.get("rsi_status"):
-                    lines.append(f"- RSI：{tech.get('rsi6'):.1f}（{tech.get('rsi_status')}）")
+                    lines.append(
+                        f"- RSI：{tech.get('rsi6'):.1f}（{tech.get('rsi_status')}）"
+                    )
                 if tech.get("kdj_status"):
                     kdj_k = tech.get("kdj_k")
                     kdj_d = tech.get("kdj_d")
                     kdj_j = tech.get("kdj_j")
                     if kdj_k is not None and kdj_d is not None and kdj_j is not None:
-                        lines.append(f"- KDJ：{tech.get('kdj_status')}（K={kdj_k:.1f} D={kdj_d:.1f} J={kdj_j:.1f}）")
+                        lines.append(
+                            f"- KDJ：{tech.get('kdj_status')}（K={kdj_k:.1f} D={kdj_d:.1f} J={kdj_j:.1f}）"
+                        )
                     else:
                         lines.append(f"- KDJ：{tech.get('kdj_status')}")
                 if tech.get("boll_status"):
                     boll_upper = tech.get("boll_upper")
                     boll_lower = tech.get("boll_lower")
                     if boll_upper is not None and boll_lower is not None:
-                        lines.append(f"- 布林：{tech.get('boll_status')}（上轨{boll_upper:.2f} 下轨{boll_lower:.2f}）")
+                        lines.append(
+                            f"- 布林：{tech.get('boll_status')}（上轨{boll_upper:.2f} 下轨{boll_lower:.2f}）"
+                        )
                     else:
                         lines.append(f"- 布林：{tech.get('boll_status')}")
                 # 形态 / 振幅
@@ -207,34 +235,52 @@ class DailyReportAgent(BaseAgent):
                 support_m = tech.get("support_m")
                 resistance_m = tech.get("resistance_m")
                 if support_m is not None and resistance_m is not None:
-                    lines.append(f"- 支撑压力：中期支撑{support_m:.2f} 中期压力{resistance_m:.2f}")
+                    lines.append(
+                        f"- 支撑压力：中期支撑{support_m:.2f} 中期压力{resistance_m:.2f}"
+                    )
                 else:
                     support = tech.get("support")
                     resistance = tech.get("resistance")
                     if support is not None and resistance is not None:
-                        lines.append(f"- 支撑压力：支撑{support:.2f} 压力{resistance:.2f}")
+                        lines.append(
+                            f"- 支撑压力：支撑{support:.2f} 压力{resistance:.2f}"
+                        )
 
             # 资金流向（仅A股）
             flow = capital_flow.get(stock.symbol, {})
             if not flow.get("error") and flow.get("status"):
                 inflow = safe_num(flow.get("main_net_inflow"))
                 inflow_pct = safe_num(flow.get("main_net_inflow_pct"))
-                inflow_str = f"{inflow/1e8:+.2f}亿" if abs(inflow) >= 1e8 else f"{inflow/1e4:+.0f}万"
-                lines.append(f"- 资金：{flow['status']}，主力净流入{inflow_str}（{inflow_pct:+.1f}%）")
+                inflow_str = (
+                    f"{inflow / 1e8:+.2f}亿"
+                    if abs(inflow) >= 1e8
+                    else f"{inflow / 1e4:+.0f}万"
+                )
+                lines.append(
+                    f"- 资金：{flow['status']}，主力净流入{inflow_str}（{inflow_pct:+.1f}%）"
+                )
                 if flow.get("trend_5d") != "无数据":
                     lines.append(f"- 5日资金：{flow['trend_5d']}")
 
             # 相关新闻/公告（便于 AI 在消息面维度补充解读）
-            stock_news = [n for n in news_items if stock.symbol in (n.get("symbols") or [])]
+            stock_news = [
+                n for n in news_items if stock.symbol in (n.get("symbols") or [])
+            ]
             if stock_news:
                 lines.append("- 相关新闻：")
                 for n in stock_news[:3]:
-                    source_label = {"sina": "新浪", "eastmoney": "东财"}.get(n.get("source"), n.get("source"))
-                    importance_star = "⭐" * n.get("importance", 0) if n.get("importance") else ""
+                    source_label = {"sina": "新浪", "eastmoney": "东财"}.get(
+                        n.get("source"), n.get("source")
+                    )
+                    importance_star = (
+                        "⭐" * n.get("importance", 0) if n.get("importance") else ""
+                    )
                     time_str = n.get("time") or ""
                     title = n.get("title") or ""
                     link = f"[原文]({n.get('url')})" if n.get("url") else ""
-                    lines.append(f"  - [{time_str}] {importance_star}{title}（{source_label}）{(' ' + link) if link else ''}")
+                    lines.append(
+                        f"  - [{time_str}] {importance_star}{title}（{source_label}）{(' ' + link) if link else ''}"
+                    )
                     if n.get("content"):
                         lines.append(f"    > {n['content'][:120]}...")
             else:
@@ -245,10 +291,14 @@ class DailyReportAgent(BaseAgent):
             if position:
                 total_qty = position["total_quantity"]
                 avg_cost = safe_num(position["avg_cost"], 1)
-                pnl_pct = (current_price - avg_cost) / avg_cost * 100 if avg_cost > 0 else 0
+                pnl_pct = (
+                    (current_price - avg_cost) / avg_cost * 100 if avg_cost > 0 else 0
+                )
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
-                lines.append(f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）")
+                lines.append(
+                    f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"
+                )
 
         if not data["stocks"]:
             lines.append("- 今日无行情数据")
@@ -259,11 +309,15 @@ class DailyReportAgent(BaseAgent):
             for acc in context.portfolio.accounts:
                 if acc.positions or acc.available_funds > 0:
                     acc_cost = acc.total_cost
-                    lines.append(f"- {acc.name}: 持仓成本{acc_cost:.0f}元 可用资金{acc.available_funds:.0f}元")
+                    lines.append(
+                        f"- {acc.name}: 持仓成本{acc_cost:.0f}元 可用资金{acc.available_funds:.0f}元"
+                    )
             total_funds = context.portfolio.total_available_funds
             total_cost = context.portfolio.total_cost
             if total_funds > 0 or total_cost > 0:
-                lines.append(f"- 合计: 总持仓成本{total_cost:.0f}元 总可用资金{total_funds:.0f}元")
+                lines.append(
+                    f"- 合计: 总持仓成本{total_cost:.0f}元 总可用资金{total_funds:.0f}元"
+                )
 
         user_content = "\n".join(lines)
         return system_prompt, user_content
@@ -293,7 +347,11 @@ class DailyReportAgent(BaseAgent):
                     pass
                 symbol_map[f"HK{sym}"] = sym
                 symbol_map[f"{sym}.HK"] = sym
-            if getattr(s, "market", None) == MarketCode.CN and sym.isdigit() and len(sym) == 6:
+            if (
+                getattr(s, "market", None) == MarketCode.CN
+                and sym.isdigit()
+                and len(sym) == 6
+            ):
                 prefix = "SH" if sym.startswith("6") or sym.startswith("000") else "SZ"
                 symbol_map[f"{prefix}{sym}"] = sym
                 symbol_map[f"{sym}.{prefix}"] = sym
@@ -351,11 +409,15 @@ class DailyReportAgent(BaseAgent):
 
             # 提取理由：从“建议类型”后截取
             reason = ""
-            m_reason = re.search(rf"{re.escape(action_text)}\s*[：:：\-—]?\s*(?P<r>.+)$", line)
+            m_reason = re.search(
+                rf"{re.escape(action_text)}\s*[：:：\-—]?\s*(?P<r>.+)$", line
+            )
             if m_reason:
                 reason = m_reason.group("r").strip()
 
-            action_info = DAILY_ACTION_MAP.get(action_text, {"action": "hold", "label": "继续持有"})
+            action_info = DAILY_ACTION_MAP.get(
+                action_text, {"action": "hold", "label": "继续持有"}
+            )
             suggestions[canonical] = {
                 "action": action_info["action"],
                 "action_label": action_info["label"],
@@ -406,6 +468,10 @@ class DailyReportAgent(BaseAgent):
                     expires_hours=16,  # 盘后建议隔夜有效
                     prompt_context=user_content,
                     ai_response=result.content,
+                    meta={
+                        "analysis_date": (data.get("timestamp") or "")[:10],
+                        "source": "daily_report",
+                    },
                 )
 
         # 保存到历史记录（使用 "*" 表示全局分析）

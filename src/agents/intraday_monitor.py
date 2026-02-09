@@ -55,6 +55,7 @@ class IntradayMonitorAgent(BaseAgent):
         self,
         throttle_minutes: int = 30,
         bypass_throttle: bool = False,
+        event_only: bool = True,
         price_alert_threshold: float = 3.0,
         volume_alert_ratio: float = 2.0,
         stop_loss_warning: float = -5.0,
@@ -71,6 +72,7 @@ class IntradayMonitorAgent(BaseAgent):
         """
         self.throttle_minutes = throttle_minutes
         self.bypass_throttle = bypass_throttle
+        self.event_only = event_only
         self.price_alert_threshold = price_alert_threshold
         self.volume_alert_ratio = volume_alert_ratio
         self.stop_loss_warning = stop_loss_warning
@@ -501,6 +503,17 @@ class IntradayMonitorAgent(BaseAgent):
             expires_hours=4,  # 盘中建议 4 小时有效
             prompt_context=user_content,  # 保存 prompt 上下文
             ai_response=content,  # 保存 AI 原始响应
+            meta={
+                "quote": {
+                    "current_price": stock.current_price,
+                    "change_pct": stock.change_pct,
+                },
+                "kline_meta": {
+                    "computed_at": (data.get("kline_summary") or {}).get("computed_at"),
+                    "asof": (data.get("kline_summary") or {}).get("asof"),
+                },
+                "event_gate": data.get("event_gate"),
+            },
         )
 
         # 构建标题
@@ -649,6 +662,39 @@ class IntradayMonitorAgent(BaseAgent):
             data = await self.collect(context)
             if not data.get("stock_data"):
                 return None
+
+            # P1: event-driven gate (reduce AI calls)
+            if self.event_only:
+                try:
+                    from src.core.intraday_event_gate import check_and_update
+
+                    stock = data.get("stock_data")
+                    kline_summary = data.get("kline_summary")
+                    decision = check_and_update(
+                        symbol=stock_symbol,
+                        change_pct=getattr(stock, "change_pct", None),
+                        volume_ratio=(kline_summary or {}).get("volume_ratio"),
+                        kline_summary=kline_summary,
+                        price_threshold=self.price_alert_threshold,
+                        volume_threshold=self.volume_alert_ratio,
+                    )
+                    if not decision.should_analyze:
+                        logger.info(
+                            f"事件门禁: {stock_symbol} 无显著变化，跳过 AI 分析"
+                        )
+                        return AnalysisResult(
+                            agent_name=self.name,
+                            title=f"【{self.display_name}】{stock_symbol}",
+                            content="",
+                            raw_data={
+                                "skipped": True,
+                                "skip_reason": "no_event",
+                                "event_gate": {"reasons": decision.reasons},
+                            },
+                        )
+                    data["event_gate"] = {"reasons": decision.reasons}
+                except Exception as e:
+                    logger.debug(f"事件门禁异常，继续分析: {e}")
 
             result = await self.analyze(context, data)
 

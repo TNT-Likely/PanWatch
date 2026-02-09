@@ -55,6 +55,7 @@ def save_suggestion(
     expires_hours: Optional[int] = None,
     prompt_context: str = "",
     ai_response: str = "",
+    meta: dict | None = None,
 ) -> bool:
     """
     保存 Agent 建议到建议池
@@ -124,6 +125,37 @@ def save_suggestion(
                         f"建议去重: {stock_symbol} {action_label} (来源: {agent_label})"
                     )
                     return True
+
+                # Stability: avoid flip-flopping to a less severe action within a short window.
+                try:
+                    action_rank = {
+                        "alert": 4,
+                        "avoid": 4,
+                        "sell": 4,
+                        "reduce": 3,
+                        "buy": 2,
+                        "add": 2,
+                        "hold": 1,
+                        "watch": 0,
+                    }
+                    old_r = action_rank.get((latest.action or "").strip(), 0)
+                    new_r = action_rank.get((action or "").strip(), 0)
+                    change_window = timedelta(
+                        minutes=_dedupe_window_minutes(agent_name)
+                    )
+                    if (now - latest_created) <= change_window and new_r < old_r:
+                        # Keep the previous (more severe) action; extend expiry.
+                        if not latest.expires_at or latest.expires_at < expires_at:
+                            latest.expires_at = expires_at
+                        if not (latest.stock_name or "") and stock_name:
+                            latest.stock_name = stock_name
+                        db.commit()
+                        logger.info(
+                            f"建议稳定: {stock_symbol} 新建议降级({action_label})，保持上一条({latest.action_label})"
+                        )
+                        return True
+                except Exception:
+                    db.rollback()
         except Exception:
             # Best-effort only; never block saving.
             db.rollback()
@@ -141,6 +173,7 @@ def save_suggestion(
             expires_at=expires_at,
             prompt_context=prompt_context[:2000] if prompt_context else "",  # 限制长度
             ai_response=ai_response[:2000] if ai_response else "",  # 限制长度
+            meta=meta or {},
         )
         db.add(suggestion)
         db.commit()
@@ -297,6 +330,9 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
         "is_expired": is_expired,
         "prompt_context": suggestion.prompt_context or "",
         "ai_response": suggestion.ai_response or "",
+        "meta": suggestion.meta or {},
+        "should_alert": (suggestion.action or "")
+        in ("alert", "avoid", "sell", "reduce"),
     }
 
 

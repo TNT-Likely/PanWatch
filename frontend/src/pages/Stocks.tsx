@@ -174,6 +174,8 @@ interface PoolSuggestion {
   is_expired: boolean
   prompt_context: string
   ai_response: string
+  meta?: Record<string, any>
+  should_alert?: boolean
 }
 
 interface MarketStatus {
@@ -391,6 +393,7 @@ export default function StocksPage() {
 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
   const { toast } = useToast()
   const navigate = useNavigate()
@@ -1094,13 +1097,14 @@ export default function StocksPage() {
           action_label: poolSug.action_label,
           signal: poolSug.signal,
           reason: poolSug.reason,
-          should_alert: true,
+          should_alert: poolSug.should_alert ?? (['alert', 'avoid', 'sell', 'reduce'].includes(poolSug.action)),
           agent_name: poolSug.agent_name,
           agent_label: poolSug.agent_label,
           created_at: poolSug.created_at,
           is_expired: poolSug.is_expired,
           prompt_context: poolSug.prompt_context,
           ai_response: poolSug.ai_response,
+          meta: poolSug.meta,
         },
         // 优先使用本页并发预取的 kline 摘要，确保徽章与弹窗一致且免加载
         kline: preloadedKline,
@@ -1899,6 +1903,23 @@ export default function StocksPage() {
               ))}
             </div>
           </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[11px] text-muted-foreground">筛选</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setWatchlistOnlyAlerts(!watchlistOnlyAlerts)}
+                className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                  watchlistOnlyAlerts
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-600'
+                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-rose-500/30'
+                }`}
+                title="只显示需要关注/预警的股票"
+              >
+                仅预警
+              </button>
+            </div>
+          </div>
           {stocks.filter(s => s.enabled).length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-[13px] text-muted-foreground">还没有添加关注股票</div>
@@ -1906,7 +1927,28 @@ export default function StocksPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {stocks.filter(s => s.enabled && (!stockListFilter || s.market === stockListFilter)).map(stock => {
+              {stocks
+                .filter(s => s.enabled && (!stockListFilter || s.market === stockListFilter))
+                .map(stock => {
+                  const quote = getStockQuote(stock.symbol)
+                  const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, false)
+                  const action = suggestion?.action || ''
+                  const aiPriority = suggestion?.agent_label && suggestion.agent_label !== '技术指标'
+                    ? (['sell', 'reduce', 'avoid', 'alert'].includes(action) ? 30 : 20)
+                    : 0
+                  const techPriority = !aiPriority && kline
+                    ? (['sell', 'reduce', 'avoid', 'alert'].includes(buildKlineSuggestion(kline as any, false).action) ? 10 : 0)
+                    : 0
+                  const movePriority = quote?.change_pct != null ? Math.min(9, Math.floor(Math.abs(quote.change_pct))) : 0
+                  const alertPriority = suggestion?.should_alert ? 100 : 0
+                  return { stock, quote, suggestion, kline, _p: alertPriority + aiPriority + techPriority + movePriority }
+                })
+                .filter(({ suggestion }) => {
+                  if (!watchlistOnlyAlerts) return true
+                  return !!suggestion?.should_alert
+                })
+                .sort((a, b) => b._p - a._p)
+                .map(({ stock }) => {
                 const quote = getStockQuote(stock.symbol)
                 const changeColor = quote?.change_pct != null
                   ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')

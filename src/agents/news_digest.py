@@ -1,4 +1,5 @@
 """新闻速递 Agent - 自选股相关新闻摘要"""
+
 import logging
 import re
 from datetime import datetime
@@ -76,15 +77,17 @@ class NewsDigestAgent(BaseAgent):
                 if it.external_id:
                     # 写入缓存表（内容适度截断，避免膨胀）
                     try:
-                        db.add(NewsCache(
-                            source=it.source,
-                            external_id=it.external_id,
-                            title=it.title or "",
-                            content=(it.content or "")[:2000],
-                            publish_time=it.publish_time,
-                            symbols=it.symbols or [],
-                            importance=it.importance or 0,
-                        ))
+                        db.add(
+                            NewsCache(
+                                source=it.source,
+                                external_id=it.external_id,
+                                title=it.title or "",
+                                content=(it.content or "")[:2000],
+                                publish_time=it.publish_time,
+                                symbols=it.symbols or [],
+                                importance=it.importance or 0,
+                            )
+                        )
                     except Exception:
                         # 单条写入失败不影响本次返回
                         pass
@@ -117,7 +120,9 @@ class NewsDigestAgent(BaseAgent):
             and self.fallback_since_hours
             and self.fallback_since_hours > self.since_hours
         ):
-            logger.info(f"近 {self.since_hours} 小时无新闻，回退到近 {self.fallback_since_hours} 小时")
+            logger.info(
+                f"近 {self.since_hours} 小时无新闻，回退到近 {self.fallback_since_hours} 小时"
+            )
             since_hours_used = self.fallback_since_hours
             news_list = await collector.fetch_all(
                 symbols=symbols,
@@ -129,7 +134,9 @@ class NewsDigestAgent(BaseAgent):
 
         # 分类：自选股相关 + 重要市场新闻
         related_news = self._filter_related_news(news_list, symbols)
-        important_news = [n for n in news_list if n.importance >= 2 and n not in related_news]
+        important_news = [
+            n for n in news_list if n.importance >= 2 and n not in related_news
+        ]
 
         return {
             "news": news_list,  # 全部新闻
@@ -140,7 +147,9 @@ class NewsDigestAgent(BaseAgent):
             "since_hours_used": since_hours_used,
         }
 
-    def _filter_related_news(self, news_list: list[NewsItem], symbols: list[str]) -> list[NewsItem]:
+    def _filter_related_news(
+        self, news_list: list[NewsItem], symbols: list[str]
+    ) -> list[NewsItem]:
         """过滤与自选股相关的新闻"""
         related = []
         for news in news_list:
@@ -170,7 +179,9 @@ class NewsDigestAgent(BaseAgent):
         for stock in context.watchlist:
             position = context.portfolio.get_aggregated_position(stock.symbol)
             if position:
-                lines.append(f"- {stock.name}({stock.symbol}) [持仓{position['total_quantity']}股]")
+                lines.append(
+                    f"- {stock.name}({stock.symbol}) [持仓{position['total_quantity']}股]"
+                )
             else:
                 lines.append(f"- {stock.name}({stock.symbol})")
 
@@ -195,11 +206,15 @@ class NewsDigestAgent(BaseAgent):
         user_content = "\n".join(lines)
         return system_prompt, user_content
 
-    def _format_news_item(self, lines: list[str], news: NewsItem, watchlist_map: dict) -> None:
+    def _format_news_item(
+        self, lines: list[str], news: NewsItem, watchlist_map: dict
+    ) -> None:
         """格式化单条新闻"""
         importance_label = ["", "[一般]", "[重要]", "[重大]"][min(news.importance, 3)]
         time_str = news.publish_time.strftime("%H:%M")
-        source_label = {"sina": "新浪", "eastmoney": "东财"}.get(news.source, news.source)
+        source_label = {"sina": "新浪", "eastmoney": "东财"}.get(
+            news.source, news.source
+        )
 
         # 关联股票名称
         stock_names = []
@@ -209,9 +224,13 @@ class NewsDigestAgent(BaseAgent):
         stock_info = f"[{','.join(stock_names)}] " if stock_names else ""
 
         link = f" ([原文]({news.url}))" if news.url else ""
-        lines.append(f"- {importance_label} [{source_label} {time_str}] {stock_info}{news.title}{link}")
+        lines.append(
+            f"- {importance_label} [{source_label} {time_str}] {stock_info}{news.title}{link}"
+        )
         if news.content:
-            content_brief = news.content[:200] + ("..." if len(news.content) > 200 else "")
+            content_brief = news.content[:200] + (
+                "..." if len(news.content) > 200 else ""
+            )
             lines.append(f"  > {content_brief}")
 
     def _parse_suggestions(self, content: str, watchlist: list) -> dict[str, dict]:
@@ -241,7 +260,11 @@ class NewsDigestAgent(BaseAgent):
                 symbol_map[f"HK{sym}"] = sym
                 symbol_map[f"{sym}.HK"] = sym
 
-            if getattr(s, "market", None) == MarketCode.CN and sym.isdigit() and len(sym) == 6:
+            if (
+                getattr(s, "market", None) == MarketCode.CN
+                and sym.isdigit()
+                and len(sym) == 6
+            ):
                 prefix = "SH" if sym.startswith("6") or sym.startswith("000") else "SZ"
                 symbol_map[f"{prefix}{sym}"] = sym
                 symbol_map[f"{sym}.{prefix}"] = sym
@@ -260,12 +283,17 @@ class NewsDigestAgent(BaseAgent):
                 continue
 
             # 1) 优先匹配「...」/【...】里的代码
-            m = re.search(r"[「【\[]\s*(?P<sym>[A-Za-z][A-Za-z0-9\.\-]{0,9}|\d{3,6})\s*[」】\]]", line)
+            m = re.search(
+                r"[「【\[]\s*(?P<sym>[A-Za-z][A-Za-z0-9\.\-]{0,9}|\d{3,6})\s*[」】\]]",
+                line,
+            )
             sym_raw = m.group("sym") if m else ""
 
             # 2) 再匹配括号里的代码（如 腾讯控股(00700)）
             if not sym_raw:
-                m = re.search(r"\(\s*(?P<sym>[A-Za-z][A-Za-z0-9\.\-]{0,9}|\d{3,6})\s*\)", line)
+                m = re.search(
+                    r"\(\s*(?P<sym>[A-Za-z][A-Za-z0-9\.\-]{0,9}|\d{3,6})\s*\)", line
+                )
                 sym_raw = m.group("sym") if m else ""
 
             # 3) 再匹配行首代码
@@ -300,11 +328,15 @@ class NewsDigestAgent(BaseAgent):
 
             # 提取理由：从“建议类型”后截取
             reason = ""
-            m_reason = re.search(rf"{re.escape(action_text)}\s*[：:：\\-—]?\s*(?P<r>.+)$", line)
+            m_reason = re.search(
+                rf"{re.escape(action_text)}\s*[：:：\\-—]?\s*(?P<r>.+)$", line
+            )
             if m_reason:
                 reason = m_reason.group("r").strip()
 
-            action_info = NEWS_ACTION_MAP.get(action_text, {"action": "watch", "label": "关注"})
+            action_info = NEWS_ACTION_MAP.get(
+                action_text, {"action": "watch", "label": "关注"}
+            )
             suggestions[canonical] = {
                 "action": action_info["action"],
                 "action_label": action_info["label"],
@@ -367,6 +399,12 @@ class NewsDigestAgent(BaseAgent):
                 expires_hours=12,
                 prompt_context=user_content,
                 ai_response=result.content,
+                meta={
+                    "source": "news_digest",
+                    "since_hours_used": data.get("since_hours_used", self.since_hours),
+                    "related_count": len(data.get("related_news", []) or []),
+                    "important_count": len(data.get("important_news", []) or []),
+                },
             )
 
         # 保存到历史记录（使用 "*" 表示全局）
@@ -374,15 +412,17 @@ class NewsDigestAgent(BaseAgent):
         important_news: list[NewsItem] = data.get("important_news", []) or []
         payload_news = []
         for it in (related_news + important_news)[:30]:
-            payload_news.append({
-                "source": it.source,
-                "external_id": it.external_id,
-                "title": it.title,
-                "publish_time": it.publish_time.isoformat(),
-                "symbols": it.symbols,
-                "importance": it.importance,
-                "url": it.url,
-            })
+            payload_news.append(
+                {
+                    "source": it.source,
+                    "external_id": it.external_id,
+                    "title": it.title,
+                    "publish_time": it.publish_time.isoformat(),
+                    "symbols": it.symbols,
+                    "importance": it.importance,
+                    "url": it.url,
+                }
+            )
 
         save_analysis(
             agent_name=self.name,

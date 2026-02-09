@@ -198,6 +198,7 @@ def seed_agents():
             "schedule": "*/5 9-15 * * 1-5",  # 每5分钟扫描一次
             "execution_mode": "single",  # 单只模式：逐只分析，实时发送
             "config": {
+                "event_only": True,
                 "price_alert_threshold": 3.0,  # 涨跌幅超过3%触发
                 "volume_alert_ratio": 2.0,  # 量比超过2倍触发
                 "stop_loss_warning": -5.0,  # 亏损超过5%预警
@@ -252,6 +253,12 @@ def seed_agents():
             # 仅在用户未配置时补齐默认 config
             if agent_data.get("config") and (not existing.config):
                 existing.config = agent_data.get("config")
+            # 对已存在配置做“向前兼容”的字段补齐（不覆盖用户已有值）
+            if existing.name == "intraday_monitor":
+                cfg = existing.config or {}
+                if isinstance(cfg, dict) and "event_only" not in cfg:
+                    cfg["event_only"] = True
+                    existing.config = cfg
 
     db.commit()
     db.close()

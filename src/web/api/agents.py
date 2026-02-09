@@ -441,6 +441,40 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                         else None,
                     }
 
+                    # P1: event-driven gate (reduce AI calls)
+                    try:
+                        if getattr(agent, "event_only", False):
+                            from src.core.intraday_event_gate import check_and_update
+
+                            decision = check_and_update(
+                                symbol=item["symbol"],
+                                change_pct=item.get("change_pct"),
+                                volume_ratio=(item.get("kline") or {}).get(
+                                    "volume_ratio"
+                                ),
+                                kline_summary=item.get("kline"),
+                                price_threshold=getattr(
+                                    agent, "price_alert_threshold", 3.0
+                                ),
+                                volume_threshold=getattr(
+                                    agent, "volume_alert_ratio", 2.0
+                                ),
+                            )
+                            if not decision.should_analyze:
+                                item["suggestion"] = {
+                                    "action": "watch",
+                                    "action_label": "观望",
+                                    "signal": "",
+                                    "reason": "",
+                                    "should_alert": False,
+                                    "skipped": True,
+                                    "skip_reason": "no_event",
+                                }
+                                continue
+                            data["event_gate"] = {"reasons": decision.reasons}
+                    except Exception:
+                        pass
+
                     system_prompt, user_content = agent.build_prompt(data, context)
                     response = await context.ai_client.chat(system_prompt, user_content)
 
@@ -463,6 +497,19 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                         expires_hours=expires_hours,
                         prompt_context=user_content,
                         ai_response=response,
+                        meta={
+                            "quote": {
+                                "current_price": item.get("current_price"),
+                                "change_pct": item.get("change_pct"),
+                            },
+                            "kline_meta": {
+                                "computed_at": (item.get("kline") or {}).get(
+                                    "computed_at"
+                                ),
+                                "asof": (item.get("kline") or {}).get("asof"),
+                            },
+                            "event_gate": data.get("event_gate"),
+                        },
                     )
 
                 except Exception as e:
