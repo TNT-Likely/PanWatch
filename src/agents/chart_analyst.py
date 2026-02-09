@@ -1,10 +1,12 @@
 """技术分析 Agent - 多模态 K 线图分析"""
+
 import logging
 from datetime import datetime
 from pathlib import Path
 
 from src.agents.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.screenshot_collector import ScreenshotCollector, ChartScreenshot
+from src.core.signals import SignalPackBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,25 @@ class ChartAnalystAgent(BaseAgent):
         # 截图
         self._collector = ScreenshotCollector()
         try:
-            screenshots = await self._collector.capture_batch(stocks, period=self.period)
+            screenshots = await self._collector.capture_batch(
+                stocks, period=self.period
+            )
+
+            # 结构化信号（行情/技术/持仓），用于提示词增强（失败不影响截图）
+            packs = {}
+            try:
+                builder = SignalPackBuilder()
+                sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
+                packs = await builder.build_for_symbols(
+                    symbols=sym_list,
+                    include_news=False,
+                    news_hours=12,
+                    portfolio=context.portfolio,
+                    include_technical=True,
+                    include_capital_flow=False,
+                )
+            except Exception as e:
+                logger.warning(f"SignalPack 获取失败（chart_analyst 继续执行）：{e}")
 
             # 清理旧截图
             self._collector.cleanup_old_screenshots(max_age_hours=24)
@@ -58,6 +78,7 @@ class ChartAnalystAgent(BaseAgent):
             return {
                 "screenshots": screenshots,
                 "watchlist": context.watchlist,
+                "signal_packs": packs,
                 "period": self.period,
                 "timestamp": datetime.now().isoformat(),
             }
@@ -76,9 +97,11 @@ class ChartAnalystAgent(BaseAgent):
         # 股票列表（含持仓信息）
         lines.append("## 待分析股票")
         screenshots: list[ChartScreenshot] = data.get("screenshots", [])
+        packs = data.get("signal_packs", {}) or {}
 
         if screenshots:
             for i, shot in enumerate(screenshots, 1):
+                pack = packs.get(shot.symbol)
                 position = context.portfolio.get_aggregated_position(shot.symbol)
                 if position:
                     lines.append(
@@ -87,6 +110,42 @@ class ChartAnalystAgent(BaseAgent):
                     )
                 else:
                     lines.append(f"{i}. {shot.name}({shot.symbol}) - 见图{i} | 未持仓")
+
+                # 补充结构化技术摘要（让多模态输出更稳定）
+                tech = (pack.technical if pack else None) or {}
+                quote = pack.quote if pack else None
+                brief_parts = []
+                if quote:
+                    try:
+                        brief_parts.append(
+                            f"现价{quote.current_price:.2f} 涨跌{quote.change_pct:+.2f}%"
+                        )
+                    except Exception:
+                        pass
+                if tech and not tech.get("error"):
+                    if tech.get("trend"):
+                        brief_parts.append(f"趋势{tech.get('trend')}")
+                    if tech.get("macd_status"):
+                        brief_parts.append(f"MACD {tech.get('macd_status')}")
+                    if tech.get("rsi_status") and tech.get("rsi6") is not None:
+                        try:
+                            brief_parts.append(
+                                f"RSI {float(tech.get('rsi6')):.1f}({tech.get('rsi_status')})"
+                            )
+                        except Exception:
+                            pass
+                    if (
+                        tech.get("support_m") is not None
+                        and tech.get("resistance_m") is not None
+                    ):
+                        try:
+                            brief_parts.append(
+                                f"中期支撑{float(tech.get('support_m')):.2f}/压力{float(tech.get('resistance_m')):.2f}"
+                            )
+                        except Exception:
+                            pass
+                if brief_parts:
+                    lines.append(f"   - 信号：{'；'.join(brief_parts)}")
         else:
             lines.append("- 无截图")
 
@@ -99,7 +158,9 @@ class ChartAnalystAgent(BaseAgent):
                 lines.append(f"- 总可用资金: {total_funds:.0f}元")
                 lines.append(f"- 总持仓成本: {total_cost:.0f}元")
 
-        lines.append("\n请根据上述股票的 K 线图进行技术分析，结合持仓情况给出操作建议。")
+        lines.append(
+            "\n请根据上述股票的 K 线图进行技术分析，结合持仓情况给出操作建议。"
+        )
 
         user_content = "\n".join(lines)
         return system_prompt, user_content
@@ -159,7 +220,9 @@ class ChartAnalystAgent(BaseAgent):
         screenshots = result.raw_data.get("screenshots", [])
         return len(screenshots) > 0 and len(result.content) > 50
 
-    async def run_single(self, context: AgentContext, stock_symbol: str) -> AnalysisResult | None:
+    async def run_single(
+        self, context: AgentContext, stock_symbol: str
+    ) -> AnalysisResult | None:
         """
         单只模式执行：只分析指定的一只股票
 
@@ -167,7 +230,9 @@ class ChartAnalystAgent(BaseAgent):
         """
         # 过滤只保留指定股票
         original_watchlist = context.config.watchlist
-        context.config.watchlist = [s for s in original_watchlist if s.symbol == stock_symbol]
+        context.config.watchlist = [
+            s for s in original_watchlist if s.symbol == stock_symbol
+        ]
 
         if not context.config.watchlist:
             return None
@@ -188,11 +253,15 @@ class ChartAnalystAgent(BaseAgent):
                 notified = bool(notify_result.get("success"))
                 result.raw_data["notified"] = notified
                 if notified:
-                    logger.info(f"Agent [{self.display_name}] 通知已发送: {stock_symbol}")
+                    logger.info(
+                        f"Agent [{self.display_name}] 通知已发送: {stock_symbol}"
+                    )
                 else:
                     notify_error = notify_result.get("error") or "未知错误"
                     result.raw_data["notify_error"] = notify_error
-                    logger.error(f"Agent [{self.display_name}] 通知发送失败: {stock_symbol} - {notify_error}")
+                    logger.error(
+                        f"Agent [{self.display_name}] 通知发送失败: {stock_symbol} - {notify_error}"
+                    )
             else:
                 result.raw_data["notified"] = False
 

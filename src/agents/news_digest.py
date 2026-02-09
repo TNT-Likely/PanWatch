@@ -9,6 +9,12 @@ from src.agents.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.news_collector import NewsCollector, NewsItem
 from src.core.analysis_history import save_analysis
 from src.core.suggestion_pool import save_suggestion
+from src.core.signals import SignalPackBuilder
+from src.core.signals.structured_output import (
+    TAG_START,
+    strip_tagged_json,
+    try_extract_tagged_json,
+)
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
@@ -138,11 +144,28 @@ class NewsDigestAgent(BaseAgent):
             n for n in news_list if n.importance >= 2 and n not in related_news
         ]
 
+        # 结构化信号：补充行情/技术/资金/持仓，提高“建议摘要”稳定性
+        packs = {}
+        try:
+            builder = SignalPackBuilder()
+            sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
+            packs = await builder.build_for_symbols(
+                symbols=sym_list,
+                include_news=False,
+                news_hours=self.since_hours,
+                portfolio=context.portfolio,
+                include_technical=True,
+                include_capital_flow=True,
+            )
+        except Exception as e:
+            logger.warning(f"SignalPack 获取失败（news_digest 继续执行）：{e}")
+
         return {
             "news": news_list,  # 全部新闻
             "related_news": related_news,  # 自选股相关
             "important_news": important_news,  # 重要市场新闻
             "watchlist": context.watchlist,
+            "signal_packs": packs,
             "timestamp": datetime.now().isoformat(),
             "since_hours_used": since_hours_used,
         }
@@ -176,14 +199,36 @@ class NewsDigestAgent(BaseAgent):
         # 自选股列表（标记持仓）
         lines.append("## 自选股")
         watchlist_map = {s.symbol: s for s in context.watchlist}
+        packs = data.get("signal_packs", {}) or {}
         for stock in context.watchlist:
+            pack = packs.get(stock.symbol)
             position = context.portfolio.get_aggregated_position(stock.symbol)
+
+            extra_parts = []
+            if pack and pack.quote:
+                try:
+                    extra_parts.append(
+                        f"现价{pack.quote.current_price:.2f}({pack.quote.change_pct:+.2f}%)"
+                    )
+                except Exception:
+                    pass
+            tech = (pack.technical if pack else None) or {}
+            if tech and not tech.get("error"):
+                if tech.get("trend"):
+                    extra_parts.append(f"趋势{tech.get('trend')}")
+                if tech.get("macd_status"):
+                    extra_parts.append(f"MACD {tech.get('macd_status')}")
+            flow = (pack.capital_flow if pack else None) or {}
+            if flow and not flow.get("error") and flow.get("status"):
+                extra_parts.append(f"资金{flow.get('status')}")
+
+            extra = (" | " + " ".join(extra_parts)) if extra_parts else ""
             if position:
                 lines.append(
-                    f"- {stock.name}({stock.symbol}) [持仓{position['total_quantity']}股]"
+                    f"- {stock.name}({stock.symbol}) [持仓{position['total_quantity']}股]{extra}"
                 )
             else:
-                lines.append(f"- {stock.name}({stock.symbol})")
+                lines.append(f"- {stock.name}({stock.symbol}){extra}")
 
         # 自选股相关新闻
         related_news: list[NewsItem] = data.get("related_news", [])
@@ -346,6 +391,62 @@ class NewsDigestAgent(BaseAgent):
 
         return suggestions
 
+    def _parse_suggestions_json(self, obj: dict, watchlist: list) -> dict[str, dict]:
+        suggestions: dict[str, dict] = {}
+        items = obj.get("suggestions")
+        if not isinstance(items, list) or not watchlist:
+            return suggestions
+
+        symbol_set = {s.symbol for s in watchlist}
+        symbol_map: dict[str, str] = {}
+        for s in watchlist:
+            sym = (getattr(s, "symbol", "") or "").strip()
+            if not sym:
+                continue
+            symbol_map[sym.upper()] = sym
+            if getattr(s, "market", None) == MarketCode.HK and sym.isdigit():
+                try:
+                    symbol_map[str(int(sym))] = sym
+                except ValueError:
+                    pass
+                symbol_map[f"HK{sym}"] = sym
+                symbol_map[f"{sym}.HK"] = sym
+            if (
+                getattr(s, "market", None) == MarketCode.CN
+                and sym.isdigit()
+                and len(sym) == 6
+            ):
+                prefix = "SH" if sym.startswith("6") or sym.startswith("000") else "SZ"
+                symbol_map[f"{prefix}{sym}"] = sym
+                symbol_map[f"{sym}.{prefix}"] = sym
+
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            sym_raw = (it.get("symbol") or "").strip()
+            canonical = symbol_map.get(sym_raw.upper()) or symbol_map.get(sym_raw)
+            if not canonical or canonical not in symbol_set:
+                continue
+            action = (it.get("action") or "watch").strip()
+            action_label = (it.get("action_label") or "关注").strip()
+            reason = (it.get("reason") or "").strip()
+            signal = (it.get("signal") or "").strip()
+            suggestions[canonical] = {
+                "action": action,
+                "action_label": action_label,
+                "reason": reason[:160],
+                "signal": signal[:60],
+                "triggers": it.get("triggers")
+                if isinstance(it.get("triggers"), list)
+                else [],
+                "invalidations": it.get("invalidations")
+                if isinstance(it.get("invalidations"), list)
+                else [],
+                "risks": it.get("risks") if isinstance(it.get("risks"), list) else [],
+                "should_alert": action in ["alert", "reduce", "sell"],
+            }
+        return suggestions
+
     async def should_notify(self, result: AnalysisResult) -> bool:
         """有自选股相关新闻或重要市场新闻时通知"""
         related_news = result.raw_data.get("related_news", [])
@@ -364,23 +465,36 @@ class NewsDigestAgent(BaseAgent):
         system_prompt, user_content = self.build_prompt(data, context)
         content = await context.ai_client.chat(system_prompt, user_content)
 
+        if context.model_label:
+            idx = content.rfind(TAG_START)
+            if idx >= 0:
+                content = (
+                    content[:idx].rstrip()
+                    + f"\n\n---\nAI: {context.model_label}\n\n"
+                    + content[idx:]
+                )
+            else:
+                content = content.rstrip() + f"\n\n---\nAI: {context.model_label}"
+
+        structured = try_extract_tagged_json(content) or {}
+        display_content = strip_tagged_json(content)
+
         stock_names = "、".join(s.name for s in context.watchlist[:5])
         if len(context.watchlist) > 5:
             stock_names += f" 等{len(context.watchlist)}只"
         title = f"【{self.display_name}】{stock_names}"
 
-        if context.model_label:
-            content = content.rstrip() + f"\n\n---\nAI: {context.model_label}"
-
         result = AnalysisResult(
             agent_name=self.name,
             title=title,
-            content=content,
-            raw_data=data,
+            content=display_content,
+            raw_data={**data, "structured": structured} if structured else data,
         )
 
         # 解析个股建议并写入建议池
-        suggestions = self._parse_suggestions(result.content, context.watchlist)
+        suggestions = self._parse_suggestions_json(structured, context.watchlist)
+        if not suggestions:
+            suggestions = self._parse_suggestions(result.content, context.watchlist)
         result.raw_data["suggestions"] = suggestions
         stock_map = {s.symbol: s for s in context.watchlist}
         for symbol, sug in suggestions.items():
@@ -392,7 +506,7 @@ class NewsDigestAgent(BaseAgent):
                 stock_name=stock.name,
                 action=sug["action"],
                 action_label=sug["action_label"],
-                signal="",
+                signal=(sug.get("signal") or "") if isinstance(sug, dict) else "",
                 reason=sug.get("reason", ""),
                 agent_name=self.name,
                 agent_label=self.display_name,
@@ -404,6 +518,19 @@ class NewsDigestAgent(BaseAgent):
                     "since_hours_used": data.get("since_hours_used", self.since_hours),
                     "related_count": len(data.get("related_news", []) or []),
                     "important_count": len(data.get("important_news", []) or []),
+                    "plan": {
+                        "triggers": sug.get("triggers")
+                        if isinstance(sug.get("triggers"), list)
+                        else [],
+                        "invalidations": sug.get("invalidations")
+                        if isinstance(sug.get("invalidations"), list)
+                        else [],
+                        "risks": sug.get("risks")
+                        if isinstance(sug.get("risks"), list)
+                        else [],
+                    }
+                    if isinstance(sug, dict)
+                    else {},
                 },
             )
 

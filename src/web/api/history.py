@@ -1,6 +1,8 @@
 """分析历史 API"""
+
 import logging
 from datetime import date, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -8,16 +10,26 @@ from pydantic import BaseModel
 
 from src.web.database import get_db
 from src.web.models import AnalysisHistory
+from src.config import Settings
 
 
 def _format_datetime(dt) -> str:
-    """格式化时间为带时区的 ISO 格式"""
+    """格式化时间为当前时区的 ISO 格式。"""
     if not dt:
         return ""
+
+    tz_name = Settings().app_timezone or "UTC"
+    try:
+        tzinfo = ZoneInfo(tz_name)
+    except Exception:
+        tzinfo = timezone.utc
+
     # SQLite 存储的时间没有时区，假设为 UTC
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.isoformat()
+
+    return dt.astimezone(tzinfo).isoformat()
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +43,9 @@ class HistoryResponse(BaseModel):
     analysis_date: str
     title: str
     content: str
-    suggestions: dict | None = None  # 个股建议 {symbol: {action, action_label, reason, should_alert}}
+    suggestions: dict | None = (
+        None  # 个股建议 {symbol: {action, action_label, reason, should_alert}}
+    )
     created_at: str
     updated_at: str
 
@@ -73,11 +87,14 @@ def list_history(
 
 
 @router.get("/{history_id}")
-def get_history_detail(history_id: int, db: Session = Depends(get_db)) -> HistoryResponse:
+def get_history_detail(
+    history_id: int, db: Session = Depends(get_db)
+) -> HistoryResponse:
     """获取单条分析详情"""
     record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
     if not record:
         from fastapi import HTTPException
+
         raise HTTPException(404, "记录不存在")
 
     return HistoryResponse(
@@ -99,6 +116,7 @@ def delete_history(history_id: int, db: Session = Depends(get_db)):
     record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
     if not record:
         from fastapi import HTTPException
+
         raise HTTPException(404, "记录不存在")
 
     db.delete(record)

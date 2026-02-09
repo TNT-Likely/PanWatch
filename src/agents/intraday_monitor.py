@@ -10,6 +10,8 @@ from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.core.analysis_history import get_latest_analysis, get_analysis
 from src.core.suggestion_pool import save_suggestion
+from src.core.signals import SignalPackBuilder
+from src.core.signals.structured_output import try_parse_action_json
 from src.models.market import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
@@ -89,33 +91,26 @@ class IntradayMonitorAgent(BaseAgent):
             logger.warning("自选股列表为空，跳过盘中监测")
             return {"stocks": [], "stock_data": None}
 
-        # 按市场分组采集
-        market_symbols: dict[MarketCode, list[str]] = {}
-        for stock in context.watchlist:
-            market_symbols.setdefault(stock.market, []).append(stock.symbol)
+        # SignalPack: 统一结构化输入（quote/technical/position）
+        stock_config = context.watchlist[0] if context.watchlist else None
+        market = stock_config.market if stock_config else MarketCode.CN
+        symbol = stock_config.symbol if stock_config else ""
+        name = stock_config.name if stock_config else symbol
 
-        all_stocks: list[StockData] = []
-        for market_code, symbols in market_symbols.items():
-            collector = AkshareCollector(market_code)
-            try:
-                stocks = await collector.get_stock_data(symbols)
-                all_stocks.extend(stocks)
-            except Exception as e:
-                logger.error(f"采集 {market_code.value} 行情失败: {e}")
+        builder = SignalPackBuilder()
+        packs = await builder.build_for_symbols(
+            symbols=[(symbol, market, name)],
+            include_news=False,
+            news_hours=12,
+            portfolio=context.portfolio,
+            include_technical=True,
+            include_capital_flow=True,
+        )
+        pack = packs.get(symbol)
 
-        # 单只模式下只有一只股票
-        stock_data = all_stocks[0] if all_stocks else None
+        stock_data = pack.quote if pack and pack.quote else None
 
-        # 采集 K 线和技术指标
-        kline_summary = None
-        if stock_data:
-            try:
-                stock_config = context.watchlist[0] if context.watchlist else None
-                market = stock_config.market if stock_config else MarketCode.CN
-                kline_collector = KlineCollector(market)
-                kline_summary = kline_collector.get_kline_summary(stock_data.symbol)
-            except Exception as e:
-                logger.warning(f"获取 K 线数据失败: {e}")
+        kline_summary = pack.technical if pack else None
 
         # 获取历史分析（为 AI 提供更多上下文）
         daily_analysis = get_latest_analysis(
@@ -130,9 +125,10 @@ class IntradayMonitorAgent(BaseAgent):
         )
 
         return {
-            "stocks": all_stocks,
+            "stocks": [stock_data] if stock_data else [],
             "stock_data": stock_data,
             "kline_summary": kline_summary,
+            "signal_pack": pack,
             "daily_analysis": daily_analysis.content if daily_analysis else None,
             "premarket_analysis": premarket_analysis.content
             if premarket_analysis
@@ -265,6 +261,32 @@ class IntradayMonitorAgent(BaseAgent):
                 f"- MA5：{format_num(kline.get('ma5'))} | MA10：{format_num(kline.get('ma10'))} | MA20：{format_num(kline.get('ma20'))} | MA60：{format_num(kline.get('ma60'))}"
             )
 
+        # 资金流向（仅A股，若可用）
+        pack = data.get("signal_pack")
+        flow = getattr(pack, "capital_flow", None) if pack else None
+        if (
+            isinstance(flow, dict)
+            and flow
+            and not flow.get("error")
+            and flow.get("status")
+        ):
+            try:
+                inflow = float(flow.get("main_net_inflow") or 0)
+                inflow_pct = float(flow.get("main_net_inflow_pct") or 0)
+                inflow_str = (
+                    f"{inflow / 1e8:+.2f}亿"
+                    if abs(inflow) >= 1e8
+                    else f"{inflow / 1e4:+.0f}万"
+                )
+                lines.append("\n## 资金面")
+                lines.append(
+                    f"- 资金：{flow.get('status')}，主力净流入{inflow_str}（{inflow_pct:+.1f}%）"
+                )
+                if flow.get("trend_5d") and flow.get("trend_5d") != "无数据":
+                    lines.append(f"- 5日资金：{flow.get('trend_5d')}")
+            except Exception:
+                pass
+
             # 多级支撑压力
             support_m, resistance_m = kline.get("support_m"), kline.get("resistance_m")
             if support_m and resistance_m:
@@ -384,6 +406,37 @@ class IntradayMonitorAgent(BaseAgent):
             "reason": "",
             "should_alert": False,
         }
+
+        # 1) Prefer JSON output (structured mode)
+        obj = try_parse_action_json(content)
+        if obj:
+            action = (obj.get("action") or "watch").strip()
+            result["action"] = action
+            result["action_label"] = (
+                obj.get("action_label") or result["action_label"]
+            ).strip()[:20]
+            result["signal"] = (obj.get("signal") or "").strip()[:60]
+            result["reason"] = (obj.get("reason") or "").strip()[:160]
+            result["should_alert"] = action in {
+                "buy",
+                "add",
+                "reduce",
+                "sell",
+                "alert",
+                "avoid",
+            }
+            result["triggers"] = (
+                obj.get("triggers") if isinstance(obj.get("triggers"), list) else []
+            )
+            result["invalidations"] = (
+                obj.get("invalidations")
+                if isinstance(obj.get("invalidations"), list)
+                else []
+            )
+            result["risks"] = (
+                obj.get("risks") if isinstance(obj.get("risks"), list) else []
+            )
+            return result
 
         # 检查是否无需提醒
         if "[无需提醒]" in content:
@@ -513,6 +566,17 @@ class IntradayMonitorAgent(BaseAgent):
                     "asof": (data.get("kline_summary") or {}).get("asof"),
                 },
                 "event_gate": data.get("event_gate"),
+                "plan": {
+                    "triggers": suggestion.get("triggers")
+                    if isinstance(suggestion, dict)
+                    else [],
+                    "invalidations": suggestion.get("invalidations")
+                    if isinstance(suggestion, dict)
+                    else [],
+                    "risks": suggestion.get("risks")
+                    if isinstance(suggestion, dict)
+                    else [],
+                },
             },
         )
 

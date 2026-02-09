@@ -6,11 +6,14 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 from src.agents.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.akshare_collector import AkshareCollector
-from src.collectors.kline_collector import KlineCollector
-from src.collectors.news_collector import NewsCollector
+from src.core.signals import SignalPackBuilder
 from src.core.analysis_history import save_analysis, get_latest_analysis
 from src.core.suggestion_pool import save_suggestion
+from src.core.signals.structured_output import (
+    TAG_START,
+    strip_tagged_json,
+    try_extract_tagged_json,
+)
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
@@ -61,54 +64,53 @@ class PremarketOutlookAgent(BaseAgent):
         except Exception as e:
             logger.warning(f"获取美股指数失败: {e}")
 
-        # 3. 获取各股票的技术状态（开盘前看昨日 K 线）
-        technical_data = {}
-        market_symbols: dict[MarketCode, list[str]] = {}
-        for stock in context.watchlist:
-            market_symbols.setdefault(stock.market, []).append(stock.symbol)
+        # 3/4. SignalPack（技术面+持仓+新闻）
+        builder = SignalPackBuilder()
+        sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
+        packs = await builder.build_for_symbols(
+            symbols=sym_list,
+            include_news=True,
+            news_hours=12,
+            portfolio=context.portfolio,
+            include_technical=True,
+            include_capital_flow=True,
+        )
 
-        for market_code, symbols_list in market_symbols.items():
-            kline_collector = KlineCollector(market_code)
-            for symbol in symbols_list:
-                try:
-                    technical_data[symbol] = kline_collector.get_kline_summary(symbol)
-                except Exception as e:
-                    logger.warning(f"获取 {symbol} 技术指标失败: {e}")
-
-        # 4. 获取相关新闻（最近 12 小时，基于数据源配置）
+        # Flatten news for headline section
         news_items = []
         try:
-            stock_symbols = [s.symbol for s in context.watchlist]
-            news_collector = NewsCollector.from_database()
-            all_news = await news_collector.fetch_all(
-                symbols=stock_symbols, since_hours=12
-            )
-            # 筛选与自选股相关的新闻，最多取 10 条
-            for news in all_news:
-                if news.symbols or news.importance >= 2:  # 相关新闻或重要新闻
+            seen = set()
+            for sym in [s.symbol for s in context.watchlist]:
+                pack = packs.get(sym)
+                for it in (pack.news.items if pack and pack.news else [])[:3]:
+                    key = (it.get("source"), it.get("external_id"), it.get("title"))
+                    if key in seen:
+                        continue
+                    seen.add(key)
                     news_items.append(
                         {
-                            "source": news.source,
-                            "title": news.title,
-                            "content": news.content[:200] if news.content else "",
-                            "time": news.publish_time.strftime("%H:%M"),
-                            "symbols": news.symbols,
-                            "importance": news.importance,
-                            "url": news.url,
+                            "source": it.get("source"),
+                            "title": it.get("title"),
+                            "content": "",
+                            "time": (it.get("time") or "").split(" ")[-1],
+                            "symbols": [sym],
+                            "importance": it.get("importance") or 0,
+                            "url": it.get("url"),
                         }
                     )
+                    if len(news_items) >= 10:
+                        break
                 if len(news_items) >= 10:
                     break
-            logger.info(f"采集到 {len(news_items)} 条相关新闻")
-        except Exception as e:
-            logger.warning(f"获取新闻失败: {e}")
+        except Exception:
+            news_items = []
 
         return {
             "yesterday_analysis": yesterday_analysis.content
             if yesterday_analysis
             else None,
             "us_indices": us_indices,
-            "technical": technical_data,
+            "signal_packs": packs,
             "news": news_items,
             "timestamp": datetime.now().isoformat(),
         }
@@ -171,14 +173,15 @@ class PremarketOutlookAgent(BaseAgent):
                     lines.append(f"  > {news['content'][:100]}...")
             lines.append("")
 
-        # 自选股技术状态
+        # 自选股技术状态（来自 SignalPack）
         lines.append("## 自选股技术状态")
-        technical = data.get("technical", {})
+        packs = data.get("signal_packs", {}) or {}
         watchlist_map = {s.symbol: s for s in context.watchlist}
         news_items = data.get("news", []) or []
 
         for stock in context.watchlist:
-            tech = technical.get(stock.symbol, {})
+            pack = packs.get(stock.symbol)
+            tech = (pack.technical if pack else None) or {}
             if tech.get("error"):
                 lines.append(f"\n### {stock.name}（{stock.symbol}）")
                 lines.append(f"- 数据获取失败：{tech.get('error')}")
@@ -222,6 +225,31 @@ class PremarketOutlookAgent(BaseAgent):
                 lines.append(f"- 量能：{tech.get('volume_trend')}{ratio_str}")
             if tech.get("kline_pattern"):
                 lines.append(f"- 形态：{tech.get('kline_pattern')}")
+
+            # 资金流向（仅A股，若可用）
+            flow = (pack.capital_flow if pack else None) or {}
+            if (
+                getattr(stock, "market", None) == MarketCode.CN
+                and isinstance(flow, dict)
+                and flow
+                and not flow.get("error")
+                and flow.get("status")
+            ):
+                try:
+                    inflow = float(flow.get("main_net_inflow") or 0)
+                    inflow_pct = float(flow.get("main_net_inflow_pct") or 0)
+                    inflow_str = (
+                        f"{inflow / 1e8:+.2f}亿"
+                        if abs(inflow) >= 1e8
+                        else f"{inflow / 1e4:+.0f}万"
+                    )
+                    lines.append(
+                        f"- 资金：{flow.get('status')}，主力净流入{inflow_str}（{inflow_pct:+.1f}%）"
+                    )
+                    if flow.get("trend_5d") and flow.get("trend_5d") != "无数据":
+                        lines.append(f"- 5日资金：{flow.get('trend_5d')}")
+                except Exception:
+                    pass
 
             # 个股相关新闻（便于 AI 在每只股票维度结合消息面）
             stock_news = [
@@ -381,28 +409,97 @@ class PremarketOutlookAgent(BaseAgent):
 
         return suggestions
 
+    def _parse_suggestions_json(self, obj: dict, watchlist: list) -> dict[str, dict]:
+        suggestions: dict[str, dict] = {}
+        items = obj.get("suggestions")
+        if not isinstance(items, list) or not watchlist:
+            return suggestions
+
+        symbol_set = {s.symbol for s in watchlist}
+        symbol_map: dict[str, str] = {}
+        for s in watchlist:
+            sym = (s.symbol or "").strip()
+            if not sym:
+                continue
+            symbol_map[sym.upper()] = sym
+            if getattr(s, "market", None) == MarketCode.HK and sym.isdigit():
+                try:
+                    symbol_map[str(int(sym))] = sym
+                except ValueError:
+                    pass
+                symbol_map[f"HK{sym}"] = sym
+                symbol_map[f"{sym}.HK"] = sym
+            if (
+                getattr(s, "market", None) == MarketCode.CN
+                and sym.isdigit()
+                and len(sym) == 6
+            ):
+                prefix = "SH" if sym.startswith("6") or sym.startswith("000") else "SZ"
+                symbol_map[f"{prefix}{sym}"] = sym
+                symbol_map[f"{sym}.{prefix}"] = sym
+
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            sym_raw = (it.get("symbol") or "").strip()
+            canonical = symbol_map.get(sym_raw.upper()) or symbol_map.get(sym_raw)
+            if not canonical or canonical not in symbol_set:
+                continue
+            action = (it.get("action") or "watch").strip()
+            action_label = (it.get("action_label") or "观望").strip()
+            reason = (it.get("reason") or "").strip()
+            signal = (it.get("signal") or "").strip()
+            suggestions[canonical] = {
+                "action": action,
+                "action_label": action_label,
+                "reason": reason[:160],
+                "signal": signal[:60],
+                "triggers": it.get("triggers")
+                if isinstance(it.get("triggers"), list)
+                else [],
+                "invalidations": it.get("invalidations")
+                if isinstance(it.get("invalidations"), list)
+                else [],
+                "risks": it.get("risks") if isinstance(it.get("risks"), list) else [],
+                "should_alert": action in ["buy", "add", "reduce"],
+            }
+        return suggestions
+
     async def analyze(self, context: AgentContext, data: dict) -> AnalysisResult:
         """调用 AI 分析并保存到历史/建议池"""
         system_prompt, user_content = self.build_prompt(data, context)
         content = await context.ai_client.chat(system_prompt, user_content)
+
+        if context.model_label:
+            idx = content.rfind(TAG_START)
+            if idx >= 0:
+                content = (
+                    content[:idx].rstrip()
+                    + f"\n\n---\nAI: {context.model_label}\n\n"
+                    + content[idx:]
+                )
+            else:
+                content = content.rstrip() + f"\n\n---\nAI: {context.model_label}"
+
+        structured = try_extract_tagged_json(content) or {}
+        display_content = strip_tagged_json(content)
 
         stock_names = "、".join(s.name for s in context.watchlist[:5])
         if len(context.watchlist) > 5:
             stock_names += f" 等{len(context.watchlist)}只"
         title = f"【{self.display_name}】{stock_names}"
 
-        if context.model_label:
-            content = content.rstrip() + f"\n\n---\nAI: {context.model_label}"
-
         result = AnalysisResult(
             agent_name=self.name,
             title=title,
-            content=content,
-            raw_data=data,
+            content=display_content,
+            raw_data={**data, "structured": structured} if structured else data,
         )
 
         # 解析个股建议
-        suggestions = self._parse_suggestions(result.content, context.watchlist)
+        suggestions = self._parse_suggestions_json(structured, context.watchlist)
+        if not suggestions:
+            suggestions = self._parse_suggestions(result.content, context.watchlist)
         result.raw_data["suggestions"] = suggestions
 
         # 保存各股票建议到建议池
@@ -415,7 +512,7 @@ class PremarketOutlookAgent(BaseAgent):
                     stock_name=stock.name,
                     action=sug["action"],
                     action_label=sug["action_label"],
-                    signal="",  # 盘前分析无单独信号
+                    signal=(sug.get("signal") or "") if isinstance(sug, dict) else "",
                     reason=sug.get("reason", ""),
                     agent_name=self.name,
                     agent_label=self.display_name,
@@ -425,6 +522,19 @@ class PremarketOutlookAgent(BaseAgent):
                     meta={
                         "analysis_date": (data.get("timestamp") or "")[:10],
                         "source": "premarket_outlook",
+                        "plan": {
+                            "triggers": sug.get("triggers")
+                            if isinstance(sug.get("triggers"), list)
+                            else [],
+                            "invalidations": sug.get("invalidations")
+                            if isinstance(sug.get("invalidations"), list)
+                            else [],
+                            "risks": sug.get("risks")
+                            if isinstance(sug.get("risks"), list)
+                            else [],
+                        }
+                        if isinstance(sug, dict)
+                        else {},
                     },
                 )
 

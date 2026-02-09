@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -15,13 +17,38 @@ from src.config import Settings
 logger = logging.getLogger(__name__)
 
 
-def _format_datetime(dt) -> str:
-    """格式化时间为带时区的 ISO 格式"""
+def _format_datetime(dt, tz: str | None = None) -> str:
+    """格式化时间为当前时区的 ISO 格式。
+
+    说明：SQLite 存储的时间通常没有 tzinfo，按 UTC 解释后再转换到 app_timezone。
+    """
+
     if not dt:
         return ""
+
+    tz_name = tz or Settings().app_timezone or "UTC"
+    try:
+        tzinfo = ZoneInfo(tz_name)
+    except Exception:
+        tzinfo = timezone.utc
+
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.isoformat()
+
+    return dt.astimezone(tzinfo).isoformat()
+
+
+def _spawn_async_run(fn, *args, name: str) -> None:
+    """Run an async function in a dedicated thread."""
+
+    def _runner():
+        try:
+            asyncio.run(fn(*args))
+        except Exception:
+            logger.exception(f"后台任务失败: {name}")
+
+    t = threading.Thread(target=_runner, name=name, daemon=True)
+    t.start()
 
 
 router = APIRouter()
@@ -66,7 +93,7 @@ def agents_health(db: Session = Depends(get_db)):
         if last:
             last_run = {
                 "status": last.status or "",
-                "created_at": _format_datetime(last.created_at),
+                "created_at": _format_datetime(last.created_at, tz=tz),
                 "duration_ms": last.duration_ms or 0,
                 "error": last.error or "",
             }
@@ -241,8 +268,15 @@ async def trigger_agent_endpoint(agent_name: str, db: Session = Depends(get_db))
     from server import trigger_agent
 
     try:
+        # daily_report can take long; do not block HTTP request.
+        if agent_name == "daily_report":
+            _spawn_async_run(
+                trigger_agent, agent_name, name=f"trigger_agent:{agent_name}"
+            )
+            return {"ok": True, "queued": True, "message": "已提交后台执行"}
+
         result = await trigger_agent(agent_name)
-        return {"ok": True, "message": result}
+        return {"ok": True, "queued": False, "message": result}
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -251,6 +285,7 @@ async def trigger_agent_endpoint(agent_name: str, db: Session = Depends(get_db))
 
 @router.get("/{agent_name}/history", response_model=list[AgentRunResponse])
 def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(get_db)):
+    tz = Settings().app_timezone or "UTC"
     runs = (
         db.query(AgentRun)
         .filter(AgentRun.agent_name == agent_name)
@@ -266,7 +301,7 @@ def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(ge
             result=run.result or "",
             error=run.error or "",
             duration_ms=run.duration_ms or 0,
-            created_at=_format_datetime(run.created_at),
+            created_at=_format_datetime(run.created_at, tz=tz),
         )
         for run in runs
     ]

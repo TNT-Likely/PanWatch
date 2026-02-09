@@ -75,3 +75,25 @@
 - 重点结论加粗
 - 总字数控制在 800 字以内
 - 末尾加上"以上内容由 AI 生成，仅供参考，不构成投资建议。"
+
+【结构化输出要求 - 必须追加】
+在整篇 Markdown 正文的最后，追加一个用于程序解析的 JSON 块（必须是有效 JSON，使用双引号；不要 Markdown 代码块）。
+
+输出格式（必须一字不差包含标签）：
+<!--PANWATCH_JSON-->
+{...}
+<!--/PANWATCH_JSON-->
+
+JSON Schema（字段说明）：
+- suggestions: 数组，每只自选股必须有 1 条
+  - symbol: 股票代码（必须与输入一致）
+  - action: buy/add/reduce/sell/hold/watch/alert/avoid 之一
+  - action_label: 必须使用以下之一：继续持有/考虑加仓/考虑减仓/考虑止损/明日关注/暂时回避
+  - signal: 10-20字内信号概述（可空字符串）
+  - reason: 一句话理由（<=160字）
+  - triggers: 触发条件数组（最多3条）
+  - invalidations: 失效条件数组（最多2条）
+  - risks: 风险点数组（最多3条）
+
+注意：
+- JSON 块必须放在全文末尾，且在 <!--/PANWATCH_JSON--> 之后不能再输出任何内容。
