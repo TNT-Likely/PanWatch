@@ -8,23 +8,23 @@ import {
   ArrowDownRight,
   Wallet,
   PiggyBank,
-  Plus,
   ChevronRight,
   Activity,
   BarChart3,
   Sparkles,
   Newspaper,
+  Layers,
   Sun,
   Moon,
 } from 'lucide-react'
 import { fetchAPI, useLocalStorage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Onboarding } from '@/components/onboarding'
-import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@/components/suggestion-badge'
-import { KlineSummaryDialog } from '@/components/kline-summary-dialog'
+import { type SuggestionInfo, type KlineSummary } from '@/components/suggestion-badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import StockInsightModal from '@/components/stock-insight-modal'
 
 interface MarketIndex {
   symbol: string
@@ -44,6 +44,21 @@ interface MarketStatus {
   is_trading: boolean
   sessions: string[]
   local_time: string
+}
+
+interface HotStockItem {
+  symbol: string
+  name: string
+  price: number | null
+  change_pct: number | null
+  turnover: number | null
+}
+
+interface HotBoardItem {
+  code: string
+  name: string
+  change_pct: number | null
+  turnover: number | null
 }
 
 interface PortfolioSummary {
@@ -230,24 +245,25 @@ export default function DashboardPage() {
   const [quotesLoading, setQuotesLoading] = useState(false)
   const hasWatchlist = stocks.filter(s => s.enabled).length > 0
 
-  // Kline Dialog
-  const [klineDialogOpen, setKlineDialogOpen] = useState(false)
-  const [klineDialogSymbol, setKlineDialogSymbol] = useState('')
-  const [klineDialogMarket, setKlineDialogMarket] = useState('CN')
-  const [klineDialogName, setKlineDialogName] = useState<string | undefined>(undefined)
-  const [klineDialogHasPosition, setKlineDialogHasPosition] = useState(false)
-  const [klineDialogInitialSummary, setKlineDialogInitialSummary] = useState<KlineSummary | null>(null)
+  // Unified stock insight modal
+  const [insightOpen, setInsightOpen] = useState(false)
+  const [insightSymbol, setInsightSymbol] = useState('')
+  const [insightMarket, setInsightMarket] = useState('CN')
+  const [insightName, setInsightName] = useState<string | undefined>(undefined)
+  const [insightHasPosition, setInsightHasPosition] = useState(false)
 
   // Monitor stocks
   const [monitorStocks, setMonitorStocks] = useState<MonitorStock[]>([])
-  const [availableFunds, setAvailableFunds] = useState<number>(0)
   const [scanning, setScanning] = useState(false)
+  const [aiScanRunning, setAiScanRunning] = useState(false)
   const [enableAIAnalysis, setEnableAIAnalysis] = useState(true)
+  const scanRequestRef = useRef(0)
 
   // Auto-refresh (持久化到 localStorage)
   const [autoRefresh, setAutoRefresh] = useLocalStorage('panwatch_dashboard_autoRefresh', false)
   const [refreshInterval, setRefreshInterval] = useLocalStorage('panwatch_dashboard_refreshInterval', 30)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
+  const [lastScanTime, setLastScanTime] = useState<Date | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>()
 
   // Onboarding
@@ -258,7 +274,50 @@ export default function DashboardPage() {
   const [premarketOutlook, setPremarketOutlook] = useState<AnalysisRecord | null>(null)
   const [newsDigest, setNewsDigest] = useState<AnalysisRecord | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
-  const [expandedInsight, setExpandedInsight] = useState<string | null>(null)
+  const [previewInsight, setPreviewInsight] = useState<AnalysisRecord | null>(null)
+
+  // Discovery (Hot boards / stocks)
+  const [discoverTab, setDiscoverTab] = useLocalStorage<'boards' | 'stocks'>('panwatch_dashboard_discoverTab', 'boards')
+  const [discoverMarket, setDiscoverMarket] = useLocalStorage<'CN' | 'HK' | 'US'>('panwatch_dashboard_discoverMarket', 'CN')
+  const [stocksMode, setStocksMode] = useLocalStorage<'turnover' | 'gainers' | 'for_you'>('panwatch_dashboard_stocksMode', 'for_you')
+  const [boardsMode, setBoardsMode] = useLocalStorage<'gainers' | 'turnover'>('panwatch_dashboard_boardsMode', 'gainers')
+  const [hotStocks, setHotStocks] = useState<HotStockItem[]>([])
+  const [hotBoards, setHotBoards] = useState<HotBoardItem[]>([])
+  const [discoverLoading, setDiscoverLoading] = useState(false)
+  const [discoverError, setDiscoverError] = useState('')
+  const [boardDialogOpen, setBoardDialogOpen] = useState(false)
+  const [activeBoard, setActiveBoard] = useState<HotBoardItem | null>(null)
+  const [boardStocks, setBoardStocks] = useState<HotStockItem[]>([])
+  const discoveryCacheRef = useRef<{
+    boards: Record<string, { ts: number; data: HotBoardItem[] }>
+    stocks: Record<string, { ts: number; data: HotStockItem[] }>
+  }>({ boards: {}, stocks: {} })
+
+  const watchlistSet = useMemo(() => {
+    return new Set((stocks || []).filter(s => s.enabled).map(s => `${s.market}:${s.symbol}`))
+  }, [stocks])
+
+  const holdingSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const acc of portfolioRaw?.accounts || []) {
+      for (const p of acc.positions || []) {
+        set.add(`${p.market}:${p.symbol}`)
+      }
+    }
+    return set
+  }, [portfolioRaw])
+
+  const stylePreference = useMemo(() => {
+    const score: Record<string, number> = { short: 0, swing: 0, long: 0 }
+    for (const acc of portfolioRaw?.accounts || []) {
+      for (const p of acc.positions || []) {
+        if (!p.trading_style) continue
+        if (p.trading_style in score) score[p.trading_style] += 1
+      }
+    }
+    const ranked = Object.entries(score).sort((a, b) => b[1] - a[1])
+    return ranked[0]?.[1] ? ranked[0][0] : null
+  }, [portfolioRaw])
 
   // Initial load
   useEffect(() => {
@@ -267,6 +326,8 @@ export default function DashboardPage() {
     loadPortfolio()
     loadWatchlist()
     loadAIInsights()
+    loadDiscovery('boards')
+    loadDiscovery('stocks', { silent: true })
 
     // Check if onboarding should be shown
     const onboardingCompleted = localStorage.getItem('panwatch_onboarding_completed')
@@ -377,13 +438,12 @@ export default function DashboardPage() {
     }
   }, [buildQuoteItems])
 
-  const openKlineDialog = useCallback((symbol: string, market: string, name?: string, hasPosition?: boolean, initialSummary?: KlineSummary | null) => {
-    setKlineDialogSymbol(symbol)
-    setKlineDialogMarket(market || 'CN')
-    setKlineDialogName(name)
-    setKlineDialogHasPosition(!!hasPosition)
-    setKlineDialogInitialSummary(initialSummary || null)
-    setKlineDialogOpen(true)
+  const openStockInsight = useCallback((symbol: string, market: string, name?: string, hasPosition?: boolean) => {
+    setInsightSymbol(symbol)
+    setInsightMarket(market || 'CN')
+    setInsightName(name)
+    setInsightHasPosition(!!hasPosition)
+    setInsightOpen(true)
   }, [])
 
   useEffect(() => {
@@ -435,20 +495,134 @@ export default function DashboardPage() {
     }
   }
 
+  const loadDiscovery = async (which?: 'boards' | 'stocks', opts?: { silent?: boolean; force?: boolean }) => {
+    const tab = which || discoverTab
+    const silent = !!opts?.silent
+    const force = !!opts?.force
+    if (discoverMarket !== 'CN') {
+      if (tab === 'boards') setHotBoards([])
+      else setHotStocks([])
+      setDiscoverError('')
+      return
+    }
+
+    const cacheKey = tab === 'boards'
+      ? `${discoverMarket}:${boardsMode}`
+      : `${discoverMarket}:${stocksMode}`
+    const now = Date.now()
+    const ttlMs = 60 * 1000
+    const cache = tab === 'boards'
+      ? discoveryCacheRef.current.boards[cacheKey]
+      : discoveryCacheRef.current.stocks[cacheKey]
+    const isFresh = cache && (now - cache.ts) < ttlMs
+
+    if (!force && isFresh) {
+      if (tab === 'boards') setHotBoards(cache.data as HotBoardItem[])
+      else setHotStocks(cache.data as HotStockItem[])
+      return
+    }
+
+    if (!silent) {
+      setDiscoverLoading(true)
+      setDiscoverError('')
+    }
+    try {
+      if (tab === 'boards') {
+        const items = await fetchAPI<HotBoardItem[]>(
+          `/discovery/boards?market=${discoverMarket}&mode=${boardsMode}&limit=12`
+        )
+        const normalized = items || []
+        setHotBoards(normalized)
+        discoveryCacheRef.current.boards[cacheKey] = { ts: now, data: normalized }
+      } else {
+        if (stocksMode === 'for_you') {
+          const [turnoverItems, gainerItems] = await Promise.all([
+            fetchAPI<HotStockItem[]>(`/discovery/stocks?market=${discoverMarket}&mode=turnover&limit=20`),
+            fetchAPI<HotStockItem[]>(`/discovery/stocks?market=${discoverMarket}&mode=gainers&limit=20`),
+          ])
+          const map = new Map<string, HotStockItem>()
+          for (const item of [...(turnoverItems || []), ...(gainerItems || [])]) {
+            map.set(item.symbol, item)
+          }
+          const normalized = Array.from(map.values())
+          setHotStocks(normalized)
+          discoveryCacheRef.current.stocks[cacheKey] = { ts: now, data: normalized }
+        } else {
+          const items = await fetchAPI<HotStockItem[]>(
+            `/discovery/stocks?market=${discoverMarket}&mode=${stocksMode}&limit=20`
+          )
+          const normalized = items || []
+          setHotStocks(normalized)
+          discoveryCacheRef.current.stocks[cacheKey] = { ts: now, data: normalized }
+        }
+      }
+    } catch (e) {
+      if (!silent) {
+        setDiscoverError(e instanceof Error ? e.message : '加载失败')
+        if (tab === 'boards') setHotBoards([])
+        else setHotStocks([])
+      }
+    } finally {
+      if (!silent) setDiscoverLoading(false)
+    }
+  }
+
+  const openBoard = async (b: HotBoardItem) => {
+    setActiveBoard(b)
+    setBoardStocks([])
+    setBoardDialogOpen(true)
+    try {
+      const items = await fetchAPI<HotStockItem[]>(
+        `/discovery/boards/${encodeURIComponent(b.code)}/stocks?mode=gainers&limit=20`
+      )
+      setBoardStocks(items || [])
+    } catch {
+      setBoardStocks([])
+    }
+  }
+
   const scanAlerts = useCallback(async () => {
     if (!hasWatchlist) return
 
+    const reqId = ++scanRequestRef.current
     setScanning(true)
     try {
-      const url = enableAIAnalysis ? '/agents/intraday/scan?analyze=true' : '/agents/intraday/scan'
-      const result = await fetchAPI<{ stocks: MonitorStock[]; available_funds: number }>(url, { method: 'POST' })
+      // Phase 1: always get fast scan first (no AI), render immediately.
+      const result = await fetchAPI<{ stocks: MonitorStock[]; available_funds: number }>('/agents/intraday/scan', { method: 'POST' })
+      if (reqId !== scanRequestRef.current) return
       setMonitorStocks(result.stocks || [])
-      setAvailableFunds(result.available_funds || 0)
       setLastRefreshTime(new Date())
+      setLastScanTime(new Date())
     } catch (e) {
       console.error('扫描失败:', e)
     } finally {
-      setScanning(false)
+      if (reqId === scanRequestRef.current) setScanning(false)
+    }
+
+    // Phase 2: enrich with AI suggestions in background.
+    if (!enableAIAnalysis) return
+    setAiScanRunning(true)
+    try {
+      const aiResult = await fetchAPI<{ stocks: MonitorStock[]; available_funds: number }>('/agents/intraday/scan?analyze=true', { method: 'POST' })
+      if (reqId !== scanRequestRef.current) return
+      const aiStocks = aiResult.stocks || []
+      setMonitorStocks(prev => {
+        if (!prev || prev.length === 0) return aiStocks
+        const aiMap = new Map(aiStocks.map(s => [`${s.market}:${s.symbol}`, s] as const))
+        const merged = prev.map(s => aiMap.get(`${s.market}:${s.symbol}`) || s)
+        const existing = new Set(merged.map(s => `${s.market}:${s.symbol}`))
+        for (const s of aiStocks) {
+          const key = `${s.market}:${s.symbol}`
+          if (!existing.has(key)) merged.push(s)
+        }
+        return merged
+      })
+      setLastRefreshTime(new Date())
+      setLastScanTime(new Date())
+    } catch (e) {
+      console.error('AI扫描失败:', e)
+    } finally {
+      if (reqId === scanRequestRef.current) setAiScanRunning(false)
     }
   }, [hasWatchlist, enableAIAnalysis])
 
@@ -541,6 +715,105 @@ export default function DashboardPage() {
     return { worst, best }
   }, [portfolioRaw, quotes])
 
+  const stripMarkdown = (input: string): string => {
+    return (input || '')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`[^`]*`/g, ' ')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+      .replace(/\[[^\]]+\]\([^)]*\)/g, ' ')
+      .replace(/[#>*_~-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  const insightCards = useMemo(() => {
+    const cards = [
+      { key: 'daily', title: '盘后日报', icon: Moon, style: 'bg-orange-500/10 text-orange-500', record: dailyReport },
+      { key: 'premarket', title: '盘前分析', icon: Sun, style: 'bg-amber-500/10 text-amber-500', record: premarketOutlook },
+      { key: 'news', title: '新闻速递', icon: Newspaper, style: 'bg-blue-500/10 text-blue-500', record: newsDigest },
+    ]
+    return cards.filter(c => !!c.record).map(c => ({
+      ...c,
+      preview: stripMarkdown(c.record?.content || '').slice(0, 120),
+    }))
+  }, [dailyReport, premarketOutlook, newsDigest])
+
+  const actionableSignals = useMemo(() => {
+    const urgency = (s: MonitorStock) => {
+      let score = 0
+      if (s.alert_type) score += 4
+      if (s.suggestion?.should_alert) score += 3
+      if (s.suggestion && ['sell', 'reduce', 'avoid', 'alert', 'buy', 'add'].includes(s.suggestion.action)) score += 2
+      if (s.has_position) score += 1
+      return score
+    }
+    return (monitorStocks || [])
+      .filter(s => s.alert_type || s.suggestion?.should_alert || s.suggestion)
+      .slice()
+      .sort((a, b) => urgency(b) - urgency(a))
+      .slice(0, 6)
+      .map(s => ({
+        ...s,
+        _source: s.suggestion?.agent_label || '盘中监控',
+      }))
+  }, [monitorStocks])
+
+  const personalizedHotStocks = useMemo(() => {
+    const monitorMap = new Map<string, MonitorStock>()
+    for (const s of monitorStocks || []) monitorMap.set(`${s.market}:${s.symbol}`, s)
+
+    const scored = (hotStocks || []).map(stock => {
+      const key = `CN:${stock.symbol}`
+      const reasons: string[] = []
+      let score = 0
+
+      const pctAbs = Math.abs(stock.change_pct || 0)
+      const turnoverScore = Math.min((stock.turnover || 0) / 1e8, 8)
+      score += turnoverScore + pctAbs * 0.6
+
+      if (holdingSet.has(key)) {
+        score += 10
+        reasons.push('持仓相关')
+      } else if (watchlistSet.has(key)) {
+        score += 6
+        reasons.push('自选相关')
+      }
+
+      const monitor = monitorMap.get(key)
+      if (monitor?.suggestion?.should_alert || monitor?.alert_type) {
+        score += 5
+        reasons.push('监控信号')
+      }
+
+      if (stylePreference === 'short' && pctAbs >= 3) {
+        score += 3
+        reasons.push('短线风格匹配')
+      } else if (stylePreference === 'swing' && pctAbs >= 1.5 && pctAbs <= 6) {
+        score += 2
+        reasons.push('波段风格匹配')
+      } else if (stylePreference === 'long' && pctAbs <= 4) {
+        score += 2
+        reasons.push('长线波动适中')
+      }
+
+      if (reasons.length === 0) reasons.push('市场活跃度高')
+      return { ...stock, _score: score, _reasons: reasons.slice(0, 2) }
+    })
+
+    return scored.sort((a, b) => b._score - a._score)
+  }, [hotStocks, holdingSet, watchlistSet, stylePreference, monitorStocks])
+
+  const visibleHotStocks = useMemo(() => {
+    if (stocksMode === 'for_you') return personalizedHotStocks.slice(0, 8)
+    return hotStocks.slice(0, 8)
+  }, [stocksMode, personalizedHotStocks, hotStocks])
+
+  useEffect(() => {
+    loadDiscovery('boards', { silent: true })
+    loadDiscovery('stocks', { silent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoverMarket, boardsMode, stocksMode])
+
   return (
     <div>
       {/* Onboarding */}
@@ -550,14 +823,14 @@ export default function DashboardPage() {
         hasStocks={hasWatchlist}
       />
 
-      <KlineSummaryDialog
-        open={klineDialogOpen}
-        onOpenChange={setKlineDialogOpen}
-        symbol={klineDialogSymbol}
-        market={klineDialogMarket}
-        stockName={klineDialogName}
-        hasPosition={klineDialogHasPosition}
-        initialSummary={klineDialogInitialSummary as any}
+      <StockInsightModal
+        open={insightOpen}
+        onOpenChange={setInsightOpen}
+        symbol={insightSymbol}
+        market={insightMarket}
+        stockName={insightName}
+        hasPosition={insightHasPosition}
+        onOpenFullDetail={(m, s) => navigate(`/stock/${encodeURIComponent(m)}/${encodeURIComponent(s)}`)}
       />
 
       {/* Risk dialog removed (was too noisy when empty) */}
@@ -711,7 +984,7 @@ export default function DashboardPage() {
             type="button"
             className="card p-4 text-left hover:bg-accent/10 transition-colors"
             onClick={() => {
-              if (dayMovers.worst) navigate(`/stock/${encodeURIComponent(dayMovers.worst.market)}/${encodeURIComponent(dayMovers.worst.symbol)}`)
+              if (dayMovers.worst) openStockInsight(dayMovers.worst.symbol, dayMovers.worst.market, dayMovers.worst.name, true)
             }}
           >
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -788,365 +1061,391 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Intraday Monitor */}
+      {/* Discover */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
-            <Activity className="w-4 h-4 text-primary" />
-            盘中监控
-            {monitorStocks.length > 0 && (
-              <Badge variant="secondary" className="text-[10px]">{monitorStocks.length} 只</Badge>
-            )}
-            {availableFunds > 0 && (
-              <span className="text-[11px] text-muted-foreground ml-2">
-                可用: ¥{formatMoney(availableFunds)}
-              </span>
-            )}
+            <Layers className="w-4 h-4 text-primary" />
+            机会发现
           </h2>
-          {hasWatchlist && (
-            <Button variant="ghost" size="sm" onClick={scanAlerts} disabled={scanning} className="h-7 text-[12px]">
-              {scanning ? (
+          <div className="flex items-center gap-2">
+            <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as any)}>
+              <SelectTrigger className="h-7 w-[90px] text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CN">A股</SelectItem>
+                <SelectItem value="HK">港股</SelectItem>
+                <SelectItem value="US">美股</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => loadDiscovery()}
+              disabled={discoverLoading}
+              className="h-7 text-[12px]"
+              title="刷新"
+            >
+              {discoverLoading ? (
                 <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
               ) : (
                 <RefreshCw className="w-3.5 h-3.5" />
               )}
-              刷新
             </Button>
-          )}
+          </div>
         </div>
 
-        {!hasWatchlist ? (
-          <div className="card p-6 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <Activity className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-[14px] font-medium text-foreground mb-1">启用盘中监控</p>
-            <p className="text-[12px] text-muted-foreground mb-4">为股票启用「盘中监测」Agent 后可查看实时分析</p>
-            <Button size="sm" onClick={() => navigate('/portfolio')}>
-              <Plus className="w-4 h-4" /> 添加自选股
-            </Button>
-          </div>
-        ) : monitorStocks.length === 0 ? (
-          <div className="card p-6 text-center">
-            <p className="text-[13px] text-muted-foreground">点击刷新获取监控数据</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {monitorStocks.map(stock => {
-              const styleLabels: Record<string, string> = { short: '短线', swing: '波段', long: '长线' }
-              const changeColor = stock.change_pct > 0 ? 'text-rose-500' : stock.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
-              const suggestion = stock.suggestion
+        <div className="card p-4">
+          <div className="flex items-center gap-1.5 mb-3">
+            <button
+              onClick={() => { setDiscoverTab('boards'); loadDiscovery('boards') }}
+              className={`text-[11px] px-2.5 py-1 rounded transition-colors ${discoverTab === 'boards' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
+            >
+              热门板块
+            </button>
+            <button
+              onClick={() => { setDiscoverTab('stocks'); loadDiscovery('stocks') }}
+              className={`text-[11px] px-2.5 py-1 rounded transition-colors ${discoverTab === 'stocks' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
+            >
+              热门股票
+            </button>
 
-              return (
-                <div key={stock.symbol} className="card p-4">
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[13px] font-semibold text-foreground">{stock.symbol}</span>
-                      <span className="text-[12px] text-muted-foreground">{stock.name}</span>
-                      {!(suggestion || stock.kline) && (
-                        <button
-                          onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, stock.has_position)}
-                          className="p-1 rounded hover:bg-accent/50 transition-colors"
-                          title="K线指标"
+            <div className="ml-auto flex items-center gap-2">
+              {discoverTab === 'boards' ? (
+                <Select value={boardsMode} onValueChange={(v) => { setBoardsMode(v as any); setTimeout(() => loadDiscovery('boards'), 0) }}>
+                  <SelectTrigger className="h-7 w-[110px] text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gainers">涨幅榜</SelectItem>
+                    <SelectItem value="turnover">成交额榜</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={stocksMode} onValueChange={(v) => { setStocksMode(v as any); setTimeout(() => loadDiscovery('stocks'), 0) }}>
+                  <SelectTrigger className="h-7 w-[110px] text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="for_you">For You</SelectItem>
+                    <SelectItem value="turnover">成交额榜</SelectItem>
+                    <SelectItem value="gainers">涨幅榜</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          {discoverMarket !== 'CN' ? (
+            <div className="text-[12px] text-muted-foreground py-6 text-center">暂只支持 A股（CN）</div>
+          ) : discoverLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={`discover-skeleton-${i}`} className="p-3 rounded-xl bg-accent/20 animate-pulse">
+                  <div className="h-3 w-24 rounded bg-accent/60 mb-2" />
+                  <div className="h-3 w-16 rounded bg-accent/50" />
+                </div>
+              ))}
+            </div>
+          ) : discoverTab === 'boards' ? (
+            hotBoards.length === 0 ? (
+              <div className="text-[12px] text-muted-foreground py-6 text-center">{discoverError || '暂无数据'}</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {hotBoards.slice(0, 8).map(b => {
+                  const pct = b.change_pct ?? 0
+                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  return (
+                    <button
+                      key={b.code}
+                      onClick={() => openBoard(b)}
+                      className="flex items-center justify-between gap-3 p-3 rounded-xl bg-accent/20 hover:bg-accent/35 transition-colors text-left"
+                      title="查看板块成分股"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-foreground truncate">{b.name}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono truncate">{b.code}</div>
+                      </div>
+                      <div className={`text-[12px] font-mono font-semibold ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          ) : (
+            hotStocks.length === 0 ? (
+              <div className="text-[12px] text-muted-foreground py-6 text-center">{discoverError || '暂无数据'}</div>
+            ) : (
+              <div className="space-y-2">
+                {stocksMode === 'for_you' && (
+                  <div className="text-[11px] text-muted-foreground px-1">
+                    根据持仓/自选/监控信号/风格偏好排序
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {visibleHotStocks.map(s => {
+                  const pct = s.change_pct ?? 0
+                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  return (
+                    <div
+                      key={s.symbol}
+                      onClick={() => openStockInsight(s.symbol, 'CN', s.name, false)}
+                      className="flex items-center justify-between gap-3 p-3 rounded-xl bg-accent/20 hover:bg-accent/35 transition-colors text-left cursor-pointer"
+                      title="打开股票详情弹窗"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-foreground truncate">{s.name}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{s.symbol}</div>
+                        {(s as any)._reasons?.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground truncate mt-0.5">
+                            {(s as any)._reasons.join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openStockInsight(s.symbol, 'CN', s.name, false)
+                          }}
                         >
-                          <BarChart3 className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      )}
-                      {stock.alert_type && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          stock.alert_type === '急涨' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'
-                        }`}>
-                          {stock.alert_type}
-                        </span>
-                      )}
-                      {stock.has_position && stock.trading_style && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                          {styleLabels[stock.trading_style] || '波段'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className={`font-mono text-[14px] font-medium ${changeColor}`}>
-                          {stock.current_price?.toFixed(2) || '--'}
-                        </div>
-                        <div className={`font-mono text-[11px] ${changeColor}`}>
-                          {stock.change_pct >= 0 ? '+' : ''}{stock.change_pct?.toFixed(2) || '0.00'}%
+                          详情
+                        </Button>
+                        <div className="text-right">
+                        <div className="text-[12px] font-mono text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                        <div className={`text-[11px] font-mono ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
                         </div>
                       </div>
-                      {stock.has_position && stock.pnl_pct != null && (
-                        <div className="text-right min-w-[60px]">
-                          <div className="text-[10px] text-muted-foreground">盈亏</div>
-                          <div className={`font-mono text-[13px] font-medium ${stock.pnl_pct >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                            {stock.pnl_pct >= 0 ? '+' : ''}{stock.pnl_pct.toFixed(2)}%
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  </div>
-
-                  {/* Technical Info */}
-                  {stock.kline && (
-                    <div className="flex flex-wrap gap-2 mb-3 text-[11px]">
-                      <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground">
-                        {stock.kline.trend}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground">
-                        {stock.kline.macd_status}
-                      </span>
-                      {stock.kline.support && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600">
-                          支撑 {stock.kline.support.toFixed(2)}
-                        </span>
-                      )}
-                      {stock.kline.resistance && (
-                        <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600">
-                          压力 {stock.kline.resistance.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* AI Suggestion */}
-                  {suggestion ? (
-                    <SuggestionBadge
-                      suggestion={suggestion}
-                      stockName={stock.name}
-                      stockSymbol={stock.symbol}
-                      kline={stock.kline}
-                      showFullInline={true}
-                      hasPosition={stock.has_position}
-                    />
-                  ) : enableAIAnalysis ? (
-                    <div className="pt-3 border-t border-border/30">
-                      <p className="text-[11px] text-muted-foreground/60">AI 分析中...</p>
-                    </div>
-                  ) : null}
+                  )
+                })}
                 </div>
-              )
-            })}
-          </div>
-        )}
+              </div>
+            )
+          )}
+        </div>
       </div>
 
-      {/* AI Insights */}
+      <Dialog open={boardDialogOpen} onOpenChange={setBoardDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{activeBoard ? `板块：${activeBoard.name}` : '板块成分股'}</DialogTitle>
+            <DialogDescription>点击个股打开统一详情弹窗（含概览、K线、建议、新闻、历史）</DialogDescription>
+          </DialogHeader>
+          {boardStocks.length === 0 ? (
+            <div className="text-[12px] text-muted-foreground py-6 text-center">暂无数据</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto scrollbar">
+              {boardStocks.map(s => {
+                const pct = s.change_pct ?? 0
+                const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                return (
+                  <div
+                    key={s.symbol}
+                    onClick={() => {
+                      setBoardDialogOpen(false)
+                      openStockInsight(s.symbol, 'CN', s.name, false)
+                    }}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-accent/20 hover:bg-accent/35 transition-colors text-left cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-foreground truncate">{s.name}</div>
+                      <div className="text-[11px] text-muted-foreground font-mono">{s.symbol}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setBoardDialogOpen(false)
+                          openStockInsight(s.symbol, 'CN', s.name, false)
+                        }}
+                      >
+                        详情
+                      </Button>
+                      <div className="text-right">
+                      <div className="text-[12px] font-mono text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                      <div className={`text-[11px] font-mono ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Action Center */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
-            AI 洞察
+            行动中心
           </h2>
-          {(dailyReport || premarketOutlook || newsDigest) && (
-            <button
-              onClick={() => navigate('/history')}
-              className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary transition-colors"
-            >
-              查看更多 <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {insightsLoading ? (
-          <div className="card p-4 animate-pulse">
-            <div className="h-4 bg-accent/50 rounded w-32 mb-3" />
-            <div className="h-3 bg-accent/30 rounded w-full mb-2" />
-            <div className="h-3 bg-accent/30 rounded w-3/4" />
-          </div>
-        ) : !dailyReport && !premarketOutlook && !newsDigest ? (
-          <div className="card p-6 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-[14px] font-medium text-foreground mb-1">暂无 AI 分析</p>
-            <p className="text-[12px] text-muted-foreground mb-4">配置 AI 服务后，启用盘后日报或盘前分析 Agent</p>
-            <Button variant="secondary" size="sm" onClick={() => navigate('/agents')}>
-              配置 Agent
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 盘后日报 */}
-            {dailyReport && (
-              <div
-                className="card p-4 cursor-pointer hover:bg-accent/30 transition-colors"
-                onClick={() => setExpandedInsight(expandedInsight === 'daily' ? null : 'daily')}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-                    <Moon className="w-4 h-4 text-orange-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-medium text-foreground">盘后日报</span>
-                      <span className="text-[11px] text-muted-foreground">{dailyReport.analysis_date}</span>
-                    </div>
-                    {dailyReport.title && (
-                      <p className="text-[12px] text-muted-foreground truncate">{dailyReport.title}</p>
-                    )}
-                  </div>
-                  <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expandedInsight === 'daily' ? 'rotate-90' : ''}`} />
-                </div>
-                {expandedInsight === 'daily' && (
-                  <div className="mt-3 pt-3 border-t border-border/30">
-                    <div className="prose prose-sm dark:prose-invert max-w-none max-h-[300px] overflow-y-auto text-[12px]">
-                      <ReactMarkdown>{dailyReport.content}</ReactMarkdown>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate('/history') }}
-                      className="mt-3 text-[11px] text-primary hover:underline"
-                    >
-                      查看历史记录
-                    </button>
-                  </div>
+          <div className="flex items-center gap-2">
+            {hasWatchlist && (
+              <Button variant="ghost" size="sm" onClick={scanAlerts} disabled={scanning || aiScanRunning} className="h-7 text-[12px]">
+                {scanning || aiScanRunning ? (
+                  <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
                 )}
-              </div>
+                {scanning ? '扫描中' : aiScanRunning ? 'AI分析中' : '扫描'}
+              </Button>
             )}
-
-            {/* 盘前分析 */}
-            {premarketOutlook && (
-              <div
-                className="card p-4 cursor-pointer hover:bg-accent/30 transition-colors"
-                onClick={() => setExpandedInsight(expandedInsight === 'premarket' ? null : 'premarket')}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                    <Sun className="w-4 h-4 text-amber-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-medium text-foreground">盘前分析</span>
-                      <span className="text-[11px] text-muted-foreground">{premarketOutlook.analysis_date}</span>
-                    </div>
-                    {premarketOutlook.title && (
-                      <p className="text-[12px] text-muted-foreground truncate">{premarketOutlook.title}</p>
-                    )}
-                  </div>
-                  <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expandedInsight === 'premarket' ? 'rotate-90' : ''}`} />
-                </div>
-                {expandedInsight === 'premarket' && (
-                  <div className="mt-3 pt-3 border-t border-border/30">
-                    <div className="prose prose-sm dark:prose-invert max-w-none max-h-[300px] overflow-y-auto text-[12px]">
-                      <ReactMarkdown>{premarketOutlook.content}</ReactMarkdown>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate('/history') }}
-                      className="mt-3 text-[11px] text-primary hover:underline"
-                    >
-                      查看历史记录
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 新闻速递 */}
-            {newsDigest && (
-              <div
-                className="card p-4 cursor-pointer hover:bg-accent/30 transition-colors"
-                onClick={() => setExpandedInsight(expandedInsight === 'news' ? null : 'news')}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Newspaper className="w-4 h-4 text-blue-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-medium text-foreground">新闻速递</span>
-                      <span className="text-[11px] text-muted-foreground">{newsDigest.analysis_date}</span>
-                    </div>
-                    {newsDigest.title && (
-                      <p className="text-[12px] text-muted-foreground truncate">{newsDigest.title}</p>
-                    )}
-                  </div>
-                  <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expandedInsight === 'news' ? 'rotate-90' : ''}`} />
-                </div>
-                {expandedInsight === 'news' && (
-                  <div className="mt-3 pt-3 border-t border-border/30">
-                    <div className="prose prose-sm dark:prose-invert max-w-none max-h-[300px] overflow-y-auto text-[12px]">
-                      <ReactMarkdown>{newsDigest.content}</ReactMarkdown>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate('/history') }}
-                      className="mt-3 text-[11px] text-primary hover:underline"
-                    >
-                      查看历史记录
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Watchlist Quick View */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[15px] font-semibold text-foreground flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" />
-            自选股快览
-          </h2>
-          {hasWatchlist && (
             <button
               onClick={() => navigate('/portfolio')}
               className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary transition-colors"
             >
-              查看全部 <ChevronRight className="w-4 h-4" />
+              去持仓页执行 <ChevronRight className="w-4 h-4" />
             </button>
-          )}
+            {(dailyReport || premarketOutlook || newsDigest) && (
+              <button
+                onClick={() => navigate('/history')}
+                className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-primary transition-colors"
+              >
+                AI历史 <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {lastScanTime && (
+              <span className="text-[10px] text-muted-foreground/70 font-mono hidden md:inline">
+                监控 {lastScanTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </div>
         </div>
 
-        {!hasWatchlist ? (
-          <div className="card p-6 md:p-8 text-center">
-            <div className="w-12 md:w-14 h-12 md:h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3 md:mb-4">
-              <TrendingUp className="w-5 md:w-6 h-5 md:h-6 text-primary" />
-            </div>
-            <p className="text-[15px] font-medium text-foreground mb-1">还没有添加自选股</p>
-            <p className="text-[13px] text-muted-foreground mb-4">添加股票后，这里会显示实时行情和异动提醒</p>
-            <div className="flex items-center justify-center gap-3">
-              <Button onClick={() => navigate('/portfolio')}>
-                <Plus className="w-4 h-4" /> 添加第一只股票
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {stocks.filter(s => s.enabled).slice(0, 12).map(stock => {
-              const quote = quotes[`${stock.market}:${stock.symbol}`]
-              const isUp = quote?.change_pct != null && quote.change_pct > 0
-              const isDown = quote?.change_pct != null && quote.change_pct < 0
-              const changeColor = isUp ? 'text-rose-500' : isDown ? 'text-emerald-500' : 'text-muted-foreground'
-              const bgColor = isUp ? 'bg-rose-500/5' : isDown ? 'bg-emerald-500/5' : 'bg-accent/30'
-
-              return (
-                <div
-                  key={stock.id}
-                  className={`card p-3 ${bgColor} border-0 cursor-pointer hover:opacity-80 transition-opacity`}
-                  onClick={() => navigate('/portfolio')}
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
-                      {marketBadge(stock.market).label}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground truncate">{stock.name}</span>
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-stretch">
+          <div className="xl:col-span-3">
+            <div className="text-[12px] text-muted-foreground mb-2">待处理信号</div>
+            {aiScanRunning && !scanning && (
+              <div className="mb-2 text-[11px] text-primary">基础结果已返回，AI 建议补充中...</div>
+            )}
+            {scanning ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={`action-skeleton-${i}`} className="card h-[126px] p-4 animate-pulse">
+                    <div className="h-3 w-24 rounded bg-accent/60 mb-2" />
+                    <div className="h-3 w-16 rounded bg-accent/50 mb-3" />
+                    <div className="h-3 w-full rounded bg-accent/40 mb-2" />
+                    <div className="h-3 w-2/3 rounded bg-accent/40" />
                   </div>
-                  <div className={`text-[16px] font-bold font-mono ${changeColor}`}>
-                    {quote?.current_price?.toFixed(2) || '--'}
-                  </div>
-                  <div className={`text-[11px] font-mono ${changeColor}`}>
-                    {quote?.change_pct != null ? (
-                      `${isUp ? '+' : ''}${quote.change_pct.toFixed(2)}%`
-                    ) : (
-                      '--'
+                ))}
+              </div>
+            ) : actionableSignals.length === 0 ? (
+              <div className="card h-[126px] p-6 text-center">
+                <p className="text-[13px] text-muted-foreground">当前没有待处理信号</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {actionableSignals.map(s => (
+                  <button
+                    key={`${s.market}:${s.symbol}`}
+                    onClick={() => openStockInsight(s.symbol, s.market, s.name, s.has_position)}
+                    className="card h-[126px] p-4 text-left hover:bg-accent/20 transition-colors overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[13px] font-semibold text-foreground">{s.name}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{s.market}:{s.symbol}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/50 text-muted-foreground">{(s as any)._source || '盘中监控'}</span>
+                        {s.alert_type && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${s.alert_type === '急涨' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                            {s.alert_type}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[12px]">
+                      <span className="font-mono text-foreground">{s.current_price?.toFixed(2) || '--'}</span>
+                      <span className={`font-mono ${s.change_pct > 0 ? 'text-rose-500' : s.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                        {s.change_pct >= 0 ? '+' : ''}{(s.change_pct || 0).toFixed(2)}%
+                      </span>
+                    </div>
+                    {s.suggestion && (
+                      <div className="mt-2 text-[11px] text-muted-foreground line-clamp-1">
+                        {s.suggestion.action_label} · {s.suggestion.signal || s.suggestion.reason || '有新的建议'}
+                      </div>
                     )}
-                  </div>
-                </div>
-              )
-            })}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="xl:col-span-2">
+            <div className="text-[12px] text-muted-foreground mb-2">AI宏观摘要</div>
+            {insightsLoading ? (
+              <div className="card h-[126px] p-4 animate-pulse">
+                <div className="h-4 bg-accent/50 rounded w-24 mb-3" />
+                <div className="h-3 bg-accent/30 rounded w-full mb-2" />
+                <div className="h-3 bg-accent/30 rounded w-2/3" />
+              </div>
+            ) : insightCards.length === 0 ? (
+              <div className="card h-[126px] p-5 text-center">
+                <p className="text-[13px] text-muted-foreground mb-3">暂无 AI 摘要</p>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/agents')}>
+                  配置 Agent
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {insightCards.map(card => {
+                  const Icon = card.icon
+                  return (
+                    <button
+                      key={card.key}
+                      className="card w-full h-[126px] p-4 text-left hover:bg-accent/20 transition-colors overflow-hidden"
+                      onClick={() => setPreviewInsight(card.record || null)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${card.style}`}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[12px] font-medium text-foreground">{card.title}</div>
+                          <div className="text-[10px] text-muted-foreground">{card.record?.analysis_date || '--'}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] text-foreground/85 line-clamp-2">{card.preview || card.record?.title || '暂无摘要'}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      <Dialog open={!!previewInsight} onOpenChange={(open) => !open && setPreviewInsight(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{previewInsight?.title || 'AI 摘要预览'}</DialogTitle>
+            <DialogDescription>
+              {previewInsight ? `${previewInsight.analysis_date} · ${previewInsight.agent_name}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {previewInsight && (
+            <div className="prose prose-sm dark:prose-invert max-w-none max-h-[60vh] overflow-y-auto">
+              <ReactMarkdown>{previewInsight.content}</ReactMarkdown>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
+              查看完整历史
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Empty Portfolio Hint */}
       {!hasPortfolio && hasWatchlist && (

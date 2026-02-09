@@ -20,6 +20,7 @@ from src.web.api import (
     klines,
     templates,
     feedback,
+    discovery,
 )
 from src.web.api import insights
 from src.web.api.auth import get_current_user
@@ -109,6 +110,13 @@ app.include_router(
     feedback.router,
     prefix="/api/feedback",
     tags=["feedback"],
+    dependencies=protected,
+)
+
+app.include_router(
+    discovery.router,
+    prefix="/api/discovery",
+    tags=["discovery"],
     dependencies=protected,
 )
 

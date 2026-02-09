@@ -1,6 +1,8 @@
 import asyncio
+from copy import deepcopy
 import logging
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -15,6 +17,37 @@ from src.core.schedule_parser import count_runs_within
 from src.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_SCAN_CACHE_LOCK = threading.Lock()
+_SCAN_CACHE: dict[str, tuple[float, dict]] = {}
+_SCAN_CACHE_TTL_SECONDS = {
+    False: 12.0,  # quick scan
+    True: 25.0,   # AI scan
+}
+
+
+def _build_scan_cache_key(analyze: bool, watchlist) -> str:
+    symbols = sorted(f"{s.market.value}:{s.symbol}" for s in watchlist)
+    return f"intraday_scan:{int(analyze)}:{'|'.join(symbols)}"
+
+
+def _get_scan_cache(key: str, analyze: bool) -> dict | None:
+    now = time.monotonic()
+    ttl = _SCAN_CACHE_TTL_SECONDS[analyze]
+    with _SCAN_CACHE_LOCK:
+        hit = _SCAN_CACHE.get(key)
+        if not hit:
+            return None
+        ts, payload = hit
+        if now - ts > ttl:
+            _SCAN_CACHE.pop(key, None)
+            return None
+        return deepcopy(payload)
+
+
+def _set_scan_cache(key: str, payload: dict) -> None:
+    with _SCAN_CACHE_LOCK:
+        _SCAN_CACHE[key] = (time.monotonic(), deepcopy(payload))
 
 
 def _format_datetime(dt, tz: str | None = None) -> str:
@@ -358,6 +391,11 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             "has_watchlist": True,
         }
 
+    cache_key = _build_scan_cache_key(analyze, watchlist)
+    cached = _get_scan_cache(cache_key, analyze)
+    if cached is not None:
+        return cached
+
     # 获取持仓信息
     portfolio = load_portfolio_for_agent(agent_name)
 
@@ -368,15 +406,21 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         market_symbols.setdefault(stock.market, []).append(stock.symbol)
         stock_market_map[stock.symbol] = stock.market
 
-    all_quotes = []
-    for market_code, symbols in market_symbols.items():
+    async def _fetch_market_quotes(market_code: MarketCode, symbols: list[str]):
         try:
             collector = AkshareCollector(market_code)
-            stocks = await collector.get_stock_data(symbols)
-            all_quotes.extend(stocks)
+            return await collector.get_stock_data(symbols)
         except Exception as e:
             logger.error(f"采集 {market_code.value} 行情失败: {e}")
+            return []
 
+    quote_batches = await asyncio.gather(
+        *[
+            _fetch_market_quotes(market_code, symbols)
+            for market_code, symbols in market_symbols.items()
+        ]
+    )
+    all_quotes = [q for batch in quote_batches for q in (batch or [])]
     quote_by_symbol = {q.symbol: q for q in all_quotes}
 
     # 解析 Agent 阈值配置（用于异动标记与提示 AI）
@@ -386,23 +430,37 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         # 兼容旧配置（字段不匹配时回退）
         monitor_agent = IntradayMonitorAgent(bypass_throttle=True)
 
-    # 获取历史分析（给 AI 作为上下文）
-    try:
-        daily_analysis = get_latest_analysis(
-            agent_name="daily_report",
-            stock_symbol="*",
-        )
-        premarket_analysis = get_analysis(
-            agent_name="premarket_outlook",
-            stock_symbol="*",
-        )
-    except Exception:
-        daily_analysis = None
-        premarket_analysis = None
+    daily_analysis = None
+    premarket_analysis = None
+    if analyze:
+        # 获取历史分析（给 AI 作为上下文）
+        try:
+            daily_analysis = get_latest_analysis(
+                agent_name="daily_report",
+                stock_symbol="*",
+            )
+            premarket_analysis = get_analysis(
+                agent_name="premarket_outlook",
+                stock_symbol="*",
+            )
+        except Exception:
+            daily_analysis = None
+            premarket_analysis = None
 
     # 构建返回数据
-    results = []
-    for quote in all_quotes:
+    kline_sem = asyncio.Semaphore(6)
+
+    async def _load_kline_summary(symbol: str, market: MarketCode):
+        try:
+            async with kline_sem:
+                return await asyncio.to_thread(
+                    lambda: KlineCollector(market).get_kline_summary(symbol)
+                )
+        except Exception as e:
+            logger.warning(f"获取 {symbol} K线失败: {e}")
+            return None
+
+    async def _build_result_item(quote):
         change_pct = quote.change_pct or 0
         market = stock_market_map.get(quote.symbol, MarketCode.CN)
 
@@ -415,42 +473,37 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         if cost_price and quote.current_price:
             pnl_pct = (quote.current_price - cost_price) / cost_price * 100
 
-        # 获取技术分析
-        kline_summary = None
-        try:
-            kline_collector = KlineCollector(market)
-            kline_summary = kline_collector.get_kline_summary(quote.symbol)
-        except Exception as e:
-            logger.warning(f"获取 {quote.symbol} K线失败: {e}")
+        # 获取技术分析（并发）
+        kline_summary = await _load_kline_summary(quote.symbol, market)
 
         # 判断异动类型
         alert_type = None
         if abs(change_pct) >= getattr(monitor_agent, "price_alert_threshold", 3.0):
             alert_type = "急涨" if change_pct > 0 else "急跌"
 
-        results.append(
-            {
-                "symbol": quote.symbol,
-                "name": quote.name,
-                "market": market.value,
-                "current_price": quote.current_price,
-                "change_pct": change_pct,
-                "change_amount": quote.change_amount,
-                "open_price": quote.open_price,
-                "high_price": quote.high_price,
-                "low_price": quote.low_price,
-                "prev_close": quote.prev_close,
-                "volume": quote.volume,
-                "turnover": quote.turnover,
-                "alert_type": alert_type,
-                "has_position": has_position,
-                "cost_price": cost_price,
-                "pnl_pct": pnl_pct,
-                "trading_style": trading_style,
-                "kline": kline_summary,
-                "suggestion": None,  # AI 建议
-            }
-        )
+        return {
+            "symbol": quote.symbol,
+            "name": quote.name,
+            "market": market.value,
+            "current_price": quote.current_price,
+            "change_pct": change_pct,
+            "change_amount": quote.change_amount,
+            "open_price": quote.open_price,
+            "high_price": quote.high_price,
+            "low_price": quote.low_price,
+            "prev_close": quote.prev_close,
+            "volume": quote.volume,
+            "turnover": quote.turnover,
+            "alert_type": alert_type,
+            "has_position": has_position,
+            "cost_price": cost_price,
+            "pnl_pct": pnl_pct,
+            "trading_style": trading_style,
+            "kline": kline_summary,
+            "suggestion": None,  # AI 建议
+        }
+
+    results = await asyncio.gather(*[_build_result_item(quote) for quote in all_quotes])
 
     # AI 分析
     if analyze and results:
@@ -458,95 +511,99 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             context = build_context(agent_name)
             agent = monitor_agent
 
-            for item in results:
+            ai_sem = asyncio.Semaphore(3)
+
+            async def _analyze_item(item: dict):
                 try:
-                    stock_data = quote_by_symbol.get(item["symbol"])
-                    if not stock_data:
-                        continue
+                    async with ai_sem:
+                        stock_data = quote_by_symbol.get(item["symbol"])
+                        if not stock_data:
+                            return
 
-                    data = {
-                        "stock_data": stock_data,
-                        "stocks": [stock_data],
-                        "kline_summary": item["kline"],
-                        "daily_analysis": daily_analysis.content
-                        if daily_analysis
-                        else None,
-                        "premarket_analysis": premarket_analysis.content
-                        if premarket_analysis
-                        else None,
-                    }
+                        data = {
+                            "stock_data": stock_data,
+                            "stocks": [stock_data],
+                            "kline_summary": item["kline"],
+                            "daily_analysis": daily_analysis.content
+                            if daily_analysis
+                            else None,
+                            "premarket_analysis": premarket_analysis.content
+                            if premarket_analysis
+                            else None,
+                        }
 
-                    # P1: event-driven gate (reduce AI calls)
-                    try:
-                        if getattr(agent, "event_only", False):
-                            from src.core.intraday_event_gate import check_and_update
+                        # P1: event-driven gate (reduce AI calls)
+                        try:
+                            if getattr(agent, "event_only", False):
+                                from src.core.intraday_event_gate import check_and_update
 
-                            decision = check_and_update(
-                                symbol=item["symbol"],
-                                change_pct=item.get("change_pct"),
-                                volume_ratio=(item.get("kline") or {}).get(
-                                    "volume_ratio"
-                                ),
-                                kline_summary=item.get("kline"),
-                                price_threshold=getattr(
-                                    agent, "price_alert_threshold", 3.0
-                                ),
-                                volume_threshold=getattr(
-                                    agent, "volume_alert_ratio", 2.0
-                                ),
-                            )
-                            if not decision.should_analyze:
-                                item["suggestion"] = {
-                                    "action": "watch",
-                                    "action_label": "观望",
-                                    "signal": "",
-                                    "reason": "",
-                                    "should_alert": False,
-                                    "skipped": True,
-                                    "skip_reason": "no_event",
-                                }
-                                continue
-                            data["event_gate"] = {"reasons": decision.reasons}
-                    except Exception:
-                        pass
+                                decision = check_and_update(
+                                    symbol=item["symbol"],
+                                    change_pct=item.get("change_pct"),
+                                    volume_ratio=(item.get("kline") or {}).get(
+                                        "volume_ratio"
+                                    ),
+                                    kline_summary=item.get("kline"),
+                                    price_threshold=getattr(
+                                        agent, "price_alert_threshold", 3.0
+                                    ),
+                                    volume_threshold=getattr(
+                                        agent, "volume_alert_ratio", 2.0
+                                    ),
+                                )
+                                if not decision.should_analyze:
+                                    item["suggestion"] = {
+                                        "action": "watch",
+                                        "action_label": "观望",
+                                        "signal": "",
+                                        "reason": "",
+                                        "should_alert": False,
+                                        "skipped": True,
+                                        "skip_reason": "no_event",
+                                    }
+                                    return
+                                data["event_gate"] = {"reasons": decision.reasons}
+                        except Exception:
+                            pass
 
-                    system_prompt, user_content = agent.build_prompt(data, context)
-                    response = await context.ai_client.chat(system_prompt, user_content)
+                        system_prompt, user_content = agent.build_prompt(data, context)
+                        response = await context.ai_client.chat(
+                            system_prompt, user_content
+                        )
 
-                    # 解析结构化建议
-                    suggestion = agent._parse_suggestion(response)
-                    suggestion["raw"] = response.strip()[:200]
+                        # 解析结构化建议
+                        suggestion = agent._parse_suggestion(response)
+                        suggestion["raw"] = response.strip()[:200]
 
-                    item["suggestion"] = suggestion
-                    # 写入建议池（用于持仓页展示），避免频繁扫描导致“持有/观望”覆盖太久
-                    expires_hours = 4 if suggestion.get("should_alert", True) else 1
-                    save_suggestion(
-                        stock_symbol=item["symbol"],
-                        stock_name=item["name"] or "",
-                        action=suggestion.get("action", "watch"),
-                        action_label=suggestion.get("action_label", "观望"),
-                        signal=suggestion.get("signal", ""),
-                        reason=suggestion.get("reason", ""),
-                        agent_name=agent_name,
-                        agent_label=agent.display_name,
-                        expires_hours=expires_hours,
-                        prompt_context=user_content,
-                        ai_response=response,
-                        meta={
-                            "quote": {
-                                "current_price": item.get("current_price"),
-                                "change_pct": item.get("change_pct"),
+                        item["suggestion"] = suggestion
+                        # 写入建议池（用于持仓页展示），避免频繁扫描导致“持有/观望”覆盖太久
+                        expires_hours = 4 if suggestion.get("should_alert", True) else 1
+                        save_suggestion(
+                            stock_symbol=item["symbol"],
+                            stock_name=item["name"] or "",
+                            action=suggestion.get("action", "watch"),
+                            action_label=suggestion.get("action_label", "观望"),
+                            signal=suggestion.get("signal", ""),
+                            reason=suggestion.get("reason", ""),
+                            agent_name=agent_name,
+                            agent_label=agent.display_name,
+                            expires_hours=expires_hours,
+                            prompt_context=user_content,
+                            ai_response=response,
+                            meta={
+                                "quote": {
+                                    "current_price": item.get("current_price"),
+                                    "change_pct": item.get("change_pct"),
+                                },
+                                "kline_meta": {
+                                    "computed_at": (item.get("kline") or {}).get(
+                                        "computed_at"
+                                    ),
+                                    "asof": (item.get("kline") or {}).get("asof"),
+                                },
+                                "event_gate": data.get("event_gate"),
                             },
-                            "kline_meta": {
-                                "computed_at": (item.get("kline") or {}).get(
-                                    "computed_at"
-                                ),
-                                "asof": (item.get("kline") or {}).get("asof"),
-                            },
-                            "event_gate": data.get("event_gate"),
-                        },
-                    )
-
+                        )
                 except Exception as e:
                     item["suggestion"] = {
                         "action": "watch",
@@ -557,13 +614,17 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                     }
                     logger.error(f"AI 分析失败 {item['symbol']}: {e}")
 
+            await asyncio.gather(*[_analyze_item(item) for item in results])
+
         except Exception as e:
             logger.error(f"构建 Agent 上下文失败: {e}")
 
-    return {
+    payload = {
         "stocks": results,
         "scanned_count": len(watchlist),
         "is_trading": True,
         "has_watchlist": True,
         "available_funds": portfolio.total_available_funds,
     }
+    _set_scan_cache(cache_key, payload)
+    return payload

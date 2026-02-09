@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import StockInsightModal from '@/components/stock-insight-modal'
 
 interface AgentResult {
   title: string
@@ -348,6 +349,11 @@ export default function StocksPage() {
   const [klineDialogName, setKlineDialogName] = useState<string | undefined>(undefined)
   const [klineDialogHasPosition, setKlineDialogHasPosition] = useState<boolean>(false)
   const [klineDialogInitialSummary, setKlineDialogInitialSummary] = useState<KlineSummary | null>(null)
+  const [insightOpen, setInsightOpen] = useState(false)
+  const [insightSymbol, setInsightSymbol] = useState('')
+  const [insightMarket, setInsightMarket] = useState('CN')
+  const [insightName, setInsightName] = useState<string | undefined>(undefined)
+  const [insightHasPosition, setInsightHasPosition] = useState(false)
 
   // Market status
   const [marketStatus, setMarketStatus] = useState<MarketStatus[]>([])
@@ -622,9 +628,13 @@ export default function StocksPage() {
     loadNews(stockName)
   }, [loadNews])
 
-  const openStockDetail = useCallback((stockSymbol: string, stockMarket: string) => {
-    navigate(`/stock/${encodeURIComponent(stockMarket)}/${encodeURIComponent(stockSymbol)}`)
-  }, [navigate])
+  const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(!!hasPosition)
+    setInsightOpen(true)
+  }, [])
 
   const formatPreviewTime = (iso: string, tz?: string): string => {
     try {
@@ -659,6 +669,36 @@ export default function StocksPage() {
   }, [refreshQuotes, loadPoolSuggestions, refreshKlines])
 
   useEffect(() => { load(); loadPortfolio(); loadPoolSuggestions(); refreshKlines() }, [])
+
+  // 仅关注列表场景（无持仓）也要在列表加载后预取 K 线摘要，保证技术指标徽章可见
+  const watchlistKlineInitDone = useRef(false)
+  const klineMissingRetryRef = useRef<Record<string, number>>({})
+  useEffect(() => {
+    if (watchlistKlineInitDone.current) return
+    if (!stocks || stocks.length === 0) return
+    watchlistKlineInitDone.current = true
+    refreshKlines()
+  }, [stocks, refreshKlines])
+
+  // 关注列表变更后，自动补齐缺失的 K 线摘要（避免未配置 agent 时没有技术指标徽章）
+  useEffect(() => {
+    const enabled = (stocks || []).filter(s => s.enabled)
+    if (enabled.length === 0) return
+    const now = Date.now()
+    const retryGapMs = 2 * 60 * 1000
+    const missing = enabled.filter(s => {
+      const key = `${s.market || 'CN'}:${s.symbol}`
+      if (klineSummaries[key]) return false
+      const lastTry = klineMissingRetryRef.current[key] || 0
+      return (now - lastTry) > retryGapMs
+    })
+    if (missing.length === 0) return
+    for (const s of missing) {
+      const key = `${s.market || 'CN'}:${s.symbol}`
+      klineMissingRetryRef.current[key] = now
+    }
+    refreshKlines()
+  }, [stocks, klineSummaries, refreshKlines])
 
   // Agent 配置弹窗：预览未来触发时间（用于自检工作日/周末语义）
   useEffect(() => {
@@ -1699,8 +1739,18 @@ export default function StocksPage() {
                                 <tr key={pos.id} className={`group hover:bg-accent/30 transition-colors ${i > 0 ? 'border-t border-border/20' : ''}`}>
                                   <td className="px-4 py-2.5">
                                     <span className={`text-[9px] px-1 py-0.5 rounded mr-1.5 ${badge.style}`}>{badge.label}</span>
-                                    <span className="font-mono text-[12px] font-semibold text-foreground">{pos.symbol}</span>
-                                    <span className="ml-1.5 text-[12px] text-muted-foreground">{pos.name}</span>
+                                    <button
+                                      className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
+                                      onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                    >
+                                      {pos.symbol}
+                                    </button>
+                                    <button
+                                      className="ml-1.5 text-[12px] text-muted-foreground hover:text-primary"
+                                      onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                    >
+                                      {pos.name}
+                                    </button>
                                     {(() => {
                                       const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
                                       return (suggestion || kline) ? (
@@ -1787,7 +1837,7 @@ export default function StocksPage() {
                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
                                       ) : null })()}
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openStockDetail(pos.symbol, pos.market)} title="详情"><ExternalLink className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)} title="详情"><ExternalLink className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -1816,8 +1866,18 @@ export default function StocksPage() {
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className={`text-[9px] px-1 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
-                                  <span className="font-mono text-[12px] font-semibold text-foreground">{pos.symbol}</span>
-                                  <span className="text-[12px] text-muted-foreground">{pos.name}</span>
+                                  <button
+                                    className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
+                                    onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                  >
+                                    {pos.symbol}
+                                  </button>
+                                  <button
+                                    className="text-[12px] text-muted-foreground hover:text-primary"
+                                    onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                  >
+                                    {pos.name}
+                                  </button>
                                   {pos.trading_style && (
                                     <span className={`text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
                                       {pos.trading_style === 'short' ? '短' : pos.trading_style === 'long' ? '长' : '波'}
@@ -1885,7 +1945,7 @@ export default function StocksPage() {
                                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
                                   ) : null })()}
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openStockDetail(pos.symbol, pos.market)} title="详情"><ExternalLink className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)} title="详情"><ExternalLink className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
@@ -1996,8 +2056,18 @@ export default function StocksPage() {
                           <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
                             {marketBadge(stock.market).label}
                           </span>
-                          <span className="font-mono text-[12px] font-semibold text-foreground">{stock.symbol}</span>
-                          <span className="text-[12px] text-muted-foreground truncate">{stock.name}</span>
+                          <button
+                            className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
+                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                          >
+                            {stock.symbol}
+                          </button>
+                          <button
+                            className="text-[12px] text-muted-foreground truncate hover:text-primary"
+                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                          >
+                            {stock.name}
+                          </button>
                         </div>
                       </div>
                       <div className="text-right">
@@ -2065,7 +2135,7 @@ export default function StocksPage() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => openStockDetail(stock.symbol, stock.market)}
+                          onClick={() => openStockDetail(stock.symbol, stock.market, stock.name, false)}
                           title="详情"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -2098,6 +2168,16 @@ export default function StocksPage() {
         stockName={klineDialogName}
         hasPosition={klineDialogHasPosition}
         initialSummary={klineDialogInitialSummary as any}
+      />
+
+      <StockInsightModal
+        open={insightOpen}
+        onOpenChange={setInsightOpen}
+        symbol={insightSymbol}
+        market={insightMarket}
+        stockName={insightName}
+        hasPosition={insightHasPosition}
+        onOpenFullDetail={(m, s) => navigate(`/stock/${encodeURIComponent(m)}/${encodeURIComponent(s)}`)}
       />
 
       {/* Remove Watchlist Dialog */}

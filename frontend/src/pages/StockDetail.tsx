@@ -12,6 +12,7 @@ import { SuggestionBadge, type SuggestionInfo } from '@/components/suggestion-ba
 import { KlineSummaryDialog } from '@/components/kline-summary-dialog'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import type { KlineSummaryData } from '@/components/kline-summary-dialog'
+import KlineModal from '@/components/KlineModal'
 
 interface Stock {
   id: number
@@ -848,6 +849,16 @@ export default function StockDetailPage() {
       {/* Overview */}
       {tab === 'overview' && (
         <div className="space-y-4">
+          <div className="card p-4 md:p-5 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-foreground">交互K线</div>
+              <div className="text-[11px] text-muted-foreground">日K/周K/月K切换，含 MA/成交量/MACD</div>
+            </div>
+            <Button variant="secondary" size="sm" className="h-8" onClick={() => setKlineOpen(true)}>
+              打开
+            </Button>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Quote */}
             <div className="card p-5 lg:col-span-4">
@@ -1207,6 +1218,14 @@ export default function StockDetailPage() {
           </div>
         </div>
       )}
+
+      <KlineModal
+        open={klineOpen}
+        onOpenChange={setKlineOpen}
+        symbol={symbol}
+        market={market}
+        title={resolvedName ? `K线：${resolvedName}` : `K线：${symbol}`}
+      />
 
       {/* Suggestions tab */}
       {tab === 'suggestions' && (
