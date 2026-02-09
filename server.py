@@ -95,6 +95,13 @@ def setup_playwright():
     """
     import subprocess
 
+    # 允许通过环境变量跳过首次安装（例如不需要截图功能时）
+    if os.environ.get("PLAYWRIGHT_SKIP_BROWSER_INSTALL") == "1":
+        logger.info(
+            "已设置 PLAYWRIGHT_SKIP_BROWSER_INSTALL=1，跳过 Playwright 浏览器安装"
+        )
+        return
+
     # 如果用户已显式设置 PLAYWRIGHT_BROWSERS_PATH，尊重该设置
     if "PLAYWRIGHT_BROWSERS_PATH" in os.environ:
         browser_dir = os.environ["PLAYWRIGHT_BROWSERS_PATH"]

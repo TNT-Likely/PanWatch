@@ -77,6 +77,10 @@ docker run -d \
 
 访问 `http://localhost:8000`，首次使用设置账号密码即可。
 
+说明：镜像内已包含 Playwright 运行所需的系统依赖；Chromium 浏览器会在容器首次启动时自动下载并安装到挂载卷（默认 `/app/data/playwright`），首次启动可能需要几分钟且需要网络可达。
+
+如果不需要截图等浏览器能力，可以在启动容器时设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过首次 Chromium 下载/安装。
+
 <details>
 <summary>Docker Compose</summary>
 
@@ -112,6 +116,7 @@ docker-compose up -d
 | `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
 | `DATA_DIR` | 数据存储目录 | `./data` |
 | `TZ` | 应用时区（影响 Agent 调度触发时间与时间展示） | `Asia/Shanghai` |
+| `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | 跳过首次 Chromium 安装（不需要截图时可用） | 未设置 |
 
 </details>
 

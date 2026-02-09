@@ -37,6 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # 中文字体
     fonts-noto-cjk \
     # Playwright Chromium 依赖
+    # (这些库缺失会导致 playwright 提示 Host system is missing dependencies)
+    libxcursor1 \
+    libgtk-3-0 \
+    libpangocairo-1.0-0 \
+    libcairo-gobject2 \
+    libgdk-pixbuf-2.0-0 \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -52,6 +58,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    # 常见的 Chromium 运行时依赖（不同版本/发行版可能会缺）
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
+    libxi6 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    libxshmfence1 \
+    libegl1 \
+    libfontconfig1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -fv
 
