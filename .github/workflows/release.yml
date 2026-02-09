@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Docker tag to publish (e.g. v0.1.0)'
+        description: 'Docker tag to publish (e.g. 0.2.3)'
         required: true
         type: string
       push_latest:
@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve version
         id: vars
@@ -100,9 +102,54 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Generate release notes (tag push only)
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="${{ steps.vars.outputs.version }}"
+          repo="${{ github.repository }}"
+
+          # Find previous tag by semver sort (best effort).
+          prev=""
+          while IFS= read -r t; do
+            if [[ "$t" != "$current" ]]; then
+              prev="$t"
+              break
+            fi
+          done < <(git tag --list --sort=-v:refname)
+
+          echo "Current tag: $current"
+          if [[ -n "$prev" ]]; then
+            echo "Previous tag: $prev"
+            range="$prev..$current"
+          else
+            echo "Previous tag: (none)"
+            range="$current"
+          fi
+
+          {
+            echo "## Docker"
+            echo "- `${{ env.IMAGE_NAME }}:$current`"
+            echo "- `${{ env.IMAGE_NAME }}:latest`"
+            echo ""
+            echo "## Commits"
+            if [[ -n "$prev" ]]; then
+              echo "Compare: https://github.com/$repo/compare/$prev...$current"
+              echo ""
+              echo "Changes since `$prev`:"
+              echo ""
+              # Non-merge commits only (exclude MR/PR merges).
+              git log --no-merges --pretty=format:'- %s (%h)' "$range" || true
+            else
+              echo "First release tag."
+            fi
+            echo ""
+          } > release-notes.md
+
       - name: Create GitHub Release (tag push only)
         if: ${{ github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.version }}
-          generate_release_notes: true
+          body_path: release-notes.md
