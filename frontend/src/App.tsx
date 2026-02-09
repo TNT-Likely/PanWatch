@@ -13,7 +13,7 @@ import HistoryPage from '@/pages/History'
 import LoginPage from '@/pages/Login'
 import LogsModal from '@/components/logs-modal'
 import AmbientBackground from '@/components/AmbientBackground'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
 const navItems = [
@@ -260,7 +260,7 @@ function App() {
           <div className="text-[12px] text-muted-foreground">
             建议升级以获取最新功能和修复。
           </div>
-          <DialogFooter>
+          <div className="flex items-center justify-end gap-2">
             <Button
               variant="secondary"
               onClick={() => {
@@ -278,7 +278,7 @@ function App() {
             >
               去升级
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
