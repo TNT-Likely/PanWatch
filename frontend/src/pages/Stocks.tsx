@@ -1093,6 +1093,7 @@ export default function StocksPage() {
       const preloadedKline = klineSummaries[key] || (suggestions[symbol]?.kline as any) || null
       return {
         suggestion: {
+          id: poolSug.id,
           action: poolSug.action,
           action_label: poolSug.action_label,
           signal: poolSug.signal,

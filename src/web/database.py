@@ -119,6 +119,32 @@ def _migrate(engine):
                 conn.execute(text(sql))
                 conn.commit()
 
+        # Create new tables if missing (SQLite)
+        if not _has_table(conn, "suggestion_feedback"):
+            conn.execute(
+                text(
+                    """
+CREATE TABLE IF NOT EXISTS suggestion_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  suggestion_id INTEGER NOT NULL REFERENCES stock_suggestions(id) ON DELETE CASCADE,
+  useful INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_feedback_suggestion_id ON suggestion_feedback(suggestion_id);"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_feedback_created_at ON suggestion_feedback(created_at);"
+                )
+            )
+            conn.commit()
+
 
 def _migrate_old_providers(engine):
     """如果存在旧的 ai_providers 表，迁移数据到 ai_services + ai_models"""

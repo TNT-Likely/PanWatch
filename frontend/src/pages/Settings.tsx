@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3 } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +13,24 @@ interface Setting {
   key: string
   value: string
   description: string
+}
+
+interface TemplatePayload {
+  version: number
+  exported_at?: string
+  settings?: Record<string, string>
+  agents?: any[]
+  stocks?: any[]
+}
+
+interface FeedbackStats {
+  range_days: number
+  total: number
+  useful: number
+  useless: number
+  useful_rate: number
+  by_day: Array<{ day: string; total: number; useful: number; useless: number; useful_rate: number }>
+  by_agent: Array<{ agent_name: string; total: number; useful: number; useless: number; useful_rate: number }>
 }
 
 interface ServiceForm {
@@ -140,7 +158,73 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState<number | null>(null)
   const [testingModel, setTestingModel] = useState<number | null>(null)
 
+  // Templates (config pack)
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
+  const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  // Feedback stats
+  const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
+  const [fbLoading, setFbLoading] = useState(false)
+
+  const importFileRef = useRef<HTMLInputElement | null>(null)
+
   const { toast } = useToast()
+
+  const builtinTemplates: Array<{ name: string; desc: string; payload: TemplatePayload }> = [
+    {
+      name: '保守',
+      desc: '低打扰：盘中更严格触发，静默时段建议开启',
+      payload: {
+        version: 1,
+        settings: {
+          notify_quiet_hours: '23:00-07:00',
+          notify_retry_attempts: '2',
+          notify_retry_backoff_seconds: '2',
+        },
+        agents: [
+          { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
+          { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
+          { name: 'news_digest', enabled: true, schedule: '0 */3 * * 1-5', execution_mode: 'batch' },
+          { name: 'intraday_monitor', enabled: true, schedule: '*/10 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 4.0, volume_alert_ratio: 2.5, throttle_minutes: 45 } },
+        ],
+      },
+    },
+    {
+      name: '均衡',
+      desc: '默认推荐：兼顾覆盖与打扰',
+      payload: {
+        version: 1,
+        settings: {
+          notify_retry_attempts: '2',
+          notify_retry_backoff_seconds: '2',
+        },
+        agents: [
+          { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
+          { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
+          { name: 'news_digest', enabled: true, schedule: '0 */2 * * 1-5', execution_mode: 'batch' },
+          { name: 'intraday_monitor', enabled: true, schedule: '*/5 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 3.0, volume_alert_ratio: 2.0, throttle_minutes: 30 } },
+        ],
+      },
+    },
+    {
+      name: '激进',
+      desc: '更高频：更早捕捉变化，适合短线盯盘',
+      payload: {
+        version: 1,
+        settings: {
+          notify_retry_attempts: '3',
+          notify_retry_backoff_seconds: '1',
+        },
+        agents: [
+          { name: 'premarket_outlook', enabled: true, schedule: '10 8 * * 1-5', execution_mode: 'batch' },
+          { name: 'daily_report', enabled: true, schedule: '10 15 * * 1-5', execution_mode: 'batch' },
+          { name: 'news_digest', enabled: true, schedule: '0 * * * 1-5', execution_mode: 'batch' },
+          { name: 'intraday_monitor', enabled: true, schedule: '*/3 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 2.0, volume_alert_ratio: 1.8, throttle_minutes: 20 } },
+        ],
+      },
+    },
+  ]
 
   const load = async () => {
     try {
@@ -161,7 +245,69 @@ export default function SettingsPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  const downloadJson = (name: string, obj: any) => {
+    try {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      // ignore
+    }
+  }
+
+  const exportTemplate = async () => {
+    setExporting(true)
+    try {
+      const data = await fetchAPI<TemplatePayload>('/templates/export')
+      const date = new Date().toISOString().slice(0, 10)
+      downloadJson(`panwatch-config-${date}.json`, data)
+      toast('配置包已导出', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '导出失败', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const importTemplate = async (payload: TemplatePayload) => {
+    setImporting(true)
+    try {
+      const resp = await fetchAPI<any>(`/templates/import?mode=${importMode}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      toast('配置包已导入', 'success')
+      // refresh
+      await load()
+      return resp
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '导入失败', 'error')
+      return null
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const loadFeedbackStats = async () => {
+    setFbLoading(true)
+    try {
+      const stats = await fetchAPI<FeedbackStats>('/feedback/stats?days=14')
+      setFbStats(stats)
+    } catch (e) {
+      console.error(e)
+      setFbStats(null)
+    } finally {
+      setFbLoading(false)
+    }
+  }
+
+  useEffect(() => { load(); loadFeedbackStats() }, [])
 
   const handleSave = async (key: string) => {
     setSaving(key)
@@ -508,6 +654,139 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+          )}
+        </section>
+
+        {/* Config Pack (Templates) */}
+        <section className="card p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">配置包</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">一键导入/导出 Agent、关注列表与系统设置</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" className="h-8" onClick={exportTemplate} disabled={exporting}>
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">导出</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8"
+                onClick={() => importFileRef.current?.click()}
+                disabled={importing}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">导入</span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-[11px] text-muted-foreground">导入模式</div>
+            <Select value={importMode} onValueChange={(v) => setImportMode(v as any)}>
+              <SelectTrigger className="h-8 w-[160px] text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="merge">合并更新（推荐）</SelectItem>
+                <SelectItem value="replace">替换（仅覆盖配置包包含项）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              try {
+                const text = await file.text()
+                const payload = JSON.parse(text)
+                await importTemplate(payload)
+              } catch (err) {
+                toast('配置包解析失败', 'error')
+              }
+            }}
+          />
+
+          <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
+            <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+              <FileJson className="w-4 h-4 text-muted-foreground" />
+              官方模板
+            </div>
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+              {builtinTemplates.map(t => (
+                <div key={t.name} className="rounded-lg border border-border/40 bg-background/30 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-semibold text-foreground">{t.name}</div>
+                    <Button
+                      size="sm"
+                      className="h-7"
+                      onClick={() => importTemplate(t.payload)}
+                      disabled={importing}
+                    >
+                      <span className="text-[12px]">应用</span>
+                    </Button>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">{t.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Feedback Stats */}
+        <section className="card p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">建议反馈</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">用于评估推送质量与策略迭代</p>
+            </div>
+            <Button variant="secondary" size="sm" className="h-8" onClick={loadFeedbackStats} disabled={fbLoading}>
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">刷新</span>
+            </Button>
+          </div>
+
+          {fbStats ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+                <span>近 {fbStats.range_days} 天</span>
+                <span className="opacity-50">|</span>
+                <span>反馈: <span className="font-mono text-foreground/90">{fbStats.total}</span></span>
+                <span className="opacity-50">|</span>
+                <span>有用: <span className="font-mono text-emerald-600">{fbStats.useful}</span></span>
+                <span className="opacity-50">|</span>
+                <span>没用: <span className="font-mono text-rose-600">{fbStats.useless}</span></span>
+                <span className="opacity-50">|</span>
+                <span>有用率: <span className="font-mono text-foreground/90">{Math.round(fbStats.useful_rate * 100)}%</span></span>
+              </div>
+
+              {fbStats.by_agent?.length ? (
+                <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
+                  <div className="text-[12px] font-semibold text-foreground">按 Agent</div>
+                  <div className="mt-2 space-y-1">
+                    {fbStats.by_agent.slice(0, 6).map(a => (
+                      <div key={a.agent_name} className="flex items-center justify-between text-[11px]">
+                        <span className="font-mono text-muted-foreground">{a.agent_name}</span>
+                        <span className="font-mono text-muted-foreground">
+                          {a.useful}/{a.total} ({Math.round(a.useful_rate * 100)}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[12px] text-muted-foreground">暂无反馈数据</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[12px] text-muted-foreground">暂无反馈数据</div>
           )}
         </section>
 

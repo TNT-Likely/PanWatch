@@ -1,7 +1,26 @@
 from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.web.api import stocks, agents, settings, logs, providers, channels, datasources, accounts, history, news, market, auth, suggestions, quotes, klines
+from src.web.api import (
+    stocks,
+    agents,
+    settings,
+    logs,
+    providers,
+    channels,
+    datasources,
+    accounts,
+    history,
+    news,
+    market,
+    auth,
+    suggestions,
+    quotes,
+    klines,
+    templates,
+    feedback,
+)
 from src.web.api import insights
 from src.web.api.auth import get_current_user
 from src.web.api.settings import get_app_version
@@ -29,20 +48,69 @@ app.include_router(market.router, prefix="/api/market", tags=["market"])
 
 # 需要登录的路由
 protected = [Depends(get_current_user)]
-app.include_router(stocks.router, prefix="/api/stocks", tags=["stocks"], dependencies=protected)
-app.include_router(quotes.router, prefix="/api/quotes", tags=["quotes"], dependencies=protected)
-app.include_router(klines.router, prefix="/api/klines", tags=["klines"], dependencies=protected)
-app.include_router(insights.router, prefix="/api/insights", tags=["insights"], dependencies=protected)
-app.include_router(accounts.router, prefix="/api", tags=["accounts"], dependencies=protected)
-app.include_router(agents.router, prefix="/api/agents", tags=["agents"], dependencies=protected)
-app.include_router(providers.router, prefix="/api/providers", tags=["providers"], dependencies=protected)
-app.include_router(channels.router, prefix="/api/channels", tags=["channels"], dependencies=protected)
-app.include_router(datasources.router, prefix="/api/datasources", tags=["datasources"], dependencies=protected)
-app.include_router(settings.router, prefix="/api/settings", tags=["settings"], dependencies=protected)
-app.include_router(logs.router, prefix="/api/logs", tags=["logs"], dependencies=protected)
-app.include_router(history.router, prefix="/api", tags=["history"], dependencies=protected)
-app.include_router(news.router, prefix="/api/news", tags=["news"], dependencies=protected)
-app.include_router(suggestions.router, prefix="/api/suggestions", tags=["suggestions"], dependencies=protected)
+app.include_router(
+    stocks.router, prefix="/api/stocks", tags=["stocks"], dependencies=protected
+)
+app.include_router(
+    quotes.router, prefix="/api/quotes", tags=["quotes"], dependencies=protected
+)
+app.include_router(
+    klines.router, prefix="/api/klines", tags=["klines"], dependencies=protected
+)
+app.include_router(
+    insights.router, prefix="/api/insights", tags=["insights"], dependencies=protected
+)
+app.include_router(
+    accounts.router, prefix="/api", tags=["accounts"], dependencies=protected
+)
+app.include_router(
+    agents.router, prefix="/api/agents", tags=["agents"], dependencies=protected
+)
+app.include_router(
+    providers.router,
+    prefix="/api/providers",
+    tags=["providers"],
+    dependencies=protected,
+)
+app.include_router(
+    channels.router, prefix="/api/channels", tags=["channels"], dependencies=protected
+)
+app.include_router(
+    datasources.router,
+    prefix="/api/datasources",
+    tags=["datasources"],
+    dependencies=protected,
+)
+app.include_router(
+    settings.router, prefix="/api/settings", tags=["settings"], dependencies=protected
+)
+app.include_router(
+    logs.router, prefix="/api/logs", tags=["logs"], dependencies=protected
+)
+app.include_router(
+    history.router, prefix="/api", tags=["history"], dependencies=protected
+)
+app.include_router(
+    news.router, prefix="/api/news", tags=["news"], dependencies=protected
+)
+app.include_router(
+    suggestions.router,
+    prefix="/api/suggestions",
+    tags=["suggestions"],
+    dependencies=protected,
+)
+app.include_router(
+    templates.router,
+    prefix="/api/templates",
+    tags=["templates"],
+    dependencies=protected,
+)
+app.include_router(
+    feedback.router,
+    prefix="/api/feedback",
+    tags=["feedback"],
+    dependencies=protected,
+)
 
 
 @app.get("/api/health")

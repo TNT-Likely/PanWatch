@@ -799,6 +799,25 @@ def build_scheduler() -> AgentScheduler:
     return sched
 
 
+def reload_scheduler() -> bool:
+    """重载调度器（用于配置导入/批量修改后立即生效）"""
+    global scheduler
+    try:
+        current = globals().get("scheduler")
+        if current:
+            try:
+                current.shutdown()
+            except Exception:
+                pass
+        scheduler = build_scheduler()
+        scheduler.start()
+        logger.info("Agent 调度器已重载")
+        return True
+    except Exception as e:
+        logger.error(f"Agent 调度器重载失败: {e}")
+        return False
+
+
 def _log_trigger_info(
     agent_name: str,
     stocks: list,

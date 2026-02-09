@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { KlineSummaryDialog } from '@/components/kline-summary-dialog'
 import { KlineIndicators } from '@/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
+import { fetchAPI } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
 
 export interface SuggestionInfo {
+  id?: number
   action: string  // buy/add/reduce/sell/hold/watch
   action_label: string
   signal: string
@@ -183,6 +186,27 @@ export function SuggestionBadge({
 }: SuggestionBadgeProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [klineDialogOpen, setKlineDialogOpen] = useState(false)
+  const [feedback, setFeedback] = useState<'useful' | 'useless' | null>(null)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    setFeedback(null)
+  }, [suggestion?.id])
+
+  const canFeedback = !!suggestion?.id && suggestion?.agent_label !== '技术指标'
+  const submitFeedback = async (useful: boolean) => {
+    if (!suggestion?.id) return
+    try {
+      await fetchAPI('/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ suggestion_id: suggestion.id, useful }),
+      })
+      setFeedback(useful ? 'useful' : 'useless')
+      toast('反馈已提交', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '反馈失败', 'error')
+    }
+  }
 
   if (!suggestion && !kline) return null
 
@@ -285,6 +309,40 @@ export function SuggestionBadge({
             </DialogHeader>
 
             <div className="space-y-4">
+              {/* Feedback */}
+              {canFeedback && (
+                <div>
+                  <div className="text-[11px] text-muted-foreground mb-1">这条建议是否有用？</div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => submitFeedback(true)}
+                      disabled={feedback !== null}
+                      className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
+                        feedback === 'useful'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
+                          : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      有用
+                    </button>
+                    <button
+                      onClick={() => submitFeedback(false)}
+                      disabled={feedback !== null}
+                      className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
+                        feedback === 'useless'
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
+                          : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      没用
+                    </button>
+                    {feedback && (
+                      <span className="text-[11px] text-muted-foreground">已记录，感谢反馈</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 信号 */}
               {suggestion.signal && (
                 <div>
@@ -458,6 +516,40 @@ export function SuggestionBadge({
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Feedback */}
+            {canFeedback && (
+              <div>
+                <div className="text-[11px] text-muted-foreground mb-1">这条建议是否有用？</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => submitFeedback(true)}
+                    disabled={feedback !== null}
+                    className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
+                      feedback === 'useful'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
+                        : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    有用
+                  </button>
+                  <button
+                    onClick={() => submitFeedback(false)}
+                    disabled={feedback !== null}
+                    className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
+                      feedback === 'useless'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
+                        : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    没用
+                  </button>
+                  {feedback && (
+                    <span className="text-[11px] text-muted-foreground">已记录，感谢反馈</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 信号 */}
             {suggestion.signal && (
               <div>

@@ -316,3 +316,19 @@ class StockSuggestion(Base):
 
     # 索引：按股票+时间快速查询
     __table_args__ = (Index("ix_suggestion_symbol_time", "stock_symbol", "created_at"),)
+
+
+class SuggestionFeedback(Base):
+    """建议反馈（匿名、轻量）"""
+
+    __tablename__ = "suggestion_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    suggestion_id = Column(
+        Integer,
+        ForeignKey("stock_suggestions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    useful = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
