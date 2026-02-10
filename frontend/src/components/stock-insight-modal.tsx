@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import { ExternalLink, RefreshCw } from 'lucide-react'
-import { fetchAPI } from '@/lib/utils'
+import { fetchAPI, useLocalStorage } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@/components/suggestion-badge'
 import { useToast } from '@/components/ui/toast'
 import KlineModal from '@/components/KlineModal'
@@ -55,16 +55,6 @@ interface NewsItem {
   url: string
 }
 
-interface HistoryRecord {
-  id: number
-  agent_name: string
-  stock_symbol: string
-  analysis_date: string
-  title: string
-  content: string
-  created_at: string
-}
-
 interface PortfolioPosition {
   symbol: string
   market: string
@@ -80,15 +70,7 @@ interface PortfolioSummaryResponse {
   }>
 }
 
-const AGENT_LABELS: Record<string, string> = {
-  daily_report: '盘后日报',
-  premarket_outlook: '盘前分析',
-  intraday_monitor: '盘中监测',
-  news_digest: '新闻速递',
-  chart_analyst: '技术分析',
-}
-
-type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'history'
+type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news'
 type ReplayEvent = {
   id: string
   ts: number
@@ -96,7 +78,7 @@ type ReplayEvent = {
   label: string
   desc: string
   tone: 'bull' | 'bear' | 'neutral'
-  kind: 'technical' | 'suggestion' | 'history'
+  kind: 'technical' | 'suggestion'
   isAlert: boolean
 }
 
@@ -175,6 +157,10 @@ export default function StockInsightModal(props: {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<InsightTab>('overview')
   const [newsHours, setNewsHours] = useState('24')
+  const [includeExpiredSuggestions, setIncludeExpiredSuggestions] = useLocalStorage<boolean>(
+    'stock_insight_include_expired_suggestions',
+    true
+  )
   const [quote, setQuote] = useState<QuoteResponse | null>(null)
   const [klineSummary, setKlineSummary] = useState<KlineSummary | null>(null)
   const [miniKlines, setMiniKlines] = useState<MiniKlineResponse['klines']>([])
@@ -182,8 +168,6 @@ export default function StockInsightModal(props: {
   const [miniHoverIdx, setMiniHoverIdx] = useState<number | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestionInfo[]>([])
   const [news, setNews] = useState<NewsItem[]>([])
-  const [history, setHistory] = useState<HistoryRecord[]>([])
-  const [detailRecord, setDetailRecord] = useState<HistoryRecord | null>(null)
   const [klineOpen, setKlineOpen] = useState(false)
   const [klineInterval, setKlineInterval] = useState<'1d' | '1w' | '1m'>('1d')
   const [klineDays, setKlineDays] = useState<'60' | '120' | '250'>('120')
@@ -198,6 +182,7 @@ export default function StockInsightModal(props: {
   } | null>(null)
   const autoTriggeredRef = useRef<Record<string, number>>({})
   const stockCacheRef = useRef<Record<string, StockItem>>({})
+  const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
@@ -230,6 +215,7 @@ export default function StockInsightModal(props: {
     if (!symbol) return
     const params = new URLSearchParams()
     params.set('limit', '20')
+    params.set('include_expired', includeExpiredSuggestions ? 'true' : 'false')
     const data = await fetchAPI<any[]>(`/suggestions/${encodeURIComponent(symbol)}?${params.toString()}`)
     const list = (data || []).map(item => ({
       id: item.id,
@@ -248,27 +234,33 @@ export default function StockInsightModal(props: {
       meta: item.meta,
     })) as SuggestionInfo[]
     setSuggestions(list)
-  }, [symbol])
+  }, [symbol, includeExpiredSuggestions])
 
   const loadNews = useCallback(async () => {
     if (!symbol) return
-    const params = new URLSearchParams()
-    params.set('hours', newsHours)
-    params.set('limit', '40')
-    params.set('filter_related', 'true')
-    params.set('symbols', symbol)
-    const data = await fetchAPI<NewsItem[]>(`/news?${params.toString()}`)
-    setNews(data || [])
-  }, [symbol, newsHours])
+    const runQuery = async (opts: { useName: boolean; filterRelated: boolean }) => {
+      const params = new URLSearchParams()
+      params.set('hours', newsHours)
+      params.set('limit', '40')
+      params.set('filter_related', opts.filterRelated ? 'true' : 'false')
+      if (opts.useName && resolvedName && resolvedName !== symbol) params.set('names', resolvedName)
+      else params.set('symbols', symbol)
+      return fetchAPI<NewsItem[]>(`/news?${params.toString()}`)
+    }
 
-  const loadHistory = useCallback(async () => {
-    if (!symbol) return
-    const params = new URLSearchParams()
-    params.set('stock_symbol', symbol)
-    params.set('limit', '30')
-    const data = await fetchAPI<HistoryRecord[]>(`/history?${params.toString()}`)
-    setHistory(data || [])
-  }, [symbol])
+    try {
+      let data: NewsItem[] = await runQuery({ useName: true, filterRelated: true })
+      if ((data || []).length === 0 && resolvedName && resolvedName !== symbol) {
+        data = await runQuery({ useName: false, filterRelated: true })
+      }
+      if ((data || []).length === 0) {
+        data = await runQuery({ useName: true, filterRelated: false })
+      }
+      setNews(data || [])
+    } catch {
+      setNews([])
+    }
+  }, [symbol, newsHours, resolvedName])
 
   const loadHoldingAgg = useCallback(async () => {
     if (!symbol) return
@@ -294,32 +286,49 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
-  const loadAll = useCallback(async () => {
+  const loadCore = useCallback(async () => {
     if (!symbol) return
     setLoading(true)
     try {
-      await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadSuggestions(), loadNews(), loadHistory(), loadHoldingAgg()])
+      await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadHoldingAgg()])
     } catch (e) {
       toast(e instanceof Error ? e.message : '加载失败', 'error')
     } finally {
       setLoading(false)
     }
-  }, [symbol, loadQuote, loadKline, loadMiniKline, loadSuggestions, loadNews, loadHistory, loadHoldingAgg, toast])
+  }, [symbol, loadQuote, loadKline, loadMiniKline, loadHoldingAgg, toast])
+
+  const handleRefreshAll = useCallback(async () => {
+    if (!symbol) return
+    setLoading(true)
+    try {
+      await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadSuggestions(), loadNews(), loadHoldingAgg()])
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '加载失败', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [symbol, loadQuote, loadKline, loadMiniKline, loadSuggestions, loadNews, loadHoldingAgg, toast])
 
   useEffect(() => {
     if (!props.open || !symbol) return
     setTab('overview')
     setSuggestions([])
+    setNews([])
     setMiniKlines([])
-    loadAll()
-  }, [props.open, symbol, market, loadAll])
+    loadCore()
+  }, [props.open, symbol, market, loadCore])
 
   useEffect(() => {
     if (!props.open || !symbol) return
     loadNews().catch(() => setNews([]))
   }, [props.open, symbol, newsHours, loadNews])
 
-  const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    loadSuggestions().catch(() => setSuggestions([]))
+  }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
+
   const latestSuggestion = suggestions.find(s => !s.is_expired) || suggestions[0] || null
   const hasHolding = !!props.hasPosition || !!holdingAgg
   const technicalFallbackSuggestion = useMemo<SuggestionInfo | null>(() => {
@@ -407,22 +416,8 @@ export default function StockInsightModal(props: {
         isAlert: !!s.should_alert || ['sell', 'reduce', 'avoid', 'alert'].includes(s.action),
       })
     }
-    for (const h of history.slice(0, 12)) {
-      const ms = parseToMs(h.created_at || h.analysis_date)
-      if (ms == null) continue
-      out.push({
-        id: `h-${h.id}`,
-        ts: ms,
-        timeText: formatTime(h.created_at || h.analysis_date),
-        label: AGENT_LABELS[h.agent_name] || h.agent_name,
-        desc: h.title || '历史分析',
-        tone: 'neutral',
-        kind: 'history',
-        isAlert: false,
-      })
-    }
     return out.sort((a, b) => b.ts - a.ts).slice(0, 8)
-  }, [klineSummary, suggestions, history])
+  }, [klineSummary, suggestions])
 
   const filteredReplayEvents = useMemo(() => {
     if (replayFilter === 'all') return replayEvents
@@ -460,7 +455,7 @@ export default function StockInsightModal(props: {
       })
       await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true`, { method: 'POST' })
       toast('已设置提醒并触发一次盘中监测', 'success')
-      await Promise.allSettled([loadSuggestions(), loadHistory()])
+      await Promise.allSettled([loadSuggestions()])
     } catch (e) {
       toast(e instanceof Error ? e.message : '设置提醒失败', 'error')
     } finally {
@@ -517,13 +512,13 @@ export default function StockInsightModal(props: {
       if (!stock) return
       // intraday_monitor 较 chart_analyst 更轻量、稳定，不依赖截图链路
       await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true`, { method: 'POST' })
-      await Promise.allSettled([loadSuggestions(), loadHistory()])
+      await Promise.allSettled([loadSuggestions()])
     } catch {
       // 自动触发失败时静默降级到技术指标建议，不打断用户
     } finally {
       setAutoSuggesting(false)
     }
-  }, [symbol, market, hasHolding, suggestions.length, autoSuggesting, ensureStockAndAgent, loadSuggestions, loadHistory])
+  }, [symbol, market, hasHolding, suggestions.length, autoSuggesting, ensureStockAndAgent, loadSuggestions])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -572,7 +567,7 @@ export default function StockInsightModal(props: {
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>
                   {alerting ? '设置中...' : '一键设提醒'}
                 </Button>
-                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => loadAll()} disabled={loading}>
+                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading}>
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
                 {props.onOpenFullDetail && (
@@ -595,7 +590,6 @@ export default function StockInsightModal(props: {
               { id: 'kline', label: 'K线' },
               { id: 'suggestions', label: `建议 (${suggestions.length})` },
               { id: 'news', label: `新闻 (${news.length})` },
-              { id: 'history', label: `历史 (${history.length})` },
             ].map(item => (
               <button
                 key={item.id}
@@ -890,6 +884,17 @@ export default function StockInsightModal(props: {
 
             {tab === 'suggestions' && (
               <div className="space-y-3">
+                <div className="card p-3 flex items-center justify-between gap-3">
+                  <div className="text-[12px] text-muted-foreground">显示过期建议</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
+                    <Switch
+                      checked={includeExpiredSuggestions}
+                      onCheckedChange={setIncludeExpiredSuggestions}
+                      aria-label="显示过期建议"
+                    />
+                  </div>
+                </div>
                 {suggestions.length === 0 ? (
                   technicalFallbackSuggestion ? (
                     <div className="card p-4">
@@ -904,11 +909,13 @@ export default function StockInsightModal(props: {
                     </div>
                   )
                 ) : (
-                  suggestions.map((item, idx) => (
-                    <div key={`${item.created_at || 's'}-${idx}`} className="card p-4">
-                      <SuggestionBadge suggestion={item} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
-                    </div>
-                  ))
+                  <div className="max-h-[56vh] overflow-y-auto pr-1 scrollbar space-y-3">
+                    {suggestions.map((item, idx) => (
+                      <div key={`${item.created_at || 's'}-${idx}`} className="card p-4">
+                        <SuggestionBadge suggestion={item} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -950,29 +957,6 @@ export default function StockInsightModal(props: {
               </div>
             )}
 
-            {tab === 'history' && (
-              <div className="space-y-3">
-                {history.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无历史分析</div>
-                ) : (
-                  history.map(item => (
-                    <div key={item.id} className="card p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[13px] font-medium text-foreground">{item.title || AGENT_LABELS[item.agent_name] || item.agent_name}</div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            {AGENT_LABELS[item.agent_name] || item.agent_name} · {item.analysis_date} {item.created_at ? `· ${formatTime(item.created_at)}` : ''}
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setDetailRecord(item)}>
-                          查看
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -986,22 +970,6 @@ export default function StockInsightModal(props: {
         initialInterval={klineInterval}
         initialDays={klineDays}
       />
-
-      <Dialog open={!!detailRecord} onOpenChange={open => !open && setDetailRecord(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{detailRecord?.title || '分析详情'}</DialogTitle>
-            <DialogDescription>
-              {detailRecord ? `${AGENT_LABELS[detailRecord.agent_name] || detailRecord.agent_name} · ${detailRecord.analysis_date}` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          {detailRecord && (
-            <div className="prose prose-sm dark:prose-invert max-w-none max-h-[60vh] overflow-y-auto">
-              <ReactMarkdown>{detailRecord.content}</ReactMarkdown>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

@@ -418,7 +418,7 @@ export default function StockDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [symbol, loadStockBase, loadQuote, loadKlineSummary, loadPositions, loadSuggestions, loadHistory, loadBatchReports, loadNews])
+  }, [symbol, loadStockBase, loadQuote, loadKlineSummary, loadPositions, loadHistory, loadBatchReports])
 
   useEffect(() => {
     loadEssential()
