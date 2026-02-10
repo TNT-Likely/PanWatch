@@ -149,13 +149,17 @@ cd frontend && pnpm install && pnpm dev
 
 </details>
 
-## 技术栈
+<details>
+<summary><b>技术栈</b></summary>
 
 **后端**：FastAPI / SQLAlchemy / APScheduler / OpenAI SDK
 
 **前端**：React 18 / TypeScript / Tailwind CSS / shadcn/ui
 
-## 发布（Docker 镜像）
+</details>
+
+<details>
+<summary><b>发布（Docker 镜像）</b></summary>
 
 本项目内置 GitHub Actions 发布流程：
 
@@ -168,6 +172,16 @@ cd frontend && pnpm install && pnpm dev
 
 - `DOCKERHUB_USERNAME`
 - `DOCKERHUB_TOKEN`
+
+</details>
+
+## 捐赠支持
+
+如果你觉得 PanWatch 有帮助，欢迎请作者喝杯咖啡：
+
+| 微信赞赏 | 支付宝 |
+|:---:|:---:|
+| <img src="./docs/donate/wechat.png" width="240" /> | <img src="./docs/donate/alipay.png" width="240" /> |
 
 ## 贡献
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut } from 'lucide-react'
+import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut, Github } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { fetchAPI, isAuthenticated, logout } from '@/lib/utils'
 import DashboardPage from '@/pages/Dashboard'
@@ -65,6 +65,7 @@ function App() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeInfo, setUpgradeInfo] = useState<{ latest: string; url: string } | null>(null)
   const checkedUpdateRef = useRef(false)
+  const repoUrl = 'https://github.com/TNT-Likely/PanWatch'
 
   useEffect(() => {
     fetch(`${API_BASE}/api/version`)
@@ -154,6 +155,13 @@ function App() {
             {/* Theme Toggle & Logout */}
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
               <button
+                onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
+                title="GitHub 项目"
+              >
+                <Github className="w-4 h-4" />
+              </button>
+              <button
                 onClick={() => setLogsOpen(true)}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
                 title="查看日志"
@@ -193,6 +201,13 @@ function App() {
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+              <button
+                onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
+                title="GitHub 项目"
+              >
+                <Github className="w-4 h-4" />
+              </button>
               <button
                 onClick={() => setLogsOpen(true)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
