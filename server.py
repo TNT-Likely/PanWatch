@@ -1001,11 +1001,19 @@ async def trigger_agent_for_stock(
         raise
 
     # 返回详细结果
+    skipped = bool(result.raw_data.get("skipped", False))
+    should_alert = bool(
+        result.raw_data.get("should_alert", False if skipped else True)
+    )
     return {
+        "code": 0 if not skipped else 1001001,
+        "success": not skipped,
+        "message": result.content if skipped else "ok",
         "title": result.title,
         "content": result.content,
-        "should_alert": result.raw_data.get("should_alert", True),
+        "should_alert": should_alert,
         "notified": result.raw_data.get("notified", False),
+        "skipped": skipped,
     }
 
 

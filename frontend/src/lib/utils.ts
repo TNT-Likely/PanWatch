@@ -39,6 +39,7 @@ const API_BASE = '/api'
 
 interface ApiResponse<T> {
   code: number
+  success?: boolean
   data: T
   message: string
 }
@@ -93,7 +94,7 @@ export async function fetchAPI<T>(path: string, options?: RequestInit): Promise<
   }
 
   const body: ApiResponse<T> = await res.json().catch(() => ({ code: res.status, data: null as T, message: `HTTP ${res.status}` }))
-  if (body.code !== 0) {
+  if (body.code !== 0 || body.success === false) {
     throw new Error(body.message || `HTTP ${res.status}`)
   }
   return body.data

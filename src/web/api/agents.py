@@ -380,18 +380,22 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             "has_watchlist": False,
         }
 
-    # 检查是否有市场在交易
-    any_trading = any(m.is_trading_time() for m in MARKETS.values())
-    if not any_trading:
+    # 按股票所属市场过滤：只扫描当前开市市场的股票（避免全局门禁误判）
+    active_watchlist = [
+        s for s in watchlist if MARKETS.get(s.market) and MARKETS[s.market].is_trading_time()
+    ]
+    if not active_watchlist:
         return {
             "stocks": [],
             "message": "当前非交易时段",
             "scanned_count": len(watchlist),
+            "total_watchlist_count": len(watchlist),
+            "skipped_not_trading_count": len(watchlist),
             "is_trading": False,
             "has_watchlist": True,
         }
 
-    cache_key = _build_scan_cache_key(analyze, watchlist)
+    cache_key = _build_scan_cache_key(analyze, active_watchlist)
     cached = _get_scan_cache(cache_key, analyze)
     if cached is not None:
         return cached
@@ -402,7 +406,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
     # 按市场分组采集行情
     market_symbols: dict[MarketCode, list] = {}
     stock_market_map: dict[str, MarketCode] = {}
-    for stock in watchlist:
+    for stock in active_watchlist:
         market_symbols.setdefault(stock.market, []).append(stock.symbol)
         stock_market_map[stock.symbol] = stock.market
 
@@ -621,7 +625,9 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
 
     payload = {
         "stocks": results,
-        "scanned_count": len(watchlist),
+        "scanned_count": len(active_watchlist),
+        "total_watchlist_count": len(watchlist),
+        "skipped_not_trading_count": len(watchlist) - len(active_watchlist),
         "is_trading": True,
         "has_watchlist": True,
         "available_funds": portfolio.total_available_funds,

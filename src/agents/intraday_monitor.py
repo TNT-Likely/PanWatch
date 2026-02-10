@@ -17,12 +17,22 @@ from src.models.market import MarketCode, StockData, MARKETS
 logger = logging.getLogger(__name__)
 
 
-def is_any_market_trading() -> bool:
-    """检查是否有任何市场正在交易"""
-    for market_def in MARKETS.values():
-        if market_def.is_trading_time():
-            return True
-    return False
+def is_market_trading(market: MarketCode) -> bool:
+    """按市场判断是否在交易时段。"""
+    market_def = MARKETS.get(market)
+    if not market_def:
+        return False
+    return market_def.is_trading_time()
+
+
+def market_label(market: MarketCode) -> str:
+    if market == MarketCode.CN:
+        return "A股"
+    if market == MarketCode.HK:
+        return "港股"
+    if market == MarketCode.US:
+        return "美股"
+    return market.value
 
 
 # 标准化操作建议
@@ -82,11 +92,6 @@ class IntradayMonitorAgent(BaseAgent):
 
     async def collect(self, context: AgentContext) -> dict:
         """采集实时行情 + K线 + 历史分析"""
-        # 检查是否在交易时段
-        if not is_any_market_trading():
-            logger.info("当前非交易时段，跳过盘中监测")
-            return {"stocks": [], "stock_data": None, "skip_reason": "非交易时段"}
-
         if not context.watchlist:
             logger.warning("自选股列表为空，跳过盘中监测")
             return {"stocks": [], "stock_data": None}
@@ -96,6 +101,16 @@ class IntradayMonitorAgent(BaseAgent):
         market = stock_config.market if stock_config else MarketCode.CN
         symbol = stock_config.symbol if stock_config else ""
         name = stock_config.name if stock_config else symbol
+
+        # 按股票所属市场做交易时段门禁（而非全局任一市场开盘）
+        if not is_market_trading(market):
+            msg = f"当前{market_label(market)}非交易时段，已跳过执行"
+            logger.info(f"{msg}: {symbol}")
+            return {
+                "stocks": [],
+                "stock_data": None,
+                "skip_reason": msg,
+            }
 
         builder = SignalPackBuilder()
         packs = await builder.build_for_symbols(

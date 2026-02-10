@@ -16,10 +16,13 @@ import { useToast } from '@/components/ui/toast'
 import StockInsightModal from '@/components/stock-insight-modal'
 
 interface AgentResult {
+  success?: boolean
+  message?: string
   title: string
   content: string
   should_alert: boolean
   notified: boolean
+  skipped?: boolean
 }
 
 interface StockAgentInfo {
@@ -1071,14 +1074,31 @@ export default function StocksPage() {
     setAgentDialogStock(null)
     try {
       // 手动触发时跳过节流，方便测试
-      const resp = await fetchAPI<{ result: AgentResult }>(`/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`, { method: 'POST' })
+      const resp = await fetchAPI<{ result: AgentResult; success?: boolean; message?: string }>(
+        `/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`,
+        { method: 'POST' }
+      )
       const result = resp?.result
       if (result) {
         // 仅提示，不再弹出结果弹窗，避免干扰
-        toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
+        if (result.success === false) {
+          toast(result.message || result.content || '执行未通过', 'info')
+          return
+        }
+        const isSkipped = !!result.skipped || /已跳过执行|非交易时段/.test(result.content || '')
+        if (isSkipped) {
+          toast(result.content || '当前非交易时段，已跳过执行', 'info')
+        } else {
+          toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
+        }
       }
     } catch (e) {
-      toast(e instanceof Error ? e.message : '触发失败', 'error')
+      const msg = e instanceof Error ? e.message : '触发失败'
+      if (/非交易时段|跳过执行/.test(msg)) {
+        toast(msg, 'info')
+      } else {
+        toast(msg, 'error')
+      }
     } finally {
       setTriggeringAgent(null)
       setRunningAgents(prev => ({ ...prev, [stockId]: null }))

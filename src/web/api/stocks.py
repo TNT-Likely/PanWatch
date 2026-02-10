@@ -289,7 +289,12 @@ async def trigger_stock_agent(
             agent_name, db_stock, stock_agent_id=sa.id, bypass_throttle=bypass_throttle
         )
         logger.info(f"Agent {agent_name} 执行完成 - {db_stock.symbol}")
-        return {"result": result}
+        return {
+            "result": result,
+            "code": int(result.get("code", 0)),
+            "success": bool(result.get("success", True)),
+            "message": result.get("message", "ok"),
+        }
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
