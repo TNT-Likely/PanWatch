@@ -25,8 +25,8 @@ const navItems = [
   { to: '/datasources', icon: Database, label: '数据源' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
-const desktopPrimaryNavItems = navItems.slice(0, 5)
-const desktopMoreNavItems = navItems.slice(5)
+const desktopPrimaryNavItems = [navItems[0], navItems[1], navItems[2], navItems[4]]
+const desktopMoreNavItems = [navItems[3], navItems[5], navItems[6]]
 const mobilePrimaryNavItems = [navItems[0], navItems[1], navItems[2], navItems[4]]
 const mobileMoreNavItems = [navItems[3], navItems[5], navItems[6]]
 
