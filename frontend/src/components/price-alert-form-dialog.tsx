@@ -91,16 +91,18 @@ export default function PriceAlertFormDialog(props: {
   submitLabel?: string
   onSubmit: (payload: PriceAlertSubmitPayload) => Promise<void> | void
 }) {
-  const stockOptions = useMemo(() => props.stocks.filter(s => s.enabled !== false), [props.stocks])
+  const stockOptions = useMemo(() => props.stocks, [props.stocks])
   const [form, setForm] = useState<PriceAlertFormState>(buildDefaultForm())
 
   useEffect(() => {
     if (!props.open) return
     const fallbackStockId = stockOptions[0]?.id || 0
+    const preferredStockId = Number(props.initial?.stock_id || 0)
+    const hasPreferred = preferredStockId > 0 && stockOptions.some(s => s.id === preferredStockId)
     const merged: PriceAlertFormState = {
       ...buildDefaultForm(fallbackStockId),
       ...props.initial,
-      stock_id: props.initial?.stock_id || fallbackStockId,
+      stock_id: hasPreferred ? preferredStockId : (props.initial?.stock_id || fallbackStockId),
       items: props.initial?.items?.length ? props.initial.items : [{ type: 'price', op: '>=', value: 0 }],
       notify_channel_ids: props.initial?.notify_channel_ids || [],
     }

@@ -117,7 +117,23 @@ def get_version():
 
 
 @router.get("/update-check")
-def get_update_check():
+def get_update_check(db: Session = Depends(get_db)):
     """检查是否有可用新版本（带服务端缓存）。"""
     current = get_app_version()
-    return check_update(current)
+    app_proxy = (
+        db.query(AppSettings)
+        .filter(AppSettings.key == "http_proxy")
+        .first()
+    )
+    proxy = (app_proxy.value if app_proxy and app_proxy.value else "").strip() or (
+        Settings().http_proxy or ""
+    )
+    result = check_update(current, proxy=proxy)
+    err = str(result.get("error") or "").strip()
+    if err:
+        return {
+            "success": False,
+            "code": 10061,
+            "message": err,
+        }
+    return result

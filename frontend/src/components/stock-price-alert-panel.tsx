@@ -98,6 +98,19 @@ export default function StockPriceAlertPanel(props: {
       enabled: Number(props.initialEnabled || 0),
     }
   }, [open, props.initialEnabled, props.initialTotal, summary])
+  const formStocks = useMemo(() => {
+    const selectedId = Number(form.stock_id || 0)
+    const current = stocks.find(s => (
+      String(s.symbol || '').toUpperCase() === symbol.toUpperCase() &&
+      String(s.market || '').toUpperCase() === market
+    ))
+    const keepIds = new Set<number>([
+      selectedId,
+      Number(props.stockId || 0),
+      Number(current?.id || 0),
+    ].filter(Boolean))
+    return stocks.filter(s => s.enabled || keepIds.has(s.id))
+  }, [form.stock_id, market, props.stockId, stocks, symbol])
 
   const ensureStockId = useCallback(async (): Promise<number | null> => {
     if (props.stockId) return props.stockId
@@ -299,7 +312,7 @@ export default function StockPriceAlertPanel(props: {
         onOpenChange={setFormOpen}
         title={editingId ? '编辑提醒规则' : '新建提醒规则'}
         description="支持价格、涨跌幅、成交额、量比条件，支持 AND / OR 组合"
-        stocks={stocks.filter(s => s.enabled)}
+        stocks={formStocks}
         channels={channels}
         initial={form}
         submitting={saving}
