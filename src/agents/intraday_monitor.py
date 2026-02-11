@@ -1,5 +1,6 @@
 """盘中监测 Agent - 实时监控持仓，AI 判断是否需要提醒"""
 
+import json
 import logging
 import re
 from datetime import datetime, timedelta, date, timezone
@@ -428,7 +429,7 @@ class IntradayMonitorAgent(BaseAgent):
         }
 
         # 1) Prefer JSON output (structured mode)
-        obj = try_parse_action_json(content)
+        obj = try_parse_action_json(content) or self._try_parse_loose_json(content)
         if obj:
             action = (obj.get("action") or "watch").strip()
             result["action"] = action
@@ -529,6 +530,46 @@ class IntradayMonitorAgent(BaseAgent):
         result["should_alert"] = result["action"] in {"buy", "add", "reduce", "sell"}
         return result
 
+    def _try_parse_loose_json(self, text: str) -> dict | None:
+        """宽松解析 JSON 输出，兜底兼容模型异常格式。"""
+        raw = (text or "").strip()
+        if not raw:
+            return None
+
+        # 兼容首行 "json"
+        lines = raw.splitlines()
+        if lines and lines[0].strip().lower() == "json":
+            raw = "\n".join(lines[1:]).strip()
+
+        # 去掉 fenced code block
+        if raw.startswith("```"):
+            block_lines = raw.splitlines()
+            if len(block_lines) >= 3 and block_lines[-1].strip().startswith("```"):
+                raw = "\n".join(block_lines[1:-1]).strip()
+                if raw.lower().startswith("json\n"):
+                    raw = raw[5:].strip()
+
+        # 优先直接解析，失败则提取首个 JSON 对象片段
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            m = re.search(r"\{[\s\S]*\}", raw)
+            if not m:
+                return None
+            try:
+                obj = json.loads(m.group(0))
+            except Exception:
+                return None
+
+        if not isinstance(obj, dict):
+            return None
+
+        # 没有关键字段时不认为是建议 JSON
+        keys = {"action", "action_label", "signal", "reason", "triggers", "invalidations", "risks"}
+        if not any(k in obj for k in keys):
+            return None
+        return obj
+
     def _format_human_readable_content(
         self, stock: StockData, suggestion: dict, raw_content: str
     ) -> str:
@@ -570,7 +611,7 @@ class IntradayMonitorAgent(BaseAgent):
             lines.append("风险提示：")
             lines.extend([f"- {str(x)}" for x in risks[:3]])
         # 若本次并非纯 JSON，附上简短原文摘要便于核对
-        if not try_parse_action_json(raw_content):
+        if not (try_parse_action_json(raw_content) or self._try_parse_loose_json(raw_content)):
             brief = re.sub(r"\s+", " ", (raw_content or "").strip())[:200]
             if brief:
                 lines.append(f"备注：{brief}")
@@ -610,8 +651,8 @@ class IntradayMonitorAgent(BaseAgent):
         # 解析操作建议
         suggestion = self._parse_suggestion(raw_content)
         content = raw_content
-        # 纯 JSON 输出时，转换为可读通知文本，避免渠道直接推送原始 JSON
-        if try_parse_action_json(raw_content):
+        # JSON/类 JSON 输出时，统一转换为可读通知文本，避免渠道直接推送原始 JSON
+        if try_parse_action_json(raw_content) or self._try_parse_loose_json(raw_content):
             content = self._format_human_readable_content(stock, suggestion, raw_content)
 
         # 保存到建议池（包含 prompt 上下文）

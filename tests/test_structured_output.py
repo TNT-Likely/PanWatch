@@ -15,3 +15,9 @@ def test_try_parse_action_json_fenced_json() -> None:
     assert obj is not None
     assert obj.get("action") == "reduce"
 
+
+def test_try_parse_action_json_action_alias_build_to_add() -> None:
+    text = '\njson\n{"action":"build","action_label":"建仓","reason":"突破"}\n'
+    obj = try_parse_action_json(text)
+    assert obj is not None
+    assert obj.get("action") == "add"

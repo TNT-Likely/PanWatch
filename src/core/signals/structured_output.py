@@ -14,6 +14,10 @@ ALLOWED_ACTIONS = {
     "avoid",
 }
 
+ACTION_ALIASES = {
+    "build": "add",
+}
+
 
 TAG_START = "<!--PANWATCH_JSON-->"
 TAG_END = "<!--/PANWATCH_JSON-->"
@@ -46,7 +50,10 @@ def try_parse_action_json(text: str) -> dict | None:
         return None
     if not isinstance(obj, dict):
         return None
-    action = (obj.get("action") or "").strip()
+    action = (obj.get("action") or "").strip().lower()
+    if action in ACTION_ALIASES:
+        obj["action"] = ACTION_ALIASES[action]
+        action = obj["action"]
     if action and action not in ALLOWED_ACTIONS:
         return None
     return obj
