@@ -7,6 +7,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@panwatch/api': path.resolve(__dirname, './packages/api/src'),
+      '@panwatch/base-ui': path.resolve(__dirname, './packages/base-ui/src'),
+      '@panwatch/biz-ui': path.resolve(__dirname, './packages/biz-ui/src'),
     },
   },
   server: {

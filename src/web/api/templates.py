@@ -35,7 +35,6 @@ class TemplateStock(BaseModel):
     symbol: str
     name: str
     market: str
-    enabled: bool = True
     agents: list[TemplateStockAgent] = Field(default_factory=list)
 
 
@@ -93,7 +92,6 @@ def export_template(db: Session = Depends(get_db)):
                 "symbol": s.symbol,
                 "name": s.name,
                 "market": s.market,
-                "enabled": bool(s.enabled),
                 "agents": [
                     {
                         "agent_name": sa.agent_name,
@@ -184,16 +182,13 @@ def import_template(
             .first()
         )
         if not stock:
-            stock = Stock(
-                symbol=s.symbol, name=s.name, market=s.market, enabled=bool(s.enabled)
-            )
+            stock = Stock(symbol=s.symbol, name=s.name, market=s.market)
             db.add(stock)
             db.flush()  # assign id
             created_stocks += 1
         else:
             updated_stocks += 1
             stock.name = s.name or stock.name
-            stock.enabled = bool(s.enabled)
 
         if not s.agents:
             continue

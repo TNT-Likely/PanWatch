@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import InteractiveKline from '@/components/InteractiveKline'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
 
 export default function KlineModal(props: {
   open: boolean

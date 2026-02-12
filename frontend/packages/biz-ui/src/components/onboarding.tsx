@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Bot, Bell, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent } from '@panwatch/base-ui/components/ui/dialog'
+import { Button } from '@panwatch/base-ui/components/ui/button'
 
 interface OnboardingProps {
   open: boolean

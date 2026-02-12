@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from src.web.database import get_db
-from src.web.models import Stock, StockAgent, AgentConfig
+from src.web.models import (
+    Stock,
+    StockAgent,
+    AgentConfig,
+    Position,
+    PriceAlertRule,
+    PriceAlertHit,
+)
 from src.web.stock_list import search_stocks, refresh_stock_list
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.models.market import MarketCode, MARKETS
@@ -23,7 +30,6 @@ class StockCreate(BaseModel):
 
 class StockUpdate(BaseModel):
     name: str | None = None
-    enabled: bool | None = None
 
 
 class StockAgentInfo(BaseModel):
@@ -39,7 +45,6 @@ class StockResponse(BaseModel):
     name: str
     market: str
     sort_order: int
-    enabled: bool
     agents: list[StockAgentInfo] = []
 
     class Config:
@@ -73,7 +78,6 @@ def _stock_to_response(stock: Stock) -> dict:
         "name": stock.name,
         "market": stock.market,
         "sort_order": stock.sort_order or 0,
-        "enabled": stock.enabled,
         "agents": [
             {
                 "agent_name": sa.agent_name,
@@ -176,7 +180,7 @@ def list_stocks(db: Session = Depends(get_db)):
 @router.get("/quotes")
 def get_quotes(db: Session = Depends(get_db)):
     """获取所有自选股的实时行情"""
-    stocks = db.query(Stock).filter(Stock.enabled == True).all()
+    stocks = db.query(Stock).all()
     if not stocks:
         return {}
 
@@ -261,6 +265,33 @@ def delete_stock(stock_id: int, db: Session = Depends(get_db)):
     db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
     if not db_stock:
         raise HTTPException(404, "股票不存在")
+
+    # 删除股票前，要求先清理持仓，避免误删资产数据。
+    has_position = db.query(Position.id).filter(Position.stock_id == stock_id).first()
+    if has_position:
+        raise HTTPException(400, "该股票存在持仓，请先删除持仓后再删除股票")
+
+    # SQLite 默认可能不启用 FK 级联，手动清理提醒数据避免孤儿记录。
+    rule_ids = [
+        row[0]
+        for row in db.query(PriceAlertRule.id).filter(
+            PriceAlertRule.stock_id == stock_id
+        ).all()
+    ]
+    if rule_ids:
+        db.query(PriceAlertHit).filter(PriceAlertHit.rule_id.in_(rule_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(PriceAlertHit).filter(PriceAlertHit.stock_id == stock_id).delete(
+        synchronize_session=False
+    )
+    db.query(PriceAlertRule).filter(PriceAlertRule.stock_id == stock_id).delete(
+        synchronize_session=False
+    )
+    db.query(StockAgent).filter(StockAgent.stock_id == stock_id).delete(
+        synchronize_session=False
+    )
+
     db.delete(db_stock)
     db.commit()
     return {"ok": True}
@@ -300,6 +331,7 @@ async def trigger_stock_agent(
     agent_name: str,
     bypass_throttle: bool = False,
     bypass_market_hours: bool = False,
+    allow_unbound: bool = False,
     db: Session = Depends(get_db),
 ):
     """手动触发某只股票的指定 Agent"""
@@ -310,8 +342,13 @@ async def trigger_stock_agent(
     sa = db.query(StockAgent).filter(
         StockAgent.stock_id == stock_id, StockAgent.agent_name == agent_name
     ).first()
-    if not sa:
+    if not sa and not allow_unbound:
         raise HTTPException(400, f"股票未关联 Agent {agent_name}")
+    if not sa and allow_unbound:
+        # 允许无绑定触发时，至少确保 Agent 存在。
+        agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
+        if not agent:
+            raise HTTPException(400, f"Agent {agent_name} 不存在")
 
     logger.info(f"手动触发 Agent {agent_name} - {db_stock.name}({db_stock.symbol})")
 
@@ -320,7 +357,7 @@ async def trigger_stock_agent(
         result = await trigger_agent_for_stock(
             agent_name,
             db_stock,
-            stock_agent_id=sa.id,
+            stock_agent_id=sa.id if sa else None,
             bypass_throttle=bypass_throttle,
             bypass_market_hours=bypass_market_hours,
         )

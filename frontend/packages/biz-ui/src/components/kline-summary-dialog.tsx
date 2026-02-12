@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { fetchAPI } from '@/lib/utils'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { fetchAPI } from '@panwatch/api'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { HoverPopover } from '@/components/ui/hover-popover'
+import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 
 export interface KlineSummaryData {
   // meta (from backend)

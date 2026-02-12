@@ -1,20 +1,21 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3 } from 'lucide-react'
-import { fetchAPI, useLocalStorage, type AIService, type NotifyChannel } from '@/lib/utils'
-import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@/components/suggestion-badge'
+import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
+import { useLocalStorage } from '@/lib/utils'
+import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { KlineSummaryDialog } from '@/components/kline-summary-dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@/components/ui/select'
-import { useToast } from '@/components/ui/toast'
-import StockInsightModal from '@/components/stock-insight-modal'
-import StockPriceAlertPanel from '@/components/stock-price-alert-panel'
+import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Input } from '@panwatch/base-ui/components/ui/input'
+import { Label } from '@panwatch/base-ui/components/ui/label'
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { Badge } from '@panwatch/base-ui/components/ui/badge'
+import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 
 interface AgentResult {
   success?: boolean
@@ -39,7 +40,6 @@ interface Stock {
   name: string
   market: string
   sort_order?: number
-  enabled: boolean
   agents: StockAgentInfo[]
 }
 
@@ -442,12 +442,9 @@ export default function StocksPage() {
   const previewWatchlistReorder = useCallback((fromId: number, toId: number) => {
     if (fromId === toId) return
     setStocks(prev => {
-      const enabled = prev.filter(s => s.enabled).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
-      const disabled = prev.filter(s => !s.enabled).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
-      const movedEnabled = moveById(enabled, fromId, toId)
-      const nextEnabled = movedEnabled.map((s, idx) => ({ ...s, sort_order: idx + 1 }))
-      const nextDisabled = disabled.map((s, idx) => ({ ...s, sort_order: nextEnabled.length + idx + 1 }))
-      return [...nextEnabled, ...nextDisabled]
+      const ordered = [...prev].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+      const moved = moveById(ordered, fromId, toId)
+      return moved.map((s, idx) => ({ ...s, sort_order: idx + 1 }))
     })
   }, [])
 
@@ -578,7 +575,6 @@ export default function StocksPage() {
     const seen = new Set<string>()
 
     for (const stock of stocks) {
-      if (!stock.enabled) continue
       const key = `${stock.market}:${stock.symbol}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -786,11 +782,10 @@ export default function StocksPage() {
 
   // 关注列表变更后，自动补齐缺失的 K 线摘要（避免未配置 agent 时没有技术指标徽章）
   useEffect(() => {
-    const enabled = (stocks || []).filter(s => s.enabled)
-    if (enabled.length === 0) return
+    if (!stocks || stocks.length === 0) return
     const now = Date.now()
     const retryGapMs = 2 * 60 * 1000
-    const missing = enabled.filter(s => {
+    const missing = stocks.filter(s => {
       const key = `${s.market || 'CN'}:${s.symbol}`
       if (klineSummaries[key]) return false
       const lastTry = klineMissingRetryRef.current[key] || 0
@@ -866,10 +861,11 @@ export default function StocksPage() {
       setLastRefreshTime(new Date())
     } catch (e) {
       console.error('扫描失败:', e)
+      toast(e instanceof Error ? e.message : '扫描失败', 'error')
     } finally {
       setScanning(false)
     }
-  }, [loadPoolSuggestions, refreshKlines])
+  }, [loadPoolSuggestions, refreshKlines, toast])
 
   // 首次加载后，按需刷新 K 线摘要与建议池
   const initialKlineDone = useRef(false)
@@ -969,12 +965,16 @@ export default function StocksPage() {
 
   const handleStockSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await fetchAPI('/stocks', { method: 'POST', body: JSON.stringify(stockForm) })
-    setStockForm(emptyStockForm)
-    setSearchQuery('')
-    setShowStockForm(false)
-    load()
-    toast('股票已添加', 'success')
+    try {
+      await stocksApi.create(stockForm)
+      setStockForm(emptyStockForm)
+      setSearchQuery('')
+      setShowStockForm(false)
+      load()
+      toast('股票已添加', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '添加股票失败', 'error')
+    }
   }
 
   const hasAnyPositionForStockId = (id: number): boolean => {
@@ -982,16 +982,21 @@ export default function StocksPage() {
   }
 
   const removeFromWatchlist = async (stock: Stock) => {
+    if (hasAnyPositionForStockId(stock.id)) {
+      toast('该股票存在持仓，请先删除持仓后再删除股票', 'error')
+      return
+    }
+
     setRemovingWatchStock(true)
     try {
-      await fetchAPI(`/stocks/${stock.id}`, { method: 'PUT', body: JSON.stringify({ enabled: false }) })
-      toast('已移除关注（不会影响持仓）', 'success')
+      await stocksApi.remove(stock.id)
+      toast('股票已删除', 'success')
       setRemoveWatchStock(null)
       load()
-      // 持仓独立存储，但刷新一次可避免 UI 误解
+      // 价格提醒/关联配置会随股票删除，刷新一次避免 UI 残留。
       loadPortfolio()
     } catch (e) {
-      toast(e instanceof Error ? e.message : '移除失败', 'error')
+      toast(e instanceof Error ? e.message : '删除失败', 'error')
     } finally {
       setRemovingWatchStock(false)
     }
@@ -1010,27 +1015,35 @@ export default function StocksPage() {
   }
 
   const handleAccountSubmit = async () => {
-    const payload = {
-      name: accountForm.name,
-      available_funds: parseFloat(accountForm.available_funds) || 0,
+    try {
+      const payload = {
+        name: accountForm.name,
+        available_funds: parseFloat(accountForm.available_funds) || 0,
+      }
+      if (editAccountId) {
+        await fetchAPI(`/accounts/${editAccountId}`, { method: 'PUT', body: JSON.stringify(payload) })
+      } else {
+        await fetchAPI('/accounts', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      setAccountDialogOpen(false)
+      load()
+      loadPortfolio()
+      toast(editAccountId ? '账户已更新' : '账户已创建', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '保存账户失败', 'error')
     }
-    if (editAccountId) {
-      await fetchAPI(`/accounts/${editAccountId}`, { method: 'PUT', body: JSON.stringify(payload) })
-    } else {
-      await fetchAPI('/accounts', { method: 'POST', body: JSON.stringify(payload) })
-    }
-    setAccountDialogOpen(false)
-    load()
-    loadPortfolio()
-    toast(editAccountId ? '账户已更新' : '账户已创建', 'success')
   }
 
   const handleDeleteAccount = async (id: number) => {
     if (!confirm('确定删除该账户？这将同时删除该账户的所有持仓记录')) return
-    await fetchAPI(`/accounts/${id}`, { method: 'DELETE' })
-    load()
-    loadPortfolio()
-    toast('账户已删除', 'success')
+    try {
+      await fetchAPI(`/accounts/${id}`, { method: 'DELETE' })
+      load()
+      loadPortfolio()
+      toast('账户已删除', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '删除账户失败', 'error')
+    }
   }
 
   // ========== Position handlers ==========
@@ -1109,69 +1122,86 @@ export default function StocksPage() {
   }
 
   const handlePositionSubmit = async () => {
-    let stockId = positionForm.stock_id
+    try {
+      let stockId = positionForm.stock_id
 
-    // 如果是新增且股票不在自选中，先添加到自选
-    if (!editPositionId && !stockId && positionForm.stock_symbol) {
-      try {
-        const newStock = await fetchAPI<Stock>('/stocks', {
-          method: 'POST',
-          body: JSON.stringify({
-            symbol: positionForm.stock_symbol,
-            name: positionForm.stock_name,
-            market: positionForm.stock_market,
+      // 如果是新增且股票不在自选中，先添加到自选
+      if (!editPositionId && !stockId && positionForm.stock_symbol) {
+        try {
+          const newStock = await fetchAPI<Stock>('/stocks', {
+            method: 'POST',
+            body: JSON.stringify({
+              symbol: positionForm.stock_symbol,
+              name: positionForm.stock_name,
+              market: positionForm.stock_market,
+            })
           })
-        })
-        stockId = newStock.id
-        load() // 刷新股票列表
-      } catch (e) {
-        // 股票可能已存在，尝试获取
-        const existingStocks = await fetchAPI<Stock[]>('/stocks')
-        const existing = existingStocks.find(s => s.symbol === positionForm.stock_symbol && s.market === positionForm.stock_market)
-        if (existing) {
-          stockId = existing.id
-        } else {
-          toast('添加股票失败', 'error')
-          return
+          stockId = newStock.id
+          load() // 刷新股票列表
+        } catch {
+          // 股票可能已存在，尝试获取（兼容并发创建/历史数据）。
+          try {
+            const existingStocks = await fetchAPI<Stock[]>('/stocks')
+            const existing = existingStocks.find(s => s.symbol === positionForm.stock_symbol && s.market === positionForm.stock_market)
+            if (existing) {
+              stockId = existing.id
+            } else {
+              toast('添加股票失败', 'error')
+              return
+            }
+          } catch (e) {
+            toast(e instanceof Error ? e.message : '添加股票失败', 'error')
+            return
+          }
         }
       }
-    }
 
-    const payload = {
-      account_id: positionForm.account_id,
-      stock_id: stockId,
-      cost_price: parseFloat(positionForm.cost_price),
-      quantity: parseInt(positionForm.quantity),
-      invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
-      trading_style: positionForm.trading_style,  // 空字符串表示清空
+      const payload = {
+        account_id: positionForm.account_id,
+        stock_id: stockId,
+        cost_price: parseFloat(positionForm.cost_price),
+        quantity: parseInt(positionForm.quantity),
+        invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
+        trading_style: positionForm.trading_style,  // 空字符串表示清空
+      }
+      if (editPositionId) {
+        await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
+      } else {
+        await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      setPositionDialogOpen(false)
+      loadPortfolio()
+      toast(editPositionId ? '持仓已更新' : '持仓已添加', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '保存持仓失败', 'error')
     }
-    if (editPositionId) {
-      await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
-    } else {
-      await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
-    }
-    setPositionDialogOpen(false)
-    loadPortfolio()
-    toast(editPositionId ? '持仓已更新' : '持仓已添加', 'success')
   }
 
   const handleDeletePosition = async (id: number) => {
     if (!confirm('确定删除该持仓？')) return
-    await fetchAPI(`/positions/${id}`, { method: 'DELETE' })
-    loadPortfolio()
-    toast('持仓已删除', 'success')
+    try {
+      await fetchAPI(`/positions/${id}`, { method: 'DELETE' })
+      loadPortfolio()
+      toast('持仓已删除', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '删除持仓失败', 'error')
+    }
   }
 
   // ========== Agent handlers ==========
   const toggleAgent = async (stock: Stock, agentName: string) => {
-    const current = stock.agents || []
-    const isAssigned = current.some(a => a.agent_name === agentName)
-    const newAgents = isAssigned
-      ? current.filter(a => a.agent_name !== agentName)
-      : [...current, { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] }]
-    await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
-    load()
-    setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    try {
+      const current = stock.agents || []
+      const isAssigned = current.some(a => a.agent_name === agentName)
+      const newAgents = isAssigned
+        ? current.filter(a => a.agent_name !== agentName)
+        : [...current, { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] }]
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '更新 Agent 绑定失败', 'error')
+    }
   }
 
   const triggerStockAgent = async (stockId: number, agentName: string) => {
@@ -1213,35 +1243,47 @@ export default function StocksPage() {
   }
 
   const updateStockAgentModel = async (stock: Stock, agentName: string, modelId: number | null) => {
-    const newAgents = (stock.agents || []).map(a =>
-      a.agent_name === agentName ? { ...a, ai_model_id: modelId } : a
-    )
-    await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
-    load()
-    setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    try {
+      const newAgents = (stock.agents || []).map(a =>
+        a.agent_name === agentName ? { ...a, ai_model_id: modelId } : a
+      )
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '更新 Agent 模型失败', 'error')
+    }
   }
 
   const toggleStockAgentChannel = async (stock: Stock, agentName: string, channelId: number) => {
-    const newAgents = (stock.agents || []).map(a => {
-      if (a.agent_name !== agentName) return a
-      const current = a.notify_channel_ids || []
-      const newIds = current.includes(channelId)
-        ? current.filter(id => id !== channelId)
-        : [...current, channelId]
-      return { ...a, notify_channel_ids: newIds }
-    })
-    await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
-    load()
-    setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    try {
+      const newAgents = (stock.agents || []).map(a => {
+        if (a.agent_name !== agentName) return a
+        const current = a.notify_channel_ids || []
+        const newIds = current.includes(channelId)
+          ? current.filter(id => id !== channelId)
+          : [...current, channelId]
+        return { ...a, notify_channel_ids: newIds }
+      })
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '更新 Agent 通知配置失败', 'error')
+    }
   }
 
   const updateStockAgentSchedule = async (stock: Stock, agentName: string, schedule: string) => {
-    const newAgents = (stock.agents || []).map(a =>
-      a.agent_name === agentName ? { ...a, schedule } : a
-    )
-    await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
-    load()
-    setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    try {
+      const newAgents = (stock.agents || []).map(a =>
+        a.agent_name === agentName ? { ...a, schedule } : a
+      )
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '更新 Agent 调度失败', 'error')
+    }
   }
 
   // ========== Helpers ==========
@@ -1339,7 +1381,7 @@ export default function StocksPage() {
   }, [portfolio])
 
   const watchlistCount = useMemo(() => {
-    return stocks.filter(s => s.enabled).length
+    return stocks.length
   }, [stocks])
 
   const toggleAccountExpanded = (id: number) => {
@@ -2175,10 +2217,10 @@ export default function StocksPage() {
             <h3 className="text-[13px] font-semibold text-foreground">关注列表</h3>
             <div className="flex items-center gap-1">
               {[
-                { value: '', label: '全部', count: stocks.filter(s => s.enabled).length },
-                { value: 'CN', label: 'A股', count: stocks.filter(s => s.enabled && s.market === 'CN').length },
-                { value: 'HK', label: '港股', count: stocks.filter(s => s.enabled && s.market === 'HK').length },
-                { value: 'US', label: '美股', count: stocks.filter(s => s.enabled && s.market === 'US').length },
+                { value: '', label: '全部', count: stocks.length },
+                { value: 'CN', label: 'A股', count: stocks.filter(s => s.market === 'CN').length },
+                { value: 'HK', label: '港股', count: stocks.filter(s => s.market === 'HK').length },
+                { value: 'US', label: '美股', count: stocks.filter(s => s.market === 'US').length },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -2211,7 +2253,7 @@ export default function StocksPage() {
               </button>
             </div>
           </div>
-          {stocks.filter(s => s.enabled).length === 0 ? (
+          {stocks.length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-[13px] text-muted-foreground">还没有添加关注股票</div>
               <div className="mt-2 text-[11px] text-muted-foreground/70">点击右上角“添加股票”开始</div>
@@ -2219,7 +2261,7 @@ export default function StocksPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {stocks
-                .filter(s => s.enabled && (!stockListFilter || s.market === stockListFilter))
+                .filter(s => !stockListFilter || s.market === stockListFilter)
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
                   if (!watchlistOnlyAlerts) return true
@@ -2372,7 +2414,7 @@ export default function StocksPage() {
                           size="icon"
                           className="h-7 w-7 hover:text-destructive"
                           onClick={() => setRemoveWatchStock(stock)}
-                          title="移除关注（不影响持仓）"
+                          title="删除股票"
                         >
                           <X className="w-3.5 h-3.5" />
                         </Button>
@@ -2410,8 +2452,8 @@ export default function StocksPage() {
       <Dialog open={!!removeWatchStock} onOpenChange={(open) => { if (!open) setRemoveWatchStock(null) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>移除关注</DialogTitle>
-            <DialogDescription>仅从关注列表移除，不会删除持仓</DialogDescription>
+            <DialogTitle>删除股票</DialogTitle>
+            <DialogDescription>删除后将从系统中移除该股票及其关注配置</DialogDescription>
           </DialogHeader>
           {removeWatchStock && (
             <div className="space-y-4 mt-2">
@@ -2422,15 +2464,19 @@ export default function StocksPage() {
                 </div>
                 <div className="mt-1 text-[12px] text-muted-foreground">
                   {hasAnyPositionForStockId(removeWatchStock.id)
-                    ? '该股票在持仓中。移除关注不影响持仓；如需删除持仓，请到“持仓”Tab 删除持仓记录。'
-                    : '移除后将不再出现在关注列表，也不会在自选行情中拉取。'}
+                    ? '该股票存在持仓，不能直接删除。请先在“持仓”Tab 删除持仓记录。'
+                    : '删除后将不再出现在关注列表，同时会清理该股票关联的价格提醒。'}
                 </div>
               </div>
 
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setRemoveWatchStock(null)} disabled={removingWatchStock}>取消</Button>
-                <Button variant="destructive" onClick={() => removeFromWatchlist(removeWatchStock)} disabled={removingWatchStock}>
-                  {removingWatchStock ? '处理中…' : '移除关注'}
+                <Button
+                  variant="destructive"
+                  onClick={() => removeFromWatchlist(removeWatchStock)}
+                  disabled={removingWatchStock || hasAnyPositionForStockId(removeWatchStock.id)}
+                >
+                  {hasAnyPositionForStockId(removeWatchStock.id) ? '请先删除持仓' : (removingWatchStock ? '处理中…' : '删除股票')}
                 </Button>
               </div>
             </div>

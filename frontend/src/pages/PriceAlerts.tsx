@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Plus, RefreshCw, Play, Trash2, BarChart3, BellRing } from 'lucide-react'
-import { fetchAPI, type NotifyChannel } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useToast } from '@/components/ui/toast'
-import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@/components/price-alert-form-dialog'
+import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
 
 type RuleOp = 'and' | 'or'
 
@@ -14,7 +14,6 @@ interface StockItem {
   symbol: string
   name: string
   market: string
-  enabled: boolean
 }
 
 interface AlertRule {
@@ -99,14 +98,14 @@ export default function PriceAlertsPage() {
   const [scanRunning, setScanRunning] = useState(false)
   const [prefillDone, setPrefillDone] = useState(false)
 
-  const stockOptions = useMemo(() => stocks.filter(s => s.enabled), [stocks])
+  const stockOptions = useMemo(() => stocks, [stocks])
 
   const load = async () => {
     setLoading(true)
     try {
       const [ruleData, stockData, channelData] = await Promise.all([
         fetchAPI<AlertRule[]>('/price-alerts'),
-        fetchAPI<StockItem[]>('/stocks'),
+        stocksApi.list(),
         fetchAPI<NotifyChannel[]>('/channels'),
       ])
       setRules(ruleData || [])
@@ -140,10 +139,7 @@ export default function PriceAlertsPage() {
       let target = stocks.find(s => qStockId > 0 ? s.id === qStockId : (s.symbol === qSymbol && s.market === qMarket))
       if (!target && qSymbol) {
         try {
-          target = await fetchAPI<StockItem>('/stocks', {
-            method: 'POST',
-            body: JSON.stringify({ symbol: qSymbol, market: qMarket, name: qName || qSymbol }),
-          })
+          target = await stocksApi.create({ symbol: qSymbol, market: qMarket, name: qName || qSymbol })
           if (target) setStocks(prev => prev.some(s => s.id === target!.id) ? prev : [target!, ...prev])
         } catch {
           // ignore and fallback to manual select

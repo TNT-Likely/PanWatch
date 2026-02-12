@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { Input } from '@panwatch/base-ui/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
+import { Button } from '@panwatch/base-ui/components/ui/button'
 
 export type RuleOp = 'and' | 'or'
 export type ConditionType = 'price' | 'change_pct' | 'turnover' | 'volume' | 'volume_ratio'

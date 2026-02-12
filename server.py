@@ -173,7 +173,7 @@ def seed_sample_stocks():
             {"symbol": "AAPL", "name": "苹果", "market": "US"},
         ]
         for s in samples:
-            db.add(Stock(**s, enabled=True))
+            db.add(Stock(**s))
         db.commit()
         logger.info("已添加 5 只示例股票（首次启动）")
     finally:
@@ -411,7 +411,7 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
         if not stock_ids:
             return []
 
-        # 绑定优先：只要绑定了 Agent，就纳入执行范围（不额外受 watchlist enabled 限制）
+        # 绑定优先：只要绑定了 Agent，就纳入执行范围
         stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all()
         result = []
         for s in stocks:

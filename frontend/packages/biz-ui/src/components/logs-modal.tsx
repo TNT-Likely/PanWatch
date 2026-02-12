@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Search, Trash2, RefreshCw, ScrollText } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { fetchAPI } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { Input } from '@panwatch/base-ui/components/ui/input'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { fetchAPI } from '@panwatch/api'
 import { mapLoggerName, loggerOptions } from '@/lib/logger-map'
 import { useLocalStorage } from '@/lib/utils'
 

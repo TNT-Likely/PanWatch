@@ -90,7 +90,6 @@ class Stock(Base):
     quantity = Column(Integer, nullable=True)
     invested_amount = Column(Float, nullable=True)
     sort_order = Column(Integer, default=0)
-    enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

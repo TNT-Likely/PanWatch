@@ -1,5 +1,5 @@
-import { HoverPopover } from '@/components/ui/hover-popover'
-import type { KlineSummaryData } from '@/components/kline-summary-dialog'
+import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import type { KlineSummaryData } from '@panwatch/biz-ui/components/kline-summary-dialog'
 
 interface KlineIndicatorsProps {
   summary: KlineSummaryData

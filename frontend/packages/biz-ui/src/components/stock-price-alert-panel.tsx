@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, Plus, Pencil, Trash2 } from 'lucide-react'
-import { fetchAPI, type NotifyChannel } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@/components/price-alert-form-dialog'
-import { useToast } from '@/components/ui/toast'
+import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 interface StockItem {
   id: number
   symbol: string
   name: string
   market: string
-  enabled: boolean
 }
 
 interface AlertRule {
@@ -99,32 +98,19 @@ export default function StockPriceAlertPanel(props: {
     }
   }, [open, props.initialEnabled, props.initialTotal, summary])
   const formStocks = useMemo(() => {
-    const selectedId = Number(form.stock_id || 0)
-    const current = stocks.find(s => (
-      String(s.symbol || '').toUpperCase() === symbol.toUpperCase() &&
-      String(s.market || '').toUpperCase() === market
-    ))
-    const keepIds = new Set<number>([
-      selectedId,
-      Number(props.stockId || 0),
-      Number(current?.id || 0),
-    ].filter(Boolean))
-    return stocks.filter(s => s.enabled || keepIds.has(s.id))
-  }, [form.stock_id, market, props.stockId, stocks, symbol])
+    return stocks
+  }, [stocks])
 
   const ensureStockId = useCallback(async (): Promise<number | null> => {
     if (props.stockId) return props.stockId
     let target = stocks.find(s => s.symbol === symbol && s.market === market)
     if (!target) {
-      const all = await fetchAPI<StockItem[]>('/stocks')
+      const all = await stocksApi.list()
       setStocks(all || [])
       target = (all || []).find(s => s.symbol === symbol && s.market === market)
     }
     if (!target) {
-      const created = await fetchAPI<StockItem>('/stocks', {
-        method: 'POST',
-        body: JSON.stringify({ symbol, market, name: props.stockName || symbol }),
-      })
+      const created = await stocksApi.create({ symbol, market, name: props.stockName || symbol })
       setStocks(prev => prev.some(s => s.id === created.id) ? prev : [created, ...prev])
       return created.id
     }
@@ -137,7 +123,7 @@ export default function StockPriceAlertPanel(props: {
     try {
       const [ruleData, stockData, channelData] = await Promise.all([
         fetchAPI<AlertRule[]>('/price-alerts'),
-        fetchAPI<StockItem[]>('/stocks'),
+        stocksApi.list(),
         fetchAPI<NotifyChannel[]>('/channels'),
       ])
       setStocks(stockData || [])
@@ -181,18 +167,22 @@ export default function StockPriceAlertPanel(props: {
   }, [loadSummaryOnly, mode, open, props.initialTotal])
 
   const openCreate = async () => {
-    const stockId = await ensureStockId()
-    if (!stockId) {
-      toast('无法定位股票', 'error')
-      return
+    try {
+      const stockId = await ensureStockId()
+      if (!stockId) {
+        toast('无法定位股票', 'error')
+        return
+      }
+      setEditingId(null)
+      setForm({
+        ...DEFAULT_FORM,
+        stock_id: stockId,
+        name: props.stockName ? `${props.stockName} 价格提醒` : '',
+      })
+      setFormOpen(true)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '无法创建提醒', 'error')
     }
-    setEditingId(null)
-    setForm({
-      ...DEFAULT_FORM,
-      stock_id: stockId,
-      name: props.stockName ? `${props.stockName} 价格提醒` : '',
-    })
-    setFormOpen(true)
   }
 
   const openEdit = (r: AlertRule) => {

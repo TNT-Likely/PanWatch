@@ -1,4 +1,4 @@
-import type { KlineSummaryData } from '@/components/kline-summary-dialog'
+import type { KlineSummaryData } from '@panwatch/biz-ui/components/kline-summary-dialog'
 
 export type Action = 'buy' | 'add' | 'reduce' | 'sell' | 'hold' | 'watch' | 'avoid'
 

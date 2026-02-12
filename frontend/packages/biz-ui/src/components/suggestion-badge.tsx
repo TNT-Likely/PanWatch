@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { KlineSummaryDialog } from '@/components/kline-summary-dialog'
-import { KlineIndicators } from '@/components/kline-indicators'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
+import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { fetchAPI } from '@/lib/utils'
-import { useToast } from '@/components/ui/toast'
+import { fetchAPI } from '@panwatch/api'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 export interface SuggestionInfo {
   id?: number

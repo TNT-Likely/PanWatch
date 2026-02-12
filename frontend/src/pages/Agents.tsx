@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Play, Power, Clock, Cpu, Bot, Bell, Settings2 } from 'lucide-react'
-import { fetchAPI, type AIService, type NotifyChannel } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/toast'
+import { fetchAPI, type AIService, type NotifyChannel } from '@panwatch/api'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Badge } from '@panwatch/base-ui/components/ui/badge'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import { Label } from '@panwatch/base-ui/components/ui/label'
+import { Input } from '@panwatch/base-ui/components/ui/input'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 interface AgentConfig {
   id: number
@@ -34,7 +34,6 @@ interface StockConfig {
   symbol: string
   name: string
   market: string
-  enabled: boolean
   agents: StockAgentInfo[]
 }
 
@@ -878,7 +877,7 @@ export default function AgentsPage() {
                         }`}
                         title={`${s.name} (${s.symbol})`}
                       >
-                        {saving ? '处理中...' : `${s.name || s.symbol}${s.enabled ? '' : '（未启用）'}`}
+                        {saving ? '处理中...' : `${s.name || s.symbol}`}
                       </button>
                     )
                   })}

@@ -17,14 +17,15 @@ import {
   Sun,
   Moon,
 } from 'lucide-react'
-import { fetchAPI, useLocalStorage } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { Onboarding } from '@/components/onboarding'
-import { type SuggestionInfo, type KlineSummary } from '@/components/suggestion-badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import StockInsightModal from '@/components/stock-insight-modal'
+import { fetchAPI } from '@panwatch/api'
+import { useLocalStorage } from '@/lib/utils'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
+import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
+import { type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 
 interface MarketIndex {
   symbol: string
@@ -128,7 +129,6 @@ interface Stock {
   symbol: string
   name: string
   market: string
-  enabled: boolean
 }
 
 interface QuoteRequestItem {
@@ -243,7 +243,7 @@ export default function DashboardPage() {
   // Keyed by `${market}:${symbol}` to avoid cross-market collisions
   const [quotes, setQuotes] = useState<QuoteMap>({})
   const [quotesLoading, setQuotesLoading] = useState(false)
-  const hasWatchlist = stocks.filter(s => s.enabled).length > 0
+  const hasWatchlist = stocks.length > 0
 
   // Unified stock insight modal
   const [insightOpen, setInsightOpen] = useState(false)
@@ -293,7 +293,7 @@ export default function DashboardPage() {
   }>({ boards: {}, stocks: {} })
 
   const watchlistSet = useMemo(() => {
-    return new Set((stocks || []).filter(s => s.enabled).map(s => `${s.market}:${s.symbol}`))
+    return new Set((stocks || []).map(s => `${s.market}:${s.symbol}`))
   }, [stocks])
 
   const holdingSet = useMemo(() => {
@@ -392,7 +392,6 @@ export default function DashboardPage() {
     const seen = new Set<string>()
 
     for (const stock of stocks) {
-      if (!stock.enabled) continue
       const key = `${stock.market}:${stock.symbol}`
       if (seen.has(key)) continue
       seen.add(key)

@@ -17,8 +17,14 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@panwatch/api": ["./packages/api/src/index.ts"],
+      "@panwatch/api/*": ["./packages/api/src/*"],
+      "@panwatch/base-ui": ["./packages/base-ui/src/index.ts"],
+      "@panwatch/base-ui/*": ["./packages/base-ui/src/*"],
+      "@panwatch/biz-ui": ["./packages/biz-ui/src/index.ts"],
+      "@panwatch/biz-ui/*": ["./packages/biz-ui/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "packages/*/src"]
 }

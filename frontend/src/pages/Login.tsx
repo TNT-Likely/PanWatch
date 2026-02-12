@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Lock, Eye, EyeOff, User } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useToast } from '@/components/ui/toast'
-
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+import { authApi } from '@panwatch/api'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Input } from '@panwatch/base-ui/components/ui/input'
+import { Label } from '@panwatch/base-ui/components/ui/label'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -21,10 +20,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     // 检查认证状态
-    fetch(`${API_BASE}/api/auth/status`)
-      .then(res => res.json())
+    authApi.status()
       .then(data => {
-        setIsSetup(!data.data?.initialized)
+        setIsSetup(!data.initialized)
         setChecking(false)
       })
       .catch(() => setChecking(false))
@@ -47,21 +45,13 @@ export default function LoginPage() {
 
     setLoading(true)
     try {
-      const endpoint = isSetup ? '/api/auth/setup' : '/api/auth/login'
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.message || data.detail || '操作失败')
-      }
+      const data = isSetup
+        ? await authApi.setup({ username, password })
+        : await authApi.login({ username, password })
 
       // 保存 token
-      localStorage.setItem('token', data.data.token)
-      localStorage.setItem('token_expires', data.data.expires_at)
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('token_expires', data.expires_at)
 
       toast(isSetup ? '密码设置成功' : '登录成功', 'success')
       navigate('/')

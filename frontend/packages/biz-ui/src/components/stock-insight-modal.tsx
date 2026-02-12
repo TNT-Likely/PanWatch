@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Download, ExternalLink, RefreshCw, Share2 } from 'lucide-react'
-import { fetchAPI, useLocalStorage } from '@/lib/utils'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@/components/suggestion-badge'
-import { useToast } from '@/components/ui/toast'
-import InteractiveKline from '@/components/InteractiveKline'
-import { KlineIndicators } from '@/components/kline-indicators'
+import { fetchAPI, stocksApi } from '@panwatch/api'
+import { getMarketBadge } from '@panwatch/biz-ui'
+import { useLocalStorage } from '@/lib/utils'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
+import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import StockPriceAlertPanel from '@/components/stock-price-alert-panel'
+import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 
 interface QuoteResponse {
   symbol: string
@@ -106,7 +108,6 @@ interface StockItem {
   symbol: string
   name: string
   market: string
-  enabled: boolean
   agents?: StockAgentInfo[]
 }
 
@@ -169,12 +170,6 @@ function parseToMs(input?: string): number | null {
   if (!m) return null
   const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0)
   return isNaN(dt.getTime()) ? null : dt.getTime()
-}
-
-function marketBadge(market: string) {
-  if (market === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: '港股' }
-  if (market === 'US') return { style: 'bg-green-500/10 text-green-600', label: '美股' }
-  return { style: 'bg-blue-500/10 text-blue-600', label: 'A股' }
 }
 
 function parseSuggestionJson(raw: unknown): Record<string, any> | null {
@@ -348,6 +343,8 @@ export default function StockInsightModal(props: {
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
   const [klineDays] = useState<'60' | '120' | '250'>('120')
   const [alerting, setAlerting] = useState(false)
+  const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
+  const [watchToggleLoading, setWatchToggleLoading] = useState(false)
   const [autoSuggesting, setAutoSuggesting] = useState(false)
   const [imageExporting, setImageExporting] = useState(false)
   const [holdingAgg, setHoldingAgg] = useState<{
@@ -665,8 +662,31 @@ export default function StockInsightModal(props: {
     setAnnouncements([])
     setReports([])
     setMiniKlines([])
+    setWatchingStock(null)
     loadCore()
   }, [props.open, symbol, market, loadCore])
+
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const key = `${market}:${symbol}`
+        const stocks = await stocksApi.list()
+        if (cancelled) return
+        const found = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
+        if (found) {
+          stockCacheRef.current[key] = found
+        } else {
+          delete stockCacheRef.current[key]
+        }
+        setWatchingStock(found)
+      } catch {
+        if (!cancelled) setWatchingStock(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [props.open, symbol, market])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -733,7 +753,7 @@ export default function StockInsightModal(props: {
     if (value < quote.prev_close) return 'text-emerald-500'
     return 'text-foreground'
   }
-  const badge = marketBadge(market)
+  const badge = getMarketBadge(market)
   const amplitudePct = useMemo(() => {
     const hi = quote?.high_price
     const lo = quote?.low_price
@@ -961,13 +981,10 @@ export default function StockInsightModal(props: {
     if (!symbol) return
     setAlerting(true)
     try {
-      const stocks = await fetchAPI<StockItem[]>('/stocks')
+      const stocks = await stocksApi.list()
       let stock = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
       if (!stock) {
-        stock = await fetchAPI<StockItem>('/stocks', {
-          method: 'POST',
-          body: JSON.stringify({ symbol, name: resolvedName || symbol, market }),
-        })
+        stock = await stocksApi.create({ symbol, name: resolvedName || symbol, market })
       }
 
       const existingAgents = (stock.agents || []).map(a => ({
@@ -995,45 +1012,49 @@ export default function StockInsightModal(props: {
     }
   }
 
-  const ensureStockAndAgent = useCallback(async (
-    agentName: 'intraday_monitor' | 'chart_analyst'
-  ): Promise<StockItem | null> => {
+  const toggleWatch = useCallback(async () => {
+    if (!symbol) return
+    if (watchingStock && hasHolding) {
+      toast('该股票存在持仓，请先删除持仓后再取消关注', 'error')
+      return
+    }
+
+    setWatchToggleLoading(true)
+    try {
+      if (watchingStock) {
+        await stocksApi.remove(watchingStock.id)
+        setWatchingStock(null)
+        delete stockCacheRef.current[`${market}:${symbol}`]
+        toast('已取消关注', 'success')
+      } else {
+        const created = await stocksApi.create({ symbol, name: resolvedName || symbol, market })
+        setWatchingStock(created)
+        stockCacheRef.current[`${market}:${symbol}`] = created
+        toast('已添加关注', 'success')
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '操作失败', 'error')
+    } finally {
+      setWatchToggleLoading(false)
+    }
+  }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
+
+  const ensureStockExists = useCallback(async (): Promise<StockItem | null> => {
     const key = `${market}:${symbol}`
     let stock: StockItem | null = stockCacheRef.current[key] ?? null
 
     if (!stock) {
-      const stocks = await fetchAPI<StockItem[]>('/stocks')
+      const stocks = await stocksApi.list()
       stock = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
-    }
-    if (!stock) {
-      stock = await fetchAPI<StockItem>('/stocks', {
-        method: 'POST',
-        body: JSON.stringify({ symbol, name: resolvedName || symbol, market }),
-      })
     }
     if (!stock) return null
 
-    const existingAgents = (stock.agents || []).map(a => ({
-      agent_name: a.agent_name,
-      schedule: a.schedule || '',
-      ai_model_id: a.ai_model_id ?? null,
-      notify_channel_ids: a.notify_channel_ids || [],
-    }))
-    const hasAgent = existingAgents.some(a => a.agent_name === agentName)
-    if (!hasAgent) {
-      const nextAgents = [...existingAgents, { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] }]
-      stock = await fetchAPI<StockItem>(`/stocks/${stock.id}/agents`, {
-        method: 'PUT',
-        body: JSON.stringify({ agents: nextAgents }),
-      })
-    }
-
     stockCacheRef.current[key] = stock
     return stock
-  }, [market, symbol, resolvedName])
+  }, [market, symbol])
 
   const triggerAutoAiSuggestion = useCallback(async () => {
-    // 自动建议仅针对“确认未持仓”的股票，避免持仓股重复触发
+    // 自动建议仅针对“确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || hasHolding || suggestions.length > 0 || autoSuggesting) return
     const key = `${market}:${symbol}`
     const lastTs = autoTriggeredRef.current[key] || 0
@@ -1041,17 +1062,20 @@ export default function StockInsightModal(props: {
     autoTriggeredRef.current[key] = Date.now()
     setAutoSuggesting(true)
     try {
-      const stock = await ensureStockAndAgent('intraday_monitor')
+      const stock = await ensureStockExists()
       if (!stock) return
       // intraday_monitor 较 chart_analyst 更轻量、稳定，不依赖截图链路
-      await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true&bypass_market_hours=true`, { method: 'POST' })
+      await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true&bypass_market_hours=true&allow_unbound=true`, { method: 'POST' })
       await Promise.allSettled([loadSuggestions()])
-    } catch {
-      // 自动触发失败时静默降级到技术指标建议，不打断用户
+    } catch (e) {
+      toast(
+        e instanceof Error ? e.message : '自动 AI 建议触发失败，可点击「一键设提醒」重试',
+        'error'
+      )
     } finally {
       setAutoSuggesting(false)
     }
-  }, [symbol, market, holdingLoaded, hasHolding, suggestions.length, autoSuggesting, ensureStockAndAgent, loadSuggestions])
+  }, [symbol, market, holdingLoaded, hasHolding, suggestions.length, autoSuggesting, ensureStockExists, loadSuggestions, toast])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -1099,6 +1123,16 @@ export default function StockInsightModal(props: {
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleCopyShareText()}>
                   <Copy className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">复制</span>
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-2.5"
+                  onClick={toggleWatch}
+                  disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
+                  title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
+                >
+                  {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
                 </Button>
                 <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>

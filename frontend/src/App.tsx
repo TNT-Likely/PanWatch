@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
 import { Moon, Sun, TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, LogOut, Github, BellRing, MoreHorizontal } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
-import { fetchAPI, isAuthenticated, logout } from '@/lib/utils'
+import { appApi, fetchAPI, isAuthenticated, logout } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
 import StocksPage from '@/pages/Stocks'
 import AgentsPage from '@/pages/Agents'
@@ -11,10 +11,10 @@ import DataSourcesPage from '@/pages/DataSources'
 import HistoryPage from '@/pages/History'
 import PriceAlertsPage from '@/pages/PriceAlerts'
 import LoginPage from '@/pages/Login'
-import LogsModal from '@/components/logs-modal'
-import AmbientBackground from '@/components/AmbientBackground'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import LogsModal from '@panwatch/biz-ui/components/logs-modal'
+import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { Button } from '@panwatch/base-ui/components/ui/button'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -61,8 +61,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
-
 function App() {
   const { theme, toggleTheme } = useTheme()
   const location = useLocation()
@@ -78,9 +76,8 @@ function App() {
   const repoUrl = 'https://github.com/TNT-Likely/PanWatch'
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/version`)
-      .then(res => res.json())
-      .then(data => setVersion(data.data?.version || data.version || ''))
+    appApi.version()
+      .then(data => setVersion(data?.version || ''))
       .catch(() => {})
   }, [])
 
