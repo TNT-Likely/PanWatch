@@ -4,6 +4,7 @@ export const LOGGER_MAPPING: Record<string, string> = {
   'src.agents.daily_report': '收盘复盘',
   'src.agents.premarket_outlook': '盘前分析',
   'src.agents.intraday_monitor': '盘中监测',
+  'src.agents.base': 'Agent执行链路',
   'src.agents.news_digest': '新闻速递',
   'src.agents.chart_analyst': '技术分析',
 
