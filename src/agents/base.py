@@ -122,6 +122,7 @@ class AgentContext:
     portfolio: PortfolioInfo = field(default_factory=PortfolioInfo)
     model_label: str = ""  # e.g. "智谱/glm-4-flash"
     notify_policy: NotifyPolicy | None = None
+    suppress_notify: bool = False
 
     @property
     def watchlist(self) -> list[StockConfig]:
@@ -221,6 +222,12 @@ class BaseAgent(ABC):
         try:
             data = await self.collect(context)
             result = await self.analyze(context, data)
+
+            if getattr(context, "suppress_notify", False):
+                logger.info(f"Agent [{self.display_name}] 本次触发已禁用通知")
+                result.raw_data["notified"] = False
+                result.raw_data["notify_skipped"] = "suppressed"
+                return result
 
             notified = False
             if await self.should_notify(result):

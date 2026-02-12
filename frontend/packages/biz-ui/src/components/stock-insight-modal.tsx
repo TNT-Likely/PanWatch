@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Download, ExternalLink, RefreshCw, Share2 } from 'lucide-react'
-import { fetchAPI, stocksApi } from '@panwatch/api'
+import { insightApi, stocksApi } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
@@ -355,19 +355,20 @@ export default function StockInsightModal(props: {
     pnl: number
   } | null>(null)
   const [holdingLoaded, setHoldingLoaded] = useState(false)
+  const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
   const stockCacheRef = useRef<Record<string, StockItem>>({})
   const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
-    const data = await fetchAPI<QuoteResponse>(`/quotes/${encodeURIComponent(symbol)}?market=${encodeURIComponent(market)}`)
+    const data = await insightApi.quote<QuoteResponse>(symbol, market)
     setQuote(data || null)
   }, [symbol, market])
 
   const loadKline = useCallback(async () => {
     if (!symbol) return
-    const data = await fetchAPI<KlineSummaryResponse>(`/klines/${encodeURIComponent(symbol)}/summary?market=${encodeURIComponent(market)}`)
+    const data = await insightApi.klineSummary<KlineSummaryResponse>(symbol, market)
     setKlineSummary(data?.summary || null)
   }, [symbol, market])
 
@@ -376,9 +377,11 @@ export default function StockInsightModal(props: {
     const silent = !!opts?.silent
     if (!silent) setMiniKlineLoading(true)
     try {
-      const data = await fetchAPI<MiniKlineResponse>(
-        `/klines/${encodeURIComponent(symbol)}?market=${encodeURIComponent(market)}&days=36&interval=1d`
-      )
+      const data = await insightApi.klines<MiniKlineResponse>(symbol, {
+        market,
+        days: 36,
+        interval: '1d',
+      })
       setMiniKlines((data?.klines || []).slice(-30))
     } catch {
       setMiniKlines([])
@@ -389,10 +392,10 @@ export default function StockInsightModal(props: {
 
   const loadSuggestions = useCallback(async () => {
     if (!symbol) return
-    const params = new URLSearchParams()
-    params.set('limit', '20')
-    params.set('include_expired', includeExpiredSuggestions ? 'true' : 'false')
-    const data = await fetchAPI<any[]>(`/suggestions/${encodeURIComponent(symbol)}?${params.toString()}`)
+    const data = await insightApi.suggestions<any[]>(symbol, {
+      limit: 20,
+      include_expired: includeExpiredSuggestions,
+    })
     const list = (data || []).map(item => ({
       id: item.id,
       action: normalizeSuggestionAction(item.action, item.action_label),
@@ -421,7 +424,7 @@ export default function StockInsightModal(props: {
       if (!opts.filterRelated) params.set('filter_related', 'false')
       if (opts.useName && resolvedName && resolvedName !== symbol) params.set('names', resolvedName)
       else params.set('symbols', symbol)
-      return fetchAPI<NewsItem[]>(`/news?${params.toString()}`)
+      return insightApi.news<NewsItem[]>(Object.fromEntries(params.entries()))
     }
 
     try {
@@ -436,9 +439,10 @@ export default function StockInsightModal(props: {
         data = await runQuery({ useName: false, filterRelated: false })
       }
       if ((data || []).length === 0) {
-        const global = await fetchAPI<NewsItem[]>(
-          `/news?hours=${encodeURIComponent(newsHours)}&limit=80`
-        ).catch(() => [])
+        const global = await insightApi.news<NewsItem[]>({
+          hours: newsHours,
+          limit: 80,
+        }).catch(() => [])
         const upperSymbol = symbol.toUpperCase()
         const name = (resolvedName || '').trim()
         data = (global || []).filter((n) => {
@@ -450,14 +454,18 @@ export default function StockInsightModal(props: {
       }
       // 兜底：实时新闻为空时，回退到 news_digest 历史快照中的新闻列表
       if ((data || []).length === 0) {
-        const bySymbol = await fetchAPI<HistoryRecord[]>(
-          `/history?agent_name=news_digest&stock_symbol=${encodeURIComponent(symbol)}&limit=1`
-        ).catch(() => [])
+        const bySymbol = await insightApi.history<HistoryRecord[]>({
+          agent_name: 'news_digest',
+          stock_symbol: symbol,
+          limit: 1,
+        }).catch(() => [])
         let rec: HistoryRecord | null = (bySymbol || [])[0] || null
         if (!rec) {
-          const globals = await fetchAPI<HistoryRecord[]>(
-            `/history?agent_name=news_digest&stock_symbol=*&limit=20`
-          ).catch(() => [])
+          const globals = await insightApi.history<HistoryRecord[]>({
+            agent_name: 'news_digest',
+            stock_symbol: '*',
+            limit: 20,
+          }).catch(() => [])
           const upperSymbol = symbol.toUpperCase()
           const name = (resolvedName || '').trim()
           rec = (globals || []).find((r) => {
@@ -499,7 +507,7 @@ export default function StockInsightModal(props: {
         params.set('source', 'eastmoney')
         if (opts.useName && resolvedName && resolvedName !== symbol) params.set('names', resolvedName)
         else params.set('symbols', symbol)
-        return fetchAPI<NewsItem[]>(`/news?${params.toString()}`)
+        return insightApi.news<NewsItem[]>(Object.fromEntries(params.entries()))
       }
       let data: NewsItem[] = await runQuery({ useName: true, filterRelated: true })
       if ((data || []).length === 0 && resolvedName && resolvedName !== symbol) {
@@ -512,9 +520,11 @@ export default function StockInsightModal(props: {
         data = await runQuery({ useName: false, filterRelated: false })
       }
       if ((data || []).length === 0) {
-        const global = await fetchAPI<NewsItem[]>(
-          `/news?hours=${encodeURIComponent(announcementHours)}&limit=80&source=eastmoney`
-        ).catch(() => [])
+        const global = await insightApi.news<NewsItem[]>({
+          hours: announcementHours,
+          limit: 80,
+          source: 'eastmoney',
+        }).catch(() => [])
         const upperSymbol = symbol.toUpperCase()
         const name = (resolvedName || '').trim()
         data = (global || []).filter((n) => {
@@ -533,8 +543,9 @@ export default function StockInsightModal(props: {
   const loadHoldingAgg = useCallback(async () => {
     if (!symbol) return
     setHoldingLoaded(false)
+    setHoldingLoadError(false)
     try {
-      const data = await fetchAPI<PortfolioSummaryResponse>('/portfolio/summary?include_quotes=true')
+      const data = await insightApi.portfolioSummary<PortfolioSummaryResponse>({ include_quotes: true })
       let quantity = 0
       let cost = 0
       let marketValue = 0
@@ -552,6 +563,7 @@ export default function StockInsightModal(props: {
       else setHoldingAgg(null)
     } catch {
       setHoldingAgg(null)
+      setHoldingLoadError(true)
     } finally {
       setHoldingLoaded(true)
     }
@@ -563,9 +575,11 @@ export default function StockInsightModal(props: {
       const agents = ['premarket_outlook', 'daily_report', 'news_digest']
       const bySymbolResults = await Promise.all(
         agents.map(agent =>
-          fetchAPI<HistoryRecord[]>(
-            `/history?agent_name=${encodeURIComponent(agent)}&stock_symbol=${encodeURIComponent(symbol)}&limit=1`
-          ).catch(() => [])
+          insightApi.history<HistoryRecord[]>({
+            agent_name: agent,
+            stock_symbol: symbol,
+            limit: 1,
+          }).catch(() => [])
         )
       )
       let merged = bySymbolResults
@@ -575,9 +589,11 @@ export default function StockInsightModal(props: {
       if (merged.length === 0) {
         const globalResults = await Promise.all(
           agents.map(agent =>
-            fetchAPI<HistoryRecord[]>(
-              `/history?agent_name=${encodeURIComponent(agent)}&stock_symbol=*&limit=20`
-            ).catch(() => [])
+            insightApi.history<HistoryRecord[]>({
+              agent_name: agent,
+              stock_symbol: '*',
+              limit: 20,
+            }).catch(() => [])
           )
         )
         const upperSymbol = symbol.toUpperCase()
@@ -998,11 +1014,11 @@ export default function StockInsightModal(props: {
         ? existingAgents
         : [...existingAgents, { agent_name: 'intraday_monitor', schedule: '', ai_model_id: null, notify_channel_ids: [] }]
 
-      await fetchAPI(`/stocks/${stock.id}/agents`, {
-        method: 'PUT',
-        body: JSON.stringify({ agents: nextAgents }),
+      await stocksApi.updateAgents(stock.id, { agents: nextAgents })
+      await stocksApi.triggerAgent(stock.id, 'intraday_monitor', {
+        bypass_throttle: true,
+        bypass_market_hours: true,
       })
-      await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true&bypass_market_hours=true`, { method: 'POST' })
       toast('已设置提醒并触发一次盘中监测', 'success')
       await Promise.allSettled([loadSuggestions()])
     } catch (e) {
@@ -1039,33 +1055,24 @@ export default function StockInsightModal(props: {
     }
   }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
 
-  const ensureStockExists = useCallback(async (): Promise<StockItem | null> => {
-    const key = `${market}:${symbol}`
-    let stock: StockItem | null = stockCacheRef.current[key] ?? null
-
-    if (!stock) {
-      const stocks = await stocksApi.list()
-      stock = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
-    }
-    if (!stock) return null
-
-    stockCacheRef.current[key] = stock
-    return stock
-  }, [market, symbol])
-
   const triggerAutoAiSuggestion = useCallback(async () => {
     // 自动建议仅针对“确认未持仓”的股票，且不自动创建股票/绑定 Agent。
-    if (!symbol || !market || !holdingLoaded || hasHolding || suggestions.length > 0 || autoSuggesting) return
+    if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
     const key = `${market}:${symbol}`
     const lastTs = autoTriggeredRef.current[key] || 0
     if (Date.now() - lastTs < 5 * 60 * 1000) return
     autoTriggeredRef.current[key] = Date.now()
     setAutoSuggesting(true)
     try {
-      const stock = await ensureStockExists()
-      if (!stock) return
       // intraday_monitor 较 chart_analyst 更轻量、稳定，不依赖截图链路
-      await fetchAPI(`/stocks/${stock.id}/agents/intraday_monitor/trigger?bypass_throttle=true&bypass_market_hours=true&allow_unbound=true`, { method: 'POST' })
+      await stocksApi.triggerAgent(0, 'intraday_monitor', {
+        allow_unbound: true,
+        symbol,
+        market,
+        name: resolvedName || symbol,
+        bypass_throttle: true,
+        bypass_market_hours: true,
+      })
       await Promise.allSettled([loadSuggestions()])
     } catch (e) {
       toast(
@@ -1075,7 +1082,7 @@ export default function StockInsightModal(props: {
     } finally {
       setAutoSuggesting(false)
     }
-  }, [symbol, market, holdingLoaded, hasHolding, suggestions.length, autoSuggesting, ensureStockExists, loadSuggestions, toast])
+  }, [symbol, market, resolvedName, holdingLoaded, holdingLoadError, hasHolding, autoSuggesting, loadSuggestions, toast])
 
   useEffect(() => {
     if (!props.open || !symbol) return

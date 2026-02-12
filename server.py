@@ -938,6 +938,7 @@ async def trigger_agent_for_stock(
     stock_agent_id: int | None = None,
     bypass_throttle: bool = False,
     bypass_market_hours: bool = False,
+    suppress_notify: bool = False,
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
@@ -963,7 +964,7 @@ async def trigger_agent_for_stock(
     portfolio = load_portfolio_for_stock(stock.id)
 
     model, service = resolve_ai_model(agent_name, stock_agent_id)
-    channels = resolve_notify_channels(agent_name, stock_agent_id)
+    channels = [] if suppress_notify else resolve_notify_channels(agent_name, stock_agent_id)
     _log_trigger_info(agent_name, [stock], model, service, channels)
 
     ai_client = _build_ai_client(model, service, proxy)
@@ -977,6 +978,7 @@ async def trigger_agent_for_stock(
         config=config,
         portfolio=portfolio,
         model_label=model_label,
+        suppress_notify=suppress_notify,
     )
 
     # 创建 agent，支持 intraday_monitor 的手动触发参数

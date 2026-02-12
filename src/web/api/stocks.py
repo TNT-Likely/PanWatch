@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -332,36 +333,81 @@ async def trigger_stock_agent(
     bypass_throttle: bool = False,
     bypass_market_hours: bool = False,
     allow_unbound: bool = False,
+    symbol: str = Query(""),
+    market: str = Query("CN"),
+    name: str = Query(""),
     db: Session = Depends(get_db),
 ):
-    """手动触发某只股票的指定 Agent"""
-    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
-    if not db_stock:
-        raise HTTPException(404, "股票不存在")
+    """手动触发单只股票 Agent。
 
-    sa = db.query(StockAgent).filter(
-        StockAgent.stock_id == stock_id, StockAgent.agent_name == agent_name
-    ).first()
-    if not sa and not allow_unbound:
-        raise HTTPException(400, f"股票未关联 Agent {agent_name}")
-    if not sa and allow_unbound:
-        # 允许无绑定触发时，至少确保 Agent 存在。
-        agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
-        if not agent:
-            raise HTTPException(400, f"Agent {agent_name} 不存在")
+    - 正常模式：传有效 stock_id
+    - 无绑定模式：stock_id<=0 且传 symbol/market（需 allow_unbound=true）
+    - 无绑定模式默认禁用通知（仅生成建议）
+    """
+    sa = None
+    trigger_stock = None
+    suppress_notify = stock_id <= 0
 
-    logger.info(f"手动触发 Agent {agent_name} - {db_stock.name}({db_stock.symbol})")
+    if stock_id > 0:
+        db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+        if not db_stock:
+            raise HTTPException(404, "股票不存在")
+
+        sa = db.query(StockAgent).filter(
+            StockAgent.stock_id == stock_id, StockAgent.agent_name == agent_name
+        ).first()
+        if not sa and not allow_unbound:
+            raise HTTPException(400, f"股票未关联 Agent {agent_name}")
+        if not sa and allow_unbound:
+            # 允许无绑定触发时，至少确保 Agent 存在。
+            agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
+            if not agent:
+                raise HTTPException(400, f"Agent {agent_name} 不存在")
+        trigger_stock = db_stock
+    else:
+        symbol = (symbol or "").strip()
+        if not symbol:
+            raise HTTPException(400, "当 stock_id<=0 时，symbol 不能为空")
+        if not allow_unbound:
+            raise HTTPException(400, "当 stock_id<=0 时，需设置 allow_unbound=true")
+
+        market = (market or "CN").strip().upper() or "CN"
+        name = (name or "").strip() or symbol
+        db_stock = db.query(Stock).filter(
+            Stock.symbol == symbol, Stock.market == market
+        ).first()
+        if db_stock:
+            sa = db.query(StockAgent).filter(
+                StockAgent.stock_id == db_stock.id, StockAgent.agent_name == agent_name
+            ).first()
+            trigger_stock = db_stock
+        else:
+            # 不落库：用于详情弹窗未持仓且未关注股票的一次性分析。
+            agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
+            if not agent:
+                raise HTTPException(400, f"Agent {agent_name} 不存在")
+            trigger_stock = SimpleNamespace(
+                id=0,
+                symbol=symbol,
+                name=name,
+                market=market,
+            )
+
+    logger.info(
+        f"手动触发 Agent {agent_name} - {trigger_stock.name}({trigger_stock.symbol})"
+    )
 
     from server import trigger_agent_for_stock
     try:
         result = await trigger_agent_for_stock(
             agent_name,
-            db_stock,
+            trigger_stock,
             stock_agent_id=sa.id if sa else None,
             bypass_throttle=bypass_throttle,
             bypass_market_hours=bypass_market_hours,
+            suppress_notify=suppress_notify,
         )
-        logger.info(f"Agent {agent_name} 执行完成 - {db_stock.symbol}")
+        logger.info(f"Agent {agent_name} 执行完成 - {trigger_stock.symbol}")
         return {
             "result": result,
             "code": int(result.get("code", 0)),
@@ -371,5 +417,5 @@ async def trigger_stock_agent(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        logger.error(f"Agent {agent_name} 执行失败 - {db_stock.symbol}: {e}")
+        logger.error(f"Agent {agent_name} 执行失败 - {trigger_stock.symbol}: {e}")
         raise HTTPException(500, f"Agent 执行失败: {e}")

@@ -246,6 +246,11 @@ class ChartAnalystAgent(BaseAgent):
 
             result = await self.analyze(context, data)
 
+            if getattr(context, "suppress_notify", False):
+                result.raw_data["notified"] = False
+                result.raw_data["notify_skipped"] = "suppressed"
+                return result
+
             if await self.should_notify(result):
                 notify_result = await context.notifier.notify_with_result(
                     result.title,
