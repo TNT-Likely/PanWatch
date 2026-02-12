@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { cn } from '../../cn'
+import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 interface HoverPopoverProps {
   trigger: React.ReactNode
@@ -22,39 +23,64 @@ export function HoverPopover({
   popoverClassName,
   openOnFocus = false,
 }: HoverPopoverProps) {
-  const sideClass = side === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
-  const alignClass =
-    align === 'start' ? 'left-0' :
-    align === 'end' ? 'right-0' :
-    'left-1/2 -translate-x-1/2'
+  const [open, setOpen] = React.useState(false)
+  const closeTimer = React.useRef<number | null>(null)
+
+  const clearCloseTimer = React.useCallback(() => {
+    if (closeTimer.current != null) {
+      window.clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+  }, [])
+
+  const openPopover = React.useCallback(() => {
+    clearCloseTimer()
+    setOpen(true)
+  }, [clearCloseTimer])
+
+  const closePopover = React.useCallback(() => {
+    clearCloseTimer()
+    closeTimer.current = window.setTimeout(() => setOpen(false), 80)
+  }, [clearCloseTimer])
+
+  React.useEffect(() => {
+    return () => clearCloseTimer()
+  }, [clearCloseTimer])
 
   return (
-    <span className={cn('relative inline-flex group', className)}>
-      {/* tabIndex: allow keyboard focus to open popover via focus-within (also helps on mobile tap) */}
-      <span tabIndex={0} className="outline-none">
-        {trigger}
-      </span>
-      <span
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <span
+          className={cn('inline-flex', className)}
+          tabIndex={openOnFocus ? 0 : undefined}
+          onMouseEnter={openPopover}
+          onMouseLeave={closePopover}
+          onFocus={openOnFocus ? openPopover : undefined}
+          onBlur={openOnFocus ? closePopover : undefined}
+        >
+          {trigger}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        side={side}
+        align={align}
+        sideOffset={8}
+        onMouseEnter={openPopover}
+        onMouseLeave={closePopover}
         className={cn(
-          'absolute z-50',
-          sideClass,
-          alignClass,
-          'opacity-0 pointer-events-none translate-y-1 scale-[0.98] transition-all duration-150',
-          'group-hover:opacity-100 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:scale-100',
-          openOnFocus && 'group-focus-within:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:scale-100',
+          'w-[22rem] max-w-[90vw] rounded-xl border border-border bg-card p-3 shadow-[0_16px_60px_rgba(0,0,0,0.18)]',
+          popoverClassName,
         )}
       >
-        <span className={cn('w-[22rem] max-w-[90vw] block rounded-xl bg-card border border-border shadow-[0_16px_60px_rgba(0,0,0,0.18)] p-3', popoverClassName)}>
-          {title && (
-            <div className="text-[12px] font-semibold text-foreground mb-1">
-              {title}
-            </div>
-          )}
-          <div className="text-[11px] leading-relaxed text-muted-foreground max-h-72 overflow-y-auto pr-1">
-            {content}
+        {title && (
+          <div className="text-[12px] font-semibold text-foreground mb-1">
+            {title}
           </div>
-        </span>
-      </span>
-    </span>
+        )}
+        <div className="text-[11px] leading-relaxed text-muted-foreground max-h-72 overflow-y-auto pr-1">
+          {content}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

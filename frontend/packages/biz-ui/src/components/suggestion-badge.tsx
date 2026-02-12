@@ -5,6 +5,8 @@ import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { fetchAPI } from '@panwatch/api'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { AiSuggestionBadge } from '@panwatch/biz-ui/components/ai-suggestion-badge'
+import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 
 export interface SuggestionInfo {
   id?: number
@@ -79,48 +81,7 @@ interface SuggestionBadgeProps {
   showFullInline?: boolean  // 是否在行内显示完整信息（Dashboard 模式）
   market?: string           // 市场（用于技术指标弹窗）
   hasPosition?: boolean     // 是否持仓（用于技术指标弹窗）
-}
-
-const actionColors: Record<string, string> = {
-  buy: 'bg-rose-500 text-white',
-  add: 'bg-rose-400 text-white',
-  reduce: 'bg-emerald-500 text-white',
-  sell: 'bg-emerald-600 text-white',
-  hold: 'bg-amber-500 text-white',
-  watch: 'bg-slate-500 text-white',
-  alert: 'bg-blue-500 text-white',
-  avoid: 'bg-red-600 text-white',
-}
-
-const actionLabels: Record<string, string> = {
-  buy: '买入',
-  add: '加仓',
-  reduce: '减仓',
-  sell: '卖出',
-  hold: '持有',
-  watch: '观望',
-  avoid: '回避',
-}
-
-function normalizeAction(action?: string, label?: string): keyof typeof actionColors | null {
-  const raw = (action || label || '').toLowerCase()
-  if (!raw) return null
-  if (raw === 'buy') return 'buy'
-  if (raw === 'add' || raw === 'increase') return 'add'
-  if (raw === 'reduce' || raw === 'decrease') return 'reduce'
-  if (raw === 'sell') return 'sell'
-  if (raw === 'hold') return 'hold'
-  if (raw === 'watch' || raw === 'neutral') return 'watch'
-  if (raw === 'avoid') return 'avoid'
-  if (raw === 'alert') return 'alert'
-  if (/买入|买|建仓/.test(raw)) return 'buy'
-  if (/加仓|增持|补仓/.test(raw)) return 'add'
-  if (/减仓|减持/.test(raw)) return 'reduce'
-  if (/清仓|卖出|止损|卖/.test(raw)) return 'sell'
-  if (/持有|持仓/.test(raw)) return 'hold'
-  if (/观望|中性|等待/.test(raw)) return 'watch'
-  if (/回避|规避|避免/.test(raw)) return 'avoid'
-  return null
+  showTechnicalCompanion?: boolean // 是否展示技术指标对照徽章
 }
 
 // 格式化建议时间（自动转换为本地时区，只显示时:分）
@@ -177,6 +138,7 @@ export function SuggestionBadge({
   showFullInline = false,
   market = 'CN',
   hasPosition = false,
+  showTechnicalCompanion = true,
 }: SuggestionBadgeProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [klineDialogOpen, setKlineDialogOpen] = useState(false)
@@ -218,12 +180,8 @@ export function SuggestionBadge({
   // Dashboard 模式：行内显示完整信息（仅建议 badge）
   if (showFullInline) {
     if (!suggestion) return null
-    const normalized = normalizeAction(suggestion.action, suggestion.action_label)
-    const colorClass = normalized ? (actionColors[normalized] || 'bg-slate-500 text-white') : 'bg-slate-500 text-white'
     const isAI = !!suggestion.agent_name && suggestion.agent_label !== '技术指标'
-    const aiLabel = normalized ? (actionLabels[normalized] || suggestion.action_label) : (suggestion.action_label || '观望')
     const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
-    const techColor = tech ? (actionColors[tech.action] || 'bg-slate-500 text-white') : 'bg-slate-500 text-white'
     const timeStr = formatSuggestionTime(suggestion.created_at)
     const klineMetaStr = formatKlineMeta(suggestion.meta)
     return (
@@ -231,30 +189,27 @@ export function SuggestionBadge({
         <div className="pt-3 border-t border-border/30">
           <div className="flex items-start gap-3">
             <div className="shrink-0 flex items-center gap-2">
-              <button
+              <AiSuggestionBadge
+                action={suggestion.action}
+                actionLabel={suggestion.action_label}
+                isAI={isAI}
+                isExpired={!!suggestion.is_expired}
+                size="lg"
                 onClick={(e) => {
                   e.stopPropagation()
                   if (suggestion.agent_label === '技术指标') setKlineDialogOpen(true)
                   else setDialogOpen(true)
                 }}
-                className={`relative text-[13px] px-3 py-1.5 rounded font-medium hover:opacity-80 transition-opacity whitespace-nowrap ${colorClass} ${suggestion.is_expired ? 'opacity-50' : ''}`}
                 title="点击查看建议详情"
-              >
-                {aiLabel}
-                {isAI && (
-                  <span className="pointer-events-none absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 text-[10px] leading-none px-1.5 py-[2px] rounded-sm bg-primary text-white uppercase shadow-sm ring-1 ring-black/20">
-                    AI
-                  </span>
-                )}
-              </button>
-              {isAI && (
-                <button
+              />
+              {isAI && showTechnicalCompanion && (
+                <TechnicalBadge
+                  label={tech ? tech.action_label : '观望'}
+                  tone={technicalToneFromSuggestionAction(tech?.action, tech?.action_label)}
+                  size="lg"
                   onClick={(e) => { e.stopPropagation(); setKlineDialogOpen(true) }}
-                  className={`text-[13px] px-3 py-1.5 rounded font-medium hover:opacity-80 transition-opacity ${techColor}`}
                   title="点击查看技术面详情"
-                >
-                  {tech ? tech.action_label : '观望'}
-                </button>
+                />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -292,14 +247,13 @@ export function SuggestionBadge({
           >
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <span className={`relative inline-flex text-[13px] px-3 py-1.5 rounded font-medium whitespace-nowrap ${colorClass}`}>
-                  {aiLabel}
-                  {isAI && (
-                    <span className="pointer-events-none absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 text-[10px] leading-none px-1.5 py-[2px] rounded-sm bg-primary text-white uppercase shadow-sm ring-1 ring-black/20">
-                      AI
-                    </span>
-                  )}
-                </span>
+                <AiSuggestionBadge
+                  action={suggestion.action}
+                  actionLabel={suggestion.action_label}
+                  isAI={isAI}
+                  isExpired={!!suggestion.is_expired}
+                  size="lg"
+                />
                 {/* AI 标签已前置到按钮文案，不再重复 */}
                 {stockName && (
                   <span className="text-[14px] font-normal text-muted-foreground">
@@ -420,16 +374,16 @@ export function SuggestionBadge({
     return (
       <>
         <div className="inline-flex flex-col items-start gap-0.5">
-          <button
+          <TechnicalBadge
+            label="指标"
+            tone="neutral"
+            size="xs"
             onClick={(e) => {
               e.stopPropagation()
               setKlineDialogOpen(true)
             }}
-            className="text-[10px] px-1.5 py-0.5 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity bg-accent/50 text-muted-foreground"
             title="点击查看技术指标"
-          >
-            指标
-          </button>
+          />
         </div>
 
         <KlineSummaryDialog
@@ -446,9 +400,6 @@ export function SuggestionBadge({
   }
 
   if (!suggestion) return null
-  const normalized = normalizeAction(suggestion.action, suggestion.action_label)
-  const colorClass = normalized ? (actionColors[normalized] || 'bg-slate-500 text-white') : 'bg-slate-500 text-white'
-  const displayLabel = normalized ? (actionLabels[normalized] || suggestion.action_label) : (suggestion.action_label || '观望')
   const isAI = !!suggestion.agent_name && suggestion.agent_label !== '技术指标'
 
   // 持仓页模式：小徽章 + 点击弹窗
@@ -459,38 +410,33 @@ export function SuggestionBadge({
     <>
       <div className="inline-flex flex-col items-start gap-0.5">
         <div className="inline-flex items-center gap-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (suggestion.agent_label === '技术指标') setKlineDialogOpen(true)
-            else setDialogOpen(true)
-          }}
-          className={`relative text-[12px] px-2.5 py-1 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity whitespace-nowrap ${colorClass} ${suggestion.is_expired ? 'opacity-50' : ''}`}
-          title={sourceInfo ? `${sourceInfo} - 点击查看详情` : '点击查看建议详情'}
-        >
-          {displayLabel}
-          {isAI && (
-            <span className="pointer-events-none absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 text-[10px] leading-none px-1.5 py-[2px] rounded-sm bg-primary text-white uppercase shadow-sm ring-1 ring-black/20">
-              AI
-            </span>
+          <AiSuggestionBadge
+            action={suggestion.action}
+            actionLabel={suggestion.action_label}
+            isAI={isAI}
+            isExpired={!!suggestion.is_expired}
+            size="md"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (suggestion.agent_label === '技术指标') setKlineDialogOpen(true)
+              else setDialogOpen(true)
+            }}
+            title={sourceInfo ? `${sourceInfo} - 点击查看详情` : '点击查看建议详情'}
+          />
+          {showTechnicalCompanion && suggestion.agent_label !== '技术指标' && (
+            (() => {
+              const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
+              return (
+                <TechnicalBadge
+                  label={tech ? tech.action_label : '观望'}
+                  tone={technicalToneFromSuggestionAction(tech?.action, tech?.action_label)}
+                  size="md"
+                  onClick={(e) => { e.stopPropagation(); setKlineDialogOpen(true) }}
+                  title="点击查看技术面详情"
+                />
+              )
+            })()
           )}
-        </button>
-        {suggestion.agent_label !== '技术指标' && (
-          (() => {
-            const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
-            const techColor = tech ? (actionColors[tech.action] || 'bg-slate-500 text-white') : 'bg-slate-500 text-white'
-            const label = tech ? tech.action_label : '观望'
-            return (
-              <button
-                onClick={(e) => { e.stopPropagation(); setKlineDialogOpen(true) }}
-                className={`text-[12px] px-2.5 py-1 rounded font-medium cursor-pointer hover:opacity-80 transition-opacity ${techColor}`}
-                title="点击查看技术面详情"
-              >
-                {label}
-              </button>
-            )
-          })()
-        )}
         </div>
         {/* 来源和时间（显示在徽章下方，仅 AI 建议以增强区分）*/}
         {isAI && (
@@ -509,9 +455,13 @@ export function SuggestionBadge({
         >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className={`text-[12px] px-2 py-1 rounded font-medium ${colorClass}`}>
-                {suggestion.action_label}
-              </span>
+              <AiSuggestionBadge
+                action={suggestion.action}
+                actionLabel={suggestion.action_label}
+                isAI={isAI}
+                isExpired={!!suggestion.is_expired}
+                size="md"
+              />
               {stockName && (
                 <span className="text-[14px] font-normal text-muted-foreground">
                   {stockName} {stockSymbol && `(${stockSymbol})`}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2 } from 'lucide-react'
 import { insightApi, stocksApi } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
@@ -13,6 +14,7 @@ import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
+import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 
 interface QuoteResponse {
   symbol: string
@@ -230,6 +232,23 @@ function normalizeTextList(raw: unknown): string[] {
   return bySep.length > 1 ? bySep : [s]
 }
 
+function markdownToPlainText(input?: string): string {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+  return raw
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\*\*|__|\*|_/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function firstNonEmptyText(...vals: unknown[]): string {
   for (const v of vals) {
     const s = String(v || '').trim()
@@ -278,23 +297,17 @@ function TechnicalIndicatorStrip(props: {
           kline={klineSummary}
           hasPosition={hasPosition}
         />
-        <span className="text-[10px] px-2 py-0.5 rounded bg-accent/50 text-foreground">评分 {Number(score ?? 0).toFixed(1)}</span>
+        <TechnicalBadge label={`评分 ${Number(score ?? 0).toFixed(1)}`} tone="neutral" size="xs" className="text-foreground" />
       </div>
       {evidence.length > 0 && (
         <div className="flex flex-wrap gap-1.5 text-[10px]">
           {evidence.slice(0, 6).map((item, idx) => (
-            <span
+            <TechnicalBadge
               key={`${item.text}-${idx}`}
-              className={`px-2 py-0.5 rounded ${
-                item.delta > 0
-                  ? 'bg-rose-500/15 text-rose-500'
-                  : item.delta < 0
-                    ? 'bg-emerald-500/15 text-emerald-500'
-                    : 'bg-accent/40 text-muted-foreground'
-              }`}
-            >
-              {item.text} {item.delta > 0 ? `+${item.delta}` : item.delta}
-            </span>
+              label={`${item.text} ${item.delta > 0 ? `+${item.delta}` : item.delta}`}
+              tone={item.delta > 0 ? 'bullish' : item.delta < 0 ? 'bearish' : 'neutral'}
+              size="xs"
+            />
           ))}
         </div>
       )}
@@ -968,14 +981,53 @@ export default function StockInsightModal(props: {
     }
   }, [quote?.change_pct, resolvedName, shareCardPayload, symbol, toast])
 
+  const copyTextWithFallback = useCallback(async (text: string): Promise<boolean> => {
+    if (!text) return false
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch {
+        // Fallback to legacy copy below.
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      textarea.style.pointerEvents = 'none'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      try {
+        textarea.focus()
+        textarea.select()
+        textarea.setSelectionRange(0, textarea.value.length)
+        return !!document.execCommand?.('copy')
+      } catch {
+        return false
+      } finally {
+        document.body.removeChild(textarea)
+      }
+    }
+    return false
+  }, [])
+
   const handleCopyShareText = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(shareText)
-      toast('洞察内容已复制', 'success')
+      const copied = await copyTextWithFallback(shareText)
+      if (copied) {
+        toast('洞察内容已复制', 'success')
+      } else {
+        toast('复制失败，请优先使用“图片”分享', 'error')
+      }
     } catch {
-      toast('复制失败，请检查浏览器权限', 'error')
+      toast('复制失败，请优先使用“图片”分享', 'error')
     }
-  }, [shareText, toast])
+  }, [copyTextWithFallback, shareText, toast])
 
   const handleShareInsight = useCallback(async () => {
     try {
@@ -986,12 +1038,22 @@ export default function StockInsightModal(props: {
         })
         return
       }
-      await handleCopyShareText()
+      const copied = await copyTextWithFallback(shareText)
+      if (copied) {
+        toast('当前环境不支持系统分享，已自动复制内容', 'success')
+      } else {
+        toast('当前环境不支持分享且复制失败，请使用“图片”分享', 'error')
+      }
     } catch (e: any) {
       if (e?.name === 'AbortError') return
-      await handleCopyShareText()
+      const copied = await copyTextWithFallback(shareText)
+      if (copied) {
+        toast('分享失败，已自动复制内容', 'success')
+      } else {
+        toast('分享失败且复制失败，请使用“图片”分享', 'error')
+      }
     }
-  }, [handleCopyShareText, resolvedName, shareText])
+  }, [copyTextWithFallback, resolvedName, shareText, toast])
 
   const handleSetAlert = async () => {
     if (!symbol) return
@@ -1344,6 +1406,7 @@ export default function StockInsightModal(props: {
                           stockSymbol={symbol}
                           market={market}
                           hasPosition={!!props.hasPosition}
+                          showTechnicalCompanion={false}
                         />
                         <div className="rounded bg-accent/10 p-2 text-[11px]">
                           <div className="text-muted-foreground">核心判断</div>
@@ -1414,7 +1477,9 @@ export default function StockInsightModal(props: {
                           {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
                         </div>
                         <div className="mt-1 text-[13px] font-medium line-clamp-1">{latestReport.title || '报告摘要'}</div>
-                        <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">{latestReport.content || '暂无报告内容'}</div>
+                        <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">
+                          {markdownToPlainText(latestReport.content) || '暂无报告内容'}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1467,8 +1532,10 @@ export default function StockInsightModal(props: {
                         {(activeReport.suggestions as any)[symbol].action_label}
                       </div>
                     )}
-                    <div className="text-[13px] leading-6 whitespace-pre-wrap text-foreground/90">
-                      {activeReport.content || '暂无报告内容'}
+                    <div className="rounded-lg bg-accent/10 p-3">
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
+                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 )}

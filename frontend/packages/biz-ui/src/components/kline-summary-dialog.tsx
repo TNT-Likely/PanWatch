@@ -3,6 +3,7 @@ import { fetchAPI } from '@panwatch/api'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 
 export interface KlineSummaryData {
   // meta (from backend)
@@ -89,27 +90,6 @@ export function KlineSummaryDialog({
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<KlineSummaryData | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  type Action = 'buy' | 'add' | 'reduce' | 'sell' | 'hold' | 'watch' | 'avoid'
-
-  // actionLabel 已由评分生成，组件内无需单独映射
-
-  const actionStyle = (action: Action) => {
-    switch (action) {
-      case 'buy':
-      case 'add':
-        return 'bg-rose-500 text-white'
-      case 'reduce':
-      case 'sell':
-        return 'bg-emerald-600 text-white'
-      case 'hold':
-        return 'bg-amber-500 text-white'
-      case 'avoid':
-      case 'watch':
-      default:
-        return 'bg-slate-500 text-white'
-    }
-  }
 
   const buildSuggestion = (s: KlineSummaryData, holding?: boolean) => {
     const scored = buildKlineSuggestion(s, holding)
@@ -200,9 +180,11 @@ export function KlineSummaryDialog({
             {suggestion && (
               <div className="p-3 rounded-lg bg-accent/20 border border-border/30">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[11px] px-2 py-1 rounded font-medium ${actionStyle(suggestion.action)}`}>
-                    {suggestion.action_label}
-                  </span>
+                  <TechnicalBadge
+                    label={suggestion.action_label}
+                    tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
+                    size="sm"
+                  />
                   <span className="text-[10px] text-muted-foreground">
                     {hasPosition ? '已持仓' : '未持仓'} · score {suggestion.score}
                   </span>
@@ -270,9 +252,7 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      {effectiveSummary.trend}
-                    </span>
+                    <TechnicalBadge label={effectiveSummary.trend} tone="neutral" help />
                   }
                 />
               )}
@@ -303,9 +283,7 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      MACD {effectiveSummary.macd_status}
-                    </span>
+                    <TechnicalBadge label={`MACD ${effectiveSummary.macd_status}`} tone="neutral" help />
                   }
                 />
               )}
@@ -337,9 +315,11 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      RSI {effectiveSummary.rsi_status}{effectiveSummary.rsi6 != null && ` (${effectiveSummary.rsi6.toFixed(0)})`}
-                    </span>
+                    <TechnicalBadge
+                      label={`RSI ${effectiveSummary.rsi_status}${effectiveSummary.rsi6 != null ? ` (${effectiveSummary.rsi6.toFixed(0)})` : ''}`}
+                      tone={effectiveSummary.rsi_status === '超买' ? 'bullish' : effectiveSummary.rsi_status === '超卖' ? 'bearish' : 'neutral'}
+                      help
+                    />
                   }
                 />
               )}
@@ -377,9 +357,7 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      KDJ {effectiveSummary.kdj_status}
-                    </span>
+                    <TechnicalBadge label={`KDJ ${effectiveSummary.kdj_status}`} tone="neutral" help />
                   }
                 />
               )}
@@ -409,9 +387,11 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      {effectiveSummary.volume_trend}{effectiveSummary.volume_ratio != null && ` (${effectiveSummary.volume_ratio.toFixed(1)}x)`}
-                    </span>
+                    <TechnicalBadge
+                      label={`${effectiveSummary.volume_trend}${effectiveSummary.volume_ratio != null ? ` (${effectiveSummary.volume_ratio.toFixed(1)}x)` : ''}`}
+                      tone={effectiveSummary.volume_trend === '放量' ? 'warning' : effectiveSummary.volume_trend === '缩量' ? 'info' : 'neutral'}
+                      help
+                    />
                   }
                 />
               )}
@@ -454,9 +434,11 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">
-                      布林 {effectiveSummary.boll_status}
-                    </span>
+                    <TechnicalBadge
+                      label={`布林 ${effectiveSummary.boll_status}`}
+                      tone={effectiveSummary.boll_status === '突破上轨' ? 'bullish' : effectiveSummary.boll_status === '跌破下轨' ? 'bearish' : 'neutral'}
+                      help
+                    />
                   }
                 />
               )}
@@ -481,9 +463,7 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 cursor-help hover:bg-amber-500/15">
-                      {effectiveSummary.kline_pattern}
-                    </span>
+                    <TechnicalBadge label={effectiveSummary.kline_pattern} tone="warning" help />
                   }
                 />
               )}
@@ -532,11 +512,13 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 cursor-help hover:bg-emerald-500/15">
-                      支撑 {effectiveSummary.support.toFixed(2)}
-                  </span>
-                }
-              />
+                    <TechnicalBadge
+                      label={`支撑 ${effectiveSummary.support.toFixed(2)}`}
+                      tone="bearish"
+                      help
+                    />
+                  }
+                />
               )}
               {effectiveSummary && effectiveSummary.resistance != null && (
                 <HoverPopover
@@ -580,11 +562,13 @@ export function KlineSummaryDialog({
                     </div>
                   }
                   trigger={
-                    <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 cursor-help hover:bg-rose-500/15">
-                      压力 {effectiveSummary.resistance.toFixed(2)}
-                  </span>
-                }
-              />
+                    <TechnicalBadge
+                      label={`压力 ${effectiveSummary.resistance.toFixed(2)}`}
+                      tone="bullish"
+                      help
+                    />
+                  }
+                />
               )}
             </div>
 

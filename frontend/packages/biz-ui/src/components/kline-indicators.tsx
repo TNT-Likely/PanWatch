@@ -1,5 +1,6 @@
 import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 import type { KlineSummaryData } from '@panwatch/biz-ui/components/kline-summary-dialog'
+import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 
 interface KlineIndicatorsProps {
   summary: KlineSummaryData
@@ -29,7 +30,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
                 </div>
               </div>
             }
-            trigger={<span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">{s.trend}</span>}
+            trigger={<TechnicalBadge label={s.trend} tone="neutral" help />}
           />
         )}
 
@@ -52,7 +53,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
                 </div>
               </div>
             }
-            trigger={<span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">MACD {s.macd_status}</span>}
+            trigger={<TechnicalBadge label={`MACD ${s.macd_status}`} tone="neutral" help />}
           />
         )}
 
@@ -75,11 +76,13 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
                 </div>
               </div>
             }
-            trigger={<span className={`px-2 py-0.5 rounded ${
-              s.rsi_status === '超买' ? 'bg-rose-500/10 text-rose-600' :
-              s.rsi_status === '超卖' ? 'bg-emerald-500/10 text-emerald-600' :
-              'bg-accent/50 text-muted-foreground'
-            } cursor-help hover:bg-accent/70`}>RSI {s.rsi_status}{s.rsi6 != null && ` (${s.rsi6.toFixed(0)})`}</span>}
+            trigger={
+              <TechnicalBadge
+                label={`RSI ${s.rsi_status}${s.rsi6 != null ? ` (${s.rsi6.toFixed(0)})` : ''}`}
+                tone={s.rsi_status === '超买' ? 'bullish' : s.rsi_status === '超卖' ? 'bearish' : 'neutral'}
+                help
+              />
+            }
           />
         )}
 
@@ -87,7 +90,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
           <HoverPopover
             title="KDJ（转折/超买超卖）"
             content={<div>J 值更敏感，金叉/死叉用于观察短期转折，但容易受震荡干扰，需结合趋势与量价。</div>}
-            trigger={<span className="px-2 py-0.5 rounded bg-accent/50 text-muted-foreground cursor-help hover:bg-accent/70">KDJ {s.kdj_status}</span>}
+            trigger={<TechnicalBadge label={`KDJ ${s.kdj_status}`} tone="neutral" help />}
           />
         )}
 
@@ -95,11 +98,13 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
           <HoverPopover
             title="量能（成交量配合）"
             content={<div>放量常用于确认突破或反弹有效性；缩量上冲/下跌容易“虚”。与趋势、关键位结合更可靠。</div>}
-            trigger={<span className={`px-2 py-0.5 rounded ${
-              s.volume_trend === '放量' ? 'bg-amber-500/10 text-amber-600' :
-              s.volume_trend === '缩量' ? 'bg-blue-500/10 text-blue-600' :
-              'bg-accent/50 text-muted-foreground'
-            } cursor-help hover:bg-accent/70`}>{s.volume_trend}{s.volume_ratio != null && ` (${s.volume_ratio.toFixed(1)}x)`}</span>}
+            trigger={
+              <TechnicalBadge
+                label={`${s.volume_trend}${s.volume_ratio != null ? ` (${s.volume_ratio.toFixed(1)}x)` : ''}`}
+                tone={s.volume_trend === '放量' ? 'warning' : s.volume_trend === '缩量' ? 'info' : 'neutral'}
+                help
+              />
+            }
           />
         )}
 
@@ -107,11 +112,13 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
           <HoverPopover
             title="布林带（波动/偏离）"
             content={<div>上轨/下轨的突破/跌破常见于趋势阶段或极端波动。配合量能与回踩/站稳确认有效性。</div>}
-            trigger={<span className={`px-2 py-0.5 rounded ${
-              s.boll_status === '突破上轨' ? 'bg-rose-500/10 text-rose-600' :
-              s.boll_status === '跌破下轨' ? 'bg-emerald-500/10 text-emerald-600' :
-              'bg-accent/50 text-muted-foreground'
-            } cursor-help hover:bg-accent/70`}>布林 {s.boll_status}</span>}
+            trigger={
+              <TechnicalBadge
+                label={`布林 ${s.boll_status}`}
+                tone={s.boll_status === '突破上轨' ? 'bullish' : s.boll_status === '跌破下轨' ? 'bearish' : 'neutral'}
+                help
+              />
+            }
           />
         )}
 
@@ -119,7 +126,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
           <HoverPopover
             title="K线形态（局部结构）"
             content={<div>单根形态提示意义有限，更看重所处位置（趋势/支撑压力附近）与量能配合。</div>}
-            trigger={<span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 cursor-help hover:bg-amber-500/15">{s.kline_pattern}</span>}
+            trigger={<TechnicalBadge label={s.kline_pattern} tone="warning" help />}
           />
         )}
       </div>
@@ -130,14 +137,14 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
           <HoverPopover
             title="支撑位（关键支撑区）"
             content={<div>接近支撑更容易止跌反弹；放量跌破可能转为压力。更偏向“区域”而非一点。</div>}
-            trigger={<span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 cursor-help hover:bg-emerald-500/15">支撑 {s.support.toFixed(2)}</span>}
+            trigger={<TechnicalBadge label={`支撑 ${s.support.toFixed(2)}`} tone="bearish" help />}
           />
         )}
         {s.resistance != null && (
           <HoverPopover
             title="压力位（关键压力区）"
             content={<div>越接近压力上行越难；放量突破并站稳后，原压力往往会角色互换变为支撑。</div>}
-            trigger={<span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 cursor-help hover:bg-rose-500/15">压力 {s.resistance.toFixed(2)}</span>}
+            trigger={<TechnicalBadge label={`压力 ${s.resistance.toFixed(2)}`} tone="bullish" help />}
           />
         )}
       </div>
