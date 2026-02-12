@@ -160,6 +160,11 @@ class AgentConfig(Base):
     name = Column(String, unique=True, nullable=False)
     display_name = Column(String, nullable=False)
     description = Column(String, default="")
+    kind = Column(String, default="workflow")  # workflow / capability
+    visible = Column(Boolean, default=True)
+    lifecycle_status = Column(String, default="active")  # active / deprecated
+    replaced_by = Column(String, default="")
+    display_order = Column(Integer, default=0)
     enabled = Column(Boolean, default=True)
     schedule = Column(String, default="")
     # 执行模式: batch=批量(多只股票一起分析发送) / single=单只(逐只分析发送，实时性高)
@@ -179,6 +184,12 @@ class AgentRun(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     agent_name = Column(String, nullable=False)
     status = Column(String, nullable=False)  # success / failed
+    trace_id = Column(String, default="")
+    trigger_source = Column(String, default="")  # schedule / manual / api
+    notify_attempted = Column(Boolean, default=False)
+    notify_sent = Column(Boolean, default=False)
+    context_chars = Column(Integer, default=0)
+    model_label = Column(String, default="")
     result = Column(String, default="")
     error = Column(String, default="")
     duration_ms = Column(Integer, default=0)
@@ -275,8 +286,113 @@ class AnalysisHistory(Base):
     title = Column(String, default="")  # 分析标题
     content = Column(String, nullable=False)  # AI 分析结果
     raw_data = Column(JSON, default={})  # 原始数据快照
+    agent_kind_snapshot = Column(String, default="workflow")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class StockContextSnapshot(Base):
+    """按股票/日期保存结构化上下文快照（用于跨天记忆）"""
+
+    __tablename__ = "stock_context_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "market",
+            "snapshot_date",
+            "context_type",
+            name="uq_stock_context_snapshot",
+        ),
+        Index(
+            "ix_stock_context_symbol_date",
+            "symbol",
+            "market",
+            "snapshot_date",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    market = Column(String, nullable=False)  # CN/HK/US
+    snapshot_date = Column(String, nullable=False)  # YYYY-MM-DD
+    context_type = Column(String, nullable=False)  # premarket_outlook/daily_report/...
+    payload = Column(JSON, default={})
+    quality = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class NewsTopicSnapshot(Base):
+    """新闻主题快照（按日期和窗口聚合）"""
+
+    __tablename__ = "news_topic_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_date",
+            "window_days",
+            name="uq_news_topic_snapshot_date_window",
+        ),
+        Index("ix_news_topic_snapshot_date", "snapshot_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(String, nullable=False)  # YYYY-MM-DD
+    window_days = Column(Integer, nullable=False, default=7)
+    symbols = Column(JSON, default=[])
+    summary = Column(String, default="")
+    topics = Column(JSON, default=[])
+    sentiment = Column(String, default="neutral")
+    coverage = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AgentContextRun(Base):
+    """每次 Agent 执行时使用的上下文摘要"""
+
+    __tablename__ = "agent_context_runs"
+    __table_args__ = (
+        Index("ix_agent_context_agent_date", "agent_name", "analysis_date"),
+        Index("ix_agent_context_stock_date", "stock_symbol", "analysis_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_name = Column(String, nullable=False)
+    stock_symbol = Column(String, nullable=False, default="*")
+    analysis_date = Column(String, nullable=False)  # YYYY-MM-DD
+    context_payload = Column(JSON, default={})
+    quality = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AgentPredictionOutcome(Base):
+    """建议后验评估记录（用于回放与效果统计）"""
+
+    __tablename__ = "agent_prediction_outcomes"
+    __table_args__ = (
+        Index(
+            "ix_prediction_agent_stock_date",
+            "agent_name",
+            "stock_symbol",
+            "prediction_date",
+        ),
+        Index("ix_prediction_status_horizon", "outcome_status", "horizon_days"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_name = Column(String, nullable=False)
+    stock_symbol = Column(String, nullable=False)
+    stock_market = Column(String, nullable=False, default="CN")
+    prediction_date = Column(String, nullable=False)  # YYYY-MM-DD
+    horizon_days = Column(Integer, nullable=False, default=1)  # 1/5/10...
+    action = Column(String, nullable=False, default="watch")
+    action_label = Column(String, nullable=False, default="观望")
+    confidence = Column(Float, nullable=True)
+    trigger_price = Column(Float, nullable=True)
+    outcome_price = Column(Float, nullable=True)
+    outcome_return_pct = Column(Float, nullable=True)
+    outcome_status = Column(String, nullable=False, default="pending")
+    meta = Column(JSON, default={})
+    evaluated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class StockSuggestion(Base):

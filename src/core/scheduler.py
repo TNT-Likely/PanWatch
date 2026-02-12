@@ -115,6 +115,8 @@ class AgentScheduler:
                     result=f"single mode executed {processed}, skipped {skipped}, total {len(context.watchlist)}",
                     error="; ".join(errors),
                     duration_ms=duration_ms,
+                    trigger_source="schedule",
+                    model_label=context.model_label,
                 )
             else:
                 result = await agent.run(context)
@@ -124,12 +126,21 @@ class AgentScheduler:
                     notify_error = (result.raw_data or {}).get("notify_error") or ""
                 except Exception:
                     notify_error = ""
+                raw = result.raw_data or {}
                 record_agent_run(
                     agent_name=agent_name,
                     status="failed" if notify_error else "success",
                     result=(result.content or "")[:2000],
                     error=(notify_error or "")[:2000],
                     duration_ms=duration_ms,
+                    trigger_source="schedule",
+                    notify_attempted=(
+                        "notified" in raw
+                        or "notify_error" in raw
+                        or "notify_skipped" in raw
+                    ),
+                    notify_sent=bool(raw.get("notified", False)),
+                    model_label=context.model_label,
                 )
             logger.info(f"[调度] Agent 执行完成: {agent.display_name}")
         except Exception as e:
@@ -140,6 +151,7 @@ class AgentScheduler:
                 status="failed",
                 error=str(e),
                 duration_ms=duration_ms,
+                trigger_source="schedule",
             )
 
     async def trigger_now(self, agent_name: str):

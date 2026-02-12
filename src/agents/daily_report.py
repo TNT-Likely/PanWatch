@@ -8,6 +8,11 @@ from src.collectors.akshare_collector import AkshareCollector
 from src.core.analysis_history import save_analysis
 from src.core.cn_symbol import get_cn_prefix
 from src.core.suggestion_pool import save_suggestion
+from src.core.context_builder import ContextBuilder
+from src.core.context_store import (
+    save_agent_context_run,
+    save_agent_prediction_outcome,
+)
 from src.core.signals import SignalPackBuilder
 from src.core.signals.structured_output import (
     TAG_START,
@@ -35,7 +40,7 @@ class DailyReportAgent(BaseAgent):
     """盘后日报 Agent"""
 
     name = "daily_report"
-    display_name = "盘后日报"
+    display_name = "收盘复盘"
     description = "每日收盘后生成自选股日报，包含大盘概览、个股分析和明日关注"
 
     async def collect(self, context: AgentContext) -> dict:
@@ -62,12 +67,24 @@ class DailyReportAgent(BaseAgent):
         packs = await builder.build_for_symbols(
             symbols=sym_list,
             include_news=True,
-            news_hours=24,
+            news_hours=72,
             portfolio=context.portfolio,
             include_technical=True,
             include_capital_flow=True,
             include_events=True,
             events_days=7,
+        )
+
+        context_builder = ContextBuilder()
+        context_pack = await context_builder.build_symbol_contexts(
+            agent_name=self.name,
+            context=context,
+            packs=packs,
+            realtime_hours=24,
+            extended_hours=72,
+            history_days=30,
+            kline_days=120,
+            persist_snapshot=True,
         )
 
         if not all_indices and not any(p.quote for p in packs.values()):
@@ -76,6 +93,8 @@ class DailyReportAgent(BaseAgent):
         return {
             "indices": all_indices,
             "signal_packs": packs,
+            "symbol_contexts": context_pack.get("symbols", {}),
+            "quality_overview": context_pack.get("quality_overview", {}),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -90,6 +109,18 @@ class DailyReportAgent(BaseAgent):
         # 构建用户输入：结构化的市场数据
         lines = []
         lines.append(f"## 日期：{datetime.now().strftime('%Y-%m-%d')}\n")
+        symbol_contexts = data.get("symbol_contexts", {}) or {}
+        quality_overview = data.get("quality_overview", {}) or {}
+
+        if quality_overview:
+            lines.append("## 上下文质量概览")
+            lines.append(
+                f"- 平均质量分：{quality_overview.get('avg_score', 0)}（最低 {quality_overview.get('min_score', 0)} / 最高 {quality_overview.get('max_score', 0)}）"
+            )
+            global_topic = (quality_overview.get("global_news_topic") or {})
+            if global_topic.get("summary"):
+                lines.append(f"- 历史新闻主题：{global_topic.get('summary')}")
+            lines.append("")
 
         # 大盘指数
         lines.append("## 大盘指数")
@@ -108,9 +139,15 @@ class DailyReportAgent(BaseAgent):
 
         for w in context.watchlist:
             pack = packs.get(w.symbol)
+            stock_ctx = symbol_contexts.get(w.symbol, {}) or {}
+            stock_quality = (stock_ctx.get("data_quality") or {})
             quote = pack.quote if pack else None
             stock_name = (w.name or (quote.name if quote else "") or w.symbol).strip()
             lines.append(f"\n### {stock_name}（{w.symbol}）")
+            if stock_quality:
+                lines.append(
+                    f"- 数据质量：{stock_quality.get('score', 0)}（实时新闻 {stock_quality.get('realtime_news_count', 0)} 条，扩展新闻 {stock_quality.get('extended_news_count', 0)} 条，历史新闻 {stock_quality.get('history_news_count', 0)} 条）"
+                )
 
             # 基本行情
             if quote:
@@ -222,7 +259,11 @@ class DailyReportAgent(BaseAgent):
                     lines.append(f"- 5日资金：{flow['trend_5d']}")
 
             # 相关新闻/公告
-            stock_news = pack.news.items if (pack and pack.news) else []
+            stock_news = (
+                (stock_ctx.get("news") or {}).get("realtime")
+                or (stock_ctx.get("news") or {}).get("extended")
+                or (pack.news.items if (pack and pack.news) else [])
+            )
             if stock_news:
                 lines.append("- 相关新闻：")
                 for n in stock_news[:3]:
@@ -240,6 +281,9 @@ class DailyReportAgent(BaseAgent):
                     )
             else:
                 lines.append("- 相关新闻：暂无")
+            history_topic = ((stock_ctx.get("news") or {}).get("history_topic") or {})
+            if history_topic.get("summary"):
+                lines.append(f"- 历史新闻记忆(近30天)：{history_topic.get('summary')}")
 
             # 事件快照（近 N 天，来自公告结构化）
             events = pack.events.items if (pack and pack.events) else []
@@ -277,6 +321,31 @@ class DailyReportAgent(BaseAgent):
                     lines.append(
                         f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"
                     )
+
+            kline_history = stock_ctx.get("kline_history") or {}
+            if kline_history.get("available"):
+                ret_5d = kline_history.get("ret_5d")
+                ret_20d = kline_history.get("ret_20d")
+                ret_60d = kline_history.get("ret_60d")
+                lines.append(
+                    "- 历史走势："
+                    f"5日{(f'{ret_5d:+.1f}%' if ret_5d is not None else 'N/A')} "
+                    f"20日{(f'{ret_20d:+.1f}%' if ret_20d is not None else 'N/A')} "
+                    f"60日{(f'{ret_60d:+.1f}%' if ret_60d is not None else 'N/A')}"
+                )
+
+            constraints = stock_ctx.get("constraints") or {}
+            if constraints:
+                lines.append(
+                    f"- 资金约束：总可用{safe_num(constraints.get('total_available_funds'), 0):.0f}元，单票仓位占比{safe_num(constraints.get('single_position_ratio'), 0) * 100:.1f}%（{constraints.get('risk_budget_hint', 'normal')}）"
+                )
+            memory = stock_ctx.get("memory") or {}
+            if memory:
+                lines.append(
+                    f"- 历史上下文记忆：近{memory.get('window_days', 30)}天质量均值{safe_num(memory.get('avg_quality_score'), 0):.1f}，趋势{memory.get('quality_trend', 'flat')}"
+                )
+                if memory.get("latest_history_topic"):
+                    lines.append(f"- 历史记忆主题：{memory.get('latest_history_topic')}")
 
         # 账户资金概况
         if context.portfolio.accounts:
@@ -507,9 +576,25 @@ class DailyReportAgent(BaseAgent):
 
         # 保存各股票建议到建议池
         stock_map = {s.symbol: s for s in context.watchlist}
+        packs = data.get("signal_packs", {}) or {}
+        symbol_contexts = data.get("symbol_contexts", {}) or {}
+        analysis_date = (data.get("timestamp") or "")[:10] or datetime.now().strftime(
+            "%Y-%m-%d"
+        )
         for symbol, sug in suggestions.items():
             stock = stock_map.get(symbol)
             if stock:
+                pack = packs.get(symbol)
+                trigger_price = (
+                    getattr(pack.quote, "current_price", None)
+                    if pack and pack.quote
+                    else None
+                )
+                quality_score = (
+                    (symbol_contexts.get(symbol, {}) or {})
+                    .get("data_quality", {})
+                    .get("score")
+                )
                 save_suggestion(
                     stock_symbol=symbol,
                     stock_name=stock.name,
@@ -523,8 +608,9 @@ class DailyReportAgent(BaseAgent):
                     prompt_context=user_content,
                     ai_response=result.content,
                     meta={
-                        "analysis_date": (data.get("timestamp") or "")[:10],
+                        "analysis_date": analysis_date,
                         "source": "daily_report",
+                        "context_quality_score": quality_score,
                         "plan": {
                             "triggers": sug.get("triggers")
                             if isinstance(sug.get("triggers"), list)
@@ -540,11 +626,107 @@ class DailyReportAgent(BaseAgent):
                         else {},
                     },
                 )
+                for horizon in (1, 5):
+                    save_agent_prediction_outcome(
+                        agent_name=self.name,
+                        stock_symbol=symbol,
+                        stock_market=stock.market.value,
+                        prediction_date=analysis_date,
+                        horizon_days=horizon,
+                        action=sug.get("action") or "hold",
+                        action_label=sug.get("action_label") or "继续持有",
+                        confidence=(float(quality_score) / 100.0)
+                        if quality_score is not None
+                        else None,
+                        trigger_price=trigger_price,
+                        meta={
+                            "source": "daily_report",
+                            "reason": sug.get("reason", ""),
+                            "signal": sug.get("signal", ""),
+                        },
+                    )
 
         # 保存到历史记录（使用 "*" 表示全局分析）
         # 简化 raw_data，只保存关键信息
         symbols = [s.symbol for s in context.watchlist]
-        save_analysis(
+        compact_context = {}
+        context_payload = {}
+        for sym, ctx in symbol_contexts.items():
+            layered_news = ctx.get("news") or {}
+            events = ctx.get("events") or []
+            compact_context[sym] = {
+                "data_quality": ctx.get("data_quality") or {},
+                "history_news_topic": ((ctx.get("news") or {}).get("history_topic"))
+                or {},
+                "kline_history": ctx.get("kline_history") or {},
+                "constraints": ctx.get("constraints") or {},
+                "memory": ctx.get("memory") or {},
+            }
+            context_payload[sym] = {
+                "data_quality": ctx.get("data_quality") or {},
+                "kline_history": ctx.get("kline_history") or {},
+                "constraints": ctx.get("constraints") or {},
+                "memory": ctx.get("memory") or {},
+                "news": {
+                    "realtime": [
+                        {
+                            "time": n.get("time"),
+                            "title": n.get("title"),
+                            "source": n.get("source"),
+                            "importance": n.get("importance"),
+                        }
+                        for n in (layered_news.get("realtime") or [])[:3]
+                    ],
+                    "extended": [
+                        {
+                            "time": n.get("time"),
+                            "title": n.get("title"),
+                            "source": n.get("source"),
+                            "importance": n.get("importance"),
+                        }
+                        for n in (layered_news.get("extended") or [])[:3]
+                    ],
+                    "history": [
+                        {
+                            "time": n.get("time"),
+                            "title": n.get("title"),
+                            "source": n.get("source"),
+                            "importance": n.get("importance"),
+                        }
+                        for n in (layered_news.get("history") or [])[:3]
+                    ],
+                    "history_topic": layered_news.get("history_topic") or {},
+                },
+                "events": [
+                    {
+                        "time": e.get("time"),
+                        "title": e.get("title"),
+                        "event_type": e.get("event_type"),
+                        "importance": e.get("importance"),
+                    }
+                    for e in events[:3]
+                ],
+            }
+        quality_overview = data.get("quality_overview") or {}
+        news_debug = {}
+        for sym, ctx in symbol_contexts.items():
+            layered = ctx.get("news") or {}
+            news_debug[sym] = {
+                "realtime_count": len(layered.get("realtime") or []),
+                "extended_count": len(layered.get("extended") or []),
+                "history_count": len(layered.get("history") or []),
+            }
+        save_agent_context_run(
+            agent_name=self.name,
+            stock_symbol="*",
+            analysis_date=analysis_date,
+            context_payload={
+                "quality_overview": quality_overview,
+                "symbols": compact_context,
+            },
+            quality={"score": quality_overview.get("avg_score", 0)},
+        )
+        history_saved = save_analysis(
             agent_name=self.name,
             stock_symbol="*",
             content=result.content,
@@ -552,9 +734,21 @@ class DailyReportAgent(BaseAgent):
             raw_data={
                 "symbols": symbols,
                 "timestamp": data.get("timestamp"),
+                "quality_overview": quality_overview,
+                "context_summary": compact_context,
+                "context_payload": context_payload,
+                "prompt_context": user_content[:12000],
+                "prompt_stats": {
+                    "prompt_chars": len(user_content or ""),
+                    "watchlist_count": len(context.watchlist),
+                },
+                "news_debug": news_debug,
                 "suggestions": suggestions,
             },
         )
-        logger.info(f"盘后日报已保存到历史记录，包含 {len(suggestions)} 条建议")
+        if history_saved:
+            logger.info(f"收盘复盘已保存到历史记录，包含 {len(suggestions)} 条建议")
+        else:
+            logger.error("收盘复盘保存历史记录失败")
 
         return result

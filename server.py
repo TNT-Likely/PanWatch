@@ -25,7 +25,12 @@ from src.core.ai_client import AIClient
 from src.core.notifier import NotifierManager
 from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
+from src.core.context_scheduler import ContextMaintenanceScheduler
 from src.core.agent_runs import record_agent_run
+from src.core.agent_catalog import (
+    AGENT_SEED_SPECS,
+    AGENT_KIND_WORKFLOW,
+)
 from src.agents.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
 from src.agents.daily_report import DailyReportAgent
 from src.agents.news_digest import NewsDigestAgent
@@ -38,6 +43,7 @@ logger = logging.getLogger(__name__)
 # 全局 scheduler 实例，供 agents API 调用
 scheduler: AgentScheduler | None = None
 price_alert_scheduler: PriceAlertScheduler | None = None
+context_maintenance_scheduler: ContextMaintenanceScheduler | None = None
 
 
 def setup_ssl():
@@ -183,78 +189,45 @@ def seed_sample_stocks():
 def seed_agents():
     """初始化内置 Agent 配置"""
     db = SessionLocal()
-    agents = [
-        {
-            "name": "daily_report",
-            "display_name": "盘后日报",
-            "description": "每日收盘后生成自选股日报，包含大盘概览、个股分析和明日关注",
-            "enabled": True,
-            "schedule": "30 15 * * 1-5",
-            "execution_mode": "batch",  # 批量模式：多只股票一起分析
-        },
-        {
-            "name": "intraday_monitor",
-            "display_name": "盘中监测",
-            "description": "交易时段实时监控，AI 智能判断是否有值得关注的信号",
-            "enabled": False,
-            "schedule": "*/5 9-15 * * 1-5",  # 每5分钟扫描一次
-            "execution_mode": "single",  # 单只模式：逐只分析，实时发送
-            "config": {
-                "event_only": True,
-                "price_alert_threshold": 3.0,  # 涨跌幅超过3%触发
-                "volume_alert_ratio": 2.0,  # 量比超过2倍触发
-                "stop_loss_warning": -5.0,  # 亏损超过5%预警
-                "take_profit_warning": 10.0,  # 盈利超过10%提醒
-                "throttle_minutes": 30,  # 同一股票30分钟内不重复通知
-            },
-        },
-        {
-            "name": "news_digest",
-            "display_name": "新闻速递",
-            "description": "定时抓取与持仓相关的新闻资讯并推送摘要",
-            "enabled": False,
-            "schedule": "0 9-18/2 * * 1-5",
-            "execution_mode": "batch",
-            "config": {
-                "since_hours": 12,
-                "fallback_since_hours": 24,
-            },
-        },
-        {
-            "name": "premarket_outlook",
-            "display_name": "盘前分析",
-            "description": "开盘前综合昨日分析和隔夜信息，展望今日走势",
-            "enabled": False,
-            "schedule": "0 9 * * 1-5",
-            "execution_mode": "batch",
-        },
-        {
-            "name": "chart_analyst",
-            "display_name": "技术分析",
-            "description": "截取 K 线图并使用多模态 AI 进行技术分析",
-            "enabled": False,
-            "schedule": "0 15 * * 1-5",
-            "execution_mode": "single",
-        },
-    ]
-
-    for agent_data in agents:
-        existing = (
-            db.query(AgentConfig).filter(AgentConfig.name == agent_data["name"]).first()
-        )
+    for spec in AGENT_SEED_SPECS:
+        existing = db.query(AgentConfig).filter(AgentConfig.name == spec.name).first()
         if not existing:
-            db.add(AgentConfig(**agent_data))
+            db.add(
+                AgentConfig(
+                    name=spec.name,
+                    display_name=spec.display_name,
+                    description=spec.description,
+                    kind=spec.kind,
+                    visible=spec.visible,
+                    lifecycle_status=spec.lifecycle_status,
+                    replaced_by=spec.replaced_by,
+                    display_order=spec.display_order,
+                    enabled=spec.enabled,
+                    schedule=spec.schedule,
+                    execution_mode=spec.execution_mode,
+                    config=spec.config or {},
+                )
+            )
         else:
             # 始终同步 execution_mode（确保代码中的定义生效）
-            existing.execution_mode = agent_data.get("execution_mode", "batch")
+            existing.execution_mode = spec.execution_mode or "batch"
             # 同步 display_name 和 description
-            existing.display_name = agent_data.get(
-                "display_name", existing.display_name
-            )
-            existing.description = agent_data.get("description", existing.description)
+            existing.display_name = spec.display_name or existing.display_name
+            existing.description = spec.description or existing.description
+            existing.kind = spec.kind
+            existing.visible = bool(spec.visible)
+            existing.lifecycle_status = spec.lifecycle_status or "active"
+            existing.replaced_by = spec.replaced_by or ""
+            existing.display_order = int(spec.display_order or 0)
+
+            # capability 强制不参与调度，避免旧配置继续触发。
+            if spec.kind != AGENT_KIND_WORKFLOW:
+                existing.enabled = False
+                existing.schedule = ""
+
             # 仅在用户未配置时补齐默认 config
-            if agent_data.get("config") and (not existing.config):
-                existing.config = agent_data.get("config")
+            if spec.config and (not existing.config):
+                existing.config = spec.config
             # 对已存在配置做“向前兼容”的字段补齐（不覆盖用户已有值）
             if existing.name == "intraday_monitor":
                 cfg = existing.config or {}
@@ -783,7 +756,14 @@ def build_scheduler() -> AgentScheduler:
 
     db = SessionLocal()
     try:
-        agent_configs = db.query(AgentConfig).filter(AgentConfig.enabled == True).all()
+        agent_configs = (
+            db.query(AgentConfig)
+            .filter(
+                AgentConfig.enabled == True,
+                AgentConfig.kind == AGENT_KIND_WORKFLOW,
+            )
+            .all()
+        )
         for cfg in agent_configs:
             agent_cls = AGENT_REGISTRY.get(cfg.name)
             if not agent_cls:
@@ -910,16 +890,27 @@ async def trigger_agent(agent_name: str) -> str:
                 status="success",
                 result=msg,
                 duration_ms=int((time.monotonic() - start) * 1000),
+                trigger_source="manual",
+                model_label=context.model_label,
             )
             return msg
         else:
             # 批量模式：所有股票一起分析
             result = await agent.run(context)
+            raw = result.raw_data or {}
             record_agent_run(
                 agent_name=agent_name,
                 status="success",
                 result=result.content,
                 duration_ms=int((time.monotonic() - start) * 1000),
+                trigger_source="manual",
+                notify_attempted=(
+                    "notified" in raw
+                    or "notify_error" in raw
+                    or "notify_skipped" in raw
+                ),
+                notify_sent=bool(raw.get("notified", False)),
+                model_label=context.model_label,
             )
             return result.content
     except Exception as e:
@@ -928,6 +919,8 @@ async def trigger_agent(agent_name: str) -> str:
             status="failed",
             error=str(e),
             duration_ms=int((time.monotonic() - start) * 1000),
+            trigger_source="manual",
+            model_label=context.model_label,
         )
         raise
 
@@ -992,11 +985,20 @@ async def trigger_agent_for_stock(
 
     try:
         result = await agent.run(context)
+        raw = result.raw_data or {}
         record_agent_run(
             agent_name=agent_name,
             status="success",
             result=result.content,
             duration_ms=int((time.monotonic() - start) * 1000),
+            trigger_source="manual",
+            notify_attempted=(
+                "notified" in raw
+                or "notify_error" in raw
+                or "notify_skipped" in raw
+            ),
+            notify_sent=bool(raw.get("notified", False)),
+            model_label=model_label,
         )
     except Exception as e:
         record_agent_run(
@@ -1004,6 +1006,8 @@ async def trigger_agent_for_stock(
             status="failed",
             error=str(e),
             duration_ms=int((time.monotonic() - start) * 1000),
+            trigger_source="manual",
+            model_label=model_label,
         )
         raise
 
@@ -1058,7 +1062,7 @@ async def lifespan(app):
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
 
-    global scheduler, price_alert_scheduler
+    global scheduler, price_alert_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()
     scheduler.start()
     logger.info("Agent 调度器已启动")
@@ -1072,6 +1076,18 @@ async def lifespan(app):
         logger.info("价格提醒调度器已启动")
     except Exception as e:
         logger.error(f"价格提醒调度器启动失败: {e}")
+    try:
+        settings = Settings()
+        context_maintenance_scheduler = ContextMaintenanceScheduler(
+            timezone=settings.app_timezone,
+            eval_interval_hours=6,
+            snapshot_retention_days=180,
+            outcome_retention_days=365,
+        )
+        context_maintenance_scheduler.start()
+        logger.info("上下文维护调度器已启动")
+    except Exception as e:
+        logger.error(f"上下文维护调度器启动失败: {e}")
     yield
     if scheduler:
         scheduler.shutdown()
@@ -1079,6 +1095,9 @@ async def lifespan(app):
     if price_alert_scheduler:
         price_alert_scheduler.shutdown()
         logger.info("价格提醒调度器已关闭")
+    if context_maintenance_scheduler:
+        context_maintenance_scheduler.shutdown()
+        logger.info("上下文维护调度器已关闭")
 
 
 # 模块级 app 实例，供 uvicorn reload 使用

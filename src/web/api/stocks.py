@@ -18,6 +18,7 @@ from src.web.models import (
 from src.web.stock_list import search_stocks, refresh_stock_list
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.models.market import MarketCode, MARKETS
+from src.core.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -87,6 +88,7 @@ def _stock_to_response(stock: Stock) -> dict:
                 "notify_channel_ids": sa.notify_channel_ids or [],
             }
             for sa in stock.agents
+            if infer_agent_kind(sa.agent_name) == AGENT_KIND_WORKFLOW
         ],
     }
 
@@ -309,6 +311,9 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
         agent = db.query(AgentConfig).filter(AgentConfig.name == item.agent_name).first()
         if not agent:
             raise HTTPException(400, f"Agent {item.agent_name} 不存在")
+        agent_kind = (agent.kind or "").strip() or infer_agent_kind(agent.name)
+        if agent_kind != AGENT_KIND_WORKFLOW:
+            raise HTTPException(400, f"Agent {item.agent_name} 为内部能力，不支持绑定到股票")
 
     # 清除旧关联，重建
     db.query(StockAgent).filter(StockAgent.stock_id == stock_id).delete()

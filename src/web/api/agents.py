@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -15,6 +15,11 @@ from src.web.models import AgentConfig, AgentRun
 from src.core.schedule_parser import preview_schedule
 from src.core.schedule_parser import count_runs_within
 from src.config import Settings
+from src.core.agent_catalog import (
+    AGENT_KIND_CAPABILITY,
+    AGENT_KIND_WORKFLOW,
+    infer_agent_kind,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +93,10 @@ router = APIRouter()
 
 
 @router.get("/health")
-def agents_health(db: Session = Depends(get_db)):
+def agents_health(
+    include_internal: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
     """调度健康概览（用于排查调度/时区/触发问题）"""
     tz = Settings().app_timezone or "UTC"
     try:
@@ -99,7 +107,13 @@ def agents_health(db: Session = Depends(get_db)):
     now = datetime.now(tzinfo)
     horizon = now + timedelta(hours=24)
 
-    agents = db.query(AgentConfig).order_by(AgentConfig.name.asc()).all()
+    query = db.query(AgentConfig)
+    if not include_internal:
+        query = query.filter(
+            AgentConfig.kind == AGENT_KIND_WORKFLOW,
+            AgentConfig.visible == True,
+        )
+    agents = query.order_by(AgentConfig.display_order.asc(), AgentConfig.name.asc()).all()
     out = []
     next_24h_count = 0
     recent_failed_count = 0
@@ -137,6 +151,8 @@ def agents_health(db: Session = Depends(get_db)):
             {
                 "name": a.name,
                 "display_name": a.display_name,
+                "kind": a.kind or infer_agent_kind(a.name),
+                "visible": bool(a.visible),
                 "enabled": a.enabled,
                 "schedule": a.schedule or "",
                 "execution_mode": a.execution_mode or "batch",
@@ -161,6 +177,7 @@ class AgentConfigUpdate(BaseModel):
     ai_model_id: int | None = None
     notify_channel_ids: list[int] | None = None
     config: dict | None = None
+    visible: bool | None = None
 
 
 class AgentConfigResponse(BaseModel):
@@ -168,6 +185,11 @@ class AgentConfigResponse(BaseModel):
     name: str
     display_name: str
     description: str
+    kind: str
+    visible: bool
+    lifecycle_status: str
+    replaced_by: str
+    display_order: int
     enabled: bool
     schedule: str
     execution_mode: str  # batch / single
@@ -182,6 +204,12 @@ class AgentConfigResponse(BaseModel):
 class AgentRunResponse(BaseModel):
     id: int
     agent_name: str
+    trace_id: str = ""
+    trigger_source: str = ""
+    notify_attempted: bool = False
+    notify_sent: bool = False
+    context_chars: int = 0
+    model_label: str = ""
     status: str
     result: str
     error: str
@@ -193,17 +221,32 @@ class AgentRunResponse(BaseModel):
 
 
 @router.get("", response_model=list[AgentConfigResponse])
-def list_agents(db: Session = Depends(get_db)):
-    agents = db.query(AgentConfig).all()
+def list_agents(
+    include_internal: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    query = db.query(AgentConfig)
+    if not include_internal:
+        query = query.filter(
+            AgentConfig.kind == AGENT_KIND_WORKFLOW,
+            AgentConfig.visible == True,
+        )
+    agents = query.order_by(AgentConfig.display_order.asc(), AgentConfig.name.asc()).all()
     return [_agent_to_response(a) for a in agents]
 
 
 def _agent_to_response(agent: AgentConfig) -> dict:
+    kind = (agent.kind or "").strip() or infer_agent_kind(agent.name)
     return {
         "id": agent.id,
         "name": agent.name,
         "display_name": agent.display_name,
         "description": agent.description,
+        "kind": kind,
+        "visible": bool(agent.visible),
+        "lifecycle_status": agent.lifecycle_status or "active",
+        "replaced_by": agent.replaced_by or "",
+        "display_order": int(agent.display_order or 0),
         "enabled": agent.enabled,
         "schedule": agent.schedule or "",
         "execution_mode": agent.execution_mode or "batch",
@@ -211,6 +254,17 @@ def _agent_to_response(agent: AgentConfig) -> dict:
         "notify_channel_ids": agent.notify_channel_ids or [],
         "config": agent.config or {},
     }
+
+
+@router.get("/capabilities", response_model=list[AgentConfigResponse])
+def list_capabilities(db: Session = Depends(get_db)):
+    rows = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.kind == AGENT_KIND_CAPABILITY)
+        .order_by(AgentConfig.display_order.asc(), AgentConfig.name.asc())
+        .all()
+    )
+    return [_agent_to_response(a) for a in rows]
 
 
 @router.put("/{agent_name}", response_model=AgentConfigResponse)
@@ -223,6 +277,12 @@ def update_agent(
 
     for key, value in update.model_dump(exclude_unset=True).items():
         setattr(agent, key, value)
+
+    # capability 仅支持手动调用，不参与调度。
+    kind = (agent.kind or "").strip() or infer_agent_kind(agent.name)
+    if kind == AGENT_KIND_CAPABILITY:
+        agent.enabled = False
+        agent.schedule = ""
 
     db.commit()
     db.refresh(agent)
@@ -290,19 +350,31 @@ def delete_agent(agent_name: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{agent_name}/trigger")
-async def trigger_agent_endpoint(agent_name: str, db: Session = Depends(get_db)):
+async def trigger_agent_endpoint(
+    agent_name: str,
+    wait: bool = Query(
+        default=False,
+        description="是否同步等待执行完成；batch agent 默认异步排队",
+    ),
+    db: Session = Depends(get_db),
+):
     """手动触发 Agent 执行"""
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
         raise HTTPException(404, f"Agent {agent_name} 不存在")
-    if not agent.enabled:
+    agent_kind = (agent.kind or "").strip() or infer_agent_kind(agent.name)
+    if agent_kind == AGENT_KIND_WORKFLOW and not agent.enabled:
         raise HTTPException(400, f"Agent {agent_name} 未启用")
 
     from server import trigger_agent
 
     try:
-        # Batch agents can take long; do not block HTTP request.
-        if agent_name in {"daily_report", "premarket_outlook"}:
+        # Batch agents can take long; allow caller to choose wait mode.
+        if (
+            agent_kind == AGENT_KIND_WORKFLOW
+            and agent_name in {"daily_report", "premarket_outlook"}
+            and not wait
+        ):
             _spawn_async_run(
                 trigger_agent, agent_name, name=f"trigger_agent:{agent_name}"
             )
@@ -330,6 +402,12 @@ def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(ge
         AgentRunResponse(
             id=run.id,
             agent_name=run.agent_name,
+            trace_id=run.trace_id or "",
+            trigger_source=run.trigger_source or "",
+            notify_attempted=bool(run.notify_attempted),
+            notify_sent=bool(run.notify_sent),
+            context_chars=int(run.context_chars or 0),
+            model_label=run.model_label or "",
             status=run.status or "",
             result=run.result or "",
             error=run.error or "",
@@ -363,6 +441,8 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
     from src.models.market import MarketCode, MARKETS
     from src.agents.intraday_monitor import IntradayMonitorAgent
     from src.core.analysis_history import get_latest_analysis, get_analysis
+    from src.core.context_builder import ContextBuilder
+    from src.core.signals import SignalPackBuilder
     from src.core.suggestion_pool import save_suggestion
 
     agent_name = "intraday_monitor"
@@ -436,6 +516,10 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
 
     daily_analysis = None
     premarket_analysis = None
+    scan_context = None
+    symbol_contexts: dict[str, dict] = {}
+    quality_overview: dict = {}
+    signal_packs: dict = {}
     if analyze:
         # 获取历史分析（给 AI 作为上下文）
         try:
@@ -450,6 +534,42 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         except Exception:
             daily_analysis = None
             premarket_analysis = None
+
+        try:
+            scan_context = build_context(agent_name)
+            original_watchlist = scan_context.config.watchlist
+            scan_context.config.watchlist = active_watchlist
+            sym_list = [(s.symbol, s.market, s.name) for s in active_watchlist]
+            signal_packs = await SignalPackBuilder().build_for_symbols(
+                symbols=sym_list,
+                include_news=True,
+                news_hours=24,
+                portfolio=portfolio,
+                include_technical=True,
+                include_capital_flow=True,
+                include_events=True,
+                events_days=3,
+            )
+            context_pack = await ContextBuilder().build_symbol_contexts(
+                agent_name=agent_name,
+                context=scan_context,
+                packs=signal_packs,
+                realtime_hours=6,
+                extended_hours=24,
+                history_days=7,
+                kline_days=60,
+                persist_snapshot=False,
+            )
+            symbol_contexts = context_pack.get("symbols", {}) or {}
+            quality_overview = context_pack.get("quality_overview", {}) or {}
+        except Exception as e:
+            logger.warning(f"构建盘中扫描上下文失败，回退基础分析: {e}")
+        finally:
+            try:
+                if scan_context:
+                    scan_context.config.watchlist = original_watchlist
+            except Exception:
+                pass
 
     # 构建返回数据
     kline_sem = asyncio.Semaphore(6)
@@ -505,6 +625,11 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             "trading_style": trading_style,
             "kline": kline_summary,
             "suggestion": None,  # AI 建议
+            "context_quality": (
+                (symbol_contexts.get(quote.symbol, {}) or {}).get("data_quality")
+                if analyze
+                else None
+            ),
         }
 
     results = await asyncio.gather(*[_build_result_item(quote) for quote in all_quotes])
@@ -512,7 +637,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
     # AI 分析
     if analyze and results:
         try:
-            context = build_context(agent_name)
+            context = scan_context or build_context(agent_name)
             agent = monitor_agent
 
             ai_sem = asyncio.Semaphore(3)
@@ -527,7 +652,14 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                         data = {
                             "stock_data": stock_data,
                             "stocks": [stock_data],
-                            "kline_summary": item["kline"],
+                            "kline_summary": (
+                                (signal_packs.get(item["symbol"]).technical)
+                                if signal_packs.get(item["symbol"])
+                                else item["kline"]
+                            ),
+                            "signal_pack": signal_packs.get(item["symbol"]),
+                            "symbol_context": symbol_contexts.get(item["symbol"], {}),
+                            "quality_overview": quality_overview,
                             "daily_analysis": daily_analysis.content
                             if daily_analysis
                             else None,
@@ -588,6 +720,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                             prompt_context=user_content,
                             ai_response=response,
                             meta={
+                                "source": "intraday_scan",
                                 "quote": {
                                     "current_price": item.get("current_price"),
                                     "change_pct": item.get("change_pct"),
@@ -599,6 +732,11 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                                     "asof": (item.get("kline") or {}).get("asof"),
                                 },
                                 "event_gate": data.get("event_gate"),
+                                "context_quality_score": (
+                                    (data.get("symbol_context") or {})
+                                    .get("data_quality", {})
+                                    .get("score")
+                                ),
                             },
                         )
                 except Exception as e:
@@ -624,6 +762,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         "is_trading": True,
         "has_watchlist": True,
         "available_funds": portfolio.total_available_funds,
+        "quality_overview": quality_overview if analyze else {},
     }
     _set_scan_cache(cache_key, payload)
     return payload

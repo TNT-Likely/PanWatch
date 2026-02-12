@@ -1,9 +1,11 @@
 """分析历史记录管理"""
 import logging
-from datetime import date, datetime
+from datetime import date
 
+from src.core.agent_catalog import infer_agent_kind
 from src.web.database import SessionLocal
 from src.web.models import AnalysisHistory
+from src.core.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,9 @@ def save_analysis(
 
     db = SessionLocal()
     try:
+        payload = to_jsonable(raw_data or {})
+        agent_kind = infer_agent_kind(agent_name)
+
         # 查找是否已存在
         existing = db.query(AnalysisHistory).filter(
             AnalysisHistory.agent_name == agent_name,
@@ -51,8 +56,8 @@ def save_analysis(
             # 更新（同一天可覆盖）
             existing.title = title
             existing.content = content
-            existing.raw_data = raw_data or {}
-            existing.updated_at = datetime.now()
+            existing.raw_data = payload
+            existing.agent_kind_snapshot = agent_kind
             logger.info(f"更新分析记录: {agent_name}/{stock_symbol}/{date_str}")
         else:
             # 新增
@@ -62,7 +67,8 @@ def save_analysis(
                 analysis_date=date_str,
                 title=title,
                 content=content,
-                raw_data=raw_data or {},
+                raw_data=payload,
+                agent_kind_snapshot=agent_kind,
             )
             db.add(record)
             logger.info(f"新增分析记录: {agent_name}/{stock_symbol}/{date_str}")

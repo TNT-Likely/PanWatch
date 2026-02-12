@@ -392,8 +392,8 @@ export default function AgentsPage() {
   const triggerAgent = async (name: string) => {
     setTriggering(name)
     try {
-      await fetchAPI(`/agents/${name}/trigger`, { method: 'POST' })
-      toast('Agent 已触发', 'success')
+      const res = await fetchAPI<{ queued?: boolean; message?: string }>(`/agents/${name}/trigger`, { method: 'POST' })
+      toast(res?.queued ? 'Agent 已提交后台执行' : (res?.message || 'Agent 已触发'), 'success')
     } catch (e) {
       toast(e instanceof Error ? e.message : '触发失败', 'error')
     } finally {

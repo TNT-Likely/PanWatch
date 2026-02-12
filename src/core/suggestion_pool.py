@@ -8,6 +8,7 @@ from datetime import timezone
 from src.web.database import SessionLocal
 from src.web.models import StockSuggestion
 from src.core.timezone import utc_now, to_iso_with_tz
+from src.core.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ AGENT_EXPIRY_HOURS = {
 AGENT_LABELS = {
     "premarket_outlook": "盘前分析",
     "intraday_monitor": "盘中监测",
-    "daily_report": "盘后日报",
+    "daily_report": "收盘复盘",
     "news_digest": "新闻速递",
 }
 
@@ -172,7 +173,7 @@ def save_suggestion(
             expires_at=expires_at,
             prompt_context=prompt_context[:2000] if prompt_context else "",  # 限制长度
             ai_response=ai_response[:2000] if ai_response else "",  # 限制长度
-            meta=meta or {},
+            meta=to_jsonable(meta or {}),
         )
         db.add(suggestion)
         db.commit()

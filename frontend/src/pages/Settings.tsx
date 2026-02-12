@@ -196,7 +196,6 @@ export default function SettingsPage() {
         agents: [
           { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
           { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'news_digest', enabled: true, schedule: '0 */3 * * 1-5', execution_mode: 'batch' },
           { name: 'intraday_monitor', enabled: true, schedule: '*/10 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 4.0, volume_alert_ratio: 2.5, throttle_minutes: 45 } },
         ],
       },
@@ -213,7 +212,6 @@ export default function SettingsPage() {
         agents: [
           { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
           { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'news_digest', enabled: true, schedule: '0 */2 * * 1-5', execution_mode: 'batch' },
           { name: 'intraday_monitor', enabled: true, schedule: '*/5 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 3.0, volume_alert_ratio: 2.0, throttle_minutes: 30 } },
         ],
       },
@@ -230,7 +228,6 @@ export default function SettingsPage() {
         agents: [
           { name: 'premarket_outlook', enabled: true, schedule: '10 8 * * 1-5', execution_mode: 'batch' },
           { name: 'daily_report', enabled: true, schedule: '10 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'news_digest', enabled: true, schedule: '0 * * * 1-5', execution_mode: 'batch' },
           { name: 'intraday_monitor', enabled: true, schedule: '*/3 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 2.0, volume_alert_ratio: 1.8, throttle_minutes: 20 } },
         ],
       },

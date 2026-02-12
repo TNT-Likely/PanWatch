@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.web.database import get_db
 from src.web.models import AgentConfig, AppSettings, Stock, StockAgent
+from src.core.agent_catalog import AGENT_KIND_CAPABILITY, infer_agent_kind
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,11 @@ router = APIRouter()
 
 class TemplateAgent(BaseModel):
     name: str
+    kind: str | None = None
+    visible: bool | None = None
+    lifecycle_status: str | None = None
+    replaced_by: str | None = None
+    display_order: int | None = None
     enabled: bool = True
     schedule: str = ""
     execution_mode: str = "batch"
@@ -56,19 +62,31 @@ _SETTINGS_KEYS = {
 
 
 @router.get("/export")
-def export_template(db: Session = Depends(get_db)):
+def export_template(
+    include_internal: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
     """导出当前配置为可导入的配置包 JSON"""
     settings_rows = (
         db.query(AppSettings).filter(AppSettings.key.in_(sorted(_SETTINGS_KEYS))).all()
     )
     settings = {r.key: (r.value or "") for r in settings_rows}
 
-    agents_rows = db.query(AgentConfig).order_by(AgentConfig.name.asc()).all()
+    query = db.query(AgentConfig)
+    if not include_internal:
+        query = query.filter(AgentConfig.visible == True)
+    agents_rows = query.order_by(AgentConfig.display_order.asc(), AgentConfig.name.asc()).all()
     agents = []
     for a in agents_rows:
+        kind = (a.kind or "").strip() or infer_agent_kind(a.name)
         agents.append(
             {
                 "name": a.name,
+                "kind": kind,
+                "visible": bool(a.visible),
+                "lifecycle_status": a.lifecycle_status or "active",
+                "replaced_by": a.replaced_by or "",
+                "display_order": int(a.display_order or 0),
                 "enabled": bool(a.enabled),
                 "schedule": a.schedule or "",
                 "execution_mode": a.execution_mode or "batch",
@@ -158,11 +176,25 @@ def import_template(
         else:
             updated_agents += 1
 
+        row.kind = (a.kind or "").strip() or infer_agent_kind(a.name)
+        row.visible = (
+            bool(a.visible)
+            if a.visible is not None
+            else (row.kind != AGENT_KIND_CAPABILITY)
+        )
+        row.lifecycle_status = a.lifecycle_status or (
+            "deprecated" if row.kind == AGENT_KIND_CAPABILITY else "active"
+        )
+        row.replaced_by = a.replaced_by or row.replaced_by or ""
+        row.display_order = int(a.display_order or row.display_order or 0)
         row.enabled = bool(a.enabled)
         row.schedule = a.schedule or ""
         row.execution_mode = a.execution_mode or "batch"
         row.ai_model_id = a.ai_model_id
         row.notify_channel_ids = a.notify_channel_ids or []
+        if row.kind == AGENT_KIND_CAPABILITY:
+            row.enabled = False
+            row.schedule = ""
         cfg = row.config or {}
         if mode == "replace":
             row.config = a.config or {}

@@ -1,8 +1,12 @@
 import json
 import logging
 import os
+import shutil
+from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+
+from src.web.migrations import has_pending_migrations, run_versioned_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,9 @@ def init_db():
     _migrate_settings_to_models(engine)
     _migrate_positions_to_accounts(engine)
     _migrate_remove_stock_enabled(engine)
+    if has_pending_migrations(engine):
+        _backup_db_before_migration()
+    run_versioned_migrations(engine)
 
 
 def _has_column(conn, table: str, column: str) -> bool:
@@ -48,6 +55,26 @@ def _has_table(conn, table: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _backup_db_before_migration() -> None:
+    """Create a timestamped sqlite backup before versioned migrations."""
+    if not os.path.exists(DB_PATH):
+        return
+    try:
+        size = os.path.getsize(DB_PATH)
+        if size <= 0:
+            return
+    except Exception:
+        return
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{DB_PATH}.bak.{ts}"
+    try:
+        shutil.copy2(DB_PATH, backup_path)
+        logger.info(f"数据库迁移前备份已创建: {backup_path}")
+    except Exception as e:
+        logger.warning(f"数据库迁移前备份失败: {e}")
 
 
 def _migrate(engine):

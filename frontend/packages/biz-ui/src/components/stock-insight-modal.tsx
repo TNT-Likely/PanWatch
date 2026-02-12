@@ -78,7 +78,14 @@ interface HistoryRecord {
     publish_time?: string
     url?: string
   }> | null
+  quality_overview?: Record<string, any> | null
+  context_summary?: Record<string, any> | null
+  context_payload?: Record<string, any> | null
+  prompt_context?: string | null
+  prompt_stats?: Record<string, any> | null
+  news_debug?: Record<string, any> | null
   created_at: string
+  updated_at?: string
 }
 
 interface PortfolioPosition {
@@ -628,8 +635,8 @@ export default function StockInsightModal(props: {
           .filter(Boolean) as HistoryRecord[]
       }
       merged = merged.sort((a, b) => {
-        const am = parseToMs(a.created_at || a.analysis_date) || 0
-        const bm = parseToMs(b.created_at || b.analysis_date) || 0
+        const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
+        const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
         return bm - am
       })
       setReports(merged)
@@ -1537,6 +1544,35 @@ export default function StockInsightModal(props: {
                         <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
                       </div>
                     </div>
+                    {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
+                      <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
+                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
+                        {activeReport.prompt_stats ? (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                          </div>
+                        ) : null}
+                        {activeReport.news_debug ? (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
+                          </div>
+                        ) : null}
+                        {activeReport.context_payload ? (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
+                          </div>
+                        ) : null}
+                        {activeReport.prompt_context ? (
+                          <div className="mt-2">
+                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
+                          </div>
+                        ) : null}
+                      </details>
+                    )}
                   </div>
                 )}
               </div>

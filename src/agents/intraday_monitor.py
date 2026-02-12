@@ -10,6 +10,11 @@ from src.agents.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.core.analysis_history import get_latest_analysis, get_analysis
+from src.core.context_builder import ContextBuilder
+from src.core.context_store import (
+    save_agent_context_run,
+    save_agent_prediction_outcome,
+)
 from src.core.suggestion_pool import save_suggestion
 from src.core.signals import SignalPackBuilder
 from src.core.signals.structured_output import try_parse_action_json
@@ -119,15 +124,29 @@ class IntradayMonitorAgent(BaseAgent):
         builder = SignalPackBuilder()
         packs = await builder.build_for_symbols(
             symbols=[(symbol, market, name)],
-            include_news=False,
-            news_hours=12,
+            include_news=True,
+            news_hours=24,
             portfolio=context.portfolio,
             include_technical=True,
             include_capital_flow=True,
             include_events=True,
-            events_days=1,
+            events_days=3,
         )
         pack = packs.get(symbol)
+
+        context_builder = ContextBuilder()
+        context_pack = await context_builder.build_symbol_contexts(
+            agent_name=self.name,
+            context=context,
+            packs=packs,
+            realtime_hours=6,
+            extended_hours=24,
+            history_days=7,
+            kline_days=60,
+            persist_snapshot=True,
+        )
+        symbol_context = (context_pack.get("symbols", {}) or {}).get(symbol, {})
+        quality_overview = context_pack.get("quality_overview", {}) or {}
 
         stock_data = pack.quote if pack and pack.quote else None
 
@@ -154,6 +173,8 @@ class IntradayMonitorAgent(BaseAgent):
             "premarket_analysis": premarket_analysis.content
             if premarket_analysis
             else None,
+            "symbol_context": symbol_context,
+            "quality_overview": quality_overview,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -216,6 +237,41 @@ class IntradayMonitorAgent(BaseAgent):
             "触发" if abs(change_pct) >= self.price_alert_threshold else "未触发"
         )
         lines.append(f"- 当前涨跌幅：{change_pct:+.2f}%（{price_hit}）")
+
+        symbol_ctx = data.get("symbol_context") or {}
+        quality = (symbol_ctx.get("data_quality") or {})
+        if quality:
+            lines.append(
+                f"- 上下文质量：{quality.get('score', 0)}（实时新闻 {quality.get('realtime_news_count', 0)} 条，扩展新闻 {quality.get('extended_news_count', 0)} 条，历史新闻 {quality.get('history_news_count', 0)} 条）"
+            )
+
+        layered_news = symbol_ctx.get("news") or {}
+        realtime_news = layered_news.get("realtime") or []
+        extended_news = layered_news.get("extended") or []
+        history_news = layered_news.get("history") or []
+        if realtime_news or extended_news or history_news:
+            lines.append("\n## 新闻与事件上下文")
+            chosen = realtime_news or extended_news or history_news
+            for item in chosen[:3]:
+                lines.append(
+                    f"- [{item.get('time')}] {item.get('title')}（{item.get('source')}）"
+                )
+            hist_topic = (layered_news.get("history_topic") or {}).get("summary")
+            if hist_topic:
+                lines.append(f"- 历史新闻主题：{hist_topic}")
+
+        kline_history = symbol_ctx.get("kline_history") or {}
+        if kline_history.get("available"):
+            lines.append("\n## 历史K线背景")
+            lines.append(
+                f"- 历史涨跌：5日{format_num(kline_history.get('ret_5d'), 1)}% / 20日{format_num(kline_history.get('ret_20d'), 1)}% / 60日{format_num(kline_history.get('ret_60d'), 1)}%"
+            )
+            if kline_history.get("volatility_20d") is not None:
+                lines.append(
+                    f"- 波动(20日标准差)：{format_num(kline_history.get('volatility_20d'), 2)}%"
+                )
+            if kline_history.get("breakout_state") and kline_history.get("breakout_state") != "none":
+                lines.append(f"- 突破状态：{kline_history.get('breakout_state')}")
 
         # K 线和技术指标
         kline = data.get("kline_summary")
@@ -340,6 +396,18 @@ class IntradayMonitorAgent(BaseAgent):
         lines.append(f"- 总可用资金：{context.portfolio.total_available_funds:.0f} 元")
         for acc in context.portfolio.accounts:
             lines.append(f"  - {acc.name}：{acc.available_funds:.0f} 元")
+        constraints = symbol_ctx.get("constraints") or {}
+        if constraints:
+            lines.append(
+                f"- 单票仓位占比：{safe_num(constraints.get('single_position_ratio'), 0) * 100:.1f}%（{constraints.get('risk_budget_hint', 'normal')}）"
+            )
+        memory = symbol_ctx.get("memory") or {}
+        if memory:
+            lines.append(
+                f"- 历史上下文记忆：近{memory.get('window_days', 30)}天质量均值{safe_num(memory.get('avg_quality_score'), 0):.1f}，趋势{memory.get('quality_trend', 'flat')}"
+            )
+            if memory.get("latest_history_topic"):
+                lines.append(f"- 历史记忆主题：{memory.get('latest_history_topic')}")
 
         # 各账户持仓信息
         if positions:
@@ -651,6 +719,12 @@ class IntradayMonitorAgent(BaseAgent):
         # 解析操作建议
         suggestion = self._parse_suggestion(raw_content)
         content = raw_content
+        analysis_date = (data.get("timestamp") or "")[:10] or datetime.now().strftime(
+            "%Y-%m-%d"
+        )
+        quality_score = (
+            (data.get("symbol_context") or {}).get("data_quality", {}).get("score")
+        )
         # JSON/类 JSON 输出时，统一转换为可读通知文本，避免渠道直接推送原始 JSON
         if try_parse_action_json(raw_content) or self._try_parse_loose_json(raw_content):
             content = self._format_human_readable_content(stock, suggestion, raw_content)
@@ -678,6 +752,8 @@ class IntradayMonitorAgent(BaseAgent):
                     "asof": (data.get("kline_summary") or {}).get("asof"),
                 },
                 "event_gate": data.get("event_gate"),
+                "analysis_date": analysis_date,
+                "context_quality_score": quality_score,
                 "plan": {
                     "triggers": suggestion.get("triggers")
                     if isinstance(suggestion, dict)
@@ -690,6 +766,36 @@ class IntradayMonitorAgent(BaseAgent):
                     else [],
                 },
             },
+        )
+        for horizon in (1, 5):
+            save_agent_prediction_outcome(
+                agent_name=self.name,
+                stock_symbol=stock.symbol,
+                stock_market=stock.market.value,
+                prediction_date=analysis_date,
+                horizon_days=horizon,
+                action=suggestion.get("action") or "watch",
+                action_label=suggestion.get("action_label") or "观望",
+                confidence=(float(quality_score) / 100.0)
+                if quality_score is not None
+                else None,
+                trigger_price=getattr(stock, "current_price", None),
+                meta={
+                    "source": "intraday_monitor",
+                    "reason": suggestion.get("reason", ""),
+                    "signal": suggestion.get("signal", ""),
+                },
+            )
+
+        save_agent_context_run(
+            agent_name=self.name,
+            stock_symbol=stock.symbol,
+            analysis_date=analysis_date,
+            context_payload={
+                "symbol_context": data.get("symbol_context") or {},
+                "quality_overview": data.get("quality_overview") or {},
+            },
+            quality={"score": quality_score or 0},
         )
 
         # 构建标题
@@ -713,6 +819,8 @@ class IntradayMonitorAgent(BaseAgent):
                 "suggestion": suggestion,
                 "should_alert": suggestion["should_alert"],
                 "kline_summary": data.get("kline_summary"),
+                "symbol_context": data.get("symbol_context") or {},
+                "quality_overview": data.get("quality_overview") or {},
                 **data,
             },
         )
