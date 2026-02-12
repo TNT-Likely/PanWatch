@@ -9,6 +9,7 @@ from src.config import AppConfig, StockConfig
 from src.models.market import MarketCode
 from src.core.notify_dedupe import build_notify_dedupe_key, check_and_mark_notify
 from src.core.notify_policy import NotifyPolicy
+from src.core.log_context import log_context
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,12 @@ class BaseAgent(ABC):
             result = await self.analyze(context, data)
 
             if getattr(context, "suppress_notify", False):
-                logger.info(f"Agent [{self.display_name}] 本次触发已禁用通知")
+                with log_context(
+                    event="notify_skipped",
+                    notify_status="skipped",
+                    notify_reason="suppressed",
+                ):
+                    logger.info(f"Agent [{self.display_name}] 本次触发已禁用通知")
                 result.raw_data["notified"] = False
                 result.raw_data["notify_skipped"] = "suppressed"
                 return result
@@ -236,7 +242,12 @@ class BaseAgent(ABC):
                 if policy:
                     try:
                         if policy.is_quiet_now():
-                            logger.info(f"Agent [{self.display_name}] 静默时段跳过通知")
+                            with log_context(
+                                event="notify_skipped",
+                                notify_status="skipped",
+                                notify_reason="quiet_hours",
+                            ):
+                                logger.info(f"Agent [{self.display_name}] 静默时段跳过通知")
                             result.raw_data["notified"] = False
                             result.raw_data["notify_skipped"] = "quiet_hours"
                             return result
@@ -257,26 +268,45 @@ class BaseAgent(ABC):
                     mark=False,
                 )
                 if not allowed:
-                    logger.info(
-                        f"Agent [{self.display_name}] 通知去重命中，跳过发送 (ttl={ttl}m)"
-                    )
+                    with log_context(
+                        event="notify_skipped",
+                        notify_status="skipped",
+                        notify_reason="deduped",
+                    ):
+                        logger.info(
+                            f"Agent [{self.display_name}] 通知去重命中，跳过发送 (ttl={ttl}m)"
+                        )
                     result.raw_data["notified"] = False
                     result.raw_data["notify_skipped"] = "deduped"
                     return result
 
+                with log_context(event="notify_send", notify_status="attempted"):
+                    logger.info(f"Agent [{self.display_name}] 开始发送通知")
                 notify_result = await context.notifier.notify_with_result(
                     result.title,
                     result.content,
                     result.images,
                 )
                 if notify_result.get("skipped"):
+                    with log_context(
+                        event="notify_skipped",
+                        notify_status="skipped",
+                        notify_reason=str(notify_result.get("skipped") or ""),
+                    ):
+                        logger.info(
+                            f"Agent [{self.display_name}] 通知已跳过: {notify_result.get('skipped')}"
+                        )
                     result.raw_data["notified"] = False
                     result.raw_data["notify_skipped"] = notify_result.get("skipped")
                     return result
 
                 notified = bool(notify_result.get("success"))
                 if notified:
-                    logger.info(f"Agent [{self.display_name}] 通知已发送")
+                    with log_context(
+                        event="notify_sent",
+                        notify_status="sent",
+                    ):
+                        logger.info(f"Agent [{self.display_name}] 通知已发送")
                     # Mark dedupe only after a successful send.
                     check_and_mark_notify(
                         agent_name=self.name,
@@ -286,9 +316,14 @@ class BaseAgent(ABC):
                     )
                 else:
                     notify_error = notify_result.get("error") or "未知错误"
-                    logger.error(
-                        f"Agent [{self.display_name}] 通知发送失败: {notify_error}"
-                    )
+                    with log_context(
+                        event="notify_failed",
+                        notify_status="failed",
+                        notify_reason=str(notify_error),
+                    ):
+                        logger.error(
+                            f"Agent [{self.display_name}] 通知发送失败: {notify_error}"
+                        )
                     result.raw_data["notify_error"] = notify_error
             else:
                 logger.info(f"Agent [{self.display_name}] 无需通知")

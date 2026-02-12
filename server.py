@@ -27,6 +27,7 @@ from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
 from src.core.context_scheduler import ContextMaintenanceScheduler
 from src.core.agent_runs import record_agent_run
+from src.core.log_context import install_log_record_factory, log_context
 from src.core.agent_catalog import (
     AGENT_SEED_SPECS,
     AGENT_KIND_WORKFLOW,
@@ -79,9 +80,20 @@ def setup_logging():
     """配置日志: 控制台 + 数据库"""
     root = logging.getLogger()
     root.setLevel(logging.INFO)
+    install_log_record_factory()
+
+    # reload/server restart 时避免重复 handler 导致日志放大。
+    for h in list(root.handlers):
+        if isinstance(h, DBLogHandler) or getattr(h, "_panwatch_console", False):
+            root.removeHandler(h)
+            try:
+                h.close()
+            except Exception:
+                pass
 
     # 控制台输出
     console = logging.StreamHandler()
+    console._panwatch_console = True  # type: ignore[attr-defined]
     console.setFormatter(
         logging.Formatter(
             "%(asctime)s %(levelname)-5s [%(name)s] %(message)s", datefmt="%H:%M:%S"
@@ -851,78 +863,89 @@ def get_agent_config(agent_name: str) -> dict:
 async def trigger_agent(agent_name: str) -> str:
     """手动触发 Agent 执行（根据执行模式处理）"""
     start = time.monotonic()
+    trace_id = f"man-{agent_name}-{int(time.time() * 1000)}"
     agent_cls = AGENT_REGISTRY.get(agent_name)
     if not agent_cls:
         raise ValueError(f"Agent {agent_name} 未注册实际实现")
 
-    watchlist = load_watchlist_for_agent(agent_name)
-    logger.info(
-        f"[watchlist] Agent={agent_name} count={len(watchlist)} symbols={[s.symbol for s in watchlist]}"
-    )
-    if not watchlist:
-        return f"Agent {agent_name} 没有关联的自选股"
-
-    model, service = resolve_ai_model(agent_name)
-    channels = resolve_notify_channels(agent_name)
-    _log_trigger_info(agent_name, watchlist, model, service, channels)
-
-    context = build_context(agent_name)
-    execution_mode = get_agent_execution_mode(agent_name)
-    agent_config = get_agent_config(agent_name)
-
-    # 根据配置初始化 Agent
-    if agent_config:
-        agent = agent_cls(**agent_config)
-    else:
-        agent = agent_cls()
-
-    try:
-        if execution_mode == "single" and hasattr(agent, "run_single"):
-            # 单只模式：逐只股票分析
-            results = []
-            for stock in watchlist:
-                result = await agent.run_single(context, stock.symbol)
-                if result:
-                    results.append(f"{stock.name}: {result.content[:100]}...")
-            msg = "\n\n".join(results) if results else "无异动"
-            record_agent_run(
-                agent_name=agent_name,
-                status="success",
-                result=msg,
-                duration_ms=int((time.monotonic() - start) * 1000),
-                trigger_source="manual",
-                model_label=context.model_label,
-            )
-            return msg
-        else:
-            # 批量模式：所有股票一起分析
-            result = await agent.run(context)
-            raw = result.raw_data or {}
-            record_agent_run(
-                agent_name=agent_name,
-                status="success",
-                result=result.content,
-                duration_ms=int((time.monotonic() - start) * 1000),
-                trigger_source="manual",
-                notify_attempted=(
-                    "notified" in raw
-                    or "notify_error" in raw
-                    or "notify_skipped" in raw
-                ),
-                notify_sent=bool(raw.get("notified", False)),
-                model_label=context.model_label,
-            )
-            return result.content
-    except Exception as e:
-        record_agent_run(
-            agent_name=agent_name,
-            status="failed",
-            error=str(e),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            trigger_source="manual",
-            model_label=context.model_label,
+    with log_context(
+        trace_id=trace_id,
+        run_id=trace_id,
+        agent_name=agent_name,
+        event="trigger_agent",
+        tags={"trigger_source": "manual"},
+    ):
+        watchlist = load_watchlist_for_agent(agent_name)
+        logger.info(
+            f"[watchlist] Agent={agent_name} count={len(watchlist)} symbols={[s.symbol for s in watchlist]}"
         )
-        raise
+        if not watchlist:
+            return f"Agent {agent_name} 没有关联的自选股"
+
+        model, service = resolve_ai_model(agent_name)
+        channels = resolve_notify_channels(agent_name)
+        _log_trigger_info(agent_name, watchlist, model, service, channels)
+
+        context = build_context(agent_name)
+        execution_mode = get_agent_execution_mode(agent_name)
+        agent_config = get_agent_config(agent_name)
+
+        # 根据配置初始化 Agent
+        if agent_config:
+            agent = agent_cls(**agent_config)
+        else:
+            agent = agent_cls()
+
+        try:
+            if execution_mode == "single" and hasattr(agent, "run_single"):
+                # 单只模式：逐只股票分析
+                results = []
+                for stock in watchlist:
+                    result = await agent.run_single(context, stock.symbol)
+                    if result:
+                        results.append(f"{stock.name}: {result.content[:100]}...")
+                msg = "\n\n".join(results) if results else "无异动"
+                record_agent_run(
+                    agent_name=agent_name,
+                    status="success",
+                    result=msg,
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    trace_id=trace_id,
+                    trigger_source="manual",
+                    model_label=context.model_label,
+                )
+                return msg
+            else:
+                # 批量模式：所有股票一起分析
+                result = await agent.run(context)
+                raw = result.raw_data or {}
+                record_agent_run(
+                    agent_name=agent_name,
+                    status="success",
+                    result=result.content,
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    trace_id=trace_id,
+                    trigger_source="manual",
+                    notify_attempted=(
+                        "notified" in raw
+                        or "notify_error" in raw
+                        or "notify_skipped" in raw
+                    ),
+                    notify_sent=bool(raw.get("notified", False)),
+                    model_label=context.model_label,
+                )
+                return result.content
+        except Exception as e:
+            record_agent_run(
+                agent_name=agent_name,
+                status="failed",
+                error=str(e),
+                duration_ms=int((time.monotonic() - start) * 1000),
+                trace_id=trace_id,
+                trigger_source="manual",
+                model_label=context.model_label,
+            )
+            raise
 
 
 async def trigger_agent_for_stock(
@@ -935,6 +958,7 @@ async def trigger_agent_for_stock(
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
+    trace_id = f"man-{agent_name}-{stock.symbol}-{int(time.time() * 1000)}"
     agent_cls = AGENT_REGISTRY.get(agent_name)
     if not agent_cls:
         raise ValueError(f"Agent {agent_name} 未注册实际实现")
@@ -983,33 +1007,42 @@ async def trigger_agent_for_stock(
     else:
         agent = agent_cls()
 
-    try:
-        result = await agent.run(context)
-        raw = result.raw_data or {}
-        record_agent_run(
-            agent_name=agent_name,
-            status="success",
-            result=result.content,
-            duration_ms=int((time.monotonic() - start) * 1000),
-            trigger_source="manual",
-            notify_attempted=(
-                "notified" in raw
-                or "notify_error" in raw
-                or "notify_skipped" in raw
-            ),
-            notify_sent=bool(raw.get("notified", False)),
-            model_label=model_label,
-        )
-    except Exception as e:
-        record_agent_run(
-            agent_name=agent_name,
-            status="failed",
-            error=str(e),
-            duration_ms=int((time.monotonic() - start) * 1000),
-            trigger_source="manual",
-            model_label=model_label,
-        )
-        raise
+    with log_context(
+        trace_id=trace_id,
+        run_id=trace_id,
+        agent_name=agent_name,
+        event="trigger_agent_for_stock",
+        tags={"trigger_source": "manual", "stock_symbol": stock.symbol},
+    ):
+        try:
+            result = await agent.run(context)
+            raw = result.raw_data or {}
+            record_agent_run(
+                agent_name=agent_name,
+                status="success",
+                result=result.content,
+                duration_ms=int((time.monotonic() - start) * 1000),
+                trace_id=trace_id,
+                trigger_source="manual",
+                notify_attempted=(
+                    "notified" in raw
+                    or "notify_error" in raw
+                    or "notify_skipped" in raw
+                ),
+                notify_sent=bool(raw.get("notified", False)),
+                model_label=model_label,
+            )
+        except Exception as e:
+            record_agent_run(
+                agent_name=agent_name,
+                status="failed",
+                error=str(e),
+                duration_ms=int((time.monotonic() - start) * 1000),
+                trace_id=trace_id,
+                trigger_source="manual",
+                model_label=model_label,
+            )
+            raise
 
     # 返回详细结果
     skipped = bool(result.raw_data.get("skipped", False))

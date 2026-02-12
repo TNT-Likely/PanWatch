@@ -295,12 +295,75 @@ def _m105_indexes(conn: Connection) -> None:
         )
 
 
+def _m106_log_observability(conn: Connection) -> None:
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "trace_id",
+        "ALTER TABLE log_entries ADD COLUMN trace_id TEXT DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "run_id",
+        "ALTER TABLE log_entries ADD COLUMN run_id TEXT DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "agent_name",
+        "ALTER TABLE log_entries ADD COLUMN agent_name TEXT DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "event",
+        "ALTER TABLE log_entries ADD COLUMN event TEXT DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "tags",
+        "ALTER TABLE log_entries ADD COLUMN tags TEXT DEFAULT '{}'",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "notify_status",
+        "ALTER TABLE log_entries ADD COLUMN notify_status TEXT DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "log_entries",
+        "notify_reason",
+        "ALTER TABLE log_entries ADD COLUMN notify_reason TEXT DEFAULT ''",
+    )
+
+    if _has_table(conn, "log_entries"):
+        _create_index_if_missing(
+            conn,
+            "ix_log_entries_time_id",
+            "CREATE INDEX ix_log_entries_time_id ON log_entries(timestamp, id)",
+        )
+        _create_index_if_missing(
+            conn,
+            "ix_log_entries_trace",
+            "CREATE INDEX ix_log_entries_trace ON log_entries(trace_id)",
+        )
+        _create_index_if_missing(
+            conn,
+            "ix_log_entries_agent_event",
+            "CREATE INDEX ix_log_entries_agent_event ON log_entries(agent_name, event)",
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
     Migration(103, "agent_run_observability_fields", _m103_agent_run_observability),
     Migration(104, "analysis_history_kind_snapshot", _m104_history_kind_snapshot),
     Migration(105, "indexes_for_agent_kind_and_history", _m105_indexes),
+    Migration(106, "log_entry_observability_fields", _m106_log_observability),
 )
 
 

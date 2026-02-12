@@ -198,12 +198,24 @@ class AgentRun(Base):
 
 class LogEntry(Base):
     __tablename__ = "log_entries"
+    __table_args__ = (
+        Index("ix_log_entries_time_id", "timestamp", "id"),
+        Index("ix_log_entries_trace", "trace_id"),
+        Index("ix_log_entries_agent_event", "agent_name", "event"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False)
     level = Column(String, nullable=False)
     logger_name = Column(String, default="")
     message = Column(String, default="")
+    trace_id = Column(String, default="")
+    run_id = Column(String, default="")
+    agent_name = Column(String, default="")
+    event = Column(String, default="")
+    tags = Column(JSON, default={})
+    notify_status = Column(String, default="")
+    notify_reason = Column(String, default="")
     created_at = Column(DateTime, server_default=func.now())
 
 

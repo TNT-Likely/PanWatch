@@ -22,6 +22,7 @@ from src.core.signals.structured_output import (
     strip_tagged_json,
     try_extract_tagged_json,
 )
+from src.core.log_context import get_log_context
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,10 @@ class PremarketOutlookAgent(BaseAgent):
 
     async def collect(self, context: AgentContext) -> dict:
         """采集盘前数据"""
-        trace_id = datetime.now().strftime("%m%d%H%M%S%f")[-10:]
+        trace_id = (
+            get_log_context().get("trace_id")
+            or datetime.now().strftime("%m%d%H%M%S%f")[-10:]
+        )
         start_ts = time.monotonic()
         symbols = [s.symbol for s in context.watchlist]
         logger.info(
