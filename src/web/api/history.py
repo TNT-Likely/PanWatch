@@ -1,7 +1,7 @@
 """分析历史 API"""
 
 import logging
-from datetime import date, timedelta, timezone
+from datetime import timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
@@ -31,21 +31,11 @@ def _format_datetime(dt) -> str:
     except Exception:
         tzinfo = timezone.utc
 
-    # 兼容历史混合口径：
-    # - SQLite CURRENT_TIMESTAMP 通常是秒级（无微秒），按 UTC 存储；
-    # - 旧版本代码曾手工写入 datetime.now()（常见为带微秒），该值是本地时间。
-    # 另外部分环境里，历史本地时间可能被解析为“带 UTC tzinfo”的 datetime，
-    # 这里也按本地时间处理，避免出现 +8 小时偏移。
-    microsecond = getattr(dt, "microsecond", 0)
+    # Deterministic rule:
+    # - naive datetime: treat as UTC
+    # - aware datetime: keep original timezone semantics
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=tzinfo if microsecond > 0 else timezone.utc)
-    else:
-        try:
-            offset = dt.tzinfo.utcoffset(dt)
-        except Exception:
-            offset = None
-        if microsecond > 0 and offset == timedelta(0):
-            dt = dt.replace(tzinfo=tzinfo)
+        dt = dt.replace(tzinfo=timezone.utc)
 
     return dt.astimezone(tzinfo).isoformat(timespec="seconds")
 
