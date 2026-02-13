@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 
 type BusinessDay = { year: number; month: number; day: number }
 
@@ -23,10 +22,40 @@ type KlinesResponse = {
   klines: KlineItem[]
 }
 
+type HoverTipRow = {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  ma5: number | null
+  ma10: number | null
+  ma20: number | null
+  macd: number | null
+  signal: number | null
+  rsi6: number | null
+}
+
+type HoverTip = {
+  visible: boolean
+  x: number
+  y: number
+  row: HoverTipRow | null
+}
+
 function parseBusinessDay(dateStr: string): BusinessDay | null {
   const m = String(dateStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!m) return null
   return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
+}
+
+function parseCrosshairDateKey(time: any): string | null {
+  if (!time || typeof time !== 'object') return null
+  const year = Number(time.year)
+  const month = Number(time.month)
+  const day = Number(time.day)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
 }
 
 function sma(values: number[], period: number): Array<number | null> {
@@ -132,12 +161,21 @@ export default function InteractiveKline(props: {
   const [lwReady, setLwReady] = useState(!!getLW())
   const [libError, setLibError] = useState(false)
   const [interval, setIntervalValue] = useState<'1d' | '1w' | '1m'>(props.initialInterval || '1d')
-  const [days, setDays] = useState<'60' | '120' | '250'>(props.initialDays || '120')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [data, setData] = useState<KlineItem[]>([])
   const [showRsi, setShowRsi] = useState(true)
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const [hoverTip, setHoverTip] = useState<HoverTip>({ visible: false, x: 0, y: 0, row: null })
+
+  const fixedDays = useMemo(() => {
+    const customDays = Number(props.initialDays)
+    if (Number.isFinite(customDays) && customDays > 0) {
+      return Math.floor(customDays)
+    }
+    if (interval === '1m') return 360
+    if (interval === '1w') return 180
+    return 120
+  }, [props.initialDays, interval])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
@@ -146,11 +184,25 @@ export default function InteractiveKline(props: {
     if (!props.symbol) return
     setLoading(true)
     setError('')
+    setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
     try {
-      const res = await fetchAPI<KlinesResponse>(
-        `/klines/${encodeURIComponent(props.symbol)}?market=${encodeURIComponent(props.market)}&days=${encodeURIComponent(days)}&interval=${encodeURIComponent(interval)}`
-      )
-      setData(res.klines || [])
+      const query = (days: number) =>
+        `/klines/${encodeURIComponent(props.symbol)}?market=${encodeURIComponent(props.market)}&days=${encodeURIComponent(String(days))}&interval=${encodeURIComponent(interval)}`
+      const attempts = Array.from(new Set([fixedDays, Math.max(90, Math.floor(fixedDays * 0.75))]))
+      let best: KlineItem[] = []
+      let lastError: unknown = null
+      for (const d of attempts) {
+        try {
+          const res = await fetchAPI<KlinesResponse>(query(d))
+          const kl = res.klines || []
+          if (kl.length > best.length) best = kl
+          if (d === fixedDays && kl.length > 0) break
+        } catch (e) {
+          lastError = e
+        }
+      }
+      if (!best.length && lastError) throw lastError
+      setData(best)
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载K线失败')
       setData([])
@@ -160,17 +212,13 @@ export default function InteractiveKline(props: {
   }
 
   useEffect(() => {
-    load()
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.symbol, props.market, days, interval])
+  }, [props.symbol, props.market, interval, fixedDays])
 
   useEffect(() => {
     if (props.initialInterval) setIntervalValue(props.initialInterval)
   }, [props.initialInterval, props.symbol, props.market])
-
-  useEffect(() => {
-    if (props.initialDays) setDays(props.initialDays)
-  }, [props.initialDays, props.symbol, props.market])
 
   useEffect(() => {
     if (lwReady) return
@@ -232,26 +280,20 @@ export default function InteractiveKline(props: {
     return { last, changePct, ampPct, maxHigh, minLow, avgVol }
   }, [series.klines])
 
-  const hoverRow = useMemo(() => {
-    if (hoverIdx == null || hoverIdx < 0 || hoverIdx >= series.klines.length) return null
-    const k = series.klines[hoverIdx]
-    return {
-      k,
-      ma5: series.ma5[hoverIdx],
-      ma10: series.ma10[hoverIdx],
-      ma20: series.ma20[hoverIdx],
-      macd: series.macd.macd[hoverIdx],
-      sig: series.macd.signal[hoverIdx],
-      hist: series.macd.hist[hoverIdx],
-      rsi6: series.rsi6[hoverIdx],
+  const indexByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    for (let i = 0; i < series.klines.length; i++) {
+      m.set(series.klines[i].date, i)
     }
-  }, [hoverIdx, series])
+    return m
+  }, [series.klines])
+  const showSkeleton = loading && !series.klines.length
 
   useEffect(() => {
     const LW = getLW()
     if (!LW || !lwReady) return
     if (!containerRef.current) return
-    if (series.candles.length < 20) return
+    if (!series.candles.length) return
 
     const container = containerRef.current
     const macdEl = macdRef.current
@@ -263,6 +305,8 @@ export default function InteractiveKline(props: {
     const bg = rootStyle.getPropertyValue('--card').trim()
     const fg = rootStyle.getPropertyValue('--foreground').trim()
 
+    const defaultBars = interval === '1d' ? 100 : interval === '1w' ? 78 : 72
+    const defaultSpacing = interval === '1d' ? 8.5 : interval === '1w' ? 10 : 10
     const chart = LW.createChart(container, {
       width: container.clientWidth,
       height: 380,
@@ -271,7 +315,16 @@ export default function InteractiveKline(props: {
         textColor: `hsl(${fg} / 0.85)`,
       },
       rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false },
+      timeScale: {
+        borderVisible: false,
+        fixRightEdge: true,
+        rightOffset: 1,
+        barSpacing: defaultSpacing,
+        minBarSpacing: 1,
+        lockVisibleTimeRangeOnResize: true,
+      },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       grid: {
         vertLines: { color: 'rgba(148, 163, 184, 0.08)' },
         horzLines: { color: 'rgba(148, 163, 184, 0.08)' },
@@ -411,16 +464,55 @@ export default function InteractiveKline(props: {
     }
     chart.timeScale().subscribeVisibleTimeRangeChange(sync)
     chart.subscribeCrosshairMove?.((param: any) => {
-      const t = param?.time
-      if (!t || !series.klines.length) {
-        setHoverIdx(null)
+      const point = param?.point
+      const dateKey = parseCrosshairDateKey(param?.time)
+      if (!point || !dateKey || !series.klines.length) {
+        setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
         return
       }
-      const idx = series.klines.findIndex(k => {
-        const d = parseBusinessDay(k.date)
-        return d && d.year === t.year && d.month === t.month && d.day === t.day
+      const inBounds =
+        point.x >= 0 &&
+        point.y >= 0 &&
+        point.x <= container.clientWidth &&
+        point.y <= container.clientHeight
+      if (!inBounds) {
+        setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
+        return
+      }
+      const idx = indexByDate.get(dateKey)
+      if (idx == null || idx < 0 || idx >= series.klines.length) {
+        setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
+        return
+      }
+
+      const k = series.klines[idx]
+      const tooltipWidth = 280
+      const tooltipHeight = 152
+      let x = point.x + 12
+      let y = point.y + 12
+      if (x + tooltipWidth > container.clientWidth - 6) x = point.x - tooltipWidth - 12
+      if (y + tooltipHeight > container.clientHeight - 6) y = point.y - tooltipHeight - 12
+      x = Math.max(6, Math.min(x, Math.max(6, container.clientWidth - tooltipWidth - 6)))
+      y = Math.max(6, Math.min(y, Math.max(6, container.clientHeight - tooltipHeight - 6)))
+
+      setHoverTip({
+        visible: true,
+        x,
+        y,
+        row: {
+          date: k.date,
+          open: k.open,
+          high: k.high,
+          low: k.low,
+          close: k.close,
+          ma5: series.ma5[idx],
+          ma10: series.ma10[idx],
+          ma20: series.ma20[idx],
+          macd: series.macd.macd[idx],
+          signal: series.macd.signal[idx],
+          rsi6: series.rsi6[idx],
+        },
       })
-      setHoverIdx(idx >= 0 ? idx : null)
     })
 
     const ro = new ResizeObserver(() => {
@@ -431,7 +523,10 @@ export default function InteractiveKline(props: {
     ro.observe(container)
     if (macdEl) ro.observe(macdEl)
 
-    chart.timeScale().fitContent()
+    const total = series.candles.length
+    const from = Math.max(0, total - defaultBars)
+    const to = Math.max(total - 1, 0)
+    chart.timeScale().setVisibleLogicalRange({ from, to })
     return () => {
       ro.disconnect()
       try {
@@ -450,37 +545,37 @@ export default function InteractiveKline(props: {
         // ignore
       }
     }
-  }, [series, lwReady, showRsi])
+  }, [series, lwReady, showRsi, indexByDate, interval])
 
   return (
     <div className="card p-4 md:p-5">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
         <div className="text-[13px] font-semibold text-foreground">K线图</div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant={showRsi ? 'default' : 'secondary'} size="sm" className="h-8 px-2.5" onClick={() => setShowRsi(v => !v)}>
-            RSI
+            强弱线
           </Button>
-          <Select value={interval} onValueChange={(v) => setIntervalValue(v as any)}>
-            <SelectTrigger className="h-8 w-[90px] text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1d">日K</SelectItem>
-              <SelectItem value="1w">周K</SelectItem>
-              <SelectItem value="1m">月K</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={days} onValueChange={(v) => setDays(v as '60' | '120' | '250')}>
-            <SelectTrigger className="h-8 w-[110px] text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="60">近 60 天</SelectItem>
-              <SelectItem value="120">近 120 天</SelectItem>
-              <SelectItem value="250">近 250 天</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="secondary" size="sm" className="h-8" onClick={load} disabled={loading}>
+          <div className="inline-flex rounded-lg border border-border/60 bg-accent/20 p-0.5">
+            {([
+              { value: '1d', label: '日K' },
+              { value: '1w', label: '周K' },
+              { value: '1m', label: '月K' },
+            ] as const).map(item => (
+              <button
+                key={item.value}
+                type="button"
+                className={`h-7 min-w-[44px] rounded-md px-2.5 text-[12px] transition-colors ${
+                  interval === item.value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+                }`}
+                onClick={() => setIntervalValue(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <Button variant="secondary" size="sm" className="h-8" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">刷新</span>
           </Button>
@@ -499,7 +594,16 @@ export default function InteractiveKline(props: {
         </div>
       ) : null}
 
-      {latestMetrics && (
+      {showSkeleton ? (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3 animate-pulse">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-lg bg-accent/20 px-2.5 py-2">
+              <div className="h-3 w-14 bg-accent/60 rounded" />
+              <div className="h-3 w-16 bg-accent/60 rounded mt-2" />
+            </div>
+          ))}
+        </div>
+      ) : latestMetrics ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">最新价</span> <span className="font-mono ml-1">{latestMetrics.last.close.toFixed(2)}</span></div>
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">涨跌</span> <span className={`font-mono ml-1 ${latestMetrics.changePct >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{latestMetrics.changePct >= 0 ? '+' : ''}{latestMetrics.changePct.toFixed(2)}%</span></div>
@@ -507,28 +611,49 @@ export default function InteractiveKline(props: {
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">区间高低</span> <span className="font-mono ml-1">{latestMetrics.maxHigh.toFixed(2)}/{latestMetrics.minLow.toFixed(2)}</span></div>
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">均量</span> <span className="font-mono ml-1">{(latestMetrics.avgVol / 10000).toFixed(1)}万</span></div>
         </div>
-      )}
-
-      {hoverRow && (
-        <div className="mb-2 rounded-lg bg-accent/15 border border-border/40 px-3 py-2 text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-          <span>{hoverRow.k.date}</span>
-          <span>O {hoverRow.k.open.toFixed(2)}</span>
-          <span>H {hoverRow.k.high.toFixed(2)}</span>
-          <span>L {hoverRow.k.low.toFixed(2)}</span>
-          <span>C {hoverRow.k.close.toFixed(2)}</span>
-          <span>MA5 {hoverRow.ma5 != null ? hoverRow.ma5.toFixed(2) : '--'}</span>
-          <span>MA10 {hoverRow.ma10 != null ? hoverRow.ma10.toFixed(2) : '--'}</span>
-          <span>MACD {hoverRow.macd != null ? hoverRow.macd.toFixed(3) : '--'}</span>
-          <span>Signal {hoverRow.sig != null ? hoverRow.sig.toFixed(3) : '--'}</span>
-          <span>RSI6 {hoverRow.rsi6 != null ? hoverRow.rsi6.toFixed(1) : '--'}</span>
-        </div>
-      )}
-
-      <div ref={containerRef} className="w-full rounded-xl overflow-hidden border border-border/50" />
+      ) : null}
+      <div className="relative">
+        {showSkeleton ? (
+          <div className="w-full h-[380px] rounded-xl overflow-hidden border border-border/50 p-3 animate-pulse">
+            <div className="h-full w-full rounded-lg bg-accent/20" />
+          </div>
+        ) : (
+          <div ref={containerRef} className="w-full h-[380px] rounded-xl overflow-hidden border border-border/50" />
+        )}
+        {hoverTip.visible && hoverTip.row ? (
+          <div
+            className="pointer-events-none absolute z-10 w-[280px] rounded-lg border border-border/60 bg-card/95 px-3 py-2 shadow-lg backdrop-blur-[2px]"
+            style={{ left: `${hoverTip.x}px`, top: `${hoverTip.y}px` }}
+          >
+            <div className="text-[11px] text-foreground font-medium mb-1.5">{hoverTip.row.date}</div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              <span>开盘价 <span className="font-mono text-foreground">{hoverTip.row.open.toFixed(2)}</span></span>
+              <span>收盘价 <span className="font-mono text-foreground">{hoverTip.row.close.toFixed(2)}</span></span>
+              <span>最高价 <span className="font-mono text-foreground">{hoverTip.row.high.toFixed(2)}</span></span>
+              <span>最低价 <span className="font-mono text-foreground">{hoverTip.row.low.toFixed(2)}</span></span>
+              <span>5日均线 <span className="font-mono text-foreground">{hoverTip.row.ma5 != null ? hoverTip.row.ma5.toFixed(2) : '--'}</span></span>
+              <span>10日均线 <span className="font-mono text-foreground">{hoverTip.row.ma10 != null ? hoverTip.row.ma10.toFixed(2) : '--'}</span></span>
+              <span>20日均线 <span className="font-mono text-foreground">{hoverTip.row.ma20 != null ? hoverTip.row.ma20.toFixed(2) : '--'}</span></span>
+              <span>MACD线 <span className="font-mono text-foreground">{hoverTip.row.macd != null ? hoverTip.row.macd.toFixed(3) : '--'}</span></span>
+              <span>信号线 <span className="font-mono text-foreground">{hoverTip.row.signal != null ? hoverTip.row.signal.toFixed(3) : '--'}</span></span>
+              <span>RSI强弱 <span className="font-mono text-foreground">{hoverTip.row.rsi6 != null ? hoverTip.row.rsi6.toFixed(1) : '--'}</span></span>
+            </div>
+          </div>
+        ) : null}
+      </div>
       <div className="mt-3 grid grid-cols-1 gap-3">
         <div>
-          <div className="text-[11px] text-muted-foreground mb-1">MACD{showRsi ? ' + RSI' : ''}</div>
-          <div ref={macdRef} className="w-full rounded-xl overflow-hidden border border-border/50" />
+          <div className="text-[11px] text-muted-foreground mb-1">动能指标（MACD{showRsi ? ' + RSI强弱线' : ''}）</div>
+          <div className="text-[11px] text-muted-foreground mb-2 rounded-lg bg-accent/15 border border-border/40 px-2.5 py-1.5">
+            MACD 用来看趋势动能和拐点；RSI 用来看是否偏热/偏弱（一般 70 以上偏热，30 以下偏弱）。
+          </div>
+          {showSkeleton ? (
+            <div className="w-full h-[150px] rounded-xl overflow-hidden border border-border/50 animate-pulse">
+              <div className="h-full w-full bg-accent/20" />
+            </div>
+          ) : (
+            <div ref={macdRef} className="w-full h-[150px] rounded-xl overflow-hidden border border-border/50" />
+          )}
         </div>
       </div>
     </div>
