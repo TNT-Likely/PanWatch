@@ -742,6 +742,7 @@ class IntradayMonitorAgent(BaseAgent):
             expires_hours=6,  # 盘中建议 6 小时有效
             prompt_context=user_content,  # 保存 prompt 上下文
             ai_response=raw_content,  # 保存 AI 原始响应
+            stock_market=stock.market.value,
             meta={
                 "quote": {
                     "current_price": stock.current_price,

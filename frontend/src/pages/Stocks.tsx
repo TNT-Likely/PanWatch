@@ -168,6 +168,7 @@ interface StockSuggestionData {
 interface PoolSuggestion {
   id: number
   stock_symbol: string
+  stock_market?: string
   stock_name: string
   action: string
   action_label: string
@@ -235,7 +236,7 @@ const mergePortfolioQuotes = (
     let accCost = 0
 
     const positions = account.positions.map(pos => {
-      const quote = quotes[pos.symbol]
+      const quote = quotes[`${pos.market}:${pos.symbol}`]
       const current_price = quote?.current_price ?? pos.current_price ?? null
       const change_pct = quote?.change_pct ?? pos.change_pct ?? null
       const rate = pos.market === 'HK' ? hkdRate : pos.market === 'US' ? usdRate : 1
@@ -605,7 +606,7 @@ export default function StocksPage() {
       })
       const map: Record<string, { current_price: number | null; change_pct: number | null }> = {}
       for (const item of data) {
-        map[item.symbol] = {
+        map[`${item.market}:${item.symbol}`] = {
           current_price: item.current_price ?? null,
           change_pct: item.change_pct ?? null,
         }
@@ -1311,8 +1312,8 @@ export default function StocksPage() {
   }
 
   // 获取股票的行情信息
-  const getStockQuote = (symbol: string) => {
-    return quotes[symbol] || null
+  const getStockQuote = (quoteKey: string) => {
+    return quotes[quoteKey] || null
   }
 
   const getPriceAlertSummary = (symbol: string, market: string) => {
@@ -1324,7 +1325,14 @@ export default function StocksPage() {
   const getSuggestionForStock = (symbol: string, market: string, hasPosition?: boolean): { suggestion: SuggestionInfo | null; kline: KlineSummary | null } => {
     const key = `${market || 'CN'}:${symbol}`
     // 优先使用建议池的建议（包含来源和时间信息）
-    const poolSug = poolSuggestions[symbol]
+    const poolSug =
+      poolSuggestions[key] ||
+      (() => {
+        const fallback = poolSuggestions[symbol]
+        if (!fallback) return null
+        const fm = String(fallback.stock_market || '').toUpperCase()
+        return fm && fm !== String(market || 'CN').toUpperCase() ? null : fallback
+      })()
     if (poolSug) {
       const preloadedKline = klineSummaries[key] || (suggestions[symbol]?.kline as any) || null
       return {
@@ -2269,7 +2277,7 @@ export default function StocksPage() {
                   return !!suggestion?.should_alert
                 })
                 .map((stock) => {
-                const quote = getStockQuote(stock.symbol)
+                const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
                 const changeColor = quote?.change_pct != null
                   ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                   : 'text-muted-foreground'

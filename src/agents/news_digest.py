@@ -520,6 +520,7 @@ class NewsDigestAgent(BaseAgent):
                 expires_hours=12,
                 prompt_context=user_content,
                 ai_response=result.content,
+                stock_market=stock.market.value,
                 meta={
                     "source": "news_digest",
                     "since_hours_used": data.get("since_hours_used", self.since_hours),

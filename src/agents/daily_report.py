@@ -607,6 +607,7 @@ class DailyReportAgent(BaseAgent):
                     expires_hours=16,  # 盘后建议隔夜有效
                     prompt_context=user_content,
                     ai_response=result.content,
+                    stock_market=stock.market.value,
                     meta={
                         "analysis_date": analysis_date,
                         "source": "daily_report",

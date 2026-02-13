@@ -73,11 +73,11 @@ def insights_batch(payload: InsightsBatchRequest):
             except Exception:
                 summary = {}
             _KLINE_CACHE[cache_key] = (now, summary)
-        kline_by_symbol[it.symbol] = summary
+        kline_by_symbol[cache_key] = summary
 
     # 3) 最新建议（建议池）
-    symbols = [it.symbol for it in payload.items]
-    latest_sugs = get_latest_suggestions(stock_symbols=symbols, include_expired=False)
+    stock_keys = [(it.symbol, _parse_market(it.market).value) for it in payload.items]
+    latest_sugs = get_latest_suggestions(stock_keys=stock_keys, include_expired=False)
 
     # 4) 合并返回
     results = []
@@ -97,8 +97,8 @@ def insights_batch(payload: InsightsBatchRequest):
                 "volume": quote.get("volume") if quote else None,
                 "turnover": quote.get("turnover") if quote else None,
             },
-            "kline_summary": kline_by_symbol.get(it.symbol, {}),
-            "suggestion": latest_sugs.get(it.symbol),
+            "kline_summary": kline_by_symbol.get(f"{market_code.value}:{it.symbol}", {}),
+            "suggestion": latest_sugs.get(f"{market_code.value}:{it.symbol}"),
         })
 
     return results

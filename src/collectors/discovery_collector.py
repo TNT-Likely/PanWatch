@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class HotStock:
     symbol: str
+    market: str
     name: str
     price: float | None
     change_pct: float | None
@@ -27,7 +28,7 @@ class HotBoard:
 
 
 class EastMoneyDiscoveryCollector:
-    """Discovery ranks (A-share) via EastMoney push2."""
+    """Discovery ranks via EastMoney push2 (CN/HK/US)."""
 
     STOCKS_API = "https://push2.eastmoney.com/api/qt/clist/get"
     BOARDS_API = "https://push2.eastmoney.com/api/qt/clist/get"
@@ -54,12 +55,18 @@ class EastMoneyDiscoveryCollector:
         mode: str = "turnover",
         limit: int = 20,
     ) -> list[HotStock]:
-        if market != "CN":
-            return []
+        market = (market or "CN").upper()
 
         fid = "f6" if mode == "turnover" else "f3"
         fields = "f12,f14,f2,f3,f6,f5"
-        fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"  # A-share
+        if market == "CN":
+            fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"  # A-share
+        elif market == "HK":
+            fs = "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2"  # HK
+        elif market == "US":
+            fs = "m:105,m:106,m:107"  # US
+        else:
+            return []
 
         params = {
             "pn": 1,
@@ -81,6 +88,7 @@ class EastMoneyDiscoveryCollector:
                 result.append(
                     HotStock(
                         symbol=str(it.get("f12") or "").strip(),
+                        market=market,
                         name=str(it.get("f14") or "").strip(),
                         price=it.get("f2"),
                         change_pct=it.get("f3"),
@@ -171,6 +179,7 @@ class EastMoneyDiscoveryCollector:
                 result.append(
                     HotStock(
                         symbol=str(it.get("f12") or "").strip(),
+                        market="CN",
                         name=str(it.get("f14") or "").strip(),
                         price=it.get("f2"),
                         change_pct=it.get("f3"),

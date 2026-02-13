@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from datetime import timezone
+from sqlalchemy import and_, func, or_
 
 from src.web.database import SessionLocal
 from src.web.models import StockSuggestion
@@ -55,6 +56,7 @@ def save_suggestion(
     expires_hours: Optional[int] = None,
     prompt_context: str = "",
     ai_response: str = "",
+    stock_market: str = "CN",
     meta: dict | None = None,
 ) -> bool:
     """
@@ -78,6 +80,8 @@ def save_suggestion(
     """
     db = SessionLocal()
     try:
+        market = (stock_market or "CN").strip().upper() or "CN"
+
         # 计算过期时间（使用 UTC）
         if expires_hours is None:
             expires_hours = AGENT_EXPIRY_HOURS.get(agent_name, 8)
@@ -96,6 +100,7 @@ def save_suggestion(
                 db.query(StockSuggestion)
                 .filter(
                     StockSuggestion.stock_symbol == stock_symbol,
+                    StockSuggestion.stock_market == market,
                     StockSuggestion.agent_name == agent_name,
                 )
                 .order_by(StockSuggestion.created_at.desc(), StockSuggestion.id.desc())
@@ -163,6 +168,7 @@ def save_suggestion(
         # 创建新建议
         suggestion = StockSuggestion(
             stock_symbol=stock_symbol,
+            stock_market=market,
             stock_name=stock_name,
             action=action,
             action_label=action_label,
@@ -191,6 +197,7 @@ def save_suggestion(
 
 def get_suggestions_for_stock(
     stock_symbol: str,
+    stock_market: str | None = None,
     include_expired: bool = False,
     limit: int = 10,
 ) -> list[dict]:
@@ -207,9 +214,11 @@ def get_suggestions_for_stock(
     """
     db = SessionLocal()
     try:
-        query = db.query(StockSuggestion).filter(
-            StockSuggestion.stock_symbol == stock_symbol
-        )
+        query = db.query(StockSuggestion).filter(StockSuggestion.stock_symbol == stock_symbol)
+        if stock_market:
+            query = query.filter(
+                StockSuggestion.stock_market == (stock_market or "CN").strip().upper()
+            )
 
         now = utc_now()
         if not include_expired:
@@ -230,6 +239,7 @@ def get_suggestions_for_stock(
 
 def get_latest_suggestions(
     stock_symbols: Optional[list[str]] = None,
+    stock_keys: Optional[list[tuple[str, str]]] = None,
     include_expired: bool = False,
 ) -> dict[str, dict]:
     """
@@ -244,26 +254,47 @@ def get_latest_suggestions(
     """
     db = SessionLocal()
     try:
-        # 使用子查询获取每只股票的最新建议
-        from sqlalchemy import func
-
-        # 先获取每只股票最新建议的 ID
         subquery = (
             db.query(
                 StockSuggestion.stock_symbol,
+                StockSuggestion.stock_market,
                 func.max(StockSuggestion.id).label("max_id"),
             )
-            .group_by(StockSuggestion.stock_symbol)
+            .group_by(StockSuggestion.stock_symbol, StockSuggestion.stock_market)
             .subquery()
         )
 
         query = db.query(StockSuggestion).join(
             subquery,
-            (StockSuggestion.stock_symbol == subquery.c.stock_symbol)
-            & (StockSuggestion.id == subquery.c.max_id),
+            and_(
+                StockSuggestion.stock_symbol == subquery.c.stock_symbol,
+                StockSuggestion.stock_market == subquery.c.stock_market,
+                StockSuggestion.id == subquery.c.max_id,
+            ),
         )
 
-        if stock_symbols:
+        if stock_keys:
+            norm_keys = []
+            for symbol, market in stock_keys:
+                sym = (symbol or "").strip().upper()
+                mkt = (market or "CN").strip().upper()
+                if sym:
+                    norm_keys.append((sym, mkt))
+            if norm_keys:
+                query = query.filter(
+                    or_(
+                        *[
+                            and_(
+                                StockSuggestion.stock_symbol == sym,
+                                StockSuggestion.stock_market == mkt,
+                            )
+                            for sym, mkt in norm_keys
+                        ]
+                    )
+                )
+            else:
+                return {}
+        elif stock_symbols:
             query = query.filter(StockSuggestion.stock_symbol.in_(stock_symbols))
 
         now = utc_now()
@@ -275,7 +306,11 @@ def get_latest_suggestions(
 
         suggestions = query.all()
 
-        return {s.stock_symbol: _to_dict(s, now) for s in suggestions}
+        result: dict[str, dict] = {}
+        for s in suggestions:
+            key = f"{(s.stock_market or 'CN').upper()}:{s.stock_symbol}"
+            result[key] = _to_dict(s, now)
+        return result
 
     finally:
         db.close()
@@ -318,6 +353,7 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
     return {
         "id": suggestion.id,
         "stock_symbol": suggestion.stock_symbol,
+        "stock_market": suggestion.stock_market or "CN",
         "stock_name": suggestion.stock_name,
         "action": suggestion.action,
         "action_label": suggestion.action_label,

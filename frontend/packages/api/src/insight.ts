@@ -30,9 +30,13 @@ export const insightApi = {
       })
     ),
 
-  suggestions: <T>(symbol: string, params: { limit?: number; include_expired?: boolean }) =>
+  suggestions: <T>(
+    symbol: string,
+    params: { market?: string; limit?: number; include_expired?: boolean }
+  ) =>
     fetchAPI<T>(
       withQuery(`/suggestions/${encodeURIComponent(symbol)}`, {
+        market: params.market,
         limit: params.limit,
         include_expired: params.include_expired,
       })

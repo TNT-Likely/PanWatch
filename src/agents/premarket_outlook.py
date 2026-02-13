@@ -747,6 +747,7 @@ class PremarketOutlookAgent(BaseAgent):
                     expires_hours=12,  # 盘前建议当日有效
                     prompt_context=user_content,
                     ai_response=result.content,
+                    stock_market=stock.market.value,
                     meta={
                         "analysis_date": analysis_date,
                         "source": "premarket_outlook",

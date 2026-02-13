@@ -361,7 +361,6 @@ export default function StockInsightModal(props: {
   const [reports, setReports] = useState<HistoryRecord[]>([])
   const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report' | 'news_digest'>('premarket_outlook')
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
-  const [klineDays] = useState<'60' | '120' | '250'>('120')
   const [alerting, setAlerting] = useState(false)
   const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
   const [watchToggleLoading, setWatchToggleLoading] = useState(false)
@@ -413,6 +412,7 @@ export default function StockInsightModal(props: {
   const loadSuggestions = useCallback(async () => {
     if (!symbol) return
     const data = await insightApi.suggestions<any[]>(symbol, {
+      market,
       limit: 20,
       include_expired: includeExpiredSuggestions,
     })
@@ -433,7 +433,7 @@ export default function StockInsightModal(props: {
       meta: item.meta,
     })) as SuggestionInfo[]
     setSuggestions(list)
-  }, [symbol, includeExpiredSuggestions])
+  }, [symbol, market, includeExpiredSuggestions])
 
   const loadNews = useCallback(async () => {
     if (!symbol) return
@@ -1500,7 +1500,6 @@ export default function StockInsightModal(props: {
                   symbol={symbol}
                   market={market}
                   initialInterval={klineInterval}
-                  initialDays={klineDays}
                 />
               </div>
             )}

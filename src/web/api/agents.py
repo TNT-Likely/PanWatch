@@ -719,6 +719,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                             expires_hours=expires_hours,
                             prompt_context=user_content,
                             ai_response=response,
+                            stock_market=item.get("market") or "CN",
                             meta={
                                 "source": "intraday_scan",
                                 "quote": {
