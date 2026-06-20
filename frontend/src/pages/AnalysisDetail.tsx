@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   ArrowLeft,
+  FileDown,
   List,
   ChevronDown,
   Target,
@@ -112,6 +113,19 @@ export default function AnalysisDetailPage() {
       return true
     }
   })
+  const [pdfBusy, setPdfBusy] = useState(false)
+
+  const handleExportPdf = async () => {
+    if (pdfBusy) return
+    setPdfBusy(true)
+    try {
+      await tradingAgentsApi.downloadAnalysisPdf(symbol, date)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '导出失败')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -262,6 +276,15 @@ export default function AnalysisDetailPage() {
             </button>
             <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} 深度分析`}</h1>
             <span className="text-[12px] text-muted-foreground shrink-0">{date}</span>
+            <button
+              onClick={handleExportPdf}
+              disabled={pdfBusy}
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
+              title="导出 PDF 文件"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              {pdfBusy ? '导出中…' : '导出 PDF'}
+            </button>
           </div>
 
           {/* 正文 */}

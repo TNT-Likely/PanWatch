@@ -15,6 +15,8 @@ uvicorn>=0.24.0
 sqlalchemy>=2.0.0
 playwright==1.57.0
 PyJWT>=2.8.0
+# 详情报告导出 PDF(后台直出,不依赖 Chromium;会拉入 reportlab/pypdf 等)
+xhtml2pdf>=0.2.17
 
 # 深度分析 — TradingAgents (多 Agent 投资决策框架, 76k star)。
 # 不在 PyPI,用 git+ URL 安装。会拉 langchain/langgraph/yfinance 等较重依赖

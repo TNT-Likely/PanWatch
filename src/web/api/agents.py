@@ -574,6 +574,47 @@ def get_tradingagents_analysis(
     }
 
 
+@router.get("/tradingagents/analysis/pdf")
+def export_tradingagents_analysis_pdf(
+    stock_symbol: str = Query(..., description="股票代码"),
+    analysis_date: str = Query(..., description="分析日期 YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+):
+    """把某次 TradingAgents 深度分析报告导出为 PDF 文件(后台直出,不依赖 Chromium)。
+
+    返回 application/pdf(ResponseWrapperMiddleware 对非 JSON 原样放行,不会包裹)。
+    """
+    from urllib.parse import quote
+
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    from src.core.pdf_export import render_analysis_pdf
+    from src.web.models import AnalysisHistory
+
+    record = (
+        db.query(AnalysisHistory)
+        .filter(
+            AnalysisHistory.agent_name == "tradingagents",
+            AnalysisHistory.stock_symbol == stock_symbol,
+            AnalysisHistory.analysis_date == analysis_date,
+        )
+        .order_by(AnalysisHistory.updated_at.desc(), AnalysisHistory.id.desc())
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="未找到该深度分析记录")
+
+    pdf_bytes = render_analysis_pdf(record.title or "深度分析", record.content or "")
+    base = (record.title or f"{stock_symbol} 深度分析").replace("/", "-").replace("\\", "-").strip()
+    filename = f"{base}-{analysis_date}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
 @router.get("/tradingagents/history-comparison")
 def get_tradingagents_history_comparison(
     stock_symbol: str = Query(..., description="股票代码,如 300418"),

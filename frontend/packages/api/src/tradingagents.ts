@@ -3,7 +3,7 @@
  * 复用现有 /api/stocks/:id/agents/:name/trigger,只是 agent_name = "tradingagents"。
  * 进度走新增的 /api/agents/runs/:trace_id/progress。
  */
-import { fetchAPI } from './client'
+import { fetchAPI, getToken } from './client'
 
 export interface TradingAgentsTriggerResult {
   ok: boolean
@@ -175,6 +175,44 @@ export const tradingAgentsApi = {
   /** 读取本月预算 + 单次预估成本(用于触发前确认弹窗)。 */
   getBudget(): Promise<BudgetInfo> {
     return fetchAPI('/agents/tradingagents/budget')
+  },
+
+  /** 把某次深度分析报告导出为 PDF 文件并触发下载(后台直出,不走打印对话框)。 */
+  async downloadAnalysisPdf(symbol: string, date: string): Promise<void> {
+    const token = getToken()
+    const qs = new URLSearchParams({ stock_symbol: symbol, analysis_date: date })
+    const resp = await fetch(`/api/agents/tradingagents/analysis/pdf?${qs.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!resp.ok) {
+      let msg = `导出失败 (${resp.status})`
+      try {
+        const j = await resp.json()
+        msg = (j && (j.message || j.detail)) || msg
+      } catch {
+        /* 非 JSON 错误体,用默认提示 */
+      }
+      throw new Error(msg)
+    }
+    const blob = await resp.blob()
+    let filename = `深度分析-${date}.pdf`
+    const cd = resp.headers.get('Content-Disposition') || ''
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
+    if (m) {
+      try {
+        filename = decodeURIComponent(m[1])
+      } catch {
+        /* 保留默认文件名 */
+      }
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   },
 
   /** 查某只股票最近 30 分钟有没有在跑或刚完成的 TA 任务(后端权威源)。
