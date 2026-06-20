@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import {
   ArrowLeft,
   FileDown,
+  ImageDown,
   List,
   ChevronDown,
   Target,
@@ -24,6 +25,7 @@ import {
 } from '@panwatch/api'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
+import ShareCardModal from '../components/ShareCardModal'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-rose-500',
@@ -114,6 +116,7 @@ export default function AnalysisDetailPage() {
     }
   })
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const handleExportPdf = async () => {
     if (pdfBusy) return
@@ -277,9 +280,17 @@ export default function AnalysisDetailPage() {
             <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} 深度分析`}</h1>
             <span className="text-[12px] text-muted-foreground shrink-0">{date}</span>
             <button
+              onClick={() => setShareOpen(true)}
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              title="生成可分享的结论卡片图"
+            >
+              <ImageDown className="w-3.5 h-3.5" />
+              分享图
+            </button>
+            <button
               onClick={handleExportPdf}
               disabled={pdfBusy}
-              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
               title="导出 PDF 文件"
             >
               <FileDown className="w-3.5 h-3.5" />
@@ -458,6 +469,15 @@ export default function AnalysisDetailPage() {
           </div>
         </aside>
       </div>
+
+      {/* 分享卡片(导出 PNG) */}
+      <ShareCardModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        result={result}
+        symbol={symbol}
+        date={date}
+      />
     </div>
   )
 }

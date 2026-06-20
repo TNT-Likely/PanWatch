@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fn": "^0.0.2",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.300.0",
     "react": "^18.3.0",
     "react-day-picker": "^9.13.2",
