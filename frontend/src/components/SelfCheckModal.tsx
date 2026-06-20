@@ -31,11 +31,12 @@ interface CheckRow {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
+  system: '系统',
   datasource: '数据源',
   ai: 'AI模型',
   notify: '通知渠道',
 }
-const CATEGORY_ORDER = ['datasource', 'ai', 'notify']
+const CATEGORY_ORDER = ['system', 'datasource', 'ai', 'notify']
 const CONCURRENCY = 4
 
 const STATUS_META: Record<RowStatus, {

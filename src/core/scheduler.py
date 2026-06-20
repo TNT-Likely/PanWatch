@@ -178,6 +178,8 @@ class AgentScheduler:
     def start(self):
         """启动调度器"""
         self.scheduler.start()
+        from src.core.scheduler_registry import register
+        register("agent", self.scheduler)
         logger.info(f"调度器已启动，已注册 {len(self.agents)} 个 Agent")
 
         # 打印所有已注册的任务

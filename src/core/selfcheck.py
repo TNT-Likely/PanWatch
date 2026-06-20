@@ -12,6 +12,7 @@ import asyncio
 import logging
 import time
 
+from src.core.notify_dedupe import check_and_mark_notify
 from src.web.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,14 @@ def classify_hint(category: str, error: str | None) -> str:
         if any(k in e for k in ("forbidden", "unauthorized", "403", "401", "404", "blocked", "connect", "timeout")):
             return "通知发送失败:检查 webhook 地址/token 是否正确、是否被网络拦截。"
         return "通知不通:核对渠道配置,或到渠道页点「测试」做真实发送验证。"
+    if category == "system":
+        if "lock" in e:
+            return "SQLite 被锁:并发调度叠加慢代理所致,降低并发或加快/关闭代理。"
+        if any(k in e for k in ("disk", "space", "磁盘", "空间")):
+            return "磁盘空间不足:清理 data 目录旧数据/日志,或扩容磁盘。"
+        if any(k in e for k in ("scheduler", "调度", "stopped", "not running")):
+            return "调度器未运行/已停止:重启服务以恢复定时任务。"
+        return error or "系统项异常,查看日志。"
     return error or "未知错误,查看日志。"
 
 
@@ -128,6 +137,78 @@ async def probe_notify_channel(channel, *, send: bool = False) -> dict:
                      int((time.monotonic() - t0) * 1000), str(e))
 
 
+async def probe_db() -> dict:
+    """对真实库执行 SELECT 1。"""
+    from sqlalchemy import text
+
+    from src.web.database import SessionLocal
+
+    t0 = time.monotonic()
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+        latency = int((time.monotonic() - t0) * 1000)
+        return _item("system", "sys:db", "数据库", _status_for(True, latency), latency)
+    except Exception as e:
+        return _item("system", "sys:db", "数据库", "fail", int((time.monotonic() - t0) * 1000), str(e))
+
+
+async def probe_disk() -> dict:
+    """检查 data 目录所在盘的可用空间。"""
+    import os
+    import shutil
+
+    from src.web.database import DB_PATH
+
+    t0 = time.monotonic()
+    try:
+        data_dir = os.path.dirname(os.path.abspath(DB_PATH))
+        usage = shutil.disk_usage(data_dir)
+        free_gb = usage.free / (1024 ** 3)
+        total_gb = usage.total / (1024 ** 3)
+        note = f"可用 {free_gb:.1f}GB / 共 {total_gb:.1f}GB"
+        latency = int((time.monotonic() - t0) * 1000)
+        if free_gb < 0.2:
+            return _item("system", "sys:disk", "磁盘空间", "fail", latency,
+                         error=f"磁盘空间严重不足({note})", note=note)
+        status = "slow" if free_gb < 1.0 else "ok"
+        return _item("system", "sys:disk", "磁盘空间", status, latency, note=note)
+    except Exception as e:
+        return _item("system", "sys:disk", "磁盘空间", "fail", int((time.monotonic() - t0) * 1000), str(e))
+
+
+async def probe_scheduler() -> dict:
+    """经 scheduler_registry 看运行中的调度器;注册表空(CLI/未启动)→ 优雅跳过。"""
+    from src.core import scheduler_registry
+
+    regs = scheduler_registry.get_all()
+    if not regs:
+        return _item("system", "sys:scheduler", "调度器", "ok", 0,
+                     note="当前进程无运行中的调度器(CLI 自检会跳过此项)")
+    running: list[str] = []
+    stopped: list[str] = []
+    jobs = 0
+    for name, sched in regs.items():
+        try:
+            if getattr(sched, "running", False):
+                running.append(name)
+                jobs += len(sched.get_jobs())
+            else:
+                stopped.append(name)
+        except Exception:
+            stopped.append(name)
+    if running:
+        note = f"{len(running)} 个调度器运行中,共 {jobs} 个任务"
+        if stopped:
+            note += f";已停止: {', '.join(stopped)}"
+        return _item("system", "sys:scheduler", "调度器", "ok", 0, note=note)
+    return _item("system", "sys:scheduler", "调度器", "fail", 0,
+                 error=f"调度器已停止: {', '.join(stopped)}")
+
+
 async def _guard(coro, fallback: dict) -> dict:
     """给每个 probe 套超时;探测自身已 try/except,这里只兜超时/异常。"""
     try:
@@ -140,11 +221,15 @@ async def _guard(coro, fallback: dict) -> dict:
                      "fail", 0, str(e))
 
 
-def _enumerate(db) -> list[dict]:
-    """枚举所有启用的待检项(身份 + ORM 引用),不探测。"""
+def _enumerate(db, include_system: bool = True) -> list[dict]:
+    """枚举所有待检项(身份 + ORM 引用),不探测。include_system 加 DB/磁盘/调度 系统基础项。"""
     from src.web.models import AIModel, AIService, DataSource, NotifyChannel
 
     targets: list[dict] = []
+    if include_system:
+        targets.append({"category": "system", "key": "sys:db", "name": "数据库", "group": None, "_kind": "db"})
+        targets.append({"category": "system", "key": "sys:disk", "name": "磁盘空间", "group": None, "_kind": "disk"})
+        targets.append({"category": "system", "key": "sys:scheduler", "name": "调度器", "group": None, "_kind": "sched"})
     for src in db.query(DataSource).filter(DataSource.enabled.is_(True)).all():
         targets.append({"category": "datasource", "key": f"ds:{src.id}", "name": src.name,
                         "group": None, "_kind": "ds", "_obj": src})
@@ -166,31 +251,38 @@ def _identity(t: dict) -> dict:
 
 
 def _probe_for(t: dict, notify_send: bool):
-    if t["_kind"] == "ds":
+    kind = t["_kind"]
+    if kind == "db":
+        return probe_db()
+    if kind == "disk":
+        return probe_disk()
+    if kind == "sched":
+        return probe_scheduler()
+    if kind == "ds":
         return probe_datasource(t["_obj"])
-    if t["_kind"] == "ai":
+    if kind == "ai":
         return probe_ai_model(t["_obj"], t["_service"])
     return probe_notify_channel(t["_obj"], send=notify_send)
 
 
-def list_selfcheck_items(*, db=None) -> list[dict]:
-    """只枚举待检项身份(category/key/name),不探测;供前端先渲染列表再逐项检查。"""
+def list_selfcheck_items(*, db=None, include_system: bool = True) -> list[dict]:
+    """只枚举待检项身份(category/key/name/group),不探测;供前端先渲染列表再逐项检查。"""
     own = db is None
     db = db or SessionLocal()
     try:
-        return [_identity(t) for t in _enumerate(db)]
+        return [_identity(t) for t in _enumerate(db, include_system)]
     finally:
         if own:
             db.close()
 
 
-async def run_selfcheck(*, db=None, notify_send: bool = False, keys=None) -> dict:
-    """探测启用项,返回看板。keys 非空时只探测这些 key(供前端逐项更新进度)。"""
+async def run_selfcheck(*, db=None, notify_send: bool = False, keys=None, include_system: bool = True) -> dict:
+    """探测待检项,返回看板。keys 非空时只探测这些 key(供前端逐项更新进度)。"""
     own = db is None
     db = db or SessionLocal()
     try:
         keyset = set(keys) if keys is not None else None
-        targets = [t for t in _enumerate(db) if keyset is None or t["key"] in keyset]
+        targets = [t for t in _enumerate(db, include_system) if keyset is None or t["key"] in keyset]
         tasks = [_guard(_probe_for(t, notify_send), _identity(t)) for t in targets]
         items = list(await asyncio.gather(*tasks)) if tasks else []
         summary = {
@@ -200,6 +292,65 @@ async def run_selfcheck(*, db=None, notify_send: bool = False, keys=None) -> dic
             "fail": sum(1 for i in items if i["status"] == "fail"),
         }
         return {"items": items, "summary": summary, "notify_send": bool(notify_send)}
+    finally:
+        if own:
+            db.close()
+
+
+def _notifier_from_db(db):
+    """按已启用通知渠道构建 NotifierManager;无渠道返回 None。"""
+    from src.core.notifier import NotifierManager
+    from src.web.models import NotifyChannel
+
+    channels = db.query(NotifyChannel).filter(NotifyChannel.enabled.is_(True)).all()
+    if not channels:
+        return None
+    mgr = NotifierManager()
+    for ch in channels:
+        try:
+            mgr.add_channel(ch.type, ch.config or {})
+        except Exception:
+            pass
+    return mgr
+
+
+async def selfcheck_and_notify(*, db=None, ttl_minutes: int = 360) -> dict:
+    """定时自检 数据源 + 系统基础项,有断的就去重通知。
+
+    自动降级(数据源按 priority 主备已存在)→ 这里补"挂了提醒"。
+    刻意**不探测 AI**(避免周期性调用成本)、**不真发通知探测项**;仅在发现 fail 时发一条告警。
+    同一组失败在 ttl 内只通知一次(notify_dedupe)。
+    """
+    own = db is None
+    db = db or SessionLocal()
+    try:
+        items = list_selfcheck_items(db=db, include_system=True)
+        keys = [i["key"] for i in items if i["category"] in ("datasource", "system")]
+        if not keys:
+            return {"checked": 0, "failed": 0, "notified": False}
+        res = await run_selfcheck(db=db, keys=keys, include_system=True)
+        fails = [i for i in res["items"] if i["status"] == "fail"]
+        if not fails:
+            return {"checked": len(res["items"]), "failed": 0, "notified": False}
+
+        scope = "selfcheck:" + ",".join(sorted(f["key"] for f in fails))
+        if not check_and_mark_notify(agent_name="selfcheck", scope=scope, ttl_minutes=ttl_minutes, mark=True):
+            return {"checked": len(res["items"]), "failed": len(fails), "notified": False}
+
+        mgr = _notifier_from_db(db)
+        if mgr is None:
+            return {"checked": len(res["items"]), "failed": len(fails), "notified": False}
+
+        lines = []
+        for f in fails:
+            line = f"· {f['name']}:{f.get('error') or '异常'}"
+            if f.get("hint"):
+                line += f"\n  → {f['hint']}"
+            lines.append(line)
+        title = f"⚠️ PanWatch 自检:{len(fails)} 项异常"
+        content = "系统自检发现异常(数据源已按优先级自动降级,请尽快修复):\n\n" + "\n".join(lines)
+        await mgr.notify_with_result(title=title, content=content)
+        return {"checked": len(res["items"]), "failed": len(fails), "notified": True}
     finally:
         if own:
             db.close()

@@ -104,6 +104,8 @@ class PaperTradingScheduler:
             max_instances=1,
         )
         self.scheduler.start()
+        from src.core.scheduler_registry import register
+        register("paper_trading", self.scheduler)
         logger.info(f"模拟盘调度器已启动，扫描间隔 {self.interval_seconds}s")
 
     def shutdown(self):

@@ -1,4 +1,4 @@
-.PHONY: help setup-backend dev-api dev-web build test test-notify install-hooks clean-venv
+.PHONY: help setup-backend dev-api dev-web build test test-notify doctor install-hooks clean-venv
 
 # 端口约定：
 #   - 后端：:8000（Docker / 本地 dev 统一，避免存量用户升级困惑）
@@ -11,6 +11,7 @@ help:
 	@echo "  make dev-web         启动前端（:5183，自动 pnpm install）"
 	@echo "  make test            跑全部单测（默认不发通知）"
 	@echo "  make test-notify     跑全部单测（实际发送通知）"
+	@echo "  make doctor          系统自检(数据源/AI/通知/DB/磁盘/调度)"
 	@echo "  make build VERSION=x 构建前端 + Docker 镜像"
 	@echo "  make install-hooks   安装 git pre-push hook"
 	@echo "  make clean-venv      删除本地 venv"
@@ -39,6 +40,10 @@ test:
 
 test-notify:
 	. .venv/bin/activate && python -m pytest tests/ -v --notify
+
+# 命令行系统自检:跑一遍数据源/AI/通知 + DB/磁盘/调度,打印结果与修复建议
+doctor:
+	. .venv/bin/activate && python -m src.core.doctor
 
 # 用法: make build VERSION=0.3.0
 build:
