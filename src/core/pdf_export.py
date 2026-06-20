@@ -102,6 +102,69 @@ def _render_xhtml2pdf(title: str, body_html: str) -> bytes:
     return buf.getvalue()
 
 
+_ANALYST_SECTIONS = [
+    ("market", "技术分析师"),
+    ("social", "情绪分析师"),
+    ("news", "新闻分析师"),
+    ("fundamentals", "基本面分析师"),
+]
+
+
+def assemble_report_markdown(raw_data: dict) -> str:
+    """从 raw_data 拼出与详情页(buildAnalysisSections)同款分节的完整报告 markdown。
+
+    顺序对齐详情页:决策摘要 → PM 决策书(+交易员)→ 4 分析师全文 → 看多看空辩论全文(+研究主管裁决)
+    → 风控辩论全文(+风控裁决)。比 `content` 字段更全(content 省略了 4 分析师与辩论全文)。
+    """
+    rd = raw_data or {}
+    sug = rd.get("suggestion") or {}
+    reports = rd.get("analyst_reports") or {}
+    debate = rd.get("debate_history") or {}
+    risk = rd.get("risk_debate") or {}
+    parts: list[str] = []
+
+    label = sug.get("action_label") or "持有"
+    head = f"**{label}**"
+    conf = sug.get("confidence")
+    if conf is not None:
+        try:
+            head += f" · 置信度 {float(conf):.1f}/10"
+        except (TypeError, ValueError):
+            pass
+    parts.append(f"## 最终决策\n\n{head}\n")
+
+    final_decision = (rd.get("final_decision") or "").strip()
+    trader = (rd.get("trader_plan") or "").strip()
+    if final_decision or trader:
+        body = final_decision
+        if trader:
+            body = (body + "\n\n" if body else "") + f"### 💼 交易员执行计划\n\n{trader}"
+        parts.append(f"## PM 最终决策书\n\n{body}\n")
+
+    for key, title in _ANALYST_SECTIONS:
+        txt = (reports.get(key) or "").strip()
+        if txt:
+            parts.append(f"## {title}\n\n{txt}\n")
+
+    dh = (debate.get("history") or "").strip()
+    if dh:
+        seg = dh
+        jd = (debate.get("judge_decision") or "").strip()
+        if jd:
+            seg += f"\n\n### ⚖️ 研究主管裁决\n\n{jd}"
+        parts.append(f"## 看多看空辩论\n\n{seg}\n")
+
+    rh = (risk.get("history") or "").strip()
+    rjd = (rd.get("risk_judgment") or risk.get("judge_decision") or "").strip()
+    if rh or rjd:
+        seg = rh
+        if rjd:
+            seg += (("\n\n" if seg else "") + f"### 🛡️ 风控裁决\n\n{rjd}")
+        parts.append(f"## 风控辩论\n\n{seg}\n")
+
+    return "\n".join(parts).strip()
+
+
 def render_analysis_pdf(title: str, markdown_text: str) -> bytes:
     """分析报告 markdown → PDF 字节(中文矢量、可复制)。WeasyPrint 优先,失败回退 xhtml2pdf。"""
     body_html = _md_to_html(markdown_text)

@@ -589,7 +589,7 @@ def export_tradingagents_analysis_pdf(
     from fastapi import HTTPException
     from fastapi.responses import Response
 
-    from src.core.pdf_export import render_analysis_pdf
+    from src.core.pdf_export import assemble_report_markdown, render_analysis_pdf
     from src.web.models import AnalysisHistory
 
     record = (
@@ -605,7 +605,9 @@ def export_tradingagents_analysis_pdf(
     if not record:
         raise HTTPException(status_code=404, detail="未找到该深度分析记录")
 
-    pdf_bytes = render_analysis_pdf(record.title or "深度分析", record.content or "")
+    # 用 raw_data 拼详情页同款完整分节(含 4 分析师全文 + 辩论全文);raw_data 缺失时回退 content
+    report_md = assemble_report_markdown(record.raw_data or {}) or (record.content or "")
+    pdf_bytes = render_analysis_pdf(record.title or "深度分析", report_md)
     base = (record.title or f"{stock_symbol} 深度分析").replace("/", "-").replace("\\", "-").strip()
     filename = f"{base}-{analysis_date}.pdf"
     return Response(

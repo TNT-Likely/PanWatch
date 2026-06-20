@@ -30,6 +30,32 @@ def test_render_pdf_handles_empty_markdown():
     assert bytes(data[:4]) == b"%PDF"
 
 
+def test_assemble_report_markdown_mirrors_detail_page_sections():
+    """从 raw_data 拼出的报告含详情页全部分节:PM/交易员/4分析师全文/多空辩论全文/风控辩论全文。"""
+    from src.core.pdf_export import assemble_report_markdown
+
+    raw = {
+        "suggestion": {"action_label": "持有", "confidence": 5.0},
+        "final_decision": "PM决策正文XYZ",
+        "trader_plan": "交易员计划正文XYZ",
+        "analyst_reports": {
+            "market": "技术面分析正文XYZ", "social": "情绪面分析正文XYZ",
+            "news": "新闻面分析正文XYZ", "fundamentals": "基本面分析正文XYZ",
+        },
+        "debate_history": {"history": "多头观点AAA 空头观点BBB", "judge_decision": "研究主管裁决XYZ"},
+        "risk_debate": {"history": "激进CCC 保守DDD", "judge_decision": "风控裁决XYZ"},
+    }
+    md = assemble_report_markdown(raw)
+    for must in [
+        "PM决策正文XYZ", "交易员计划正文XYZ",
+        "技术面分析正文XYZ", "情绪面分析正文XYZ", "新闻面分析正文XYZ", "基本面分析正文XYZ",
+        "多头观点AAA", "空头观点BBB", "研究主管裁决XYZ",
+        "激进CCC", "风控裁决XYZ",
+        "技术分析师", "看多看空辩论", "风控辩论",
+    ]:
+        assert must in md, f"缺少: {must}"
+
+
 def _mem_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -42,8 +68,8 @@ def _mem_db():
     return sessionmaker(bind=engine)()
 
 
-def test_pdf_endpoint_returns_pdf_for_existing_record():
-    """端点:存在记录 → 返回 application/pdf 附件文件。"""
+def test_pdf_endpoint_returns_full_detail_content():
+    """端点:返回 application/pdf 附件,且含详情页完整内容(分析师/辩论全文,来自 raw_data,非仅 content 摘要)。"""
     from src.web.api import agents
     from src.web.models import AnalysisHistory
 
@@ -52,7 +78,14 @@ def test_pdf_endpoint_returns_pdf_for_existing_record():
         db.add(AnalysisHistory(
             agent_name="tradingagents", stock_symbol="601238",
             analysis_date="2026-06-20", title="【深度】广汽集团(601238):持有",
-            content="# 广汽集团深度分析\n\n**持有** 置信度 5/10",
+            content="# 摘要\n\n**持有**",  # content 是精简版,不含下面这些
+            raw_data={
+                "suggestion": {"action_label": "持有", "confidence": 5.0},
+                "final_decision": "PM决策正文",
+                "analyst_reports": {"market": "技术面分析正文UNIQUE", "fundamentals": "基本面正文"},
+                "debate_history": {"history": "多头观点UNIQUE 空头观点", "judge_decision": "研究主管裁决"},
+                "risk_debate": {"history": "激进 保守", "judge_decision": "风控裁决"},
+            },
         ))
         db.commit()
         resp = agents.export_tradingagents_analysis_pdf(
@@ -60,6 +93,14 @@ def test_pdf_endpoint_returns_pdf_for_existing_record():
         assert resp.media_type == "application/pdf"
         assert bytes(resp.body[:4]) == b"%PDF"
         assert "attachment" in resp.headers["content-disposition"]
+
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(bytes(resp.body)))
+        txt = "\n".join((p.extract_text() or "") for p in reader.pages)
+        # content 摘要里没有的「分析师全文 / 辩论全文」确实进了 PDF
+        assert "技术面分析正文UNIQUE" in txt
+        assert "多头观点UNIQUE" in txt
     finally:
         db.close()
 
