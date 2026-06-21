@@ -42,6 +42,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install system libs for WeasyPrint (PDF export tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+            libcairo2 libcairo-gobject2 libgdk-pixbuf-2.0-0 \
+            libffi-dev libfontconfig1 fonts-noto-cjk
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
