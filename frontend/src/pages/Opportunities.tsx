@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, RefreshCw, Sparkles } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
   recommendationsApi,
   stocksApi,
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useLocalStorage } from '@/lib/utils'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import FactorWeightsPanel from '@/components/FactorWeightsPanel'
+import SignalScoreShareCard from '@/components/SignalScoreShareCard'
 
 type SourceFilter = 'all' | 'market_scan' | 'watchlist' | 'mixed'
 type HoldingFilter = 'all' | 'held' | 'unheld'
@@ -242,6 +243,9 @@ export default function OpportunitiesPage() {
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
+
+  // 个股 AI 评分分享卡:当前分享的信号
+  const [shareSignal, setShareSignal] = useState<StrategySignalItem | null>(null)
 
   const openInsight = useCallback((item: StrategySignalItem) => {
     setInsightSymbol(item.stock_symbol)
@@ -802,7 +806,18 @@ export default function OpportunitiesPage() {
                 <div className="text-[10px] text-muted-foreground">
                   来源: {sourceFlags.join(' + ')}
                 </div>
-                <div className="text-[10px] text-muted-foreground">评估: 自动后验</div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShareSignal(item)}
+                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-primary"
+                    title="生成 AI 评分分享图"
+                  >
+                    <Share2 className="h-3 w-3" />
+                    分享图
+                  </button>
+                  <div className="text-[10px] text-muted-foreground">评估: 自动后验</div>
+                </div>
               </div>
             </div>
           )
@@ -831,6 +846,14 @@ export default function OpportunitiesPage() {
         stockName={insightName}
         hasPosition={insightHasPosition}
       />
+
+      {shareSignal && (
+        <SignalScoreShareCard
+          open={!!shareSignal}
+          onClose={() => setShareSignal(null)}
+          item={shareSignal}
+        />
+      )}
     </div>
   )
 }

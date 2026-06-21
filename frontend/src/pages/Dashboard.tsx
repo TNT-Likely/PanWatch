@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper } from 'lucide-react'
+import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2 } from 'lucide-react'
 import {
   dashboardApi,
   portfolioApi,
@@ -25,6 +25,9 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
+import BenchmarkShareCard from '@/components/BenchmarkShareCard'
+import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
+import DigestShareCard from '@/components/DigestShareCard'
 
 function pct(v?: number | null, digits = 2): string {
   if (v == null || !isFinite(v)) return '--'
@@ -69,6 +72,10 @@ export default function DashboardPage() {
   const [aiReviewLoading, setAiReviewLoading] = useState(false)
   const [brief, setBrief] = useState<DashboardBrief | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
+  // 分享卡开关:成绩单(基准)/ 组合体检 / 每日 digest
+  const [shareBench, setShareBench] = useState(false)
+  const [shareDiag, setShareDiag] = useState(false)
+  const [shareDigest, setShareDigest] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean }>({
     open: false,
@@ -209,6 +216,12 @@ export default function DashboardPage() {
     return rows.filter((x): x is CurateCandidate & { why: string } => !!x)
   }, [curated, candidates])
 
+  const today = useMemo(() => {
+    const d = new Date()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${mm}-${dd}`
+  }, [])
   const hasHoldings = (diag?.position_count ?? 0) > 0
   const benchReady = bench && !bench.empty && bench.excess_return != null
   const hasWatchlist = (overview?.kpis?.watchlist_count ?? 0) > 0
@@ -258,6 +271,17 @@ export default function DashboardPage() {
           <Activity className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">今日要紧事</h2>
           <span className="text-[11px] text-muted-foreground">你的持仓/自选里今天该关注的</span>
+          {feed.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShareDigest(true)}
+              className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+              title="生成今日盯盘分享图"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              分享图
+            </button>
+          )}
         </div>
         {loading && candidates.length === 0 ? (
           <div className="py-6 text-center text-[12px] text-muted-foreground">扫描中…</div>
@@ -312,6 +336,28 @@ export default function DashboardPage() {
           <div className="mb-2 flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">组合体检</h2>
+            {benchReady && (
+              <button
+                type="button"
+                onClick={() => setShareBench(true)}
+                className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                title="生成模拟盘成绩单分享图"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                成绩单
+              </button>
+            )}
+            {hasHoldings && (
+              <button
+                type="button"
+                onClick={() => setShareDiag(true)}
+                className={`${benchReady ? '' : 'ml-auto'} inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary`}
+                title="生成组合体检分享图"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                体检图
+              </button>
+            )}
           </div>
           {!hasHoldings ? (
             <div className="py-6 text-center text-[12px] text-muted-foreground">
@@ -463,6 +509,37 @@ export default function DashboardPage() {
         stockName={modal.name}
         hasPosition={modal.hasPosition}
       />
+
+      {/* 分享卡:模拟盘成绩单(vs 基准) */}
+      {shareBench && bench && (
+        <BenchmarkShareCard open={shareBench} onClose={() => setShareBench(false)} bench={bench} />
+      )}
+
+      {/* 分享卡:组合体检(脱敏,无金额) */}
+      {shareDiag && diag && (
+        <DiagnosticsShareCard
+          open={shareDiag}
+          onClose={() => setShareDiag(false)}
+          diag={diag}
+          excessReturn={benchReady ? bench!.excess_return : null}
+          benchmarkLabel={bench?.benchmark_label}
+        />
+      )}
+
+      {/* 分享卡:今日盯盘 digest */}
+      <DigestShareCard
+        open={shareDigest}
+        onClose={() => setShareDigest(false)}
+        date={today}
+        items={feed.map((it) => ({
+          type: it.type,
+          name: it.name,
+          symbol: it.symbol,
+          why: it.why,
+          change_pct: it.change_pct ?? null,
+        }))}
+      />
+
       <Onboarding open={showOnboarding} onComplete={handleOnboardingComplete} hasStocks={hasWatchlist} />
     </div>
   )
