@@ -12,7 +12,6 @@ import asyncio
 import logging
 import time
 
-from src.core.notify_dedupe import check_and_mark_notify
 from src.web.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -292,65 +291,6 @@ async def run_selfcheck(*, db=None, notify_send: bool = False, keys=None, includ
             "fail": sum(1 for i in items if i["status"] == "fail"),
         }
         return {"items": items, "summary": summary, "notify_send": bool(notify_send)}
-    finally:
-        if own:
-            db.close()
-
-
-def _notifier_from_db(db):
-    """按已启用通知渠道构建 NotifierManager;无渠道返回 None。"""
-    from src.core.notifier import NotifierManager
-    from src.web.models import NotifyChannel
-
-    channels = db.query(NotifyChannel).filter(NotifyChannel.enabled.is_(True)).all()
-    if not channels:
-        return None
-    mgr = NotifierManager()
-    for ch in channels:
-        try:
-            mgr.add_channel(ch.type, ch.config or {})
-        except Exception:
-            pass
-    return mgr
-
-
-async def selfcheck_and_notify(*, db=None, ttl_minutes: int = 360) -> dict:
-    """定时自检 数据源 + 系统基础项,有断的就去重通知。
-
-    自动降级(数据源按 priority 主备已存在)→ 这里补"挂了提醒"。
-    刻意**不探测 AI**(避免周期性调用成本)、**不真发通知探测项**;仅在发现 fail 时发一条告警。
-    同一组失败在 ttl 内只通知一次(notify_dedupe)。
-    """
-    own = db is None
-    db = db or SessionLocal()
-    try:
-        items = list_selfcheck_items(db=db, include_system=True)
-        keys = [i["key"] for i in items if i["category"] in ("datasource", "system")]
-        if not keys:
-            return {"checked": 0, "failed": 0, "notified": False}
-        res = await run_selfcheck(db=db, keys=keys, include_system=True)
-        fails = [i for i in res["items"] if i["status"] == "fail"]
-        if not fails:
-            return {"checked": len(res["items"]), "failed": 0, "notified": False}
-
-        scope = "selfcheck:" + ",".join(sorted(f["key"] for f in fails))
-        if not check_and_mark_notify(agent_name="selfcheck", scope=scope, ttl_minutes=ttl_minutes, mark=True):
-            return {"checked": len(res["items"]), "failed": len(fails), "notified": False}
-
-        mgr = _notifier_from_db(db)
-        if mgr is None:
-            return {"checked": len(res["items"]), "failed": len(fails), "notified": False}
-
-        lines = []
-        for f in fails:
-            line = f"· {f['name']}:{f.get('error') or '异常'}"
-            if f.get("hint"):
-                line += f"\n  → {f['hint']}"
-            lines.append(line)
-        title = f"⚠️ PanWatch 自检:{len(fails)} 项异常"
-        content = "系统自检发现异常(数据源已按优先级自动降级,请尽快修复):\n\n" + "\n".join(lines)
-        await mgr.notify_with_result(title=title, content=content)
-        return {"checked": len(res["items"]), "failed": len(fails), "notified": True}
     finally:
         if own:
             db.close()

@@ -119,16 +119,6 @@ class ContextMaintenanceScheduler:
                 )
             except Exception as fc_err:
                 logger.debug("[上下文维护] 因子自校准跳过: %s", fc_err)
-
-            # 系统自检 + 数据源降级提醒(数据源/基础项 断则去重通知;自动降级已由 priority 主备承担)
-            try:
-                from src.core.selfcheck import selfcheck_and_notify
-
-                sc = await selfcheck_and_notify()
-                if sc.get("notified"):
-                    logger.warning("[上下文维护] 系统自检发现 %s 项异常,已通知", sc.get("failed"))
-            except Exception as sc_err:
-                logger.debug("[上下文维护] 系统自检跳过: %s", sc_err)
         except Exception as e:
             logger.exception(f"[上下文维护] 后验评估异常: {e}")
         finally:
