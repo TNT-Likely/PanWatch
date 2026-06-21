@@ -22,6 +22,61 @@ class EventItem:
     url: str
 
 
+# 东财公告全文(纯文本)content API:art_code -> data.notice_content。
+# 直连需 trust_env=False + verify=False(同 CN 采集器,绕 LAN 代理)。
+ANN_CONTENT_API_URL = "https://np-cnotice-stock.eastmoney.com/api/content/ann"
+
+
+def fetch_announcement_fulltext(
+    art_code: str,
+    *,
+    timeout_s: float = 8.0,
+    proxy: str | None = None,
+) -> str:
+    """按 art_code 取东方财富公告全文(纯文本)。
+
+    成功返回 ``data.notice_content`` 去空白后的纯文本;任何失败(网络/解析/空)
+    返回空串 —— 调用方据此 fail-soft 只保留标题。
+
+    Args:
+        art_code: 公告唯一编号(EventItem.external_id)
+        timeout_s: 请求超时
+        proxy: 显式代理(默认不走 env 代理)
+    """
+    if not art_code:
+        return ""
+    params = {
+        "art_code": str(art_code),
+        "client_source": "web",
+        "page_index": 1,
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+    try:
+        timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
+        with httpx.Client(
+            timeout=timeout,
+            verify=False,
+            headers=headers,
+            follow_redirects=True,
+            trust_env=False,  # 绕 LAN 代理(Telegram/AI 用),仅显式 proxy
+            proxy=proxy,
+        ) as client:
+            resp = client.get(ANN_CONTENT_API_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json() or {}
+        content = ((data.get("data") or {}).get("notice_content")) or ""
+        return str(content).strip()
+    except Exception as e:
+        logger.debug(f"公告全文获取失败 art_code={art_code}: {type(e).__name__}: {e!r}")
+        return ""
+
+
 class EastMoneyEventsCollector:
     """A-share event collector based on EastMoney notices.
 

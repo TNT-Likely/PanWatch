@@ -178,8 +178,32 @@ def _eastmoney_secid(symbol: str, market: MarketCode) -> str:
     return f"{prefix}.{symbol}"
 
 
+# 指数 secid(东财):指数与个股 secid 前缀规则不同,必须显式映射,否则按个股规则会取错标的。
+# 美股指数东财K线不支持(_fetch_eastmoney_klines 仅 CN/HK),未列入 → get_index_klines 返回空,fail-soft。
+INDEX_SECID: dict[str, str] = {
+    "000300": "1.000300",   # 沪深300
+    "000001": "1.000001",   # 上证指数
+    "399001": "0.399001",   # 深证成指
+    "399006": "0.399006",   # 创业板指
+    "HSI": "100.HSI",       # 恒生指数
+}
+
+
+def get_index_klines(index_code: str, market: MarketCode, days: int = 120) -> list[KlineData]:
+    """取大盘/指数日K(东财)。指数 secid 需显式映射;未映射(如美股指数)→ 空列表(fail-soft)。"""
+    code = str(index_code or "").strip()
+    secid = INDEX_SECID.get(code) or INDEX_SECID.get(code.upper())
+    if not secid:
+        return []
+    try:
+        return _fetch_eastmoney_klines(code, market, days, secid_override=secid)
+    except Exception as e:
+        logger.debug(f"指数K线获取失败 {index_code}: {e}")
+        return []
+
+
 def _fetch_eastmoney_klines(
-    symbol: str, market: MarketCode, days: int
+    symbol: str, market: MarketCode, days: int, *, secid_override: str | None = None
 ) -> list[KlineData]:
     """Fetch daily kline from Eastmoney as CN/HK long-history fallback."""
 
@@ -190,7 +214,10 @@ def _fetch_eastmoney_klines(
         return []
 
     need_days = max(1, int(days or 1))
-    cache_key = f"{market.value}:{sym}"
+    # secid 唯一标识标的(指数与个股前缀规则不同);以 secid 作缓存键,
+    # 避免指数与同号个股(如 000001 既是平安银行又是上证指数)缓存串味。
+    secid = secid_override or _eastmoney_secid(sym, market)
+    cache_key = f"{market.value}:{secid}"
     now = time.time()
     cached = _EASTMONEY_CACHE.get(cache_key)
     if (
@@ -201,7 +228,6 @@ def _fetch_eastmoney_klines(
         bars = cached[2]
         return bars[-need_days:] if len(bars) > need_days else bars
 
-    secid = _eastmoney_secid(sym, market)
     params = {
         "secid": secid,
         "klt": "101",  # 1日K
@@ -330,6 +356,9 @@ class TechnicalIndicators:
     # 振幅
     amplitude: float | None = None  # 今日振幅
     amplitude_avg5: float | None = None  # 5日平均振幅
+    # 波动率(ATR)
+    atr: float | None = None  # 平均真实波幅(绝对值)
+    atr_pct: float | None = None  # ATR / 最新收盘 * 100(相对波动率%)
     # 支撑压力（多级别）
     support_s: float | None = None  # 短期支撑（5日）
     support_m: float | None = None  # 中期支撑（20日）
@@ -368,6 +397,36 @@ def _ema(data: list[float], period: int) -> list[float]:
     for price in data[1:]:
         result.append((price - result[-1]) * multiplier + result[-1])
     return result
+
+
+def _calculate_atr(klines: list[KlineData], period: int = 14) -> float | None:
+    """计算 ATR(平均真实波幅)。
+
+    TR = max(high-low, |high-prevClose|, |low-prevClose|)。
+    与本模块其它指标一致,取最近 period 个 TR 的简单均值(非 Wilder 递归平滑),
+    便于复现与手算校验。
+
+    需要至少 period+1 根 K 线(才能算出 period 个含前收的 TR);
+    数据不足或异常一律返回 None,不抛异常(fail-soft)。
+    """
+    try:
+        if not klines or len(klines) < period + 1:
+            return None
+        trs: list[float] = []
+        for i in range(1, len(klines)):
+            cur = klines[i]
+            prev_close = klines[i - 1].close
+            tr = max(
+                cur.high - cur.low,
+                abs(cur.high - prev_close),
+                abs(cur.low - prev_close),
+            )
+            trs.append(tr)
+        if len(trs) < period:
+            return None
+        return sum(trs[-period:]) / period
+    except Exception:
+        return None
 
 
 def _calculate_macd(
@@ -831,6 +890,12 @@ class KlineCollector:
                 if amps:
                     amplitude_avg5 = sum(amps) / len(amps)
 
+        # ATR(波动率):个股自身波动基准,供自适应异动判定使用
+        atr = _calculate_atr(klines, period=14)
+        atr_pct = None
+        if atr is not None and closes and closes[-1]:
+            atr_pct = round(atr / closes[-1] * 100, 2)
+
         # 多级支撑压力位
         support_s, support_m, support_l = None, None, None
         resistance_s, resistance_m, resistance_l = None, None, None
@@ -880,6 +945,8 @@ class KlineCollector:
             change_20d=change_20d,
             amplitude=amplitude,
             amplitude_avg5=amplitude_avg5,
+            atr=atr,
+            atr_pct=atr_pct,
             support_s=support_s,
             support_m=support_m,
             support_l=support_l,
@@ -1018,6 +1085,9 @@ class KlineCollector:
             # 振幅
             "amplitude": indicators.amplitude,
             "amplitude_avg5": indicators.amplitude_avg5,
+            # 波动率(ATR)
+            "atr": indicators.atr,
+            "atr_pct": indicators.atr_pct,
             # 多级支撑压力
             "support_s": indicators.support_s,
             "support_m": indicators.support_m,

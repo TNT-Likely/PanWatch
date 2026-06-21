@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
+from src.collectors.events_collector import fetch_announcement_fulltext
+from src.core.analysis_history import get_latest_ta_verdict
 from src.core.context_store import (
     get_recent_stock_context_snapshots,
     save_news_topic_snapshot,
@@ -21,6 +23,16 @@ from src.web.models import AnalysisHistory
 from src.core.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
+
+# 各市场用于相对强度对比的大盘指数(代码 + 中文标签)。
+# A股优先沪深300(000300);港股恒生指数;美股标普500(efinance 用 .INX)。
+_INDEX_BY_MARKET: dict[str, tuple[str, str]] = {
+    "CN": ("000300", "沪深300"),
+    "HK": ("HSI", "恒生指数"),
+    "US": (".INX", "标普500"),
+}
+# A股若 000300 取数失败时的兜底指数(上证指数)。
+_CN_INDEX_FALLBACK: tuple[str, str] = ("000001", "上证指数")
 
 
 def _iso_today() -> str:
@@ -63,6 +75,8 @@ class ContextBuilder:
 
     def __init__(self):
         self._kline_cache: dict[tuple[str, str, int], dict] = {}
+        # 每次构建内,各市场大盘指数只取一次(避免逐股重复请求)。
+        self._index_cache: dict[str, dict | None] = {}
 
     @staticmethod
     def _load_history_news(symbol: str, stock_name: str, days: int = 7) -> list[dict]:
@@ -201,6 +215,151 @@ class ContextBuilder:
         self._kline_cache[key] = ctx
         return ctx
 
+    # ----- ② 相对大盘强度 ------------------------------------------------- #
+
+    @staticmethod
+    def _index_for_market(market) -> tuple[str, str]:
+        """市场 -> (指数代码, 中文标签)。未知市场回退到沪深300。"""
+        mkt = market.value if isinstance(market, MarketCode) else str(market or "")
+        return _INDEX_BY_MARKET.get(mkt, _INDEX_BY_MARKET["CN"])
+
+    def _fetch_index_context(self, symbol: str, market) -> dict:
+        """取指数多周期收益。指数 secid 规则与个股不同,用 get_index_klines 显式映射直取;
+        失败/不支持(如美股指数东财无K线)→ available False(fail-soft)。可被测试打桩。"""
+        try:
+            from src.collectors.kline_collector import get_index_klines
+            from src.core.kline_context import _pct
+
+            klines = get_index_klines(symbol, market, days=120)
+            closes = [float(k.close) for k in klines if k.close is not None]
+            if len(closes) < 6:
+                return {"available": False}
+            cur = closes[-1]
+            return {
+                "available": True,
+                "ret_5d": _pct(cur, closes[-6]),
+                "ret_20d": _pct(cur, closes[-21] if len(closes) >= 21 else None),
+            }
+        except Exception as e:
+            logger.debug(f"指数K线获取失败 {symbol}: {e}")
+            return {"available": False}
+
+    def _get_index_context(self, market) -> dict | None:
+        """取某市场大盘指数上下文,每次构建内按市场缓存一次。"""
+        mkt = market.value if isinstance(market, MarketCode) else str(market or "")
+        if mkt in self._index_cache:
+            return self._index_cache[mkt]
+
+        sym, _label = self._index_for_market(market)
+        ctx = self._fetch_index_context(sym, market)
+        # A股 000300 取不到时兜底上证指数
+        if (not ctx or not ctx.get("available")) and mkt == "CN":
+            ctx = self._fetch_index_context(_CN_INDEX_FALLBACK[0], market)
+        self._index_cache[mkt] = ctx
+        return ctx
+
+    def _compute_relative_strength(
+        self,
+        *,
+        market,
+        kline_history: dict,
+        index_ctx: dict | None,
+    ) -> dict | None:
+        """个股 vs 大盘的 5日/20日超额收益。任一侧数据缺失 → None(fail-soft)。"""
+        try:
+            if not kline_history or not kline_history.get("available"):
+                return None
+            if not index_ctx or not index_ctx.get("available"):
+                return None
+
+            stock_5d = kline_history.get("ret_5d")
+            stock_20d = kline_history.get("ret_20d")
+            index_5d = index_ctx.get("ret_5d")
+            index_20d = index_ctx.get("ret_20d")
+
+            def _excess(a, b):
+                if a is None or b is None:
+                    return None
+                return round(float(a) - float(b), 2)
+
+            excess_5d = _excess(stock_5d, index_5d)
+            excess_20d = _excess(stock_20d, index_20d)
+            if excess_5d is None and excess_20d is None:
+                return None
+
+            _sym, label = self._index_for_market(market)
+            # 兜底场景下标签可能是上证,这里用实际命中的标签做近似(沪深300/上证差异不影响语义)
+            return {
+                "index_label": label if market != MarketCode.CN else label,
+                "stock_5d": stock_5d,
+                "index_5d": index_5d,
+                "excess_5d": excess_5d,
+                "stock_20d": stock_20d,
+                "index_20d": index_20d,
+                "excess_20d": excess_20d,
+            }
+        except Exception as e:
+            logger.debug(f"相对强度计算失败: {e}")
+            return None
+
+    # ----- ① 公告全文 + 头部新闻正文保留 --------------------------------- #
+
+    @staticmethod
+    def _enrich_events_fulltext(
+        events: list[dict],
+        *,
+        top_k: int = 3,
+        importance_min: int = 2,
+        max_chars: int = 1000,
+    ) -> list[dict]:
+        """给最重要的 top_k 条公告(importance>=importance_min)附加 content_fulltext。
+
+        逐条 fail-soft:抓取失败/空 → 只保留标题(不加字段),绝不抛异常。
+        """
+        if not events:
+            return events
+        # 按重要性降序挑候选,保留原顺序输出
+        important_idx = [
+            i
+            for i, ev in enumerate(events)
+            if isinstance(ev, dict) and int(ev.get("importance") or 0) >= importance_min
+        ]
+        important_idx = important_idx[: max(0, int(top_k))]
+        for i in important_idx:
+            ev = events[i]
+            art_code = str(ev.get("external_id") or "")
+            if not art_code:
+                continue
+            try:
+                text = fetch_announcement_fulltext(art_code)
+            except Exception as e:
+                logger.debug(f"公告全文注入失败 {art_code}: {e}")
+                continue
+            if text:
+                ev["content_fulltext"] = text[:max_chars]
+        return events
+
+    @staticmethod
+    def _retain_news_content(
+        news: list[dict],
+        *,
+        top_k: int = 2,
+        max_chars: int = 800,
+    ) -> list[dict]:
+        """头部 top_k 条新闻保留更多已有正文(放宽到 max_chars),其余维持原样。
+
+        不抓网络,只是放宽采集层 300 字截断 —— 没有正文的条目自然保持原样。
+        """
+        if not news:
+            return news
+        for i, it in enumerate(news[: max(0, int(top_k))]):
+            if not isinstance(it, dict):
+                continue
+            content = str(it.get("content") or "")
+            if content:
+                it["content"] = content[:max_chars]
+        return news
+
     @staticmethod
     def _build_snapshot_memory(
         symbol: str,
@@ -323,19 +482,46 @@ class ContextBuilder:
                 "history_news_count": len(hist_ranked),
             }
 
+            # ① 头部实时新闻保留更多正文(放宽采集层 300 字截断)
+            realtime_for_payload = self._retain_news_content(
+                [dict(it) for it in realtime_ranked[:8]], top_k=2, max_chars=800
+            )
+            # ① 重要公告(importance>=2)的前 2-3 条附加东财全文(纯文本,~1000 字)
+            events_for_payload = self._enrich_events_fulltext(
+                [dict(ev) for ev in ((pack.events.items if (pack and pack.events) else [])[:8])],
+                top_k=3,
+                importance_min=2,
+            )
+
+            # ② 个股相对大盘强度(指数按市场缓存一次)
+            relative_strength = self._compute_relative_strength(
+                market=market,
+                kline_history=kline_history,
+                index_ctx=self._get_index_context(market),
+            )
+
+            # ④ 最近一次 TradingAgents 深度结论(高权重先验,仅紧凑版本)
+            try:
+                ta_verdict = get_latest_ta_verdict(symbol, within_days=14)
+            except Exception as e:
+                logger.debug(f"注入 TA 深度结论失败 {symbol}: {e}")
+                ta_verdict = None
+
             payload = {
                 "symbol": symbol,
                 "name": stock_name,
                 "market": market.value if isinstance(market, MarketCode) else str(market),
                 "technical_current": pack.technical if pack else {},
                 "kline_history": kline_history,
+                "relative_strength": relative_strength,
+                "ta_verdict": ta_verdict,
                 "news": {
-                    "realtime": realtime_ranked[:8],
+                    "realtime": realtime_for_payload,
                     "extended": extended_ranked[:12],
                     "history": hist_ranked[:15],
                     "history_topic": hist_topic,
                 },
-                "events": (pack.events.items if (pack and pack.events) else [])[:8],
+                "events": events_for_payload,
                 "constraints": constraints,
                 "memory": snapshot_memory,
                 "data_quality": quality,

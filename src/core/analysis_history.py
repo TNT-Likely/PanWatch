@@ -1,6 +1,7 @@
 """分析历史记录管理"""
 import logging
-from datetime import date
+import re
+from datetime import date, datetime, timedelta
 
 from src.core.agent_catalog import infer_agent_kind
 from src.web.database import SessionLocal
@@ -8,6 +9,9 @@ from src.web.models import AnalysisHistory
 from src.core.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
+
+# TradingAgents 深度分析在 AnalysisHistory 里的 agent_name(见 agent.py: name = "tradingagents")
+TA_AGENT_NAME = "tradingagents"
 
 
 def save_analysis(
@@ -176,3 +180,109 @@ def get_analysis_history(
         return query.order_by(AnalysisHistory.analysis_date.desc()).limit(limit).all()
     finally:
         db.close()
+
+
+def get_latest_ta_verdict_row(
+    symbol: str,
+    within_days: int = 14,
+    today: date | None = None,
+) -> AnalysisHistory | None:
+    """获取某标的最近一次 TradingAgents 深度分析记录(含当日)。
+
+    get_latest_analysis 用 ``analysis_date < before_date`` 语义会排除当天,
+    这里传 ``before_date = today + 1 天`` 把当天也纳入。
+
+    Args:
+        symbol: 股票代码
+        within_days: 仅在此天数内有效(超出视为过期,由调用方判定)
+        today: 测试可注入,默认 date.today()
+
+    Returns:
+        最近的 AnalysisHistory 行,或 None。
+    """
+    if today is None:
+        today = date.today()
+    # +1 天以包含今天(get_latest_analysis 是严格小于)
+    return get_latest_analysis(
+        TA_AGENT_NAME, symbol, before_date=today + timedelta(days=1)
+    )
+
+
+def _clean_one_liner(text: str, max_chars: int = 120) -> str:
+    """从结论正文里清洗出一句话摘要并截断到 ~max_chars。
+
+    - 去掉 Markdown 标记 / 多余空白 / 控制字符
+    - 取首段(到第一个句号/换行)
+    - 超长截断并补省略号
+    """
+    if not text:
+        return ""
+    s = str(text)
+    # 去 markdown 强调符、标题井号、链接残留
+    s = re.sub(r"[#*`>\-]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s:
+        return ""
+    # 取首句(中英文句号 / 换行)
+    m = re.split(r"[。\.!！\n]", s, maxsplit=1)
+    head = (m[0] or s).strip()
+    candidate = head if len(head) >= 8 else s
+    if len(candidate) > max_chars:
+        candidate = candidate[:max_chars].rstrip() + "…"
+    return candidate
+
+
+def get_latest_ta_verdict(
+    symbol: str,
+    within_days: int = 14,
+    today: date | None = None,
+) -> dict | None:
+    """抽取某标的最近一次 TA 深度结论的紧凑版本(供盘前/盘后做高权重先验)。
+
+    只返回 ``{rating, action_label, one_liner, date, age_days}`` —— 绝不返回全文,
+    控制 token 预算。任何缺数据 / 解析异常 → None(fail-soft,不抛)。
+
+    Args:
+        symbol: 股票代码
+        within_days: 仅采纳此天数内(含当天)的记录,过期返回 None
+        today: 测试注入用,默认今天
+    """
+    if today is None:
+        today = date.today()
+    try:
+        row = get_latest_ta_verdict_row(symbol, within_days=within_days, today=today)
+        if row is None:
+            return None
+
+        date_str = str(getattr(row, "analysis_date", "") or "")
+        try:
+            row_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+        age_days = (today - row_date).days
+        if age_days < 0 or age_days > max(1, int(within_days)):
+            return None
+
+        raw = getattr(row, "raw_data", None) or {}
+        if not isinstance(raw, dict):
+            return None
+        sug = raw.get("suggestion") or {}
+        if not isinstance(sug, dict):
+            sug = {}
+
+        rating = sug.get("rating_raw") or raw.get("rating") or sug.get("action") or "hold"
+        action_label = sug.get("action_label") or ""
+        reason = sug.get("reason") or getattr(row, "content", "") or ""
+        one_liner = _clean_one_liner(reason)
+
+        return {
+            "rating": str(rating),
+            "action_label": str(action_label),
+            "one_liner": one_liner,
+            "date": date_str,
+            "age_days": int(age_days),
+        }
+    except Exception as e:  # 任何意外都 fail-soft
+        logger.debug(f"提取 TA 深度结论失败: {symbol} - {e}")
+        return None

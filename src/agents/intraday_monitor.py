@@ -228,13 +228,43 @@ class IntradayMonitorAgent(BaseAgent):
             lines.append(f"- 成交额：{turnover / 10000:.0f} 万")
 
         # 系统阈值（帮助 AI 做出更稳定的“提醒/不提醒”判断）
+        # 价格异动改为相对个股自身波动率(ATR%)的自适应阈值,固定阈值作为下限/兜底。
+        from src.core.intraday_event_gate import (
+            DEFAULT_ATR_K,
+            adaptive_price_threshold,
+            is_abnormal_move,
+        )
+
+        kline_for_atr = data.get("kline_summary") or {}
+        atr_pct = kline_for_atr.get("atr_pct")
+        adaptive_threshold = adaptive_price_threshold(
+            atr_pct, self.price_alert_threshold, DEFAULT_ATR_K
+        )
+
         lines.append("\n## 系统阈值")
-        lines.append(f"- 价格异动：|涨跌幅| ≥ {self.price_alert_threshold:.1f}%")
+        if atr_pct is not None and atr_pct > 0:
+            lines.append(
+                f"- 价格异动：|涨跌幅| ≥ max(固定阈值 {self.price_alert_threshold:.1f}%, "
+                f"{DEFAULT_ATR_K:g}×ATR%={atr_pct:.2f}%)={adaptive_threshold:.2f}%"
+                f"（相对个股自身波动率自适应，固定阈值为下限）"
+            )
+        else:
+            lines.append(
+                f"- 价格异动：|涨跌幅| ≥ {self.price_alert_threshold:.1f}%"
+                f"（ATR 不可用，回退固定阈值）"
+            )
         lines.append(f"- 量能异动：量比 ≥ {self.volume_alert_ratio:.1f}")
         lines.append(f"- 止损预警：浮亏 ≤ {self.stop_loss_warning:.1f}%")
         lines.append(f"- 止盈提醒：浮盈 ≥ {self.take_profit_warning:.1f}%")
         price_hit = (
-            "触发" if abs(change_pct) >= self.price_alert_threshold else "未触发"
+            "触发"
+            if is_abnormal_move(
+                change_pct,
+                atr_pct,
+                k=DEFAULT_ATR_K,
+                fixed_threshold=self.price_alert_threshold,
+            )
+            else "未触发"
         )
         lines.append(f"- 当前涨跌幅：{change_pct:+.2f}%（{price_hit}）")
 
@@ -332,6 +362,22 @@ class IntradayMonitorAgent(BaseAgent):
                         "触发" if volume_ratio >= self.volume_alert_ratio else "未触发"
                     )
                     lines.append(f"- 量比阈值判断：{vol_hit}")
+
+            # 波动率（ATR）：个股自身波动基准，用于判断"异动 vs 正常波动"
+            atr_val = kline.get("atr")
+            atr_pct_val = kline.get("atr_pct")
+            if atr_pct_val is not None:
+                atr_line = f"波动率：ATR={format_num(atr_val)}（ATR%={format_num(atr_pct_val)}%）"
+                atr_line += (
+                    f"，今日涨跌幅{change_pct:+.2f}% "
+                    + (
+                        "超出"
+                        if abs(change_pct) >= adaptive_threshold
+                        else "处于"
+                    )
+                    + f"自适应异动阈值{adaptive_threshold:.2f}%"
+                )
+                lines.append(f"- {atr_line}")
 
             # 均线
             lines.append(
