@@ -6,17 +6,28 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/PanWatch)](https://github.com/TNT-Likely/PanWatch/commits/main)
+[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/PanWatch)
 
-![Dashboard](docs/screenshots/dashboard.png)
+![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
 
-| 持仓管理 | AI 建议 |
+> 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
+
+## 📸 功能一览
+
+| 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
 |:---:|:---:|
-| ![Portfolio](./docs/screenshots/portfolio.png) | ![Suggestion](./docs/screenshots/suggestion.png) |
+| ![持仓管理](./docs/screenshots/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/opportunities.png) |
+| **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
+| ![模拟盘](./docs/screenshots/papertrading.png) | ![个股详情](./docs/screenshots/stock-detail.png) |
+| **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
+| ![技术指标](./docs/screenshots/technicals.png) | ![价格提醒](./docs/screenshots/alerts.png) |
 
 <details>
 <summary>移动端截图</summary>
 
-<img src="./docs/screenshots/mobile.png" width="375" />
+<img src="./docs/screenshots/mobile.png" width="300" /> <img src="./docs/screenshots/mobile-detail.png" width="300" />
+
+> 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
 
 </details>
 
@@ -29,7 +40,6 @@
 - **4 类分析师**（技术 / 情绪 / 新闻 / 基本面） → **看多看空辩论** → **风控审查** → **PM 整合决策**
 - 3-5 分钟输出完整推理链，结论同步推送到 Telegram / 微信 / 钉钉
 - 默认 deepseek-chat，单次 ~$0.05，月度预算可控
-- 配置指南：[`.docs/tradingagents/USER_GUIDE.md`](.docs/tradingagents/USER_GUIDE.md)
 
 ## 为什么选择盯盘侠？
 
