@@ -106,6 +106,12 @@ def is_panwatch_routable(symbol: str) -> bool:
     return is_a_share(symbol) or is_hk_share(symbol)
 
 
+def _looks_like_cn_keyword(symbol: str) -> bool:
+    """含中文字符 = 行业/主题中文检索词(如「汽车行业」)→ 走东财关键词新闻;
+    纯字母 ticker(美股 BABA/NVDA 等)不算 → 应透传上游 Yahoo 个股新闻。"""
+    return any("一" <= ch <= "鿿" for ch in str(symbol or ""))
+
+
 def hk_symbol_to_yfinance(symbol: str) -> str:
     """港股 PanWatch 5 位代码 → yfinance 格式。
 
@@ -274,7 +280,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
 
     # 行业/主题新闻:get_news 的 query 不是 ticker(中文行业词等) → 实时搜中文新闻(东方财富),
     # 替代拉不到中文数据的上游 vendor。
-    if symbol and "news" in method_name.lower() and not is_panwatch_routable(symbol):
+    if symbol and "news" in method_name.lower() and not is_panwatch_routable(symbol) and _looks_like_cn_keyword(symbol):
         try:
             result = _serve_keyword_news(symbol)
             _emit_toolkit_log(
