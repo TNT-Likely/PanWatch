@@ -61,7 +61,7 @@ class TradingAgentsAgent(BaseAgent):
         output_language: str = "Chinese",
         deep_model: str | None = None,    # 推理/辩论/PM 用的强模型 (留空走默认)
         quick_model: str | None = None,   # 分析师工具调用用的快模型 (留空 = deep_model)
-        timeout_minutes: int = 15,        # 整个流程硬超时;default 15 min 防卡死
+        timeout_minutes: int = 30,        # 整个流程硬超时;0.3.0 工具链更重,默认提到 30 min
         emit_paper_trading_signal: bool = False,  # 是否把 BUY 决策写入 StrategySignalRun 驱动模拟盘
     ):
         # 校验分析师配置
