@@ -152,5 +152,33 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
         },
     ),
+    AgentSeedSpec(
+        name="lmd_outlook",
+        display_name="老马视角",
+        description="以老马投资研究的产业周期×情绪博弈框架，结合行情/技术/资金/新闻生成深度分析报告。需手动触发。",
+        enabled=False,
+        schedule="",
+        execution_mode="single",
+        kind=AGENT_KIND_WORKFLOW,
+        visible=True,
+        display_order=50,
+        config={
+            # engine=hermes：委托本地 Hermes CLI + lmd-finance-perspective skill（需 Mac 本地安装 hermes）
+            # engine=builtin：PanWatch 内置单次 LLM（Docker/无 Hermes 环境）
+            "engine": "hermes",
+            "hermes_skill": "lmd-finance-perspective",
+            "hermes_profile": "agent-1-qingbaoxianfeng",
+            "hermes_skill_source_dir": "",
+            "hermes_bin": "",
+            "hermes_max_turns": 40,
+            "hermes_timeout_sec": 420,
+            "hermes_followup_timeout_sec": 300,
+            "hermes_model": "",
+            "hermes_ignore_rules": True,
+            "hermes_auto_expand_summary": True,
+            # builtin 模式：留空用 prompts/lmd_outlook.txt；可填外部 skill 绝对路径
+            "skill_path": "",
+        },
+    ),
 )
 

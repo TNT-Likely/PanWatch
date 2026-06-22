@@ -1,6 +1,6 @@
 """腾讯 K 线 Provider:包装现有 `KlineCollector.get_klines`。
 
-注意:`KlineCollector.get_klines` 内部已经做了 tencent → stooq(US) → eastmoney(CN/HK)
+注意:`KlineCollector.get_klines` 内部已经做了 tencent → eastmoney/yfinance(US) / eastmoney(CN/HK) / stooq(US)
 的硬编码 fallback,所以 TencentKlineProvider 实际是"含本地 fallback 的 Tencent 链路"。
 Orchestrator 级别再串 tushare / yfinance 是更上层的兜底。
 """

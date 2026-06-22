@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
@@ -130,6 +132,53 @@ function formatKlineMeta(meta?: Record<string, any>): string {
   return parts.join(' · ')
 }
 
+const MARKDOWN_PROSE =
+  'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] leading-relaxed [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 [&_strong]:text-foreground'
+
+function markdownToPlainText(input?: string): string {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+  return raw
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\*\*|__|\*|_/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractExecutiveSummary(text?: string): string {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  const m = raw.match(
+    /(?:Executive\s+Summary|决策摘要|核心结论|执行摘要)[\s*:：\-—－]+(.+?)(?=\*\*[A-Za-z\u4e00-\u9fff]|$)/is,
+  )
+  if (!m?.[1]) return ''
+  return m[1].replace(/\*\*/g, '').trim()
+}
+
+/** TradingAgents 旧数据 signal 取自交易员计划,可能与 PM 最终决策矛盾;优先用 reason 里的摘要。 */
+function resolveDisplaySignal(suggestion: SuggestionInfo): string {
+  if (suggestion.agent_name === 'tradingagents') {
+    const fromReason = extractExecutiveSummary(suggestion.reason)
+    if (fromReason) return fromReason
+  }
+  return suggestion.signal || ''
+}
+
+function SuggestionMarkdown({ content, className }: { content: string; className?: string }) {
+  return (
+    <div className={`${MARKDOWN_PROSE} ${className || ''}`}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  )
+}
+
 export function SuggestionBadge({
   suggestion,
   stockName,
@@ -184,6 +233,8 @@ export function SuggestionBadge({
     const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
     const timeStr = formatSuggestionTime(suggestion.created_at)
     const klineMetaStr = formatKlineMeta(suggestion.meta)
+    const displaySignal = resolveDisplaySignal(suggestion)
+    const displayReason = suggestion.reason || suggestion.raw || ''
     return (
       <>
         <div className="pt-3 border-t border-border/30">
@@ -213,13 +264,15 @@ export function SuggestionBadge({
               )}
             </div>
             <div className="flex-1 min-w-0">
-              {suggestion.signal && (
-                <p className="text-[12px] font-medium text-foreground mb-0.5">{suggestion.signal}</p>
+              {displaySignal && (
+                <p className="text-[12px] font-medium text-foreground mb-0.5 line-clamp-2">
+                  {markdownToPlainText(displaySignal)}
+                </p>
               )}
-              {suggestion.reason ? (
-                <p className="text-[11px] text-muted-foreground">{suggestion.reason}</p>
-              ) : suggestion.raw && !suggestion.signal ? (
-                <p className="text-[11px] text-muted-foreground">{suggestion.raw}</p>
+              {displayReason ? (
+                <p className="text-[11px] text-muted-foreground line-clamp-2">
+                  {markdownToPlainText(displayReason)}
+                </p>
               ) : null}
 
               {(suggestion.agent_label || timeStr) && (
@@ -308,20 +361,18 @@ export function SuggestionBadge({
               )}
 
               {/* 信号 */}
-              {suggestion.signal && (
+              {displaySignal && (
                 <div>
                   <div className="text-[11px] text-muted-foreground mb-1">信号</div>
-                  <p className="text-[13px] font-medium text-foreground">{suggestion.signal}</p>
+                  <SuggestionMarkdown content={displaySignal} className="font-medium" />
                 </div>
               )}
 
               {/* 理由 */}
-              {(suggestion.reason || suggestion.raw) && (
+              {displayReason && (
                 <div>
                   <div className="text-[11px] text-muted-foreground mb-1">理由</div>
-                  <p className="text-[13px] text-foreground">
-                    {suggestion.reason || suggestion.raw}
-                  </p>
+                  <SuggestionMarkdown content={displayReason} />
                 </div>
               )}
 
@@ -337,8 +388,8 @@ export function SuggestionBadge({
               {suggestion.ai_response && (
                 <div>
                   <div className="text-[11px] text-muted-foreground mb-1">AI 响应</div>
-                  <div className="text-[12px] text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto scrollbar">
-                    {suggestion.ai_response}
+                  <div className="bg-accent/30 rounded p-2 max-h-48 overflow-y-auto scrollbar">
+                    <SuggestionMarkdown content={suggestion.ai_response} className="text-[12px]" />
                   </div>
                 </div>
               )}
@@ -402,6 +453,8 @@ export function SuggestionBadge({
 
   if (!suggestion) return null
   const isAI = !!suggestion.agent_name && suggestion.agent_label !== '技术指标'
+  const displaySignal = resolveDisplaySignal(suggestion)
+  const displayReason = suggestion.reason || suggestion.raw || ''
 
   // 持仓页模式：小徽章 + 点击弹窗
   const timeStr = formatSuggestionTime(suggestion.created_at)
@@ -516,20 +569,18 @@ export function SuggestionBadge({
             )}
 
             {/* 信号 */}
-            {suggestion.signal && (
+            {displaySignal && (
               <div>
                 <div className="text-[11px] text-muted-foreground mb-1">信号</div>
-                <p className="text-[13px] font-medium text-foreground">{suggestion.signal}</p>
+                <SuggestionMarkdown content={displaySignal} className="font-medium" />
               </div>
             )}
 
             {/* 理由 */}
-            {(suggestion.reason || suggestion.raw) && (
+            {displayReason && (
               <div>
                 <div className="text-[11px] text-muted-foreground mb-1">理由</div>
-                <p className="text-[13px] text-foreground">
-                  {suggestion.reason || suggestion.raw}
-                </p>
+                <SuggestionMarkdown content={displayReason} />
               </div>
             )}
 
@@ -545,8 +596,8 @@ export function SuggestionBadge({
             {suggestion.ai_response && (
               <div>
                 <div className="text-[11px] text-muted-foreground mb-1">AI 响应</div>
-                <div className="text-[12px] text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto">
-                  {suggestion.ai_response}
+                <div className="bg-accent/30 rounded p-2 max-h-48 overflow-y-auto scrollbar">
+                  <SuggestionMarkdown content={suggestion.ai_response} className="text-[12px]" />
                 </div>
               </div>
             )}

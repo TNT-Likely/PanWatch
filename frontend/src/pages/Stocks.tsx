@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
@@ -331,6 +332,7 @@ const mergePortfolioQuotes = (
 }
 
 export default function StocksPage() {
+  const navigate = useNavigate()
   const [stocks, setStocks] = useState<Stock[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [agents, setAgents] = useState<AgentConfig[]>([])
@@ -1243,15 +1245,33 @@ export default function StocksPage() {
     setRunningAgents(prev => ({ ...prev, [stockId]: agentName }))
     // 触发后立即关闭配置弹窗，避免多层弹窗干扰
     setAgentDialogStock(null)
+    // 老马视角：Hermes 联网研究，同步等待（约 2–5 分钟），完成后弹窗展示
+    const syncWait = agentName === 'lmd_outlook'
+    const query = syncWait
+      ? '?bypass_throttle=true&wait=true'
+      : '?bypass_throttle=true'
     try {
-      // 手动触发时跳过节流，方便测试
-      const resp = await fetchAPI<{ result: AgentResult; success?: boolean; message?: string }>(
-        `/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`,
-        { method: 'POST' }
+      const resp = await fetchAPI<{
+        result?: AgentResult
+        queued?: boolean
+        message?: string
+        trace_id?: string
+        success?: boolean
+      }>(
+        `/stocks/${stockId}/agents/${agentName}/trigger${query}`,
+        { method: 'POST', timeoutMs: syncWait ? 720_000 : undefined },
       )
+
+      if (resp?.queued) {
+        toast(
+          resp.message || '已提交后台执行，约 1–2 分钟后可在侧边栏「历史」查看',
+          'info',
+        )
+        return
+      }
+
       const result = resp?.result
       if (result) {
-        // 仅提示，不再弹出结果弹窗，避免干扰
         if (result.success === false) {
           toast(result.message || result.content || '执行未通过', 'info')
           return
@@ -1259,9 +1279,19 @@ export default function StocksPage() {
         const isSkipped = !!result.skipped || /已跳过执行|非交易时段/.test(result.content || '')
         if (isSkipped) {
           toast(result.content || '当前非交易时段，已跳过执行', 'info')
-        } else {
-          toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
+          return
         }
+        if (agentName === 'lmd_outlook') {
+          setAgentResultDialog({
+            title: result.title || '老马视角',
+            content: result.content || '',
+            should_alert: !!result.should_alert,
+            notified: !!result.notified,
+          })
+          toast('老马视角报告已生成，也可在「历史」中查看', 'success')
+          return
+        }
+        toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '触发失败'
@@ -2961,26 +2991,29 @@ export default function StocksPage() {
 
       {/* Agent 分析结果弹窗 */}
       <Dialog open={!!agentResultDialog} onOpenChange={open => !open && setAgentResultDialog(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-base">{agentResultDialog?.title}</DialogTitle>
             <DialogDescription className="flex items-center gap-2 pt-1">
               {agentResultDialog?.should_alert ? (
                 <Badge variant="default" className="text-[10px]">建议关注</Badge>
               ) : (
-                <Badge variant="secondary" className="text-[10px]">无需关注</Badge>
+                <Badge variant="secondary" className="text-[10px]">分析完成</Badge>
               )}
               {agentResultDialog?.notified && (
                 <Badge variant="outline" className="text-[10px]">已发送通知</Badge>
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-2 p-3 bg-accent/30 rounded-lg">
+          <div className="mt-2 p-3 bg-accent/30 rounded-lg overflow-y-auto flex-1 min-h-0">
             <pre className="text-[13px] whitespace-pre-wrap font-sans leading-relaxed">
               {agentResultDialog?.content}
             </pre>
           </div>
-          <div className="flex justify-end mt-2">
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" size="sm" onClick={() => { setAgentResultDialog(null); navigate('/history') }}>
+              查看历史
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setAgentResultDialog(null)}>
               关闭
             </Button>

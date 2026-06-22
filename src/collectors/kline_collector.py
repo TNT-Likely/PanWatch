@@ -27,6 +27,10 @@ _STOOQ_CACHE: dict[str, tuple[float, list["KlineData"]]] = {}
 _STOOQ_CACHE_TTL_SECONDS = 300
 _EASTMONEY_CACHE: dict[str, tuple[float, int, list["KlineData"]]] = {}
 _EASTMONEY_CACHE_TTL_SECONDS = 300
+_EASTMONEY_FAIL_UNTIL: dict[str, float] = {}
+_EASTMONEY_FAIL_COOLDOWN_S = 120.0
+_YFINANCE_CACHE: dict[str, tuple[float, int, list["KlineData"]]] = {}
+_YFINANCE_CACHE_TTL_SECONDS = 300
 
 
 # 调用来源标记统一在 market_http(全项目共享一个 contextvar)。
@@ -90,6 +94,13 @@ def clear_kline_cache() -> None:
     """清空 K线内存缓存与失败冷却标记(测试隔离用)。"""
     _KLINE_CACHE.clear()
     _FAIL_UNTIL.clear()
+    _YFINANCE_CACHE.clear()
+    _EASTMONEY_FAIL_UNTIL.clear()
+
+
+def _us_kline_clearly_insufficient(bars: list["KlineData"], need: int) -> bool:
+    """腾讯美股常只回 1-2 条脏数据,不应被负缓存长期当作有效结果。"""
+    return len(bars) < max(10, min(need, 30))
 
 
 def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
@@ -169,6 +180,107 @@ def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
     return out
 
 
+def _normalize_yfinance_symbol(symbol: str, market: MarketCode) -> str:
+    sym = (symbol or "").strip()
+    if market == MarketCode.US:
+        return sym.upper().replace(".", "-")
+    if market == MarketCode.HK:
+        if sym.isdigit():
+            return f"{int(sym):04d}.HK"
+        return f"{sym}.HK" if not sym.upper().endswith(".HK") else sym.upper()
+    return sym
+
+
+def _yfinance_period(days: int) -> str:
+    if days <= 30:
+        return "1mo"
+    if days <= 90:
+        return "3mo"
+    if days <= 180:
+        return "6mo"
+    if days <= 365:
+        return "1y"
+    if days <= 730:
+        return "2y"
+    if days <= 1825:
+        return "5y"
+    return "max"
+
+
+def _fetch_yfinance_klines(
+    symbol: str, market: MarketCode, days: int
+) -> list[KlineData]:
+    """Fetch daily kline via yfinance (US/HK fallback when domestic sources fail)."""
+    if market not in (MarketCode.US, MarketCode.HK):
+        return []
+
+    sym = (symbol or "").strip()
+    if not sym:
+        return []
+
+    need_days = max(1, int(days or 1))
+    cache_key = f"{market.value}:{sym.upper()}"
+    now = time.time()
+    cached = _YFINANCE_CACHE.get(cache_key)
+    if (
+        cached
+        and (now - cached[0]) < _YFINANCE_CACHE_TTL_SECONDS
+        and cached[1] >= need_days
+    ):
+        bars = cached[2]
+        return bars[-need_days:] if len(bars) > need_days else bars
+
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.debug("yfinance 未安装,跳过 yfinance K线回退")
+        return []
+
+    ticker = _normalize_yfinance_symbol(sym, market)
+    period = _yfinance_period(need_days)
+    last_err = None
+    out: list[KlineData] = []
+    for attempt in range(2):
+        try:
+            hist = yf.Ticker(ticker).history(
+                period=period, interval="1d", auto_adjust=True
+            )
+            for idx, row in hist.iterrows():
+                try:
+                    out.append(
+                        KlineData(
+                            date=idx.strftime("%Y-%m-%d"),
+                            open=float(row["Open"]),
+                            close=float(row["Close"]),
+                            high=float(row["High"]),
+                            low=float(row["Low"]),
+                            volume=float(row.get("Volume") or 0),
+                        )
+                    )
+                except Exception:
+                    continue
+            if out:
+                break
+            last_err = "空响应"
+        except Exception as e:
+            last_err = e
+            time.sleep(0.35 * (attempt + 1))
+
+    if not out:
+        if last_err is not None:
+            logger.warning(
+                f"yfinance 获取 {symbol} K线失败: {last_err}{_source_suffix()}"
+            )
+        stale = _YFINANCE_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need_days:] if len(bars) > need_days else bars
+        return []
+
+    _YFINANCE_CACHE[cache_key] = (now, len(out), out)
+    return out[-need_days:] if len(out) > need_days else out
+
+
 def _eastmoney_secid(symbol: str, market: MarketCode) -> str:
     if market == MarketCode.HK:
         return f"116.{symbol}"
@@ -202,15 +314,24 @@ def get_index_klines(index_code: str, market: MarketCode, days: int = 120) -> li
         return []
 
 
+def _eastmoney_referer(symbol: str, market: MarketCode) -> str:
+    sym = (symbol or "").strip()
+    if market == MarketCode.US:
+        return f"https://quote.eastmoney.com/us/{sym}.html"
+    if market == MarketCode.HK:
+        return f"https://quote.eastmoney.com/hk/{sym}.html"
+    return "https://quote.eastmoney.com/"
+
+
 def _fetch_eastmoney_klines(
     symbol: str, market: MarketCode, days: int, *, secid_override: str | None = None
 ) -> list[KlineData]:
-    """Fetch daily kline from Eastmoney as CN/HK long-history fallback."""
+    """Fetch daily kline from Eastmoney as CN/HK/US fallback."""
 
     sym = (symbol or "").strip()
     if not sym:
         return []
-    if market not in (MarketCode.CN, MarketCode.HK):
+    if market not in (MarketCode.CN, MarketCode.HK, MarketCode.US):
         return []
 
     need_days = max(1, int(days or 1))
@@ -219,6 +340,12 @@ def _fetch_eastmoney_klines(
     secid = secid_override or _eastmoney_secid(sym, market)
     cache_key = f"{market.value}:{secid}"
     now = time.time()
+    if now < _EASTMONEY_FAIL_UNTIL.get(cache_key, 0.0):
+        stale = _EASTMONEY_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need_days:] if len(bars) > need_days else bars
+        return []
     cached = _EASTMONEY_CACHE.get(cache_key)
     if (
         cached
@@ -228,11 +355,12 @@ def _fetch_eastmoney_klines(
         bars = cached[2]
         return bars[-need_days:] if len(bars) > need_days else bars
 
+    min_lmt = 120 if market == MarketCode.US else 1200
     params = {
         "secid": secid,
         "klt": "101",  # 1日K
         "fqt": "1",  # 前复权
-        "lmt": str(min(max(need_days, 1200), 20000)),
+        "lmt": str(min(max(need_days, min_lmt), 20000)),
         "end": "20500101",
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": "f51,f52,f53,f54,f55,f56",
@@ -240,7 +368,7 @@ def _fetch_eastmoney_klines(
     }
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://quote.eastmoney.com/",
+        "Referer": _eastmoney_referer(sym, market),
     }
 
     last_err = None
@@ -291,6 +419,7 @@ def _fetch_eastmoney_klines(
             time.sleep(0.35 * (attempt + 1))
 
     if not best and last_err is not None:
+        _EASTMONEY_FAIL_UNTIL[cache_key] = now + _EASTMONEY_FAIL_COOLDOWN_S
         logger.warning(
             f"Eastmoney 获取 {symbol} K线失败: {last_err}{_source_suffix()}"
         )
@@ -300,6 +429,7 @@ def _fetch_eastmoney_klines(
             return bars[-need_days:] if len(bars) > need_days else bars
         return []
 
+    _EASTMONEY_FAIL_UNTIL.pop(cache_key, None)
     _EASTMONEY_CACHE[cache_key] = (now, len(best), best)
     return best[-need_days:] if len(best) > need_days else best
 
@@ -625,7 +755,7 @@ def _throttle_tencent() -> None:
 
 
 # 东方财富 push2his 在批量突发下会连接级丢弃(Server disconnected) —— 同样做进程级节流。
-_EASTMONEY_MIN_INTERVAL_S = 0.2
+_EASTMONEY_MIN_INTERVAL_S = 0.35
 _EASTMONEY_THROTTLE_LOCK = threading.Lock()
 _eastmoney_last_call = [0.0]
 
@@ -743,7 +873,11 @@ class KlineCollector:
             if now < _FAIL_UNTIL.get(cache_key, 0.0):
                 stale = _KLINE_CACHE.get(cache_key)
                 bars = stale[2] if stale else []
-                return bars[-need:] if len(bars) > need else bars
+                if not (
+                    self.market == MarketCode.US
+                    and _us_kline_clearly_insufficient(bars, need)
+                ):
+                    return bars[-need:] if len(bars) > need else bars
 
             klines = self._fetch_all_sources(symbol, days)
             if klines and len(klines) >= need:
@@ -754,9 +888,18 @@ class KlineCollector:
                 # 空 或 拿到部分但不足 need(常见:HK 腾讯不足 + eastmoney 补全失败,
                 # 正缓存因 count<need 永不命中 → 每轮重打补全源刷屏)→ 固化冷却。
                 # 部分结果仍缓存下来,冷却窗口内直接服务,避免反复联网。
-                if klines:
+                # 美股腾讯 1-2 条脏数据除外:不缓存、不长期负缓存,便于 yfinance 兜底重试。
+                us_junk = (
+                    self.market == MarketCode.US
+                    and klines
+                    and _us_kline_clearly_insufficient(klines, need)
+                )
+                if klines and not us_junk:
                     _KLINE_CACHE[cache_key] = (now, len(klines), list(klines))
-                _FAIL_UNTIL[cache_key] = now + _fail_cooldown(self.market)
+                if not klines or us_junk:
+                    _FAIL_UNTIL[cache_key] = now + min(_fail_cooldown(self.market), 15.0)
+                else:
+                    _FAIL_UNTIL[cache_key] = now + _fail_cooldown(self.market)
             return klines[-need:] if len(klines) > need else klines
 
     def _cache_hit(self, cache_key: str, need: int) -> list[KlineData] | None:
@@ -772,14 +915,19 @@ class KlineCollector:
         return None
 
     def _fetch_all_sources(self, symbol: str, days: int) -> list[KlineData]:
-        """tencent → stooq(US) / eastmoney(CN/HK) 链路取数(不含缓存/合并逻辑)。"""
+        """tencent → eastmoney/yfinance(US) / eastmoney(CN/HK) / stooq(US) 链路取数。"""
         klines = _fetch_tencent_klines(symbol, self.market, days)
 
-        # Tencent 对部分美股返回的 day 数据异常偏少（仅 1-2 条），使用 Stooq 回退。
-        if self.market == MarketCode.US and len(klines) < max(10, min(days, 30)):
-            fallback = _fetch_stooq_us_klines(symbol)
-            if fallback:
-                klines = fallback
+        min_us_bars = max(10, min(days, 30))
+        # 美股:腾讯常只回 1-2 条;东财 push2his 批量突发易断连,直接走 yfinance/stooq。
+        if self.market == MarketCode.US and len(klines) < min_us_bars:
+            yf_bars = _fetch_yfinance_klines(symbol, self.market, max(days, 120))
+            if len(yf_bars) > len(klines):
+                klines = yf_bars
+            if len(klines) < min_us_bars:
+                fallback = _fetch_stooq_us_klines(symbol)
+                if fallback:
+                    klines = fallback
 
         # CN/HK: Tencent 不足时用 Eastmoney 补全更长历史(仅当确实不足)
         if self.market in (MarketCode.CN, MarketCode.HK):

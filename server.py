@@ -41,6 +41,7 @@ from src.agents.chart_analyst import ChartAnalystAgent
 from src.agents.intraday_monitor import IntradayMonitorAgent
 from src.agents.premarket_outlook import PremarketOutlookAgent
 from src.agents.tradingagents import TradingAgentsAgent
+from src.agents.lmd_outlook import LmdOutlookAgent
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +345,24 @@ def seed_agents():
                 if isinstance(cfg, dict) and "event_only" not in cfg:
                     cfg["event_only"] = True
                     existing.config = cfg
+            if existing.name == "lmd_outlook":
+                cfg = existing.config if isinstance(existing.config, dict) else {}
+                for key, default in (
+                    ("engine", "hermes"),
+                    ("hermes_skill", "lmd-finance-perspective"),
+                    ("hermes_profile", "agent-1-qingbaoxianfeng"),
+                    ("hermes_skill_source_dir", ""),
+                    ("hermes_bin", ""),
+                    ("hermes_max_turns", 40),
+                    ("hermes_timeout_sec", 420),
+                    ("hermes_followup_timeout_sec", 300),
+                    ("hermes_model", ""),
+                    ("hermes_ignore_rules", True),
+                    ("hermes_auto_expand_summary", True),
+                ):
+                    if key not in cfg:
+                        cfg[key] = default
+                existing.config = cfg
 
     db.commit()
     db.close()
@@ -896,6 +915,7 @@ AGENT_REGISTRY: dict[str, type] = {
     "chart_analyst": ChartAnalystAgent,
     "intraday_monitor": IntradayMonitorAgent,
     "tradingagents": TradingAgentsAgent,
+    "lmd_outlook": LmdOutlookAgent,
 }
 
 
@@ -1153,6 +1173,12 @@ async def trigger_agent_for_stock(
         )
     elif agent_name == "tradingagents":
         # 从 AgentConfig.config 读取实例化参数
+        agent_kwargs = get_agent_config(agent_name) or {}
+        try:
+            agent = agent_cls(**agent_kwargs)
+        except TypeError:
+            agent = agent_cls()
+    elif agent_name == "lmd_outlook":
         agent_kwargs = get_agent_config(agent_name) or {}
         try:
             agent = agent_cls(**agent_kwargs)
