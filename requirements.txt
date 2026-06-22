@@ -25,8 +25,9 @@ xhtml2pdf>=0.2.17
 # 不在 PyPI,用 git+ URL 安装。会拉 langchain/langgraph/yfinance 等较重依赖
 # (~115 个包,首次安装 2-5 分钟)。
 # 用户启用「TradingAgents 深度分析」Agent 时才会真正调用它;不启用零开销。
-# 锁定到 v0.2.5(而非 @main):上游 main 不断加需外部 key/服务的新工具
-# (get_verified_market_snapshot→yfinance、get_macro_indicators→FRED、polymarket 等),
-# 我们的注入层未覆盖就会硬失败。v0.2.5 是 PanWatch 适配/测试的稳定版,不含这些工具。
-# 升级前需先在适配层(toolkit_adapter)对新工具做覆盖/降级。
-tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.2.5
+# 锁定到 v0.3.0(release tag,非 @main)。0.3.0 把 FRED/Polymarket 等可选数据源
+# 列入 OPTIONAL_CATEGORIES,无 key/网络失败时返回 DATA_UNAVAILABLE 哨兵而非硬失败
+# (根治了当初锁 v0.2.5 要躲的硬失败)。适配层 monkeypatch 目标(route_to_vendor/
+# load_ohlcv/get_graph_args/create_initial_state)的符号与签名跨 0.2.5→0.3.0 全部稳定,
+# result_mapper 读的 AgentState 字段全部保留 —— 零代码改动升级(评估见 issue #68)。
+tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.3.0
