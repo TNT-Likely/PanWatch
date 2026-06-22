@@ -18,6 +18,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
+import { buildRollingCostPlan, buildRollingCostPlanBrief } from '@/lib/rolling-cost-plan'
 
 interface AgentResult {
   success?: boolean
@@ -1439,6 +1440,28 @@ export default function StocksPage() {
     return { suggestion: null, kline: null }
   }
 
+  const rollingCostBriefMap = useMemo(() => {
+    const out = new Map<number, string>()
+    for (const account of portfolio?.accounts || []) {
+      for (const position of account.positions || []) {
+        const key = `${position.market || 'CN'}:${position.symbol}`
+        const kline = klineSummaries[key] || (suggestions[position.symbol]?.kline as KlineSummary | null) || null
+        const brief = buildRollingCostPlanBrief(buildRollingCostPlan({
+          market: position.market,
+          currentQuantity: Number(position.quantity || 0),
+          currentCost: Number(position.cost_price || 0),
+          currentPrice: position.current_price,
+          kline,
+          baseRatio: 0.5,
+          tranches: 3,
+          reboundPct: 5,
+        }))
+        if (brief) out.set(position.id, brief)
+      }
+    }
+    return out
+  }, [klineSummaries, portfolio?.accounts, suggestions])
+
   const positionRatio = useMemo(() => {
     if (!portfolio) return null
     const mv = portfolio.total.total_market_value || 0
@@ -1965,6 +1988,8 @@ export default function StocksPage() {
                           <tbody>
                             {account.positions.map((pos, i) => {
                               const stock = stocks.find(s => s.id === pos.stock_id)
+                              const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                              const rollingBrief = rollingCostBriefMap.get(pos.id) || null
                               const badge = marketBadge(pos.market)
                               const isForeign = pos.market === 'HK' || pos.market === 'US'
                               const changeColor = pos.change_pct != null
@@ -2017,21 +2042,28 @@ export default function StocksPage() {
                                     >
                                       {pos.name}
                                     </button>
-                                    {(() => {
-                                      const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
-                                      return (suggestion || kline) ? (
-                                        <span className="ml-2">
-                                          <SuggestionBadge
-                                            suggestion={suggestion}
-                                            stockName={pos.name}
-                                            stockSymbol={pos.symbol}
-                                            kline={kline}
-                                            market={pos.market}
-                                            hasPosition={true}
-                                          />
-                                        </span>
-                                      ) : null
-                                    })()}
+                                    {(suggestion || kline) ? (
+                                      <span className="ml-2">
+                                        <SuggestionBadge
+                                          suggestion={suggestion}
+                                          stockName={pos.name}
+                                          stockSymbol={pos.symbol}
+                                          kline={kline}
+                                          market={pos.market}
+                                          hasPosition={true}
+                                        />
+                                      </span>
+                                    ) : null}
+                                    {rollingBrief && (
+                                      <button
+                                        type="button"
+                                        className="mt-1 block max-w-[320px] truncate text-left text-[10px] text-muted-foreground hover:text-primary"
+                                        title={rollingBrief}
+                                        onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                      >
+                                        {rollingBrief}
+                                      </button>
+                                    )}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
@@ -2107,9 +2139,9 @@ export default function StocksPage() {
                                   </td>
                                   <td className="px-4 py-2.5 text-center">
                                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                      {(!suggestion && !kline) ? (
                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
-                                      ) : null })()}
+                                      ) : null}
                                       <StockPriceAlertPanel
                                         mode="icon"
                                         stockId={pos.stock_id}
@@ -2138,6 +2170,7 @@ export default function StocksPage() {
                         {account.positions.map(pos => {
                           const stock = stocks.find(s => s.id === pos.stock_id)
                           const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                          const rollingBrief = rollingCostBriefMap.get(pos.id) || null
                           const badge = marketBadge(pos.market)
                           const changeColor = pos.change_pct != null
                             ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
@@ -2218,6 +2251,15 @@ export default function StocksPage() {
                                   />
                                 </div>
                               ) : null}
+                              {rollingBrief && (
+                                <button
+                                  type="button"
+                                  className="mb-2 w-full rounded bg-accent/15 px-2 py-1 text-left text-[10px] text-muted-foreground"
+                                  onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                >
+                                  {rollingBrief}
+                                </button>
+                              )}
                               {/* Row 3: Stats grid (4 cols, whitespace-nowrap to prevent "万" wrapping) */}
                               <div className="grid grid-cols-4 gap-2 text-[11px]">
                                 <div className="min-w-0">
@@ -2274,9 +2316,9 @@ export default function StocksPage() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                  {(!suggestion && !kline) ? (
                                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
-                                  ) : null })()}
+                                  ) : null}
                                   <StockPriceAlertPanel
                                     mode="icon"
                                     stockId={pos.stock_id}

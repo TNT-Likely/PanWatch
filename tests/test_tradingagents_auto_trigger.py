@@ -9,9 +9,9 @@ import pytest
 from src.agents.tradingagents import auto_trigger
 
 
-def _make_agent(raw_config: dict):
+def _make_agent(config: dict):
     agent = MagicMock()
-    agent.raw_config = raw_config
+    agent.config = config
     return agent
 
 

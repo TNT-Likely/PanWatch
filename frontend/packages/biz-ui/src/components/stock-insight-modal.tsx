@@ -22,6 +22,7 @@ import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 
 interface QuoteResponse {
   symbol: string
@@ -1488,6 +1489,13 @@ export default function StockInsightModal(props: {
                         currentQuantity={holdingAgg?.quantity ?? 0}
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
+                      />
+                      <RollingCostPlanPanel
+                        market={market}
+                        currentQuantity={holdingAgg?.quantity ?? 0}
+                        currentCost={holdingAgg?.unitCost ?? 0}
+                        currentPrice={quote?.current_price ?? null}
+                        kline={klineSummary}
                       />
                     </div>
                   </div>
