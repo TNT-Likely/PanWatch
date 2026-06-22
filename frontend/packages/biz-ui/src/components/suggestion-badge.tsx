@@ -75,6 +75,34 @@ export interface KlineSummary {
   kline_pattern?: string
 }
 
+/** 卡片/列表上的支撑压力简洁展示：支撑/压力 */
+export function KlineLevelsBrief({
+  kline,
+  className,
+  align = 'left',
+}: {
+  kline?: KlineSummary | null
+  className?: string
+  align?: 'left' | 'right'
+}) {
+  if (!kline) return null
+  const sup = kline.support
+  const res = kline.resistance
+  if (sup == null && res == null) return null
+  const fmt = (v: number | null | undefined) =>
+    v != null && Number.isFinite(v) ? v.toFixed(2) : '--'
+  return (
+    <div
+      className={`font-mono text-[10px] leading-tight text-muted-foreground/80 ${
+        align === 'right' ? 'text-right' : ''
+      } ${className || ''}`}
+      title="支撑/压力"
+    >
+      {fmt(sup)}/{fmt(res)}
+    </div>
+  )
+}
+
 interface SuggestionBadgeProps {
   suggestion: SuggestionInfo | null
   stockName?: string

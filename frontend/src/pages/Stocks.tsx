@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
-import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
+import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -2137,6 +2137,7 @@ export default function StocksPage() {
                       <div className="md:hidden divide-y divide-border/30">
                         {account.positions.map(pos => {
                           const stock = stocks.find(s => s.id === pos.stock_id)
+                          const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
                           const badge = marketBadge(pos.market)
                           const changeColor = pos.change_pct != null
                             ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
@@ -2196,27 +2197,27 @@ export default function StocksPage() {
                                     </span>
                                   )}
                                 </div>
-                                <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
-                                  {pos.current_price?.toFixed(2) || '—'}
-                                  {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 text-right ${changeColor}`}>
+                                  <div>
+                                    {pos.current_price?.toFixed(2) || '—'}
+                                    {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                  </div>
+                                  <KlineLevelsBrief kline={kline} align="right" className="mt-0.5" />
                                 </div>
                               </div>
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
-                              {(() => {
-                                const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
-                                return (suggestion || kline) ? (
-                                  <div className="mb-2">
-                                    <SuggestionBadge
-                                      suggestion={suggestion}
-                                      stockName={pos.name}
-                                      stockSymbol={pos.symbol}
-                                      kline={kline}
-                                      market={pos.market}
-                                      hasPosition={true}
-                                    />
-                                  </div>
-                                ) : null
-                              })()}
+                              {(suggestion || kline) ? (
+                                <div className="mb-2">
+                                  <SuggestionBadge
+                                    suggestion={suggestion}
+                                    stockName={pos.name}
+                                    stockSymbol={pos.symbol}
+                                    kline={kline}
+                                    market={pos.market}
+                                    hasPosition={true}
+                                  />
+                                </div>
+                              ) : null}
                               {/* Row 3: Stats grid (4 cols, whitespace-nowrap to prevent "万" wrapping) */}
                               <div className="grid grid-cols-4 gap-2 text-[11px]">
                                 <div className="min-w-0">
@@ -2402,7 +2403,7 @@ export default function StocksPage() {
                     className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
-                      setAgentDialogStock(stock)
+                      openStockDetail(stock.symbol, stock.market, stock.name, false)
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -2411,18 +2412,12 @@ export default function StocksPage() {
                           <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
                             {marketBadge(stock.market).label}
                           </span>
-                          <button
-                            className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
-                          >
+                          <span className="font-mono text-[12px] font-semibold text-foreground">
                             {stock.symbol}
-                          </button>
-                          <button
-                            className="text-[12px] text-muted-foreground truncate hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
-                          >
+                          </span>
+                          <span className="text-[12px] text-muted-foreground truncate">
                             {stock.name}
-                          </button>
+                          </span>
                         </div>
                       </div>
                       <div className="text-right">
@@ -2432,6 +2427,7 @@ export default function StocksPage() {
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                         </div>
+                        <KlineLevelsBrief kline={kline} align="right" className="mt-0.5" />
                       </div>
                     </div>
 
@@ -2451,19 +2447,39 @@ export default function StocksPage() {
                     </div>
 
                     <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 flex-wrap">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 flex-wrap hover:opacity-70 transition-opacity text-left"
+                        onClick={(e) => { e.stopPropagation(); setAgentDialogStock(stock) }}
+                      >
                         {stock.agents && stock.agents.length > 0 ? (
-                          <Badge variant="secondary" className="text-[10px]">{stock.agents.length} Agent</Badge>
+                          stock.agents.slice(0, 2).map(sa => {
+                            const agent = agents.find(a => a.name === sa.agent_name)
+                            const isRunning = runningAgents[stock.id] === sa.agent_name
+                            return (
+                              <span key={sa.agent_name} className="inline-flex items-center gap-1">
+                                <Badge variant="secondary" className="text-[10px]">{agent?.display_name || sa.agent_name}</Badge>
+                                {isRunning && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                    <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                                    执行中
+                                  </span>
+                                )}
+                              </span>
+                            )
+                          })
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/60">未配置 Agent</span>
+                          <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                            <Bot className="w-3 h-3" /> 未配置 Agent
+                          </span>
                         )}
-                        {runningAgents[stock.id] && (
+                        {runningAgents[stock.id] && !(stock.agents || []).some(sa => sa.agent_name === runningAgents[stock.id]) && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                             <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                             {agents.find(a => a.name === runningAgents[stock.id])?.display_name || runningAgents[stock.id]}
                           </span>
                         )}
-                      </div>
+                      </button>
                       <div
                         className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
@@ -2504,15 +2520,6 @@ export default function StocksPage() {
                           onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name)}
                         >
                           <Brain className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => openStockDetail(stock.symbol, stock.market, stock.name, false)}
-                          title="详情"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
                         </Button>
                         <Button
                           variant="ghost"

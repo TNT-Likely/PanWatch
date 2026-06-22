@@ -30,6 +30,18 @@ export const suggestionActionLabels: Record<SuggestionAction, string> = {
   alert: '提醒',
 }
 
+/** K 线技术指标建议档位 — 悬停说明 */
+export const suggestionActionDescriptions: Record<SuggestionAction, string> = {
+  buy: '可以考虑进场',
+  add: '已有持仓，技术面偏强，可考虑加仓',
+  watch: '中性，等更清晰信号',
+  avoid: '风险较大，不建议参与',
+  reduce: '已有持仓时的离场建议',
+  sell: '已有持仓时的离场建议',
+  hold: '已有持仓，暂无明显离场或加仓信号',
+  alert: '需关注异动或风险信号',
+}
+
 export function normalizeSuggestionAction(action?: string, label?: string): SuggestionAction | null {
   const raw = (action || label || '').toLowerCase()
   if (!raw) return null
@@ -64,4 +76,9 @@ export function resolveSuggestionLabel(action?: string, label?: string, fallback
 export function resolveSuggestionColorClass(action?: string, label?: string): string {
   const normalized = resolveSuggestionAction(action, label)
   return suggestionActionColors[normalized] || suggestionActionColors.watch
+}
+
+export function resolveSuggestionActionDescription(action?: string, label?: string): string {
+  const normalized = resolveSuggestionAction(action, label)
+  return suggestionActionDescriptions[normalized] || suggestionActionDescriptions.watch
 }

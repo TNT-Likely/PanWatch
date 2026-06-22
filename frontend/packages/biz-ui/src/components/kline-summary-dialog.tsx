@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import { resolveSuggestionActionDescription } from '@panwatch/biz-ui/components/suggestion-action'
 import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 
 export interface KlineSummaryData {
@@ -215,10 +216,27 @@ export function KlineSummaryDialog({
             {suggestion && (
               <div className="p-3 rounded-lg bg-accent/20 border border-border/30">
                 <div className="flex items-center justify-between gap-2">
-                  <TechnicalBadge
-                    label={suggestion.action_label}
-                    tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
-                    size="sm"
+                  <HoverPopover
+                    title={`建议：${suggestion.action_label}`}
+                    content={
+                      <div className="space-y-2">
+                        <div>{resolveSuggestionActionDescription(suggestion.action, suggestion.action_label)}</div>
+                        <ul className="list-disc pl-4 space-y-1 text-[10px] text-muted-foreground/80">
+                          <li><span className="font-medium text-foreground">买入/建仓</span>：可以考虑进场</li>
+                          <li><span className="font-medium text-foreground">观望</span>：中性，等更清晰信号</li>
+                          <li><span className="font-medium text-foreground">回避</span>：风险较大，不建议参与</li>
+                          <li><span className="font-medium text-foreground">减仓/卖出</span>：已有持仓时的离场建议</li>
+                        </ul>
+                      </div>
+                    }
+                    trigger={
+                      <TechnicalBadge
+                        label={suggestion.action_label}
+                        tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
+                        size="sm"
+                        help
+                      />
+                    }
                   />
                   <span className="text-[10px] text-muted-foreground">
                     {hasPosition ? '已持仓' : '未持仓'} · score {suggestion.score}
@@ -254,7 +272,7 @@ export function KlineSummaryDialog({
             )}
 
             <div className="text-[10px] text-muted-foreground/60">
-              提示：悬停指标标签可查看详细说明
+              提示：悬停建议或指标标签可查看详细说明
             </div>
 
             <div className="flex flex-wrap gap-2 text-[11px]">
