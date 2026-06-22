@@ -130,7 +130,27 @@ interface StockItem {
 const AGENT_LABELS: Record<string, string> = {
   daily_report: '盘后日报',
   premarket_outlook: '盘前分析',
+  intraday_monitor: '盘中监测',
   news_digest: '新闻速递',
+  chart_analyst: '技术分析',
+  tradingagents: 'TradingAgents 深度',
+  lmd_outlook: '老马视角',
+}
+
+function historyRecordMatchesStock(
+  record: HistoryRecord,
+  sym: string,
+  name?: string,
+): boolean {
+  const upperSymbol = sym.toUpperCase()
+  const sug = record?.suggestions || {}
+  const keys = Object.keys(sug || {})
+  if (keys.includes(sym) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
+  const text = `${record?.title || ''}\n${record?.content || ''}`.toUpperCase()
+  if (upperSymbol && text.includes(upperSymbol)) return true
+  const trimmedName = (name || '').trim()
+  if (trimmedName && `${record?.title || ''}\n${record?.content || ''}`.includes(trimmedName)) return true
+  return false
 }
 
 function formatNumber(value: number | null | undefined, digits = 2): string {
@@ -366,7 +386,7 @@ export default function StockInsightModal(props: {
   const [news, setNews] = useState<NewsItem[]>([])
   const [announcements, setAnnouncements] = useState<NewsItem[]>([])
   const [reports, setReports] = useState<HistoryRecord[]>([])
-  const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report' | 'news_digest'>('premarket_outlook')
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null)
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
   const [deepLoaded, setDeepLoaded] = useState(false)
@@ -606,53 +626,32 @@ export default function StockInsightModal(props: {
   const loadReports = useCallback(async () => {
     if (!symbol) return
     try {
-      const agents = ['premarket_outlook', 'daily_report', 'news_digest']
-      const bySymbolResults = await Promise.all(
-        agents.map(agent =>
-          insightApi.history<HistoryRecord[]>({
-            agent_name: agent,
-            stock_symbol: symbol,
-            limit: 1,
-          }).catch(() => [])
-        )
-      )
-      let merged = bySymbolResults
-        .flatMap(items => items || [])
-        .filter(Boolean)
-      // 兼容全局记录（stock_symbol="*"）场景：从最近全局记录中筛选与当前股票相关的报告。
-      if (merged.length === 0) {
-        const globalResults = await Promise.all(
-          agents.map(agent =>
-            insightApi.history<HistoryRecord[]>({
-              agent_name: agent,
-              stock_symbol: '*',
-              limit: 20,
-            }).catch(() => [])
-          )
-        )
-        const upperSymbol = symbol.toUpperCase()
-        const name = (resolvedName || '').trim()
-        merged = globalResults
-          .map(items => {
-            const rows = (items || []).filter(Boolean)
-            const hit = rows.find((r) => {
-              const sug = r?.suggestions || {}
-              const keys = Object.keys(sug || {})
-              if (keys.includes(symbol) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
-              const text = `${r?.title || ''}\n${r?.content || ''}`.toUpperCase()
-              if (upperSymbol && text.includes(upperSymbol)) return true
-              if (name && `${r?.title || ''}\n${r?.content || ''}`.includes(name)) return true
-              return false
-            })
-            return hit || null
-          })
-          .filter(Boolean) as HistoryRecord[]
-      }
-      merged = merged.sort((a, b) => {
-        const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
-        const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
-        return bm - am
-      })
+      const [bySymbol, globals] = await Promise.all([
+        insightApi.history<HistoryRecord[]>({
+          stock_symbol: symbol,
+          kind: 'all',
+          limit: 50,
+        }).catch(() => []),
+        insightApi.history<HistoryRecord[]>({
+          stock_symbol: '*',
+          kind: 'all',
+          limit: 80,
+        }).catch(() => []),
+      ])
+      const name = (resolvedName || '').trim()
+      const globalHits = (globals || []).filter(r => historyRecordMatchesStock(r, symbol, name))
+      const seen = new Set<number>()
+      const merged = [...(bySymbol || []), ...globalHits]
+        .filter((r): r is HistoryRecord => {
+          if (!r?.id || seen.has(r.id)) return false
+          seen.add(r.id)
+          return true
+        })
+        .sort((a, b) => {
+          const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
+          const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
+          return bm - am
+        })
       setReports(merged)
     } catch {
       setReports([])
@@ -732,6 +731,7 @@ export default function StockInsightModal(props: {
     setNews([])
     setAnnouncements([])
     setReports([])
+    setSelectedReportId(null)
     setMiniKlines([])
     setWatchingStock(null)
     setDeepResult(null)
@@ -884,18 +884,19 @@ export default function StockInsightModal(props: {
     return ((hi - lo) / pre) * 100
   }, [quote?.high_price, quote?.low_price, quote?.prev_close])
 
-  const reportMap = useMemo(() => {
-    const out: Record<string, HistoryRecord | null> = {
-      premarket_outlook: null,
-      daily_report: null,
-      news_digest: null,
+  useEffect(() => {
+    if (!reports.length) {
+      setSelectedReportId(null)
+      return
     }
-    for (const r of reports) {
-      if (!out[r.agent_name]) out[r.agent_name] = r
-    }
-    return out
-  }, [reports])
-  const activeReport = reportMap[reportTab]
+    if (selectedReportId && reports.some(r => r.id === selectedReportId)) return
+    setSelectedReportId(reports[0].id)
+  }, [reports, selectedReportId])
+
+  const activeReport = useMemo(
+    () => reports.find(r => r.id === selectedReportId) || reports[0] || null,
+    [reports, selectedReportId],
+  )
   const latestReport = reports[0] || null
   const latestShareSuggestion = suggestions[0] || technicalFallbackSuggestion
   const shareCardPayload = useMemo(() => {
@@ -1668,37 +1669,55 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'reports' && (
-              <div className="space-y-3">
-                <div className="card p-3">
-                  <div className="flex items-center gap-1">
-                    {([
-                      { key: 'premarket_outlook', label: '盘前' },
-                      { key: 'daily_report', label: '盘后' },
-                      { key: 'news_digest', label: '新闻' },
-                    ] as const).map(item => (
-                      <button
-                        key={item.key}
-                        onClick={() => setReportTab(item.key)}
-                        className={`text-[11px] px-2.5 py-1 rounded ${
-                          reportTab === item.key ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-muted-foreground hover:bg-accent'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-4 card p-2 max-h-[62vh] overflow-y-auto scrollbar">
+                  {reports.length === 0 ? (
+                    <div className="p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  ) : (
+                    <div className="divide-y divide-border/30">
+                      {reports.map(r => {
+                        const active = r.id === activeReport?.id
+                        const stockSuggestion = r.suggestions?.[symbol]
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => setSelectedReportId(r.id)}
+                            className={`w-full text-left px-2.5 py-2.5 rounded-lg transition-colors ${
+                              active ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent/40'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-muted-foreground">
+                                {AGENT_LABELS[r.agent_name] || r.agent_name}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground shrink-0">{r.analysis_date}</span>
+                            </div>
+                            <div className={`mt-0.5 text-[12px] line-clamp-2 ${active ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
+                              {r.title || '报告摘要'}
+                            </div>
+                            {stockSuggestion?.action_label && (
+                              <div className="mt-1 text-[10px] inline-flex px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                {stockSuggestion.action_label}
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
                 {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  <div className="md:col-span-8 card p-6 text-[12px] text-muted-foreground text-center">选择左侧报告查看详情</div>
                 ) : (
-                  <div className="card p-4 space-y-3">
+                  <div className="md:col-span-8 card p-4 space-y-3">
                     <div className="text-[11px] text-muted-foreground">
                       {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
                     </div>
                     <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
-                    {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
+                    {activeReport.suggestions && activeReport.suggestions[symbol]?.action_label && (
                       <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {(activeReport.suggestions as any)[symbol].action_label}
+                        {activeReport.suggestions[symbol].action_label}
                       </div>
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
