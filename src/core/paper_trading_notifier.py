@@ -119,6 +119,7 @@ STRATEGY_NAME_MAP = {
     "rebound": "超跌反弹",
     "watchlist_agent": "Agent建议",
     "market_scan": "市场扫描",
+    "chan_emotion": "缠论情绪博弈",
     "momentum": "动量策略",
 }
 

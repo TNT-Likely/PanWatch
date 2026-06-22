@@ -60,6 +60,15 @@ export const insightApi = {
       timeoutMs: 60000, // AI 评估较慢,放宽超时
     }),
 
+  chanEmotionStrategy: (symbol: string, params: { market?: string; holding?: boolean }) =>
+    fetchAPI<ChanEmotionStrategyResult>(
+      withQuery(`/insights/chan-emotion/${encodeURIComponent(symbol)}`, {
+        market: params.market,
+        holding: params.holding,
+      }),
+      { timeoutMs: 45000 },
+    ),
+
   announcementEval: (params: { symbol: string; market: string; model_id?: number }) =>
     fetchAPI<AnnouncementEvalResult>('/insights/announcement-eval', {
       method: 'POST',
@@ -102,4 +111,40 @@ export interface AddPositionEvalResult {
   total_invested: number
   verdict: string // 适合 / 谨慎 / 不适合 / 未知
   content: string // markdown 结论
+}
+
+export interface ChanEmotionLevelAnalysis {
+  timeframe: string
+  label: string
+  bar_count: number
+  trend: string
+  stroke_count: number
+  pivot: { zd: number; zg: number } | null
+  divergence: string | null
+  signal_tags: string[]
+}
+
+export interface ChanEmotionStrategyResult {
+  symbol: string
+  market: string
+  asof: string
+  last_close: number | null
+  emotion_phase: string
+  emotion_label: string
+  levels: ChanEmotionLevelAnalysis[]
+  win_rate: number
+  position_pct: number
+  position_label: string
+  action: string
+  action_label: string
+  signal: string
+  reason: string
+  stop_loss: number | null
+  target_price: number | null
+  invalidation: string
+  agent_instruction: string
+  human_notes: string[]
+  evidence: Array<{ text: string; delta: number }>
+  strategy_code: string
+  strategy_name: string
 }

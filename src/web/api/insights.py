@@ -45,6 +45,31 @@ def _parse_market(market: str) -> MarketCode:
         raise HTTPException(400, f"不支持的市场: {market}")
 
 
+@router.get("/chan-emotion/{symbol}")
+def chan_emotion_strategy(
+    symbol: str,
+    market: str = "CN",
+    holding: bool = False,
+):
+    """缠论+养家心法多级别策略分析（日线/30分/5分）。"""
+    from src.core.signals.chan_emotion_strategy import (
+        analyze_chan_emotion,
+        serialize_chan_emotion_result,
+    )
+
+    mkt = _parse_market(market)
+    try:
+        result = analyze_chan_emotion(
+            symbol,
+            mkt.value,
+            holding=bool(holding),
+        )
+    except Exception as e:
+        logger.warning(f"缠论情绪策略分析失败 {market}:{symbol}: {e}")
+        raise HTTPException(502, f"策略分析失败: {e}")
+    return serialize_chan_emotion_result(result)
+
+
 @router.post("/batch")
 def insights_batch(payload: InsightsBatchRequest):
     """聚合返回行情 + K线摘要 + 最新建议"""

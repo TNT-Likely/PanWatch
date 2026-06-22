@@ -769,14 +769,38 @@ def _throttle_eastmoney() -> None:
         _eastmoney_last_call[0] = time.time()
 
 
-def _fetch_tencent_klines(
-    symbol: str, market: MarketCode, days: int
+_INTRADAY_INTERVAL_MAP = {
+    "m5": ("m5", "qfqm5", 240),
+    "m30": ("m30", "qfqm30", 240),
+    "m60": ("m60", "qfqm60", 240),
+}
+
+
+def _fetch_tencent_klines_interval(
+    symbol: str,
+    market: MarketCode,
+    interval: str,
+    count: int,
 ) -> list[KlineData]:
-    """腾讯主路径取日K:进程级节流 + 空响应/异常退避重试(gtimg 批量突发常限流回空 body,重试可自愈)。"""
+    """腾讯 K 线：day / m5 / m30 等周期。"""
     tencent_sym = _tencent_symbol(symbol, market)
+    iv = (interval or "day").lower()
+    if iv == "day":
+        param_iv = "day"
+        var_name = "kline_dayqfq"
+        data_keys = ("day", "qfqday")
+    else:
+        mapped = _INTRADAY_INTERVAL_MAP.get(iv)
+        if not mapped:
+            return []
+        param_iv, qfq_key, default_count = mapped
+        count = min(max(10, int(count or default_count)), 640)
+        var_name = f"kline_{qfq_key}"
+        data_keys = (param_iv, qfq_key)
+
     params = {
-        "param": f"{tencent_sym},day,,,{days},qfq",
-        "_var": "kline_dayqfq",
+        "param": f"{tencent_sym},{param_iv},,,{count},qfq",
+        "_var": var_name,
     }
     klines: list[KlineData] = []
     last_err = None
@@ -785,13 +809,15 @@ def _fetch_tencent_klines(
         try:
             with httpx.Client(
                 follow_redirects=True, timeout=10 + attempt * 4, trust_env=False
-            ) as client:  # 行情直连,绕过 env 代理(生产代理会拦行情接口)
+            ) as client:
                 resp = client.get(TENCENT_KLINE_URL, params=params)
                 text = resp.text
-            klines = _parse_tencent_kline_text(text, tencent_sym)
+            klines = _parse_tencent_kline_text(
+                text, tencent_sym, data_keys=data_keys
+            )
             if klines:
                 break
-            last_err = "空响应"  # gtimg 突发限流常回空 body,退避后重试
+            last_err = "空响应"
         except Exception as e:
             last_err = e
         if attempt < 2:
@@ -799,12 +825,23 @@ def _fetch_tencent_klines(
 
     if not klines and last_err is not None:
         logger.warning(
-            f"腾讯 K线获取失败(已重试)symbol={symbol}: {last_err}{_source_suffix()}"
+            f"腾讯 {param_iv} K线获取失败(已重试)symbol={symbol}: {last_err}{_source_suffix()}"
         )
     return klines
 
 
-def _parse_tencent_kline_text(text: str, tencent_sym: str) -> list[KlineData]:
+def _fetch_tencent_klines(
+    symbol: str, market: MarketCode, days: int
+) -> list[KlineData]:
+    """腾讯主路径取日K:进程级节流 + 空响应/异常退避重试(gtimg 批量突发常限流回空 body,重试可自愈)。"""
+    return _fetch_tencent_klines_interval(symbol, market, "day", days)
+
+
+def _parse_tencent_kline_text(
+    text: str,
+    tencent_sym: str,
+    data_keys: tuple[str, ...] = ("day", "qfqday"),
+) -> list[KlineData]:
     """解析腾讯 K 线 JS 变量响应(kline_dayqfq={...})为 KlineData;空/异常返回 []。"""
     if not text or "=" not in text:
         return []
@@ -820,7 +857,12 @@ def _parse_tencent_kline_text(text: str, tencent_sym: str) -> list[KlineData]:
     if isinstance(raw_data, dict):
         stock_data = raw_data.get(tencent_sym, {})
         if isinstance(stock_data, dict):
-            day_data = stock_data.get("day") or stock_data.get("qfqday") or []
+            day_data = []
+            for key in data_keys:
+                raw = stock_data.get(key)
+                if raw:
+                    day_data = raw
+                    break
     elif isinstance(raw_data, list):
         day_data = raw_data
     out: list[KlineData] = []
@@ -1105,6 +1147,38 @@ class KlineCollector:
             resistance=resistance,
             kline_pattern=kline_pattern,
         )
+
+    def get_intraday_klines(
+        self,
+        symbol: str,
+        interval: str = "m30",
+        count: int = 240,
+    ) -> list[KlineData]:
+        """获取分钟级 K 线（m5/m30），用于多级别缠论分析。"""
+        iv = (interval or "m30").lower()
+        if iv not in _INTRADAY_INTERVAL_MAP:
+            return []
+        if self.market not in (MarketCode.CN, MarketCode.HK):
+            # 美股分钟线暂用日 K 降级
+            need = max(30, min(int(count or 60), 120))
+            daily = self.get_klines(symbol, days=need)
+            return daily[-need:] if daily else []
+        cache_key = f"{self.market.value}:{symbol}:{iv}:{count}"
+        now = time.time()
+        cached = _KLINE_CACHE.get(cache_key)
+        need = max(10, int(count or 240))
+        if cached and (now - cached[0]) < _KLINE_TTL_TRADING_S and cached[1] >= need:
+            bars = cached[2]
+            return bars[-need:] if len(bars) > need else bars
+        with _get_fetch_lock(cache_key):
+            cached = _KLINE_CACHE.get(cache_key)
+            if cached and (now - cached[0]) < _KLINE_TTL_TRADING_S and cached[1] >= need:
+                bars = cached[2]
+                return bars[-need:] if len(bars) > need else bars
+            bars = _fetch_tencent_klines_interval(symbol, self.market, iv, need)
+            if bars:
+                _KLINE_CACHE[cache_key] = (time.time(), len(bars), list(bars))
+            return bars[-need:] if len(bars) > need else bars
 
     def get_kline_summary(self, symbol: str) -> dict:
         """获取 K 线摘要（用于 prompt 和前端展示）"""

@@ -23,6 +23,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
+import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
 
 interface QuoteResponse {
   symbol: string
@@ -1496,6 +1497,11 @@ export default function StockInsightModal(props: {
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
                         kline={klineSummary}
+                      />
+                      <ChanEmotionStrategyPanel
+                        symbol={symbol}
+                        market={market}
+                        hasPosition={hasHolding}
                       />
                     </div>
                   </div>
