@@ -260,3 +260,65 @@ export function buildRollingCostPlanBrief(plan: RollingCostPlan): string | null 
   if (!next) return null
   return `滚动计划：下一档 ${next.buyPrice.toFixed(2)}，测算成本 ${next.afterBuyCost.toFixed(2)}，踢出 ${next.sellPrice.toFixed(2)}`
 }
+
+export interface RollingCostPlanAlertPayload {
+  stock_id: number
+  name: string
+  condition_group: {
+    op: 'and'
+    items: Array<{ type: 'price'; op: '<=' | '>='; value: number }>
+  }
+  market_hours_mode: 'trading_only'
+  cooldown_minutes: number
+  max_triggers_per_day: number
+  repeat_mode: 'repeat'
+  expire_at: null
+  notify_channel_ids: number[]
+}
+
+const ROLLING_ALERT_DEFAULTS = {
+  market_hours_mode: 'trading_only' as const,
+  cooldown_minutes: 60,
+  max_triggers_per_day: 5,
+  repeat_mode: 'repeat' as const,
+  expire_at: null,
+  notify_channel_ids: [] as number[],
+}
+
+/** 判断是否为滚动计划自动生成的价格提醒名称 */
+export function isRollingCostPlanAlertName(name: string): boolean {
+  return /滚动第\d+档(低吸|踢出)/.test(String(name || ''))
+}
+
+/** 根据滚动计划各档位生成低吸/踢出价格提醒 */
+export function buildRollingCostPlanAlertPayloads(
+  plan: RollingCostPlan,
+  stockId: number,
+  stockName: string,
+): RollingCostPlanAlertPayload[] {
+  const label = String(stockName || '标的').trim() || '标的'
+  const payloads: RollingCostPlanAlertPayload[] = []
+
+  for (const tranche of plan.tranches) {
+    payloads.push({
+      stock_id: stockId,
+      name: `${label} 滚动第${tranche.index}档低吸 ≤${tranche.buyPrice.toFixed(2)}`,
+      condition_group: {
+        op: 'and',
+        items: [{ type: 'price', op: '<=', value: tranche.buyPrice }],
+      },
+      ...ROLLING_ALERT_DEFAULTS,
+    })
+    payloads.push({
+      stock_id: stockId,
+      name: `${label} 滚动第${tranche.index}档踢出 ≥${tranche.sellPrice.toFixed(2)}`,
+      condition_group: {
+        op: 'and',
+        items: [{ type: 'price', op: '>=', value: tranche.sellPrice }],
+      },
+      ...ROLLING_ALERT_DEFAULTS,
+    })
+  }
+
+  return payloads
+}

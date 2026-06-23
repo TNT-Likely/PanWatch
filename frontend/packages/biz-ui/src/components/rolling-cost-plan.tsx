@@ -1,17 +1,25 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { fetchAPI, stocksApi } from '@panwatch/api'
+import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import {
   buildRollingCostPlan,
+  buildRollingCostPlanAlertPayloads,
   buildRollingCostPlanBrief,
+  isRollingCostPlanAlertName,
   type RollingCostKlineLevels,
 } from '@/lib/rolling-cost-plan'
 
 interface RollingCostPlanPanelProps {
+  symbol?: string
+  stockName?: string
   market: string
   currentQuantity: number
   currentCost: number
   currentPrice?: number | null
   kline?: RollingCostKlineLevels | null
+  onAlertsCreated?: () => void
 }
 
 function fmt(value: number | null | undefined, digits = 2): string {
@@ -30,14 +38,26 @@ function pctToRatio(value: string): number {
   return parsed / 100
 }
 
+interface ExistingAlertRule {
+  id: number
+  stock_symbol: string
+  market: string
+  name: string
+}
+
 export function RollingCostPlanPanel({
+  symbol,
+  stockName,
   market,
   currentQuantity,
   currentCost,
   currentPrice,
   kline,
+  onAlertsCreated,
 }: RollingCostPlanPanelProps) {
+  const { toast } = useToast()
   const [open, setOpen] = useState(false)
+  const [alertLoading, setAlertLoading] = useState(false)
   const [basePctRaw, setBasePctRaw] = useState('50')
   const [tranchesRaw, setTranchesRaw] = useState('3')
   const [amountRaw, setAmountRaw] = useState('')
@@ -64,6 +84,55 @@ export function RollingCostPlanPanel({
 
   const brief = buildRollingCostPlanBrief(plan)
   const hasHolding = currentQuantity > 0 && currentCost > 0
+  const canSetAlerts = !!symbol && plan.tranches.length > 0
+
+  const ensureStockId = useCallback(async (): Promise<number | null> => {
+    const sym = String(symbol || '').trim()
+    if (!sym) return null
+    const all = await stocksApi.list()
+    const existing = (all || []).find(s => s.symbol === sym && s.market === market)
+    if (existing) return existing.id
+    const created = await stocksApi.create({ symbol: sym, market, name: stockName || sym })
+    return created.id
+  }, [market, stockName, symbol])
+
+  const setupRollingAlerts = async () => {
+    if (!canSetAlerts) return
+    const payloads = buildRollingCostPlanAlertPayloads(plan, 0, stockName || symbol || '标的')
+    if (payloads.length === 0) {
+      toast('暂无可设置的滚动档位', 'error')
+      return
+    }
+    setAlertLoading(true)
+    try {
+      const stockId = await ensureStockId()
+      if (!stockId) {
+        toast('无法定位股票', 'error')
+        return
+      }
+      const resolvedPayloads = payloads.map(p => ({ ...p, stock_id: stockId }))
+      const existing = await fetchAPI<ExistingAlertRule[]>('/price-alerts')
+      const stale = (existing || []).filter(r =>
+        String(r.stock_symbol || '').toUpperCase() === String(symbol).toUpperCase() &&
+        String(r.market || '').toUpperCase() === market.toUpperCase() &&
+        isRollingCostPlanAlertName(r.name),
+      )
+      for (const rule of stale) {
+        await fetchAPI(`/price-alerts/${rule.id}`, { method: 'DELETE' })
+      }
+      for (const payload of resolvedPayloads) {
+        await fetchAPI('/price-alerts', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      const buyCount = plan.tranches.length
+      const replaced = stale.length > 0 ? `（已替换 ${stale.length} 条旧提醒）` : ''
+      toast(`已设置 ${buyCount} 档滚动提醒，共 ${resolvedPayloads.length} 条${replaced}`, 'success')
+      onAlertsCreated?.()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '设置滚动提醒失败', 'error')
+    } finally {
+      setAlertLoading(false)
+    }
+  }
 
   return (
     <div className="mt-3 border-t border-border/50 pt-3">
@@ -172,6 +241,20 @@ export function RollingCostPlanPanel({
                 </div>
               ))}
             </div>
+          )}
+
+          {canSetAlerts && (
+            <Button
+              size="sm"
+              className="w-full"
+              variant="secondary"
+              disabled={alertLoading}
+              onClick={() => void setupRollingAlerts()}
+            >
+              {alertLoading
+                ? '设置中…'
+                : `设置滚动提醒 · ${plan.tranches.length} 档低吸/踢出`}
+            </Button>
           )}
 
           <div className="text-[10px] leading-relaxed text-muted-foreground/80">

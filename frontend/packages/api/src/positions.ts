@@ -35,6 +35,13 @@ export interface PositionAddResult {
   trade: PositionTrade
 }
 
+export interface PortfolioRecentTrade extends PositionTrade {
+  account_name: string
+  symbol: string
+  market: string
+  stock_name: string
+}
+
 export const positionsApi = {
   /** 加仓:记录流水并更新加权平均成本 */
   add: (
@@ -49,4 +56,8 @@ export const positionsApi = {
   /** 持仓变动流水 */
   trades: (positionId: number, limit = 20) =>
     fetchAPI<PositionTrade[]>(`/positions/${positionId}/trades?limit=${limit}`),
+
+  /** 全账户最近加仓/变动流水 */
+  recentTrades: (limit = 50) =>
+    fetchAPI<PortfolioRecentTrade[]>(`/portfolio/recent-trades?limit=${limit}`),
 }

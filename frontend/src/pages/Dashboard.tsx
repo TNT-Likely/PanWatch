@@ -253,7 +253,7 @@ export default function DashboardPage() {
               <span className={`font-mono ${moveColor(bench!.excess_return)}`}>{pct(bench!.excess_return)}</span>
             </span>
           )}
-          {indices.slice(0, 5).map((ix) => (
+          {indices.map((ix) => (
             <span key={`${ix.market}:${ix.symbol}`} className="flex items-center gap-1">
               <span className="text-muted-foreground">{ix.name}</span>
               {ix.current_price != null && (

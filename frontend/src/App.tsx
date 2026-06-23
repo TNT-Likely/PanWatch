@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, Star } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -25,6 +25,7 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '首页' },
   { to: '/portfolio', icon: List, label: '持仓' },
+  { to: '/watchlist', icon: Star, label: '关注' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
   { to: '/paper-trading', icon: Activity, label: '模拟盘' },
   { to: '/alerts', icon: BellRing, label: '提醒' },
@@ -33,8 +34,8 @@ const navItems = [
   { to: '/datasources', icon: Database, label: '数据源' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
-const desktopPrimaryNavItems = navItems.slice(0, 5)
-const desktopMoreNavItems = navItems.slice(5)
+const desktopPrimaryNavItems = navItems.slice(0, 6)
+const desktopMoreNavItems = navItems.slice(6)
 const mobilePrimaryNavItems = navItems.slice(0, 5)
 const mobileMoreNavItems = navItems.slice(5)
 
@@ -257,7 +258,8 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
-          <Route path="/portfolio" element={<StocksPage />} />
+          <Route path="/portfolio" element={<StocksPage mode="positions" />} />
+          <Route path="/watchlist" element={<StocksPage mode="watchlist" />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/paper-trading" element={<PaperTradingPage />} />

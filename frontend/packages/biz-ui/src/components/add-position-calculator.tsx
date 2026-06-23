@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { insightApi, positionsApi, type AddPositionEvalResult, type PositionTrade } from '@panwatch/api'
+import { insightApi, positionsApi, type AddPositionEvalResult, type PositionAddResult, type PositionTrade } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
@@ -85,7 +85,11 @@ interface Props {
   /** 各账户下的持仓明细(用于选择加仓账户) */
   holdings?: PositionHoldingOption[]
   /** 加仓成功后回调(刷新持仓) */
-  onApplied?: () => void
+  onApplied?: (result: PositionAddResult) => void
+  /** 有持仓时默认展开 */
+  defaultOpen?: boolean
+  /** 递增时强制展开(供外部「加仓」按钮触发) */
+  expandSignal?: number
 }
 
 export default function AddPositionCalculator({
@@ -96,9 +100,11 @@ export default function AddPositionCalculator({
   currentPrice,
   holdings = [],
   onApplied,
+  defaultOpen = false,
+  expandSignal = 0,
 }: Props) {
   const { toast } = useToast()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [mode, setMode] = useState<'shares' | 'amount'>('shares')
   const [addRaw, setAddRaw] = useState('')
   const [priceRaw, setPriceRaw] = useState('')
@@ -111,6 +117,14 @@ export default function AddPositionCalculator({
 
   const defaultPositionId = holdings.length === 1 ? String(holdings[0].id) : ''
   const [selectedPositionId, setSelectedPositionId] = useState(defaultPositionId)
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true)
+  }, [defaultOpen])
+
+  useEffect(() => {
+    if (expandSignal > 0) setOpen(true)
+  }, [expandSignal])
 
   useEffect(() => {
     if (holdings.length === 1) setSelectedPositionId(String(holdings[0].id))
@@ -209,14 +223,14 @@ export default function AddPositionCalculator({
     }
     setApplyLoading(true)
     try {
-      await positionsApi.add(selectedHolding.id, { price: addPrice, quantity: addQty })
+      const result = await positionsApi.add(selectedHolding.id, { price: addPrice, quantity: addQty })
       toast(`已记录加仓 ${addQty} 股 @ ${fmt(addPrice)}，新成本 ${fmt(calc.newCost)}`, 'success')
       setAddRaw('')
       setPriceRaw('')
       setTargetRaw('')
       setAiResult(null)
       await loadTrades(selectedHolding.id)
-      onApplied?.()
+      onApplied?.(result)
     } catch (e: any) {
       toast(e?.message || '加仓记录失败', 'error')
     } finally {
@@ -234,10 +248,18 @@ export default function AddPositionCalculator({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between text-[11px] text-muted-foreground"
+        className={`flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left transition-colors ${
+          open
+            ? 'border-primary/30 bg-primary/5'
+            : hasHolding
+              ? 'border-primary/20 bg-primary/5 hover:bg-primary/10'
+              : 'border-border/50 bg-accent/10 hover:bg-accent/20'
+        }`}
       >
-        <span>{hasHolding ? '加仓记录' : '建仓测算（当前空仓）'}</span>
-        <span>{open ? '收起 ▾' : '展开 ▸'}</span>
+        <span className={`text-[12px] font-medium ${hasHolding ? 'text-foreground' : 'text-muted-foreground'}`}>
+          {hasHolding ? '加仓记录' : '建仓测算（当前空仓）'}
+        </span>
+        <span className="text-[11px] text-muted-foreground">{open ? '收起 ▾' : '展开 ▸'}</span>
       </button>
 
       {open && (

@@ -498,6 +498,31 @@ def list_position_trades(
     return [_serialize_position_trade(t) for t in trades]
 
 
+@router.get("/portfolio/recent-trades")
+def recent_portfolio_trades(limit: int = 50, db: Session = Depends(get_db)):
+    """全账户最近持仓变动流水(加仓等)"""
+    lim = max(1, min(int(limit), 200))
+    rows = (
+        db.query(PositionTrade, Position, Stock, Account)
+        .join(Position, PositionTrade.position_id == Position.id)
+        .join(Stock, Position.stock_id == Stock.id)
+        .join(Account, Position.account_id == Account.id)
+        .filter(Account.enabled == True)  # noqa: E712
+        .order_by(PositionTrade.traded_at.desc(), PositionTrade.id.desc())
+        .limit(lim)
+        .all()
+    )
+    out: list[dict] = []
+    for trade, _pos, stock, acc in rows:
+        item = _serialize_position_trade(trade)
+        item["account_name"] = acc.name
+        item["symbol"] = stock.symbol
+        item["market"] = stock.market
+        item["stock_name"] = stock.name
+        out.append(item)
+    return out
+
+
 @router.delete("/positions/{position_id}")
 def delete_position(position_id: int, db: Session = Depends(get_db)):
     """删除持仓"""

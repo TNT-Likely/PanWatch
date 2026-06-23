@@ -14,6 +14,7 @@ import {
   type HistoryComparisonResponse,
   type ProgressResponse,
   type ProgressStage,
+  type PositionAddResult,
   type TradingAgentsTriggerResult,
   type TriggerStockAgentResponse,
 } from '@panwatch/api'
@@ -391,6 +392,10 @@ export default function StockInsightModal(props: {
   hasPosition?: boolean
   initialTab?: InsightTab
   initialReportId?: number | null
+  /** 打开弹窗时自动展开加仓面板 */
+  initialExpandAddPosition?: boolean
+  /** 加仓成功后通知外部刷新持仓列表 */
+  onPortfolioChanged?: (result: PositionAddResult) => void
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
@@ -438,6 +443,7 @@ export default function StockInsightModal(props: {
   const deepTriggerStartedRef = useRef(0)
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
   const [alerting, setAlerting] = useState(false)
+  const [alertPanelKey, setAlertPanelKey] = useState(0)
   const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
   const [watchToggleLoading, setWatchToggleLoading] = useState(false)
   const [autoSuggesting, setAutoSuggesting] = useState(false)
@@ -454,6 +460,7 @@ export default function StockInsightModal(props: {
     pnl: number
   } | null>(null)
   const [holdingOptions, setHoldingOptions] = useState<PositionHoldingOption[]>([])
+  const [addPositionExpandSignal, setAddPositionExpandSignal] = useState(0)
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
@@ -682,6 +689,27 @@ export default function StockInsightModal(props: {
       setHoldingLoaded(true)
     }
   }, [symbol, market])
+
+  const handlePositionApplied = useCallback(
+    (result: PositionAddResult) => {
+      if (result?.position) {
+        setHoldingOptions((prev) =>
+          prev.map((h) =>
+            h.id === result.position.id
+              ? {
+                  ...h,
+                  quantity: result.position.quantity,
+                  cost_price: result.position.cost_price,
+                }
+              : h,
+          ),
+        )
+      }
+      void loadHoldingAgg()
+      props.onPortfolioChanged?.(result)
+    },
+    [loadHoldingAgg, props],
+  )
 
   const loadReports = useCallback(async (): Promise<HistoryRecord[]> => {
     if (!symbol) return []
@@ -1185,6 +1213,13 @@ export default function StockInsightModal(props: {
     stopReportPoll()
     loadCore()
   }, [props.open, symbol, market, props.initialTab, props.initialReportId, loadCore, stopDeepPoll, stopReportPoll])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (props.initialExpandAddPosition) {
+      setAddPositionExpandSignal((s) => s + 1)
+    }
+  }, [props.open, props.initialExpandAddPosition, symbol])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -1789,7 +1824,7 @@ export default function StockInsightModal(props: {
                 >
                   {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
                 </Button>
-                <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
+                <StockPriceAlertPanel key={alertPanelKey} mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>
                   {alerting ? '设置中...' : '一键设提醒'}
                 </Button>
@@ -1830,7 +1865,7 @@ export default function StockInsightModal(props: {
               >
                 {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
               </Button>
-              <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
+              <StockPriceAlertPanel key={alertPanelKey} mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={handleSetAlert} disabled={alerting}>
                 {alerting ? '设置中...' : '一键设提醒'}
               </Button>
@@ -1921,7 +1956,20 @@ export default function StockInsightModal(props: {
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
-                      <div className="text-[11px] text-muted-foreground mb-2">持仓信息</div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-muted-foreground">持仓信息</div>
+                        {holdingAgg ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={() => setAddPositionExpandSignal((s) => s + 1)}
+                          >
+                            加仓
+                          </Button>
+                        ) : null}
+                      </div>
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
@@ -1965,14 +2013,19 @@ export default function StockInsightModal(props: {
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
                         holdings={holdingOptions}
-                        onApplied={loadHoldingAgg}
+                        onApplied={handlePositionApplied}
+                        defaultOpen={holdingOptions.length > 0}
+                        expandSignal={addPositionExpandSignal}
                       />
                       <RollingCostPlanPanel
+                        symbol={symbol}
+                        stockName={resolvedName || symbol}
                         market={market}
                         currentQuantity={holdingAgg?.quantity ?? 0}
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
                         kline={klineSummary}
+                        onAlertsCreated={() => setAlertPanelKey(v => v + 1)}
                       />
                       <ChanEmotionStrategyPanel
                         symbol={symbol}

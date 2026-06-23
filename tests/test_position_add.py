@@ -103,3 +103,20 @@ def test_list_position_trades():
         assert rows[1]["price"] == 8.0
     finally:
         db.close()
+
+
+def test_recent_portfolio_trades():
+    """全账户最近流水接口应返回 symbol 与账户名"""
+    db = SessionLocal()
+    try:
+        pos = _seed_position(db)
+        accounts.add_to_position(
+            pos.id, accounts.PositionAddRequest(price=8.0, quantity=50), db
+        )
+        rows = accounts.recent_portfolio_trades(limit=10, db=db)
+        assert len(rows) >= 1
+        assert rows[0]["symbol"] == "600519"
+        assert rows[0]["account_name"] == "测试账户"
+        assert rows[0]["quantity"] == 50
+    finally:
+        db.close()

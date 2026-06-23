@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
-import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
+import { fetchAPI, stocksApi, positionsApi, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
@@ -333,8 +333,11 @@ const mergePortfolioQuotes = (
   }
 }
 
-export default function StocksPage() {
+export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const pageMode: 'positions' | 'watchlist' =
+    mode ?? (location.pathname.startsWith('/watchlist') ? 'watchlist' : 'positions')
   const [stocks, setStocks] = useState<Stock[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [agents, setAgents] = useState<AgentConfig[]>([])
@@ -363,9 +366,6 @@ export default function StocksPage() {
   // Alerts / Scanning
   const [scanning, setScanning] = useState(false)
 
-  type ViewTab = 'positions' | 'watchlist'
-  const [viewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
-
   // 股票 AI 建议（来自盘中监控 API）
   const [suggestions] = useState<Record<string, StockSuggestionData>>({})
   // 建议池建议（来自 /suggestions API）
@@ -391,6 +391,8 @@ export default function StocksPage() {
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
+  const [insightExpandAddPosition, setInsightExpandAddPosition] = useState(false)
+  const [positionRecentTrades, setPositionRecentTrades] = useState<Record<number, PortfolioRecentTrade>>({})
 
   // Market status
   const [marketStatus, setMarketStatus] = useState<MarketStatus[]>([])
@@ -608,6 +610,61 @@ export default function StocksPage() {
     }
   }
 
+  const loadPositionRecentTrades = useCallback(async () => {
+    try {
+      const rows = await positionsApi.recentTrades(80)
+      const map: Record<number, PortfolioRecentTrade> = {}
+      for (const row of rows || []) {
+        if (!map[row.position_id]) map[row.position_id] = row
+      }
+      setPositionRecentTrades(map)
+    } catch {
+      setPositionRecentTrades({})
+    }
+  }, [])
+
+  const handlePortfolioChanged = useCallback(
+    (result?: PositionAddResult) => {
+      if (result?.position) {
+        setPortfolioRaw((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            accounts: prev.accounts.map((acc) => ({
+              ...acc,
+              positions: acc.positions.map((p) =>
+                p.id === result.position.id
+                  ? {
+                      ...p,
+                      cost_price: result.position.cost_price,
+                      quantity: result.position.quantity,
+                      invested_amount: result.position.invested_amount,
+                    }
+                  : p,
+              ),
+            })),
+          }
+        })
+        setPositionRecentTrades((prev) => ({
+          ...prev,
+          [result.position.id]: {
+            ...result.trade,
+            account_name: result.position.account_name || '',
+            symbol: result.position.stock_symbol || '',
+            market: '',
+            stock_name: result.position.stock_name || '',
+          },
+        }))
+      }
+      void loadPortfolio()
+      void loadPositionRecentTrades()
+      if (pageMode === 'watchlist' && result?.position) {
+        toast('已建仓，可在持仓页查看', 'success')
+      }
+    },
+    [loadPositionRecentTrades, pageMode, toast],
+  )
+
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
     const items: QuoteRequestItem[] = []
     const seen = new Set<string>()
@@ -767,10 +824,29 @@ export default function StocksPage() {
   }, [loadNews])
 
   const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+    setInsightExpandAddPosition(false)
     setInsightSymbol(stockSymbol)
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
     setInsightHasPosition(!!hasPosition)
+    setInsightOpen(true)
+  }, [])
+
+  const openStockDetailAddPosition = useCallback((stockSymbol: string, stockMarket: string, stockName?: string) => {
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(true)
+    setInsightExpandAddPosition(true)
+    setInsightOpen(true)
+  }, [])
+
+  const openWatchlistBuy = useCallback((stockSymbol: string, stockMarket: string, stockName?: string) => {
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(false)
+    setInsightExpandAddPosition(true)
     setInsightOpen(true)
   }, [])
 
@@ -806,7 +882,7 @@ export default function StocksPage() {
     ])
   }, [refreshQuotes, loadPoolSuggestions, refreshKlines])
 
-  useEffect(() => { load(); loadPortfolio(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
+  useEffect(() => { load(); loadPortfolio(); loadPositionRecentTrades(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
 
   // 仅关注列表场景（无持仓）也要在列表加载后预取 K 线摘要，保证技术指标徽章可见
   const watchlistKlineInitDone = useRef(false)
@@ -1019,6 +1095,8 @@ export default function StocksPage() {
     return (portfolio?.accounts || []).some(acc => (acc.positions || []).some(p => p.stock_id === id))
   }
 
+  const watchlistStocks = useMemo(() => stocks, [stocks])
+
   const removeFromWatchlist = async (stock: Stock) => {
     if (hasAnyPositionForStockId(stock.id)) {
       toast('该股票存在持仓，请先删除持仓后再删除股票', 'error')
@@ -1209,7 +1287,11 @@ export default function StocksPage() {
       }
       setPositionDialogOpen(false)
       loadPortfolio()
-      toast(editPositionId ? '持仓已更新' : '持仓已添加', 'success')
+      if (!editPositionId && pageMode === 'watchlist') {
+        toast('已建仓，可在持仓页查看', 'success')
+      } else {
+        toast(editPositionId ? '持仓已更新' : '持仓已添加', 'success')
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : '保存持仓失败', 'error')
     }
@@ -1376,6 +1458,11 @@ export default function StocksPage() {
     return formatted
   }
 
+  const formatRecentTrade = (trade?: PortfolioRecentTrade) => {
+    if (!trade) return null
+    return `最近 +${trade.quantity} @ ${formatPrice(trade.price)}`
+  }
+
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
     return quotes[quoteKey] || null
@@ -1463,6 +1550,8 @@ export default function StocksPage() {
     return out
   }, [klineSummaries, portfolio?.accounts, suggestions])
 
+  const watchlistCount = useMemo(() => watchlistStocks.length, [watchlistStocks])
+
   const positionRatio = useMemo(() => {
     if (!portfolio) return null
     const mv = portfolio.total.total_market_value || 0
@@ -1470,14 +1559,6 @@ export default function StocksPage() {
     const pct = assets > 0 ? (mv / assets * 100) : 0
     return { mv, assets, pct }
   }, [portfolio])
-
-  const positionsCount = useMemo(() => {
-    return (portfolio?.accounts || []).reduce((acc, a) => acc + (a.positions?.length || 0), 0)
-  }, [portfolio])
-
-  const watchlistCount = useMemo(() => {
-    return stocks.length
-  }, [stocks])
 
   const toggleAccountExpanded = (id: number) => {
     setExpandedAccounts(prev => {
@@ -1541,7 +1622,9 @@ export default function StocksPage() {
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">持仓</h1>
+          <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">
+            {pageMode === 'watchlist' ? '关注' : '持仓'}
+          </h1>
           {/* Desktop buttons + controls */}
           <div className="hidden md:flex items-center gap-3">
             {/* Controls */}
@@ -1595,12 +1678,16 @@ export default function StocksPage() {
             <Button variant="secondary" onClick={scanAndReload} disabled={scanning}>
               <Bot className="w-4 h-4" /> 扫描
             </Button>
-            <Button variant="secondary" onClick={() => openAccountDialog()}>
-              <Building2 className="w-4 h-4" /> 添加账户
-            </Button>
-            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
-              <Plus className="w-4 h-4" /> 添加股票
-            </Button>
+            {pageMode === 'positions' ? (
+              <Button variant="secondary" onClick={() => openAccountDialog()}>
+                <Building2 className="w-4 h-4" /> 添加账户
+              </Button>
+            ) : null}
+            {pageMode === 'watchlist' ? (
+              <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+                <Plus className="w-4 h-4" /> 添加股票
+              </Button>
+            ) : null}
           </div>
           {/* Mobile buttons */}
           <div className="flex md:hidden items-center gap-1.5">
@@ -1610,12 +1697,16 @@ export default function StocksPage() {
             <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={scanAndReload} disabled={scanning}>
               <Bot className="w-4 h-4" />
             </Button>
-            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
-              <Building2 className="w-4 h-4" />
-            </Button>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
-              <Plus className="w-4 h-4" />
-            </Button>
+            {pageMode === 'positions' ? (
+              <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
+                <Building2 className="w-4 h-4" />
+              </Button>
+            ) : null}
+            {pageMode === 'watchlist' ? (
+              <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1674,7 +1765,7 @@ export default function StocksPage() {
       </div>
 
       {/* Portfolio Total Summary */}
-      {portfolioLoading && !portfolio ? (
+      {pageMode === 'positions' && (portfolioLoading && !portfolio ? (
         // 首次加载时显示骨架屏
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
@@ -1771,33 +1862,7 @@ export default function StocksPage() {
             </div>
           </div>
         </div>
-      ) : null}
-
-      {/* Tabs: Positions / Watchlist */}
-      <div className="mb-4">
-        <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-accent/30">
-          <button
-            onClick={() => setViewTab('positions')}
-            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
-              viewTab === 'positions'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            持仓 <span className="ml-1 font-mono text-[11px] opacity-70">{positionsCount}</span>
-          </button>
-          <button
-            onClick={() => setViewTab('watchlist')}
-            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
-              viewTab === 'watchlist'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            关注 <span className="ml-1 font-mono text-[11px] opacity-70">{watchlistCount}</span>
-          </button>
-        </div>
-      </div>
+      ) : null)}
 
       {/* Add Stock Dialog */}
       <Dialog open={showStockForm} onOpenChange={(open) => { setShowStockForm(open); if (!open) { setSearchQuery(''); setSearchMarket('') } }}>
@@ -1893,7 +1958,7 @@ export default function StocksPage() {
       </Dialog>
 
       {/* Accounts & Positions */}
-      {viewTab === 'positions' && (
+      {pageMode === 'positions' && (
         portfolio && portfolio.accounts.length === 0 ? (
           <div className="card flex flex-col items-center justify-center py-20">
             <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
@@ -1999,6 +2064,8 @@ export default function StocksPage() {
                               const pnlColor = pos.pnl != null
                                 ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                                 : 'text-muted-foreground'
+                              const recentTrade = positionRecentTrades[pos.id]
+                              const recentTradeLabel = formatRecentTrade(recentTrade)
                               return (
                                 <tr
                                   key={pos.id}
@@ -2072,7 +2139,12 @@ export default function StocksPage() {
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatPrice(pos.cost_price)}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
+                                    {formatPrice(pos.cost_price)}
+                                    {recentTradeLabel ? (
+                                      <span className="block text-[9px] text-primary/80 font-sans mt-0.5">{recentTradeLabel}</span>
+                                    ) : null}
+                                  </td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
                                     {pos.market_value != null ? (
@@ -2155,6 +2227,7 @@ export default function StocksPage() {
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2179,6 +2252,7 @@ export default function StocksPage() {
                           const pnlColor = pos.pnl != null
                             ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                             : 'text-muted-foreground'
+                          const recentTradeLabel = formatRecentTrade(positionRecentTrades[pos.id])
                           return (
                             <div
                               key={pos.id}
@@ -2266,6 +2340,9 @@ export default function StocksPage() {
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">成本</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.cost_price)}>{formatPrice(pos.cost_price)}</div>
+                                  {recentTradeLabel ? (
+                                    <div className="text-[9px] text-primary/80 truncate">{recentTradeLabel}</div>
+                                  ) : null}
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">数量</div>
@@ -2332,6 +2409,7 @@ export default function StocksPage() {
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
@@ -2351,16 +2429,18 @@ export default function StocksPage() {
       )}
 
       {/* Watchlist */}
-      {viewTab === 'watchlist' && (
+      {pageMode === 'watchlist' && (
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold text-foreground">关注列表</h3>
+            <h3 className="text-[13px] font-semibold text-foreground">
+              关注列表 <span className="ml-1 font-mono text-[11px] text-muted-foreground font-normal">{watchlistCount}</span>
+            </h3>
             <div className="flex items-center gap-1">
               {[
-                { value: '', label: '全部', count: stocks.length },
-                { value: 'CN', label: 'A股', count: stocks.filter(s => s.market === 'CN').length },
-                { value: 'HK', label: '港股', count: stocks.filter(s => s.market === 'HK').length },
-                { value: 'US', label: '美股', count: stocks.filter(s => s.market === 'US').length },
+                { value: '', label: '全部', count: watchlistStocks.length },
+                { value: 'CN', label: 'A股', count: watchlistStocks.filter(s => s.market === 'CN').length },
+                { value: 'HK', label: '港股', count: watchlistStocks.filter(s => s.market === 'HK').length },
+                { value: 'US', label: '美股', count: watchlistStocks.filter(s => s.market === 'US').length },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -2393,14 +2473,14 @@ export default function StocksPage() {
               </button>
             </div>
           </div>
-          {stocks.length === 0 ? (
+          {watchlistStocks.length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-[13px] text-muted-foreground">还没有添加关注股票</div>
-              <div className="mt-2 text-[11px] text-muted-foreground/70">点击右上角“添加股票”开始</div>
+              <div className="mt-2 text-[11px] text-muted-foreground/70">点击右上角「添加股票」开始</div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {stocks
+              {watchlistStocks
                 .filter(s => !stockListFilter || s.market === stockListFilter)
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
@@ -2409,11 +2489,12 @@ export default function StocksPage() {
                   return !!suggestion?.should_alert
                 })
                 .map((stock) => {
+                const isHolding = hasAnyPositionForStockId(stock.id)
                 const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
                 const changeColor = quote?.change_pct != null
                   ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                   : 'text-muted-foreground'
-                const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, false)
+                const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, isHolding)
                 return (
                   <div
                     key={stock.id}
@@ -2446,7 +2527,7 @@ export default function StocksPage() {
                     className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
-                      openStockDetail(stock.symbol, stock.market, stock.name, false)
+                      openStockDetail(stock.symbol, stock.market, stock.name, isHolding)
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -2455,6 +2536,11 @@ export default function StocksPage() {
                           <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
                             {marketBadge(stock.market).label}
                           </span>
+                          {isHolding && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 shrink-0">
+                              持仓
+                            </span>
+                          )}
                           <span className="font-mono text-[12px] font-semibold text-foreground">
                             {stock.symbol}
                           </span>
@@ -2482,7 +2568,7 @@ export default function StocksPage() {
                           stockSymbol={stock.symbol}
                           kline={kline}
                           market={stock.market}
-                          hasPosition={false}
+                          hasPosition={isHolding}
                         />
                       ) : (
                         <div className="text-[11px] text-muted-foreground/70 py-2">暂无技术面/AI 分析</div>
@@ -2527,11 +2613,23 @@ export default function StocksPage() {
                         className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {!isHolding ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px] text-primary hover:text-primary"
+                            onClick={() => openWatchlistBuy(stock.symbol, stock.market, stock.name)}
+                            title="买入建仓"
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-0.5" />
+                            买入
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, false)}
+                          onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, isHolding)}
                           title="K线指标"
                         >
                           <BarChart3 className="w-3.5 h-3.5" />
@@ -2567,9 +2665,10 @@ export default function StocksPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 hover:text-destructive"
+                          className={`h-7 w-7 ${isHolding ? 'opacity-40 cursor-not-allowed' : 'hover:text-destructive'}`}
                           onClick={() => setRemoveWatchStock(stock)}
-                          title="删除股票"
+                          title={isHolding ? '持仓中的股票无法删除，请先在持仓页删除持仓' : '删除股票'}
+                          disabled={isHolding}
                         >
                           <X className="w-3.5 h-3.5" />
                         </Button>
@@ -2596,11 +2695,16 @@ export default function StocksPage() {
 
       <StockInsightModal
         open={insightOpen}
-        onOpenChange={setInsightOpen}
+        onOpenChange={(open) => {
+          setInsightOpen(open)
+          if (!open) setInsightExpandAddPosition(false)
+        }}
         symbol={insightSymbol}
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
+        initialExpandAddPosition={insightExpandAddPosition}
+        onPortfolioChanged={handlePortfolioChanged}
       />
 
       {/* TradingAgents 深度分析弹窗 */}
@@ -2630,7 +2734,7 @@ export default function StocksPage() {
                 </div>
                 <div className="mt-1 text-[12px] text-muted-foreground">
                   {hasAnyPositionForStockId(removeWatchStock.id)
-                    ? '该股票存在持仓，不能直接删除。请先在“持仓”Tab 删除持仓记录。'
+                    ? '该股票存在持仓，不能直接删除。请先在持仓页删除持仓记录。'
                     : '删除后将不再出现在关注列表，同时会清理该股票关联的价格提醒。'}
                 </div>
               </div>

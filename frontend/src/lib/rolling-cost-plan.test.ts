@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRollingCostPlan } from './rolling-cost-plan'
+import { buildRollingCostPlan, buildRollingCostPlanAlertPayloads } from './rolling-cost-plan'
 
 describe('buildRollingCostPlan', () => {
   it('已有持仓亏损时生成三档低吸并逐档降低综合成本', () => {
@@ -96,5 +96,35 @@ describe('buildRollingCostPlan', () => {
 
     expect(plan.tranches.map(item => Number(item.buyPrice.toFixed(2)))).toEqual([7.6, 7.2, 6.8])
     expect(plan.warnings).toContain('缺少有效K线支撑位，已按当前价下方5%/10%/15%生成低吸档。')
+  })
+})
+
+describe('buildRollingCostPlanAlertPayloads', () => {
+  it('为每档生成低吸与踢出两条价格提醒', () => {
+    const plan = buildRollingCostPlan({
+      market: 'CN',
+      currentQuantity: 1000,
+      currentCost: 10,
+      currentPrice: 8,
+      kline: { support: 7.8, support_s: 7.2, resistance: 8.4 },
+      tranches: 2,
+      trancheAmount: 1600,
+      baseRatio: 0.5,
+      reboundPct: 5,
+    })
+
+    const payloads = buildRollingCostPlanAlertPayloads(plan, 42, '测试股')
+    expect(payloads).toHaveLength(4)
+    expect(payloads[0]).toMatchObject({
+      stock_id: 42,
+      name: '测试股 滚动第1档低吸 ≤7.80',
+      condition_group: { op: 'and', items: [{ type: 'price', op: '<=', value: 7.8 }] },
+      market_hours_mode: 'trading_only',
+      repeat_mode: 'repeat',
+    })
+    expect(payloads[1]).toMatchObject({
+      name: '测试股 滚动第1档踢出 ≥8.19',
+      condition_group: { items: [{ type: 'price', op: '>=', value: 8.19 }] },
+    })
   })
 })
