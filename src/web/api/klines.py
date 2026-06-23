@@ -179,6 +179,31 @@ def get_klines_batch(payload: KlineBatchRequest):
     return results
 
 
+@router.get("/{symbol}/trends")
+def get_intraday_trends(symbol: str, market: str = "CN"):
+    """获取当日分时曲线(逐分钟价格)"""
+    market_code = _parse_market(market)
+    collector = KlineCollector(market_code)
+    result = collector.get_intraday_trends(symbol)
+    return {
+        "symbol": symbol,
+        "market": market_code.value,
+        "trade_date": result.trade_date,
+        "pre_close": result.pre_close,
+        "updated_at": result.updated_at,
+        "points": [
+            {
+                "time": p.time,
+                "price": p.price,
+                "avg_price": p.avg_price,
+                "volume": p.volume,
+                "turnover": p.turnover,
+            }
+            for p in result.points
+        ],
+    }
+
+
 @router.get("/{symbol}/summary")
 def get_kline_summary(symbol: str, market: str = "CN"):
     """获取单只股票K线摘要"""

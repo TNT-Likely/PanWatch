@@ -30,6 +30,12 @@ export const insightApi = {
       })
     ),
 
+  intradayTrends: <T>(symbol: string, market: string) =>
+    fetchAPI<T>(
+      withQuery(`/klines/${encodeURIComponent(symbol)}/trends`, { market }),
+      { timeoutMs: 20000 },
+    ),
+
   suggestions: <T>(
     symbol: string,
     params: { market?: string; limit?: number; include_expired?: boolean }

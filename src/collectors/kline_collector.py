@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 # 腾讯日K线 API
 TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+TENCENT_MINUTE_URL = "http://web.ifzq.gtimg.cn/appstock/app/minute/query"
 EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+EASTMONEY_TRENDS_URL = "https://push2.eastmoney.com/api/qt/stock/trends2/get"
 
 
 _STOOQ_CACHE: dict[str, tuple[float, list["KlineData"]]] = {}
@@ -98,6 +100,7 @@ def clear_kline_cache() -> None:
     _EASTMONEY_FAIL_UNTIL.clear()
     _BAOSTOCK_CACHE.clear()
     _BAOSTOCK_FAIL_UNTIL.clear()
+    _INTRADAY_TRENDS_CACHE.clear()
 
 
 def _us_kline_clearly_insufficient(bars: list["KlineData"], need: int) -> bool:
@@ -801,6 +804,34 @@ class KlineData:
 
 
 @dataclass
+class IntradayTrendPoint:
+    """当日分时点(逐分钟价格)"""
+
+    time: str
+    price: float
+    avg_price: float | None = None
+    volume: float = 0
+    turnover: float = 0
+
+
+@dataclass
+class IntradayTrendsResult:
+    """当日分时曲线"""
+
+    symbol: str
+    market: str
+    trade_date: str
+    pre_close: float | None
+    points: list[IntradayTrendPoint]
+    updated_at: str
+
+
+_INTRADAY_TRENDS_CACHE: dict[str, tuple[float, IntradayTrendsResult]] = {}
+_INTRADAY_TRENDS_TTL_TRADING_S = 15.0
+_INTRADAY_TRENDS_TTL_CLOSED_S = 300.0
+
+
+@dataclass
 class TechnicalIndicators:
     """技术指标"""
 
@@ -1189,6 +1220,212 @@ def _fetch_tencent_klines(
 ) -> list[KlineData]:
     """腾讯主路径取日K:进程级节流 + 空响应/异常退避重试(gtimg 批量突发常限流回空 body,重试可自愈)。"""
     return _fetch_tencent_klines_interval(symbol, market, "day", days)
+
+
+def _intraday_trends_cache_ttl(market: MarketCode) -> float:
+    try:
+        md = MARKETS.get(market)
+        if md and md.is_trading_time():
+            return _INTRADAY_TRENDS_TTL_TRADING_S
+    except Exception:
+        pass
+    return _INTRADAY_TRENDS_TTL_CLOSED_S
+
+
+def _parse_tencent_minute_time(trade_date: str, hhmm: str) -> str | None:
+    td = (trade_date or "").strip()
+    hm = (hhmm or "").strip()
+    if len(hm) < 4 or not hm[:4].isdigit():
+        return None
+    hh, mm = hm[:2], hm[2:4]
+    if len(td) == 8 and td.isdigit():
+        td = f"{td[:4]}-{td[4:6]}-{td[6:8]}"
+    if td and len(td) >= 10 and td[4] == "-":
+        return f"{td[:10]} {hh}:{mm}"
+    today = datetime.now().strftime("%Y-%m-%d")
+    return f"{today} {hh}:{mm}"
+
+
+def _fetch_tencent_intraday_trends(
+    symbol: str, market: MarketCode
+) -> IntradayTrendsResult | None:
+    """腾讯当日分时(逐分钟),CN/HK/US 通用。"""
+    tencent_sym = _tencent_symbol(symbol, market)
+    params = {"code": tencent_sym}
+    last_err = None
+    for attempt in range(3):
+        _throttle_tencent()
+        try:
+            with httpx.Client(
+                follow_redirects=True, timeout=10 + attempt * 4, trust_env=False
+            ) as client:
+                resp = client.get(TENCENT_MINUTE_URL, params=params)
+                payload = resp.json()
+            if not isinstance(payload, dict) or payload.get("code") not in (0, None):
+                last_err = payload.get("msg") or "无效响应"
+                continue
+            block = (payload.get("data") or {}).get(tencent_sym) or {}
+            minute_block = block.get("data") or {}
+            raw_rows = minute_block.get("data") or []
+            trade_date = str(minute_block.get("date") or "").strip()
+            qt_row = (block.get("qt") or {}).get(tencent_sym) or []
+            pre_close = None
+            if isinstance(qt_row, list) and len(qt_row) > 4:
+                try:
+                    pre_close = float(qt_row[4])
+                except (TypeError, ValueError):
+                    pre_close = None
+            points: list[IntradayTrendPoint] = []
+            prev_cum_volume = 0.0
+            for row in raw_rows or []:
+                parts = str(row).split()
+                if len(parts) < 2:
+                    continue
+                t = _parse_tencent_minute_time(trade_date, parts[0])
+                if not t:
+                    continue
+                try:
+                    price = float(parts[1])
+                    cum_volume = float(parts[2]) if len(parts) > 2 else 0.0
+                    turnover = float(parts[3]) if len(parts) > 3 else 0.0
+                except (TypeError, ValueError):
+                    continue
+                volume = cum_volume
+                if prev_cum_volume > 0 and cum_volume >= prev_cum_volume:
+                    volume = cum_volume - prev_cum_volume
+                prev_cum_volume = cum_volume
+                avg_price = None
+                if cum_volume > 0 and turnover > 0:
+                    # 腾讯分时 turnover/volume 为累计值,均价用累计额/累计量
+                    lot_size = 100.0 if market in (MarketCode.CN, MarketCode.HK) else 1.0
+                    shares = cum_volume * lot_size
+                    if shares > 0:
+                        avg_price = turnover / shares
+                points.append(
+                    IntradayTrendPoint(
+                        time=t,
+                        price=price,
+                        avg_price=avg_price,
+                        volume=volume,
+                        turnover=turnover,
+                    )
+                )
+            if not trade_date and points:
+                trade_date = points[0].time.split(" ", 1)[0]
+            if len(trade_date) == 8 and trade_date.isdigit():
+                trade_date = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:8]}"
+            if not points:
+                last_err = "空分时"
+                continue
+            now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+            return IntradayTrendsResult(
+                symbol=symbol,
+                market=market.value,
+                trade_date=trade_date or datetime.now().strftime("%Y-%m-%d"),
+                pre_close=pre_close,
+                points=points,
+                updated_at=now_iso,
+            )
+        except Exception as e:
+            last_err = e
+        if attempt < 2:
+            time.sleep(0.35 * (attempt + 1) + random.uniform(0, 0.2))
+    if last_err is not None:
+        logger.warning(
+            f"腾讯分时获取失败 symbol={symbol}: {last_err}{_source_suffix()}"
+        )
+    return None
+
+
+def _fetch_eastmoney_intraday_trends(
+    symbol: str, market: MarketCode
+) -> IntradayTrendsResult | None:
+    """东财当日分时兜底(CN/HK)。"""
+    if market not in (MarketCode.CN, MarketCode.HK):
+        return None
+    sym = (symbol or "").strip()
+    if not sym:
+        return None
+    secid = _eastmoney_secid(sym, market)
+    params = {
+        "secid": secid,
+        "fields1": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+        "iscr": "0",
+        "ndays": "1",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": _eastmoney_referer(sym, market),
+    }
+    last_err = None
+    for attempt in range(2):
+        _throttle_eastmoney()
+        try:
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=12 + attempt * 6,
+                headers=headers,
+                trust_env=False,
+            ) as client:
+                resp = client.get(EASTMONEY_TRENDS_URL, params=params)
+                resp.raise_for_status()
+                payload = resp.json()
+            data = (payload or {}).get("data") if isinstance(payload, dict) else None
+            if not isinstance(data, dict):
+                last_err = "无效响应"
+                continue
+            pre_close = None
+            try:
+                if data.get("preClose") is not None:
+                    pre_close = float(data["preClose"])
+            except (TypeError, ValueError):
+                pre_close = None
+            points: list[IntradayTrendPoint] = []
+            trade_date = ""
+            for row in data.get("trends") or []:
+                parts = str(row).split(",")
+                if len(parts) < 6:
+                    continue
+                t = parts[0].strip()
+                if not trade_date and " " in t:
+                    trade_date = t.split(" ", 1)[0]
+                try:
+                    price = float(parts[2])
+                    volume = float(parts[5]) if len(parts) > 5 else 0.0
+                    turnover = float(parts[6]) if len(parts) > 6 else 0.0
+                    avg_price = float(parts[7]) if len(parts) > 7 and parts[7] else None
+                except (TypeError, ValueError):
+                    continue
+                points.append(
+                    IntradayTrendPoint(
+                        time=t,
+                        price=price,
+                        avg_price=avg_price,
+                        volume=volume,
+                        turnover=turnover,
+                    )
+                )
+            if not points:
+                last_err = "空分时"
+                continue
+            now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+            return IntradayTrendsResult(
+                symbol=symbol,
+                market=market.value,
+                trade_date=trade_date or datetime.now().strftime("%Y-%m-%d"),
+                pre_close=pre_close,
+                points=points,
+                updated_at=now_iso,
+            )
+        except Exception as e:
+            last_err = e
+            time.sleep(0.35 * (attempt + 1))
+    if last_err is not None:
+        logger.warning(
+            f"东财分时获取失败 symbol={symbol}: {last_err}{_source_suffix()}"
+        )
+    return None
 
 
 def _parse_tencent_kline_text(
@@ -1701,3 +1938,39 @@ class KlineCollector:
             # K线形态
             "kline_pattern": indicators.kline_pattern,
         }
+
+    def get_intraday_trends(self, symbol: str) -> IntradayTrendsResult:
+        """获取当日分时曲线(逐分钟),交易时段短 TTL 缓存。"""
+        sym = (symbol or "").strip()
+        cache_key = f"trends:{self.market.value}:{sym}"
+        ttl = _intraday_trends_cache_ttl(self.market)
+        now = time.time()
+        cached = _INTRADAY_TRENDS_CACHE.get(cache_key)
+        if cached and (now - cached[0]) < ttl:
+            return cached[1]
+
+        with _get_fetch_lock(cache_key):
+            cached = _INTRADAY_TRENDS_CACHE.get(cache_key)
+            if cached and (time.time() - cached[0]) < ttl:
+                return cached[1]
+
+            result = _fetch_tencent_intraday_trends(sym, self.market)
+            if result is None or len(result.points) < 2:
+                em = _fetch_eastmoney_intraday_trends(sym, self.market)
+                if em is not None and (
+                    result is None or len(em.points) > len(result.points)
+                ):
+                    result = em
+            if result is None:
+                result = IntradayTrendsResult(
+                    symbol=sym,
+                    market=self.market.value,
+                    trade_date=datetime.now().strftime("%Y-%m-%d"),
+                    pre_close=None,
+                    points=[],
+                    updated_at=datetime.now(timezone.utc)
+                    .astimezone()
+                    .isoformat(timespec="seconds"),
+                )
+            _INTRADAY_TRENDS_CACHE[cache_key] = (time.time(), result)
+            return result

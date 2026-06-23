@@ -10,9 +10,10 @@ import {
 } from 'lightweight-charts'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import IntradayChart from '@panwatch/biz-ui/components/IntradayChart'
 
 type BusinessDay = { year: number; month: number; day: number }
-export type KlineInterval = '1d' | '1w' | '1m' | 'm5' | 'm30'
+export type KlineInterval = 'trend' | '1d' | '1w' | '1m' | 'm5' | 'm30'
 
 type KlineItem = {
   date: string
@@ -60,6 +61,10 @@ function parseBusinessDay(dateStr: string): BusinessDay | null {
 
 function isIntradayInterval(interval: KlineInterval): boolean {
   return interval === 'm5' || interval === 'm30'
+}
+
+function isTrendInterval(interval: KlineInterval): boolean {
+  return interval === 'trend'
 }
 
 function parseChartTime(dateStr: string): Time | null {
@@ -192,7 +197,7 @@ export default function InteractiveKline(props: {
   initialInterval?: KlineInterval
   initialDays?: '60' | '120' | '250'
 }) {
-  const [interval, setIntervalValue] = useState<KlineInterval>(props.initialInterval || '1d')
+  const [interval, setIntervalValue] = useState<KlineInterval>(props.initialInterval || 'trend')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [data, setData] = useState<KlineItem[]>([])
@@ -216,6 +221,7 @@ export default function InteractiveKline(props: {
   }, [interval])
 
   const intraday = isIntradayInterval(interval)
+  const trend = isTrendInterval(interval)
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
@@ -266,9 +272,10 @@ export default function InteractiveKline(props: {
   }
 
   useEffect(() => {
+    if (trend) return
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.symbol, props.market, interval, fixedDays, fixedCount, intraday])
+  }, [props.symbol, props.market, interval, fixedDays, fixedCount, intraday, trend])
 
   useEffect(() => {
     if (props.initialInterval) setIntervalValue(props.initialInterval)
@@ -588,11 +595,14 @@ export default function InteractiveKline(props: {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
         <div className="text-[13px] font-semibold text-foreground">K线图</div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant={showRsi ? 'default' : 'secondary'} size="sm" className="h-8 px-2.5" onClick={() => setShowRsi(v => !v)}>
-            强弱线
-          </Button>
+          {!trend ? (
+            <Button variant={showRsi ? 'default' : 'secondary'} size="sm" className="h-8 px-2.5" onClick={() => setShowRsi(v => !v)}>
+              强弱线
+            </Button>
+          ) : null}
           <div className="inline-flex flex-wrap rounded-lg border border-border/60 bg-accent/20 p-0.5">
             {([
+              { value: 'trend', label: '分时' },
               { value: 'm5', label: '5分' },
               { value: 'm30', label: '30分' },
               { value: '1d', label: '日K' },
@@ -613,12 +623,19 @@ export default function InteractiveKline(props: {
               </button>
             ))}
           </div>
-          <Button variant="secondary" size="sm" className="h-8" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">刷新</span>
-          </Button>
+          {!trend ? (
+            <Button variant="secondary" size="sm" className="h-8" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">刷新</span>
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {trend ? (
+        <IntradayChart symbol={props.symbol} market={props.market} />
+      ) : (
+        <>
 
       {error ? (
         <div className="text-[12px] text-rose-600 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2 mb-3">
@@ -696,6 +713,8 @@ export default function InteractiveKline(props: {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   )
 }
