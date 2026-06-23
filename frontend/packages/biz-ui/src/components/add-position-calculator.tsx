@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { insightApi, type AddPositionEvalResult } from '@panwatch/api'
+import { insightApi, positionsApi, type AddPositionEvalResult, type PositionTrade } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 export interface AddPositionCalc {
@@ -12,6 +13,13 @@ export interface AddPositionCalc {
   dilutePct: number
   totalInvested: number
   isAdd: boolean
+}
+
+export interface PositionHoldingOption {
+  id: number
+  account_name: string
+  quantity: number
+  cost_price: number
 }
 
 /** 加仓后摊薄成本(正算)。无效输入返回 null。 */
@@ -54,6 +62,13 @@ function fmtInt(n: number | null | undefined): string {
   return Math.round(n).toLocaleString()
 }
 
+function fmtTradeTime(raw: string | null | undefined): string {
+  if (!raw) return '--'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16)
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 const VERDICT_STYLE: Record<string, string> = {
   适合: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
   谨慎: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
@@ -67,6 +82,10 @@ interface Props {
   currentQuantity: number
   currentCost: number
   currentPrice?: number | null
+  /** 各账户下的持仓明细(用于选择加仓账户) */
+  holdings?: PositionHoldingOption[]
+  /** 加仓成功后回调(刷新持仓) */
+  onApplied?: () => void
 }
 
 export default function AddPositionCalculator({
@@ -75,6 +94,8 @@ export default function AddPositionCalculator({
   currentQuantity,
   currentCost,
   currentPrice,
+  holdings = [],
+  onApplied,
 }: Props) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
@@ -84,6 +105,28 @@ export default function AddPositionCalculator({
   const [targetRaw, setTargetRaw] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiResult, setAiResult] = useState<AddPositionEvalResult | null>(null)
+  const [applyLoading, setApplyLoading] = useState(false)
+  const [trades, setTrades] = useState<PositionTrade[]>([])
+  const [tradesLoading, setTradesLoading] = useState(false)
+
+  const defaultPositionId = holdings.length === 1 ? String(holdings[0].id) : ''
+  const [selectedPositionId, setSelectedPositionId] = useState(defaultPositionId)
+
+  useEffect(() => {
+    if (holdings.length === 1) setSelectedPositionId(String(holdings[0].id))
+    else if (holdings.length === 0) setSelectedPositionId('')
+    else if (!holdings.some(h => String(h.id) === selectedPositionId)) {
+      setSelectedPositionId('')
+    }
+  }, [holdings, selectedPositionId])
+
+  const selectedHolding = useMemo(
+    () => holdings.find(h => String(h.id) === selectedPositionId) ?? null,
+    [holdings, selectedPositionId],
+  )
+
+  const baseQty = selectedHolding?.quantity ?? currentQuantity
+  const baseCost = selectedHolding?.cost_price ?? currentCost
 
   const isCN = market === 'CN'
 
@@ -93,24 +136,43 @@ export default function AddPositionCalculator({
     return currentPrice && currentPrice > 0 ? currentPrice : 0
   }, [priceRaw, currentPrice])
 
-  // 输入(股数/金额)→ 加仓股数
   const addQty = useMemo(() => {
     const v = parseFloat(addRaw)
     if (!isFinite(v) || v <= 0) return 0
-    if (mode === 'shares') return v
-    return addPrice > 0 ? v / addPrice : 0
+    if (mode === 'shares') return Math.round(v)
+    return addPrice > 0 ? Math.round(v / addPrice) : 0
   }, [addRaw, mode, addPrice])
 
   const calc = useMemo(
-    () => calcAddPosition(currentQuantity, currentCost, addQty, addPrice),
-    [currentQuantity, currentCost, addQty, addPrice],
+    () => calcAddPosition(baseQty, baseCost, addQty, addPrice),
+    [baseQty, baseCost, addQty, addPrice],
   )
 
   const reverseShares = useMemo(() => {
     const t = parseFloat(targetRaw)
     if (!isFinite(t) || t <= 0) return null
-    return calcSharesForTargetCost(currentQuantity, currentCost, addPrice, t)
-  }, [targetRaw, currentQuantity, currentCost, addPrice])
+    return calcSharesForTargetCost(baseQty, baseCost, addPrice, t)
+  }, [targetRaw, baseQty, baseCost, addPrice])
+
+  const loadTrades = useCallback(async (positionId: number) => {
+    setTradesLoading(true)
+    try {
+      const rows = await positionsApi.trades(positionId, 10)
+      setTrades(rows || [])
+    } catch {
+      setTrades([])
+    } finally {
+      setTradesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open || !selectedPositionId) {
+      setTrades([])
+      return
+    }
+    void loadTrades(Number(selectedPositionId))
+  }, [open, selectedPositionId, loadTrades])
 
   const runAi = async () => {
     if (!calc || addQty <= 0 || addPrice <= 0) {
@@ -123,9 +185,9 @@ export default function AddPositionCalculator({
       const res = await insightApi.addPositionEval({
         symbol,
         market,
-        current_quantity: currentQuantity,
-        current_cost: currentCost,
-        add_quantity: Math.round(addQty),
+        current_quantity: baseQty,
+        current_cost: baseCost,
+        add_quantity: addQty,
         add_price: addPrice,
       })
       setAiResult(res)
@@ -136,9 +198,36 @@ export default function AddPositionCalculator({
     }
   }
 
-  const pricePlaceholder = currentPrice && currentPrice > 0 ? String(currentPrice) : '加仓价'
-  const hasHolding = currentQuantity > 0 && currentCost > 0
-  const lotWarn = isCN && addQty > 0 && Math.round(addQty) % 100 !== 0
+  const confirmAdd = async () => {
+    if (!selectedHolding) {
+      toast('请选择要加仓的账户', 'error')
+      return
+    }
+    if (!calc || addQty <= 0 || addPrice <= 0) {
+      toast('请先填写有效的加仓股数/金额与价格', 'error')
+      return
+    }
+    setApplyLoading(true)
+    try {
+      await positionsApi.add(selectedHolding.id, { price: addPrice, quantity: addQty })
+      toast(`已记录加仓 ${addQty} 股 @ ${fmt(addPrice)}，新成本 ${fmt(calc.newCost)}`, 'success')
+      setAddRaw('')
+      setPriceRaw('')
+      setTargetRaw('')
+      setAiResult(null)
+      await loadTrades(selectedHolding.id)
+      onApplied?.()
+    } catch (e: any) {
+      toast(e?.message || '加仓记录失败', 'error')
+    } finally {
+      setApplyLoading(false)
+    }
+  }
+
+  const pricePlaceholder = currentPrice && currentPrice > 0 ? String(currentPrice) : '买入价'
+  const hasHolding = baseQty > 0 && baseCost > 0
+  const lotWarn = isCN && addQty > 0 && addQty % 100 !== 0
+  const canApply = !!selectedHolding && !!calc && addQty > 0 && addPrice > 0
 
   return (
     <div className="mt-3 border-t border-border/50 pt-3">
@@ -147,12 +236,36 @@ export default function AddPositionCalculator({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between text-[11px] text-muted-foreground"
       >
-        <span>加仓测算{hasHolding ? '' : '（当前空仓 · 建仓测算）'}</span>
+        <span>{hasHolding ? '加仓记录' : '建仓测算（当前空仓）'}</span>
         <span>{open ? '收起 ▾' : '展开 ▸'}</span>
       </button>
 
       {open && (
         <div className="mt-2 space-y-2 text-[12px]">
+          {holdings.length > 1 && (
+            <label className="block space-y-1">
+              <div className="text-[10px] text-muted-foreground">加仓账户</div>
+              <Select value={selectedPositionId} onValueChange={setSelectedPositionId}>
+                <SelectTrigger className="h-8 text-[12px]">
+                  <SelectValue placeholder="选择账户" />
+                </SelectTrigger>
+                <SelectContent>
+                  {holdings.map(h => (
+                    <SelectItem key={h.id} value={String(h.id)}>
+                      {h.account_name} · {fmtInt(h.quantity)}股 @ {fmt(h.cost_price)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          )}
+
+          {holdings.length === 1 && (
+            <div className="text-[10px] text-muted-foreground">
+              账户：{holdings[0].account_name} · 当前 {fmtInt(holdings[0].quantity)} 股 @ {fmt(holdings[0].cost_price)}
+            </div>
+          )}
+
           <div className="flex gap-1">
             {(['shares', 'amount'] as const).map((m) => (
               <button
@@ -173,7 +286,7 @@ export default function AddPositionCalculator({
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1">
               <div className="text-[10px] text-muted-foreground">
-                {mode === 'shares' ? '加仓股数' : '加仓金额(元)'}
+                {mode === 'shares' ? '买入股数' : '买入金额(元)'}
               </div>
               <Input
                 value={addRaw}
@@ -183,7 +296,7 @@ export default function AddPositionCalculator({
               />
             </label>
             <label className="space-y-1">
-              <div className="text-[10px] text-muted-foreground">加仓价</div>
+              <div className="text-[10px] text-muted-foreground">买入价</div>
               <Input
                 value={priceRaw}
                 onChange={(e) => setPriceRaw(e.target.value)}
@@ -225,7 +338,24 @@ export default function AddPositionCalculator({
               )}
             </div>
           ) : (
-            <div className="text-[11px] text-muted-foreground">填写加仓股数/金额与价格后自动计算</div>
+            <div className="text-[11px] text-muted-foreground">填写买入股数/金额与价格后自动计算</div>
+          )}
+
+          {hasHolding && (
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={applyLoading || !canApply}
+              onClick={confirmAdd}
+            >
+              {applyLoading ? '记录中…' : `确认加仓 · ${addQty > 0 ? `${fmtInt(addQty)}股 @ ${fmt(addPrice)}` : '填写买入信息'}`}
+            </Button>
+          )}
+
+          {!hasHolding && holdings.length === 0 && (
+            <div className="text-[10px] text-muted-foreground rounded bg-accent/10 px-2 py-1.5">
+              当前未持仓。请先在「持仓」页添加持仓后再记录加仓。
+            </div>
           )}
 
           {hasHolding && (
@@ -236,12 +366,12 @@ export default function AddPositionCalculator({
                   value={targetRaw}
                   onChange={(e) => setTargetRaw(e.target.value)}
                   inputMode="decimal"
-                  placeholder={`< ${fmt(currentCost)}`}
+                  placeholder={`< ${fmt(baseCost)}`}
                 />
               </label>
               <div className="pb-1 text-[11px]">
                 {targetRaw.trim() === '' ? (
-                  <span className="text-muted-foreground">按加仓价反推所需股数</span>
+                  <span className="text-muted-foreground">按买入价反推所需股数</span>
                 ) : reverseShares != null ? (
                   <span>
                     需加 <span className="font-mono text-foreground">{fmtInt(reverseShares)}</span> 股
@@ -249,9 +379,34 @@ export default function AddPositionCalculator({
                     <br />约 <span className="font-mono">{fmtInt(reverseShares * addPrice)}</span> 元
                   </span>
                 ) : (
-                  <span className="text-amber-600">需 加仓价 &lt; 目标 &lt; 现成本 才能降到该成本</span>
+                  <span className="text-amber-600">需 买入价 &lt; 目标 &lt; 现成本 才能降到该成本</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {selectedPositionId && (
+            <div className="space-y-1 rounded border border-border/40 p-2">
+              <div className="text-[10px] text-muted-foreground">最近加仓记录</div>
+              {tradesLoading ? (
+                <div className="text-[10px] text-muted-foreground">加载中…</div>
+              ) : trades.length === 0 ? (
+                <div className="text-[10px] text-muted-foreground">暂无记录</div>
+              ) : (
+                <ul className="space-y-1">
+                  {trades.map(t => (
+                    <li key={t.id} className="flex items-center justify-between text-[10px]">
+                      <span className="text-muted-foreground">{fmtTradeTime(t.traded_at)}</span>
+                      <span className="font-mono">
+                        +{fmtInt(t.quantity)} @ {fmt(t.price)}
+                      </span>
+                      <span className="text-muted-foreground">
+                        成本 {fmt(t.cost_before)} → {fmt(t.cost_after)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

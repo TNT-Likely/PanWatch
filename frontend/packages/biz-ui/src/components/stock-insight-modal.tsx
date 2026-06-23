@@ -30,7 +30,7 @@ import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
-import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import AddPositionCalculator, { type PositionHoldingOption } from '@panwatch/biz-ui/components/add-position-calculator'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
@@ -109,16 +109,20 @@ interface HistoryRecord {
 }
 
 interface PortfolioPosition {
+  id?: number
   symbol: string
   market: string
   quantity: number
   cost_price: number
   market_value_cny: number | null
   pnl: number | null
+  account_name?: string
 }
 
 interface PortfolioSummaryResponse {
   accounts: Array<{
+    id?: number
+    name?: string
     positions: PortfolioPosition[]
   }>
 }
@@ -449,6 +453,7 @@ export default function StockInsightModal(props: {
     marketValue: number
     pnl: number
   } | null>(null)
+  const [holdingOptions, setHoldingOptions] = useState<PositionHoldingOption[]>([])
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
@@ -648,19 +653,30 @@ export default function StockInsightModal(props: {
       let cost = 0
       let marketValue = 0
       let pnl = 0
+      const options: PositionHoldingOption[] = []
       for (const acc of data?.accounts || []) {
         for (const p of acc.positions || []) {
           if (p.symbol !== symbol || p.market !== market) continue
+          if (p.id != null) {
+            options.push({
+              id: p.id,
+              account_name: p.account_name || acc.name || '默认账户',
+              quantity: Number(p.quantity || 0),
+              cost_price: Number(p.cost_price || 0),
+            })
+          }
           quantity += Number(p.quantity || 0)
           cost += Number(p.cost_price || 0) * Number(p.quantity || 0)
           marketValue += Number(p.market_value_cny || 0)
           pnl += Number(p.pnl || 0)
         }
       }
+      setHoldingOptions(options)
       if (quantity > 0) setHoldingAgg({ quantity, cost, unitCost: cost / quantity, marketValue, pnl })
       else setHoldingAgg(null)
     } catch {
       setHoldingAgg(null)
+      setHoldingOptions([])
       setHoldingLoadError(true)
     } finally {
       setHoldingLoaded(true)
@@ -1948,6 +1964,8 @@ export default function StockInsightModal(props: {
                         currentQuantity={holdingAgg?.quantity ?? 0}
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
+                        holdings={holdingOptions}
+                        onApplied={loadHoldingAgg}
                       />
                       <RollingCostPlanPanel
                         market={market}

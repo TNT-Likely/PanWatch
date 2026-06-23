@@ -5,12 +5,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from datetime import datetime, timedelta, timezone
 
 from src.web.database import get_db
-from src.web.models import Account, PriceAlertRule, Position, Stock
+from src.web.models import Account, Position, PositionTrade, PriceAlertRule, Stock
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.collectors.market_http import TTLCache
 from src.models.market import MarketCode
@@ -156,6 +156,63 @@ class PositionReorderItem(BaseModel):
 
 class PositionReorderRequest(BaseModel):
     items: list[PositionReorderItem]
+
+
+class PositionAddRequest(BaseModel):
+    price: float = Field(gt=0, description="买入单价")
+    quantity: int = Field(gt=0, description="买入股数")
+    note: str | None = None
+    traded_at: datetime | None = None
+
+
+class PositionTradeResponse(BaseModel):
+    id: int
+    position_id: int
+    side: str
+    price: float
+    quantity: int
+    amount: float
+    cost_before: float | None
+    qty_before: int | None
+    cost_after: float | None
+    qty_after: int | None
+    note: str | None
+    traded_at: datetime | None
+    created_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+def _calc_weighted_cost(
+    cur_qty: int, cur_cost: float, add_qty: int, add_price: float
+) -> tuple[int, float]:
+    """加权平均成本: (原持仓成本 + 新买入成本) / 总股数"""
+    new_qty = int(cur_qty) + int(add_qty)
+    if new_qty <= 0:
+        raise ValueError("加仓后股数必须大于 0")
+    if cur_qty <= 0 or cur_cost <= 0:
+        return new_qty, float(add_price)
+    total_cost = cur_qty * cur_cost + add_qty * add_price
+    return new_qty, round(total_cost / new_qty, 6)
+
+
+def _serialize_position_trade(trade: PositionTrade) -> dict:
+    return {
+        "id": trade.id,
+        "position_id": trade.position_id,
+        "side": trade.side,
+        "price": trade.price,
+        "quantity": trade.quantity,
+        "amount": trade.amount,
+        "cost_before": trade.cost_before,
+        "qty_before": trade.qty_before,
+        "cost_after": trade.cost_after,
+        "qty_after": trade.qty_after,
+        "note": trade.note,
+        "traded_at": trade.traded_at,
+        "created_at": trade.created_at,
+    }
 
 
 # ========== Account Endpoints ==========
@@ -342,6 +399,105 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
     }
 
 
+@router.post("/positions/{position_id}/add")
+def add_to_position(
+    position_id: int, data: PositionAddRequest, db: Session = Depends(get_db)
+):
+    """加仓:记录买入流水并按加权平均更新持仓成本与股数"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    add_qty = int(data.quantity)
+    add_price = float(data.price)
+    cost_before = float(position.cost_price)
+    qty_before = int(position.quantity)
+
+    try:
+        new_qty, new_cost = _calc_weighted_cost(
+            qty_before, cost_before, add_qty, add_price
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    add_amount = round(add_price * add_qty, 4)
+    traded_at = data.traded_at or datetime.now(timezone.utc).replace(tzinfo=None)
+
+    trade = PositionTrade(
+        position_id=position.id,
+        side="buy",
+        price=add_price,
+        quantity=add_qty,
+        amount=add_amount,
+        cost_before=cost_before,
+        qty_before=qty_before,
+        cost_after=new_cost,
+        qty_after=new_qty,
+        note=(data.note or "").strip() or None,
+        traded_at=traded_at,
+    )
+    db.add(trade)
+
+    position.quantity = new_qty
+    position.cost_price = new_cost
+    if position.invested_amount is not None:
+        position.invested_amount = round(float(position.invested_amount) + add_amount, 4)
+    else:
+        position.invested_amount = round(new_cost * new_qty, 4)
+
+    db.commit()
+    db.refresh(position)
+    db.refresh(trade)
+
+    logger.info(
+        "加仓: %s - %s +%d@%s → 成本 %.4f, 股数 %d",
+        position.account.name,
+        position.stock.name,
+        add_qty,
+        add_price,
+        new_cost,
+        new_qty,
+    )
+    return {
+        "position": {
+            "id": position.id,
+            "account_id": position.account_id,
+            "stock_id": position.stock_id,
+            "cost_price": position.cost_price,
+            "quantity": position.quantity,
+            "invested_amount": position.invested_amount,
+            "sort_order": position.sort_order or 0,
+            "trading_style": position.trading_style,
+            "account_name": position.account.name,
+            "stock_symbol": position.stock.symbol,
+            "stock_name": position.stock.name,
+        },
+        "trade": _serialize_position_trade(trade),
+    }
+
+
+@router.get("/positions/{position_id}/trades")
+def list_position_trades(
+    position_id: int,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    """获取持仓变动流水(最近 N 条)"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    lim = max(1, min(int(limit), 100))
+    trades = (
+        db.query(PositionTrade)
+        .filter(PositionTrade.position_id == position_id)
+        .order_by(PositionTrade.traded_at.desc(), PositionTrade.id.desc())
+        .limit(lim)
+        .all()
+    )
+    return [_serialize_position_trade(t) for t in trades]
+
+
 @router.delete("/positions/{position_id}")
 def delete_position(position_id: int, db: Session = Depends(get_db)):
     """删除持仓"""
@@ -493,6 +649,7 @@ def get_portfolio_summary(
                 "symbol": stock.symbol,
                 "name": stock.name,
                 "market": stock.market,
+                "account_name": acc.name,
                 "cost_price": pos.cost_price,
                 "quantity": pos.quantity,
                 "invested_amount": pos.invested_amount,

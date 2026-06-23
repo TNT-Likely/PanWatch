@@ -129,6 +129,36 @@ class Position(Base):
 
     account = relationship("Account", back_populates="positions")
     stock = relationship("Stock", back_populates="positions")
+    trades = relationship(
+        "PositionTrade", back_populates="position", cascade="all, delete-orphan"
+    )
+
+
+class PositionTrade(Base):
+    """持仓变动流水（买入/加仓等）"""
+
+    __tablename__ = "position_trades"
+    __table_args__ = (
+        Index("ix_position_trades_position_id", "position_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    position_id = Column(
+        Integer, ForeignKey("positions.id", ondelete="CASCADE"), nullable=False
+    )
+    side = Column(String, nullable=False, default="buy")  # buy | sell
+    price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False)  # price * quantity
+    cost_before = Column(Float, nullable=True)
+    qty_before = Column(Integer, nullable=True)
+    cost_after = Column(Float, nullable=True)
+    qty_after = Column(Integer, nullable=True)
+    note = Column(String, nullable=True)
+    traded_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    position = relationship("Position", back_populates="trades")
 
 
 class StockAgent(Base):
