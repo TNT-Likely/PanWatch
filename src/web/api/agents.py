@@ -634,7 +634,13 @@ def get_tradingagents_history_comparison(
 
 
 @router.get("/tradingagents/budget")
-def get_tradingagents_budget(db: Session = Depends(get_db)):
+def get_tradingagents_budget(
+    analyst_types: str = Query(
+        "",
+        description="逗号分隔分析师类型,如 fundamentals 或 market,social,news,fundamentals",
+    ),
+    db: Session = Depends(get_db),
+):
     """读取 TradingAgents 本月预算使用情况。
 
     用于 UI 在「设置」+「DeepAnalysisModal」展示「已用 $X / 预算 $Y」。
@@ -650,15 +656,27 @@ def get_tradingagents_budget(db: Session = Depends(get_db)):
 
     # 复用 cost_tracker 的 SQL 聚合
     from src.agents.tradingagents.cost_tracker import check_budget, estimate_cost
+    from src.agents.tradingagents.llm_adapter import VALID_ANALYSTS
 
     budget = check_budget(monthly_budget, "tradingagents")
+
+    selected = list(
+        cfg.get("analyst_types", ["market", "social", "news", "fundamentals"])
+    )
+    if analyst_types.strip():
+        requested = [x.strip() for x in analyst_types.split(",") if x.strip()]
+        invalid = [a for a in requested if a not in VALID_ANALYSTS]
+        if invalid:
+            raise HTTPException(
+                400,
+                f"非法 analyst_types: {invalid}; 合法值: {sorted(VALID_ANALYSTS)}",
+            )
+        selected = requested
 
     # 单次估算(给前端确认弹窗显示)
     est = estimate_cost(
         debate_rounds=int(cfg.get("debate_rounds", 1)),
-        selected_analysts=list(
-            cfg.get("analyst_types", ["market", "social", "news", "fundamentals"])
-        ),
+        selected_analysts=selected,
         model=str(cfg.get("deep_model") or "deepseek-chat"),
     )
 

@@ -96,11 +96,18 @@ def clear_kline_cache() -> None:
     _FAIL_UNTIL.clear()
     _YFINANCE_CACHE.clear()
     _EASTMONEY_FAIL_UNTIL.clear()
+    _BAOSTOCK_CACHE.clear()
+    _BAOSTOCK_FAIL_UNTIL.clear()
 
 
 def _us_kline_clearly_insufficient(bars: list["KlineData"], need: int) -> bool:
     """腾讯美股常只回 1-2 条脏数据,不应被负缓存长期当作有效结果。"""
     return len(bars) < max(10, min(need, 30))
+
+
+def _cn_kline_insufficient_for_need(bars: list["KlineData"], need: int) -> bool:
+    """A 股条数不足时不走负缓存短路,便于 Baostock 等后续兜底源重试。"""
+    return len(bars) < max(10, min(need, int(need * 0.6)))
 
 
 def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
@@ -432,6 +439,353 @@ def _fetch_eastmoney_klines(
     _EASTMONEY_FAIL_UNTIL.pop(cache_key, None)
     _EASTMONEY_CACHE[cache_key] = (now, len(best), best)
     return best[-need_days:] if len(best) > need_days else best
+
+
+# 东财分钟 K 周期: klt=5/30/60
+_EASTMONEY_INTRADAY_KLT = {
+    "m5": 5,
+    "m30": 30,
+    "m60": 60,
+}
+
+
+def _fetch_eastmoney_intraday_klines(
+    symbol: str,
+    market: MarketCode,
+    interval: str,
+    count: int,
+) -> list[KlineData]:
+    """东财分钟 K 线兜底(CN/HK),腾讯分钟线失败时使用。"""
+    iv = (interval or "m30").lower()
+    klt = _EASTMONEY_INTRADAY_KLT.get(iv)
+    if not klt or market not in (MarketCode.CN, MarketCode.HK):
+        return []
+
+    sym = (symbol or "").strip()
+    if not sym:
+        return []
+
+    need = max(10, min(int(count or 240), 2000))
+    secid = _eastmoney_secid(sym, market)
+    cache_key = f"{market.value}:{secid}:klt{klt}"
+    now = time.time()
+    if now < _EASTMONEY_FAIL_UNTIL.get(cache_key, 0.0):
+        stale = _EASTMONEY_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+    cached = _EASTMONEY_CACHE.get(cache_key)
+    if (
+        cached
+        and (now - cached[0]) < _EASTMONEY_CACHE_TTL_SECONDS
+        and cached[1] >= need
+    ):
+        bars = cached[2]
+        return bars[-need:] if len(bars) > need else bars
+
+    params = {
+        "secid": secid,
+        "klt": str(klt),
+        "fqt": "1",
+        "lmt": str(need),
+        "end": "20500101",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56",
+        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": _eastmoney_referer(sym, market),
+    }
+
+    last_err = None
+    best: list[KlineData] = []
+    for attempt in range(2):
+        _throttle_eastmoney()
+        try:
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=12 + attempt * 6,
+                headers=headers,
+                trust_env=False,
+            ) as client:
+                resp = client.get(EASTMONEY_KLINE_URL, params=params)
+                resp.raise_for_status()
+                payload = resp.json()
+
+            raw = (
+                (payload or {}).get("data", {}).get("klines", [])
+                if isinstance(payload, dict)
+                else []
+            )
+            out: list[KlineData] = []
+            for row in raw or []:
+                parts = str(row).split(",")
+                if len(parts) < 6:
+                    continue
+                try:
+                    out.append(
+                        KlineData(
+                            date=parts[0],
+                            open=float(parts[1]),
+                            close=float(parts[2]),
+                            high=float(parts[3]),
+                            low=float(parts[4]),
+                            volume=float(parts[5]),
+                        )
+                    )
+                except Exception:
+                    continue
+            if len(out) > len(best):
+                best = out
+            if best:
+                break
+        except Exception as e:
+            last_err = e
+            time.sleep(0.35 * (attempt + 1))
+
+    if not best and last_err is not None:
+        _EASTMONEY_FAIL_UNTIL[cache_key] = now + _EASTMONEY_FAIL_COOLDOWN_S
+        logger.warning(
+            f"Eastmoney 获取 {symbol} {iv} K线失败: {last_err}{_source_suffix()}"
+        )
+        stale = _EASTMONEY_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+
+    _EASTMONEY_FAIL_UNTIL.pop(cache_key, None)
+    _EASTMONEY_CACHE[cache_key] = (now, len(best), best)
+    return best[-need:] if len(best) > need else best
+
+
+# Baostock 分钟频率(A 股专用,CN only)
+_BAOSTOCK_INTRADAY_FREQ = {
+    "m5": "5",
+    "m30": "30",
+    "m60": "60",
+}
+_BAOSTOCK_CACHE: dict[str, tuple[float, int, list["KlineData"]]] = {}
+_BAOSTOCK_FAIL_UNTIL: dict[str, float] = {}
+_BAOSTOCK_FAIL_COOLDOWN_S = 120.0
+_BAOSTOCK_LOCK = threading.Lock()
+_BAOSTOCK_LOGGED_IN = False
+
+
+def _baostock_code(symbol: str) -> str | None:
+    """A 股代码 → baostock 格式 sh.600519 / sz.000725 / bj.920xxx。"""
+    sym = (symbol or "").strip()
+    if not sym.isdigit() or len(sym) != 6:
+        return None
+    prefix = get_cn_prefix(sym)
+    return f"{prefix}.{sym}"
+
+
+def _baostock_lookback_days(interval: str, count: int) -> int:
+    """按周期估算 start_date 回溯日历天数。"""
+    iv = (interval or "m30").lower()
+    need = max(10, int(count or 240))
+    if iv == "m5":
+        trading_days = max(3, (need + 47) // 48)
+        return int(trading_days * 1.6) + 5
+    if iv == "m30":
+        trading_days = max(3, (need + 7) // 8)
+        return int(trading_days * 1.6) + 10
+    return 45
+
+
+def _format_baostock_datetime(date: str, time_str: str) -> str:
+    t = (time_str or "").strip()
+    if len(t) >= 12:
+        return f"{date} {t[8:10]}:{t[10:12]}"
+    return date
+
+
+def _baostock_ensure_login() -> bool:
+    global _BAOSTOCK_LOGGED_IN
+    with _BAOSTOCK_LOCK:
+        if _BAOSTOCK_LOGGED_IN:
+            return True
+        try:
+            import baostock as bs
+        except ImportError:
+            logger.debug("baostock 未安装,跳过 Baostock K线回退")
+            return False
+        lg = bs.login()
+        if lg.error_code != "0":
+            logger.warning(f"Baostock login 失败: {lg.error_msg}{_source_suffix()}")
+            return False
+        _BAOSTOCK_LOGGED_IN = True
+        return True
+
+
+def _fetch_baostock_intraday_klines(
+    symbol: str,
+    interval: str,
+    count: int,
+) -> list[KlineData]:
+    """Baostock 分钟 K 线兜底(仅 A 股),东财/腾讯分钟线失败时使用。"""
+    iv = (interval or "m30").lower()
+    freq = _BAOSTOCK_INTRADAY_FREQ.get(iv)
+    code = _baostock_code(symbol)
+    if not freq or not code:
+        return []
+
+    need = max(10, min(int(count or 240), 2000))
+    cache_key = f"CN:{code}:{freq}:{need}"
+    now = time.time()
+    if now < _BAOSTOCK_FAIL_UNTIL.get(cache_key, 0.0):
+        stale = _BAOSTOCK_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+    cached = _BAOSTOCK_CACHE.get(cache_key)
+    if (
+        cached
+        and (now - cached[0]) < _EASTMONEY_CACHE_TTL_SECONDS
+        and cached[1] >= need
+    ):
+        bars = cached[2]
+        return bars[-need:] if len(bars) > need else bars
+
+    if not _baostock_ensure_login():
+        return []
+
+    try:
+        import baostock as bs
+        from datetime import datetime, timedelta
+
+        end = datetime.now().strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=_baostock_lookback_days(iv, need))).strftime(
+            "%Y-%m-%d"
+        )
+        rs = bs.query_history_k_data_plus(
+            code,
+            "date,time,open,high,low,close,volume",
+            start_date=start,
+            end_date=end,
+            frequency=freq,
+            adjustflag="2",
+        )
+        if rs.error_code != "0":
+            raise RuntimeError(rs.error_msg or rs.error_code)
+
+        out: list[KlineData] = []
+        while rs.error_code == "0" and rs.next():
+            row = rs.get_row_data()
+            if not row or len(row) < 7:
+                continue
+            date_s, time_s, o, h, l, c, v = row[:7]
+            try:
+                out.append(
+                    KlineData(
+                        date=_format_baostock_datetime(date_s, time_s),
+                        open=float(o),
+                        close=float(c),
+                        high=float(h),
+                        low=float(l),
+                        volume=float(v or 0),
+                    )
+                )
+            except Exception:
+                continue
+    except Exception as e:
+        _BAOSTOCK_FAIL_UNTIL[cache_key] = now + _BAOSTOCK_FAIL_COOLDOWN_S
+        logger.warning(
+            f"Baostock 获取 {symbol} {iv} K线失败: {e}{_source_suffix()}"
+        )
+        stale = _BAOSTOCK_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+
+    _BAOSTOCK_FAIL_UNTIL.pop(cache_key, None)
+    _BAOSTOCK_CACHE[cache_key] = (now, len(out), out)
+    return out[-need:] if len(out) > need else out
+
+
+def _fetch_baostock_daily_klines(symbol: str, days: int) -> list[KlineData]:
+    """Baostock 日 K 兜底(仅 A 股),腾讯/东财日 K 失败时使用。"""
+    code = _baostock_code(symbol)
+    if not code:
+        return []
+
+    need = max(1, min(int(days or 60), 5000))
+    cache_key = f"CN:{code}:d:{need}"
+    now = time.time()
+    if now < _BAOSTOCK_FAIL_UNTIL.get(cache_key, 0.0):
+        stale = _BAOSTOCK_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+    cached = _BAOSTOCK_CACHE.get(cache_key)
+    if (
+        cached
+        and (now - cached[0]) < _EASTMONEY_CACHE_TTL_SECONDS
+        and cached[1] >= need
+    ):
+        bars = cached[2]
+        return bars[-need:] if len(bars) > need else bars
+
+    if not _baostock_ensure_login():
+        return []
+
+    try:
+        import baostock as bs
+        from datetime import datetime, timedelta
+
+        end = datetime.now().strftime("%Y-%m-%d")
+        lookback = max(int(need * 1.6) + 30, 365)
+        start = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
+        rs = bs.query_history_k_data_plus(
+            code,
+            "date,open,high,low,close,volume",
+            start_date=start,
+            end_date=end,
+            frequency="d",
+            adjustflag="2",
+        )
+        if rs.error_code != "0":
+            raise RuntimeError(rs.error_msg or rs.error_code)
+
+        out: list[KlineData] = []
+        while rs.error_code == "0" and rs.next():
+            row = rs.get_row_data()
+            if not row or len(row) < 6:
+                continue
+            date_s, o, h, l, c, v = row[:6]
+            try:
+                out.append(
+                    KlineData(
+                        date=date_s,
+                        open=float(o),
+                        close=float(c),
+                        high=float(h),
+                        low=float(l),
+                        volume=float(v or 0),
+                    )
+                )
+            except Exception:
+                continue
+    except Exception as e:
+        _BAOSTOCK_FAIL_UNTIL[cache_key] = now + _BAOSTOCK_FAIL_COOLDOWN_S
+        logger.warning(
+            f"Baostock 获取 {symbol} 日K失败: {e}{_source_suffix()}"
+        )
+        stale = _BAOSTOCK_CACHE.get(cache_key)
+        if stale:
+            bars = stale[2]
+            return bars[-need:] if len(bars) > need else bars
+        return []
+
+    _BAOSTOCK_FAIL_UNTIL.pop(cache_key, None)
+    _BAOSTOCK_CACHE[cache_key] = (now, len(out), out)
+    return out[-need:] if len(out) > need else out
 
 
 @dataclass
@@ -916,8 +1270,14 @@ class KlineCollector:
                 stale = _KLINE_CACHE.get(cache_key)
                 bars = stale[2] if stale else []
                 if not (
-                    self.market == MarketCode.US
-                    and _us_kline_clearly_insufficient(bars, need)
+                    (
+                        self.market == MarketCode.US
+                        and _us_kline_clearly_insufficient(bars, need)
+                    )
+                    or (
+                        self.market == MarketCode.CN
+                        and _cn_kline_insufficient_for_need(bars, need)
+                    )
                 ):
                     return bars[-need:] if len(bars) > need else bars
 
@@ -979,6 +1339,14 @@ class KlineCollector:
                 )
                 if len(em) > len(klines):
                     klines = em
+
+        # A 股:腾讯/东财均失败时用 Baostock 日 K 兜底
+        if self.market == MarketCode.CN:
+            need = max(1, int(days or 60))
+            if len(klines) < max(10, min(need, int(days * 0.6))):
+                bs = _fetch_baostock_daily_klines(symbol, need)
+                if len(bs) > len(klines):
+                    klines = bs
 
         return klines
 
@@ -1176,6 +1544,16 @@ class KlineCollector:
                 bars = cached[2]
                 return bars[-need:] if len(bars) > need else bars
             bars = _fetch_tencent_klines_interval(symbol, self.market, iv, need)
+            if len(bars) < need:
+                em = _fetch_eastmoney_intraday_klines(
+                    symbol, self.market, iv, need
+                )
+                if len(em) > len(bars):
+                    bars = em
+            if len(bars) < need and self.market == MarketCode.CN:
+                bs_bars = _fetch_baostock_intraday_klines(symbol, iv, need)
+                if len(bs_bars) > len(bars):
+                    bars = bs_bars
             if bars:
                 _KLINE_CACHE[cache_key] = (time.time(), len(bars), list(bars))
             return bars[-need:] if len(bars) > need else bars

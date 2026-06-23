@@ -142,6 +142,7 @@ export interface ChanEmotionStrategyResult {
   stop_loss: number | null
   target_price: number | null
   invalidation: string
+  decision_explanation: string
   agent_instruction: string
   human_notes: string[]
   evidence: Array<{ text: string; delta: number }>

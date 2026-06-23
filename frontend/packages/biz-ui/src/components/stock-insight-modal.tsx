@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
+import { Brain, Copy, Download, ExternalLink, Play, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
+  fetchAPI,
   insightApi,
   stocksApi,
   tradingAgentsApi,
+  analystTypesForMode,
+  deepAnalysisModeEta,
+  loadDeepAnalysisMode,
+  type BudgetInfo,
+  type DeepAnalysisMode,
   type DeepAnalysisResult,
   type HistoryComparisonResponse,
+  type ProgressResponse,
+  type ProgressStage,
+  type TradingAgentsTriggerResult,
+  type TriggerStockAgentResponse,
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
@@ -22,8 +31,10 @@ import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
+import { DeepAnalysisModePicker } from '@panwatch/biz-ui/components/deep-analysis-mode-picker'
 
 interface QuoteResponse {
   symbol: string
@@ -112,7 +123,7 @@ interface PortfolioSummaryResponse {
   }>
 }
 
-type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+export type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
 
 interface StockAgentInfo {
   agent_name: string
@@ -128,6 +139,21 @@ interface StockItem {
   market: string
   agents?: StockAgentInfo[]
 }
+
+interface ReportAgentConfig {
+  name: string
+  display_name: string
+  description?: string
+  enabled: boolean
+  execution_mode?: string
+}
+
+const REPORT_TRIGGER_AGENT_NAMES = [
+  'daily_report',
+  'premarket_outlook',
+  'intraday_monitor',
+  'lmd_outlook',
+] as const
 
 const AGENT_LABELS: Record<string, string> = {
   daily_report: '盘后日报',
@@ -359,6 +385,8 @@ export default function StockInsightModal(props: {
   market: string
   stockName?: string
   hasPosition?: boolean
+  initialTab?: InsightTab
+  initialReportId?: number | null
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
@@ -392,15 +420,27 @@ export default function StockInsightModal(props: {
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
   const [deepLoaded, setDeepLoaded] = useState(false)
+  const [deepRunStage, setDeepRunStage] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [deepTraceId, setDeepTraceId] = useState<string | null>(null)
+  const [deepProgress, setDeepProgress] = useState<ProgressResponse | null>(null)
+  const [deepBudget, setDeepBudget] = useState<BudgetInfo | null>(null)
+  const [deepTriggerError, setDeepTriggerError] = useState('')
   const [deepShowAnalyst, setDeepShowAnalyst] = useState(false)
   const [deepShowDebate, setDeepShowDebate] = useState(false)
   const [deepHistory, setDeepHistory] = useState<HistoryComparisonResponse | null>(null)
   const [deepHistoryLoading, setDeepHistoryLoading] = useState(false)
+  const [deepAnalysisMode, setDeepAnalysisMode] = useState<DeepAnalysisMode>(() => loadDeepAnalysisMode())
+  const deepPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const deepTriggerStartedRef = useRef(0)
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
   const [alerting, setAlerting] = useState(false)
   const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
   const [watchToggleLoading, setWatchToggleLoading] = useState(false)
   const [autoSuggesting, setAutoSuggesting] = useState(false)
+  const [reportAgents, setReportAgents] = useState<ReportAgentConfig[]>([])
+  const [reportAgentName, setReportAgentName] = useState<string>('daily_report')
+  const [reportGenerating, setReportGenerating] = useState<string | null>(null)
+  const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [imageExporting, setImageExporting] = useState(false)
   const [holdingAgg, setHoldingAgg] = useState<{
     quantity: number
@@ -413,6 +453,7 @@ export default function StockInsightModal(props: {
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
   const stockCacheRef = useRef<Record<string, StockItem>>({})
+  const pendingReportIdRef = useRef<number | null>(null)
   const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
 
   const loadQuote = useCallback(async () => {
@@ -445,8 +486,8 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
-  const loadSuggestions = useCallback(async () => {
-    if (!symbol) return
+  const loadSuggestions = useCallback(async (): Promise<SuggestionInfo[]> => {
+    if (!symbol) return []
     const data = await insightApi.suggestions<any[]>(symbol, {
       market,
       limit: 20,
@@ -469,6 +510,7 @@ export default function StockInsightModal(props: {
       meta: item.meta,
     })) as SuggestionInfo[]
     setSuggestions(list)
+    return list
   }, [symbol, market, includeExpiredSuggestions])
 
   const loadNews = useCallback(async () => {
@@ -625,8 +667,8 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
-  const loadReports = useCallback(async () => {
-    if (!symbol) return
+  const loadReports = useCallback(async (): Promise<HistoryRecord[]> => {
+    if (!symbol) return []
     try {
       const [bySymbol, globals] = await Promise.all([
         insightApi.history<HistoryRecord[]>({
@@ -655,10 +697,227 @@ export default function StockInsightModal(props: {
           return bm - am
         })
       setReports(merged)
+      return merged
     } catch {
       setReports([])
+      return []
     }
   }, [symbol, resolvedName])
+
+  const loadReportAgents = useCallback(async () => {
+    try {
+      const list = await fetchAPI<ReportAgentConfig[]>('/agents')
+      const filtered = (list || []).filter(
+        a => a.enabled && REPORT_TRIGGER_AGENT_NAMES.includes(a.name as (typeof REPORT_TRIGGER_AGENT_NAMES)[number]),
+      )
+      if (filtered.length > 0) {
+        setReportAgents(filtered)
+        if (!filtered.some(a => a.name === reportAgentName)) {
+          const preferred = filtered.find(a => a.name === 'daily_report') || filtered[0]
+          setReportAgentName(preferred.name)
+        }
+        return
+      }
+    } catch {
+      // fallback below
+    }
+    setReportAgents(
+      REPORT_TRIGGER_AGENT_NAMES.map(name => ({
+        name,
+        display_name: AGENT_LABELS[name] || name,
+        enabled: true,
+      })),
+    )
+  }, [])
+
+  const stopReportPoll = useCallback(() => {
+    if (reportPollRef.current) {
+      clearInterval(reportPollRef.current)
+      reportPollRef.current = null
+    }
+  }, [])
+
+  const ensureStockAgentBinding = useCallback(async (agentName: string): Promise<{
+    stockId: number
+    useUnbound: boolean
+  }> => {
+    const stocks = await stocksApi.list()
+    let stock =
+      watchingStock
+      || stockCacheRef.current[`${market}:${symbol}`]
+      || (stocks || []).find(s => s.symbol === symbol && s.market === market)
+      || null
+
+    if (!stock) {
+      return { stockId: 0, useUnbound: true }
+    }
+
+    const existingAgents = (stock.agents || []).map(a => ({
+      agent_name: a.agent_name,
+      schedule: a.schedule || '',
+      ai_model_id: a.ai_model_id ?? null,
+      notify_channel_ids: a.notify_channel_ids || [],
+    }))
+    if (existingAgents.some(a => a.agent_name === agentName)) {
+      return { stockId: stock.id, useUnbound: false }
+    }
+
+    const updated = await stocksApi.updateAgents(stock.id, {
+      agents: [
+        ...existingAgents,
+        { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] },
+      ],
+    })
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    toast(`已自动关联 ${AGENT_LABELS[agentName] || agentName}`, 'info')
+    return { stockId: updated.id, useUnbound: false }
+  }, [market, symbol, toast, watchingStock])
+
+  const pollForNewReport = useCallback(async (opts: {
+    agentName: string
+    baselineReportId: number | null
+    baselineReportCount: number
+    baselineReportUpdatedAt: string | null
+    baselineSuggestionCount: number
+  }) => {
+    stopReportPoll()
+    const startedAt = Date.now()
+    const tick = async () => {
+      if (Date.now() - startedAt > 180_000) {
+        stopReportPoll()
+        setReportGenerating(null)
+        toast('报告生成超时，请稍后刷新列表', 'info')
+        return
+      }
+      const freshReports = await loadReports()
+      const reportChanged =
+        freshReports.length > opts.baselineReportCount
+        || (freshReports[0]?.id != null && freshReports[0].id !== opts.baselineReportId)
+        || (parseToMs(freshReports[0]?.updated_at || '') ?? 0) > (parseToMs(opts.baselineReportUpdatedAt || '') ?? 0)
+      const freshSuggestions = await loadSuggestions()
+      const suggestionsChanged = freshSuggestions.length > opts.baselineSuggestionCount
+      const isSuggestionAgent = opts.agentName === 'intraday_monitor'
+      const done = isSuggestionAgent ? suggestionsChanged : (reportChanged || suggestionsChanged)
+      if (!done) return
+      stopReportPoll()
+      setReportGenerating(null)
+      if (!isSuggestionAgent && freshReports[0]?.id) {
+        setSelectedReportId(freshReports[0].id)
+      }
+      toast(
+        isSuggestionAgent ? 'AI 建议已更新，可在「建议」查看' : '报告已生成',
+        'success',
+      )
+      if (isSuggestionAgent) {
+        setTab('suggestions')
+      }
+    }
+    reportPollRef.current = setInterval(() => {
+      void tick()
+    }, 5_000)
+    await tick()
+  }, [loadReports, loadSuggestions, stopReportPoll, toast])
+
+  const triggerReportGeneration = useCallback(async () => {
+    if (!symbol || reportGenerating) return
+    const agentName = reportAgentName || 'daily_report'
+    const baselineReportId = reports[0]?.id ?? null
+    const baselineReportCount = reports.length
+    const baselineReportUpdatedAt = reports[0]?.updated_at ?? null
+    const baselineSuggestionCount = suggestions.length
+    setReportGenerating(agentName)
+    try {
+      const { stockId, useUnbound } = await ensureStockAgentBinding(agentName)
+      const unboundOpts = useUnbound
+        ? {
+            allow_unbound: true,
+            symbol,
+            market,
+            name: resolvedName || symbol,
+          }
+        : {}
+      const triggerOpts = {
+        bypass_throttle: true,
+        bypass_market_hours: true,
+        ...unboundOpts,
+      }
+      const syncWait = agentName === 'lmd_outlook'
+      let resp: TriggerStockAgentResponse
+      if (syncWait) {
+        const qs = new URLSearchParams({
+          bypass_throttle: 'true',
+          bypass_market_hours: 'true',
+          wait: 'true',
+          ...Object.fromEntries(
+            Object.entries(unboundOpts).map(([k, v]) => [k, String(v)]),
+          ),
+        })
+        resp = await fetchAPI<TriggerStockAgentResponse>(
+          `/stocks/${stockId}/agents/${encodeURIComponent(agentName)}/trigger?${qs.toString()}`,
+          { method: 'POST', timeoutMs: 720_000 },
+        )
+      } else {
+        resp = await stocksApi.triggerAgent(stockId, agentName, triggerOpts)
+      }
+
+      if (resp?.queued) {
+        toast(resp.message || '已提交后台执行，报告生成中...', 'info')
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+        })
+        return
+      }
+
+      const result = resp?.result
+      if (result?.success === false) {
+        toast(result.message || result.content || '报告生成未通过', 'info')
+        return
+      }
+      const isSkipped = !!result?.skipped || /已跳过执行|非交易时段/.test(result?.content || '')
+      if (isSkipped) {
+        toast(result?.content || '当前非交易时段，已跳过执行', 'info')
+        return
+      }
+      const fresh = await loadReports()
+      setSelectedReportId(fresh[0]?.id ?? baselineReportId)
+      await loadSuggestions()
+      if (agentName === 'intraday_monitor') {
+        toast('AI 建议已更新，可在「建议」查看', 'success')
+        setTab('suggestions')
+      } else {
+        toast(agentName === 'lmd_outlook' ? '老马视角报告已生成' : '报告已生成', 'success')
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '报告生成失败'
+      if (/非交易时段|跳过执行/.test(msg)) {
+        toast(msg, 'info')
+      } else {
+        toast(msg, 'error')
+      }
+    } finally {
+      if (!reportPollRef.current) {
+        setReportGenerating(null)
+      }
+    }
+  }, [
+    symbol,
+    reportGenerating,
+    reportAgentName,
+    reports,
+    suggestions.length,
+    market,
+    resolvedName,
+    ensureStockAgentBinding,
+    pollForNewReport,
+    loadReports,
+    loadSuggestions,
+    toast,
+  ])
 
   const loadCore = useCallback(async () => {
     if (!symbol) return
@@ -714,8 +973,10 @@ export default function StockInsightModal(props: {
         tradingAgentsApi.getLatestForStock(symbol),
         tradingAgentsApi.getHistoryComparison(symbol, market, 90),
       ])
-      setDeepResult(latest.status === 'fulfilled' ? latest.value : null)
+      const nextResult = latest.status === 'fulfilled' ? latest.value : null
+      setDeepResult(nextResult)
       setDeepHistory(history.status === 'fulfilled' ? history.value : null)
+      if (nextResult) setDeepRunStage('done')
     } catch {
       setDeepResult(null)
       setDeepHistory(null)
@@ -726,21 +987,188 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
+  const stopDeepPoll = useCallback(() => {
+    if (deepPollRef.current) {
+      clearInterval(deepPollRef.current)
+      deepPollRef.current = null
+    }
+  }, [])
+
+  const resolveStockId = useCallback(async (): Promise<number> => {
+    if (watchingStock?.id) return watchingStock.id
+    const cached = stockCacheRef.current[`${market}:${symbol}`]
+    if (cached?.id) return cached.id
+    try {
+      const stocks = await stocksApi.list()
+      const found = (stocks || []).find(s => s.symbol === symbol && s.market === market)
+      return found?.id ?? 0
+    } catch {
+      return 0
+    }
+  }, [market, symbol, watchingStock])
+
+  const triggerDeepAnalysis = useCallback(async (force = false, analystTypes?: string[]): Promise<TradingAgentsTriggerResult> => {
+    const types = analystTypes ?? analystTypesForMode(deepAnalysisMode)
+    const stockId = await resolveStockId()
+    if (stockId > 0) {
+      return tradingAgentsApi.trigger(stockId, { force, analystTypes: types })
+    }
+    const qs = new URLSearchParams({
+      allow_unbound: 'true',
+      symbol,
+      market,
+      name: resolvedName || symbol,
+    })
+    if (force) qs.set('force_refresh', 'true')
+    return fetchAPI<TradingAgentsTriggerResult>(
+      `/stocks/0/agents/tradingagents/trigger?${qs.toString()}`,
+      { method: 'POST', body: JSON.stringify({ analyst_types: types }) },
+    )
+  }, [deepAnalysisMode, market, resolveStockId, resolvedName, symbol])
+
+  const pollDeepProgress = useCallback(async (tid: string) => {
+    try {
+      const resp = await tradingAgentsApi.getProgress(tid)
+      setDeepProgress(resp)
+      if (resp.status === 'success' && resp.run) {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        const latest = await tradingAgentsApi.getLatestForStock(symbol)
+        if (latest) {
+          setDeepResult(latest)
+          setDeepRunStage('done')
+          setDeepLoaded(true)
+        } else {
+          setDeepTriggerError('结果未落库，请稍后刷新')
+          setDeepRunStage('error')
+        }
+      } else if (resp.status === 'failed') {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        setDeepTriggerError(resp.run?.error || '分析失败')
+        setDeepRunStage('error')
+      } else if (resp.status === 'stale') {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        setDeepTraceId(null)
+        setDeepProgress(null)
+        setDeepRunStage('idle')
+      } else if (resp.status === 'not_found') {
+        const sinceTrigger = Date.now() - deepTriggerStartedRef.current
+        if (deepTriggerStartedRef.current > 0 && sinceTrigger > DEEP_NOT_FOUND_GRACE_MS) {
+          stopDeepPoll()
+          clearDeepRunningTrace(symbol)
+          setDeepTraceId(null)
+          setDeepProgress(null)
+          setDeepRunStage('idle')
+        }
+      }
+    } catch {
+      /* polling 失败不立即终止 */
+    }
+  }, [symbol, stopDeepPoll])
+
+  const startDeepPolling = useCallback((tid: string) => {
+    stopDeepPoll()
+    deepPollRef.current = setInterval(() => {
+      void pollDeepProgress(tid)
+    }, DEEP_POLL_INTERVAL_MS)
+    void pollDeepProgress(tid)
+  }, [pollDeepProgress, stopDeepPoll])
+
+  const handleDeepStart = useCallback(async (force = false) => {
+    setDeepRunStage('running')
+    setDeepTriggerError('')
+    setDeepProgress(null)
+    deepTriggerStartedRef.current = Date.now()
+    try {
+      const resp = await triggerDeepAnalysis(force)
+      const tid = resp.trace_id || ''
+      setDeepTraceId(tid)
+      if (!tid) {
+        setDeepRunStage('done')
+        toast(resp.message || '已触发', 'success')
+        await loadDeepResult()
+        return
+      }
+      saveDeepRunningTrace(symbol, tid)
+      startDeepPolling(tid)
+    } catch (e) {
+      setDeepRunStage('error')
+      setDeepTriggerError(e instanceof Error ? e.message : '触发失败')
+    }
+  }, [loadDeepResult, startDeepPolling, symbol, toast, triggerDeepAnalysis])
+
+  const syncDeepRunState = useCallback(async () => {
+    const analystTypes = analystTypesForMode(deepAnalysisMode)
+    const [runningInfo, budgetInfo] = await Promise.all([
+      tradingAgentsApi.findRunning(symbol).catch(() => ({ trace_id: null, status: 'none' as const })),
+      tradingAgentsApi.getBudget(analystTypes).catch(() => null),
+    ])
+    setDeepBudget(budgetInfo)
+
+    if (runningInfo.status === 'running' && runningInfo.trace_id) {
+      const tid = runningInfo.trace_id
+      setDeepTraceId(tid)
+      setDeepRunStage('running')
+      deepTriggerStartedRef.current = Date.now() - DEEP_NOT_FOUND_GRACE_MS - 1
+      const resp = await tradingAgentsApi.getProgress(tid).catch(() => null)
+      if (resp) setDeepProgress(resp)
+      startDeepPolling(tid)
+      return
+    }
+
+    if (runningInfo.status === 'stale' || runningInfo.status === 'failed') {
+      clearDeepRunningTrace(symbol)
+    }
+
+    if (runningInfo.status === 'none') {
+      const localTrace = loadDeepRunningTrace(symbol)
+      if (localTrace) {
+        setDeepTraceId(localTrace)
+        setDeepRunStage('running')
+        deepTriggerStartedRef.current = Date.now()
+        const resp = await tradingAgentsApi.getProgress(localTrace).catch(() => null)
+        if (resp) setDeepProgress(resp)
+        startDeepPolling(localTrace)
+        return
+      }
+    }
+
+    if (deepResult) {
+      setDeepRunStage('done')
+      clearDeepRunningTrace(symbol)
+      return
+    }
+
+    setDeepRunStage('idle')
+    clearDeepRunningTrace(symbol)
+  }, [deepAnalysisMode, deepResult, startDeepPolling, symbol])
+
   useEffect(() => {
     if (!props.open || !symbol) return
-    setTab('overview')
+    setTab(props.initialTab ?? 'overview')
+    pendingReportIdRef.current = props.initialReportId ?? null
     setSuggestions([])
     setNews([])
     setAnnouncements([])
     setReports([])
-    setSelectedReportId(null)
+    setSelectedReportId(props.initialReportId ?? null)
     setMiniKlines([])
     setWatchingStock(null)
     setDeepResult(null)
     setDeepLoaded(false)
     setDeepHistory(null)
+    setDeepRunStage('idle')
+    setDeepTraceId(null)
+    setDeepProgress(null)
+    setDeepBudget(null)
+    setDeepTriggerError('')
+    stopDeepPoll()
+    setReportGenerating(null)
+    stopReportPoll()
     loadCore()
-  }, [props.open, symbol, market, loadCore])
+  }, [props.open, symbol, market, props.initialTab, props.initialReportId, loadCore, stopDeepPoll, stopReportPoll])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -749,6 +1177,21 @@ export default function StockInsightModal(props: {
       loadDeepResult()
     }
   }, [tab, props.open, symbol, deepLoaded, deepLoading, loadDeepResult])
+
+  useEffect(() => {
+    if (!props.open || !symbol || tab !== 'deep' || !deepLoaded) return
+    void syncDeepRunState()
+  }, [props.open, symbol, tab, deepLoaded, syncDeepRunState])
+
+  useEffect(() => {
+    if (!props.open || tab !== 'deep' || deepRunStage !== 'idle') return
+    tradingAgentsApi.getBudget(analystTypesForMode(deepAnalysisMode)).then(setDeepBudget).catch(() => null)
+  }, [deepAnalysisMode, deepRunStage, props.open, tab])
+
+  useEffect(() => {
+    if (!props.open) stopDeepPoll()
+    return () => stopDeepPoll()
+  }, [props.open, stopDeepPoll])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -781,6 +1224,15 @@ export default function StockInsightModal(props: {
     if (!props.open || !symbol) return
     loadAnnouncements().catch(() => setAnnouncements([]))
   }, [props.open, symbol, announcementHours, loadAnnouncements])
+
+  useEffect(() => {
+    if (!props.open) return
+    void loadReportAgents()
+  }, [props.open, loadReportAgents])
+
+  useEffect(() => {
+    return () => stopReportPoll()
+  }, [stopReportPoll])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -889,6 +1341,12 @@ export default function StockInsightModal(props: {
   useEffect(() => {
     if (!reports.length) {
       setSelectedReportId(null)
+      return
+    }
+    const pending = pendingReportIdRef.current
+    if (pending != null && reports.some(r => r.id === pending)) {
+      setSelectedReportId(pending)
+      pendingReportIdRef.current = null
       return
     }
     if (selectedReportId && reports.some(r => r.id === selectedReportId)) return
@@ -1655,7 +2113,21 @@ export default function StockInsightModal(props: {
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="text-[12px] text-muted-foreground py-3">暂无报告</div>
+                      <div className="space-y-2 py-3">
+                        <div className="text-[12px] text-muted-foreground">暂无报告</div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 px-2.5 text-[11px]"
+                          disabled={!!reportGenerating}
+                          onClick={() => {
+                            setTab('reports')
+                            void triggerReportGeneration()
+                          }}
+                        >
+                          {reportGenerating ? '生成中...' : '立即生成报告'}
+                        </Button>
+                      </div>
                     ) : (
                       <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
                         <div className="text-[11px] text-muted-foreground">
@@ -1683,10 +2155,77 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'reports' && (
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              <div className="space-y-3">
+                <div className="card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-[12px] text-muted-foreground">
+                    选择 Agent 立即生成该股票报告，无需返回列表页配置
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={reportAgentName} onValueChange={setReportAgentName}>
+                      <SelectTrigger className="h-8 w-[148px] text-[11px]">
+                        <SelectValue placeholder="选择 Agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(reportAgents.length > 0
+                          ? reportAgents
+                          : REPORT_TRIGGER_AGENT_NAMES.map(name => ({
+                              name,
+                              display_name: AGENT_LABELS[name] || name,
+                              enabled: true,
+                            }))
+                        ).map(agent => (
+                          <SelectItem key={agent.name} value={agent.name}>
+                            {agent.display_name || AGENT_LABELS[agent.name] || agent.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-8 px-2.5 text-[11px]"
+                      disabled={!!reportGenerating}
+                      onClick={() => void triggerReportGeneration()}
+                    >
+                      {reportGenerating ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          生成中...
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Play className="w-3 h-3" />
+                          立即生成报告
+                        </span>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-[11px]"
+                      disabled={!!reportGenerating}
+                      onClick={() => void loadReports()}
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                 <div className="md:col-span-4 card p-2 max-h-[62vh] overflow-y-auto scrollbar">
                   {reports.length === 0 ? (
-                    <div className="p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                    <div className="p-6 text-center space-y-3">
+                      <div className="text-[12px] text-muted-foreground">暂无报告</div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 px-3 text-[11px]"
+                        disabled={!!reportGenerating}
+                        onClick={() => void triggerReportGeneration()}
+                      >
+                        {reportGenerating ? '生成中...' : '立即生成报告'}
+                      </Button>
+                    </div>
                   ) : (
                     <div className="divide-y divide-border/30">
                       {reports.map(r => {
@@ -1734,10 +2273,8 @@ export default function StockInsightModal(props: {
                         {activeReport.suggestions[symbol].action_label}
                       </div>
                     )}
-                    <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
-                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
-                      </div>
+                    <div className="rounded-lg bg-accent/10 p-3 max-h-[58vh] overflow-y-auto scrollbar">
+                      <ReportMarkdown content={activeReport.content} />
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
                       <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
@@ -1770,6 +2307,7 @@ export default function StockInsightModal(props: {
                     )}
                   </div>
                 )}
+                </div>
               </div>
             )}
 
@@ -1793,16 +2331,26 @@ export default function StockInsightModal(props: {
                   </div>
                 )}
                 <DeepAnalysisSection
+                  symbol={symbol}
                   loading={deepLoading}
                   loaded={deepLoaded}
                   result={deepResult}
                   history={deepHistory}
                   historyLoading={deepHistoryLoading}
+                  runStage={deepRunStage}
+                  progress={deepProgress}
+                  traceId={deepTraceId}
+                  budget={deepBudget}
+                  triggerError={deepTriggerError}
+                  analysisMode={deepAnalysisMode}
+                  onAnalysisModeChange={setDeepAnalysisMode}
                   showAnalyst={deepShowAnalyst}
                   setShowAnalyst={setDeepShowAnalyst}
                   showDebate={deepShowDebate}
                   setShowDebate={setDeepShowDebate}
                   onRefresh={loadDeepResult}
+                  onStart={() => void handleDeepStart(false)}
+                  onRerun={() => void handleDeepStart(true)}
                 />
               </div>
             )}
@@ -1946,28 +2494,106 @@ const DEEP_STAGE_LABEL: Record<string, string> = {
   fundamentals: '基本面分析师',
 }
 
+const DEEP_PROGRESS_STAGE_LABEL: Record<string, string> = {
+  market_analyst: '技术分析师',
+  social_analyst: '情绪分析师',
+  news_analyst: '新闻分析师',
+  fundamentals_analyst: '基本面分析师',
+  bull_bear_debate: '看多看空辩论',
+  research_manager: '研究主管',
+  trader: '交易员决策',
+  risk_judge: '风控判定',
+  final_decision: 'PM 整合',
+}
+
+const DEEP_POLL_INTERVAL_MS = 2000
+const DEEP_NOT_FOUND_GRACE_MS = 60_000
+const DEEP_TRACE_STORAGE_PREFIX = 'panwatch:tradingagents:running:'
+const DEEP_TRACE_MAX_AGE_MS = 20 * 60 * 1000
+
+function loadDeepRunningTrace(stockSymbol: string): string | null {
+  try {
+    const raw = localStorage.getItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { traceId: string; startedAt: number }
+    if (!parsed.traceId || !parsed.startedAt) return null
+    if (Date.now() - parsed.startedAt > DEEP_TRACE_MAX_AGE_MS) {
+      localStorage.removeItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+      return null
+    }
+    return parsed.traceId
+  } catch {
+    return null
+  }
+}
+
+function saveDeepRunningTrace(stockSymbol: string, traceId: string): void {
+  try {
+    localStorage.setItem(
+      DEEP_TRACE_STORAGE_PREFIX + stockSymbol,
+      JSON.stringify({ traceId, startedAt: Date.now() }),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearDeepRunningTrace(stockSymbol: string): void {
+  try {
+    localStorage.removeItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatDeepElapsed(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`
+}
+
 function DeepAnalysisSection({
+  symbol,
   loading,
   loaded,
   result,
   history,
   historyLoading,
+  runStage,
+  progress,
+  traceId,
+  budget,
+  triggerError,
+  analysisMode,
+  onAnalysisModeChange,
   showAnalyst,
   setShowAnalyst,
   showDebate,
   setShowDebate,
   onRefresh,
+  onStart,
+  onRerun,
 }: {
+  symbol: string
   loading: boolean
   loaded: boolean
   result: DeepAnalysisResult | null
   history: HistoryComparisonResponse | null
   historyLoading: boolean
+  runStage: 'idle' | 'running' | 'done' | 'error'
+  progress: ProgressResponse | null
+  traceId: string | null
+  budget: BudgetInfo | null
+  triggerError: string
+  analysisMode: DeepAnalysisMode
+  onAnalysisModeChange: (mode: DeepAnalysisMode) => void
   showAnalyst: boolean
   setShowAnalyst: (v: boolean) => void
   showDebate: boolean
   setShowDebate: (v: boolean) => void
   onRefresh: () => void
+  onStart: () => void
+  onRerun: () => void
 }) {
   if (loading && !loaded) {
     return (
@@ -1977,12 +2603,100 @@ function DeepAnalysisSection({
       </div>
     )
   }
-  if (!result && !history?.items?.length) {
+
+  if (runStage === 'running') {
+    const elapsed = progress?.elapsed_sec ?? 0
+    const cost = progress?.total_cost_usd ?? 0
+    const stages = progress?.stages ?? []
     return (
-      <div className="card p-6 text-center text-[12px] text-muted-foreground space-y-2">
-        <div>暂无深度分析报告</div>
-        <div className="text-[11px] text-muted-foreground/70">
-          可在持仓 / 自选页点击 🧠 深度分析按钮触发
+      <div className="card p-4 space-y-3 text-[13px]">
+        <div className="rounded-lg bg-accent/30 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded-full bg-primary animate-pulse" />
+            <span className="font-medium">深度分析进行中...</span>
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              已用 {formatDeepElapsed(elapsed)} · ${cost.toFixed(4)}
+            </span>
+          </div>
+          <div className="space-y-1 mt-2">
+            {stages.length > 0 ? stages.map((stage) => (
+              <DeepProgressStageRow key={stage.name} stage={stage} />
+            )) : (
+              <div className="text-[12px] text-muted-foreground">准备中...</div>
+            )}
+          </div>
+          {traceId ? (
+            <div className="text-[10px] text-muted-foreground/70 font-mono">
+              trace_id: {traceId.slice(0, 16)}...
+            </div>
+          ) : null}
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          分析需 3-8 分钟，可切换其他标签页；完成后会通过通知渠道推送，也可稍后回来刷新查看。
+        </div>
+      </div>
+    )
+  }
+
+  if (runStage === 'error') {
+    return (
+      <div className="card p-4 space-y-3 text-[13px]">
+        <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-rose-600">
+          <div className="font-semibold mb-1">分析失败</div>
+          <div className="text-[12px]">{triggerError || '未知错误'}</div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onStart}>重试</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!result) {
+    const overBudget = budget?.exceeded && budget.over_budget_action === 'reject'
+    const est = budget?.estimate_next_run
+    return (
+      <div className="space-y-3 text-[13px]">
+        {history?.items?.length ? (
+          <DeepHistoryComparison history={history} loading={historyLoading} />
+        ) : null}
+        <div className="card p-4 space-y-3">
+          <div className="text-center text-[12px] text-muted-foreground">暂无深度分析报告</div>
+          <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
+            <div className="font-medium">即将分析：{symbol}</div>
+            <DeepAnalysisModePicker mode={analysisMode} onChange={onAnalysisModeChange} />
+            <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
+              <div>⏱ 预计耗时：{deepAnalysisModeEta(analysisMode)}</div>
+              {est ? (
+                <div>💰 预估成本：${est.cost_low_usd.toFixed(2)} - ${est.cost_high_usd.toFixed(2)} ({est.model})</div>
+              ) : (
+                <div>💰 预估成本：加载中...</div>
+              )}
+              <div>ℹ️ 异步执行，可关闭弹窗，完成时推送通知</div>
+            </div>
+          </div>
+          {budget && (
+            <div className={`rounded-lg p-3 text-[12px] ${overBudget ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-accent/20'}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">本月预算</span>
+                <span className={overBudget ? 'text-rose-600' : 'text-muted-foreground'}>
+                  ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
+                  {budget.runs_this_month > 0 && ` · ${budget.runs_this_month} 次`}
+                </span>
+              </div>
+              {overBudget && (
+                <div className="text-[11px] text-rose-600 mt-1">
+                  ⚠️ 本月预算已用尽，请到「设置 → Agent → TradingAgents」调高预算
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-center">
+            <Button onClick={onStart} disabled={overBudget} className="gap-1.5">
+              <Brain className="w-4 h-4" />
+              开始深度分析
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -2000,9 +2714,19 @@ function DeepAnalysisSection({
         <div className="text-[11px] text-muted-foreground">
           TradingAgents 深度{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
         </div>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
-          <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={onRerun}
+          >
+            重新分析
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       {sug && (
@@ -2028,9 +2752,7 @@ function DeepAnalysisSection({
 
       {result?.content && (
         <div className="rounded-lg border border-border/50 p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <ReactMarkdown>{result.content}</ReactMarkdown>
-          </div>
+          <ReportMarkdown content={result.content} />
         </div>
       )}
 
@@ -2087,6 +2809,23 @@ function DeepAnalysisSection({
       <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
         本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
       </div>
+    </div>
+  )
+}
+
+function DeepProgressStageRow({ stage }: { stage: ProgressStage }) {
+  const label = DEEP_PROGRESS_STAGE_LABEL[stage.name] || stage.name
+  const done = stage.status === 'done'
+  const running = stage.status === 'running'
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${done ? 'bg-emerald-500' : running ? 'bg-primary animate-pulse' : 'bg-muted-foreground/30'}`} />
+      <span className={done ? 'text-foreground' : running ? 'text-primary font-medium' : 'text-muted-foreground'}>
+        {label}
+      </span>
+      {typeof stage.duration_sec === 'number' && stage.duration_sec > 0 && (
+        <span className="ml-auto text-[10px] text-muted-foreground">{formatDeepElapsed(stage.duration_sec)}</span>
+      )}
     </div>
   )
 }

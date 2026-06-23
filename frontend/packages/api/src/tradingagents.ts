@@ -5,6 +5,48 @@
  */
 import { fetchAPI, getToken } from './client'
 
+export type DeepAnalysisMode = 'full' | 'fundamentals'
+
+export const DEEP_ANALYSIS_MODE_STORAGE_KEY = 'panwatch:deep-analysis:mode'
+
+export const FULL_ANALYST_TYPES = ['market', 'social', 'news', 'fundamentals'] as const
+export const FUNDAMENTALS_ANALYST_TYPES = ['fundamentals'] as const
+
+export function analystTypesForMode(mode: DeepAnalysisMode): string[] {
+  return mode === 'fundamentals' ? [...FUNDAMENTALS_ANALYST_TYPES] : [...FULL_ANALYST_TYPES]
+}
+
+export function loadDeepAnalysisMode(): DeepAnalysisMode {
+  try {
+    const raw = localStorage.getItem(DEEP_ANALYSIS_MODE_STORAGE_KEY)
+    return raw === 'fundamentals' ? 'fundamentals' : 'full'
+  } catch {
+    return 'full'
+  }
+}
+
+export function saveDeepAnalysisMode(mode: DeepAnalysisMode): void {
+  try {
+    localStorage.setItem(DEEP_ANALYSIS_MODE_STORAGE_KEY, mode)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function deepAnalysisModeLabel(mode: DeepAnalysisMode): string {
+  return mode === 'fundamentals' ? '仅基本面' : '全面分析'
+}
+
+export function deepAnalysisModeDescription(mode: DeepAnalysisMode): string {
+  return mode === 'fundamentals'
+    ? '仅调用基本面分析师 + 辩论/风控/PM 整合（更快、更省）'
+    : '调用 4 类分析师（技术 / 情绪 / 新闻 / 基本面）+ 看多看空辩论 + 风控 + PM 整合'
+}
+
+export function deepAnalysisModeEta(mode: DeepAnalysisMode): string {
+  return mode === 'fundamentals' ? '1-3 分钟' : '3-8 分钟'
+}
+
 export interface TradingAgentsTriggerResult {
   ok: boolean
   queued?: boolean
@@ -160,21 +202,31 @@ export interface HistoryComparisonResponse {
 export const tradingAgentsApi = {
   /** 触发深度分析(异步排队)。force=true 跳过同日缓存。
    *  TradingAgents 不要求 StockAgent 绑定 — 始终带 allow_unbound=true。 */
-  trigger(stockId: number, opts: { force?: boolean } = {}): Promise<TradingAgentsTriggerResult> {
+  trigger(
+    stockId: number,
+    opts: { force?: boolean; analystTypes?: string[] } = {},
+  ): Promise<TradingAgentsTriggerResult> {
     const qsParts = ['allow_unbound=true']
     if (opts.force) qsParts.push('force_refresh=true')
+    const body =
+      opts.analystTypes && opts.analystTypes.length > 0
+        ? { analyst_types: opts.analystTypes }
+        : {}
     return fetchAPI(
       `/stocks/${stockId}/agents/tradingagents/trigger?${qsParts.join('&')}`,
       {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify(body),
       },
     )
   },
 
   /** 读取本月预算 + 单次预估成本(用于触发前确认弹窗)。 */
-  getBudget(): Promise<BudgetInfo> {
-    return fetchAPI('/agents/tradingagents/budget')
+  getBudget(analystTypes?: string[]): Promise<BudgetInfo> {
+    const qs = analystTypes?.length
+      ? `?analyst_types=${encodeURIComponent(analystTypes.join(','))}`
+      : ''
+    return fetchAPI(`/agents/tradingagents/budget${qs}`)
   },
 
   /** 把某次深度分析报告导出为 PDF 文件并触发下载(后台直出,不走打印对话框)。 */

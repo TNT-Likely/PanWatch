@@ -83,6 +83,7 @@ class ChanEmotionResult:
     stop_loss: float | None
     target_price: float | None
     invalidation: str
+    decision_explanation: str
     agent_instruction: str
     human_notes: list[str]
     evidence: list[dict[str, Any]]
@@ -464,6 +465,107 @@ def build_agent_instruction(
     return "；".join(lines)
 
 
+def _trend_label(trend: TrendType) -> str:
+    if trend == "trend_up":
+        return "上升趋势"
+    if trend == "trend_down":
+        return "下降趋势"
+    if trend == "consolidation":
+        return "盘整"
+    return "待识别"
+
+
+def _level_signal_summary(level: LevelAnalysis) -> str:
+    actionable_tags = [
+        tag
+        for tag in level.signal_tags
+        if "买点" in tag or "卖点" in tag or "背驰" in tag
+    ]
+    if not actionable_tags:
+        return f"{level.label}{_trend_label(level.trend)}，暂无明确买卖点"
+    return f"{level.label}{_trend_label(level.trend)}，出现{actionable_tags[0]}"
+
+
+def build_decision_explanation(
+    *,
+    holding: bool,
+    emotion_label: str,
+    daily: LevelAnalysis,
+    op: LevelAnalysis,
+    micro: LevelAnalysis,
+    win_rate: float,
+    action: ActionKey,
+    action_label: str,
+    evidence: list[dict[str, Any]],
+) -> str:
+    """生成面向用户的策略推导说明。"""
+    trend_parts = [
+        f"日线={_trend_label(daily.trend)}",
+        f"30分钟={_trend_label(op.trend)}",
+        f"5分钟={_trend_label(micro.trend)}",
+    ]
+    trend_sentence = "、".join(trend_parts)
+    all_up = all(
+        lvl.trend == "trend_up"
+        for lvl in (daily, op, micro)
+    )
+
+    raw_score = 50.0
+    score_parts = ["基础 50"]
+    for item in evidence:
+        text = str(item.get("text") or "")
+        delta = item.get("delta")
+        if not text or not isinstance(delta, (int, float)):
+            continue
+        raw_score += float(delta)
+        sign = "+" if delta > 0 else ""
+        score_parts.append(f"{text} {sign}{delta:g}")
+    score_note = f"，最终 {win_rate:.1f}%"
+    if abs(raw_score - win_rate) >= 0.05:
+        score_note = f"，原始 {raw_score:.1f}%，限制到策略区间后为 {win_rate:.1f}%"
+
+    op_has_sell = any("卖点" in tag or "顶背驰" in tag for tag in op.signal_tags)
+    daily_has_sell = any("卖点" in tag or "顶背驰" in tag for tag in daily.signal_tags)
+
+    reason_parts = [
+        f"趋势背景：{trend_sentence}；{emotion_label}。",
+        f"赢面计算：{', '.join(score_parts)}{score_note}。",
+        f"结构信号：{_level_signal_summary(daily)}；{_level_signal_summary(op)}；{_level_signal_summary(micro)}。",
+    ]
+
+    if all_up and action in ("sell", "reduce", "avoid") and (op_has_sell or daily_has_sell):
+        reason_parts.append(
+            "注意：三周期仍是上升趋势，但缠论里的顶背驰常发生在上涨末端；这里不是按趋势下跌卖出，而是按背驰/卖点做风险退出。"
+        )
+
+    if holding and action == "sell":
+        reason_parts.append(
+            "动作规则：当前已持仓，日线或30分钟出现顶背驰/卖点，且赢面低于55%，判为持仓退出信号，所以给出卖出。"
+        )
+    elif holding and action == "reduce":
+        reason_parts.append(
+            "动作规则：当前已持仓，日线或30分钟出现顶背驰/卖点，但赢面≥55%尚未跌破清仓阈值，先减仓保留底仓观察。"
+        )
+    elif action in ("buy", "add"):
+        reason_parts.append(
+            "动作规则：操作级别出现买点或底背驰，且情绪未明显恶化，按赢面给出建仓/加仓比例。"
+        )
+    elif holding and action == "hold":
+        reason_parts.append(
+            "动作规则：当前已持仓，结构未破坏且赢面≥55%，不追加也不减仓，持股待涨。"
+        )
+    elif not holding and action == "avoid" and (op_has_sell or daily_has_sell):
+        reason_parts.append(
+            "动作规则：未持仓时遇到日线或30分钟卖点结构，不追高，等待新的30分钟三类买点或底背驰。"
+        )
+    else:
+        reason_parts.append(
+            f"动作规则：当前信号未形成高确定性共振，结论为{action_label}，等待更清晰的30分钟结构。"
+        )
+
+    return "；".join(reason_parts)
+
+
 def analyze_chan_emotion(
     symbol: str,
     market: str,
@@ -563,6 +665,18 @@ def analyze_chan_emotion(
         reason_parts.append(daily.divergence)
     reason = "；".join(reason_parts)
 
+    decision_explanation = build_decision_explanation(
+        holding=holding,
+        emotion_label=emotion_label,
+        daily=daily,
+        op=op,
+        micro=micro,
+        win_rate=win_rate,
+        action=action,
+        action_label=action_label,
+        evidence=evidence,
+    )
+
     human_notes = [
         "Agent 负责包含处理、笔、线段与背驰识别；您负责情绪确认与题材筛选。",
         "关注政策与板块轮动，技术面无法感知宏观突变。",
@@ -589,6 +703,7 @@ def analyze_chan_emotion(
         stop_loss=stop_loss,
         target_price=target_price,
         invalidation=invalidation,
+        decision_explanation=decision_explanation,
         agent_instruction=build_agent_instruction(
             emotion, daily, op, micro, action, position_pct
         ),
@@ -634,6 +749,7 @@ def serialize_chan_emotion_result(result: ChanEmotionResult) -> dict[str, Any]:
         "stop_loss": result.stop_loss,
         "target_price": result.target_price,
         "invalidation": result.invalidation,
+        "decision_explanation": result.decision_explanation,
         "agent_instruction": result.agent_instruction,
         "human_notes": result.human_notes,
         "evidence": result.evidence,

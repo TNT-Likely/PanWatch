@@ -117,6 +117,13 @@ export function ChanEmotionStrategyPanel({
               <div className="text-[11px] text-foreground font-medium">{data.signal}</div>
               <div className="text-[10px] text-muted-foreground leading-relaxed">{data.reason}</div>
 
+              {data.decision_explanation && (
+                <div className="rounded border border-primary/15 bg-primary/5 px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                  <div className="mb-1 text-[11px] font-medium text-foreground/80">信号推导</div>
+                  {data.decision_explanation}
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-2">
                 {data.levels.map((lvl) => (
                   <div key={lvl.timeframe} className="rounded bg-accent/15 px-2 py-1.5">
@@ -128,6 +135,11 @@ export function ChanEmotionStrategyPanel({
                     {lvl.pivot && (
                       <div className="text-[10px] font-mono text-muted-foreground">
                         ZD {fmt(lvl.pivot.zd)} / ZG {fmt(lvl.pivot.zg)}
+                      </div>
+                    )}
+                    {lvl.bar_count === 0 && (
+                      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                        {lvl.timeframe === '1d' ? '日线数据暂不可用' : '分钟数据暂不可用'}
                       </div>
                     )}
                     {lvl.signal_tags.length > 0 && (

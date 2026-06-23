@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import {
+  CandlestickSeries,
+  CrosshairMode,
+  HistogramSeries,
+  LineSeries,
+  createChart,
+  type Time,
+} from 'lightweight-charts'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 
 type BusinessDay = { year: number; month: number; day: number }
+export type KlineInterval = '1d' | '1w' | '1m' | 'm5' | 'm30'
 
 type KlineItem = {
   date: string
@@ -49,6 +58,27 @@ function parseBusinessDay(dateStr: string): BusinessDay | null {
   return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }
 }
 
+function isIntradayInterval(interval: KlineInterval): boolean {
+  return interval === 'm5' || interval === 'm30'
+}
+
+function parseChartTime(dateStr: string): Time | null {
+  const daily = parseBusinessDay(dateStr)
+  if (daily) return daily
+  const m = String(dateStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
+  if (!m) return null
+  const dt = new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    0,
+  )
+  if (Number.isNaN(dt.getTime())) return null
+  return Math.floor(dt.getTime() / 1000) as Time
+}
+
 function parseCrosshairDateKey(time: any): string | null {
   if (!time || typeof time !== 'object') return null
   const year = Number(time.year)
@@ -56,6 +86,32 @@ function parseCrosshairDateKey(time: any): string | null {
   const day = Number(time.day)
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+}
+
+function resolveCrosshairIndex(
+  time: unknown,
+  klines: KlineItem[],
+  indexByDate: Map<string, number>,
+): number | null {
+  if (typeof time === 'number' && Number.isFinite(time)) {
+    for (let i = 0; i < klines.length; i++) {
+      const chartTime = parseChartTime(klines[i].date)
+      if (typeof chartTime === 'number' && chartTime === time) return i
+    }
+    return null
+  }
+  const dateKey = parseCrosshairDateKey(time)
+  if (!dateKey) return null
+  const idx = indexByDate.get(dateKey)
+  return idx == null ? null : idx
+}
+
+function chartViewDefaults(interval: KlineInterval): { bars: number; spacing: number; intraday: boolean } {
+  if (interval === 'm5') return { bars: 120, spacing: 4, intraday: true }
+  if (interval === 'm30') return { bars: 80, spacing: 6, intraday: true }
+  if (interval === '1w') return { bars: 78, spacing: 10, intraday: false }
+  if (interval === '1m') return { bars: 72, spacing: 10, intraday: false }
+  return { bars: 100, spacing: 8.5, intraday: false }
 }
 
 function sma(values: number[], period: number): Array<number | null> {
@@ -130,37 +186,13 @@ function computeRsi(closes: number[], period = 6): Array<number | null> {
   return out
 }
 
-function getLW() {
-  return (window as any)?.LightweightCharts || null
-}
-
-function addCandles(chart: any, LW: any, options: any) {
-  if (typeof chart?.addCandlestickSeries === 'function') return chart.addCandlestickSeries(options)
-  if (typeof chart?.addSeries === 'function' && LW?.CandlestickSeries) return chart.addSeries(LW.CandlestickSeries, options)
-  throw new Error('Candlestick series API not available')
-}
-
-function addLine(chart: any, LW: any, options: any) {
-  if (typeof chart?.addLineSeries === 'function') return chart.addLineSeries(options)
-  if (typeof chart?.addSeries === 'function' && LW?.LineSeries) return chart.addSeries(LW.LineSeries, options)
-  throw new Error('Line series API not available')
-}
-
-function addHistogram(chart: any, LW: any, options: any) {
-  if (typeof chart?.addHistogramSeries === 'function') return chart.addHistogramSeries(options)
-  if (typeof chart?.addSeries === 'function' && LW?.HistogramSeries) return chart.addSeries(LW.HistogramSeries, options)
-  throw new Error('Histogram series API not available')
-}
-
 export default function InteractiveKline(props: {
   symbol: string
   market: string
-  initialInterval?: '1d' | '1w' | '1m'
+  initialInterval?: KlineInterval
   initialDays?: '60' | '120' | '250'
 }) {
-  const [lwReady, setLwReady] = useState(!!getLW())
-  const [libError, setLibError] = useState(false)
-  const [interval, setIntervalValue] = useState<'1d' | '1w' | '1m'>(props.initialInterval || '1d')
+  const [interval, setIntervalValue] = useState<KlineInterval>(props.initialInterval || '1d')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const [data, setData] = useState<KlineItem[]>([])
@@ -177,6 +209,14 @@ export default function InteractiveKline(props: {
     return 120
   }, [props.initialDays, interval])
 
+  const fixedCount = useMemo(() => {
+    if (interval === 'm5') return 480
+    if (interval === 'm30') return 240
+    return 0
+  }, [interval])
+
+  const intraday = isIntradayInterval(interval)
+
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
 
@@ -186,14 +226,28 @@ export default function InteractiveKline(props: {
     setError('')
     setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
     try {
-      const query = (days: number) =>
-        `/klines/${encodeURIComponent(props.symbol)}?market=${encodeURIComponent(props.market)}&days=${encodeURIComponent(String(days))}&interval=${encodeURIComponent(interval)}`
+      const buildQuery = (days?: number, count?: number) => {
+        const params = new URLSearchParams({
+          market: props.market,
+          interval,
+        })
+        if (count != null) params.set('count', String(count))
+        if (days != null) params.set('days', String(days))
+        return `/klines/${encodeURIComponent(props.symbol)}?${params.toString()}`
+      }
+
+      if (intraday) {
+        const res = await fetchAPI<KlinesResponse>(buildQuery(undefined, fixedCount), { timeoutMs: 45000 })
+        setData(res.klines || [])
+        return
+      }
+
       const attempts = Array.from(new Set([fixedDays, Math.max(90, Math.floor(fixedDays * 0.75))]))
       let best: KlineItem[] = []
       let lastError: unknown = null
       for (const d of attempts) {
         try {
-          const res = await fetchAPI<KlinesResponse>(query(d))
+          const res = await fetchAPI<KlinesResponse>(buildQuery(d), { timeoutMs: 45000 })
           const kl = res.klines || []
           if (kl.length > best.length) best = kl
           if (d === fixedDays && kl.length > 0) break
@@ -214,45 +268,23 @@ export default function InteractiveKline(props: {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.symbol, props.market, interval, fixedDays])
+  }, [props.symbol, props.market, interval, fixedDays, fixedCount, intraday])
 
   useEffect(() => {
     if (props.initialInterval) setIntervalValue(props.initialInterval)
   }, [props.initialInterval, props.symbol, props.market])
 
-  useEffect(() => {
-    if (lwReady) return
-    let cancelled = false
-    const start = Date.now()
-    const t = window.setInterval(() => {
-      if (cancelled) return
-      if (getLW()) {
-        setLwReady(true)
-        clearInterval(t)
-        return
-      }
-      if (Date.now() - start > 3500) {
-        setLibError(true)
-        clearInterval(t)
-      }
-    }, 200)
-    return () => {
-      cancelled = true
-      clearInterval(t)
-    }
-  }, [lwReady])
-
   const series = useMemo(() => {
-    const klines = (data || []).slice().filter(k => !!parseBusinessDay(k.date))
+    const klines = (data || []).slice().filter(k => parseChartTime(k.date) != null)
     const candles = klines.map(k => ({
-      time: parseBusinessDay(k.date) as BusinessDay,
+      time: parseChartTime(k.date) as Time,
       open: k.open,
       high: k.high,
       low: k.low,
       close: k.close,
     }))
     const volumes = klines.map(k => ({
-      time: parseBusinessDay(k.date) as BusinessDay,
+      time: parseChartTime(k.date) as Time,
       value: k.volume,
       color: k.close >= k.open ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
     }))
@@ -290,8 +322,6 @@ export default function InteractiveKline(props: {
   const showSkeleton = loading && !series.klines.length
 
   useEffect(() => {
-    const LW = getLW()
-    if (!LW || !lwReady) return
     if (!containerRef.current) return
     if (!series.candles.length) return
 
@@ -305,9 +335,9 @@ export default function InteractiveKline(props: {
     const bg = rootStyle.getPropertyValue('--card').trim()
     const fg = rootStyle.getPropertyValue('--foreground').trim()
 
-    const defaultBars = interval === '1d' ? 100 : interval === '1w' ? 78 : 72
-    const defaultSpacing = interval === '1d' ? 8.5 : interval === '1w' ? 10 : 10
-    const chart = LW.createChart(container, {
+    const defaultBars = chartViewDefaults(interval).bars
+    const defaultSpacing = chartViewDefaults(interval).spacing
+    const chart = createChart(container, {
       width: container.clientWidth,
       height: 380,
       layout: {
@@ -322,6 +352,8 @@ export default function InteractiveKline(props: {
         barSpacing: defaultSpacing,
         minBarSpacing: 1,
         lockVisibleTimeRangeOnResize: true,
+        timeVisible: intraday,
+        secondsVisible: false,
       },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
@@ -329,10 +361,10 @@ export default function InteractiveKline(props: {
         vertLines: { color: 'rgba(148, 163, 184, 0.08)' },
         horzLines: { color: 'rgba(148, 163, 184, 0.08)' },
       },
-      crosshair: { mode: 1 },
+      crosshair: { mode: CrosshairMode.Magnet },
     })
 
-    const candleSeries = addCandles(chart, LW, {
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#ef4444',
       downColor: '#10b981',
       borderUpColor: '#ef4444',
@@ -342,24 +374,25 @@ export default function InteractiveKline(props: {
     })
     candleSeries.setData(series.candles)
 
-    const volSeries = addHistogram(chart, LW, {
+    const volSeries = chart.addSeries(HistogramSeries, {
       priceScaleId: 'vol',
       priceFormat: { type: 'volume' },
     })
     volSeries.setData(series.volumes)
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
-    const volMa5Series = addLine(chart, LW, { priceScaleId: 'vol', color: 'rgba(245, 158, 11, 0.9)', lineWidth: 1 })
-    const volMa10Series = addLine(chart, LW, { priceScaleId: 'vol', color: 'rgba(14, 165, 233, 0.9)', lineWidth: 1 })
+    const volMa5Series = chart.addSeries(LineSeries, { priceScaleId: 'vol', color: 'rgba(245, 158, 11, 0.9)', lineWidth: 1 })
+    const volMa10Series = chart.addSeries(LineSeries, { priceScaleId: 'vol', color: 'rgba(14, 165, 233, 0.9)', lineWidth: 1 })
 
-    const ma5Series = addLine(chart, LW, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
-    const ma10Series = addLine(chart, LW, { color: 'rgba(245, 158, 11, 0.85)', lineWidth: 2 })
-    const ma20Series = addLine(chart, LW, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
+    const ma5Series = chart.addSeries(LineSeries, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
+    const ma10Series = chart.addSeries(LineSeries, { color: 'rgba(245, 158, 11, 0.85)', lineWidth: 2 })
+    const ma20Series = chart.addSeries(LineSeries, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
 
     const mapLine = (arr: Array<number | null>) =>
       series.klines
         .map((k, i) => {
           const v = arr[i]
-          return v == null ? null : { time: parseBusinessDay(k.date) as BusinessDay, value: v }
+          const time = parseChartTime(k.date)
+          return v == null || time == null ? null : { time, value: v }
         })
         .filter(Boolean)
 
@@ -373,7 +406,7 @@ export default function InteractiveKline(props: {
     let macdChart: any = null
     let rsiChart: any = null
     if (macdEl) {
-      macdChart = LW.createChart(macdEl, {
+      macdChart = createChart(macdEl, {
         width: macdEl.clientWidth,
         height: 150,
         layout: {
@@ -388,30 +421,33 @@ export default function InteractiveKline(props: {
         },
         crosshair: { mode: 0 },
       })
-      const macdLine = addLine(macdChart, LW, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
-      const sigLine = addLine(macdChart, LW, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
-      const hist = addHistogram(macdChart, LW, {
+      const macdLine = macdChart.addSeries(LineSeries, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
+      const sigLine = macdChart.addSeries(LineSeries, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
+      const hist = macdChart.addSeries(HistogramSeries, {
         priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
       })
 
       const macdLineData = series.klines
         .map((k, i) => {
           const v = series.macd.macd[i]
-          return v == null ? null : { time: parseBusinessDay(k.date) as BusinessDay, value: v }
+          const time = parseChartTime(k.date)
+          return v == null || time == null ? null : { time, value: v }
         })
         .filter(Boolean)
       const sigLineData = series.klines
         .map((k, i) => {
           const v = series.macd.signal[i]
-          return v == null ? null : { time: parseBusinessDay(k.date) as BusinessDay, value: v }
+          const time = parseChartTime(k.date)
+          return v == null || time == null ? null : { time, value: v }
         })
         .filter(Boolean)
       const histData = series.klines
         .map((k, i) => {
           const v = series.macd.hist[i]
-          if (v == null) return null
+          const time = parseChartTime(k.date)
+          if (v == null || time == null) return null
           return {
-            time: parseBusinessDay(k.date) as BusinessDay,
+            time,
             value: v,
             color: v >= 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
           }
@@ -428,7 +464,7 @@ export default function InteractiveKline(props: {
       const rsiRoot = document.createElement('div')
       rsiRoot.className = 'mt-2'
       macdEl.parentElement?.appendChild(rsiRoot)
-      rsiChart = LW.createChart(rsiRoot, {
+      rsiChart = createChart(rsiRoot, {
         width: macdEl.clientWidth,
         height: 110,
         layout: {
@@ -442,11 +478,12 @@ export default function InteractiveKline(props: {
           horzLines: { color: 'rgba(148, 163, 184, 0.06)' },
         },
       })
-      const rsiLine = addLine(rsiChart, LW, { color: 'rgba(234, 88, 12, 0.9)', lineWidth: 2 })
+      const rsiLine = rsiChart.addSeries(LineSeries, { color: 'rgba(234, 88, 12, 0.9)', lineWidth: 2 })
       const rsiData = series.klines
         .map((k, i) => {
           const v = series.rsi6[i]
-          return v == null ? null : { time: parseBusinessDay(k.date) as BusinessDay, value: v }
+          const time = parseChartTime(k.date)
+          return v == null || time == null ? null : { time, value: v }
         })
         .filter(Boolean)
       rsiLine.setData(rsiData as any)
@@ -465,8 +502,7 @@ export default function InteractiveKline(props: {
     chart.timeScale().subscribeVisibleTimeRangeChange(sync)
     chart.subscribeCrosshairMove?.((param: any) => {
       const point = param?.point
-      const dateKey = parseCrosshairDateKey(param?.time)
-      if (!point || !dateKey || !series.klines.length) {
+      if (!point || !series.klines.length) {
         setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
         return
       }
@@ -479,7 +515,7 @@ export default function InteractiveKline(props: {
         setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
         return
       }
-      const idx = indexByDate.get(dateKey)
+      const idx = resolveCrosshairIndex(param?.time, series.klines, indexByDate)
       if (idx == null || idx < 0 || idx >= series.klines.length) {
         setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
         return
@@ -545,7 +581,7 @@ export default function InteractiveKline(props: {
         // ignore
       }
     }
-  }, [series, lwReady, showRsi, indexByDate, interval])
+  }, [series, showRsi, indexByDate, interval, intraday])
 
   return (
     <div className="card p-4 md:p-5">
@@ -555,8 +591,10 @@ export default function InteractiveKline(props: {
           <Button variant={showRsi ? 'default' : 'secondary'} size="sm" className="h-8 px-2.5" onClick={() => setShowRsi(v => !v)}>
             强弱线
           </Button>
-          <div className="inline-flex rounded-lg border border-border/60 bg-accent/20 p-0.5">
+          <div className="inline-flex flex-wrap rounded-lg border border-border/60 bg-accent/20 p-0.5">
             {([
+              { value: 'm5', label: '5分' },
+              { value: 'm30', label: '30分' },
               { value: '1d', label: '日K' },
               { value: '1w', label: '周K' },
               { value: '1m', label: '月K' },
@@ -588,9 +626,11 @@ export default function InteractiveKline(props: {
         </div>
       ) : null}
 
-      {!lwReady && libError ? (
-        <div className="text-[12px] text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
-          图表库加载失败（网络受限时可能发生）。可稍后重试或检查网络/代理。
+      {!loading && !error && !series.klines.length ? (
+        <div className="text-[12px] text-muted-foreground bg-accent/20 border border-border/40 rounded-lg px-3 py-2 mb-3">
+          {intraday
+            ? '暂无分钟K线数据（A/HK 支持 5/30 分钟；美股暂降级为日K）。请稍后刷新。'
+            : '暂无K线数据，请稍后刷新或检查行情数据源/网络。'}
         </div>
       ) : null}
 

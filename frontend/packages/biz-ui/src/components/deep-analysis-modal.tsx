@@ -18,10 +18,15 @@ import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 import {
   tradingAgentsApi,
   type BudgetInfo,
+  type DeepAnalysisMode,
   type DeepAnalysisResult,
+  analystTypesForMode,
+  deepAnalysisModeEta,
+  loadDeepAnalysisMode,
   type ProgressResponse,
   type ProgressStage,
 } from '@panwatch/api'
+import { DeepAnalysisModePicker } from './deep-analysis-mode-picker'
 
 const STAGE_LABEL: Record<string, string> = {
   market_analyst: '技术分析师',
@@ -108,6 +113,7 @@ export function DeepAnalysisModal({
   const [result, setResult] = useState<DeepAnalysisResult | null>(initialResult)
   const [error, setError] = useState<string>('')
   const [budget, setBudget] = useState<BudgetInfo | null>(null)
+  const [analysisMode, setAnalysisMode] = useState<DeepAnalysisMode>(() => loadDeepAnalysisMode())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // trigger 时间戳:前 60s 内允许 not_found(后端日志还没来得及写),不重置
   const triggerStartedRef = useRef<number>(0)
@@ -148,7 +154,7 @@ export function DeepAnalysisModal({
     Promise.all([
       tradingAgentsApi.findRunning(stockSymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
       tradingAgentsApi.getLatestForStock(stockSymbol).catch(() => null),
-      tradingAgentsApi.getBudget().catch(() => null),
+      tradingAgentsApi.getBudget(analystTypesForMode(analysisMode)).catch(() => null),
     ]).then(([runningInfo, latestResult, budgetInfo]) => {
       setBudget(budgetInfo)
 
@@ -203,7 +209,12 @@ export function DeepAnalysisModal({
       clearRunningTrace(stockSymbol)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialResult, stockSymbol])
+  }, [open, initialResult, stockSymbol, analysisMode])
+
+  useEffect(() => {
+    if (!open || stage !== 'idle' || initialResult) return
+    tradingAgentsApi.getBudget(analystTypesForMode(analysisMode)).then(setBudget).catch(() => null)
+  }, [analysisMode, initialResult, open, stage])
 
   const pollProgress = useCallback(
     async (tid: string) => {
@@ -272,8 +283,9 @@ export function DeepAnalysisModal({
     setError('')
     setProgress(null)
     triggerStartedRef.current = Date.now()
+    const analystTypes = analystTypesForMode(analysisMode)
     try {
-      const triggerResp = await tradingAgentsApi.trigger(stockId, { force })
+      const triggerResp = await tradingAgentsApi.trigger(stockId, { force, analystTypes })
       const tid = triggerResp.trace_id || ''
       setTraceId(tid)
       if (!tid) {
@@ -294,7 +306,7 @@ export function DeepAnalysisModal({
       setStage('error')
       setError(e instanceof Error ? e.message : '触发失败')
     }
-  }, [stockId, stockSymbol, pollProgress, toast])
+  }, [analysisMode, stockId, stockSymbol, pollProgress, toast])
 
   const handleClose = useCallback(() => {
     if (timerRef.current) {
@@ -320,6 +332,8 @@ export function DeepAnalysisModal({
           <IdleView
             stockSymbol={stockSymbol}
             budget={budget}
+            analysisMode={analysisMode}
+            onAnalysisModeChange={setAnalysisMode}
             onStart={() => handleStart(false)}
             onCancel={handleClose}
           />
@@ -355,11 +369,15 @@ export function DeepAnalysisModal({
 function IdleView({
   stockSymbol,
   budget,
+  analysisMode,
+  onAnalysisModeChange,
   onStart,
   onCancel,
 }: {
   stockSymbol: string
   budget: BudgetInfo | null
+  analysisMode: DeepAnalysisMode
+  onAnalysisModeChange: (mode: DeepAnalysisMode) => void
   onStart: () => void
   onCancel: () => void
 }) {
@@ -369,11 +387,9 @@ function IdleView({
     <div className="space-y-4 text-[13px]">
       <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
         <div className="font-medium">即将分析:{stockSymbol}</div>
-        <div className="text-muted-foreground">
-          调用 4 类分析师(技术 / 情绪 / 新闻 / 基本面) + 看多看空辩论 + 风控 + PM 整合
-        </div>
+        <DeepAnalysisModePicker mode={analysisMode} onChange={onAnalysisModeChange} />
         <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
-          <div>⏱ 预计耗时:3-8 分钟</div>
+          <div>⏱ 预计耗时:{deepAnalysisModeEta(analysisMode)}</div>
           {est ? (
             <div>💰 预估成本:${est.cost_low_usd.toFixed(2)} - ${est.cost_high_usd.toFixed(2)} ({est.model})</div>
           ) : (

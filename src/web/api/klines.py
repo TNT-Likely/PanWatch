@@ -8,12 +8,25 @@ from src.models.market import MarketCode
 
 router = APIRouter()
 
+_INTRADAY_INTERVALS = frozenset({"m5", "m30", "m60"})
+
+
+def _is_intraday_interval(interval: str) -> bool:
+    return (interval or "").lower() in _INTRADAY_INTERVALS
+
+
+def _intraday_default_count(interval: str) -> int:
+    iv = (interval or "m30").lower()
+    if iv == "m5":
+        return 480
+    return 240
+
 
 class KlineItem(BaseModel):
     symbol: str = Field(..., description="股票代码")
     market: str = Field(..., description="市场: CN/HK/US")
     days: int | None = Field(default=60, description="K线天数")
-    interval: str | None = Field(default="1d", description="周期: 1d/1w/1m")
+    interval: str | None = Field(default="1d", description="周期: 1d/1w/1m/m5/m30")
 
 
 class KlineBatchRequest(BaseModel):
@@ -100,10 +113,29 @@ def _aggregate_klines(klines, interval: str) -> list:
 
 
 @router.get("/{symbol}")
-def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = "1d"):
+def get_klines(
+    symbol: str,
+    market: str = "CN",
+    days: int = 60,
+    interval: str = "1d",
+    count: int | None = None,
+):
     """获取单只股票K线数据"""
     market_code = _parse_market(market)
     collector = KlineCollector(market_code)
+    iv = (interval or "1d").lower()
+    if _is_intraday_interval(iv):
+        need = count if count is not None else _intraday_default_count(iv)
+        need = max(10, min(int(need), 2000))
+        klines = collector.get_intraday_klines(symbol, interval=iv, count=need)
+        return {
+            "symbol": symbol,
+            "market": market_code.value,
+            "days": days,
+            "count": need,
+            "interval": iv,
+            "klines": _serialize_klines(klines),
+        }
     klines = collector.get_klines(symbol, days=days)
     klines = _aggregate_klines(klines, interval)
     return {
@@ -127,8 +159,13 @@ def get_klines_batch(payload: KlineBatchRequest):
         collector = KlineCollector(market_code)
         days = item.days or 60
         interval = item.interval or "1d"
-        klines = collector.get_klines(item.symbol, days=days)
-        klines = _aggregate_klines(klines, interval)
+        iv = interval.lower()
+        if _is_intraday_interval(iv):
+            need = max(10, min(int(days or _intraday_default_count(iv)), 2000))
+            klines = collector.get_intraday_klines(item.symbol, interval=iv, count=need)
+        else:
+            klines = collector.get_klines(item.symbol, days=days)
+            klines = _aggregate_klines(klines, interval)
         results.append(
             {
                 "symbol": item.symbol,

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { buildRollingCostPlan, buildRollingCostPlanBrief } from '@/lib/rolling-cost-plan'
@@ -3040,7 +3041,7 @@ export default function StocksPage() {
 
       {/* Agent 分析结果弹窗 */}
       <Dialog open={!!agentResultDialog} onOpenChange={open => !open && setAgentResultDialog(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-base">{agentResultDialog?.title}</DialogTitle>
             <DialogDescription className="flex items-center gap-2 pt-1">
@@ -3054,10 +3055,8 @@ export default function StocksPage() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-2 p-3 bg-accent/30 rounded-lg overflow-y-auto flex-1 min-h-0">
-            <pre className="text-[13px] whitespace-pre-wrap font-sans leading-relaxed">
-              {agentResultDialog?.content}
-            </pre>
+          <div className="mt-2 p-4 bg-accent/20 rounded-lg overflow-y-auto flex-1 min-h-0 scrollbar">
+            <ReportMarkdown content={agentResultDialog?.content} />
           </div>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" size="sm" onClick={() => { setAgentResultDialog(null); navigate('/history') }}>

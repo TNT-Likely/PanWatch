@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Trash2, FileText, ArrowLeft } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import { fetchAPI } from '@panwatch/api'
+import { Clock, Trash2, FileText, ArrowLeft, ExternalLink } from 'lucide-react'
+import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
+import { fetchAPI, stocksApi, type StockItem } from '@panwatch/api'
+import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
@@ -17,6 +18,7 @@ interface HistoryRecord {
   analysis_date: string
   title: string
   content: string
+  suggestions?: Record<string, unknown> | null
   context_payload?: Record<string, unknown> | null
   prompt_context?: string | null
   prompt_stats?: Record<string, unknown> | null
@@ -38,6 +40,33 @@ const AGENT_LABELS: Record<string, string> = {
 const WORKFLOW_AGENT_KEYS = ['daily_report', 'premarket_outlook', 'intraday_monitor', 'tradingagents', 'lmd_outlook']
 const CAPABILITY_AGENT_KEYS = ['news_digest', 'chart_analyst']
 
+/** 从代码粗略推断市场:6 位数字=A股, 5 位数字=港股, 其余=美股 */
+function inferMarket(symbol: string): string {
+  if (/^\d{6}$/.test(symbol)) return 'CN'
+  if (/^\d{5}$/.test(symbol)) return 'HK'
+  return 'US'
+}
+
+/** 从历史记录解析可跳转的股票代码 */
+function resolveHistoryStockSymbol(record: HistoryRecord): string | null {
+  const sym = String(record.stock_symbol || '').trim()
+  if (sym && sym !== '*') return sym
+
+  const suggestionKeys = Object.keys(record.suggestions || {}).filter(k => k && k !== '*')
+  if (suggestionKeys.length === 1) return suggestionKeys[0]
+
+  const titleMatch = (record.title || '').match(/\(([A-Z]{1,5}|\d{5,6})\)/)
+  if (titleMatch?.[1]) return titleMatch[1]
+
+  return null
+}
+
+function extractStockNameFromTitle(title: string, symbol: string): string | undefined {
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const m = title.match(new RegExp(`(.+?)\\s*\\(${escaped}\\)`))
+  return m?.[1]?.trim() || undefined
+}
+
 export default function HistoryPage() {
   const { toast } = useToast()
   const navigate = useNavigate()
@@ -48,6 +77,15 @@ export default function HistoryPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'reader'>('list')
   const [detailRecord, setDetailRecord] = useState<HistoryRecord | null>(null)
+  const [stockIndex, setStockIndex] = useState<Record<string, StockItem>>({})
+  const [stockModal, setStockModal] = useState<{
+    open: boolean
+    symbol: string
+    market: string
+    name?: string
+    reportId?: number | null
+    tab?: InsightTab
+  }>({ open: false, symbol: '', market: 'CN' })
 
   const displayTime = (record: HistoryRecord) => record.updated_at || record.created_at
   const formatDateTime = (iso?: string) => {
@@ -101,6 +139,18 @@ export default function HistoryPage() {
   useEffect(() => { load() }, [selectedAgent, historyKind])
 
   useEffect(() => {
+    stocksApi.list()
+      .then((list) => {
+        const idx: Record<string, StockItem> = {}
+        for (const item of list || []) {
+          idx[item.symbol.toUpperCase()] = item
+        }
+        setStockIndex(idx)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     const available = historyKind === 'workflow'
       ? WORKFLOW_AGENT_KEYS
       : historyKind === 'capability'
@@ -142,6 +192,10 @@ export default function HistoryPage() {
   }
 
   const selectedRecord = selectedId ? records.find(r => r.id === selectedId) || null : null
+  const selectedStockSymbol = useMemo(
+    () => (selectedRecord ? resolveHistoryStockSymbol(selectedRecord) : null),
+    [selectedRecord],
+  )
   const agentOptions = historyKind === 'workflow'
     ? WORKFLOW_AGENT_KEYS
     : historyKind === 'capability'
@@ -158,6 +212,33 @@ export default function HistoryPage() {
       // ignore
     }
   }
+
+  const resolveRecordMarket = useCallback((symbol: string) => {
+    const hit = stockIndex[symbol.toUpperCase()]
+    return hit?.market || inferMarket(symbol)
+  }, [stockIndex])
+
+  const resolveRecordStockName = useCallback((record: HistoryRecord, symbol: string) => {
+    const hit = stockIndex[symbol.toUpperCase()]
+    if (hit?.name) return hit.name
+    return extractStockNameFromTitle(record.title || '', symbol)
+  }, [stockIndex])
+
+  const openStockFromRecord = useCallback((record: HistoryRecord, tab: InsightTab = 'reports') => {
+    const symbol = resolveHistoryStockSymbol(record)
+    if (!symbol) {
+      toast('该报告未关联具体股票', 'info')
+      return
+    }
+    setStockModal({
+      open: true,
+      symbol,
+      market: resolveRecordMarket(symbol),
+      name: resolveRecordStockName(record, symbol),
+      reportId: record.id,
+      tab,
+    })
+  }, [resolveRecordMarket, resolveRecordStockName, toast])
 
   return (
     <div className="w-full space-y-4 md:space-y-6">
@@ -238,23 +319,42 @@ export default function HistoryPage() {
             <div className="max-h-[70vh] md:max-h-[70vh] overflow-y-auto scrollbar divide-y divide-border/50">
               {records.map(r => {
                 const active = selectedId === r.id
+                const stockSymbol = resolveHistoryStockSymbol(r)
                 return (
-                  <button
+                  <div
                     key={r.id}
-                    onClick={() => selectRecord(r.id)}
                     className={`w-full text-left px-4 py-3 transition-colors ${active ? 'bg-primary/8' : 'hover:bg-accent/30'}`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] flex-shrink-0">
-                        {AGENT_LABELS[r.agent_name] || r.agent_name}
-                      </Badge>
-                      <span className={`text-[13px] font-medium truncate ${active ? 'text-foreground' : 'text-foreground/90'}`}>{r.title || '分析报告'}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span className="font-mono">{r.analysis_date}</span>
-                      <span>{formatTimeShort(displayTime(r))}</span>
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => selectRecord(r.id)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] flex-shrink-0">
+                          {AGENT_LABELS[r.agent_name] || r.agent_name}
+                        </Badge>
+                        {stockSymbol ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openStockFromRecord(r)
+                            }}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex-shrink-0"
+                            title="打开股票详情"
+                          >
+                            {stockSymbol}
+                          </button>
+                        ) : null}
+                        <span className={`text-[13px] font-medium truncate ${active ? 'text-foreground' : 'text-foreground/90'}`}>{r.title || '分析报告'}</span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="font-mono">{r.analysis_date}</span>
+                        <span>{formatTimeShort(displayTime(r))}</span>
+                      </div>
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -284,6 +384,16 @@ export default function HistoryPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {selectedStockSymbol ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openStockFromRecord(selectedRecord)}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                        查看股票
+                      </Button>
+                    ) : null}
                     <Button
                       variant="outline"
                       size="sm"
@@ -310,8 +420,8 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-accent/20 rounded-xl prose prose-sm dark:prose-invert max-w-none max-h-[62vh] md:max-h-[62vh] overflow-y-auto scrollbar">
-                  <ReactMarkdown>{selectedRecord.content}</ReactMarkdown>
+                <div className="mt-4 p-4 bg-accent/20 rounded-xl max-h-[62vh] md:max-h-[62vh] overflow-y-auto scrollbar">
+                  <ReportMarkdown content={selectedRecord.content} />
                 </div>
               </div>
             ) : (
@@ -334,8 +444,8 @@ export default function HistoryPage() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 p-4 bg-accent/20 rounded-lg prose prose-sm dark:prose-invert max-w-none">
-            {detailRecord && <ReactMarkdown>{detailRecord.content}</ReactMarkdown>}
+          <div className="mt-4 p-4 bg-accent/20 rounded-lg max-h-[60vh] overflow-y-auto scrollbar">
+            {detailRecord && <ReportMarkdown content={detailRecord.content} />}
           </div>
           {detailRecord?.prompt_stats ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
@@ -363,6 +473,16 @@ export default function HistoryPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <StockInsightModal
+        open={stockModal.open}
+        onOpenChange={(open) => setStockModal((m) => ({ ...m, open }))}
+        symbol={stockModal.symbol}
+        market={stockModal.market}
+        stockName={stockModal.name}
+        initialTab={stockModal.tab}
+        initialReportId={stockModal.reportId}
+      />
     </div>
   )
 }

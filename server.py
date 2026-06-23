@@ -1118,6 +1118,7 @@ async def trigger_agent_for_stock(
     suppress_notify: bool = False,
     trace_id: str | None = None,
     force_refresh: bool = False,
+    analyst_types_override: list[str] | None = None,
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
@@ -1164,6 +1165,8 @@ async def trigger_agent_for_stock(
     # AgentContext 不强制声明此字段,通过 setattr 注入,其他 agent 不受影响。
     setattr(context, "_trace_id", trace_id)
     setattr(context, "_force_refresh", force_refresh)
+    if analyst_types_override:
+        setattr(context, "_analyst_types_override", analyst_types_override)
 
     # 创建 agent，支持手动触发参数。TradingAgents 等新 agent 从 AgentConfig 读 config。
     if agent_name == "intraday_monitor":
@@ -1174,6 +1177,9 @@ async def trigger_agent_for_stock(
     elif agent_name == "tradingagents":
         # 从 AgentConfig.config 读取实例化参数
         agent_kwargs = get_agent_config(agent_name) or {}
+        override_types = getattr(context, "_analyst_types_override", None)
+        if override_types:
+            agent_kwargs = {**agent_kwargs, "analyst_types": override_types}
         try:
             agent = agent_cls(**agent_kwargs)
         except TypeError:

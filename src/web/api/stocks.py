@@ -333,10 +333,16 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
     return _stock_to_response(db_stock)
 
 
+class StockAgentTriggerBody(BaseModel):
+    """手动触发 Agent 的可选请求体。"""
+    analyst_types: list[str] | None = None
+
+
 @router.post("/{stock_id}/agents/{agent_name}/trigger")
 async def trigger_stock_agent(
     stock_id: int,
     agent_name: str,
+    body: StockAgentTriggerBody | None = None,
     bypass_throttle: bool = False,
     bypass_market_hours: bool = False,
     allow_unbound: bool = False,
@@ -410,6 +416,19 @@ async def trigger_stock_agent(
     from server import trigger_agent_for_stock
     import time as _time
 
+    analyst_types_override: list[str] | None = None
+    if agent_name == "tradingagents" and body and body.analyst_types:
+        from src.agents.tradingagents.llm_adapter import VALID_ANALYSTS
+
+        requested = [str(x).strip() for x in body.analyst_types if str(x).strip()]
+        invalid = [a for a in requested if a not in VALID_ANALYSTS]
+        if invalid:
+            raise HTTPException(
+                400,
+                f"非法 analyst_types: {invalid}; 合法值: {sorted(VALID_ANALYSTS)}",
+            )
+        analyst_types_override = requested
+
     # 幂等性兜底:TradingAgents 单次 3-5 分钟,前端误操作/双击可能并发触发同一标的。
     # 后端先查"该 symbol 是否有真正在跑的 TA 任务",有则返回现有 trace_id(不启新任务)。
     # force_refresh=true 时跳过去重,允许用户主动强制重跑(老任务自然终止,新 trace_id)。
@@ -465,6 +484,7 @@ async def trigger_stock_agent(
                     suppress_notify=suppress_notify,
                     trace_id=trace_id,
                     force_refresh=force_refresh,
+                    analyst_types_override=analyst_types_override,
                 ))
                 logger.info(f"Agent {agent_name} 后台执行完成 - {trigger_stock.symbol}")
             except Exception:
@@ -489,6 +509,7 @@ async def trigger_stock_agent(
             suppress_notify=suppress_notify,
             trace_id=trace_id,
             force_refresh=force_refresh,
+            analyst_types_override=analyst_types_override,
         )
         logger.info(f"Agent {agent_name} 执行完成 - {trigger_stock.symbol}")
         return {
