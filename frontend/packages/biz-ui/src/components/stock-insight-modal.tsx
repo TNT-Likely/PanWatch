@@ -707,9 +707,6 @@ export default function StockInsightModal(props: {
         setRecentTrades([])
       }
     } catch {
-      setHoldingAgg(null)
-      setHoldingOptions([])
-      setRecentTrades([])
       setHoldingLoadError(true)
     } finally {
       setHoldingLoaded(true)
@@ -719,22 +716,57 @@ export default function StockInsightModal(props: {
   const handlePositionApplied = useCallback(
     (result: PositionAddResult) => {
       if (result?.position) {
-        setHoldingOptions((prev) =>
-          prev.map((h) =>
-            h.id === result.position.id
+        const pos = result.position
+        setHoldingOptions((prev) => {
+          const next = prev.map((h) =>
+            h.id === pos.id
               ? {
                   ...h,
-                  quantity: result.position.quantity,
-                  cost_price: result.position.cost_price,
+                  quantity: pos.quantity,
+                  cost_price: pos.cost_price,
                 }
               : h,
-          ),
-        )
+          )
+          let quantity = 0
+          let cost = 0
+          for (const h of next) {
+            quantity += h.quantity
+            cost += h.cost_price * h.quantity
+          }
+          setHoldingAgg((agg) =>
+            quantity > 0
+              ? {
+                  quantity,
+                  cost,
+                  unitCost: cost / quantity,
+                  marketValue: agg?.marketValue ?? 0,
+                  pnl: agg?.pnl ?? 0,
+                }
+              : null,
+          )
+          return next
+        })
+        if (result.trade) {
+          const sym = String(symbol || '').toUpperCase()
+          setRecentTrades((prev) => {
+            const entry: PortfolioRecentTrade = {
+              ...result.trade,
+              account_name: pos.account_name || '',
+              symbol: pos.stock_symbol || symbol,
+              market,
+              stock_name: pos.stock_name || '',
+            }
+            if (String(entry.symbol || '').toUpperCase() !== sym || entry.market !== market) {
+              return prev
+            }
+            return [entry, ...prev.filter((t) => t.id !== entry.id)]
+          })
+        }
       }
       void loadHoldingAgg()
       props.onPortfolioChanged?.(result)
     },
-    [loadHoldingAgg, props],
+    [loadHoldingAgg, props, symbol, market],
   )
 
   const loadReports = useCallback(async (): Promise<HistoryRecord[]> => {
@@ -2095,7 +2127,7 @@ export default function StockInsightModal(props: {
                                   : 'text-foreground'
                               }`}
                             >
-                              {formatNumber(holdingAgg.unitCost)}
+                              {formatNumber(holdingAgg.unitCost, 4)}
                             </div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">

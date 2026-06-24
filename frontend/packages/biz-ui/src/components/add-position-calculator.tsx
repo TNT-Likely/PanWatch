@@ -86,6 +86,11 @@ function fmt(n: number | null | undefined, d = 2): string {
   if (n == null || !isFinite(n)) return '--'
   return n.toFixed(d)
 }
+/** 成本价：保留有效小数位，避免四舍五入后前后相同 */
+function fmtCost(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return '--'
+  return n.toFixed(4).replace(/\.?0+$/, '')
+}
 function fmtInt(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return '--'
   return Math.round(n).toLocaleString()
@@ -253,6 +258,16 @@ export default function AddPositionCalculator({
     }
   }
 
+  const applyTradeResult = useCallback(
+    (result: PositionAddResult) => {
+      if (result.trade) {
+        setTrades((prev) => [result.trade, ...prev.filter((t) => t.id !== result.trade.id)])
+      }
+      onApplied?.(result)
+    },
+    [onApplied],
+  )
+
   const confirmAdd = async () => {
     if (!selectedHolding) {
       toast('请选择要加仓的账户', 'error')
@@ -265,13 +280,13 @@ export default function AddPositionCalculator({
     setApplyLoading(true)
     try {
       const result = await positionsApi.add(selectedHolding.id, { price: addPrice, quantity: tradeQty })
-      toast(`已记录加仓 ${tradeQty} 股 @ ${fmt(addPrice)}，新成本 ${fmt(addCalc.newCost)}`, 'success')
+      toast(`已记录加仓 ${tradeQty} 股 @ ${fmt(addPrice)}，新成本 ${fmtCost(result.position.cost_price)}`, 'success')
       setAddRaw('')
       setPriceRaw('')
       setTargetRaw('')
       setAiResult(null)
+      applyTradeResult(result)
       await loadTrades(selectedHolding.id)
-      onApplied?.(result)
     } catch (e: any) {
       toast(e?.message || '加仓记录失败', 'error')
     } finally {
@@ -300,8 +315,8 @@ export default function AddPositionCalculator({
       setPriceRaw('')
       setTargetRaw('')
       setAiResult(null)
+      applyTradeResult(result)
       await loadTrades(selectedHolding.id)
-      onApplied?.(result)
     } catch (e: any) {
       toast(e?.message || '减仓记录失败', 'error')
     } finally {
@@ -375,7 +390,7 @@ export default function AddPositionCalculator({
                 <SelectContent>
                   {holdings.map(h => (
                     <SelectItem key={h.id} value={String(h.id)}>
-                      {h.account_name} · {fmtInt(h.quantity)}股 @ {fmt(h.cost_price)}
+                      {h.account_name} · {fmtInt(h.quantity)}股 @ {fmtCost(h.cost_price)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -385,7 +400,7 @@ export default function AddPositionCalculator({
 
           {holdings.length === 1 && (
             <div className="text-[10px] text-muted-foreground">
-              账户：{holdings[0].account_name} · 当前 {fmtInt(holdings[0].quantity)} 股 @ {fmt(holdings[0].cost_price)}
+              账户：{holdings[0].account_name} · 当前 {fmtInt(holdings[0].quantity)} 股 @ {fmtCost(holdings[0].cost_price)}
             </div>
           )}
 
@@ -569,7 +584,10 @@ export default function AddPositionCalculator({
                         {t.side === 'sell' ? '-' : '+'}{fmtInt(t.quantity)} @ {fmt(t.price)}
                       </span>
                       <span className="text-muted-foreground">
-                        成本 {fmt(t.cost_before)} → {fmt(t.cost_after)}
+                        成本 {fmtCost(t.cost_before)} → {fmtCost(t.cost_after)}
+                        {t.qty_before != null && t.qty_after != null && t.qty_before !== t.qty_after ? (
+                          <span className="ml-1">· {fmtInt(t.qty_before)}→{fmtInt(t.qty_after)}股</span>
+                        ) : null}
                       </span>
                     </li>
                   ))}
