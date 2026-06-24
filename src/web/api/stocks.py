@@ -17,10 +17,22 @@ from src.web.models import (
     PriceAlertRule,
     PriceAlertHit,
 )
-from src.web.stock_list import search_stocks, refresh_stock_list
+from src.core.stock_concept_tags import (
+    merge_concept_tags,
+    normalize_manual_tags,
+    refresh_stock_concept_tags,
+    schedule_refresh_missing_concept_tags,
+    schedule_refresh_stock_concept_tags,
+)
+from src.core.long_term_plan import (
+    evaluate_add_plan,
+    normalize_investment_profile,
+    portfolio_role_label,
+)
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.models.market import MarketCode, MARKETS
 from src.core.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
+from src.web.stock_list import search_stocks, refresh_stock_list
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,16 +55,44 @@ class StockAgentInfo(BaseModel):
     notify_channel_ids: list[int] = []
 
 
+class StockConceptTag(BaseModel):
+    name: str
+    source: str  # auto / manual
+
+
 class StockResponse(BaseModel):
     id: int
     symbol: str
     name: str
     market: str
     sort_order: int
+    concept_tags: list[StockConceptTag] = []
+    concept_tags_auto: list[str] = []
+    concept_tags_manual: list[str] = []
+    investment_profile: dict = {}
     agents: list[StockAgentInfo] = []
 
     class Config:
         from_attributes = True
+
+
+class InvestmentProfileUpdate(BaseModel):
+    long_term_enabled: bool | None = None
+    portfolio_role: str | None = None  # core / satellite / watch
+    target_weight_pct: float | None = None
+    max_weight_pct: float | None = None
+    add_plan: dict | None = None
+    reduce_plan: dict | None = None
+    thesis: str | None = None
+    thesis_invalidations: list[str] | None = None
+
+
+class StockConceptTagsUpdate(BaseModel):
+    manual: list[str]
+
+
+class StockConceptTagsRefreshRequest(BaseModel):
+    limit: int = 20
 
 
 class StockAgentItem(BaseModel):
@@ -76,12 +116,17 @@ class StockReorderRequest(BaseModel):
 
 
 def _stock_to_response(stock: Stock) -> dict:
+    profile = normalize_investment_profile(stock.investment_profile)
     return {
         "id": stock.id,
         "symbol": stock.symbol,
         "name": stock.name,
         "market": stock.market,
         "sort_order": stock.sort_order or 0,
+        "concept_tags": merge_concept_tags(stock),
+        "concept_tags_auto": stock.concept_tags_auto or [],
+        "concept_tags_manual": stock.concept_tags_manual or [],
+        "investment_profile": profile,
         "agents": [
             {
                 "agent_name": sa.agent_name,
@@ -179,6 +224,11 @@ def refresh_list():
 @router.get("", response_model=list[StockResponse])
 def list_stocks(db: Session = Depends(get_db)):
     stocks = db.query(Stock).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
+    if any(
+        (s.market or "").upper() == "CN" and not (s.concept_tags_auto or [])
+        for s in stocks
+    ):
+        schedule_refresh_missing_concept_tags()
     return [_stock_to_response(s) for s in stocks]
 
 
@@ -230,6 +280,7 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     db.add(db_stock)
     db.commit()
     db.refresh(db_stock)
+    schedule_refresh_stock_concept_tags(db_stock.id)
     return _stock_to_response(db_stock)
 
 
@@ -249,6 +300,165 @@ def reorder_stocks(body: StockReorderRequest, db: Session = Depends(get_db)):
         updated += 1
     db.commit()
     return {"updated": updated}
+
+
+@router.post("/concept-tags/refresh")
+def refresh_concept_tags_batch(
+    body: StockConceptTagsRefreshRequest | None = None,
+):
+    """后台刷新尚未拉取概念标签的 A 股。"""
+    limit = max(1, min(int((body.limit if body else 20)), 50))
+    schedule_refresh_missing_concept_tags(limit=limit)
+    return {"queued": True, "limit": limit}
+
+
+@router.put("/{stock_id}/concept-tags", response_model=StockResponse)
+def update_stock_concept_tags(
+    stock_id: int,
+    body: StockConceptTagsUpdate,
+    db: Session = Depends(get_db),
+):
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+
+    db_stock.concept_tags_manual = normalize_manual_tags(body.manual)
+    db.commit()
+    db.refresh(db_stock)
+    return _stock_to_response(db_stock)
+
+
+@router.post("/{stock_id}/concept-tags/refresh", response_model=StockResponse)
+def refresh_stock_concept_tags_api(stock_id: int, db: Session = Depends(get_db)):
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+    if (db_stock.market or "").upper() != "CN":
+        raise HTTPException(400, "仅 A 股支持自动拉取概念标签")
+
+    try:
+        refresh_stock_concept_tags(db, db_stock)
+    except Exception as e:
+        logger.error("刷新概念标签失败 %s: %s", db_stock.symbol, e)
+        raise HTTPException(503, "概念标签数据源暂不可用，请稍后重试")
+    return _stock_to_response(db_stock)
+
+
+def _portfolio_snapshot_for_stock(db: Session, stock: Stock) -> dict:
+    """汇总该股票相关持仓与账户资金，供加仓计划评估。"""
+    from src.web.models import Account
+
+    positions = (
+        db.query(Position)
+        .join(Account, Position.account_id == Account.id)
+        .filter(Position.stock_id == stock.id, Account.enabled == True)  # noqa: E712
+        .all()
+    )
+    position_value = 0.0
+    total_qty = 0
+    total_cost_value = 0.0
+    available_cash = 0.0
+    for acc in db.query(Account).filter(Account.enabled == True).all():  # noqa: E712
+        available_cash += float(acc.available_funds or 0)
+    for pos in positions:
+        qty = int(pos.quantity or 0)
+        cost = float(pos.cost_price or 0)
+        total_qty += qty
+        total_cost_value += qty * cost
+        position_value += qty * cost  # 无实时价时用成本近似
+
+    total_cost_all = 0.0
+    all_positions = (
+        db.query(Position)
+        .join(Account, Position.account_id == Account.id)
+        .filter(Account.enabled == True)  # noqa: E712
+        .all()
+    )
+    for pos in all_positions:
+        total_cost_all += float(pos.cost_price or 0) * int(pos.quantity or 0)
+
+    total_assets = available_cash + total_cost_all
+    avg_cost = total_cost_value / total_qty if total_qty > 0 else None
+
+    from src.core.position_trades_context import summarize_today_trades
+
+    today = summarize_today_trades(db, symbol=stock.symbol, market=stock.market)
+
+    return {
+        "avg_cost": avg_cost,
+        "position_value": position_value,
+        "total_assets": total_assets,
+        "available_cash": available_cash,
+        "has_buy_today": today.get("has_buy_today", False),
+    }
+
+
+@router.get("/{stock_id}/investment-profile")
+def get_investment_profile(stock_id: int, db: Session = Depends(get_db)):
+    """获取股票长线投资计划。"""
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+    profile = normalize_investment_profile(db_stock.investment_profile)
+    return {
+        "stock_id": db_stock.id,
+        "symbol": db_stock.symbol,
+        "market": db_stock.market,
+        "investment_profile": profile,
+        "portfolio_role_label": portfolio_role_label(profile.get("portfolio_role", "watch")),
+    }
+
+
+@router.put("/{stock_id}/investment-profile", response_model=StockResponse)
+def update_investment_profile(
+    stock_id: int,
+    body: InvestmentProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    """更新股票长线投资计划。"""
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+
+    current = normalize_investment_profile(db_stock.investment_profile)
+    patch = body.model_dump(exclude_unset=True)
+    current.update(patch)
+    db_stock.investment_profile = normalize_investment_profile(current)
+    db.commit()
+    db.refresh(db_stock)
+    return _stock_to_response(db_stock)
+
+
+@router.get("/{stock_id}/investment-profile/evaluate")
+def evaluate_investment_profile(
+    stock_id: int,
+    price: float | None = Query(None, gt=0, description="评估用现价，缺省则用持仓成本"),
+    db: Session = Depends(get_db),
+):
+    """评估当前是否触发计划内加仓。"""
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+
+    snap = _portfolio_snapshot_for_stock(db, db_stock)
+    current_price = price or snap.get("avg_cost")
+    result = evaluate_add_plan(
+        db_stock.investment_profile,
+        current_price=current_price,
+        avg_cost=snap.get("avg_cost"),
+        position_value=float(snap.get("position_value") or 0),
+        total_assets=float(snap.get("total_assets") or 0),
+        available_cash=float(snap.get("available_cash") or 0),
+        has_buy_today=bool(snap.get("has_buy_today")),
+        market=db_stock.market or "CN",
+    )
+    return {
+        "stock_id": db_stock.id,
+        "symbol": db_stock.symbol,
+        "market": db_stock.market,
+        "current_price": current_price,
+        **result,
+    }
 
 
 @router.put("/{stock_id}", response_model=StockResponse)

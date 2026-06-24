@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import json
@@ -14,6 +14,7 @@ import time
 
 from src.collectors.market_http import fetch_source, source_suffix
 from src.core.cn_symbol import get_cn_prefix, is_cn_sh
+from src.core.timezone import beijing_now
 from src.models.market import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
@@ -661,8 +662,8 @@ def _fetch_baostock_intraday_klines(
         import baostock as bs
         from datetime import datetime, timedelta
 
-        end = datetime.now().strftime("%Y-%m-%d")
-        start = (datetime.now() - timedelta(days=_baostock_lookback_days(iv, need))).strftime(
+        end = beijing_now().strftime("%Y-%m-%d")
+        start = (beijing_now() - timedelta(days=_baostock_lookback_days(iv, need))).strftime(
             "%Y-%m-%d"
         )
         rs = bs.query_history_k_data_plus(
@@ -742,9 +743,9 @@ def _fetch_baostock_daily_klines(symbol: str, days: int) -> list[KlineData]:
         import baostock as bs
         from datetime import datetime, timedelta
 
-        end = datetime.now().strftime("%Y-%m-%d")
+        end = beijing_now().strftime("%Y-%m-%d")
         lookback = max(int(need * 1.6) + 30, 365)
-        start = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
+        start = (beijing_now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
         rs = bs.query_history_k_data_plus(
             code,
             "date,open,high,low,close,volume",
@@ -1242,7 +1243,7 @@ def _parse_tencent_minute_time(trade_date: str, hhmm: str) -> str | None:
         td = f"{td[:4]}-{td[4:6]}-{td[6:8]}"
     if td and len(td) >= 10 and td[4] == "-":
         return f"{td[:10]} {hh}:{mm}"
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = beijing_now().strftime("%Y-%m-%d")
     return f"{today} {hh}:{mm}"
 
 
@@ -1317,11 +1318,11 @@ def _fetch_tencent_intraday_trends(
             if not points:
                 last_err = "空分时"
                 continue
-            now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+            now_iso = beijing_now().isoformat(timespec="seconds")
             return IntradayTrendsResult(
                 symbol=symbol,
                 market=market.value,
-                trade_date=trade_date or datetime.now().strftime("%Y-%m-%d"),
+                trade_date=trade_date or beijing_now().strftime("%Y-%m-%d"),
                 pre_close=pre_close,
                 points=points,
                 updated_at=now_iso,
@@ -1409,11 +1410,11 @@ def _fetch_eastmoney_intraday_trends(
             if not points:
                 last_err = "空分时"
                 continue
-            now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+            now_iso = beijing_now().isoformat(timespec="seconds")
             return IntradayTrendsResult(
                 symbol=symbol,
                 market=market.value,
-                trade_date=trade_date or datetime.now().strftime("%Y-%m-%d"),
+                trade_date=trade_date or beijing_now().strftime("%Y-%m-%d"),
                 pre_close=pre_close,
                 points=points,
                 updated_at=now_iso,
@@ -1965,12 +1966,10 @@ class KlineCollector:
                 result = IntradayTrendsResult(
                     symbol=sym,
                     market=self.market.value,
-                    trade_date=datetime.now().strftime("%Y-%m-%d"),
+                    trade_date=beijing_now().strftime("%Y-%m-%d"),
                     pre_close=None,
                     points=[],
-                    updated_at=datetime.now(timezone.utc)
-                    .astimezone()
-                    .isoformat(timespec="seconds"),
+                    updated_at=beijing_now().isoformat(timespec="seconds"),
                 )
             _INTRADAY_TRENDS_CACHE[cache_key] = (time.time(), result)
             return result

@@ -211,6 +211,21 @@ def _migrate(engine):
             "meta",
             "ALTER TABLE stock_suggestions ADD COLUMN meta TEXT DEFAULT '{}'",
         ),
+        (
+            "stocks",
+            "concept_tags_auto",
+            "ALTER TABLE stocks ADD COLUMN concept_tags_auto TEXT DEFAULT '[]'",
+        ),
+        (
+            "stocks",
+            "concept_tags_manual",
+            "ALTER TABLE stocks ADD COLUMN concept_tags_manual TEXT DEFAULT '[]'",
+        ),
+        (
+            "stocks",
+            "concept_tags_updated_at",
+            "ALTER TABLE stocks ADD COLUMN concept_tags_updated_at DATETIME",
+        ),
     ]
     with engine.connect() as conn:
         for table, column, sql in migrations:

@@ -11,11 +11,14 @@ from sqlalchemy.orm import Session
 
 from src.config import Settings
 from src.core.ai_client import AIClient
+from src.core.position_trades_context import build_trades_context_text
+from src.core.timezone import format_beijing
 from src.models.market import MarketCode
 from src.web.database import SessionLocal, get_db
 from src.web.models import (
     AIModel,
     AIService,
+    Account,
     AnalysisHistory,
     ChatConversation,
     ChatMessage,
@@ -38,7 +41,10 @@ SYSTEM_PROMPT = """你是 PanWatch 的 AI 投资助手。
 - 给出明确的观点和理由
 - 涉及买卖建议时说明风险
 - 用中文回答
-- 保持简洁，避免冗余"""
+- 保持简洁，避免冗余
+- 给出操作建议前，务必以「当前数据」中的最新持仓股数、成本价和今日已执行买卖为准
+- 若用户今日已买入或卖出过，不要重复建议同方向操作；应基于当前剩余仓位和最新成本重新评估
+- 「页面快照」仅为对话开始时的参考，与「当前数据」冲突时以「当前数据」为准"""
 
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 5
@@ -107,6 +113,21 @@ CHAT_TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_recent_trades",
+            "description": "获取用户最近的持仓变动流水（买入/卖出/加仓/减仓），含今日操作。用于判断用户今天是否已买卖过。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "可选，按股票代码筛选"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                    "today_only": {"type": "boolean", "description": "是否只看今日操作", "default": False},
+                },
+            },
+        },
+    },
 ]
 
 
@@ -142,6 +163,13 @@ async def _execute_tool(db: Session, name: str, args: dict) -> str:
             return result or f"暂无 {market}:{symbol} 的 AI 建议。"
         elif name == "get_watchlist":
             return _build_watchlist_context(db)
+        elif name == "get_recent_trades":
+            return build_trades_context_text(
+                db,
+                symbol=args.get("symbol"),
+                market=args.get("market", "CN"),
+                today_only=bool(args.get("today_only")),
+            ) or "暂无持仓变动流水。"
         else:
             return f"未知工具: {name}"
     except Exception as e:
@@ -230,6 +258,59 @@ def _build_stock_context(db: Session, symbol: str, market: str) -> str:
     return "\n\n".join(parts)
 
 
+def _build_recent_trades_context(
+    db: Session,
+    *,
+    symbol: str | None = None,
+    market: str | None = None,
+    today_only: bool = False,
+    limit: int = 20,
+) -> str:
+    """构建最近持仓变动流水摘要。"""
+    return build_trades_context_text(
+        db,
+        symbol=symbol,
+        market=market,
+        today_only=today_only,
+        limit=limit,
+    )
+
+
+def _build_stock_position_context(db: Session, symbol: str, market: str) -> str:
+    """构建单只股票的详细持仓摘要（含各账户明细）。"""
+    positions = (
+        db.query(Position)
+        .join(Stock, Position.stock_id == Stock.id)
+        .filter(Stock.symbol == symbol, Stock.market == market)
+        .all()
+    )
+    if not positions:
+        return f"当前未持有 {market}:{symbol}。"
+
+    lines: list[str] = []
+    total_qty = 0
+    total_cost_value = 0.0
+    for p in positions:
+        stock = p.stock
+        if not stock:
+            continue
+        qty = int(p.quantity or 0)
+        cost = float(p.cost_price or 0)
+        total_qty += qty
+        total_cost_value += qty * cost
+        lines.append(
+            f"- {p.account.name if p.account else '账户'}: "
+            f"{qty}股 成本单价{cost:.4f} 风格{p.trading_style or '波段'}"
+        )
+
+    unit_cost = total_cost_value / total_qty if total_qty > 0 else 0.0
+    header = (
+        f"标的持仓汇总：{market}:{symbol} 合计{total_qty}股 "
+        f"加权成本{unit_cost:.4f}"
+    )
+    return header + "\n" + "\n".join(lines)
+
+
 def _build_portfolio_context(db: Session) -> str:
     """构建用户全部持仓摘要。"""
     lines: list[str] = []
@@ -244,10 +325,11 @@ def _build_portfolio_context(db: Session) -> str:
                 continue
             real_lines.append(
                 f"- {stock.name}({stock.market}:{stock.symbol}) "
-                f"{p.quantity}股 成本{p.cost_price} 风格{p.trading_style or '波段'}"
+                f"{p.quantity}股 成本单价{p.cost_price:.4f} "
+                f"风格{p.trading_style or '波段'}"
             )
         if real_lines:
-            lines.append("实盘持仓：\n" + "\n".join(real_lines))
+            lines.append("实盘持仓（最新）：\n" + "\n".join(real_lines))
 
     # 模拟盘持仓
     paper_positions = (
@@ -491,9 +573,16 @@ async def send_message(
         if conv.stock_symbol and conv.stock_market:
             system_content += f"\n\n当前对话关联股票：{conv.stock_market}:{conv.stock_symbol}"
 
-        # 前端页面快照（对话创建时传入）
+        # 前端页面快照（对话创建时传入，可能已过时）
         if conv.initial_context:
-            system_content += "\n\n--- 用户页面快照（对话创建时） ---\n" + conv.initial_context
+            created_hint = ""
+            if conv.created_at:
+                created_hint = f"（创建于 {format_beijing(conv.created_at, '%Y-%m-%d %H:%M')}，仅供参考）"
+            system_content += (
+                f"\n\n--- 用户页面快照{created_hint} ---\n"
+                + conv.initial_context
+                + "\n注意：若与下方「当前数据」冲突，以「当前数据」为准。"
+            )
 
         messages_for_ai.append({"role": "system", "content": system_content})
 
@@ -516,6 +605,37 @@ async def send_message(
         portfolio_ctx = _build_portfolio_context(db)
         if portfolio_ctx:
             context_parts.append(portfolio_ctx)
+
+        # 今日及近期持仓变动
+        today_trades = _build_recent_trades_context(
+            db,
+            symbol=conv.stock_symbol,
+            market=conv.stock_market,
+            today_only=True,
+            limit=10,
+        )
+        if today_trades:
+            context_parts.append(today_trades)
+        elif conv.stock_symbol and conv.stock_market:
+            stock_trades = _build_recent_trades_context(
+                db,
+                symbol=conv.stock_symbol,
+                market=conv.stock_market,
+                today_only=False,
+                limit=8,
+            )
+            if stock_trades:
+                context_parts.append(stock_trades)
+        else:
+            recent_trades = _build_recent_trades_context(db, today_only=False, limit=8)
+            if recent_trades:
+                context_parts.append(recent_trades)
+
+        # 绑定股票的持仓明细
+        if conv.stock_symbol and conv.stock_market:
+            stock_pos = _build_stock_position_context(db, conv.stock_symbol, conv.stock_market)
+            if stock_pos:
+                context_parts.append(stock_pos)
 
         # 绑定股票的实时数据
         if conv.stock_symbol and conv.stock_market:

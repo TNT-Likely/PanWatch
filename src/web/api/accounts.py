@@ -129,6 +129,12 @@ class PositionUpdate(BaseModel):
     quantity: int | None = None
     invested_amount: float | None = None
     trading_style: str | None = None
+    trade_price: float | None = Field(
+        default=None,
+        gt=0,
+        description="手动调整股数时用于记录流水的成交价",
+    )
+    trade_note: str | None = None
 
 
 class PositionResponse(BaseModel):
@@ -161,6 +167,13 @@ class PositionReorderRequest(BaseModel):
 class PositionAddRequest(BaseModel):
     price: float = Field(gt=0, description="买入单价")
     quantity: int = Field(gt=0, description="买入股数")
+    note: str | None = None
+    traded_at: datetime | None = None
+
+
+class PositionReduceRequest(BaseModel):
+    price: float = Field(gt=0, description="卖出单价")
+    quantity: int = Field(gt=0, description="卖出股数")
     note: str | None = None
     traded_at: datetime | None = None
 
@@ -344,6 +357,25 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         trading_style=data.trading_style,
     )
     db.add(position)
+    db.flush()
+
+    qty = int(data.quantity)
+    cost = float(data.cost_price)
+    traded_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    trade = PositionTrade(
+        position_id=position.id,
+        side="buy",
+        price=cost,
+        quantity=qty,
+        amount=round(cost * qty, 4),
+        cost_before=None,
+        qty_before=None,
+        cost_after=cost,
+        qty_after=qty,
+        note="建仓",
+        traded_at=traded_at,
+    )
+    db.add(trade)
     db.commit()
     db.refresh(position)
 
@@ -365,17 +397,56 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
 
 @router.put("/positions/{position_id}", response_model=PositionResponse)
 def update_position(position_id: int, data: PositionUpdate, db: Session = Depends(get_db)):
-    """更新持仓"""
+    """更新持仓；若股数变化且提供 trade_price，则自动写入买卖流水"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
         raise HTTPException(404, "持仓不存在")
 
+    cost_before = float(position.cost_price)
+    qty_before = int(position.quantity)
+    new_qty = int(data.quantity) if data.quantity is not None else qty_before
+    new_cost = float(data.cost_price) if data.cost_price is not None else cost_before
+
+    if data.quantity is not None and new_qty != qty_before and data.trade_price:
+        qty_diff = new_qty - qty_before
+        side = "buy" if qty_diff > 0 else "sell"
+        trade_qty = abs(qty_diff)
+        trade_price = float(data.trade_price)
+        traded_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        if side == "sell":
+            if trade_qty > qty_before:
+                raise HTTPException(400, "卖出股数超过持仓")
+            after_qty = qty_before - trade_qty
+            after_cost = cost_before
+        else:
+            after_qty, after_cost = _calc_weighted_cost(
+                qty_before, cost_before, trade_qty, trade_price
+            )
+        trade = PositionTrade(
+            position_id=position.id,
+            side=side,
+            price=trade_price,
+            quantity=trade_qty,
+            amount=round(trade_price * trade_qty, 4),
+            cost_before=cost_before,
+            qty_before=qty_before,
+            cost_after=after_cost,
+            qty_after=after_qty,
+            note=(data.trade_note or "").strip() or "手动调整持仓",
+            traded_at=traded_at,
+        )
+        db.add(trade)
+        new_qty = after_qty
+        new_cost = after_cost
+
     if data.cost_price is not None:
-        position.cost_price = data.cost_price
+        position.cost_price = new_cost
     if data.quantity is not None:
-        position.quantity = data.quantity
+        position.quantity = new_qty
     if data.invested_amount is not None:
         position.invested_amount = data.invested_amount
+    elif data.quantity is not None or data.cost_price is not None:
+        position.invested_amount = round(new_cost * new_qty, 4)
     if data.trading_style is not None:
         # 空字符串表示清空，设为 None
         position.trading_style = data.trading_style if data.trading_style else None
@@ -456,6 +527,79 @@ def add_to_position(
         add_qty,
         add_price,
         new_cost,
+        new_qty,
+    )
+    return {
+        "position": {
+            "id": position.id,
+            "account_id": position.account_id,
+            "stock_id": position.stock_id,
+            "cost_price": position.cost_price,
+            "quantity": position.quantity,
+            "invested_amount": position.invested_amount,
+            "sort_order": position.sort_order or 0,
+            "trading_style": position.trading_style,
+            "account_name": position.account.name,
+            "stock_symbol": position.stock.symbol,
+            "stock_name": position.stock.name,
+        },
+        "trade": _serialize_position_trade(trade),
+    }
+
+
+@router.post("/positions/{position_id}/reduce")
+def reduce_from_position(
+    position_id: int, data: PositionReduceRequest, db: Session = Depends(get_db)
+):
+    """减仓/卖出:记录流水并更新持仓股数(成本单价不变)"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    sell_qty = int(data.quantity)
+    sell_price = float(data.price)
+    cost_before = float(position.cost_price)
+    qty_before = int(position.quantity)
+
+    if sell_qty > qty_before:
+        raise HTTPException(400, "卖出股数超过持仓")
+
+    new_qty = qty_before - sell_qty
+    sell_amount = round(sell_price * sell_qty, 4)
+    traded_at = data.traded_at or datetime.now(timezone.utc).replace(tzinfo=None)
+
+    trade = PositionTrade(
+        position_id=position.id,
+        side="sell",
+        price=sell_price,
+        quantity=sell_qty,
+        amount=sell_amount,
+        cost_before=cost_before,
+        qty_before=qty_before,
+        cost_after=cost_before,
+        qty_after=new_qty,
+        note=(data.note or "").strip() or None,
+        traded_at=traded_at,
+    )
+    db.add(trade)
+
+    position.quantity = new_qty
+    if position.invested_amount is not None:
+        position.invested_amount = round(cost_before * new_qty, 4)
+    else:
+        position.invested_amount = round(cost_before * new_qty, 4)
+
+    db.commit()
+    db.refresh(position)
+    db.refresh(trade)
+
+    logger.info(
+        "减仓: %s - %s -%d@%s → 成本 %.4f, 股数 %d",
+        position.account.name,
+        position.stock.name,
+        sell_qty,
+        sell_price,
+        cost_before,
         new_qty,
     )
     return {

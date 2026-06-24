@@ -1533,6 +1533,65 @@ def _m117_chat_initial_context(conn: Connection) -> None:
         pass  # column already exists
 
 
+def _m119_position_trades_table(conn: Connection) -> None:
+    """创建持仓变动流水表，并为无流水的历史持仓回填建仓记录。"""
+    if not _has_table(conn, "position_trades"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE position_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_id INTEGER NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+    side TEXT NOT NULL DEFAULT 'buy',
+    price REAL NOT NULL,
+    quantity INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    cost_before REAL,
+    qty_before INTEGER,
+    cost_after REAL,
+    qty_after INTEGER,
+    note TEXT,
+    traded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+            )
+        )
+    _create_index_if_missing(
+        conn,
+        "ix_position_trades_position_id",
+        "CREATE INDEX ix_position_trades_position_id ON position_trades(position_id)",
+    )
+    if not _has_table(conn, "positions"):
+        return
+    conn.execute(
+        text(
+            """
+INSERT INTO position_trades (
+    position_id, side, price, quantity, amount,
+    cost_before, qty_before, cost_after, qty_after, note, traded_at
+)
+SELECT
+    p.id,
+    'buy',
+    p.cost_price,
+    p.quantity,
+    ROUND(p.cost_price * p.quantity, 4),
+    NULL,
+    NULL,
+    p.cost_price,
+    p.quantity,
+    '历史持仓导入',
+    COALESCE(p.created_at, CURRENT_TIMESTAMP)
+FROM positions p
+WHERE NOT EXISTS (
+    SELECT 1 FROM position_trades t WHERE t.position_id = p.id
+)
+"""
+        )
+    )
+
+
 def _m118_paper_trading_market_allocations(conn: Connection) -> None:
     """模拟盘账户新增 market_allocations（各市场投资比例），并由 excluded_markets 回填。"""
     _add_column_if_missing(
@@ -1585,6 +1644,16 @@ def _m118_paper_trading_market_allocations(conn: Connection) -> None:
         )
 
 
+def _m120_stock_investment_profile(conn: Connection) -> None:
+    """自选股增加长线投资计划 JSON 配置。"""
+    _add_column_if_missing(
+        conn,
+        "stocks",
+        "investment_profile",
+        "ALTER TABLE stocks ADD COLUMN investment_profile TEXT DEFAULT '{}'",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1604,6 +1673,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(116, "chat_tables", _m116_chat_tables),
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
+    Migration(119, "position_trades_table", _m119_position_trades_table),
+    Migration(120, "stock_investment_profile", _m120_stock_investment_profile),
 )
 
 

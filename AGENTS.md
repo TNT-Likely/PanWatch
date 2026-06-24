@@ -32,6 +32,13 @@
 - Coverage: target meaningful coverage for new modules (no strict threshold yet, but include happy-path and error cases).
 - Fixtures: use factory helpers for DB models; avoid network calls (mock collectors and AI clients).
 
+## Trading Discipline
+- Long-term position architecture lives in `docs/long-term-position-architecture.md`; follow it when changing trading logic, prompts, portfolio context, or related UI.
+- A long-term holding is not a slower short-term stop-loss flow. Respect the user's thesis, target weight, max weight, staged add plan, and recent trade history.
+- Core and satellite positions must be treated separately: protect core positions for the long-term thesis; use satellite positions for swing adjustments.
+- Never suggest unlimited averaging down. Any add suggestion must check max allocation, available cash, triggered levels, and today's trades.
+- Today's trade records take priority: do not repeat add suggestions after a same-day buy, and do not repeat reduce/sell suggestions after a same-day sell.
+
 ## Commit & Pull Request Guidelines
 - Commit format: `<type>: <subject>` where type ∈ `{feat, fix, docs, refactor, style, test}`.
   Example: `feat: add intraday monitor agent`.

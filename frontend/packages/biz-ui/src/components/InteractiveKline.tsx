@@ -11,6 +11,7 @@ import {
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import IntradayChart from '@panwatch/biz-ui/components/IntradayChart'
+import { chartMarketLocalization, parseMarketChartTime } from '../market-time'
 
 type BusinessDay = { year: number; month: number; day: number }
 export type KlineInterval = 'trend' | '1d' | '1w' | '1m' | 'm5' | 'm30'
@@ -70,18 +71,7 @@ function isTrendInterval(interval: KlineInterval): boolean {
 function parseChartTime(dateStr: string): Time | null {
   const daily = parseBusinessDay(dateStr)
   if (daily) return daily
-  const m = String(dateStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
-  if (!m) return null
-  const dt = new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4]),
-    Number(m[5]),
-    0,
-  )
-  if (Number.isNaN(dt.getTime())) return null
-  return Math.floor(dt.getTime() / 1000) as Time
+  return parseMarketChartTime(dateStr)
 }
 
 function parseCrosshairDateKey(time: any): string | null {
@@ -347,6 +337,7 @@ export default function InteractiveKline(props: {
     const chart = createChart(container, {
       width: container.clientWidth,
       height: 380,
+      ...(intraday ? { localization: chartMarketLocalization } : {}),
       layout: {
         background: { color: `hsl(${bg})` },
         textColor: `hsl(${fg} / 0.85)`,

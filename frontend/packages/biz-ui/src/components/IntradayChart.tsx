@@ -9,6 +9,7 @@ import {
 } from 'lightweight-charts'
 import { insightApi } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { chartMarketLocalization, parseMarketChartTime } from '../market-time'
 
 type TrendPoint = {
   time: string
@@ -38,19 +39,7 @@ type HoverRow = {
 const AUTO_REFRESH_MS = 20_000
 
 function parseTrendTime(timeStr: string): Time | null {
-  const raw = String(timeStr || '').trim()
-  const m = raw.match(/^(\d{4})-?(\d{2})-?(\d{2})[ T](\d{2}):(\d{2})/)
-  if (!m) return null
-  const dt = new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4]),
-    Number(m[5]),
-    0,
-  )
-  if (Number.isNaN(dt.getTime())) return null
-  return Math.floor(dt.getTime() / 1000) as Time
+  return parseMarketChartTime(timeStr)
 }
 
 export default function IntradayChart(props: {
@@ -143,6 +132,7 @@ export default function IntradayChart(props: {
     const chart = createChart(container, {
       width: container.clientWidth,
       height: 300,
+      localization: chartMarketLocalization,
       layout: {
         background: { color: `hsl(${bg})` },
         textColor: `hsl(${fg} / 0.85)`,
@@ -199,6 +189,7 @@ export default function IntradayChart(props: {
       const volChart = createChart(volEl, {
         width: volEl.clientWidth,
         height: 80,
+        localization: chartMarketLocalization,
         layout: {
           background: { color: `hsl(${bg})` },
           textColor: `hsl(${fg} / 0.75)`,

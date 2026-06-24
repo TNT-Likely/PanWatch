@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
-import { fetchAPI, stocksApi, positionsApi, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade } from '@panwatch/api'
+import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { fetchAPI, stocksApi, positionsApi, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type InvestmentProfile } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
+import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -20,6 +21,7 @@ import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { buildRollingCostPlan, buildRollingCostPlanBrief } from '@/lib/rolling-cost-plan'
+import LongTermPlanPanel from '@panwatch/biz-ui/components/long-term-plan-panel'
 
 interface AgentResult {
   success?: boolean
@@ -44,6 +46,10 @@ interface Stock {
   name: string
   market: string
   sort_order?: number
+  concept_tags?: StockConceptTagItem[]
+  concept_tags_auto?: string[]
+  concept_tags_manual?: string[]
+  investment_profile?: InvestmentProfile
   agents: StockAgentInfo[]
 }
 
@@ -392,6 +398,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
   const [insightExpandAddPosition, setInsightExpandAddPosition] = useState(false)
+  const [insightExpandReducePosition, setInsightExpandReducePosition] = useState(false)
   const [positionRecentTrades, setPositionRecentTrades] = useState<Record<number, PortfolioRecentTrade>>({})
 
   // Market status
@@ -418,6 +425,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
   const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
+  const [editPositionOriginal, setEditPositionOriginal] = useState<{ quantity: number; cost_price: number } | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
   const [positionSearchQuery, setPositionSearchQuery] = useState('')
   const [positionSearchMarket, setPositionSearchMarket] = useState('')  // 搜索市场筛选
@@ -429,6 +437,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   // Agent dialog
   const [agentDialogStock, setAgentDialogStock] = useState<Stock | null>(null)
+  const [longTermPlanStock, setLongTermPlanStock] = useState<Stock | null>(null)
 
   // 深度分析(TradingAgents)弹窗
   const [deepAnalysisTarget, setDeepAnalysisTarget] = useState<{
@@ -568,6 +577,16 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       ])
       setStocks(stockData)
       setAccounts(accountData)
+      if (stockData.some(s => s.market === 'CN' && !(s.concept_tags_auto || []).length)) {
+        window.setTimeout(async () => {
+          try {
+            const refreshed = await fetchAPI<Stock[]>('/stocks')
+            setStocks(refreshed)
+          } catch {
+            // ignore background refresh errors
+          }
+        }, 8000)
+      }
       // 默认展开所有账户
       setExpandedAccounts(new Set(accountData.map((a: Account) => a.id)))
     } catch (e) {
@@ -825,6 +844,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
     setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(false)
     setInsightSymbol(stockSymbol)
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
@@ -837,7 +857,18 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
     setInsightHasPosition(true)
+    setInsightExpandReducePosition(false)
     setInsightExpandAddPosition(true)
+    setInsightOpen(true)
+  }, [])
+
+  const openStockDetailReducePosition = useCallback((stockSymbol: string, stockMarket: string, stockName?: string) => {
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(true)
+    setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(true)
     setInsightOpen(true)
   }, [])
 
@@ -846,6 +877,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
     setInsightHasPosition(false)
+    setInsightExpandReducePosition(false)
     setInsightExpandAddPosition(true)
     setInsightOpen(true)
   }, [])
@@ -1181,6 +1213,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         stock_market: position.market,
       })
       setEditPositionId(position.id)
+      setEditPositionOriginal({ quantity: position.quantity, cost_price: position.cost_price })
     } else {
       setPositionForm({
         account_id: accountId,
@@ -1194,6 +1227,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         stock_market: 'CN',
       })
       setEditPositionId(null)
+      setEditPositionOriginal(null)
     }
     setPositionDialogOpen(true)
   }
@@ -1281,12 +1315,40 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         trading_style: positionForm.trading_style,  // 空字符串表示清空
       }
       if (editPositionId) {
-        await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        const newQty = payload.quantity
+        const oldQty = editPositionOriginal?.quantity
+        const sym = positionForm.stock_symbol
+        const quote = sym ? quotes[sym] : undefined
+        const tradePrice = quote?.current_price && quote.current_price > 0
+          ? quote.current_price
+          : payload.cost_price
+
+        if (oldQty != null && newQty !== oldQty && tradePrice > 0) {
+          const diff = newQty - oldQty
+          if (diff > 0) {
+            await positionsApi.add(editPositionId, { price: tradePrice, quantity: diff, note: '手动加仓' })
+          } else {
+            await positionsApi.reduce(editPositionId, { price: tradePrice, quantity: -diff, note: '手动减仓' })
+          }
+          if (payload.trading_style !== undefined) {
+            await fetchAPI(`/positions/${editPositionId}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                trading_style: payload.trading_style,
+                invested_amount: payload.invested_amount,
+              }),
+            })
+          }
+        } else {
+          await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
+        }
       } else {
         await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
       }
       setPositionDialogOpen(false)
+      setEditPositionOriginal(null)
       loadPortfolio()
+      void loadPositionRecentTrades()
       if (!editPositionId && pageMode === 'watchlist') {
         toast('已建仓，可在持仓页查看', 'success')
       } else {
@@ -1460,7 +1522,10 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   const formatRecentTrade = (trade?: PortfolioRecentTrade) => {
     if (!trade) return null
-    return `最近 +${trade.quantity} @ ${formatPrice(trade.price)}`
+    const isSell = trade.side === 'sell'
+    const label = isSell ? '减仓' : '加仓'
+    const sign = isSell ? '-' : '+'
+    return `最近${label} ${sign}${trade.quantity} @ ${formatPrice(trade.price)}`
   }
 
   // 获取股票的行情信息
@@ -2228,6 +2293,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-rose-500" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}><Minus className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2410,6 +2476,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-rose-500" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}><Minus className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
@@ -2548,6 +2615,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                             {stock.name}
                           </span>
                         </div>
+                        <StockConceptTags
+                          tags={stock.concept_tags || []}
+                          market={stock.market}
+                          compact
+                          maxVisible={4}
+                          className="mt-1.5"
+                        />
                       </div>
                       <div className="text-right">
                         <div className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
@@ -2629,6 +2703,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          onClick={() => setLongTermPlanStock(stock)}
+                          title="长线计划"
+                        >
+                          <PiggyBank className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
                           onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, isHolding)}
                           title="K线指标"
                         >
@@ -2697,14 +2780,30 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         open={insightOpen}
         onOpenChange={(open) => {
           setInsightOpen(open)
-          if (!open) setInsightExpandAddPosition(false)
+          if (!open) {
+            setInsightExpandAddPosition(false)
+            setInsightExpandReducePosition(false)
+          }
         }}
         symbol={insightSymbol}
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
         initialExpandAddPosition={insightExpandAddPosition}
+        initialExpandReducePosition={insightExpandReducePosition}
         onPortfolioChanged={handlePortfolioChanged}
+        onStockUpdated={(updated) => {
+          setStocks(prev => prev.map(s => (
+            s.id === updated.id
+              ? {
+                  ...s,
+                  concept_tags: updated.concept_tags,
+                  concept_tags_auto: updated.concept_tags_auto,
+                  concept_tags_manual: updated.concept_tags_manual,
+                }
+              : s
+          )))
+        }}
       />
 
       {/* TradingAgents 深度分析弹窗 */}
@@ -3140,6 +3239,28 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               })
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!longTermPlanStock} onOpenChange={open => !open && setLongTermPlanStock(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>长线投资计划</DialogTitle>
+            <DialogDescription>
+              {longTermPlanStock?.name}（{longTermPlanStock?.symbol}）
+            </DialogDescription>
+          </DialogHeader>
+          {longTermPlanStock && (
+            <LongTermPlanPanel
+              stock={longTermPlanStock}
+              onSaved={profile => {
+                setStocks(prev => prev.map(s => (
+                  s.id === longTermPlanStock.id ? { ...s, investment_profile: profile } : s
+                )))
+                setLongTermPlanStock(prev => prev ? { ...prev, investment_profile: profile } : null)
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
 

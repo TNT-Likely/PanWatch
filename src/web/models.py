@@ -91,6 +91,10 @@ class Stock(Base):
     quantity = Column(Integer, nullable=True)
     invested_amount = Column(Float, nullable=True)
     sort_order = Column(Integer, default=0)
+    concept_tags_auto = Column(JSON, default=[])
+    concept_tags_manual = Column(JSON, default=[])
+    concept_tags_updated_at = Column(DateTime, nullable=True)
+    investment_profile = Column(JSON, default={})  # 长线投资计划
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

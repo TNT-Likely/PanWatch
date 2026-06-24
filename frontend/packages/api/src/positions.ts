@@ -53,6 +53,16 @@ export const positionsApi = {
       body: JSON.stringify(body),
     }),
 
+  /** 减仓/卖出:记录流水并更新股数(成本单价不变) */
+  reduce: (
+    positionId: number,
+    body: { price: number; quantity: number; note?: string; traded_at?: string },
+  ) =>
+    fetchAPI<PositionAddResult>(`/positions/${positionId}/reduce`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   /** 持仓变动流水 */
   trades: (positionId: number, limit = 20) =>
     fetchAPI<PositionTrade[]>(`/positions/${positionId}/trades?limit=${limit}`),

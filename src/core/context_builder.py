@@ -148,6 +148,31 @@ class ContextBuilder:
             db.close()
 
     @staticmethod
+    def _load_investment_profile(symbol: str, market: str) -> dict:
+        """读取自选股长线投资计划。"""
+        if not symbol:
+            return {}
+        try:
+            from src.core.long_term_plan import normalize_investment_profile
+            from src.web.models import Stock
+
+            db = SessionLocal()
+            try:
+                row = (
+                    db.query(Stock)
+                    .filter(Stock.symbol == symbol, Stock.market == market)
+                    .first()
+                )
+                if not row:
+                    return normalize_investment_profile(None)
+                return normalize_investment_profile(row.investment_profile)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug(f"加载投资计划失败 {market}:{symbol}: {e}")
+            return {}
+
+    @staticmethod
     def _build_portfolio_constraints(portfolio, symbol: str) -> dict:
         agg = None
         try:
@@ -205,7 +230,25 @@ class ContextBuilder:
             else "normal"
             if single_position_ratio >= 0.2
             else "relaxed",
+            "recent_trades": ContextBuilder._load_recent_trades(symbol),
         }
+
+    @staticmethod
+    def _load_recent_trades(symbol: str, limit: int = 8) -> list[dict]:
+        """加载单只股票最近持仓变动流水，供 Agent 约束上下文使用。"""
+        if not symbol:
+            return []
+        try:
+            from src.core.position_trades_context import fetch_recent_trades
+
+            db = SessionLocal()
+            try:
+                return fetch_recent_trades(db, symbol=symbol, limit=limit)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug(f"加载持仓流水失败 {symbol}: {e}")
+            return []
 
     def _get_kline_history(self, symbol: str, market: MarketCode, days: int) -> dict:
         key = (symbol, str(market), int(days))
@@ -457,6 +500,10 @@ class ContextBuilder:
             hist_topic = summarize_news_topics(hist_ranked)
             kline_history = self._get_kline_history(symbol, market, kline_days)
             constraints = self._build_portfolio_constraints(context.portfolio, symbol)
+            investment_profile = self._load_investment_profile(
+                symbol,
+                market.value if isinstance(market, MarketCode) else str(market),
+            )
             snapshot_memory = self._build_snapshot_memory(
                 symbol=symbol,
                 market=market,
@@ -523,6 +570,7 @@ class ContextBuilder:
                 },
                 "events": events_for_payload,
                 "constraints": constraints,
+                "investment_profile": investment_profile,
                 "memory": snapshot_memory,
                 "data_quality": quality,
             }

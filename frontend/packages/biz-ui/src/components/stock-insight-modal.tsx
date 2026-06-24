@@ -3,6 +3,7 @@ import { Brain, Copy, Download, ExternalLink, Play, RefreshCw, Share2, Sparkles 
 import {
   fetchAPI,
   insightApi,
+  positionsApi,
   stocksApi,
   tradingAgentsApi,
   analystTypesForMode,
@@ -15,6 +16,7 @@ import {
   type ProgressResponse,
   type ProgressStage,
   type PositionAddResult,
+  type PortfolioRecentTrade,
   type TradingAgentsTriggerResult,
   type TriggerStockAgentResponse,
 } from '@panwatch/api'
@@ -36,6 +38,7 @@ import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
 import { DeepAnalysisModePicker } from '@panwatch/biz-ui/components/deep-analysis-mode-picker'
+import { StockConceptTags } from '@panwatch/biz-ui/components/stock-concept-tags'
 
 interface QuoteResponse {
   symbol: string
@@ -142,6 +145,9 @@ interface StockItem {
   symbol: string
   name: string
   market: string
+  concept_tags?: Array<{ name: string; source: string }>
+  concept_tags_auto?: string[]
+  concept_tags_manual?: string[]
   agents?: StockAgentInfo[]
 }
 
@@ -223,6 +229,7 @@ function formatTime(isoTime?: string): string {
   const d = new Date(isoTime)
   if (isNaN(d.getTime())) return ''
   return d.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -394,8 +401,12 @@ export default function StockInsightModal(props: {
   initialReportId?: number | null
   /** 打开弹窗时自动展开加仓面板 */
   initialExpandAddPosition?: boolean
+  /** 打开弹窗时自动展开减仓面板 */
+  initialExpandReducePosition?: boolean
   /** 加仓成功后通知外部刷新持仓列表 */
   onPortfolioChanged?: (result: PositionAddResult) => void
+  /** 关注股票信息变更（如概念标签） */
+  onStockUpdated?: (stock: StockItem) => void
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
@@ -460,7 +471,9 @@ export default function StockInsightModal(props: {
     pnl: number
   } | null>(null)
   const [holdingOptions, setHoldingOptions] = useState<PositionHoldingOption[]>([])
+  const [recentTrades, setRecentTrades] = useState<PortfolioRecentTrade[]>([])
   const [addPositionExpandSignal, setAddPositionExpandSignal] = useState(0)
+  const [tradeExpandMode, setTradeExpandMode] = useState<'add' | 'reduce'>('add')
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
@@ -681,9 +694,22 @@ export default function StockInsightModal(props: {
       setHoldingOptions(options)
       if (quantity > 0) setHoldingAgg({ quantity, cost, unitCost: cost / quantity, marketValue, pnl })
       else setHoldingAgg(null)
+
+      try {
+        const tradeRows = await positionsApi.recentTrades(50)
+        const sym = String(symbol || '').toUpperCase()
+        setRecentTrades(
+          (tradeRows || []).filter(
+            (t) => String(t.symbol || '').toUpperCase() === sym && String(t.market || '') === market,
+          ),
+        )
+      } catch {
+        setRecentTrades([])
+      }
     } catch {
       setHoldingAgg(null)
       setHoldingOptions([])
+      setRecentTrades([])
       setHoldingLoadError(true)
     } finally {
       setHoldingLoaded(true)
@@ -1216,10 +1242,14 @@ export default function StockInsightModal(props: {
 
   useEffect(() => {
     if (!props.open) return
-    if (props.initialExpandAddPosition) {
+    if (props.initialExpandReducePosition) {
+      setTradeExpandMode('reduce')
+      setAddPositionExpandSignal((s) => s + 1)
+    } else if (props.initialExpandAddPosition) {
+      setTradeExpandMode('add')
       setAddPositionExpandSignal((s) => s + 1)
     }
-  }, [props.open, props.initialExpandAddPosition, symbol])
+  }, [props.open, props.initialExpandAddPosition, props.initialExpandReducePosition, symbol])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -1330,6 +1360,24 @@ export default function StockInsightModal(props: {
       },
     }
   }, [klineSummary, technicalScored])
+  const formatTradeContextLine = (t: PortfolioRecentTrade) => {
+    const side = t.side === 'sell' ? '卖出' : '买入'
+    const time = t.traded_at ? new Date(t.traded_at) : null
+    const today = (() => {
+      if (!time || Number.isNaN(time.getTime())) return false
+      const now = new Date()
+      return time.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        === now.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    })()
+    const timeLabel = time && !Number.isNaN(time.getTime())
+      ? time.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : ''
+    const after = t.qty_after != null && t.cost_after != null
+      ? ` → 持仓${t.qty_after}股 成本${Number(t.cost_after).toFixed(4)}`
+      : ''
+    return `${today ? '【今日】' : ''}${side} ${t.quantity}股 @${t.price}${after} (${t.account_name || '账户'}, ${timeLabel})`
+  }
+
   const buildPageContext = useCallback(() => {
     const parts: string[] = []
     if (quote) {
@@ -1365,10 +1413,23 @@ export default function StockInsightModal(props: {
       parts.push(`最近AI建议：\n${lines.join('\n')}`)
     }
     if (holdingAgg) {
-      parts.push(`持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
+      const holdingLines = holdingOptions.length > 0
+        ? holdingOptions.map(h => `- ${h.account_name}: ${h.quantity}股 成本${Number(h.cost_price).toFixed(4)}`)
+        : []
+      parts.push(
+        `持仓汇总：${holdingAgg.quantity}股，加权成本${holdingAgg.unitCost.toFixed(4)}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`
+        + (holdingLines.length ? `\n分账户：\n${holdingLines.join('\n')}` : ''),
+      )
     }
+    const todayTrades = recentTrades.filter(t => formatTradeContextLine(t).startsWith('【今日】'))
+    const tradesForContext = todayTrades.length > 0 ? todayTrades : recentTrades.slice(0, 5)
+    if (tradesForContext.length > 0) {
+      const title = todayTrades.length > 0 ? '今日持仓变动' : '最近持仓变动'
+      parts.push(`${title}：\n${tradesForContext.map(t => `- ${formatTradeContextLine(t)}`).join('\n')}`)
+    }
+    parts.push(`数据时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`)
     return parts.join('\n')
-  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg])
+  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, holdingOptions, recentTrades])
 
   const quoteUp = (quote?.change_pct || 0) > 0
   const quoteDown = (quote?.change_pct || 0) < 0
@@ -1475,6 +1536,7 @@ export default function StockInsightModal(props: {
       : '--'
     const source = latestShareSuggestion?.agent_label || latestShareSuggestion?.agent_name || '技术指标'
     const ts = new Date().toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -1731,6 +1793,23 @@ export default function StockInsightModal(props: {
     }
   }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
 
+  const handleUpdateManualConceptTags = useCallback(async (manual: string[]) => {
+    if (!watchingStock) return
+    const updated = await stocksApi.updateConceptTags(watchingStock.id, manual)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+  }, [market, props, symbol, watchingStock])
+
+  const handleRefreshConceptTags = useCallback(async () => {
+    if (!watchingStock) return
+    const updated = await stocksApi.refreshConceptTags(watchingStock.id)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast('概念标签已刷新', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
   const triggerAutoAiSuggestion = useCallback(async () => {
     // 自动建议仅针对”确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
@@ -1799,6 +1878,16 @@ export default function StockInsightModal(props: {
                   <span className="break-all">{resolvedName}</span>
                   <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
                 </DialogTitle>
+                {watchingStock && (
+                  <StockConceptTags
+                    tags={watchingStock.concept_tags || []}
+                    market={market}
+                    editable
+                    className="mt-2"
+                    onUpdateManual={handleUpdateManualConceptTags}
+                    onRefreshAuto={handleRefreshConceptTags}
+                  />
+                )}
                 <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
               </div>
               <div className="hidden md:flex items-center gap-2">
@@ -1959,15 +2048,32 @@ export default function StockInsightModal(props: {
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="text-[11px] text-muted-foreground">持仓信息</div>
                         {holdingAgg ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => setAddPositionExpandSignal((s) => s + 1)}
-                          >
-                            加仓
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              onClick={() => {
+                                setTradeExpandMode('add')
+                                setAddPositionExpandSignal((s) => s + 1)
+                              }}
+                            >
+                              加仓
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-rose-500/30 text-rose-600 hover:bg-rose-500/10"
+                              onClick={() => {
+                                setTradeExpandMode('reduce')
+                                setAddPositionExpandSignal((s) => s + 1)
+                              }}
+                            >
+                              减仓
+                            </Button>
+                          </div>
                         ) : null}
                       </div>
                       {holdingAgg ? (
@@ -2016,6 +2122,7 @@ export default function StockInsightModal(props: {
                         onApplied={handlePositionApplied}
                         defaultOpen={holdingOptions.length > 0}
                         expandSignal={addPositionExpandSignal}
+                        expandMode={tradeExpandMode}
                       />
                       <RollingCostPlanPanel
                         symbol={symbol}
