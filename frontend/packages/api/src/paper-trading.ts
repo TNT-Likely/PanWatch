@@ -30,6 +30,7 @@ export interface PaperTradingPositionItem {
   stock_symbol: string
   stock_market: string
   stock_name: string
+  security_type?: string
   quantity: number
   entry_price: number
   stop_loss?: number | null
@@ -53,6 +54,7 @@ export interface PaperTradingTradeItem {
   stock_symbol: string
   stock_market: string
   stock_name: string
+  security_type?: string
   quantity: number
   entry_price: number
   exit_price: number

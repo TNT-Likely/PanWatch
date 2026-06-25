@@ -54,13 +54,17 @@ class CostModel:
         adj = price * self.cfg.slippage_bps / 10000.0
         return price + adj if side == "buy" else max(0.0, price - adj)
 
-    def fill(self, side: str, price: float, quantity: int) -> Fill:
+    def fill(
+        self, side: str, price: float, quantity: int, security_type: str = "stock"
+    ) -> Fill:
         """计算一笔成交的成本与现金变动。
 
         Args:
             side: "buy" 或 "sell"
             price: 名义价(未含滑点)
             quantity: 股数(正整数)
+            security_type: 证券类型 "stock"/"etf" 等。A 股场内 ETF
+                免印花税与过户费,故 "etf" 时两者置 0。
         """
         side = (side or "").strip().lower()
         if side not in ("buy", "sell"):
@@ -69,11 +73,13 @@ class CostModel:
         if qty <= 0 or price <= 0:
             raise ValueError(f"price/quantity 必须为正,得到 price={price} qty={quantity}")
 
+        is_etf = (security_type or "stock").strip().lower() == "etf"
+
         fill_price = self._apply_slippage(price, side)
         gross = fill_price * qty
         commission = max(gross * self.cfg.commission_rate, self.cfg.min_commission)
-        stamp_duty = gross * self.cfg.stamp_duty_rate if side == "sell" else 0.0
-        transfer_fee = gross * self.cfg.transfer_fee_rate
+        stamp_duty = 0.0 if is_etf else (gross * self.cfg.stamp_duty_rate if side == "sell" else 0.0)
+        transfer_fee = 0.0 if is_etf else gross * self.cfg.transfer_fee_rate
         slippage_cost = abs(fill_price - price) * qty
         explicit_fees = commission + stamp_duty + transfer_fee
 
@@ -98,11 +104,15 @@ class CostModel:
         )
 
     def round_trip_pnl(
-        self, entry_price: float, exit_price: float, quantity: int
+        self,
+        entry_price: float,
+        exit_price: float,
+        quantity: int,
+        security_type: str = "stock",
     ) -> dict:
         """一买一卖的完整盈亏(扣全部成本)。便于单笔回测与对账。"""
-        buy = self.fill("buy", entry_price, quantity)
-        sell = self.fill("sell", exit_price, quantity)
+        buy = self.fill("buy", entry_price, quantity, security_type=security_type)
+        sell = self.fill("sell", exit_price, quantity, security_type=security_type)
         # 现金口径:买入流出 -cash_delta(正数),卖出流入 cash_delta
         invested = -buy.cash_delta
         proceeds = sell.cash_delta

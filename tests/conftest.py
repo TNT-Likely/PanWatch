@@ -73,6 +73,13 @@ def _clear_market_caches():
         akshare_collector._QUOTE_CACHE.clear()
         capital_flow_collector._FLOW_CACHE.clear()
         discovery_collector._DISCOVERY_CACHE.clear()
+        try:
+            from src.collectors import etf_collector
+            etf_collector._ETF_SPOT_CACHE.clear()
+            etf_collector._HOLDINGS_CACHE.clear()
+            etf_collector._NAV_CACHE.clear()
+        except ImportError:
+            pass
 
     _clear()
     yield

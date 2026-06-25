@@ -1713,6 +1713,74 @@ CREATE TABLE IF NOT EXISTS chat_pending_actions (
     )
 
 
+def _m123_stock_security_type(conn: Connection) -> None:
+    """stocks 表新增 security_type(stock/etf/index),并按 CN 代码前缀回填场内 ETF。
+
+    A 股场内 ETF/LOF 代码前缀:SH 5xxxxx(510/511/512/513/515/588 等),
+    SZ 15xxxx(159xxx)。SH 6xxxxx 与 SZ 0/3 开头均为股票,故 5/15 前缀可安全判定为 etf。
+    """
+    _add_column_if_missing(
+        conn,
+        "stocks",
+        "security_type",
+        "ALTER TABLE stocks ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+
+    if not _has_table(conn, "stocks"):
+        return
+
+    # 仅回填空值(保留已显式设置的值),CN + 5/15 前缀 → etf
+    conn.execute(
+        text(
+            """
+UPDATE stocks
+SET security_type = 'etf'
+WHERE (security_type IS NULL OR TRIM(security_type) = '' OR security_type = 'stock')
+  AND market = 'CN'
+  AND (symbol LIKE '5%' OR symbol LIKE '15%')
+"""
+        )
+    )
+
+
+def _m124_paper_trading_security_type(conn: Connection) -> None:
+    """模拟盘持仓/已平仓记录新增 security_type,与 stocks 表对齐(ETF 免印花税/过户费)。"""
+    _add_column_if_missing(
+        conn,
+        "paper_trading_positions",
+        "security_type",
+        "ALTER TABLE paper_trading_positions ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+    _add_column_if_missing(
+        conn,
+        "paper_trading_trades",
+        "security_type",
+        "ALTER TABLE paper_trading_trades ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+
+    # 回填:按 stocks 表的 security_type 同步存量持仓/成交(CN 5/15/16 前缀 → etf)
+    if _has_table(conn, "stocks"):
+        for table in ("paper_trading_positions", "paper_trading_trades"):
+            if not _has_table(conn, table):
+                continue
+            conn.execute(
+                text(
+                    f"""
+UPDATE {table}
+SET security_type = COALESCE(
+    (SELECT s.security_type FROM stocks s
+     WHERE s.symbol = {table}.stock_symbol AND s.market = {table}.stock_market
+     LIMIT 1),
+    CASE WHEN {table}.stock_market = 'CN'
+              AND ({table}.stock_symbol LIKE '5%' OR {table}.stock_symbol LIKE '15%')
+         THEN 'etf' ELSE 'stock' END
+)
+WHERE security_type IS NULL OR TRIM(security_type) = '' OR security_type = 'stock'
+"""
+                )
+            )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1736,6 +1804,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(120, "stock_investment_profile", _m120_stock_investment_profile),
     Migration(121, "local_skills_table", _m121_local_skills_table),
     Migration(122, "chat_pending_actions", _m122_chat_pending_actions),
+    Migration(123, "stock_security_type", _m123_stock_security_type),
+    Migration(124, "paper_trading_security_type", _m124_paper_trading_security_type),
 )
 
 

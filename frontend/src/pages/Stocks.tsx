@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart } from 'lucide-react'
 import { fetchAPI, stocksApi, positionsApi, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type InvestmentProfile } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import { EtfOverviewModal } from '@panwatch/biz-ui/components/etf-overview-modal'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
@@ -45,6 +46,7 @@ interface Stock {
   symbol: string
   name: string
   market: string
+  security_type?: string
   sort_order?: number
   concept_tags?: StockConceptTagItem[]
   concept_tags_auto?: string[]
@@ -133,6 +135,7 @@ interface SearchResult {
   symbol: string
   name: string
   market: string
+  security_type?: string
 }
 
 interface QuoteRequestItem {
@@ -151,6 +154,7 @@ interface StockForm {
   symbol: string
   name: string
   market: string
+  security_type?: string
 }
 
 interface AccountForm {
@@ -227,7 +231,7 @@ interface PriceAlertRuleSummary {
   enabled: boolean
 }
 
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
+const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN', security_type: 'stock' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
@@ -392,6 +396,9 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [klineDialogName, setKlineDialogName] = useState<string | undefined>(undefined)
   const [klineDialogHasPosition, setKlineDialogHasPosition] = useState<boolean>(false)
   const [klineDialogInitialSummary, setKlineDialogInitialSummary] = useState<KlineSummary | null>(null)
+  const [etfOverviewOpen, setEtfOverviewOpen] = useState(false)
+  const [etfOverviewCode, setEtfOverviewCode] = useState('')
+  const [etfOverviewName, setEtfOverviewName] = useState<string | undefined>(undefined)
   const [insightOpen, setInsightOpen] = useState(false)
   const [insightSymbol, setInsightSymbol] = useState('')
   const [insightMarket, setInsightMarket] = useState('CN')
@@ -835,6 +842,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setKlineDialogOpen(true)
   }, [klineSummaries])
 
+  const openEtfOverview = useCallback((symbol: string, name?: string) => {
+    setEtfOverviewCode(symbol)
+    setEtfOverviewName(name)
+    setEtfOverviewOpen(true)
+  }, [])
+
   // Open news dialog - pass stock name for more stable search
   const openNewsDialog = useCallback((stockName?: string) => {
     setNewsDialogSymbol(stockName || '')  // 存储名称用于 UI 显示
@@ -1104,7 +1117,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   }
 
   const selectStock = (item: SearchResult) => {
-    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
+    setStockForm({
+      symbol: item.symbol,
+      name: item.name,
+      market: item.market,
+      security_type: item.security_type || 'stock',
+    })
     setSearchQuery(`${item.symbol} ${item.name}`)
     setShowDropdown(false)
   }
@@ -2002,6 +2020,9 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                     >
                       <span className="font-mono text-muted-foreground text-[12px] w-14">{item.symbol}</span>
                       <span className="flex-1 font-medium text-foreground">{item.name}</span>
+                      {item.security_type === 'etf' && (
+                        <Badge variant="outline" className="text-[10px]">ETF</Badge>
+                      )}
                       <Badge variant="secondary">{marketLabel(item.market)}</Badge>
                     </button>
                   ))}
@@ -2603,6 +2624,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
                             {marketBadge(stock.market).label}
                           </span>
+                          {stock.security_type === 'etf' && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-500 shrink-0">
+                              ETF
+                            </span>
+                          )}
                           {isHolding && (
                             <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 shrink-0">
                               持仓
@@ -2708,6 +2734,17 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         >
                           <PiggyBank className="w-3.5 h-3.5" />
                         </Button>
+                        {stock.security_type === 'etf' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => openEtfOverview(stock.symbol, stock.name)}
+                            title="ETF 详情(IOPV/成分股/净值)"
+                          >
+                            <PieChart className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -2774,6 +2811,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         stockName={klineDialogName}
         hasPosition={klineDialogHasPosition}
         initialSummary={klineDialogInitialSummary as any}
+      />
+
+      <EtfOverviewModal
+        code={etfOverviewCode}
+        name={etfOverviewName}
+        open={etfOverviewOpen}
+        onOpenChange={setEtfOverviewOpen}
       />
 
       <StockInsightModal

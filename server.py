@@ -42,6 +42,7 @@ from src.agents.intraday_monitor import IntradayMonitorAgent
 from src.agents.premarket_outlook import PremarketOutlookAgent
 from src.agents.tradingagents import TradingAgentsAgent
 from src.agents.lmd_outlook import LmdOutlookAgent
+from src.agents.etf_holding_analyst import EtfHoldingAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +569,7 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
                     symbol=s.symbol,
                     name=s.name,
                     market=market,
+                    security_type=s.security_type or "stock",
                 )
             )
         return result
@@ -916,6 +918,7 @@ AGENT_REGISTRY: dict[str, type] = {
     "intraday_monitor": IntradayMonitorAgent,
     "tradingagents": TradingAgentsAgent,
     "lmd_outlook": LmdOutlookAgent,
+    "etf_holding_analyst": EtfHoldingAnalystAgent,
 }
 
 
@@ -1139,6 +1142,7 @@ async def trigger_agent_for_stock(
         symbol=stock.symbol,
         name=stock.name,
         market=market,
+        security_type=getattr(stock, "security_type", None) or "stock",
     )
 
     # 加载该股票的持仓信息

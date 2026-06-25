@@ -21,6 +21,7 @@ export interface StockItem {
   symbol: string
   name: string
   market: string
+  security_type?: string
   sort_order?: number
   concept_tags?: StockConceptTag[]
   concept_tags_auto?: string[]
@@ -33,6 +34,40 @@ export interface StockCreatePayload {
   symbol: string
   name: string
   market: string
+  security_type?: string
+}
+
+export interface EtfSpot {
+  symbol: string
+  name: string
+  price: number | null
+  iopv: number | null
+  premium_pct: number | null
+  change_pct: number | null
+  turnover: number | null
+  total_value: number | null
+  turnover_rate: number | null
+  volume: number | null
+}
+
+export interface EtfHolding {
+  symbol: string
+  name: string
+  weight_pct: number
+}
+
+export interface EtfNavPoint {
+  date: string
+  unit_nav: number | null
+  cum_nav: number | null
+  change_pct: number | null
+}
+
+export interface EtfOverview {
+  symbol: string
+  spot: EtfSpot | null
+  holdings: EtfHolding[]
+  nav_history: EtfNavPoint[]
 }
 
 export interface StockAgentUpdatePayload {
@@ -81,6 +116,11 @@ export const stocksApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  etfOverview: (code: string, top = 30, navDays = 180) =>
+    fetchAPI<EtfOverview>(
+      `/stocks/etf/${encodeURIComponent(code)}/overview?top=${top}&nav_days=${navDays}`,
+      { timeoutMs: 30_000 }
+    ),
   remove: (id: number) => fetchAPI<{ ok: boolean }>(`/stocks/${id}`, { method: 'DELETE' }),
   updateConceptTags: (id: number, manual: string[]) =>
     fetchAPI<StockItem>(`/stocks/${id}/concept-tags`, {

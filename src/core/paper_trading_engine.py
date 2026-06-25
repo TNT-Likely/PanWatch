@@ -17,6 +17,7 @@ from src.web.models import (
     PaperTradingAccount,
     PaperTradingPosition,
     PaperTradingTrade,
+    Stock,
     StrategySignalRun,
 )
 from src.core.backtest.cost_model import CostModel
@@ -56,6 +57,7 @@ def _compute_quantity(
     available_cash: float,
     cost_model: CostModel,
     lot: int = FIXED_QUANTITY,
+    security_type: str = "stock",
 ) -> int:
     """按信号强度 + 市场预算计算建仓股数(lot 整数倍),受可用现金(含买入费)约束。
 
@@ -68,7 +70,7 @@ def _compute_quantity(
     if qty < lot:
         qty = lot  # 至少一手
     while qty >= lot:
-        outlay = -cost_model.fill("buy", price, qty).cash_delta
+        outlay = -cost_model.fill("buy", price, qty, security_type=security_type).cash_delta
         if outlay <= available_cash:
             return qty
         qty -= lot
@@ -190,6 +192,7 @@ def _serialize_position(pos: PaperTradingPosition) -> dict:
         "stock_symbol": pos.stock_symbol,
         "stock_market": pos.stock_market,
         "stock_name": pos.stock_name or "",
+        "security_type": pos.security_type or "stock",
         "quantity": pos.quantity,
         "entry_price": pos.entry_price,
         "stop_loss": pos.stop_loss,
@@ -208,6 +211,7 @@ def _serialize_trade(trade: PaperTradingTrade) -> dict:
         "stock_symbol": trade.stock_symbol,
         "stock_market": trade.stock_market,
         "stock_name": trade.stock_name or "",
+        "security_type": trade.security_type or "stock",
         "quantity": trade.quantity,
         "entry_price": trade.entry_price,
         "exit_price": trade.exit_price,
@@ -334,6 +338,15 @@ class PaperTradingEngine:
         # 预算各市场可用现金（建仓时按市场子池逐笔扣减）
         market_cash = {m: market_available_cash(db, account, m, alloc) for m in ALL_MARKETS}
 
+        # 预查证券类型(ETF 免印花税/过户费,影响建仓成本与可买股数)
+        sec_type_map: dict[tuple[str, str], str] = {}
+        cand_symbols = {s.stock_symbol for s in candidates}
+        if cand_symbols:
+            rows = db.query(Stock.symbol, Stock.market, Stock.security_type).filter(
+                Stock.symbol.in_(cand_symbols)
+            ).all()
+            sec_type_map = {(r[0], r[1]): (r[2] or "stock") for r in rows}
+
         opened = 0
         for sig in candidates:
             key = (sig.stock_market, sig.stock_symbol)
@@ -350,6 +363,7 @@ class PaperTradingEngine:
             if alloc.get(mkt, 0.0) <= 0:
                 continue  # 该市场比例为 0，不投入
             avail = market_cash.get(mkt, 0.0)
+            sec_type = sec_type_map.get((sig.stock_symbol, sig.stock_market), "stock")
 
             # 仓位管理:按信号强度分配该市场预算(替换原固定 100 股)
             market_budget = account.initial_capital * alloc.get(mkt, 0.0)
@@ -359,12 +373,13 @@ class PaperTradingEngine:
                 price=entry_price,
                 available_cash=avail,
                 cost_model=COST_MODEL,
+                security_type=sec_type,
             )
             if quantity <= 0:
                 continue  # 子池额度不足以买入最小一手
 
             # 含交易成本的实际买入流出
-            buy_fill = COST_MODEL.fill("buy", entry_price, quantity)
+            buy_fill = COST_MODEL.fill("buy", entry_price, quantity, security_type=sec_type)
             buy_outlay = -buy_fill.cash_delta
 
             # 基于入场价计算止损/止盈
@@ -390,6 +405,7 @@ class PaperTradingEngine:
                 stock_symbol=sig.stock_symbol,
                 stock_market=sig.stock_market,
                 stock_name=sig.stock_name or "",
+                security_type=sec_type,
                 quantity=quantity,
                 entry_price=entry_price,
                 stop_loss=stop_loss,
@@ -437,8 +453,9 @@ class PaperTradingEngine:
         """平仓单个持仓，返回交易记录。"""
         now = _utc_now()
         # 含交易成本的净盈亏:卖出净回收 − 建仓含费投入(与建仓口径一致,资金守恒)
-        buy_cost = -COST_MODEL.fill("buy", pos.entry_price, pos.quantity).cash_delta
-        sell_fill = COST_MODEL.fill("sell", exit_price, pos.quantity)
+        sec_type = pos.security_type or "stock"
+        buy_cost = -COST_MODEL.fill("buy", pos.entry_price, pos.quantity, security_type=sec_type).cash_delta
+        sell_fill = COST_MODEL.fill("sell", exit_price, pos.quantity, security_type=sec_type)
         sell_proceeds = sell_fill.cash_delta
         pnl = round(sell_proceeds - buy_cost, 4)
         pnl_pct = (pnl / buy_cost * 100) if buy_cost > 0 else 0.0
@@ -454,6 +471,7 @@ class PaperTradingEngine:
             stock_symbol=pos.stock_symbol,
             stock_market=pos.stock_market,
             stock_name=pos.stock_name or "",
+            security_type=sec_type,
             quantity=pos.quantity,
             entry_price=pos.entry_price,
             exit_price=exit_price,
@@ -523,8 +541,9 @@ class PaperTradingEngine:
 
             # 更新现价、净浮动盈亏(含若此刻平仓的双边成本)、持仓期最高价
             pos.current_price = current_price
-            _buy_cost_u = -COST_MODEL.fill("buy", pos.entry_price, pos.quantity).cash_delta
-            _sell_u = COST_MODEL.fill("sell", current_price, pos.quantity).cash_delta
+            _sec_u = pos.security_type or "stock"
+            _buy_cost_u = -COST_MODEL.fill("buy", pos.entry_price, pos.quantity, security_type=_sec_u).cash_delta
+            _sell_u = COST_MODEL.fill("sell", current_price, pos.quantity, security_type=_sec_u).cash_delta
             pos.unrealized_pnl = round(_sell_u - _buy_cost_u, 4)
             if pos.highest_price is None or current_price > pos.highest_price:
                 pos.highest_price = current_price

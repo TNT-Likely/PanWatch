@@ -86,6 +86,7 @@ class Stock(Base):
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
     market = Column(String, nullable=False)  # CN / HK / US
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     # 以下字段已废弃，持仓信息移至 Position 表
     cost_price = Column(Float, nullable=True)
     quantity = Column(Integer, nullable=True)
@@ -1056,6 +1057,7 @@ class PaperTradingPosition(Base):
     stock_symbol = Column(String, nullable=False)
     stock_market = Column(String, nullable=False, default="CN")
     stock_name = Column(String, default="")
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     quantity = Column(Integer, nullable=False, default=100)
     entry_price = Column(Float, nullable=False)
     stop_loss = Column(Float, nullable=True)
@@ -1086,6 +1088,7 @@ class PaperTradingTrade(Base):
     stock_symbol = Column(String, nullable=False)
     stock_market = Column(String, nullable=False, default="CN")
     stock_name = Column(String, default="")
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     quantity = Column(Integer, nullable=False, default=100)
     entry_price = Column(Float, nullable=False)
     exit_price = Column(Float, nullable=False)

@@ -21,6 +21,7 @@ WORKFLOW_AGENT_NAMES: tuple[str, ...] = (
 CAPABILITY_AGENT_NAMES: tuple[str, ...] = (
     "news_digest",
     "chart_analyst",
+    "etf_holding_analyst",
 )
 
 
@@ -128,6 +129,20 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
         lifecycle_status="deprecated",
         replaced_by="intraday_monitor,daily_report,premarket_outlook",
         display_order=120,
+    ),
+    AgentSeedSpec(
+        name="etf_holding_analyst",
+        display_name="ETF 成分分析（能力）",
+        description="内部能力：场内 ETF 详情页按需触发，分析成分股/折溢价/与持仓重叠，不独立调度",
+        enabled=False,
+        schedule="",
+        execution_mode="single",
+        kind=AGENT_KIND_CAPABILITY,
+        visible=False,
+        display_order=130,
+        config={
+            "top_holdings": 15,
+        },
     ),
     AgentSeedSpec(
         name="tradingagents",

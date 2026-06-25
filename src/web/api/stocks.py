@@ -17,6 +17,7 @@ from src.web.models import (
     PriceAlertRule,
     PriceAlertHit,
 )
+from src.config import _infer_security_type as _infer_security_type_for_symbol
 from src.core.stock_concept_tags import (
     merge_concept_tags,
     normalize_manual_tags,
@@ -42,6 +43,7 @@ class StockCreate(BaseModel):
     symbol: str
     name: str
     market: str = "CN"
+    security_type: str = "stock"  # stock / etf / index
 
 
 class StockUpdate(BaseModel):
@@ -65,6 +67,7 @@ class StockResponse(BaseModel):
     symbol: str
     name: str
     market: str
+    security_type: str = "stock"
     sort_order: int
     concept_tags: list[StockConceptTag] = []
     concept_tags_auto: list[str] = []
@@ -122,6 +125,7 @@ def _stock_to_response(stock: Stock) -> dict:
         "symbol": stock.symbol,
         "name": stock.name,
         "market": stock.market,
+        "security_type": stock.security_type or "stock",
         "sort_order": stock.sort_order or 0,
         "concept_tags": merge_concept_tags(stock),
         "concept_tags_auto": stock.concept_tags_auto or [],
@@ -212,6 +216,21 @@ def get_market_status():
 def search(q: str = Query("", min_length=1), market: str = Query("")):
     """模糊搜索股票(代码/名称)"""
     return search_stocks(q, market)
+
+
+@router.get("/etf/{code}/overview")
+def etf_overview(code: str, top: int = Query(30, ge=1, le=100), nav_days: int = Query(180, ge=7, le=1095)):
+    """场内 ETF 详情:实时行情(IOPV/折价率/规模) + 成分股 + 净值历史。
+
+    数据来自 akshare(东财),spot 全量缓存 15min,成分股/净值缓存 1h。
+    各部分独立兜底,单只 ETF 缺数据不影响其余字段。
+    """
+    from src.collectors.etf_collector import get_etf_overview
+
+    code = (code or "").strip()
+    if not code:
+        raise HTTPException(400, "ETF 代码不能为空")
+    return get_etf_overview(code, top=top, nav_days=nav_days)
 
 
 @router.post("/refresh-list")
@@ -617,6 +636,7 @@ async def trigger_stock_agent(
                 symbol=symbol,
                 name=name,
                 market=market,
+                security_type=_infer_security_type_for_symbol(symbol, market),
             )
 
     logger.info(
