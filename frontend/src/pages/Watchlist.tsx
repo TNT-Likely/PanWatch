@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, CheckCircle2, Eye, RefreshCw, ShieldAlert, Target, TrendingUp } from 'lucide-react'
 import { fetchAPI, stocksApi, watchlistApi, type WatchlistSignalResult } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
 
 interface StockItem {
   id: number
@@ -73,7 +75,15 @@ interface WatchTarget {
   position: PositionItem | null
 }
 
+interface WatchDataset {
+  targets: WatchTarget[]
+  klineMap: Map<string, Record<string, any>>
+}
+
 const marketLabel = (market: string) => market === 'HK' ? '港股' : market === 'US' ? '美股' : 'A股'
+const AUTO_REFRESH_KEY = 'panwatch_watchlist_auto_refresh'
+const REFRESH_INTERVAL_KEY = 'panwatch_watchlist_refresh_interval'
+const KLINE_REFRESH_MS = 60_000
 
 const labelTone: Record<string, string> = {
   买入候选: 'bg-rose-500/15 text-rose-500 border-rose-500/30',
@@ -159,42 +169,74 @@ export default function WatchlistPage() {
   const [error, setError] = useState('')
   const [rows, setRows] = useState<WatchRow[]>([])
   const [lastRunAt, setLastRunAt] = useState('')
+  const [autoRefresh, setAutoRefresh] = useState(() => localStorage.getItem(AUTO_REFRESH_KEY) === 'true')
+  const [refreshInterval, setRefreshInterval] = useState(() => {
+    const raw = Number(localStorage.getItem(REFRESH_INTERVAL_KEY) || 10)
+    return [5, 10, 30, 60].includes(raw) ? raw : 10
+  })
+  const [lastKlineAt, setLastKlineAt] = useState(0)
+  const datasetRef = useRef<WatchDataset | null>(null)
+  const loadingRef = useRef(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const [stocks, portfolio] = await Promise.all([
-        stocksApi.list() as Promise<StockItem[]>,
-        fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false'),
-      ])
+  useEffect(() => {
+    localStorage.setItem(AUTO_REFRESH_KEY, String(autoRefresh))
+  }, [autoRefresh])
 
-      const positions = (portfolio.accounts || []).flatMap((account) =>
-        (account.positions || []).map((position) => ({ ...position, accountName: account.name })),
-      )
-      const positionKeys = new Set(positions.map((p) => `${p.market}:${p.symbol}`))
-      const targets: WatchTarget[] = [
-        ...positions.map((p) => ({
-          key: `position:${p.market}:${p.symbol}:${p.id}`,
-          symbol: p.symbol,
-          name: p.name,
-          market: p.market,
-          source: 'position' as const,
-          accountName: p.accountName,
-          position: p,
+  useEffect(() => {
+    localStorage.setItem(REFRESH_INTERVAL_KEY, String(refreshInterval))
+  }, [refreshInterval])
+
+  const buildTargets = useCallback(async (): Promise<WatchTarget[]> => {
+    const [stocks, portfolio] = await Promise.all([
+      stocksApi.list() as Promise<StockItem[]>,
+      fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false'),
+    ])
+
+    const positions = (portfolio.accounts || []).flatMap((account) =>
+      (account.positions || []).map((position) => ({ ...position, accountName: account.name })),
+    )
+    const positionKeys = new Set(positions.map((p) => `${p.market}:${p.symbol}`))
+    return [
+      ...positions.map((p) => ({
+        key: `position:${p.market}:${p.symbol}:${p.id}`,
+        symbol: p.symbol,
+        name: p.name,
+        market: p.market,
+        source: 'position' as const,
+        accountName: p.accountName,
+        position: p,
+      })),
+      ...stocks
+        .filter((stock) => !positionKeys.has(`${stock.market}:${stock.symbol}`))
+        .map((stock) => ({
+          key: `watch:${stock.market}:${stock.symbol}:${stock.id}`,
+          symbol: stock.symbol,
+          name: stock.name,
+          market: stock.market,
+          source: 'watch' as const,
+          position: null,
         })),
-        ...stocks
-          .filter((stock) => !positionKeys.has(`${stock.market}:${stock.symbol}`))
-          .map((stock) => ({
-            key: `watch:${stock.market}:${stock.symbol}:${stock.id}`,
-            symbol: stock.symbol,
-            name: stock.name,
-            market: stock.market,
-            source: 'watch' as const,
-            position: null,
-          })),
-      ]
+    ]
+  }, [])
 
+  const fetchKlines = useCallback(async (targets: WatchTarget[]) => {
+    const klineRows = await Promise.all(
+      targets.map((target) =>
+        fetchAPI<KlineSummaryResponse>(
+          `/klines/${encodeURIComponent(target.symbol)}/summary?market=${encodeURIComponent(target.market)}`,
+          { timeoutMs: 25_000 },
+        ).catch(() => ({
+          symbol: target.symbol,
+          market: target.market,
+          summary: {},
+        })),
+      ),
+    )
+    setLastKlineAt(Date.now())
+    return new Map(klineRows.map((row) => [`${row.market}:${row.symbol}`, row.summary || {}]))
+  }, [])
+
+  const evaluateTargets = useCallback(async (targets: WatchTarget[], klineMap: Map<string, Record<string, any>>) => {
       if (!targets.length) {
         setRows([])
         setLastRunAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
@@ -202,29 +244,13 @@ export default function WatchlistPage() {
       }
 
       const quoteItems = targets.map((target) => ({ symbol: target.symbol, market: target.market }))
-      const [quoteRows, klineRows] = await Promise.all([
-        fetchAPI<QuoteResponse[]>('/quotes/batch', {
-          method: 'POST',
-          body: JSON.stringify({ items: quoteItems }),
-          timeoutMs: 25_000,
-        }).catch(() => []),
-        Promise.all(
-          targets.map((target) =>
-            fetchAPI<KlineSummaryResponse>(
-              `/klines/${encodeURIComponent(target.symbol)}/summary?market=${encodeURIComponent(target.market)}`,
-              { timeoutMs: 25_000 },
-            ).catch(() => ({
-              symbol: target.symbol,
-              market: target.market,
-              summary: {},
-            })),
-          ),
-        ),
-      ])
+      const quoteRows = await fetchAPI<QuoteResponse[]>('/quotes/batch', {
+        method: 'POST',
+        body: JSON.stringify({ items: quoteItems }),
+        timeoutMs: 25_000,
+      }).catch(() => [])
 
       const quoteMap = new Map(quoteRows.map((quote) => [`${quote.market}:${quote.symbol}`, quote]))
-      const klineMap = new Map(klineRows.map((row) => [`${row.market}:${row.symbol}`, row.summary || {}]))
-
       const decisions = await Promise.all(
         targets.map(async (target) => {
           const quote = makeQuotePayload(quoteMap.get(`${target.market}:${target.symbol}`), target.position || undefined)
@@ -260,17 +286,46 @@ export default function WatchlistPage() {
       })
       setRows(decisions)
       setLastRunAt(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+  }, [])
+
+  const load = useCallback(async (options: { refreshKlines?: boolean; silent?: boolean } = {}) => {
+    if (loadingRef.current) return
+    loadingRef.current = true
+    if (!options.silent) setLoading(true)
+    setError('')
+    try {
+      let dataset = datasetRef.current
+      if (!dataset || options.refreshKlines) {
+        const targets = await buildTargets()
+        const klineMap = await fetchKlines(targets)
+        dataset = { targets, klineMap }
+        datasetRef.current = dataset
+      } else if (Date.now() - lastKlineAt > KLINE_REFRESH_MS) {
+        const klineMap = await fetchKlines(dataset.targets)
+        dataset = { targets: dataset.targets, klineMap }
+        datasetRef.current = dataset
+      }
+      await evaluateTargets(dataset.targets, dataset.klineMap)
     } catch (e) {
       setError(e instanceof Error ? e.message : '盯盘评估失败')
       setRows([])
     } finally {
-      setLoading(false)
+      loadingRef.current = false
+      if (!options.silent) setLoading(false)
     }
-  }, [])
+  }, [buildTargets, evaluateTargets, fetchKlines, lastKlineAt])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!autoRefresh) return
+    const id = window.setInterval(() => {
+      load({ silent: true })
+    }, refreshInterval * 1000)
+    return () => window.clearInterval(id)
+  }, [autoRefresh, load, refreshInterval])
 
   const summary = useMemo(() => {
     const urgent = rows.filter((row) => ['止损触发', '减仓警告', '禁止追高'].includes(row.decision.label)).length
@@ -293,9 +348,24 @@ export default function WatchlistPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {lastRunAt && <span className="text-[11px] text-muted-foreground">最近评估 {lastRunAt}</span>}
-          <Button variant="secondary" onClick={load} disabled={loading}>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/50 bg-accent/20">
+            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+            <span className="text-[12px] text-muted-foreground">自动</span>
+            <Select value={String(refreshInterval)} onValueChange={(value) => setRefreshInterval(Number(value))}>
+              <SelectTrigger className="h-7 w-[78px] text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 秒</SelectItem>
+                <SelectItem value="10">10 秒</SelectItem>
+                <SelectItem value="30">30 秒</SelectItem>
+                <SelectItem value="60">60 秒</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="secondary" onClick={() => load({ refreshKlines: true })} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             刷新评估
           </Button>

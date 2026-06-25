@@ -352,19 +352,27 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
         code_raw = (item.get("Code") or "").strip().upper()
 
         # 判断市场
-        if (
+        is_cn_stock_or_fund = (
             classify in ("AStock", "BJStock")
             or any(ch in security_type for ch in ("沪", "深", "北"))
             or code_raw.endswith(".BJ")
             or code_raw.startswith("BJ")
-        ):
+        )
+        is_cn_etf_or_fund = (
+            classify in ("Fund", "ETF", "LOF")
+            or any(word in security_type.upper() for word in ("ETF", "LOF", "基金"))
+            or code_raw.startswith(("SH5", "SZ1", "SZ15", "SZ16", "SZ18"))
+            or code_raw[:1] in ("5", "1")
+        )
+
+        if is_cn_stock_or_fund or is_cn_etf_or_fund:
             stock_market = "CN"
         elif classify == "HKStock" or "港" in security_type:
             stock_market = "HK"
         elif classify == "UsStock" or "美" in security_type:
             stock_market = "US"
         else:
-            continue  # 跳过其他类型（债券、基金等）
+            continue  # 跳过债券等暂不支持品种
 
         # 市场筛选
         if market and stock_market != market:
@@ -372,7 +380,7 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
 
         # 只保留股票（排除债券等）
         type_us = item.get("TypeUS", "")
-        if stock_market == "US" and type_us and type_us not in ("1", "2", "3"):  # 1=普通股, 3=ADR/ADS 等；5=ETF 等
+        if stock_market == "US" and type_us and type_us not in ("1", "2", "3", "5"):  # 1=普通股, 3=ADR/ADS, 5=ETF 等
             continue
 
         code = item.get("Code", "")
