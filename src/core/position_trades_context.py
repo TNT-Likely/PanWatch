@@ -155,6 +155,40 @@ def build_trades_context_text(
     return f"{title}：\n" + "\n".join(lines)
 
 
+def fetch_today_trades_by_position_ids(
+    db: Session,
+    position_ids: list[int],
+) -> dict[int, list[PositionTrade]]:
+    """批量查询各持仓今日流水（按成交时间升序）。"""
+    if not position_ids:
+        return {}
+    rows = (
+        db.query(PositionTrade)
+        .filter(PositionTrade.position_id.in_(position_ids))
+        .order_by(PositionTrade.traded_at.asc(), PositionTrade.id.asc())
+        .all()
+    )
+    grouped: dict[int, list[PositionTrade]] = {pid: [] for pid in position_ids}
+    for trade in rows:
+        if not is_today_beijing(trade.traded_at):
+            continue
+        grouped.setdefault(trade.position_id, []).append(trade)
+    return grouped
+
+
+def day_start_qty_from_today_trades(
+    today_trades: list[PositionTrade],
+    current_qty: int,
+) -> int:
+    """推断今日首笔流水前的持仓股数。"""
+    if not today_trades:
+        return current_qty
+    first = today_trades[0]
+    if first.qty_before is None:
+        return 0
+    return max(0, int(first.qty_before))
+
+
 def summarize_today_trades(
     db: Session,
     *,

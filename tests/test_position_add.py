@@ -130,6 +130,44 @@ def test_create_position_records_initial_trade(db):
     assert trades[0].price == 12.5
 
 
+def test_create_position_accepts_historical_traded_at(db):
+    """补录历史持仓时应保留指定成交时间"""
+    from datetime import datetime, timezone
+
+    acc = Account(name="测试账户", available_funds=100000, enabled=True)
+    stock = Stock(symbol="000002", name="万科A", market="CN")
+    db.add(acc)
+    db.add(stock)
+    db.flush()
+    historical = datetime(2024, 3, 15, 10, 30, tzinfo=timezone.utc)
+    res = accounts.create_position(
+        accounts.PositionCreate(
+            account_id=acc.id,
+            stock_id=stock.id,
+            cost_price=8.0,
+            quantity=100,
+            traded_at=historical,
+        ),
+        db=db,
+    )
+    trade = db.query(PositionTrade).filter(PositionTrade.position_id == res["id"]).one()
+    assert trade.traded_at == historical.replace(tzinfo=None)
+
+
+def test_add_to_position_accepts_traded_at(db):
+    """加仓接口应支持指定成交时间"""
+    from datetime import datetime, timezone
+
+    pos = _seed_position(db, qty=100, cost=10.0)
+    historical = datetime(2024, 6, 1, 14, 0, tzinfo=timezone.utc)
+    res = accounts.add_to_position(
+        pos.id,
+        accounts.PositionAddRequest(price=9.0, quantity=50, traded_at=historical),
+        db,
+    )
+    assert res["trade"]["traded_at"] == historical.replace(tzinfo=None)
+
+
 def test_reduce_from_position_updates_qty_and_records_trade(db):
     """减仓接口应减少股数、保持成本并写入卖出流水"""
     pos = _seed_position(db, qty=1000, cost=29.63)

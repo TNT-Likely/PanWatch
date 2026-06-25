@@ -1,0 +1,15 @@
+/** 将 datetime-local 值转为 ISO 字符串；空值表示使用当前时间。 */
+export function tradeDatetimeLocalToIso(value: string): string | undefined {
+  const v = value.trim()
+  if (!v) return undefined
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return undefined
+  return d.toISOString()
+}
+
+/** datetime-local 默认值：当前本地时间。 */
+export function nowDatetimeLocalValue(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}

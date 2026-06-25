@@ -11,6 +11,12 @@ from datetime import datetime, timedelta, timezone
 
 from src.web.database import get_db
 from src.web.models import Account, Position, PositionTrade, PriceAlertRule, Stock
+from src.core.timezone import to_utc
+from src.core.position_daily_pnl import TradeLot, compute_position_daily_pnl
+from src.core.position_trades_context import (
+    day_start_qty_from_today_trades,
+    fetch_today_trades_by_position_ids,
+)
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.collectors.market_http import TTLCache
 from src.models.market import MarketCode
@@ -122,6 +128,10 @@ class PositionCreate(BaseModel):
     quantity: int
     invested_amount: float | None = None
     trading_style: str | None = None  # short: 短线, swing: 波段, long: 长线
+    traded_at: datetime | None = Field(
+        default=None,
+        description="建仓成交时间；补录历史持仓时可填实际买入时间",
+    )
 
 
 class PositionUpdate(BaseModel):
@@ -135,6 +145,10 @@ class PositionUpdate(BaseModel):
         description="手动调整股数时用于记录流水的成交价",
     )
     trade_note: str | None = None
+    traded_at: datetime | None = Field(
+        default=None,
+        description="手动调整股数时用于记录流水的成交时间",
+    )
 
 
 class PositionResponse(BaseModel):
@@ -208,6 +222,13 @@ def _calc_weighted_cost(
         return new_qty, float(add_price)
     total_cost = cur_qty * cur_cost + add_qty * add_price
     return new_qty, round(total_cost / new_qty, 6)
+
+
+def _normalize_traded_at(dt: datetime | None) -> datetime:
+    """统一成交时间为 UTC naive，供数据库存储。"""
+    if dt is None:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+    return to_utc(dt).replace(tzinfo=None)
 
 
 def _serialize_position_trade(trade: PositionTrade) -> dict:
@@ -361,7 +382,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
 
     qty = int(data.quantity)
     cost = float(data.cost_price)
-    traded_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    traded_at = _normalize_traded_at(data.traded_at)
     trade = PositionTrade(
         position_id=position.id,
         side="buy",
@@ -412,7 +433,7 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         side = "buy" if qty_diff > 0 else "sell"
         trade_qty = abs(qty_diff)
         trade_price = float(data.trade_price)
-        traded_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        traded_at = _normalize_traded_at(data.traded_at)
         if side == "sell":
             if trade_qty > qty_before:
                 raise HTTPException(400, "卖出股数超过持仓")
@@ -492,7 +513,7 @@ def add_to_position(
         raise HTTPException(400, str(e)) from e
 
     add_amount = round(add_price * add_qty, 4)
-    traded_at = data.traded_at or datetime.now(timezone.utc).replace(tzinfo=None)
+    traded_at = _normalize_traded_at(data.traded_at)
 
     trade = PositionTrade(
         position_id=position.id,
@@ -566,7 +587,7 @@ def reduce_from_position(
 
     new_qty = qty_before - sell_qty
     sell_amount = round(sell_price * sell_qty, 4)
-    traded_at = data.traded_at or datetime.now(timezone.utc).replace(tzinfo=None)
+    traded_at = _normalize_traded_at(data.traded_at)
 
     trade = PositionTrade(
         position_id=position.id,
@@ -738,12 +759,15 @@ def get_portfolio_summary(
 
     # 获取所有相关股票
     all_stock_ids = set()
+    all_position_ids: list[int] = []
     for acc in accounts:
         for pos in acc.positions:
             all_stock_ids.add(pos.stock_id)
+            all_position_ids.append(pos.id)
 
     stocks = db.query(Stock).filter(Stock.id.in_(all_stock_ids)).all() if all_stock_ids else []
     stock_map = {s.id: s for s in stocks}
+    today_trades_by_position = fetch_today_trades_by_position_ids(db, all_position_ids)
 
     # 获取实时行情（可选）
     quotes = _fetch_quotes_for_stocks(stocks) if include_quotes else {}
@@ -795,10 +819,27 @@ def get_portfolio_summary(
             daily_pnl = None
             daily_pnl_pct = None
 
-            if current_price is not None and prev_close and prev_close > 0:
-                daily_pnl = (current_price - prev_close) * pos.quantity * rate
-                daily_pnl_pct = (current_price - prev_close) / prev_close * 100
-                acc_daily_pnl += daily_pnl
+            today_rows = today_trades_by_position.get(pos.id, [])
+            day_start_qty = day_start_qty_from_today_trades(today_rows, int(pos.quantity or 0))
+            today_trade_lots = [
+                TradeLot(side=str(t.side), quantity=int(t.quantity), price=float(t.price))
+                for t in today_rows
+            ]
+            today_trades_payload = [
+                {"side": t.side, "quantity": int(t.quantity), "price": float(t.price)}
+                for t in today_rows
+            ]
+
+            if current_price is not None:
+                daily_pnl, daily_pnl_pct = compute_position_daily_pnl(
+                    current_price=float(current_price),
+                    quantity=int(pos.quantity or 0),
+                    prev_close=float(prev_close) if prev_close else None,
+                    today_trades=today_trade_lots,
+                    day_start_qty=day_start_qty,
+                )
+                if daily_pnl is not None:
+                    acc_daily_pnl += daily_pnl * rate
 
             cost = pos.cost_price * pos.quantity
             cost_cny = cost * rate  # 假设成本价也是原币种
@@ -831,8 +872,10 @@ def get_portfolio_summary(
                 "market_value_cny": round(market_value_cny, 2) if market_value_cny else None,
                 "pnl": round(pnl, 2) if pnl else None,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct else None,
-                "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
-                "daily_pnl_pct": round(daily_pnl_pct, 2) if daily_pnl_pct is not None else None,
+                "daily_pnl": round(daily_pnl * rate, 2) if daily_pnl is not None else None,
+                "daily_pnl_pct": daily_pnl_pct,
+                "day_start_qty": day_start_qty,
+                "today_trades": today_trades_payload,
                 "exchange_rate": rate if is_foreign else None,
             })
 

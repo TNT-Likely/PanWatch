@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart } from 'lucide-react'
-import { fetchAPI, stocksApi, positionsApi, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type InvestmentProfile } from '@panwatch/api'
+import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type InvestmentProfile } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
@@ -82,6 +82,8 @@ interface Position {
   pnl_pct: number | null
   daily_pnl: number | null
   daily_pnl_pct: number | null
+  day_start_qty?: number
+  today_trades?: Array<{ side: string; quantity: number; price: number }>
   exchange_rate: number | null  // 汇率（仅港股）
 }
 
@@ -169,6 +171,7 @@ interface PositionForm {
   quantity: string
   invested_amount: string
   trading_style: string
+  trade_time: string
   // 搜索选中的股票信息（新增持仓时用）
   stock_symbol: string
   stock_name: string
@@ -236,6 +239,82 @@ const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
 
+type TodayTradeLot = { side: string; quantity: number; price: number }
+
+const computePositionDailyPnl = (
+  currentPrice: number,
+  quantity: number,
+  prevClose: number | null,
+  todayTrades: TodayTradeLot[],
+  dayStartQty: number,
+): { daily_pnl: number | null; daily_pnl_pct: number | null } => {
+  if (quantity <= 0 || currentPrice <= 0) {
+    return { daily_pnl: null, daily_pnl_pct: null }
+  }
+
+  if (todayTrades.length === 0) {
+    if (prevClose == null || prevClose <= 0) {
+      return { daily_pnl: null, daily_pnl_pct: null }
+    }
+    const daily_pnl = round2((currentPrice - prevClose) * quantity)
+    const daily_pnl_pct = round2((currentPrice - prevClose) / prevClose * 100)
+    return { daily_pnl, daily_pnl_pct }
+  }
+
+  let overnight = Math.max(0, dayStartQty)
+  const buyLots: Array<[number, number]> = []
+  let realized = 0
+  let costBasis = prevClose != null && prevClose > 0 ? overnight * prevClose : 0
+
+  for (const trade of todayTrades) {
+    const qty = Math.trunc(trade.quantity)
+    const price = trade.price
+    if (qty <= 0 || price <= 0) continue
+
+    if (trade.side === 'buy') {
+      buyLots.push([qty, price])
+      costBasis += qty * price
+      continue
+    }
+
+    let sellQty = qty
+    const sellPrice = price
+    const fromOvernight = Math.min(overnight, sellQty)
+    if (fromOvernight > 0 && prevClose != null && prevClose > 0) {
+      realized += (sellPrice - prevClose) * fromOvernight
+      costBasis -= fromOvernight * prevClose
+    }
+    overnight -= fromOvernight
+    sellQty -= fromOvernight
+
+    while (sellQty > 0 && buyLots.length > 0) {
+      const [lotQty, lotPrice] = buyLots[0]
+      const take = Math.min(lotQty, sellQty)
+      realized += (sellPrice - lotPrice) * take
+      costBasis -= take * lotPrice
+      const remaining = lotQty - take
+      sellQty -= take
+      if (remaining <= 0) {
+        buyLots.shift()
+      } else {
+        buyLots[0] = [remaining, lotPrice]
+      }
+    }
+  }
+
+  let unrealized = 0
+  if (overnight > 0 && prevClose != null && prevClose > 0) {
+    unrealized += (currentPrice - prevClose) * overnight
+  }
+  for (const [lotQty, lotPrice] of buyLots) {
+    unrealized += (currentPrice - lotPrice) * lotQty
+  }
+
+  const daily_pnl = round2(realized + unrealized)
+  const daily_pnl_pct = costBasis > 0 ? round2(daily_pnl / costBasis * 100) : null
+  return { daily_pnl, daily_pnl_pct }
+}
+
 const mergePortfolioQuotes = (
   portfolio: PortfolioSummary | null,
   quotes: Record<string, { current_price: number | null; change_pct: number | null }>
@@ -279,11 +358,24 @@ const mergePortfolioQuotes = (
         pnl_pct = cost > 0 ? (pnl / cost * 100) : 0
       }
 
-      if (current_price != null && change_pct != null && change_pct !== -100) {
-        const prev = current_price / (1 + change_pct / 100)
-        if (isFinite(prev) && prev > 0) {
-          daily_pnl = round2((current_price - prev) * pos.quantity * rate)
-          daily_pnl_pct = round2(change_pct)
+      if (current_price != null) {
+        const dayStartQty = pos.day_start_qty ?? pos.quantity
+        const todayTrades = pos.today_trades ?? []
+        let prevClose: number | null = null
+        if (change_pct != null && change_pct !== -100) {
+          const prev = current_price / (1 + change_pct / 100)
+          if (isFinite(prev) && prev > 0) prevClose = prev
+        }
+        const daily = computePositionDailyPnl(
+          current_price,
+          pos.quantity,
+          prevClose,
+          todayTrades,
+          dayStartQty,
+        )
+        if (daily.daily_pnl != null) {
+          daily_pnl = round2(daily.daily_pnl * rate)
+          daily_pnl_pct = daily.daily_pnl_pct
           accDailyPnl += daily_pnl
         }
       }
@@ -430,7 +522,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   // Position form
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
-  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
+  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', trade_time: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
   const [editPositionOriginal, setEditPositionOriginal] = useState<{ quantity: number; cost_price: number } | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
@@ -1247,6 +1339,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         quantity: position.quantity.toString(),
         invested_amount: position.invested_amount?.toString() || '',
         trading_style: position.trading_style || '',
+        trade_time: '',
         stock_symbol: position.symbol,
         stock_name: position.name,
         stock_market: position.market,
@@ -1261,6 +1354,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         quantity: '',
         invested_amount: '',
         trading_style: '',
+        trade_time: '',
         stock_symbol: '',
         stock_name: '',
         stock_market: 'CN',
@@ -1345,6 +1439,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         }
       }
 
+      const tradedAt = tradeDatetimeLocalToIso(positionForm.trade_time)
       const payload = {
         account_id: positionForm.account_id,
         stock_id: stockId,
@@ -1352,6 +1447,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         quantity: parseInt(positionForm.quantity),
         invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
+        ...(tradedAt ? { traded_at: tradedAt } : {}),
       }
       if (editPositionId) {
         const newQty = payload.quantity
@@ -1364,10 +1460,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
         if (oldQty != null && newQty !== oldQty && tradePrice > 0) {
           const diff = newQty - oldQty
+          const tradeBody = {
+            price: tradePrice,
+            quantity: Math.abs(diff),
+            ...(tradedAt ? { traded_at: tradedAt } : {}),
+          }
           if (diff > 0) {
-            await positionsApi.add(editPositionId, { price: tradePrice, quantity: diff, note: '手动加仓' })
+            await positionsApi.add(editPositionId, { ...tradeBody, note: '手动加仓' })
           } else {
-            await positionsApi.reduce(editPositionId, { price: tradePrice, quantity: -diff, note: '手动减仓' })
+            await positionsApi.reduce(editPositionId, { ...tradeBody, note: '手动减仓' })
           }
           if (payload.trading_style !== undefined) {
             await fetchAPI(`/positions/${editPositionId}`, {
@@ -3187,6 +3288,20 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div>
+              <Label>
+                {editPositionId ? '交易时间' : '买入时间'}
+                <span className="text-muted-foreground/60 text-[11px] font-normal ml-1">
+                  {editPositionId ? '（改股数时记录流水，选填）' : '（选填，补录历史请填实际时间）'}
+                </span>
+              </Label>
+              <Input
+                type="datetime-local"
+                value={positionForm.trade_time}
+                onChange={e => setPositionForm({ ...positionForm, trade_time: e.target.value })}
+                className="font-mono text-[13px]"
+              />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setPositionDialogOpen(false)}>取消</Button>

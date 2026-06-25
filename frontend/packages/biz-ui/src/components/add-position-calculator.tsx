@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { insightApi, positionsApi, type AddPositionEvalResult, type PositionAddResult, type PositionTrade } from '@panwatch/api'
+import { insightApi, positionsApi, tradeDatetimeLocalToIso, type AddPositionEvalResult, type PositionAddResult, type PositionTrade } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
@@ -146,6 +146,7 @@ export default function AddPositionCalculator({
   const [mode, setMode] = useState<'shares' | 'amount'>('shares')
   const [addRaw, setAddRaw] = useState('')
   const [priceRaw, setPriceRaw] = useState('')
+  const [tradeTimeRaw, setTradeTimeRaw] = useState('')
   const [targetRaw, setTargetRaw] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiResult, setAiResult] = useState<AddPositionEvalResult | null>(null)
@@ -279,10 +280,16 @@ export default function AddPositionCalculator({
     }
     setApplyLoading(true)
     try {
-      const result = await positionsApi.add(selectedHolding.id, { price: addPrice, quantity: tradeQty })
+      const traded_at = tradeDatetimeLocalToIso(tradeTimeRaw)
+      const result = await positionsApi.add(selectedHolding.id, {
+        price: addPrice,
+        quantity: tradeQty,
+        ...(traded_at ? { traded_at } : {}),
+      })
       toast(`已记录加仓 ${tradeQty} 股 @ ${fmt(addPrice)}，新成本 ${fmtCost(result.position.cost_price)}`, 'success')
       setAddRaw('')
       setPriceRaw('')
+      setTradeTimeRaw('')
       setTargetRaw('')
       setAiResult(null)
       applyTradeResult(result)
@@ -305,7 +312,12 @@ export default function AddPositionCalculator({
     }
     setApplyLoading(true)
     try {
-      const result = await positionsApi.reduce(selectedHolding.id, { price: addPrice, quantity: tradeQty })
+      const traded_at = tradeDatetimeLocalToIso(tradeTimeRaw)
+      const result = await positionsApi.reduce(selectedHolding.id, {
+        price: addPrice,
+        quantity: tradeQty,
+        ...(traded_at ? { traded_at } : {}),
+      })
       const pnl = reduceCalc.realizedPnl
       toast(
         `已记录减仓 ${tradeQty} 股 @ ${fmt(addPrice)}，剩余 ${fmtInt(reduceCalc.newQty)} 股，本次盈亏 ${pnl >= 0 ? '+' : ''}${fmt(pnl)}`,
@@ -313,6 +325,7 @@ export default function AddPositionCalculator({
       )
       setAddRaw('')
       setPriceRaw('')
+      setTradeTimeRaw('')
       setTargetRaw('')
       setAiResult(null)
       applyTradeResult(result)
@@ -363,6 +376,7 @@ export default function AddPositionCalculator({
                   onClick={() => {
                     setTradeMode(m)
                     setAddRaw('')
+                    setTradeTimeRaw('')
                     setTargetRaw('')
                     setAiResult(null)
                   }}
@@ -445,6 +459,19 @@ export default function AddPositionCalculator({
               />
             </label>
           </div>
+
+          <label className="space-y-1">
+            <div className="text-[10px] text-muted-foreground">
+              {isReduce ? '卖出时间' : '买入时间'}
+              <span className="text-muted-foreground/70">（选填，默认当前）</span>
+            </div>
+            <Input
+              type="datetime-local"
+              value={tradeTimeRaw}
+              onChange={(e) => setTradeTimeRaw(e.target.value)}
+              className="font-mono text-[12px]"
+            />
+          </label>
 
           {mode === 'amount' && tradeQty > 0 && (
             <div className="text-[10px] text-muted-foreground">
