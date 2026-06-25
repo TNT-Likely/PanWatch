@@ -124,41 +124,68 @@ def evaluate_symbol(
 
     label = decision.get("label")
     risk = decision.get("risk_level")
+    high = as_float(quote.get("high_price") or quote.get("high"))
     rsi6 = as_float(technical.get("rsi6"))
     kdj_j = as_float(technical.get("kdj_j"))
     boll_status = str(technical.get("boll_status") or "")
+    trend = str(technical.get("trend") or "")
+    macd_status = str(technical.get("macd_status") or "")
+    change_5d = as_float(technical.get("change_5d"))
     support_distance = pct_distance(price, support)
+    high_pullback = None
+    if price and high:
+        high_pullback = (high - price) / high * 100
     resistance_distance = None
     if price and resistance:
         resistance_distance = (resistance - price) / price * 100
 
-    overheated = (
-        (rsi6 is not None and rsi6 > 75)
-        or (kdj_j is not None and kdj_j > 95)
-        or "突破上轨" in boll_status
-        or (support_distance is not None and support_distance > 12)
+    hard_overheated = (
+        (rsi6 is not None and rsi6 > 88)
+        or (kdj_j is not None and kdj_j > 118)
+        or (
+            "突破上轨" in boll_status
+            and high_pullback is not None
+            and high_pullback < 2.5
+        )
+        or (support_distance is not None and support_distance > 28)
     )
-    if label == "买入候选" and risk != "高" and not overheated:
-        reason = "规则标签进入买入候选，且动量未过热"
+    if label == "买入候选" and not hard_overheated:
+        reason = "激进策略：规则标签进入买入候选，未触发硬性过热"
     elif (
         label == "观察"
-        and risk != "高"
         and support_distance is not None
-        and 0 <= support_distance <= 8
+        and 0 <= support_distance <= 15
         and rsi6 is not None
-        and 35 <= rsi6 <= 68
-        and (kdj_j is None or kdj_j < 85)
-        and "突破上轨" not in boll_status
+        and 32 <= rsi6 <= 78
+        and (kdj_j is None or kdj_j < 105)
+        and not hard_overheated
     ):
-        reason = f"回踩到支撑附近，距支撑约 {support_distance:.1f}%，动量降温"
+        reason = f"激进策略：回踩到可接受区间，距支撑约 {support_distance:.1f}%"
     elif (
         label == "观察"
-        and risk != "高"
         and resistance_distance is not None
-        and resistance_distance >= 6
-        and not overheated
+        and resistance_distance >= 4
+        and not hard_overheated
+        and ("金叉" in macd_status or trend == "多头排列")
     ):
-        reason = f"过热状态解除，上方压力空间约 {resistance_distance:.1f}%"
+        reason = f"激进策略：趋势仍在，上方压力空间约 {resistance_distance:.1f}%"
+    elif (
+        label == "禁止追高"
+        and high_pullback is not None
+        and high_pullback >= 3
+        and support_distance is not None
+        and support_distance <= 28
+        and resistance_distance is not None
+        and resistance_distance >= 4
+        and rsi6 is not None
+        and rsi6 <= 85
+        and (kdj_j is None or kdj_j <= 112)
+        and (change_5d is None or change_5d <= 28)
+    ):
+        reason = (
+            f"激进策略：强势标的盘中回落 {high_pullback:.1f}%，"
+            f"压力空间约 {resistance_distance:.1f}%"
+        )
     else:
         return None
 
