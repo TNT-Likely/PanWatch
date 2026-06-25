@@ -27,6 +27,7 @@ from src.web.api import (
     paper_trading,
     chat,
     local_skills,
+    mcp,
 )
 from src.web.api import factors
 from src.web.api import health
@@ -178,6 +179,10 @@ app.include_router(
     tags=["local-skills"],
     dependencies=protected,
 )
+
+# MCP JSON-RPC 端点：自带 require_mcp_user 鉴权（Bearer/Basic），
+# 不挂 protected 依赖；响应为原生 JSON-RPC，已被 ResponseWrapperMiddleware 放行。
+app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 
 
 @app.get("/api/health")

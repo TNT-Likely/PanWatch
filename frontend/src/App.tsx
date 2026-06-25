@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, Star, Wand2 } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, Star, Wand2, Plug } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -15,6 +15,7 @@ import PriceAlertsPage from '@/pages/PriceAlerts'
 import PaperTradingPage from '@/pages/PaperTrading'
 import SkillsPage from '@/pages/Skills'
 import LoginPage from '@/pages/Login'
+import MCPPage from '@/pages/MCP'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import ChatWidget from '@/components/ChatWidget'
@@ -34,6 +35,7 @@ const navItems = [
   { to: '/skills', icon: Wand2, label: 'Skill' },
   { to: '/history', icon: Clock, label: '历史' },
   { to: '/datasources', icon: Database, label: '数据源' },
+  { to: '/mcp', icon: Plug, label: 'MCP' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
 const desktopPrimaryNavItems = navItems.slice(0, 6)
@@ -268,6 +270,7 @@ function App() {
           <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/alerts" element={<PriceAlertsPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
+          <Route path="/mcp" element={<MCPPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
         </Routes>

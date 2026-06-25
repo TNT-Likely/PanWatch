@@ -18,6 +18,13 @@ class ResponseWrapperMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # MCP 端点返回原生 JSON-RPC，不能被 {code,success,data,message} 包装，
+        # 否则破坏 JSON-RPC 协议，导致 MCP 客户端与前端 MCP 页面解析失败。
+        path = scope.get("path", "")
+        if path == "/api/mcp" or path.startswith("/api/mcp/"):
+            await self.app(scope, receive, send)
+            return
+
         status_code = 200
         response_headers: list[tuple[bytes, bytes]] = []
         body_parts: list[bytes] = []
