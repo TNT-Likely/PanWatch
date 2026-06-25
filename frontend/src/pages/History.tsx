@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Trash2, FileText, ArrowLeft, ExternalLink } from 'lucide-react'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
-import { fetchAPI, stocksApi, type StockItem } from '@panwatch/api'
+import { fetchAPI, stocksApi, type StockItem, parseLocalSkillSlug } from '@panwatch/api'
 import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
@@ -35,6 +35,16 @@ const AGENT_LABELS: Record<string, string> = {
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
   lmd_outlook: '老马视角',
+}
+
+function resolveHistoryAgentLabel(agentName: string, title?: string): string {
+  const slug = parseLocalSkillSlug(agentName)
+  if (slug) {
+    const m = (title || '').match(/^【([^】]+)】/)
+    if (m?.[1]) return m[1]
+    return `Skill:${slug}`
+  }
+  return AGENT_LABELS[agentName] || agentName
 }
 
 const WORKFLOW_AGENT_KEYS = ['daily_report', 'premarket_outlook', 'intraday_monitor', 'tradingagents', 'lmd_outlook']
@@ -184,7 +194,7 @@ export default function HistoryPage() {
 
   // 格式化标题（带日期）
   const formatTitle = (record: HistoryRecord) => {
-    const agentLabel = AGENT_LABELS[record.agent_name] || record.agent_name
+    const agentLabel = resolveHistoryAgentLabel(record.agent_name, record.title)
     if (record.title) {
       return `${record.analysis_date} ${record.title}`
     }
@@ -332,7 +342,7 @@ export default function HistoryPage() {
                     >
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-[10px] flex-shrink-0">
-                          {AGENT_LABELS[r.agent_name] || r.agent_name}
+                          {resolveHistoryAgentLabel(r.agent_name, r.title)}
                         </Badge>
                         {stockSymbol ? (
                           <button
@@ -376,7 +386,7 @@ export default function HistoryPage() {
                         <ArrowLeft className="w-4 h-4" />
                         目录
                       </Button>
-                      <Badge variant="outline" className="text-[10px]">{AGENT_LABELS[selectedRecord.agent_name] || selectedRecord.agent_name}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{resolveHistoryAgentLabel(selectedRecord.agent_name, selectedRecord.title)}</Badge>
                       <span className="text-[11px] text-muted-foreground font-mono">{formatDateTime(displayTime(selectedRecord))}</span>
                     </div>
                     <div className="mt-1 text-[15px] md:text-[16px] font-semibold text-foreground truncate">
@@ -439,7 +449,7 @@ export default function HistoryPage() {
             <DialogDescription>
               {detailRecord && (
                 <span className="flex items-center gap-2">
-                  <Badge variant="outline">{AGENT_LABELS[detailRecord.agent_name] || detailRecord.agent_name}</Badge>
+                  <Badge variant="outline">{resolveHistoryAgentLabel(detailRecord.agent_name, detailRecord.title)}</Badge>
                 </span>
               )}
             </DialogDescription>

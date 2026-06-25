@@ -1654,6 +1654,33 @@ def _m120_stock_investment_profile(conn: Connection) -> None:
     )
 
 
+def _m121_local_skills_table(conn: Connection) -> None:
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS local_skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  skill_path TEXT DEFAULT '',
+  source_root TEXT DEFAULT '',
+  enabled INTEGER DEFAULT 0,
+  config TEXT DEFAULT '{}',
+  last_seen_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_local_skills_enabled",
+        "CREATE INDEX ix_local_skills_enabled ON local_skills(enabled, display_name)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1675,6 +1702,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
     Migration(119, "position_trades_table", _m119_position_trades_table),
     Migration(120, "stock_investment_profile", _m120_stock_investment_profile),
+    Migration(121, "local_skills_table", _m121_local_skills_table),
 )
 
 

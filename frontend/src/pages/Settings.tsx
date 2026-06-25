@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User } from 'lucide-react'
-import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
+import { fetchAPI, type AIService, type AIModel, type NotifyChannel, localSkillsApi } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -183,6 +183,7 @@ export default function SettingsPage() {
   // Feedback stats
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
   const [fbLoading, setFbLoading] = useState(false)
+  const [hermesTesting, setHermesTesting] = useState(false)
 
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
@@ -556,14 +557,20 @@ export default function SettingsPage() {
 
   const filteredSettings = settings.filter(s => {
     const q = systemQuery.trim().toLowerCase()
+    if (s.key.startsWith('hermes_') || s.key.startsWith('local_skill_')) return false
     if (!q) return true
     return (s.description || '').toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
   })
+
+  const hermesSettings = settings.filter(s =>
+    s.key.startsWith('hermes_') || s.key.startsWith('local_skill_'),
+  )
 
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
+    { id: 'sec-hermes', label: 'Hermes' },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
     { id: 'sec-pack', label: '配置包' },
     { id: 'sec-feedback', label: '反馈' },
@@ -787,6 +794,79 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        {hermesSettings.length > 0 && (
+          <section id="sec-hermes" className="card p-4 md:p-6 lg:col-span-12">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 md:mb-5">
+              <div>
+                <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">Hermes & 本地 Skill</h3>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  配置本地 Hermes CLI 与 skill 扫描路径，供 Skill 广场与报告生成使用
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-9"
+                disabled={hermesTesting}
+                onClick={async () => {
+                  setHermesTesting(true)
+                  try {
+                    const resp = await localSkillsApi.testHermes()
+                    toast(resp.ok ? (resp.message || 'Hermes 连接正常') : (resp.message || '测试失败'), resp.ok ? 'success' : 'error')
+                  } catch (e) {
+                    toast(e instanceof Error ? e.message : '测试失败', 'error')
+                  } finally {
+                    setHermesTesting(false)
+                  }
+                }}
+              >
+                {hermesTesting ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5" />
+                )}
+                测试 Hermes
+              </Button>
+            </div>
+            <div className="space-y-5">
+              {hermesSettings.map(setting => {
+                const currentValue = edited[setting.key] ?? setting.value
+                const isChanged = setting.key in edited
+                return (
+                  <div key={setting.key}>
+                    <Label>{setting.description || setting.key}</Label>
+                    <div className="flex items-center gap-2.5">
+                      <Input
+                        value={currentValue}
+                        onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
+                        className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
+                        placeholder={setting.key}
+                      />
+                      <button
+                        onClick={() => handleSave(setting.key)}
+                        disabled={!isChanged || saving === setting.key}
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                          saved === setting.key
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : isChanged
+                              ? 'bg-primary text-white'
+                              : 'text-muted-foreground/30'
+                        }`}
+                      >
+                        {saving === setting.key ? (
+                          <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {/* General Settings */}
         {settings.length > 0 && (

@@ -46,6 +46,8 @@ class SettingResponse(BaseModel):
         from_attributes = True
 
 
+from src.core.hermes_config import DEFAULT_HERMES_VALUES, HERMES_SETTING_KEYS
+
 # 配置项描述
 SETTING_DESCRIPTIONS = {
     "http_proxy": "HTTP 代理地址",
@@ -55,6 +57,7 @@ SETTING_DESCRIPTIONS = {
     "notify_dedupe_ttl_overrides": "通知幂等窗口覆盖（JSON，空为默认）",
     "stock_link_platform": "股票链接平台（点击股票代码跳转的行情网站）",
     "panwatch_base_url": "PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）",
+    **HERMES_SETTING_KEYS,
 }
 
 SETTING_KEYS = list(SETTING_DESCRIPTIONS.keys())
@@ -71,6 +74,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
+        **DEFAULT_HERMES_VALUES,
     }
 
 

@@ -19,6 +19,10 @@ import {
   type PortfolioRecentTrade,
   type TradingAgentsTriggerResult,
   type TriggerStockAgentResponse,
+  localSkillsApi,
+  isLocalSkillAgentName,
+  parseLocalSkillSlug,
+  localSkillAgentName,
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
@@ -174,6 +178,16 @@ const AGENT_LABELS: Record<string, string> = {
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
   lmd_outlook: '老马视角',
+}
+
+function resolveAgentLabel(agentName: string, agents: ReportAgentConfig[] = []): string {
+  const slug = parseLocalSkillSlug(agentName)
+  if (slug) {
+    const hit = agents.find(a => a.name === agentName)
+    if (hit?.display_name) return hit.display_name
+    return slug
+  }
+  return AGENT_LABELS[agentName] || agentName
 }
 
 function historyRecordMatchesStock(
@@ -808,14 +822,23 @@ export default function StockInsightModal(props: {
 
   const loadReportAgents = useCallback(async () => {
     try {
-      const list = await fetchAPI<ReportAgentConfig[]>('/agents')
+      const [list, localSkills] = await Promise.all([
+        fetchAPI<ReportAgentConfig[]>('/agents'),
+        localSkillsApi.list({ enabledOnly: true }).catch(() => []),
+      ])
       const filtered = (list || []).filter(
         a => a.enabled && REPORT_TRIGGER_AGENT_NAMES.includes(a.name as (typeof REPORT_TRIGGER_AGENT_NAMES)[number]),
       )
-      if (filtered.length > 0) {
-        setReportAgents(filtered)
-        if (!filtered.some(a => a.name === reportAgentName)) {
-          const preferred = filtered.find(a => a.name === 'daily_report') || filtered[0]
+      const localAgents: ReportAgentConfig[] = (localSkills || []).map(s => ({
+        name: localSkillAgentName(s.slug),
+        display_name: s.display_name || s.slug,
+        enabled: true,
+      }))
+      const merged = [...filtered, ...localAgents]
+      if (merged.length > 0) {
+        setReportAgents(merged)
+        if (!merged.some(a => a.name === reportAgentName)) {
+          const preferred = merged.find(a => a.name === 'daily_report') || merged[0]
           setReportAgentName(preferred.name)
         }
         return
@@ -830,7 +853,7 @@ export default function StockInsightModal(props: {
         enabled: true,
       })),
     )
-  }, [])
+  }, [reportAgentName])
 
   const stopReportPoll = useCallback(() => {
     if (reportPollRef.current) {
@@ -930,6 +953,31 @@ export default function StockInsightModal(props: {
     const baselineSuggestionCount = suggestions.length
     setReportGenerating(agentName)
     try {
+      if (isLocalSkillAgentName(agentName)) {
+        const slug = parseLocalSkillSlug(agentName)
+        if (!slug) throw new Error('无效的本地 Skill')
+        const stocks = await stocksApi.list()
+        const stock =
+          watchingStock
+          || stockCacheRef.current[`${market}:${symbol}`]
+          || (stocks || []).find(s => s.symbol === symbol && s.market === market)
+          || null
+        await localSkillsApi.trigger(
+          slug,
+          {
+            stock_id: stock?.id || 0,
+            symbol,
+            market,
+            name: resolvedName || symbol,
+          },
+          { wait: true, timeoutMs: 720_000 },
+        )
+        const fresh = await loadReports()
+        setSelectedReportId(fresh[0]?.id ?? baselineReportId)
+        toast('Skill 报告已生成', 'success')
+        return
+      }
+
       const { stockId, useUnbound } = await ensureStockAgentBinding(agentName)
       const unboundOpts = useUnbound
         ? {
@@ -944,7 +992,7 @@ export default function StockInsightModal(props: {
         bypass_market_hours: true,
         ...unboundOpts,
       }
-      const syncWait = agentName === 'lmd_outlook'
+      const syncWait = agentName === 'lmd_outlook' || isLocalSkillAgentName(agentName)
       let resp: TriggerStockAgentResponse
       if (syncWait) {
         const qs = new URLSearchParams({
@@ -2452,7 +2500,7 @@ export default function StockInsightModal(props: {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-[10px] text-muted-foreground">
-                                {AGENT_LABELS[r.agent_name] || r.agent_name}
+                                {resolveAgentLabel(r.agent_name, reportAgents)}
                               </span>
                               <span className="text-[10px] text-muted-foreground shrink-0">{r.analysis_date}</span>
                             </div>
@@ -2475,7 +2523,7 @@ export default function StockInsightModal(props: {
                 ) : (
                   <div className="md:col-span-8 card p-4 space-y-3">
                     <div className="text-[11px] text-muted-foreground">
-                      {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
+                      {resolveAgentLabel(activeReport.agent_name, reportAgents)} · {activeReport.analysis_date}
                     </div>
                     <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
                     {activeReport.suggestions && activeReport.suggestions[symbol]?.action_label && (

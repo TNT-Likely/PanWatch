@@ -26,6 +26,8 @@ CAPABILITY_AGENT_NAMES: tuple[str, ...] = (
 
 def infer_agent_kind(agent_name: str | None) -> str:
     name = (agent_name or "").strip()
+    if name.startswith("local_skill:"):
+        return AGENT_KIND_WORKFLOW
     if name in CAPABILITY_AGENT_NAMES:
         return AGENT_KIND_CAPABILITY
     return AGENT_KIND_WORKFLOW

@@ -263,6 +263,24 @@ class AppSettings(Base):
     description = Column(String, default="")
 
 
+class LocalSkill(Base):
+    """本地 Hermes skill 注册（Skill 广场）。"""
+
+    __tablename__ = "local_skills"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String, unique=True, nullable=False)
+    display_name = Column(String, nullable=False)
+    description = Column(String, default="")
+    skill_path = Column(String, default="")
+    source_root = Column(String, default="")
+    enabled = Column(Boolean, default=False)
+    config = Column(JSON, default={})
+    last_seen_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class DataSource(Base):
     """数据源配置（新闻、K线图、行情）"""
 

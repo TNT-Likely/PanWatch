@@ -273,3 +273,59 @@ async def run_hermes_chat(
             content = expanded
 
     return content
+
+
+async def test_hermes_connection(
+    *,
+    hermes_bin: str = "",
+    hermes_profile: str = "",
+    skill: str = "",
+    skill_source_dir: str = "",
+    timeout_sec: float = 60,
+) -> dict:
+    """轻量探测 Hermes 是否可用。"""
+    bin_path = find_hermes_bin(hermes_bin)
+    if not bin_path:
+        return {
+            "ok": False,
+            "message": "未找到 Hermes CLI",
+            "bin": "",
+        }
+
+    probe_skill = (skill or "lmd-finance-perspective").strip()
+    profile = (hermes_profile or "").strip()
+    if profile:
+        ensure_hermes_profile_skill(
+            profile, probe_skill, skill_source_dir=skill_source_dir
+        )
+
+    cmd = _build_hermes_cmd(
+        bin_path,
+        profile=profile,
+        skill=probe_skill,
+        query="请仅回复：Hermes 连接正常",
+        max_turns=3,
+        model="",
+        ignore_rules=True,
+    )
+    try:
+        content, session_id = await _run_hermes_cmd(
+            cmd, profile=profile, timeout_sec=max(15.0, float(timeout_sec))
+        )
+        return {
+            "ok": True,
+            "message": "Hermes 连接正常",
+            "bin": bin_path,
+            "profile": profile or "default",
+            "skill": probe_skill,
+            "reply_preview": (content or "")[:200],
+            "session_id": session_id,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "message": str(e),
+            "bin": bin_path,
+            "profile": profile or "default",
+            "skill": probe_skill,
+        }
