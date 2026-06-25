@@ -465,6 +465,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
+  const [watchlistTagFilter, setWatchlistTagFilter] = useLocalStorage<string>('panwatch_watchlist_tag_filter', '')
 
   // Remove watchlist modal
   const [removeWatchStock, setRemoveWatchStock] = useState<Stock | null>(null)
@@ -1146,6 +1147,26 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   }
 
   const watchlistStocks = useMemo(() => stocks, [stocks])
+
+  const watchlistConceptTagOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const stock of watchlistStocks) {
+      for (const tag of stock.concept_tags || []) {
+        const name = (tag.name || '').trim()
+        if (!name) continue
+        counts.set(name, (counts.get(name) || 0) + 1)
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
+      .map(([name, count]) => ({ name, count }))
+  }, [watchlistStocks])
+
+  const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistTagFilter !== ''
+
+  const toggleWatchlistTagFilter = useCallback((name: string) => {
+    setWatchlistTagFilter((prev) => (prev === name ? '' : name))
+  }, [setWatchlistTagFilter])
 
   const removeFromWatchlist = async (stock: Stock) => {
     if (hasAnyPositionForStockId(stock.id)) {
@@ -2561,6 +2582,57 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               </button>
             </div>
           </div>
+          {watchlistConceptTagOptions.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[11px] text-muted-foreground">标签</div>
+                {watchlistTagFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setWatchlistTagFilter('')}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    清除标签筛选
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {watchlistConceptTagOptions.slice(0, 14).map((opt) => (
+                  <button
+                    key={opt.name}
+                    type="button"
+                    onClick={() => toggleWatchlistTagFilter(opt.name)}
+                    className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                      watchlistTagFilter === opt.name
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+                    }`}
+                    title={`筛选「${opt.name}」标签`}
+                  >
+                    {opt.name} ({opt.count})
+                  </button>
+                ))}
+                {watchlistConceptTagOptions.length > 14 && (
+                  <Select
+                    value={watchlistConceptTagOptions.some((opt) => opt.name === watchlistTagFilter) ? watchlistTagFilter : ''}
+                    onValueChange={(value) => setWatchlistTagFilter(value === '__all__' ? '' : value)}
+                  >
+                    <SelectTrigger className="h-6 w-[108px] text-[11px] px-2">
+                      <SelectValue placeholder="更多标签" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">全部标签</SelectItem>
+                      {watchlistConceptTagOptions.slice(14).map((opt) => (
+                        <SelectItem key={opt.name} value={opt.name}>
+                          {opt.name} ({opt.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+          )}
           {watchlistStocks.length === 0 ? (
             <div className="py-12 text-center">
               <div className="text-[13px] text-muted-foreground">还没有添加关注股票</div>
@@ -2568,15 +2640,38 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {watchlistStocks
-                .filter(s => !stockListFilter || s.market === stockListFilter)
-                .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
-                .filter(stock => {
-                  if (!watchlistOnlyAlerts) return true
-                  const { suggestion } = getSuggestionForStock(stock.symbol, stock.market, false)
-                  return !!suggestion?.should_alert
-                })
-                .map((stock) => {
+              {(() => {
+                const visibleWatchlistStocks = watchlistStocks
+                  .filter(s => !stockListFilter || s.market === stockListFilter)
+                  .filter(s => {
+                    if (!watchlistTagFilter) return true
+                    return (s.concept_tags || []).some((tag) => tag.name === watchlistTagFilter)
+                  })
+                  .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+                  .filter(stock => {
+                    if (!watchlistOnlyAlerts) return true
+                    const { suggestion } = getSuggestionForStock(stock.symbol, stock.market, false)
+                    return !!suggestion?.should_alert
+                  })
+
+                if (visibleWatchlistStocks.length === 0) {
+                  return (
+                    <div className="col-span-full py-10 text-center">
+                      <div className="text-[13px] text-muted-foreground">没有符合当前筛选条件的股票</div>
+                      {watchlistTagFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setWatchlistTagFilter('')}
+                          className="mt-2 text-[11px] text-primary hover:underline"
+                        >
+                          清除标签「{watchlistTagFilter}」
+                        </button>
+                      )}
+                    </div>
+                  )
+                }
+
+                return visibleWatchlistStocks.map((stock) => {
                 const isHolding = hasAnyPositionForStockId(stock.id)
                 const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
                 const changeColor = quote?.change_pct != null
@@ -2586,15 +2681,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                 return (
                   <div
                     key={stock.id}
-                    draggable={stockListFilter === '' && !watchlistOnlyAlerts}
+                    draggable={!watchlistReorderDisabled}
                     onDragStart={(e) => {
-                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      if (watchlistReorderDisabled) return
                       watchDragSnapshotRef.current = stocks
                       setDraggingWatchStockId(stock.id)
                       e.dataTransfer.effectAllowed = 'move'
                     }}
                     onDragOver={(e) => {
-                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      if (watchlistReorderDisabled) return
                       e.preventDefault()
                       e.dataTransfer.dropEffect = 'move'
                       if (draggingWatchStockId != null) {
@@ -2602,7 +2697,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                       }
                     }}
                     onDrop={(e) => {
-                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      if (watchlistReorderDisabled) return
                       e.preventDefault()
                       if (draggingWatchStockId != null) commitWatchlistReorder()
                       setDraggingWatchStockId(null)
@@ -2647,6 +2742,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           compact
                           maxVisible={4}
                           className="mt-1.5"
+                          activeTag={watchlistTagFilter}
+                          onTagClick={toggleWatchlistTagFilter}
                         />
                       </div>
                       <div className="text-right">
@@ -2796,7 +2893,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                     </div>
                   </div>
                 )
-              })}
+              })
+              })()}
             </div>
           )}
         </div>

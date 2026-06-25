@@ -107,6 +107,84 @@ def test_adjust_suggestion_downgrades_repeat_liquidate_near_support():
     assert adjusted["should_alert"] is False
 
 
+def test_build_prompt_recent_trades_not_labeled_as_today():
+    """近期交易记录不应误导模型把历史流水当成今日操作"""
+    agent = IntradayMonitorAgent()
+    stock = StockData(
+        symbol="603596",
+        name="伯特利",
+        market=MarketCode.CN,
+        current_price=24.93,
+        change_pct=-3.11,
+        change_amount=-0.8,
+        volume=10000,
+        turnover=200000,
+        open_price=25.59,
+        high_price=25.59,
+        low_price=24.79,
+        prev_close=25.73,
+    )
+
+    class _Pos:
+        account_id = 1
+        account_name = "华泰证券"
+        cost_price = 29.22
+        quantity = 2700
+        trading_style = "long"
+
+    class _Portfolio:
+        total_available_funds = 0.0
+        accounts = []
+
+        def get_positions_for_stock(self, symbol):
+            return [_Pos()]
+
+    class _Ctx:
+        portfolio = _Portfolio()
+
+    data = {
+        "stock_data": stock,
+        "kline_summary": {},
+        "symbol_context": {
+            "constraints": {
+                "recent_trades": [
+                    {
+                        "side": "buy",
+                        "quantity": 300,
+                        "price": 25.95,
+                        "qty_after": 2700,
+                        "cost_after": 29.222099,
+                        "traded_at": "2026-06-24T03:08:55",
+                        "is_today": False,
+                    },
+                    {
+                        "side": "sell",
+                        "quantity": 300,
+                        "price": 26.47,
+                        "qty_after": 2400,
+                        "cost_after": 29.631111,
+                        "traded_at": "2026-06-24T01:22:42",
+                        "is_today": False,
+                    },
+                ]
+            }
+        },
+        "today_trades": {
+            "has_sell_today": False,
+            "has_buy_today": False,
+            "sell_qty": 0,
+            "buy_qty": 0,
+            "net_qty": 0,
+            "context": "",
+        },
+    }
+    _system, user_content = agent.build_prompt(data, _Ctx())
+    assert "今日已买卖的，不要重复建议同方向操作" not in user_content
+    assert "06-24" in user_content
+    assert "\n## 今日持仓变动\n" not in user_content
+    assert "今日已有卖出" not in user_content
+
+
 def test_build_prompt_includes_today_trades_section():
     """盘中 prompt 应注入今日持仓变动"""
     agent = IntradayMonitorAgent()

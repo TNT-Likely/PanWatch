@@ -17,6 +17,8 @@ interface StockConceptTagsProps {
   compact?: boolean
   maxVisible?: number
   className?: string
+  activeTag?: string
+  onTagClick?: (name: string) => void
   onUpdateManual?: (tags: string[]) => Promise<void> | void
   onRefreshAuto?: () => Promise<void> | void
 }
@@ -28,6 +30,8 @@ export function StockConceptTags({
   compact = false,
   maxVisible = 6,
   className,
+  activeTag = '',
+  onTagClick,
   onUpdateManual,
   onRefreshAuto,
 }: StockConceptTagsProps) {
@@ -49,6 +53,8 @@ export function StockConceptTags({
       editable={editable}
       compact={compact}
       className={className}
+      activeTag={activeTag}
+      onTagClick={onTagClick}
       onUpdateManual={onUpdateManual}
       onRefreshAuto={onRefreshAuto}
     />
@@ -63,6 +69,8 @@ function ConceptTagsEditor({
   editable,
   compact,
   className,
+  activeTag,
+  onTagClick,
   onUpdateManual,
   onRefreshAuto,
 }: {
@@ -74,6 +82,8 @@ function ConceptTagsEditor({
   editable: boolean
   compact: boolean
   className?: string
+  activeTag?: string
+  onTagClick?: (name: string) => void
   onUpdateManual?: (tags: string[]) => Promise<void> | void
   onRefreshAuto?: () => Promise<void> | void
 }) {
@@ -122,24 +132,40 @@ function ConceptTagsEditor({
       className={cn('flex flex-wrap items-center gap-1', compact ? 'gap-0.5' : 'gap-1', className)}
       onClick={(e) => e.stopPropagation()}
     >
-      {visible.map((tag) => (
-        <BadgeChip
-          key={`${tag.source}:${tag.name}`}
-          size={compact ? 'xs' : 'sm'}
-          label={tag.name}
-          title={tag.source === 'manual' ? '手动标签（点击移除）' : '自动标签'}
-          className={cn(
-            tag.source === 'manual'
-              ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300'
-              : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-          )}
-          onClick={
-            editable && tag.source === 'manual'
-              ? (e) => removeManual(tag.name, e)
-              : undefined
-          }
-        />
-      ))}
+      {visible.map((tag) => {
+        const isActive = !!activeTag && activeTag === tag.name
+        return (
+          <BadgeChip
+            key={`${tag.source}:${tag.name}`}
+            size={compact ? 'xs' : 'sm'}
+            label={tag.name}
+            title={
+              onTagClick
+                ? '点击筛选该标签'
+                : tag.source === 'manual'
+                  ? '手动标签（点击移除）'
+                  : '自动标签'
+            }
+            className={cn(
+              tag.source === 'manual'
+                ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300'
+                : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+              isActive && 'ring-1 ring-primary/60',
+              onTagClick && 'cursor-pointer hover:opacity-80',
+            )}
+            onClick={
+              onTagClick
+                ? (e) => {
+                    e.stopPropagation()
+                    onTagClick(tag.name)
+                  }
+                : editable && tag.source === 'manual'
+                  ? (e) => removeManual(tag.name, e)
+                  : undefined
+            }
+          />
+        )
+      })}
       {hiddenCount > 0 && (
         <span className={cn('text-muted-foreground', compact ? 'text-[10px]' : 'text-[11px]')}>
           +{hiddenCount}

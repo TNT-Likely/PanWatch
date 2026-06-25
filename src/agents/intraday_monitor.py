@@ -18,6 +18,7 @@ from src.core.context_store import (
 from src.core.suggestion_pool import save_suggestion
 from src.core.signals import SignalPackBuilder
 from src.core.signals.structured_output import try_parse_action_json
+from src.core.timezone import format_beijing
 from src.models.market import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
@@ -577,14 +578,24 @@ class IntradayMonitorAgent(BaseAgent):
             recent_trades = constraints.get("recent_trades") or []
             if recent_trades:
                 lines.append("\n## 近期交易记录")
-                lines.append("（今日已买卖的，不要重复建议同方向操作）")
+                lines.append(
+                    "（含近几笔历史流水；是否「今日已交易」以下方「今日持仓变动」为准，勿把历史流水当成今日操作）"
+                )
                 for t in recent_trades[:8]:
                     side = "买入" if t.get("side") == "buy" else "卖出"
                     today = "【今日】" if t.get("is_today") else ""
                     note = f" {t['note']}" if t.get("note") else ""
+                    time_str = ""
+                    if t.get("traded_at"):
+                        try:
+                            raw = str(t["traded_at"]).replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(raw)
+                            time_str = f"，{format_beijing(dt, '%m-%d %H:%M')}"
+                        except (ValueError, TypeError):
+                            pass
                     lines.append(
                         f"- {today}{side} {t.get('quantity')}股 @{t.get('price')} "
-                        f"→ 持仓{t.get('qty_after')}股 成本{t.get('cost_after')}{note}"
+                        f"→ 持仓{t.get('qty_after')}股 成本{t.get('cost_after')}{time_str}{note}"
                     )
         else:
             lines.append("\n## 未持仓（仅关注）")
