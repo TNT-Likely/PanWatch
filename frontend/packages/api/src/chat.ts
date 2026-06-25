@@ -20,6 +20,7 @@ export interface ChatConversation {
   stock_symbol?: string | null
   stock_market?: string | null
   created_at: string
+  updated_at?: string
 }
 
 export interface ChatMessage {
@@ -50,6 +51,11 @@ export const chatApi = {
 
   listConversations: (limit = 30) =>
     fetchAPI<ChatConversation[]>(`/chat/conversations?limit=${limit}`),
+
+  findRecentConversations: (symbol: string, market: string, limit = 1) =>
+    fetchAPI<ChatConversation[]>(
+      `/chat/conversations/recent?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}&limit=${limit}`,
+    ),
 
   getConversation: (id: number) =>
     fetchAPI<ConversationDetail>(`/chat/conversations/${id}`),

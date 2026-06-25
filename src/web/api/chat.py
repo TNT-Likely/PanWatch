@@ -539,6 +539,17 @@ def create_conversation(
     }
 
 
+def _serialize_conversation(conv: ChatConversation) -> dict:
+    return {
+        "id": conv.id,
+        "title": conv.title or "",
+        "stock_symbol": conv.stock_symbol,
+        "stock_market": conv.stock_market,
+        "created_at": str(conv.created_at or ""),
+        "updated_at": str(conv.updated_at or conv.created_at or ""),
+    }
+
+
 @router.get("/conversations")
 def list_conversations(
     limit: int = Query(30, ge=1, le=100),
@@ -550,16 +561,28 @@ def list_conversations(
         .limit(limit)
         .all()
     )
-    return [
-        {
-            "id": c.id,
-            "title": c.title or "",
-            "stock_symbol": c.stock_symbol,
-            "stock_market": c.stock_market,
-            "created_at": str(c.created_at or ""),
-        }
-        for c in rows
-    ]
+    return [_serialize_conversation(c) for c in rows]
+
+
+@router.get("/conversations/recent")
+def list_recent_conversations(
+    symbol: str = Query(..., min_length=1),
+    market: str = Query(..., min_length=1),
+    limit: int = Query(1, ge=1, le=10),
+    db: Session = Depends(get_db),
+):
+    """按股票查询最近活跃对话（须在 /conversations/{id} 之前注册）。"""
+    rows = (
+        db.query(ChatConversation)
+        .filter(
+            ChatConversation.stock_symbol == symbol,
+            ChatConversation.stock_market == market,
+        )
+        .order_by(ChatConversation.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_serialize_conversation(c) for c in rows]
 
 
 @router.get("/conversations/{conversation_id}")
@@ -600,6 +623,7 @@ def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
     conv = db.query(ChatConversation).filter(ChatConversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(404, "对话不存在")
+    db.query(ChatPendingAction).filter(ChatPendingAction.conversation_id == conversation_id).delete()
     db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation_id).delete()
     db.delete(conv)
     db.commit()
