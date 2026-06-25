@@ -1681,6 +1681,38 @@ CREATE TABLE IF NOT EXISTS local_skills (
     )
 
 
+def _m122_chat_pending_actions(conn: Connection) -> None:
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS chat_pending_actions (
+  id TEXT PRIMARY KEY,
+  conversation_id INTEGER NOT NULL,
+  message_id INTEGER,
+  action_type TEXT NOT NULL,
+  payload TEXT DEFAULT '{}',
+  preview TEXT DEFAULT '{}',
+  status TEXT DEFAULT 'pending',
+  result TEXT,
+  expires_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_chat_pending_conv",
+        "CREATE INDEX ix_chat_pending_conv ON chat_pending_actions(conversation_id, status)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_chat_pending_msg",
+        "CREATE INDEX ix_chat_pending_msg ON chat_pending_actions(message_id)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1703,6 +1735,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(119, "position_trades_table", _m119_position_trades_table),
     Migration(120, "stock_investment_profile", _m120_stock_investment_profile),
     Migration(121, "local_skills_table", _m121_local_skills_table),
+    Migration(122, "chat_pending_actions", _m122_chat_pending_actions),
 )
 
 

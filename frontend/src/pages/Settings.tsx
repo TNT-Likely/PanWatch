@@ -557,7 +557,7 @@ export default function SettingsPage() {
 
   const filteredSettings = settings.filter(s => {
     const q = systemQuery.trim().toLowerCase()
-    if (s.key.startsWith('hermes_') || s.key.startsWith('local_skill_')) return false
+    if (s.key.startsWith('hermes_') || s.key.startsWith('local_skill_') || s.key.startsWith('chat_action_')) return false
     if (!q) return true
     return (s.description || '').toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
   })
@@ -566,9 +566,28 @@ export default function SettingsPage() {
     s.key.startsWith('hermes_') || s.key.startsWith('local_skill_'),
   )
 
+  const chatActionSettings = settings.filter(s => s.key.startsWith('chat_action_'))
+
+  const handleChatActionToggle = async (key: string, enabled: boolean) => {
+    setSaving(key)
+    try {
+      await fetchAPI(`/settings/${key}`, {
+        method: 'PUT',
+        body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
+      })
+      setSettings(prev => prev.map(s => (s.key === key ? { ...s, value: enabled ? 'true' : 'false' } : s)))
+      toast('已保存', 'success')
+    } catch {
+      toast('保存失败', 'error')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
+    { id: 'sec-chat-actions', label: '助手权限' },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
     { id: 'sec-hermes', label: 'Hermes' },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
@@ -737,6 +756,36 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        {chatActionSettings.length > 0 && (
+          <section id="sec-chat-actions" className="card p-4 md:p-6 lg:col-span-7">
+            <div className="mb-4 md:mb-5">
+              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">AI 助手操作权限</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                控制 AI 对话能否提议创建提醒、记录加仓/减仓。所有操作均需你在对话中确认后才会执行。
+              </p>
+            </div>
+            <div className="space-y-4">
+              {chatActionSettings.map(setting => {
+                const enabled = (setting.value || '').toLowerCase() === 'true'
+                return (
+                  <div key={setting.key} className="flex items-center justify-between gap-3 rounded-xl bg-accent/30 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-foreground">
+                        {setting.description || setting.key}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={enabled}
+                      disabled={saving === setting.key}
+                      onCheckedChange={(v) => handleChatActionToggle(setting.key, v)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Notify Channel Section */}
         <section id="sec-notify" className="card p-4 md:p-6 lg:col-span-5">

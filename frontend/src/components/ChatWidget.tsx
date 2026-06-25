@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MessageCircle, X, Plus, Trash2, Send, ChevronLeft, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { chatApi, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { chatApi, type ChatConversation, type ChatMessage, type ChatPendingAction } from '@panwatch/api'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import ChatActionCard from './ChatActionCard'
 
 interface StockContext {
   symbol: string
@@ -11,6 +13,7 @@ interface StockContext {
 }
 
 export default function ChatWidget() {
+  const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeConvId, setActiveConvId] = useState<number | null>(null)
@@ -20,6 +23,7 @@ export default function ChatWidget() {
   const [view, setView] = useState<'list' | 'chat'>('list')
   const [stockContext, setStockContext] = useState<StockContext | null>(null)
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const loadConversations = useCallback(async () => {
@@ -182,6 +186,44 @@ export default function ChatWidget() {
     }
   }, [input, sending, activeConvId, stockContext])
 
+  const updateMessageAction = useCallback((actionId: string, nextAction: ChatPendingAction) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (!msg.pending_actions?.some((a) => a.id === actionId)) return msg
+        return {
+          ...msg,
+          pending_actions: msg.pending_actions.map((a) => (a.id === actionId ? nextAction : a)),
+        }
+      }),
+    )
+  }, [])
+
+  const handleConfirmAction = useCallback(async (actionId: string) => {
+    setActionLoadingId(actionId)
+    try {
+      const res = await chatApi.confirmAction(actionId)
+      updateMessageAction(actionId, res.action)
+      window.dispatchEvent(new CustomEvent('panwatch-portfolio-changed'))
+      toast('操作已执行', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '操作失败', 'error')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }, [updateMessageAction, toast])
+
+  const handleCancelAction = useCallback(async (actionId: string) => {
+    setActionLoadingId(actionId)
+    try {
+      const res = await chatApi.cancelAction(actionId)
+      updateMessageAction(actionId, res.action)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '取消失败', 'error')
+    } finally {
+      setActionLoadingId(null)
+    }
+  }, [updateMessageAction, toast])
+
   if (!open) {
     return (
       <button
@@ -322,9 +364,20 @@ export default function ChatWidget() {
                   }`}
                 >
                   {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px]">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
+                    <>
+                      <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px]">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                      {(msg.pending_actions || []).map((action) => (
+                        <ChatActionCard
+                          key={action.id}
+                          action={action}
+                          loading={actionLoadingId === action.id}
+                          onConfirm={handleConfirmAction}
+                          onCancel={handleCancelAction}
+                        />
+                      ))}
+                    </>
                   ) : (
                     msg.content
                   )}

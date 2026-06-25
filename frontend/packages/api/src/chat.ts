@@ -1,5 +1,19 @@
 import { fetchAPI } from './client'
 
+export interface ChatPendingAction {
+  id: string
+  type: 'create_price_alert' | 'add_position' | 'reduce_position'
+  preview: {
+    title?: string
+    lines?: string[]
+    warnings?: string[]
+  }
+  status: 'pending' | 'confirmed' | 'cancelled' | 'expired' | 'failed'
+  result?: Record<string, unknown> | null
+  expires_at?: string
+  created_at?: string
+}
+
 export interface ChatConversation {
   id: number
   title: string
@@ -13,11 +27,18 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   created_at: string
+  pending_actions?: ChatPendingAction[]
 }
 
 export interface ConversationDetail {
   conversation: ChatConversation
   messages: ChatMessage[]
+}
+
+export interface ChatActionResult {
+  ok: boolean
+  action: ChatPendingAction
+  result?: Record<string, unknown>
 }
 
 export const chatApi = {
@@ -43,6 +64,16 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ content }),
       timeoutMs: 120000,
+    }),
+
+  confirmAction: (actionId: string) =>
+    fetchAPI<ChatActionResult>(`/chat/actions/${actionId}/confirm`, {
+      method: 'POST',
+    }),
+
+  cancelAction: (actionId: string) =>
+    fetchAPI<{ ok: boolean; action: ChatPendingAction }>(`/chat/actions/${actionId}/cancel`, {
+      method: 'POST',
     }),
 
   getSuggestedQuestions: (symbol: string, market: string) =>

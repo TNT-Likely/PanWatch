@@ -1133,3 +1133,25 @@ class ChatMessage(Base):
     role = Column(String, nullable=False, default="user")  # user/assistant/system
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ChatPendingAction(Base):
+    """AI 对话待确认操作"""
+
+    __tablename__ = "chat_pending_actions"
+    __table_args__ = (
+        Index("ix_chat_pending_conv", "conversation_id", "status"),
+        Index("ix_chat_pending_msg", "message_id"),
+    )
+
+    id = Column(String, primary_key=True)
+    conversation_id = Column(Integer, nullable=False)
+    message_id = Column(Integer, nullable=True)
+    action_type = Column(String, nullable=False)
+    payload = Column(JSON, default={})
+    preview = Column(JSON, default={})
+    status = Column(String, default="pending")
+    result = Column(JSON, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

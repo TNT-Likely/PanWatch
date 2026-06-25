@@ -11,6 +11,21 @@ from sqlalchemy.orm import Session
 
 from src.config import Settings
 from src.core.ai_client import AIClient
+from src.core.chat_actions import (
+    attach_pending_actions,
+    build_action_system_addendum,
+    build_action_tools,
+    cancel_pending_action,
+    execute_pending_action,
+    get_chat_action_permissions,
+    link_actions_to_message,
+    list_notify_channels_tool,
+    list_price_alerts_tool,
+    propose_create_price_alert,
+    propose_add_position,
+    propose_reduce_position,
+    serialize_pending_action,
+)
 from src.core.position_trades_context import build_trades_context_text
 from src.core.timezone import format_beijing
 from src.models.market import MarketCode
@@ -22,6 +37,7 @@ from src.web.models import (
     AnalysisHistory,
     ChatConversation,
     ChatMessage,
+    ChatPendingAction,
     PaperTradingPosition,
     Position,
     Stock,
@@ -51,7 +67,7 @@ MAX_TOOL_ROUNDS = 5
 
 # ──────────────── Tool Definitions ────────────────
 
-CHAT_TOOLS = [
+READONLY_CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -131,6 +147,11 @@ CHAT_TOOLS = [
 ]
 
 
+def _build_chat_tools(db: Session) -> list[dict]:
+    permissions = get_chat_action_permissions(db)
+    return READONLY_CHAT_TOOLS + build_action_tools(permissions)
+
+
 def _build_watchlist_context(db: Session) -> str:
     """构建用户自选股列表。"""
     stocks = db.query(Stock).order_by(Stock.sort_order.asc()).all()
@@ -140,7 +161,14 @@ def _build_watchlist_context(db: Session) -> str:
     return "自选股列表：\n" + "\n".join(lines)
 
 
-async def _execute_tool(db: Session, name: str, args: dict) -> str:
+async def _execute_tool(
+    db: Session,
+    name: str,
+    args: dict,
+    *,
+    conversation_id: int,
+    pending_action_ids: list[str],
+) -> str:
     """执行工具调用，返回结果文本。"""
     try:
         if name == "get_portfolio":
@@ -170,11 +198,51 @@ async def _execute_tool(db: Session, name: str, args: dict) -> str:
                 market=args.get("market", "CN"),
                 today_only=bool(args.get("today_only")),
             ) or "暂无持仓变动流水。"
+        elif name == "list_notify_channels":
+            return list_notify_channels_tool(db)
+        elif name == "list_price_alerts":
+            return list_price_alerts_tool(
+                db,
+                args.get("symbol"),
+                args.get("market", "CN"),
+            )
+        elif name == "propose_create_price_alert":
+            result, action_id = propose_create_price_alert(
+                db, conversation_id=conversation_id, args=args,
+            )
+            if action_id:
+                pending_action_ids.append(action_id)
+            return result
+        elif name == "propose_add_position":
+            result, action_id = await propose_add_position(
+                db, conversation_id=conversation_id, args=args,
+            )
+            if action_id:
+                pending_action_ids.append(action_id)
+            return result
+        elif name == "propose_reduce_position":
+            result, action_id = await propose_reduce_position(
+                db, conversation_id=conversation_id, args=args,
+            )
+            if action_id:
+                pending_action_ids.append(action_id)
+            return result
         else:
             return f"未知工具: {name}"
     except Exception as e:
         logger.error(f"工具执行失败 {name}: {e}")
         return f"工具执行出错: {e}"
+
+
+def _serialize_message(db: Session, message: ChatMessage) -> dict:
+    pending_map = attach_pending_actions(db, [message.id])
+    return {
+        "id": message.id,
+        "role": message.role,
+        "content": message.content,
+        "created_at": str(message.created_at or ""),
+        "pending_actions": pending_map.get(message.id, []),
+    }
 
 
 class CreateConversationBody(BaseModel):
@@ -505,6 +573,7 @@ def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
         .order_by(ChatMessage.created_at.asc())
         .all()
     )
+    pending_map = attach_pending_actions(db, [m.id for m in messages])
     return {
         "conversation": {
             "id": conv.id,
@@ -519,6 +588,7 @@ def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
                 "role": m.role,
                 "content": m.content,
                 "created_at": str(m.created_at or ""),
+                "pending_actions": pending_map.get(m.id, []),
             }
             for m in messages
         ],
@@ -568,6 +638,8 @@ async def send_message(
 
         # System prompt
         system_content = SYSTEM_PROMPT
+        permissions = get_chat_action_permissions(db)
+        system_content += build_action_system_addendum(permissions)
 
         # 绑定股票提示
         if conv.stock_symbol and conv.stock_market:
@@ -655,12 +727,14 @@ async def send_message(
 
         # 调用 AI（带 tool use，用于按需获取更多数据）
         ai_client = _get_ai_client(db, conv.ai_model_id)
+        chat_tools = _build_chat_tools(db)
         ai_response = ""
+        pending_action_ids: list[str] = []
         try:
             for _round in range(MAX_TOOL_ROUNDS):
                 try:
                     response_msg = await ai_client.chat_with_tools(
-                        messages_for_ai, tools=CHAT_TOOLS, temperature=0.5,
+                        messages_for_ai, tools=chat_tools, temperature=0.5,
                     )
                 except Exception:
                     # 模型不支持 tool use → 直接用 chat_multi
@@ -689,7 +763,13 @@ async def send_message(
                 for tc in response_msg.tool_calls:
                     tool_args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                     logger.info(f"Tool call: {tc.function.name}({tool_args})")
-                    result = await _execute_tool(db, tc.function.name, tool_args)
+                    result = await _execute_tool(
+                        db,
+                        tc.function.name,
+                        tool_args,
+                        conversation_id=conversation_id,
+                        pending_action_ids=pending_action_ids,
+                    )
                     messages_for_ai.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -709,17 +789,57 @@ async def send_message(
             content=ai_response,
         )
         db.add(assistant_msg)
+        db.flush()
+
+        if pending_action_ids:
+            link_actions_to_message(db, pending_action_ids, assistant_msg.id)
 
         # 更新对话时间
         conv.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(assistant_msg)
 
-        return {
-            "id": assistant_msg.id,
-            "role": "assistant",
-            "content": assistant_msg.content,
-            "created_at": str(assistant_msg.created_at or ""),
-        }
+        return _serialize_message(db, assistant_msg)
     finally:
         db.close()
+
+
+@router.post("/actions/{action_id}/confirm")
+def confirm_action(action_id: str, db: Session = Depends(get_db)):
+    """确认并执行 AI 对话中的待确认操作。"""
+    action = db.query(ChatPendingAction).filter(ChatPendingAction.id == action_id).first()
+    if not action:
+        raise HTTPException(404, "操作不存在")
+    try:
+        result = execute_pending_action(db, action)
+        db.commit()
+        db.refresh(action)
+    except ValueError as e:
+        db.commit()
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        db.rollback()
+        logger.error("确认操作失败 %s: %s", action_id, e)
+        raise HTTPException(500, f"执行失败: {e}") from e
+
+    return {
+        "ok": True,
+        "action": serialize_pending_action(action),
+        "result": result,
+    }
+
+
+@router.post("/actions/{action_id}/cancel")
+def cancel_action(action_id: str, db: Session = Depends(get_db)):
+    """取消 AI 对话中的待确认操作。"""
+    action = db.query(ChatPendingAction).filter(ChatPendingAction.id == action_id).first()
+    if not action:
+        raise HTTPException(404, "操作不存在")
+    try:
+        cancel_pending_action(db, action)
+        db.commit()
+        db.refresh(action)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    return {"ok": True, "action": serialize_pending_action(action)}
