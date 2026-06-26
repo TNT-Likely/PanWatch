@@ -300,6 +300,12 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_stock)
     schedule_refresh_stock_concept_tags(db_stock.id)
+    try:
+        from src.core.lmd_auto_bootstrap import ensure_lmd_report
+
+        ensure_lmd_report(db_stock)
+    except Exception as e:
+        logger.warning("新增自选股后排队老马视角报告失败: %s", e)
     return _stock_to_response(db_stock)
 
 
@@ -587,6 +593,39 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
 class StockAgentTriggerBody(BaseModel):
     """手动触发 Agent 的可选请求体。"""
     analyst_types: list[str] | None = None
+
+
+class EnsureLmdReportResponse(BaseModel):
+    has_report: bool
+    queued: bool
+    deduplicated: bool = False
+    message: str = ""
+
+
+@router.post("/ensure-lmd-reports")
+def ensure_all_lmd_reports(db: Session = Depends(get_db)):
+    """为所有尚无老马视角报告的自选股排队生成。"""
+    from src.core.lmd_auto_bootstrap import bootstrap_all_missing_stocks
+
+    queued = bootstrap_all_missing_stocks()
+    return {"queued": queued, "message": f"已为 {queued} 只自选股排队老马视角报告"}
+
+
+@router.post("/{stock_id}/agents/lmd_outlook/ensure", response_model=EnsureLmdReportResponse)
+def ensure_stock_lmd_report(stock_id: int, db: Session = Depends(get_db)):
+    """若该自选股尚无老马视角报告，则后台排队生成。"""
+    from src.core.lmd_auto_bootstrap import ensure_lmd_report
+
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+    result = ensure_lmd_report(db_stock)
+    return EnsureLmdReportResponse(
+        has_report=bool(result.get("has_report")),
+        queued=bool(result.get("queued")),
+        deduplicated=bool(result.get("deduplicated")),
+        message=str(result.get("message") or ""),
+    )
 
 
 @router.post("/{stock_id}/agents/{agent_name}/trigger")

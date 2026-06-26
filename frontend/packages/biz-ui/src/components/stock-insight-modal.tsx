@@ -483,6 +483,7 @@ export default function StockInsightModal(props: {
   const [reportAgentName, setReportAgentName] = useState<string>('daily_report')
   const [reportGenerating, setReportGenerating] = useState<string | null>(null)
   const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lmdEnsureKeyRef = useRef<string>('')
   const [imageExporting, setImageExporting] = useState(false)
   const [holdingAgg, setHoldingAgg] = useState<{
     quantity: number
@@ -931,11 +932,13 @@ export default function StockInsightModal(props: {
     baselineReportCount: number
     baselineReportUpdatedAt: string | null
     baselineSuggestionCount: number
+    maxWaitMs?: number
   }) => {
     stopReportPoll()
     const startedAt = Date.now()
+    const maxWaitMs = opts.maxWaitMs ?? 180_000
     const tick = async () => {
-      if (Date.now() - startedAt > 180_000) {
+      if (Date.now() - startedAt > maxWaitMs) {
         stopReportPoll()
         setReportGenerating(null)
         toast('报告生成超时，请稍后刷新列表', 'info')
@@ -946,18 +949,27 @@ export default function StockInsightModal(props: {
         freshReports.length > opts.baselineReportCount
         || (freshReports[0]?.id != null && freshReports[0].id !== opts.baselineReportId)
         || (parseToMs(freshReports[0]?.updated_at || '') ?? 0) > (parseToMs(opts.baselineReportUpdatedAt || '') ?? 0)
+      const lmdReady = opts.agentName === 'lmd_outlook'
+        && freshReports.some(r => r.agent_name === 'lmd_outlook')
       const freshSuggestions = await loadSuggestions()
       const suggestionsChanged = freshSuggestions.length > opts.baselineSuggestionCount
       const isSuggestionAgent = opts.agentName === 'intraday_monitor'
-      const done = isSuggestionAgent ? suggestionsChanged : (reportChanged || suggestionsChanged)
+      const done = isSuggestionAgent
+        ? suggestionsChanged
+        : (lmdReady || reportChanged || suggestionsChanged)
       if (!done) return
       stopReportPoll()
       setReportGenerating(null)
-      if (!isSuggestionAgent && freshReports[0]?.id) {
-        setSelectedReportId(freshReports[0].id)
+      const targetReport = lmdReady
+        ? freshReports.find(r => r.agent_name === 'lmd_outlook')
+        : freshReports[0]
+      if (!isSuggestionAgent && targetReport?.id) {
+        setSelectedReportId(targetReport.id)
       }
       toast(
-        isSuggestionAgent ? 'AI 建议已更新，可在「建议」查看' : '报告已生成',
+        isSuggestionAgent
+          ? 'AI 建议已更新，可在「建议」查看'
+          : (opts.agentName === 'lmd_outlook' ? '老马视角报告已生成' : '报告已生成'),
         'success',
       )
       if (isSuggestionAgent) {
@@ -969,6 +981,31 @@ export default function StockInsightModal(props: {
     }, 5_000)
     await tick()
   }, [loadReports, loadSuggestions, stopReportPoll, toast])
+
+  const ensureLmdReportIfNeeded = useCallback(async (loaded: HistoryRecord[]) => {
+    if (!watchingStock?.id || reportGenerating) return
+    const hasLmd = (loaded || []).some(r => r.agent_name === 'lmd_outlook')
+    if (hasLmd) return
+    const key = `${market}:${symbol}`
+    if (lmdEnsureKeyRef.current === key) return
+    lmdEnsureKeyRef.current = key
+    try {
+      const resp = await stocksApi.ensureLmdReport(watchingStock.id)
+      if (resp.has_report) return
+      if (!resp.queued) return
+      setReportGenerating('lmd_outlook')
+      void pollForNewReport({
+        agentName: 'lmd_outlook',
+        baselineReportId: loaded[0]?.id ?? null,
+        baselineReportCount: loaded.length,
+        baselineReportUpdatedAt: loaded[0]?.updated_at ?? null,
+        baselineSuggestionCount: suggestions.length,
+        maxWaitMs: 420_000,
+      })
+    } catch {
+      lmdEnsureKeyRef.current = ''
+    }
+  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, suggestions.length])
 
   const triggerReportGeneration = useCallback(async () => {
     if (!symbol || reportGenerating) return
@@ -1427,9 +1464,15 @@ export default function StockInsightModal(props: {
   }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
 
   useEffect(() => {
+    lmdEnsureKeyRef.current = ''
+  }, [symbol, market])
+
+  useEffect(() => {
     if (!props.open || !symbol) return
-    loadReports().catch(() => setReports([]))
-  }, [props.open, symbol, loadReports])
+    loadReports()
+      .then(loaded => ensureLmdReportIfNeeded(loaded))
+      .catch(() => setReports([]))
+  }, [props.open, symbol, loadReports, ensureLmdReportIfNeeded])
 
   useEffect(() => {
     if (!props.open || !symbol || !autoRefreshEnabled) return
@@ -2561,16 +2604,27 @@ export default function StockInsightModal(props: {
                 <div className="md:col-span-4 card p-2 max-h-[62vh] overflow-y-auto scrollbar">
                   {reports.length === 0 ? (
                     <div className="p-6 text-center space-y-3">
-                      <div className="text-[12px] text-muted-foreground">暂无报告</div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 px-3 text-[11px]"
-                        disabled={!!reportGenerating}
-                        onClick={() => void triggerReportGeneration()}
-                      >
-                        {reportGenerating ? '生成中...' : '立即生成报告'}
-                      </Button>
+                      <div className="text-[12px] text-muted-foreground">
+                        {reportGenerating === 'lmd_outlook'
+                          ? '正在自动生成老马视角报告，约需 2–5 分钟…'
+                          : '暂无报告'}
+                      </div>
+                      {reportGenerating === 'lmd_outlook' ? (
+                        <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          生成中
+                        </div>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 px-3 text-[11px]"
+                          disabled={!!reportGenerating}
+                          onClick={() => void triggerReportGeneration()}
+                        >
+                          {reportGenerating ? '生成中...' : '立即生成报告'}
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="divide-y divide-border/30">

@@ -363,6 +363,13 @@ def seed_agents():
                 ):
                     if key not in cfg:
                         cfg[key] = default
+                auto = cfg.get("auto_bootstrap")
+                if not isinstance(auto, dict):
+                    auto = {}
+                for key, default in (("enabled", True), ("suppress_notify", True)):
+                    if key not in auto:
+                        auto[key] = default
+                cfg["auto_bootstrap"] = auto
                 existing.config = cfg
 
     db.commit()
@@ -1275,6 +1282,15 @@ async def lifespan(app):
     seed_strategies()
     seed_sample_stocks()
 
+    try:
+        from src.core.analysis_history import prune_duplicate_analysis_reports
+
+        removed = prune_duplicate_analysis_reports()
+        if removed:
+            logger.info("启动时清理重复分析报告: %s 条", removed)
+    except Exception as e:
+        logger.warning("启动时分析报告去重失败,跳过: %s", e)
+
     # 启动时回填历史 TradingAgents 决策到建议池(stock_suggestions)
     # 早期 TA 运行没写建议池,这次启动一次性补齐,让「AI 建议」面板能看到。
     # 幂等:已存在不重复写;每次启动重跑代价极低(只查最近 7 天 + dedupe)。
@@ -1295,6 +1311,16 @@ async def lifespan(app):
             refresh_stock_list()
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
+
+    def _bootstrap_lmd_reports():
+        try:
+            from src.core.lmd_auto_bootstrap import bootstrap_all_missing_stocks
+
+            bootstrap_all_missing_stocks()
+        except Exception as e:
+            logger.warning("老马视角报告启动补全失败,跳过: %s", e)
+
+    threading.Thread(target=_bootstrap_lmd_reports, daemon=True, name="lmd-bootstrap-scan").start()
 
     global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()

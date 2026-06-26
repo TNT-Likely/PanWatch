@@ -25,8 +25,8 @@ def save_analysis(
     """
     保存分析结果
 
-    - 同一天可以覆盖
-    - 历史记录不可覆盖（通过数据库约束保证）
+    - 同一 agent + 标的仅保留最新一份，旧报告自动删除
+    - 同一天重复保存会覆盖当日记录
 
     Args:
         agent_name: Agent 名称，如 "daily_report"
@@ -62,6 +62,7 @@ def save_analysis(
             existing.content = content
             existing.raw_data = payload
             existing.agent_kind_snapshot = agent_kind
+            keep_id = existing.id
             logger.info(f"更新分析记录: {agent_name}/{stock_symbol}/{date_str}")
         else:
             # 新增
@@ -75,7 +76,23 @@ def save_analysis(
                 agent_kind_snapshot=agent_kind,
             )
             db.add(record)
+            db.flush()
+            keep_id = record.id
             logger.info(f"新增分析记录: {agent_name}/{stock_symbol}/{date_str}")
+
+        deleted = _delete_other_reports(
+            db,
+            agent_name=agent_name,
+            stock_symbol=stock_symbol,
+            keep_id=keep_id,
+        )
+        if deleted:
+            logger.info(
+                "清理旧报告: %s/%s 删除 %s 条",
+                agent_name,
+                stock_symbol,
+                deleted,
+            )
 
         db.commit()
         return True
@@ -84,6 +101,70 @@ def save_analysis(
         logger.error(f"保存分析记录失败: {e}")
         db.rollback()
         return False
+    finally:
+        db.close()
+
+
+def _delete_other_reports(
+    db,
+    *,
+    agent_name: str,
+    stock_symbol: str,
+    keep_id: int,
+) -> int:
+    """删除同 agent + 标的下的其它报告，仅保留 keep_id。"""
+    return (
+        db.query(AnalysisHistory)
+        .filter(
+            AnalysisHistory.agent_name == agent_name,
+            AnalysisHistory.stock_symbol == stock_symbol,
+            AnalysisHistory.id != keep_id,
+        )
+        .delete(synchronize_session=False)
+    )
+
+
+def prune_duplicate_analysis_reports() -> int:
+    """清理数据库中同 agent + 标的的多份报告，仅保留最新一份。返回删除条数。"""
+    db = SessionLocal()
+    deleted_total = 0
+    try:
+        pairs = (
+            db.query(AnalysisHistory.agent_name, AnalysisHistory.stock_symbol)
+            .distinct()
+            .all()
+        )
+        for agent_name, stock_symbol in pairs:
+            rows = (
+                db.query(AnalysisHistory)
+                .filter(
+                    AnalysisHistory.agent_name == agent_name,
+                    AnalysisHistory.stock_symbol == stock_symbol,
+                )
+                .order_by(
+                    AnalysisHistory.analysis_date.desc(),
+                    AnalysisHistory.updated_at.desc(),
+                    AnalysisHistory.id.desc(),
+                )
+                .all()
+            )
+            if len(rows) <= 1:
+                continue
+            keep_id = rows[0].id
+            deleted_total += _delete_other_reports(
+                db,
+                agent_name=agent_name,
+                stock_symbol=stock_symbol,
+                keep_id=keep_id,
+            )
+        if deleted_total:
+            logger.info("分析历史去重完成，删除 %s 条旧报告", deleted_total)
+        db.commit()
+        return deleted_total
+    except Exception as e:
+        logger.error("分析历史去重失败: %s", e)
+        db.rollback()
+        return 0
     finally:
         db.close()
 

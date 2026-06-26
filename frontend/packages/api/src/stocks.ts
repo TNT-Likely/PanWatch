@@ -144,6 +144,11 @@ export const stocksApi = {
       withQuery(`/stocks/${id}/agents/${encodeURIComponent(agentName)}/trigger`, options),
       { method: 'POST', timeoutMs: 120_000 }
     ),
+  ensureLmdReport: (id: number) =>
+    fetchAPI<{ has_report: boolean; queued: boolean; deduplicated?: boolean; message?: string }>(
+      `/stocks/${id}/agents/lmd_outlook/ensure`,
+      { method: 'POST' },
+    ),
   getInvestmentProfile: (id: number) =>
     fetchAPI<{ stock_id: number; symbol: string; market: string; investment_profile: InvestmentProfile; portfolio_role_label: string }>(
       `/stocks/${id}/investment-profile`,
