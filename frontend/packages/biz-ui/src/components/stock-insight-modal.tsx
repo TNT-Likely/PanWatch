@@ -1672,9 +1672,21 @@ export default function StockInsightModal(props: {
       const title = todayTrades.length > 0 ? '今日持仓变动' : '最近持仓变动'
       parts.push(`${title}：\n${tradesForContext.map(t => `- ${formatTradeContextLine(t)}`).join('\n')}`)
     }
+    if (announcements.length > 0) {
+      const lines = announcements.slice(0, 3).map(
+        (item) => `- ${item.title}（${item.publish_time || ''}）`,
+      )
+      parts.push(`近期公告：\n${lines.join('\n')}`)
+    }
+    if (news.length > 0) {
+      const lines = news.slice(0, 3).map(
+        (item) => `- ${item.title}（${item.publish_time || ''}）`,
+      )
+      parts.push(`近期新闻：\n${lines.join('\n')}`)
+    }
     parts.push(`数据时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`)
     return parts.join('\n')
-  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, holdingOptions, recentTrades])
+  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, holdingOptions, recentTrades, announcements, news])
 
   const quoteUp = (quote?.change_pct || 0) > 0
   const quoteDown = (quote?.change_pct || 0) < 0

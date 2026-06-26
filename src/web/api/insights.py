@@ -255,24 +255,12 @@ async def _fetch_fundamental_context(symbol: str, market: str) -> str:
 
 async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
     """消息面摘要:近 3 天新闻/公告标题 + 本地最近 AI 建议/分析(失败降级为空)。"""
-    parts: list[str] = []
-    try:
-        from src.collectors.news_collector import NewsCollector
+    from src.core.stock_news_context import fetch_stock_news_context
 
-        stock = db.query(Stock).filter(Stock.symbol == symbol).first()
-        name = stock.name if stock else symbol
-        collector = NewsCollector.from_database()
-        items = await collector.fetch_all(
-            symbols=[symbol], since_hours=72, symbol_names={symbol: name}
-        )
-        items = sorted(items, key=lambda x: x.publish_time, reverse=True)[:5]
-        if items:
-            lines = [
-                f"- {it.title}（{it.publish_time.strftime('%m-%d')}）" for it in items
-            ]
-            parts.append("近期新闻/公告:\n" + "\n".join(lines))
-    except Exception as e:
-        logger.debug(f"消息面新闻获取失败 {symbol}: {e}")
+    parts: list[str] = []
+    news_ctx = await fetch_stock_news_context(db, symbol, since_hours=72)
+    if news_ctx:
+        parts.append(news_ctx)
 
     try:
         ctx = _build_stock_context(db, symbol, market)

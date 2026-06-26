@@ -1,11 +1,53 @@
-"""AI 对话上下文：持仓与今日流水。"""
+"""AI 对话上下文：持仓、今日流水与新闻公告。"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
+from src.collectors.news_collector import NewsItem
+from src.core import stock_news_context
 from src.web.api import chat
 from src.web.models import Account, Position, PositionTrade, Stock
+
+
+def _make_news_item(*, source: str, title: str, day: int = 25) -> NewsItem:
+    return NewsItem(
+        source=source,
+        external_id=f"{source}-{title}",
+        title=title,
+        content=f"{title}摘要",
+        publish_time=datetime(2026, 6, day, 10, 0),
+        symbols=["603596"],
+    )
+
+
+def test_fetch_stock_news_context_splits_news_and_announcements(db):
+    """新闻与公告应分开展示"""
+    stock = Stock(symbol="603596", name="伯特利", market="CN")
+    db.add(stock)
+    db.commit()
+
+    items = [
+        _make_news_item(source="eastmoney", title="业绩预告"),
+        _make_news_item(source="eastmoney_news", title="机构调研"),
+        _make_news_item(source="xueqiu", title="行业点评"),
+    ]
+
+    with patch("src.collectors.news_collector.NewsCollector.from_database") as mock_from_db:
+        collector = AsyncMock()
+        collector.fetch_all = AsyncMock(return_value=items)
+        mock_from_db.return_value = collector
+
+        ctx = __import__("asyncio").run(
+            stock_news_context.fetch_stock_news_context(db, "603596")
+        )
+
+    assert "近期公告" in ctx
+    assert "业绩预告" in ctx
+    assert "近期新闻" in ctx
+    assert "机构调研" in ctx
+    assert "行业点评" in ctx
 
 
 def _seed_trade(db, *, side="buy", qty=300, price=26.0):

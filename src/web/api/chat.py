@@ -60,7 +60,8 @@ SYSTEM_PROMPT = """你是智盘 Alpha（AlphaMind）的 AI 投资助手。
 - 保持简洁，避免冗余
 - 给出操作建议前，务必以「当前数据」中的最新持仓股数、成本价和今日已执行买卖为准
 - 若用户今日已买入或卖出过，不要重复建议同方向操作；应基于当前剩余仓位和最新成本重新评估
-- 「页面快照」仅为对话开始时的参考，与「当前数据」冲突时以「当前数据」为准"""
+- 「页面快照」仅为对话开始时的参考，与「当前数据」冲突时以「当前数据」为准
+- 回答买卖/催化剂/利好利空问题时，务必参考「当前数据」中的近期新闻与公告，不臆造未出现的事件"""
 
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 5
@@ -144,6 +145,26 @@ READONLY_CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_stock_news",
+            "description": "获取某只股票近期新闻与公司公告（标题与摘要）。用于回答消息面、利好利空、催化剂相关问题。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "股票代码"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                    "since_hours": {
+                        "type": "integer",
+                        "description": "最近多少小时内的新闻与公告",
+                        "default": 72,
+                    },
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
 ]
 
 
@@ -202,6 +223,13 @@ async def _execute_tool(
                 market=args.get("market", "CN"),
                 today_only=bool(args.get("today_only")),
             ) or "暂无持仓变动流水。"
+        elif name == "get_stock_news":
+            from src.core.stock_news_context import fetch_stock_news_context
+
+            symbol = args.get("symbol", "")
+            since_hours = int(args.get("since_hours") or 72)
+            result = await fetch_stock_news_context(db, symbol, since_hours=since_hours)
+            return result or f"暂无 {symbol} 的近期新闻/公告。"
         elif name == "list_notify_channels":
             return list_notify_channels_tool(db)
         elif name == "list_price_alerts":
@@ -748,6 +776,13 @@ async def send_message(
             stock_ctx = _build_stock_context(db, conv.stock_symbol, conv.stock_market)
             if stock_ctx:
                 context_parts.append(stock_ctx)
+            from src.core.stock_news_context import fetch_stock_news_context
+
+            news_ctx = await fetch_stock_news_context(
+                db, conv.stock_symbol, since_hours=72,
+            )
+            if news_ctx:
+                context_parts.append(news_ctx)
 
         if context_parts:
             # 把上下文追加到 system message

@@ -2,7 +2,7 @@ export type StockTradingAskKind = 'open' | 'add' | 'reduce' | 'clear'
 
 export function formatStockTradingAskQuestion(stockName: string, kind: StockTradingAskKind): string {
   const name = (stockName || '').trim() || '这只股票'
-  const base = '请综合缠论结论、产业周期视角、深度分析（若有）、技术面与我的账户/持仓情况'
+  const base = '请综合缠论结论、产业周期视角、深度分析（若有）、技术面、近期新闻与公告及我的账户/持仓情况'
   switch (kind) {
     case 'open':
       return `${name} 现在是否可以建仓？${base}给出建议。`
