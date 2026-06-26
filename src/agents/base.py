@@ -27,7 +27,7 @@ class PositionInfo:
     cost_price: float
     quantity: int
     invested_amount: float | None = None
-    trading_style: str = "swing"  # short: 短线, swing: 波段, long: 长线
+    trading_style: str = "short"  # short: 短线, swing: 波段, long: 长线
 
     @property
     def cost_value(self) -> float:

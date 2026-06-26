@@ -65,15 +65,17 @@ export default function StockPriceAlertPanel(props: {
   market: string
   stockName?: string
   stockId?: number
-  mode?: 'icon' | 'inline'
+  mode?: 'icon' | 'inline' | 'text'
   initialTotal?: number
   initialEnabled?: number
   onChanged?: () => void
+  triggerClassName?: string
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const mode = props.mode || 'icon'
+  const triggerClassName = props.triggerClassName
 
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -254,6 +256,17 @@ export default function StockPriceAlertPanel(props: {
     >
       <Bell className="w-3.5 h-3.5" />
       提醒 {shownSummary.total > 0 ? `${shownSummary.enabled}/${shownSummary.total}` : '0'}
+    </Button>
+  ) : mode === 'text' ? (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={triggerClassName || 'h-6 px-1.5 text-[10px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'}
+      onClick={() => setOpen(true)}
+      type="button"
+      title={shownSummary.total > 0 ? `提醒 ${shownSummary.enabled}/${shownSummary.total}` : '价格提醒'}
+    >
+      {shownSummary.total > 0 ? `提醒${shownSummary.enabled}/${shownSummary.total}` : '提醒'}
     </Button>
   ) : (
     <button

@@ -144,6 +144,37 @@ def _market_amount_to_account_currency(
     return _convert_amount(amount, _market_currency(market), account_currency)
 
 
+def _resolve_trading_style(
+    style: str | None,
+    fallback: str | None = None,
+) -> str:
+    """归一化交易风格，未设置时默认短线。"""
+    for candidate in (style, fallback, "short"):
+        if candidate and candidate.strip() in ("short", "swing", "long"):
+            return candidate.strip()
+    return "short"
+
+
+def adjust_account_stock_cash(
+    account: Account,
+    *,
+    side: str,
+    amount: float,
+    market: str | None,
+) -> None:
+    """买入扣减 / 卖出增加股票现金（账户币种）。"""
+    account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
+    converted = round(
+        _market_amount_to_account_currency(float(amount), market, account_currency),
+        4,
+    )
+    current = float(account.available_funds or 0.0)
+    if side == "buy":
+        account.available_funds = round(current - converted, 4)
+    elif side == "sell":
+        account.available_funds = round(current + converted, 4)
+
+
 def _normalize_other_fund_items(
     items: list | None,
     legacy_other_funds: float | None = None,
@@ -215,7 +246,7 @@ def _compute_initial_funds(
     cost_cny: float,
     account_currency: str,
 ) -> float:
-    """初始资金 = 总资产 - 盈亏 = 现金 + 其他 + 持仓成本（账户币种）。"""
+    """初始资金 = 总资产 - 盈亏 = 股票现金 + 其他 + 持仓成本（账户币种）。"""
     initial_cny = (
         _to_cny_amount(available_funds, account_currency)
         + _to_cny_amount(other_funds, account_currency)
@@ -371,6 +402,24 @@ class PositionReduceRequest(BaseModel):
     traded_at: datetime | None = None
 
 
+class PositionTradeUpdateRequest(BaseModel):
+    price: float | None = Field(default=None, gt=0, description="成交单价")
+    quantity: int | None = Field(default=None, gt=0, description="成交股数")
+    note: str | None = None
+    traded_at: datetime | None = None
+    side: str | None = Field(default=None, description="buy | sell")
+
+    @field_validator("side")
+    @classmethod
+    def validate_side(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip().lower()
+        if s not in ("buy", "sell"):
+            raise ValueError("方向只能是 buy 或 sell")
+        return s
+
+
 class PositionTradeResponse(BaseModel):
     id: int
     position_id: int
@@ -401,6 +450,52 @@ def _calc_weighted_cost(
         return new_qty, float(add_price)
     total_cost = cur_qty * cur_cost + add_qty * add_price
     return new_qty, round(total_cost / new_qty, 6)
+
+
+def _replay_position_trades(trades: list[PositionTrade]) -> tuple[int, float]:
+    """按时间顺序重放流水,重算每笔的前后持仓/成本快照,返回最终股数与成本。"""
+    ordered = sorted(trades, key=lambda t: (t.traded_at or datetime.min, t.id))
+    cur_qty = 0
+    cur_cost = 0.0
+
+    for idx, trade in enumerate(ordered):
+        price = float(trade.price)
+        qty = int(trade.quantity)
+        side = trade.side
+        trade.amount = round(price * qty, 4)
+
+        if side == "buy":
+            if idx == 0:
+                trade.qty_before = None
+                trade.cost_before = None
+            elif cur_qty <= 0:
+                trade.qty_before = 0
+                trade.cost_before = None
+            else:
+                trade.qty_before = cur_qty
+                trade.cost_before = cur_cost
+            if cur_qty <= 0:
+                new_qty, new_cost = qty, price
+            else:
+                new_qty, new_cost = _calc_weighted_cost(cur_qty, cur_cost, qty, price)
+        elif side == "sell":
+            if qty > cur_qty:
+                raise ValueError(
+                    f"交易记录({trade.id})卖出 {qty} 股超过当时持仓 {cur_qty} 股"
+                )
+            trade.qty_before = cur_qty
+            trade.cost_before = cur_cost
+            new_qty = cur_qty - qty
+            new_cost = cur_cost
+        else:
+            raise ValueError(f"未知交易方向: {side}")
+
+        trade.qty_after = new_qty
+        trade.cost_after = new_cost
+        cur_qty = new_qty
+        cur_cost = new_cost
+
+    return cur_qty, cur_cost
 
 
 def _normalize_traded_at(dt: datetime | None) -> datetime:
@@ -604,7 +699,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         position.cost_price = cost
         position.quantity = qty
         position.invested_amount = round(cost * qty, 4)
-        position.trading_style = data.trading_style or position.trading_style
+        position.trading_style = _resolve_trading_style(data.trading_style, position.trading_style)
         position.status = "open"
         position.closed_at = None
         position.realized_pnl = 0.0
@@ -635,7 +730,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
             quantity=qty,
             invested_amount=round(cost * qty, 4),
             sort_order=int(max_order) + 1,
-            trading_style=data.trading_style,
+            trading_style=_resolve_trading_style(data.trading_style),
             status="open",
         )
         db.add(position)
@@ -658,13 +753,10 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(position)
 
-    # 建仓扣减可用资金（账户币种）
-    account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
-    buy_cost = round(
-        _market_amount_to_account_currency(round(cost * qty, 4), stock.market, account_currency),
-        4,
+    # 建仓扣减股票现金（账户币种）
+    adjust_account_stock_cash(
+        account, side="buy", amount=round(cost * qty, 4), market=stock.market
     )
-    account.available_funds = round(float(account.available_funds or 0.0) - buy_cost, 4)
     _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(account)
@@ -729,6 +821,14 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         db.add(trade)
         new_qty = after_qty
         new_cost = after_cost
+        account = position.account
+        if account is not None:
+            adjust_account_stock_cash(
+                account,
+                side=side,
+                amount=round(trade_price * trade_qty, 4),
+                market=position.stock.market if position.stock else None,
+            )
 
     if data.cost_price is not None:
         position.cost_price = new_cost
@@ -816,19 +916,15 @@ def add_to_position(
     else:
         position.invested_amount = round(new_cost * new_qty, 4)
 
-    # 买入扣减可用资金（账户币种）
+    # 买入扣减股票现金（账户币种）
     account = position.account
     if account is not None:
-        account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
-        cost_in_account = round(
-            _market_amount_to_account_currency(
-                add_amount,
-                position.stock.market if position.stock else None,
-                account_currency,
-            ),
-            4,
+        adjust_account_stock_cash(
+            account,
+            side="buy",
+            amount=add_amount,
+            market=position.stock.market if position.stock else None,
         )
-        account.available_funds = round(float(account.available_funds or 0.0) - cost_in_account, 4)
 
     if is_revive:
         position.status = "open"
@@ -917,19 +1013,15 @@ def reduce_from_position(
     position.quantity = new_qty
     position.invested_amount = round(cost_before * new_qty, 4)
 
-    # 卖出回款计入可用资金（账户币种）
+    # 卖出回款计入股票现金（账户币种）
     account = position.account
     if account is not None:
-        account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
-        proceeds = round(
-            _market_amount_to_account_currency(
-                sell_amount,
-                position.stock.market if position.stock else None,
-                account_currency,
-            ),
-            4,
+        adjust_account_stock_cash(
+            account,
+            side="sell",
+            amount=sell_amount,
+            market=position.stock.market if position.stock else None,
         )
-        account.available_funds = round(float(account.available_funds or 0.0) + proceeds, 4)
 
     if is_closed:
         # 清仓:标记 closed 并锁定累计实现盈亏(按交易流水汇总,原币种口径)
@@ -1045,6 +1137,119 @@ def list_position_trades(
     return [_serialize_position_trade(t) for t in trades]
 
 
+@router.put("/positions/trades/{trade_id}")
+def update_position_trade(
+    trade_id: int,
+    data: PositionTradeUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """修改历史交易明细,并重放流水以同步持仓与账户现金。"""
+    trade = db.query(PositionTrade).filter(PositionTrade.id == trade_id).first()
+    if not trade:
+        raise HTTPException(404, "交易记录不存在")
+
+    position = trade.position
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    if (
+        data.price is None
+        and data.quantity is None
+        and data.note is None
+        and data.traded_at is None
+        and data.side is None
+    ):
+        raise HTTPException(400, "请至少提供一个要修改的字段")
+
+    account = position.account
+    market = position.stock.market if position.stock else None
+    old_side = trade.side
+    old_amount = float(trade.amount)
+
+    if data.price is not None:
+        trade.price = float(data.price)
+    if data.quantity is not None:
+        trade.quantity = int(data.quantity)
+    if data.traded_at is not None:
+        trade.traded_at = _normalize_traded_at(data.traded_at)
+    if data.note is not None:
+        trade.note = (data.note or "").strip() or None
+    if data.side is not None:
+        trade.side = data.side
+
+    trade.amount = round(float(trade.price) * int(trade.quantity), 4)
+    new_side = trade.side
+    new_amount = float(trade.amount)
+
+    all_trades = (
+        db.query(PositionTrade)
+        .filter(PositionTrade.position_id == position.id)
+        .all()
+    )
+    try:
+        final_qty, final_cost = _replay_position_trades(all_trades)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if account is not None and (old_amount != new_amount or old_side != new_side):
+        reverse_side = "sell" if old_side == "buy" else "buy"
+        adjust_account_stock_cash(
+            account, side=reverse_side, amount=old_amount, market=market
+        )
+        adjust_account_stock_cash(
+            account, side=new_side, amount=new_amount, market=market
+        )
+
+    position.quantity = final_qty
+    position.cost_price = final_cost
+    if final_qty > 0:
+        position.invested_amount = round(final_cost * final_qty, 4)
+        position.status = "open"
+        position.closed_at = None
+        position.realized_pnl = 0.0
+    else:
+        position.invested_amount = 0.0
+        position.status = "closed"
+        last_trade = max(
+            all_trades,
+            key=lambda t: (t.traded_at or datetime.min, t.id),
+        )
+        position.closed_at = last_trade.traded_at
+        position.realized_pnl = compute_realized_pnl(db, position.id)
+
+    if account is not None:
+        _sync_account_initial_funds(account, db)
+
+    db.commit()
+    db.refresh(trade)
+    db.refresh(position)
+
+    ordered_trades = sorted(
+        all_trades,
+        key=lambda t: (t.traded_at or datetime.min, t.id),
+        reverse=True,
+    )
+    logger.info(
+        "修改交易流水 #%d: %s - %s",
+        trade.id,
+        account.name if account else "未知账户",
+        position.stock.name if position.stock else position.stock_id,
+    )
+    return {
+        "trade": _serialize_position_trade(trade),
+        "trades": [_serialize_position_trade(t) for t in ordered_trades],
+        "position": {
+            "id": position.id,
+            "cost_price": position.cost_price,
+            "quantity": position.quantity,
+            "invested_amount": position.invested_amount,
+            "status": position.status or "open",
+            "closed_at": _format_dt_naive(position.closed_at),
+            "realized_pnl": float(position.realized_pnl or 0.0),
+        },
+    }
+
+
 @router.get("/portfolio/recent-trades")
 def recent_portfolio_trades(limit: int = 50, db: Session = Depends(get_db)):
     """全账户最近持仓变动流水(加仓等)"""
@@ -1139,6 +1344,7 @@ def get_portfolio_summary(
                 "total_pnl_pct": 0,
                 "available_funds": 0,
                 "other_funds": 0,
+                "initial_funds": 0,
                 "total_assets": 0,
             }
         }
@@ -1170,6 +1376,7 @@ def get_portfolio_summary(
     grand_total_cost = 0
     grand_available_funds = 0
     grand_other_funds = 0
+    grand_initial_funds = 0
     grand_daily_pnl = 0
 
     for acc in accounts:
@@ -1275,12 +1482,14 @@ def get_portfolio_summary(
         acc_other_cny = _to_cny_amount(acc_other_funds, acc_currency)
         if include_quotes:
             acc_pnl = acc_market_value - acc_cost
-            acc_pnl_pct = (acc_pnl / acc_cost * 100) if acc_cost > 0 else 0
             acc_total_assets = acc_market_value + acc_available_cny + acc_other_cny
+            acc_initial_cny = acc_total_assets - acc_pnl
+            acc_pnl_pct = (acc_pnl / acc_initial_cny * 100) if acc_initial_cny > 0 else 0
         else:
             acc_pnl = 0
-            acc_pnl_pct = 0
             acc_total_assets = acc_available_cny + acc_other_cny
+            acc_initial_cny = acc_available_cny + acc_other_cny + acc_cost
+            acc_pnl_pct = 0
 
         account_summaries.append({
             "id": acc.id,
@@ -1308,16 +1517,19 @@ def get_portfolio_summary(
         grand_total_cost += acc_cost
         grand_available_funds += acc_available_cny
         grand_other_funds += acc_other_cny
+        grand_initial_funds += acc_initial_cny
         grand_daily_pnl += acc_daily_pnl
 
     if include_quotes:
         grand_pnl = grand_total_market_value - grand_total_cost
-        grand_pnl_pct = (grand_pnl / grand_total_cost * 100) if grand_total_cost > 0 else 0
         grand_total_assets = grand_total_market_value + grand_available_funds + grand_other_funds
+        grand_initial_funds = grand_total_assets - grand_pnl
+        grand_pnl_pct = (grand_pnl / grand_initial_funds * 100) if grand_initial_funds > 0 else 0
     else:
         grand_pnl = 0
         grand_pnl_pct = 0
         grand_total_assets = grand_available_funds + grand_other_funds
+        grand_initial_funds = grand_available_funds + grand_other_funds + grand_total_cost
 
     # 构建 quotes 字典（用于前端股票列表显示）
     quotes_dict = {}
@@ -1338,6 +1550,7 @@ def get_portfolio_summary(
             "total_daily_pnl": round(grand_daily_pnl, 2),
             "available_funds": round(grand_available_funds, 2),
             "other_funds": round(grand_other_funds, 2),
+            "initial_funds": round(grand_initial_funds, 2),
             "total_assets": round(grand_total_assets, 2),
         },
         "exchange_rates": {

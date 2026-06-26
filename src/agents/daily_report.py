@@ -316,7 +316,7 @@ class DailyReportAgent(BaseAgent):
                     (current_price - avg_cost) / avg_cost * 100 if avg_cost > 0 else 0
                 )
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
-                style = style_labels.get(position.get("trading_style", "swing"), "波段")
+                style = style_labels.get(position.get("trading_style", "short"), "短线")
                 if total_qty is not None:
                     lines.append(
                         f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Clock, Trash2, FileText, ArrowLeft, ExternalLink, FileDown } from 'lucide-react'
 import { ReportViewer } from '@panwatch/biz-ui/components/report-markdown'
 import { fetchAPI, stocksApi, insightApi, type StockItem, parseLocalSkillSlug } from '@panwatch/api'
-import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
+import StockInsightModal, { INSIGHT_TAB_LABELS, type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
@@ -83,6 +83,10 @@ export default function HistoryPage() {
   const [searchParams] = useSearchParams()
   const deepLinkId = searchParams.get('id')
   const deepLinkSymbol = searchParams.get('symbol')?.trim() || ''
+  const deepLinkFrom = searchParams.get('from')
+  const returnPath = searchParams.get('return')?.trim() || ''
+  const returnMarket = searchParams.get('market')?.trim() || ''
+  const returnTab = (searchParams.get('tab') as InsightTab | null) || 'reports'
   const pendingDeepLinkRef = useRef<number | null>(null)
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -323,6 +327,50 @@ export default function HistoryPage() {
     })
   }, [resolveRecordMarket, resolveRecordStockName, toast])
 
+  const canReturnToStock = deepLinkFrom === 'stock' && !!(deepLinkSymbol || selectedStockSymbol)
+
+  const returnToStock = useCallback(() => {
+    const symbol = deepLinkSymbol || selectedStockSymbol || ''
+    if (!symbol) return
+    const market = returnMarket || resolveRecordMarket(symbol)
+    const name = selectedRecord ? resolveRecordStockName(selectedRecord, symbol) : undefined
+    const tab = returnTab
+
+    if (returnPath) {
+      navigate(returnPath, {
+        state: {
+          restoreStockInsight: {
+            symbol,
+            market,
+            name,
+            tab,
+          },
+        },
+      })
+      return
+    }
+
+    setStockModal({
+      open: true,
+      symbol,
+      market,
+      name,
+      tab,
+    })
+  }, [
+    deepLinkSymbol,
+    navigate,
+    resolveRecordMarket,
+    resolveRecordStockName,
+    returnMarket,
+    returnPath,
+    returnTab,
+    selectedRecord,
+    selectedStockSymbol,
+  ])
+
+  const returnToStockLabel = `返回${INSIGHT_TAB_LABELS[returnTab] || '股票'}`
+
   return (
     <div className="w-full space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -344,7 +392,13 @@ export default function HistoryPage() {
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canReturnToStock ? (
+            <Button variant="default" size="sm" className="h-9" onClick={returnToStock}>
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              {returnToStockLabel}
+            </Button>
+          ) : null}
           <Select value={historyKind} onValueChange={(v) => setHistoryKind(v as 'workflow' | 'capability' | 'all')}>
             <SelectTrigger className="w-full sm:w-[150px] h-9">
               <SelectValue placeholder="历史范围" />
@@ -471,7 +525,13 @@ export default function HistoryPage() {
                       {formatTitle(selectedRecord)}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
+                    {canReturnToStock ? (
+                      <Button variant="default" size="sm" onClick={returnToStock}>
+                        <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                        {returnToStockLabel}
+                      </Button>
+                    ) : null}
                     {selectedStockSymbol ? (
                       <Button
                         variant="outline"

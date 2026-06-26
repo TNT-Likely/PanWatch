@@ -372,7 +372,7 @@ def _build_stock_position_context(db: Session, symbol: str, market: str) -> str:
         total_cost_value += qty * cost
         lines.append(
             f"- {p.account.name if p.account else '账户'}: "
-            f"{qty}股 成本单价{cost:.4f} 风格{p.trading_style or '波段'}"
+            f"{qty}股 成本单价{cost:.4f} 风格{p.trading_style or '短线'}"
         )
 
     unit_cost = total_cost_value / total_qty if total_qty > 0 else 0.0
@@ -398,7 +398,7 @@ def _build_portfolio_context(db: Session) -> str:
             real_lines.append(
                 f"- {stock.name}({stock.market}:{stock.symbol}) "
                 f"{p.quantity}股 成本单价{p.cost_price:.4f} "
-                f"风格{p.trading_style or '波段'}"
+                f"风格{p.trading_style or '短线'}"
             )
         if real_lines:
             lines.append("实盘持仓（最新）：\n" + "\n".join(real_lines))

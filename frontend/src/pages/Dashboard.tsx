@@ -23,7 +23,8 @@ import {
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
+import { useRestoreStockInsight } from '@/lib/use-restore-stock-insight'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
 import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
@@ -77,7 +78,7 @@ export default function DashboardPage() {
   const [shareDiag, setShareDiag] = useState(false)
   const [shareDigest, setShareDigest] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean }>({
+  const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean; tab?: InsightTab }>({
     open: false,
     symbol: '',
     market: 'CN',
@@ -139,7 +140,18 @@ export default function DashboardPage() {
   }
 
   const openStock = (symbol: string, market: string, name = '', hasPosition = false) =>
-    setModal({ open: true, symbol, market: market || 'CN', name, hasPosition })
+    setModal({ open: true, symbol, market: market || 'CN', name, hasPosition, tab: undefined })
+
+  useRestoreStockInsight(useCallback((payload) => {
+    setModal({
+      open: true,
+      symbol: payload.symbol,
+      market: payload.market || 'CN',
+      name: payload.name || '',
+      hasPosition: !!payload.hasPosition,
+      tab: payload.tab || 'reports',
+    })
+  }, []))
 
   const runAiReview = async () => {
     setAiReviewLoading(true)
@@ -503,11 +515,12 @@ export default function DashboardPage() {
 
       <StockInsightModal
         open={modal.open}
-        onOpenChange={(o) => setModal((m) => ({ ...m, open: o }))}
+        onOpenChange={(o) => setModal((m) => ({ ...m, open: o, tab: o ? m.tab : undefined }))}
         symbol={modal.symbol}
         market={modal.market}
         stockName={modal.name}
         hasPosition={modal.hasPosition}
+        initialTab={modal.tab}
       />
 
       {/* 分享卡:模拟盘成绩单(vs 基准) */}

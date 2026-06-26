@@ -33,7 +33,7 @@ export interface PositionSnapshot {
 export interface PositionAddResult {
   position: PositionSnapshot
   trade: PositionTrade
-  /** 卖出后账户可用资金(清仓/减仓回款已计入) */
+  /** 卖出后账户股票现金(清仓/减仓回款已计入) */
   available_funds?: number | null
   /** 本次卖出是否导致清仓 */
   closed?: boolean
@@ -66,6 +66,20 @@ export interface ClosedPosition {
   trades: ClosedPositionTrade[]
 }
 
+export interface PositionTradeUpdateResult {
+  trade: PositionTrade
+  trades: PositionTrade[]
+  position: {
+    id: number
+    cost_price: number
+    quantity: number
+    invested_amount: number | null
+    status: string
+    closed_at: string | null
+    realized_pnl: number
+  }
+}
+
 export const positionsApi = {
   /** 加仓:记录流水并更新加权平均成本 */
   add: (
@@ -90,6 +104,22 @@ export const positionsApi = {
   /** 持仓变动流水 */
   trades: (positionId: number, limit = 20) =>
     fetchAPI<PositionTrade[]>(`/positions/${positionId}/trades?limit=${limit}`),
+
+  /** 修改历史交易流水(会重放流水并同步持仓) */
+  updateTrade: (
+    tradeId: number,
+    body: {
+      price?: number
+      quantity?: number
+      note?: string
+      traded_at?: string
+      side?: 'buy' | 'sell'
+    },
+  ) =>
+    fetchAPI<PositionTradeUpdateResult>(`/positions/trades/${tradeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   /** 全账户最近加仓/变动流水 */
   recentTrades: (limit = 50) =>

@@ -181,7 +181,7 @@ def _migrate(engine):
         (
             "positions",
             "trading_style",
-            "ALTER TABLE positions ADD COLUMN trading_style TEXT DEFAULT 'swing'",
+            "ALTER TABLE positions ADD COLUMN trading_style TEXT DEFAULT 'short'",
         ),
         # 排序字段：关注列表/持仓拖拽排序
         (

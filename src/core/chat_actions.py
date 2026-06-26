@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.core.long_term_plan import evaluate_add_plan
 from src.core.position_trades_context import fetch_recent_trades
+from src.web.api.accounts import adjust_account_stock_cash
 from src.web.models import (
     Account,
     ChatPendingAction,
@@ -675,6 +676,15 @@ def _execute_add_position(db: Session, payload: dict) -> dict:
         position.invested_amount = round(float(position.invested_amount) + add_amount, 4)
     else:
         position.invested_amount = round(new_cost * new_qty, 4)
+    account = db.query(Account).filter(Account.id == position.account_id).first()
+    stock = db.query(Stock).filter(Stock.id == position.stock_id).first()
+    if account is not None:
+        adjust_account_stock_cash(
+            account,
+            side="buy",
+            amount=add_amount,
+            market=stock.market if stock else None,
+        )
     db.flush()
     return {
         "position_id": position.id,
@@ -718,6 +728,15 @@ def _execute_reduce_position(db: Session, payload: dict) -> dict:
     db.add(trade)
     position.quantity = new_qty
     position.invested_amount = round(cost_before * new_qty, 4)
+    account = db.query(Account).filter(Account.id == position.account_id).first()
+    stock = db.query(Stock).filter(Stock.id == position.stock_id).first()
+    if account is not None:
+        adjust_account_stock_cash(
+            account,
+            side="sell",
+            amount=sell_amount,
+            market=stock.market if stock else None,
+        )
     db.flush()
     return {
         "position_id": position.id,

@@ -634,7 +634,7 @@ def load_portfolio_for_agent(agent_name: str) -> PortfolioInfo:
                         cost_price=pos.cost_price,
                         quantity=pos.quantity,
                         invested_amount=pos.invested_amount,
-                        trading_style=pos.trading_style or "swing",
+                        trading_style=pos.trading_style or "short",
                     )
                 )
 
@@ -693,7 +693,7 @@ def load_portfolio_for_stock(stock_id: int) -> PortfolioInfo:
                         cost_price=pos.cost_price,
                         quantity=pos.quantity,
                         invested_amount=pos.invested_amount,
-                        trading_style=pos.trading_style or "swing",
+                        trading_style=pos.trading_style or "short",
                     )
                 )
 

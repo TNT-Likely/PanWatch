@@ -464,7 +464,7 @@ class PremarketOutlookAgent(BaseAgent):
             position = context.portfolio.get_aggregated_position(stock.symbol)
             if position:
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
-                style = style_labels.get(position.get("trading_style", "swing"), "波段")
+                style = style_labels.get(position.get("trading_style", "short"), "短线")
                 avg_cost = safe_num(position.get("avg_cost"), 1)
                 lines.append(
                     f"- 持仓：{position['total_quantity']}股 成本{avg_cost:.2f}（{style}）"

@@ -129,6 +129,8 @@ def test_portfolio_summary_initial_funds_equals_total_assets_minus_pnl(db, monke
     assert acc["total_assets"] == 31000
     assert acc["total_pnl"] == 1000
     assert acc["initial_funds"] == 30000
+    assert payload["total"]["initial_funds"] == 30000
+    assert payload["total"]["total_pnl_pct"] == round(1000 / 30000 * 100, 2)
 
 
 def test_portfolio_summary_converts_foreign_currency_funds_to_cny(db, monkeypatch):

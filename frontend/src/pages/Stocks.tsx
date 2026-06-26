@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive, Star } from 'lucide-react'
-import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile, type IndustryChainInfo } from '@panwatch/api'
+import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive, Star, Landmark } from 'lucide-react'
+import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, tradeDatetimeIsoToLocal, type AIService, type NotifyChannel, type PositionAddResult, type PositionTrade, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile, type IndustryChainInfo } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
@@ -15,9 +15,11 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@panwatch/base-ui/components/ui/popover'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
+import { useRestoreStockInsight } from '@/lib/use-restore-stock-insight'
 import { EtfOverviewModal } from '@panwatch/biz-ui/components/etf-overview-modal'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
@@ -168,6 +170,7 @@ interface PortfolioSummary {
     total_daily_pnl: number
     available_funds: number
     other_funds?: number
+    initial_funds?: number
     total_assets: number
   }
   exchange_rates?: {
@@ -242,6 +245,27 @@ interface PositionForm {
   stock_symbol: string
   stock_name: string
   stock_market: string
+}
+
+const DEFAULT_TRADING_STYLE = 'short'
+
+function resolveTradingStyle(style: string | null | undefined): string {
+  if (style === 'long' || style === 'swing') return style
+  return DEFAULT_TRADING_STYLE
+}
+
+function tradingStyleLabel(style: string | null | undefined, compact = false): string {
+  const resolved = resolveTradingStyle(style)
+  if (resolved === 'long') return compact ? '长' : '长线'
+  if (resolved === 'swing') return compact ? '波' : '波段'
+  return compact ? '短' : '短线'
+}
+
+function tradingStyleClass(style: string | null | undefined): string {
+  const resolved = resolveTradingStyle(style)
+  if (resolved === 'short') return 'bg-rose-500/10 text-rose-600'
+  if (resolved === 'long') return 'bg-blue-500/10 text-blue-600'
+  return 'bg-amber-500/10 text-amber-600'
 }
 
 // 股票建议信息（来自盘中监控 API）
@@ -514,13 +538,14 @@ const mergePortfolioQuotes = (
       }
     })
 
-    const accPnl = accMarketValue - accCost
-    const accPnlPct = accCost > 0 ? (accPnl / accCost * 100) : 0
     const accCurrency = account.base_currency || 'CNY'
     const accAvailableCny = accountFundsToCny(account.available_funds, accCurrency, portfolio.exchange_rates || {})
     const accOtherFunds = account.other_funds ?? 0
     const accOtherCny = accountFundsToCny(accOtherFunds, accCurrency, portfolio.exchange_rates || {})
+    const accPnl = accMarketValue - accCost
     const accTotalAssets = accMarketValue + accAvailableCny + accOtherCny
+    const accInitialCny = accTotalAssets - accPnl
+    const accPnlPct = accInitialCny > 0 ? (accPnl / accInitialCny * 100) : 0
 
     grandMarketValue += accMarketValue
     grandCost += accCost
@@ -544,8 +569,9 @@ const mergePortfolioQuotes = (
   })
 
   const grandPnl = grandMarketValue - grandCost
-  const grandPnlPct = grandCost > 0 ? (grandPnl / grandCost * 100) : 0
   const grandTotalAssets = grandMarketValue + grandAvailable + grandOtherFunds
+  const grandInitialFundsTotal = grandTotalAssets - grandPnl
+  const grandPnlPct = grandInitialFundsTotal > 0 ? (grandPnl / grandInitialFundsTotal * 100) : 0
 
   return {
     ...portfolio,
@@ -558,9 +584,152 @@ const mergePortfolioQuotes = (
       total_daily_pnl: round2(grandDailyPnl),
       available_funds: round2(grandAvailable),
       other_funds: round2(grandOtherFunds),
+      initial_funds: round2(grandInitialFundsTotal),
       total_assets: round2(grandTotalAssets),
     },
   }
+}
+
+const POSITION_ACTION_TONES = {
+  default: 'bg-accent/50 text-muted-foreground hover:bg-accent hover:text-foreground',
+  kline: 'bg-slate-500/12 text-slate-600 hover:bg-slate-500/20 dark:text-slate-300',
+  alert: 'bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300',
+  report: 'bg-blue-500/12 text-blue-600 hover:bg-blue-500/20 dark:text-blue-300',
+  history: 'bg-cyan-500/12 text-cyan-700 hover:bg-cyan-500/20 dark:text-cyan-300',
+  analysis: 'bg-violet-500/12 text-violet-600 hover:bg-violet-500/20 dark:text-violet-300',
+  ai: 'bg-indigo-500/12 text-indigo-600 hover:bg-indigo-500/20 dark:text-indigo-300',
+  add: 'bg-rose-500/12 text-rose-600 hover:bg-rose-500/20 dark:text-rose-300',
+  reduce: 'bg-emerald-500/12 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-300',
+  more: 'bg-accent/50 text-muted-foreground hover:bg-accent hover:text-foreground',
+} as const
+
+type PositionActionTone = keyof typeof POSITION_ACTION_TONES
+
+function PositionActionButton({
+  tone = 'default',
+  className = '',
+  ...props
+}: React.ComponentProps<typeof Button> & { tone?: PositionActionTone }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={`h-8 px-2.5 text-[12px] font-medium ${POSITION_ACTION_TONES[tone]} ${className}`}
+      {...props}
+    />
+  )
+}
+
+function PositionAgentBadges({
+  stockAgents,
+  agentConfigs,
+  runningAgentName,
+}: {
+  stockAgents?: StockAgentInfo[]
+  agentConfigs: AgentConfig[]
+  runningAgentName?: string | null
+}) {
+  const configured = stockAgents || []
+  if (configured.length === 0) {
+    return (
+      <span className="text-[10px] text-muted-foreground/50 inline-flex items-center gap-0.5 whitespace-nowrap">
+        <Bot className="w-2.5 h-2.5 shrink-0" /> 未配置
+      </span>
+    )
+  }
+
+  const ordered = runningAgentName
+    ? [...configured].sort((a, b) => {
+        if (a.agent_name === runningAgentName) return -1
+        if (b.agent_name === runningAgentName) return 1
+        return 0
+      })
+    : configured
+
+  return (
+    <div className="flex flex-col gap-0.5 leading-tight">
+      {ordered.map(sa => {
+        const agent = agentConfigs.find(a => a.name === sa.agent_name)
+        const isRunning = runningAgentName === sa.agent_name
+        const label = agent?.display_name || sa.agent_name
+        return (
+          <span key={sa.agent_name} className="inline-flex items-center gap-0.5 min-w-0 max-w-full">
+            <span
+              className="text-[9px] px-1 py-px rounded bg-accent/70 text-muted-foreground truncate max-w-full"
+              title={label}
+            >
+              {label}
+            </span>
+            {isRunning && (
+              <span
+                className="w-2 h-2 border border-amber-600/30 border-t-amber-600 rounded-full animate-spin shrink-0"
+                title="执行中"
+              />
+            )}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function PositionMoreMenu({
+  onNews,
+  onEdit,
+  onDelete,
+  onAgentConfig,
+}: {
+  onNews: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onAgentConfig?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  const run = (action: () => void) => {
+    setOpen(false)
+    action()
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <PositionActionButton tone="more" title="更多操作">更多</PositionActionButton>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-28 p-1">
+        {onAgentConfig ? (
+          <button
+            type="button"
+            className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
+            onClick={() => run(onAgentConfig)}
+          >
+            Agent配置
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
+          onClick={() => run(onNews)}
+        >
+          资讯
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
+          onClick={() => run(onEdit)}
+        >
+          编辑
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 transition-colors"
+          onClick={() => run(onDelete)}
+        >
+          删除
+        </button>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' }) {
@@ -624,6 +793,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
+  const [insightInitialTab, setInsightInitialTab] = useState<InsightTab | undefined>(undefined)
   const [insightExpandAddPosition, setInsightExpandAddPosition] = useState(false)
   const [insightExpandReducePosition, setInsightExpandReducePosition] = useState(false)
   const [positionRecentTrades, setPositionRecentTrades] = useState<Record<number, PortfolioRecentTrade>>({})
@@ -650,7 +820,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   // Position form
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
-  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', trade_time: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
+  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: DEFAULT_TRADING_STYLE, trade_time: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
   const [editPositionOriginal, setEditPositionOriginal] = useState<{ quantity: number; cost_price: number } | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
@@ -700,6 +870,24 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [closedPositions, setClosedPositions] = useState<ClosedPosition[]>([])
   const [closedPositionsLoading, setClosedPositionsLoading] = useState(false)
   const [closedTradesDialog, setClosedTradesDialog] = useState<ClosedPosition | null>(null)
+  const [positionTradesDialog, setPositionTradesDialog] = useState<{
+    positionId: number
+    symbol: string
+    name: string
+    accountName: string
+    market: string
+  } | null>(null)
+  const [positionTrades, setPositionTrades] = useState<PositionTrade[]>([])
+  const [positionTradesLoading, setPositionTradesLoading] = useState(false)
+  const [editingTradeId, setEditingTradeId] = useState<number | null>(null)
+  const [tradeEditForm, setTradeEditForm] = useState({
+    side: 'buy' as 'buy' | 'sell',
+    price: '',
+    quantity: '',
+    traded_at: '',
+    note: '',
+  })
+  const [tradeEditSaving, setTradeEditSaving] = useState(false)
   const watchDragSnapshotRef = useRef<Stock[] | null>(null)
   const positionDragSnapshotRef = useRef<PortfolioSummary | null>(null)
 
@@ -1104,6 +1292,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
     setInsightHasPosition(!!hasPosition)
+    setInsightInitialTab(undefined)
     setInsightOpen(true)
   }, [])
 
@@ -1114,6 +1303,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightHasPosition(true)
     setInsightExpandReducePosition(false)
     setInsightExpandAddPosition(true)
+    setInsightInitialTab(undefined)
     setInsightOpen(true)
   }, [])
 
@@ -1124,6 +1314,29 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightHasPosition(true)
     setInsightExpandAddPosition(false)
     setInsightExpandReducePosition(true)
+    setInsightInitialTab(undefined)
+    setInsightOpen(true)
+  }, [])
+
+  const openStockDetailReports = useCallback((stockSymbol: string, stockMarket: string, stockName?: string) => {
+    setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(false)
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(true)
+    setInsightInitialTab('reports')
+    setInsightOpen(true)
+  }, [])
+
+  const openStockDetailDeep = useCallback((stockSymbol: string, stockMarket: string, stockName?: string) => {
+    setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(false)
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(true)
+    setInsightInitialTab('deep')
     setInsightOpen(true)
   }, [])
 
@@ -1134,8 +1347,20 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightHasPosition(false)
     setInsightExpandReducePosition(false)
     setInsightExpandAddPosition(true)
+    setInsightInitialTab(undefined)
     setInsightOpen(true)
   }, [])
+
+  useRestoreStockInsight(useCallback((payload) => {
+    setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(false)
+    setInsightSymbol(payload.symbol)
+    setInsightMarket(payload.market || 'CN')
+    setInsightName(payload.name)
+    setInsightHasPosition(!!payload.hasPosition)
+    setInsightInitialTab(payload.tab || 'reports')
+    setInsightOpen(true)
+  }, []))
 
   const formatPreviewTime = (iso: string, tz?: string): string => {
     try {
@@ -1586,7 +1811,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         quantity: position.quantity.toString(),
         invested_amount: position.invested_amount?.toString()
           || calcPositionInitialFunds(position.cost_price.toString(), position.quantity.toString()),
-        trading_style: position.trading_style || '',
+        trading_style: position.trading_style || DEFAULT_TRADING_STYLE,
         trade_time: '',
         stock_symbol: position.symbol,
         stock_name: position.name,
@@ -1601,7 +1826,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         cost_price: '',
         quantity: '',
         invested_amount: '',
-        trading_style: '',
+        trading_style: DEFAULT_TRADING_STYLE,
         trade_time: '',
         stock_symbol: '',
         stock_name: '',
@@ -1927,6 +2152,172 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     return `最近${label} ${sign}${trade.quantity} @ ${formatPrice(trade.price)}`
   }
 
+  const formatCurrentCostPrice = (
+    currentPrice: number | null | undefined,
+    costPrice: number,
+    changeColor: string,
+    isForeign: boolean,
+    market: string,
+    quantity?: number,
+  ) => {
+    const suffix = isForeign ? (market === 'HK' ? ' HKD' : ' USD') : ''
+    return (
+      <span className="font-mono text-[12px]">
+        {currentPrice != null ? (
+          <>
+            <span className={changeColor}>{formatPrice(currentPrice)}{suffix}</span>
+            <span className="text-muted-foreground"> / {formatPrice(costPrice)}</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">— / {formatPrice(costPrice)}</span>
+        )}
+        {quantity != null ? (
+          <span className="text-muted-foreground"> / {quantity}</span>
+        ) : null}
+      </span>
+    )
+  }
+
+  const getPositionInvestedAmount = (pos: Position) =>
+    pos.invested_amount ?? pos.cost_price * pos.quantity
+
+  const formatMarketValueInvested = (pos: Position, isForeign: boolean) => {
+    const invested = getPositionInvestedAmount(pos)
+    const suffix = isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''
+    const investedText = `${formatMoney(invested)}${suffix}`
+    const marketValue = pos.market_value
+
+    return (
+      <div className="flex flex-col items-end font-mono text-[12px]">
+        <span>
+          {marketValue != null ? (
+            <>
+              <span className="text-foreground">{formatMoney(marketValue)}{suffix}</span>
+              <span className="text-muted-foreground"> / {investedText}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">— / {investedText}</span>
+          )}
+        </span>
+        {isForeign && pos.exchange_rate && marketValue != null && pos.market_value_cny != null ? (
+          <span className="text-[10px] text-muted-foreground/60">
+            ≈{formatMoney(pos.market_value_cny)} / {formatMoney(invested * pos.exchange_rate)}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+
+  const openPositionTradesDialog = async (pos: Position, accountName: string) => {
+    setPositionTradesDialog({
+      positionId: pos.id,
+      symbol: pos.symbol,
+      name: pos.name,
+      accountName,
+      market: pos.market,
+    })
+    setEditingTradeId(null)
+    setPositionTradesLoading(true)
+    setPositionTrades([])
+    try {
+      const rows = await positionsApi.trades(pos.id, 100)
+      setPositionTrades(rows)
+    } catch {
+      toast('加载交易记录失败', 'error')
+    } finally {
+      setPositionTradesLoading(false)
+    }
+  }
+
+  const startEditTrade = (trade: PositionTrade) => {
+    setEditingTradeId(trade.id)
+    setTradeEditForm({
+      side: trade.side === 'sell' ? 'sell' : 'buy',
+      price: String(trade.price),
+      quantity: String(trade.quantity),
+      traded_at: tradeDatetimeIsoToLocal(trade.traded_at),
+      note: trade.note || '',
+    })
+  }
+
+  const cancelEditTrade = () => {
+    setEditingTradeId(null)
+  }
+
+  const saveEditTrade = async () => {
+    if (editingTradeId == null) return
+    const price = Number(tradeEditForm.price)
+    const quantity = Number.parseInt(tradeEditForm.quantity, 10)
+    if (!Number.isFinite(price) || price <= 0) {
+      toast('请输入有效成交价格', 'error')
+      return
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast('请输入有效股数', 'error')
+      return
+    }
+    setTradeEditSaving(true)
+    try {
+      const res = await positionsApi.updateTrade(editingTradeId, {
+        side: tradeEditForm.side,
+        price,
+        quantity,
+        traded_at: tradeDatetimeLocalToIso(tradeEditForm.traded_at),
+        note: tradeEditForm.note.trim() || undefined,
+      })
+      setPositionTrades(res.trades)
+      setEditingTradeId(null)
+      loadPortfolio()
+      void loadPositionRecentTrades()
+      toast('交易记录已更新', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '保存失败', 'error')
+    } finally {
+      setTradeEditSaving(false)
+    }
+  }
+
+  const openPositionChat = (
+    pos: Position,
+    accountName: string,
+    suggestion: SuggestionInfo | null,
+    kline: KlineSummary | null,
+  ) => {
+    const parts: string[] = ['来源：持仓页']
+    parts.push(`账户：${accountName}`)
+    const styleLabel = tradingStyleLabel(pos.trading_style)
+    const holdingItems = [
+      `持仓 ${pos.quantity} 股`,
+      `成本 ${formatPrice(pos.cost_price)}`,
+      pos.current_price != null ? `现价 ${formatPrice(pos.current_price)}` : null,
+      pos.change_pct != null ? `涨跌幅 ${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : null,
+      pos.market_value != null ? `市值 ${formatMoney(pos.market_value)}` : null,
+      pos.pnl != null ? `浮动盈亏 ${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}${pos.pnl_pct != null ? ` (${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%)` : ''}` : null,
+      `风格 ${styleLabel}`,
+    ].filter(Boolean)
+    parts.push(`持仓信息：${holdingItems.join('，')}`)
+    if (kline) {
+      const items = []
+      if (kline.trend) items.push(`趋势${kline.trend}`)
+      if (kline.macd_status) items.push(`MACD${kline.macd_status}`)
+      if (kline.rsi_status) items.push(`RSI${kline.rsi_status}`)
+      if (kline.support != null) items.push(`支撑${kline.support}`)
+      if (kline.resistance != null) items.push(`压力${kline.resistance}`)
+      if (items.length) parts.push(`技术面：${items.join('，')}`)
+    }
+    if (suggestion) {
+      parts.push(`技术评分：${suggestion.action_label}(score=${suggestion.score})，信号：${suggestion.signal || '中性'}`)
+    }
+    window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
+      detail: {
+        symbol: pos.symbol,
+        market: pos.market,
+        stockName: pos.name,
+        pageContext: parts.join('\n'),
+      },
+    }))
+  }
+
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
     return quotes[quoteKey] || null
@@ -2243,14 +2634,29 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           ))}
         </div>
       ) : portfolio ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-[12px]">总市值</span>
+              <Landmark className="w-4 h-4" />
+              <span className="text-[12px]">初始资金</span>
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
-              {formatMoney(portfolio.total.total_market_value)}
+              {formatMoney(portfolio.total.initial_funds ?? (portfolio.total.total_assets - portfolio.total.total_pnl))}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">折合人民币</div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <PiggyBank className="w-4 h-4" />
+              <span className="text-[12px]">总资产</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {formatMoney(portfolio.total.total_assets)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
+              {(portfolio.total.other_funds ?? 0) > 0
+                ? `含其他资产 ${formatMoney(portfolio.total.other_funds ?? 0)}`
+                : '折合人民币'}
             </div>
           </div>
           <div className="card p-4">
@@ -2267,6 +2673,16 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               <span className="text-[13px] ml-1.5">
                 ({portfolio.total.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total.total_pnl_pct.toFixed(2)}%)
               </span>
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">相对初始资金</div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-[12px]">总市值</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {formatMoney(portfolio.total.total_market_value)}
             </div>
           </div>
 
@@ -2297,12 +2713,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Wallet className="w-4 h-4" />
-              <span className="text-[12px]">现金</span>
+              <span className="text-[12px]">股票现金</span>
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.available_funds)}
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">折合人民币</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">可用于买股票，折合人民币</div>
           </div>
           {(portfolio.total.other_funds ?? 0) > 0 && (
             <div className="card p-4">
@@ -2316,21 +2732,6 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               <div className="mt-1 text-[11px] text-muted-foreground">折合人民币</div>
             </div>
           )}
-          <div className="card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-1">
-              <PiggyBank className="w-4 h-4" />
-              <span className="text-[12px]">总资产</span>
-            </div>
-            <div className="text-[20px] font-bold text-foreground font-mono">
-              {formatMoney(portfolio.total.total_assets)}
-            </div>
-            <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
-              {(portfolio.total.other_funds ?? 0) > 0
-                ? `折合人民币，含其他资产 ${formatMoney(portfolio.total.other_funds ?? 0)}`
-                : '折合人民币'}
-            </div>
-          </div>
-
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Bell className="w-4 h-4" />
@@ -2480,6 +2881,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                       <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_market_value)}</div>
                     </div>
                     <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">初始</div>
+                      <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">
+                        {formatAccountFunds(account.initial_funds ?? 0, account.base_currency)}
+                      </div>
+                    </div>
+                    <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">盈亏</div>
                       <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
                         {account.total_pnl >= 0 ? '+' : ''}{formatMoney(account.total_pnl)}
@@ -2492,16 +2899,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
                       </div>
                     </div>
-                    {(account.initial_funds ?? 0) > 0 && (
-                      <div className="text-left md:text-right hidden lg:block">
-                        <div className="text-[10px] md:text-[11px] text-muted-foreground">初始</div>
-                        <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">
-                          {formatAccountFunds(account.initial_funds ?? 0, account.base_currency)}
-                        </div>
-                      </div>
-                    )}
                     <div className="text-left md:text-right hidden sm:block">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">现金</div>
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">股票现金</div>
                       <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">
                         {formatAccountFunds(account.available_funds, account.base_currency)}
                       </div>
@@ -2554,17 +2953,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           <thead>
                             <tr className="border-b border-border/30 bg-accent/20">
                               <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">股票</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">现价</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">涨跌</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">成本</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">持仓</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">初始资金</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">总资产</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">盈亏</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">今日</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">现价/成本/持仓</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值/总资金</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">总盈亏</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">今日盈亏</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">风格</th>
-                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">Agent</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground min-w-[8rem]">Agent</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">操作</th>
                             </tr>
                           </thead>
@@ -2650,50 +3044,14 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                       </button>
                                     )}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
-                                  </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
-                                    {formatPrice(pos.cost_price)}
+                                  <td className="px-4 py-2.5 text-right">
+                                    {formatCurrentCostPrice(pos.current_price, pos.cost_price, changeColor, isForeign, pos.market, pos.quantity)}
                                     {recentTradeLabel ? (
                                       <span className="block text-[9px] text-primary/80 font-sans mt-0.5">{recentTradeLabel}</span>
                                     ) : null}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
-                                    {pos.invested_amount != null ? (
-                                      <div className="flex flex-col items-end">
-                                        <span>
-                                          {formatMoney(pos.invested_amount)}
-                                          {isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}
-                                        </span>
-                                        {isForeign && pos.exchange_rate ? (
-                                          <span className="text-[10px] text-muted-foreground/60">
-                                            ≈{formatMoney(pos.invested_amount * pos.exchange_rate)}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    ) : (
-                                      <span>{formatMoney(pos.cost_price * pos.quantity)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
-                                    {pos.market_value != null ? (
-                                      <div className="flex flex-col items-end">
-                                        {isForeign ? (
-                                          <>
-                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
-                                            {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">≈{formatMoney(pos.market_value_cny)}</span>}
-                                          </>
-                                        ) : <span>{formatMoney(pos.market_value)}</span>}
-                                      </div>
-                                    ) : '—'}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
-                                    {formatMoney(account.total_assets)}
+                                  <td className="px-4 py-2.5 text-right">
+                                    {formatMarketValueInvested(pos, isForeign)}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pnlColor}`}>
                                     {pos.pnl != null ? (
@@ -2712,48 +3070,28 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                     ) : '—'}
                                   </td>
                                   <td className="px-4 py-2.5 text-center">
-                                    {pos.trading_style ? (
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
-                                        {pos.trading_style === 'short' ? '短线' : pos.trading_style === 'long' ? '长线' : '波段'}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] text-muted-foreground/50">-</span>
-                                    )}
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${tradingStyleClass(pos.trading_style)}`}>
+                                      {tradingStyleLabel(pos.trading_style)}
+                                    </span>
                                   </td>
-                                  <td className="px-4 py-2.5">
-                                    {stock && (
-                                      <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
-                                        {stock.agents && stock.agents.length > 0 ? (
-                                          <div className="flex items-center gap-1.5 flex-wrap">
-                                            {stock.agents.map(sa => {
-                                              const agent = agents.find(a => a.name === sa.agent_name)
-                                              const isRunning = runningAgents[stock.id] === sa.agent_name
-                                              return (
-                                                <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                                  <Badge variant="default" className="text-[10px]">{agent?.display_name || sa.agent_name}</Badge>
-                                                  {isRunning && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                                                      <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                                                      执行中
-                                                    </span>
-                                                  )}
-                                                </span>
-                                              )
-                                            })}
-                                          </div>
-                                        ) : (
-                                          <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1"><Bot className="w-3 h-3" /> 未配置</span>
-                                        )}
-                                      </button>
-                                    )}
+                                  <td className="px-4 py-2.5 align-top min-w-[8rem]">
+                                    {stock ? (
+                                      <PositionAgentBadges
+                                        stockAgents={stock.agents}
+                                        agentConfigs={agents}
+                                        runningAgentName={runningAgents[stock.id]}
+                                      />
+                                    ) : null}
                                   </td>
-                                  <td className="px-4 py-2.5 text-center">
-                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <td className="px-3 py-2 text-center min-w-[18rem]">
+                                    <div className="flex items-center justify-center gap-1 flex-wrap">
                                       {(!suggestion && !kline) ? (
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
+                                        <PositionActionButton tone="kline" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标">
+                                          K线
+                                        </PositionActionButton>
                                       ) : null}
                                       <StockPriceAlertPanel
-                                        mode="icon"
+                                        mode="text"
                                         stockId={pos.stock_id}
                                         symbol={pos.symbol}
                                         market={pos.market}
@@ -2761,13 +3099,32 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                         initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
                                         initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
                                         onChanged={loadPriceAlertSummaries}
+                                        triggerClassName="h-8 px-2.5 text-[12px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
                                       />
-                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-rose-500" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}><Minus className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
+                                      <PositionActionButton tone="report" title="查看 Agent 报告" onClick={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}>
+                                        报告
+                                      </PositionActionButton>
+                                      <PositionActionButton tone="analysis" title="深度分析" onClick={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}>
+                                        分析
+                                      </PositionActionButton>
+                                      <PositionActionButton tone="history" title="历史交易明细" onClick={() => openPositionTradesDialog(pos, account.name)}>
+                                        历史交易
+                                      </PositionActionButton>
+                                      <PositionActionButton tone="ai" title="打开 AI 助手" onClick={() => openPositionChat(pos, account.name, suggestion, kline)}>
+                                        AI
+                                      </PositionActionButton>
+                                      <PositionActionButton tone="add" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}>
+                                        加仓
+                                      </PositionActionButton>
+                                      <PositionActionButton tone="reduce" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}>
+                                        减仓
+                                      </PositionActionButton>
+                                      <PositionMoreMenu
+                                        onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
+                                        onNews={() => openNewsDialog(pos.name)}
+                                        onEdit={() => openPositionDialog(account.id, pos)}
+                                        onDelete={() => handleDeletePosition(pos.id)}
+                                      />
                                     </div>
                                   </td>
                                 </tr>
@@ -2838,17 +3195,24 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   >
                                     {pos.name}
                                   </button>
-                                  {pos.trading_style && (
-                                    <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
-                                      {pos.trading_style === 'short' ? '短' : pos.trading_style === 'long' ? '长' : '波'}
-                                    </span>
-                                  )}
+                                  <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${tradingStyleClass(pos.trading_style)}`}>
+                                    {tradingStyleLabel(pos.trading_style, true)}
+                                  </span>
                                 </div>
                                 <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 text-right ${changeColor}`}>
                                   <div>
-                                    {pos.current_price?.toFixed(2) || '—'}
-                                    {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                    {pos.current_price != null ? (
+                                      <>
+                                        <span>{formatPrice(pos.current_price)}</span>
+                                        <span className="text-muted-foreground"> / {formatPrice(pos.cost_price)} / {pos.quantity}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground">— / {formatPrice(pos.cost_price)} / {pos.quantity}</span>
+                                    )}
                                   </div>
+                                  {recentTradeLabel ? (
+                                    <div className="text-[9px] text-primary/80 font-sans">{recentTradeLabel}</div>
+                                  ) : null}
                                   <KlineLevelsBrief kline={kline} align="right" className="mt-0.5" />
                                 </div>
                               </div>
@@ -2875,36 +3239,28 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                 </button>
                               )}
                               {/* Row 3: Stats grid */}
-                              <div className="grid grid-cols-3 gap-2 text-[11px]">
-                                <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">成本</div>
-                                  <div className="font-mono text-foreground truncate" title={String(pos.cost_price)}>{formatPrice(pos.cost_price)}</div>
-                                  {recentTradeLabel ? (
-                                    <div className="text-[9px] text-primary/80 truncate">{recentTradeLabel}</div>
-                                  ) : null}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">数量</div>
-                                  <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">初始资金</div>
-                                  <div className="font-mono text-foreground whitespace-nowrap">
-                                    {formatMoney(pos.invested_amount ?? pos.cost_price * pos.quantity)}
-                                    {isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}
+                              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                <div className="min-w-0 col-span-2">
+                                  <div className="text-[10px] text-muted-foreground">市值/总资金</div>
+                                  <div className="font-mono text-foreground whitespace-nowrap text-[11px]">
+                                    {pos.market_value != null ? (
+                                      <>
+                                        {formatMoney(pos.market_value)}
+                                        {isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}
+                                        <span className="text-muted-foreground"> / {formatMoney(getPositionInvestedAmount(pos))}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground">— / {formatMoney(getPositionInvestedAmount(pos))}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span>
+                                    )}
                                   </div>
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">市值</div>
-                                  <div className="font-mono text-foreground whitespace-nowrap">
-                                    {pos.market_value_cny != null ? formatMoney(pos.market_value_cny) : (pos.market_value != null ? formatMoney(pos.market_value) : '—')}
-                                  </div>
-                                  {pos.exchange_rate && pos.market_value != null && (
-                                    <div className="text-[9px] text-muted-foreground">≈{formatMoney(pos.market_value)}</div>
+                                  {isForeign && pos.exchange_rate && pos.market_value_cny != null && (
+                                    <div className="text-[9px] text-muted-foreground">
+                                      ≈{formatMoney(pos.market_value_cny)} / {formatMoney(getPositionInvestedAmount(pos) * pos.exchange_rate)}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">盈亏</div>
+                                  <div className="text-[10px] text-muted-foreground">总盈亏</div>
                                   <div className={`font-mono whitespace-nowrap ${pnlColor}`}>
                                     {pos.pnl != null ? `${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}` : '—'}
                                   </div>
@@ -2915,7 +3271,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">今日</div>
+                                  <div className="text-[10px] text-muted-foreground">今日盈亏</div>
                                   <div className={`font-mono whitespace-nowrap ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : 'text-muted-foreground'}`}>
                                     {pos.daily_pnl != null ? `${pos.daily_pnl >= 0 ? '+' : ''}${formatMoney(pos.daily_pnl)}` : '—'}
                                   </div>
@@ -2923,37 +3279,23 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                               </div>
                               {/* Row 4: Actions */}
                               <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/20">
-                                <div>
-                                  {stock && stock.agents && stock.agents.length > 0 ? (
-                                    <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1">
-                                      {stock.agents.slice(0, 2).map(sa => {
-                                        const agent = agents.find(a => a.name === sa.agent_name)
-                                        const isRunning = runningAgents[stock.id] === sa.agent_name
-                                        return (
-                                          <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                            <Badge variant="secondary" className="text-[9px]">{agent?.display_name || sa.agent_name}</Badge>
-                                            {isRunning && (
-                                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                                                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                                                执行中
-                                              </span>
-                                            )}
-                                          </span>
-                                        )
-                                      })}
-                                    </button>
-                                  ) : (
-                                    <button onClick={() => stock && setAgentDialogStock(stock)} className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
-                                      <Bot className="w-3 h-3" /> Agent
-                                    </button>
-                                  )}
+                                <div className="min-w-0">
+                                  {stock ? (
+                                    <PositionAgentBadges
+                                      stockAgents={stock.agents}
+                                      agentConfigs={agents}
+                                      runningAgentName={runningAgents[stock.id]}
+                                    />
+                                  ) : null}
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center flex-wrap justify-end gap-1">
                                   {(!suggestion && !kline) ? (
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
+                                    <PositionActionButton tone="kline" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标">
+                                      K线
+                                    </PositionActionButton>
                                   ) : null}
                                   <StockPriceAlertPanel
-                                    mode="icon"
+                                    mode="text"
                                     stockId={pos.stock_id}
                                     symbol={pos.symbol}
                                     market={pos.market}
@@ -2961,13 +3303,32 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                     initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
                                     initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
                                     onChanged={loadPriceAlertSummaries}
+                                    triggerClassName="h-8 px-2.5 text-[12px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
                                   />
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}><Plus className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-rose-500" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}><Minus className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
+                                  <PositionActionButton tone="report" title="查看 Agent 报告" onClick={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}>
+                                    报告
+                                  </PositionActionButton>
+                                  <PositionActionButton tone="analysis" title="深度分析" onClick={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}>
+                                    分析
+                                  </PositionActionButton>
+                                  <PositionActionButton tone="history" title="历史交易明细" onClick={() => openPositionTradesDialog(pos, account.name)}>
+                                    历史交易
+                                  </PositionActionButton>
+                                  <PositionActionButton tone="ai" title="打开 AI 助手" onClick={() => openPositionChat(pos, account.name, suggestion, kline)}>
+                                    AI
+                                  </PositionActionButton>
+                                  <PositionActionButton tone="add" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}>
+                                    加仓
+                                  </PositionActionButton>
+                                  <PositionActionButton tone="reduce" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}>
+                                    减仓
+                                  </PositionActionButton>
+                                  <PositionMoreMenu
+                                    onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
+                                    onNews={() => openNewsDialog(pos.name)}
+                                    onEdit={() => openPositionDialog(account.id, pos)}
+                                    onDelete={() => handleDeletePosition(pos.id)}
+                                  />
                                 </div>
                               </div>
                             </div>
@@ -3088,6 +3449,157 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 持仓历史交易弹窗 */}
+      <Dialog open={!!positionTradesDialog} onOpenChange={(open) => { if (!open) { setPositionTradesDialog(null); setPositionTrades([]); setEditingTradeId(null) } }}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {positionTradesDialog?.name || positionTradesDialog?.symbol} · 历史交易
+            </DialogTitle>
+            <DialogDescription>
+              {positionTradesDialog?.accountName} · {positionTradesDialog?.symbol}
+              {positionTradesDialog?.market ? ` · ${marketLabel(positionTradesDialog.market)}` : ''}
+              {positionTrades.length > 0 ? ` · 共 ${positionTrades.length} 笔` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {positionTradesLoading ? (
+            <div className="text-center text-muted-foreground text-sm py-8">加载中…</div>
+          ) : positionTrades.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-8">暂无交易记录</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-xs">
+                    <th className="text-left py-2 pr-3">时间</th>
+                    <th className="text-left py-2 px-2">方向</th>
+                    <th className="text-right py-2 px-2">股数</th>
+                    <th className="text-right py-2 px-2">价格</th>
+                    <th className="text-right py-2 px-2">金额</th>
+                    <th className="text-right py-2 px-2">成本变化</th>
+                    <th className="text-right py-2 px-2">持仓变化</th>
+                    <th className="text-left py-2 px-2">备注</th>
+                    <th className="text-center py-2 pl-2">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {positionTrades.map(t => {
+                    const isEditing = editingTradeId === t.id
+                    return (
+                    <tr key={t.id} className={`border-b border-border/40 ${isEditing ? 'bg-accent/40' : 'hover:bg-accent/30'}`}>
+                      {isEditing ? (
+                        <>
+                          <td className="py-2 pr-3">
+                            <Input
+                              type="datetime-local"
+                              className="h-8 text-xs w-[160px]"
+                              value={tradeEditForm.traded_at}
+                              onChange={e => setTradeEditForm(f => ({ ...f, traded_at: e.target.value }))}
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <Select
+                              value={tradeEditForm.side}
+                              onValueChange={v => setTradeEditForm(f => ({ ...f, side: v as 'buy' | 'sell' }))}
+                            >
+                              <SelectTrigger className="h-8 w-[72px] text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="buy">买入</SelectItem>
+                                <SelectItem value="sell">卖出</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="py-2 px-2">
+                            <Input
+                              className="h-8 text-xs w-[80px] text-right font-mono"
+                              inputMode="numeric"
+                              value={tradeEditForm.quantity}
+                              onChange={e => setTradeEditForm(f => ({ ...f, quantity: e.target.value }))}
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <Input
+                              className="h-8 text-xs w-[88px] text-right font-mono"
+                              inputMode="decimal"
+                              value={tradeEditForm.price}
+                              onChange={e => setTradeEditForm(f => ({ ...f, price: e.target.value }))}
+                            />
+                          </td>
+                          <td className="text-right py-2 px-2 font-mono text-xs text-muted-foreground">
+                            {tradeEditForm.price && tradeEditForm.quantity
+                              ? formatMoney(Number(tradeEditForm.price) * (Number.parseInt(tradeEditForm.quantity, 10) || 0))
+                              : '—'}
+                          </td>
+                          <td className="py-2 px-2 text-xs text-muted-foreground" colSpan={2}>
+                            保存后将自动重算成本与持仓
+                          </td>
+                          <td className="py-2 px-2">
+                            <Input
+                              className="h-8 text-xs"
+                              value={tradeEditForm.note}
+                              onChange={e => setTradeEditForm(f => ({ ...f, note: e.target.value }))}
+                              placeholder="备注"
+                            />
+                          </td>
+                          <td className="py-2 pl-2 text-center whitespace-nowrap">
+                            <Button size="sm" className="h-7 px-2 text-xs mr-1" disabled={tradeEditSaving} onClick={saveEditTrade}>
+                              {tradeEditSaving ? '保存中…' : '保存'}
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={tradeEditSaving} onClick={cancelEditTrade}>
+                              取消
+                            </Button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                      <td className="py-2 pr-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {t.traded_at ? new Date(t.traded_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span className={`text-xs font-medium ${t.side === 'sell' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {t.side === 'sell' ? '卖出' : '买入'}
+                        </span>
+                      </td>
+                      <td className="text-right py-2 px-2 font-mono">{t.side === 'sell' ? '-' : '+'}{t.quantity}</td>
+                      <td className="text-right py-2 px-2 font-mono">{formatPrice(t.price)}</td>
+                      <td className="text-right py-2 px-2 font-mono">{formatMoney(t.amount)}</td>
+                      <td className="text-right py-2 px-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
+                        {t.cost_before != null && t.cost_after != null
+                          ? `${formatPrice(t.cost_before)} → ${formatPrice(t.cost_after)}`
+                          : '-'}
+                      </td>
+                      <td className="text-right py-2 px-2 text-xs text-muted-foreground font-mono whitespace-nowrap">
+                        {t.qty_before != null && t.qty_after != null ? `${t.qty_before} → ${t.qty_after}` : '-'}
+                      </td>
+                      <td className="py-2 px-2 text-xs text-muted-foreground max-w-[120px] truncate" title={t.note || ''}>
+                        {t.note || '-'}
+                      </td>
+                      <td className="py-2 pl-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          title="编辑"
+                          disabled={editingTradeId != null}
+                          onClick={() => startEditTrade(t)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </td>
+                        </>
+                      )}
+                    </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -3591,12 +4103,14 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           if (!open) {
             setInsightExpandAddPosition(false)
             setInsightExpandReducePosition(false)
+            setInsightInitialTab(undefined)
           }
         }}
         symbol={insightSymbol}
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
+        initialTab={insightInitialTab}
         initialExpandAddPosition={insightExpandAddPosition}
         initialExpandReducePosition={insightExpandReducePosition}
         onPortfolioChanged={handlePortfolioChanged}
@@ -3697,10 +4211,10 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                   ))}
                 </SelectContent>
               </Select>
-              <p className="mt-1 text-[11px] text-muted-foreground">现金与其他资产均按此币种填写；切换币种不会自动换算</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">股票现金与其他资产均按此币种填写；切换币种不会自动换算</p>
             </div>
             <div>
-              <Label>现金（{accountCurrencyLabel(accountForm.base_currency)}）</Label>
+              <Label>股票现金（{accountCurrencyLabel(accountForm.base_currency)}）</Label>
               <Input
                 value={accountForm.available_funds}
                 onChange={e => setAccountForm({ ...accountForm, available_funds: e.target.value })}
@@ -3708,7 +4222,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                 className="font-mono"
                 inputMode="decimal"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">证券账户内可用于交易的现金</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">可用于买股票的现金，加仓从此扣减、减仓回款计入此处</p>
             </div>
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -3946,13 +4460,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>交易风格 <span className="text-muted-foreground font-normal">(选填)</span></Label>
+                <Label>交易风格</Label>
                 <Select
-                  value={positionForm.trading_style}
+                  value={positionForm.trading_style || DEFAULT_TRADING_STYLE}
                   onValueChange={val => setPositionForm({ ...positionForm, trading_style: val === '__none__' ? '' : val })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="不设置" />
+                    <SelectValue placeholder="短线" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">不设置</SelectItem>

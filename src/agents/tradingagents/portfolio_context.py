@@ -112,7 +112,7 @@ def build_portfolio_context(
         styles = list({p.trading_style for p in positions if p.trading_style})
         style_text = "/".join(styles) if styles else "swing"
         style_map = {"short": "短线", "swing": "波段", "long": "长线"}
-        style_zh = "/".join(style_map.get(s, s) for s in styles) if styles else "波段"
+        style_zh = "/".join(style_map.get(s, s) for s in styles) if styles else "短线"
 
         lines.append(f"\n## Holding for {stock_symbol}")
         lines.append(f"- Quantity: {total_qty} shares (across {len(positions)} account(s))")

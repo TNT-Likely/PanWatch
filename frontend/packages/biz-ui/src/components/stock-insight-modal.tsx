@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Brain, Copy, Download, ExternalLink, Play, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
   fetchAPI,
@@ -145,6 +145,16 @@ interface PortfolioSummaryResponse {
 }
 
 export type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+
+export const INSIGHT_TAB_LABELS: Record<InsightTab, string> = {
+  overview: '概览',
+  kline: 'K线',
+  suggestions: '建议',
+  news: '新闻',
+  announcements: '公告',
+  reports: '报告',
+  deep: '深度',
+}
 
 interface StockAgentInfo {
   agent_name: string
@@ -434,6 +444,7 @@ export default function StockInsightModal(props: {
 }) {
   const { toast } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
@@ -513,16 +524,30 @@ export default function StockInsightModal(props: {
     const params = new URLSearchParams()
     params.set('id', String(reportId))
     if (symbol) params.set('symbol', symbol)
+    params.set('from', 'stock')
+    params.set('market', market)
+    params.set('tab', tab)
+    const returnPath = `${location.pathname}${location.search}`
+    if (returnPath && !returnPath.startsWith('/history')) {
+      params.set('return', returnPath)
+    }
     navigate(`/history?${params.toString()}`)
-  }, [navigate, props.onOpenChange, symbol])
+  }, [location.pathname, location.search, market, navigate, props.onOpenChange, symbol, tab])
 
   const navigateToHistoryList = useCallback(() => {
     props.onOpenChange(false)
     const params = new URLSearchParams()
     if (symbol) params.set('symbol', symbol)
+    params.set('from', 'stock')
+    params.set('market', market)
+    params.set('tab', tab)
+    const returnPath = `${location.pathname}${location.search}`
+    if (returnPath && !returnPath.startsWith('/history')) {
+      params.set('return', returnPath)
+    }
     const qs = params.toString()
-    navigate(qs ? `/history?${qs}` : '/history')
-  }, [navigate, props.onOpenChange, symbol])
+    navigate(`/history?${qs}`)
+  }, [location.pathname, location.search, market, navigate, props.onOpenChange, symbol, tab])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
@@ -2056,81 +2081,38 @@ export default function StockInsightModal(props: {
     <>
       <Dialog open={props.open} onOpenChange={props.onOpenChange}>
         <DialogContent className="w-[92vw] max-w-6xl p-5 md:p-6 overflow-x-hidden">
-          <DialogHeader className="mb-3">
-            <div className="flex items-start justify-between gap-3 pr-10 md:pr-8">
-              <div className="shrink-0">
-                <DialogTitle className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
-                  <span className="break-all">{resolvedName}</span>
-                  <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
-                </DialogTitle>
-                {watchingStock && (
-                  <StockConceptTags
-                    key={`${market}:${symbol}`}
-                    tags={watchingStock.concept_tags || []}
-                    market={market}
-                    editable
-                    className="mt-2"
-                    onUpdateManual={handleUpdateManualConceptTags}
-                    onRefreshAuto={handleRefreshConceptTags}
-                  />
-                )}
-                <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
-              </div>
-              <div className="hidden md:flex items-center gap-2">
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleExportShareImage()} disabled={imageExporting}>
-                  <Download className={`w-3.5 h-3.5 ${imageExporting ? 'animate-pulse' : ''}`} />
-                  <span>{imageExporting ? '生成中' : '图片'}</span>
-                </Button>
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleShareInsight()}>
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>分享</span>
-                </Button>
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleCopyShareText()}>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>复制</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 px-2.5"
-                  onClick={toggleWatch}
-                  disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
-                  title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
-                >
-                  {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
-                </Button>
-                <StockPriceAlertPanel key={alertPanelKey} mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>
-                  {alerting ? '设置中...' : '一键设提醒'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 px-2.5"
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
-                      detail: { symbol, market, stockName: resolvedName, pageContext: buildPageContext() }
-                    }))
-                    props.onOpenChange(false)
-                  }}
-                >
-                  <Sparkles className="w-3.5 h-3.5 mr-1" /> 问 AI
-                </Button>
-                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading}>
-                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
-              </div>
+          <DialogHeader className="mb-3 pr-10">
+            <div>
+              <DialogTitle className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                <span className="break-all">{resolvedName}</span>
+                <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
+              </DialogTitle>
+              {watchingStock && (
+                <StockConceptTags
+                  key={`${market}:${symbol}`}
+                  tags={watchingStock.concept_tags || []}
+                  market={market}
+                  editable
+                  className="mt-2"
+                  onUpdateManual={handleUpdateManualConceptTags}
+                  onRefreshAuto={handleRefreshConceptTags}
+                />
+              )}
+              <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
             </div>
-            <div className="flex md:hidden items-center gap-2 mt-2 overflow-x-auto scrollbar-none pb-1 -mb-1">
+            <div className="flex items-center gap-2 mt-2 overflow-x-auto scrollbar-none pb-1 -mb-1">
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleExportShareImage()} disabled={imageExporting}>
                 <Download className={`w-3.5 h-3.5 ${imageExporting ? 'animate-pulse' : ''}`} />
+                <span className="hidden sm:inline">{imageExporting ? '生成中' : '图片'}</span>
               </Button>
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleShareInsight()}>
                 <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">分享</span>
               </Button>
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleCopyShareText()}>
                 <Copy className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">复制</span>
               </Button>
               <Button
                 variant="secondary"
@@ -2138,6 +2120,7 @@ export default function StockInsightModal(props: {
                 className="h-8 px-2.5 shrink-0"
                 onClick={toggleWatch}
                 disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
+                title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
               >
                 {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
               </Button>
@@ -2164,8 +2147,8 @@ export default function StockInsightModal(props: {
             </div>
           </DialogHeader>
 
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-            <div className="flex items-center gap-1 flex-wrap">
+          <div className="mb-3 space-y-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(4.75rem,1fr))] gap-1.5">
               {[
                 { id: 'overview', label: '概览' },
                 { id: 'suggestions', label: `建议 (${suggestions.length})` },
@@ -2178,7 +2161,7 @@ export default function StockInsightModal(props: {
                 <button
                   key={item.id}
                   onClick={() => setTab(item.id as InsightTab)}
-                  className={`text-[11px] px-2.5 py-1 rounded transition-colors ${
+                  className={`text-center text-[11px] px-2.5 py-1.5 rounded transition-colors whitespace-nowrap ${
                     tab === item.id ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'
                   }`}
                 >
@@ -2186,7 +2169,7 @@ export default function StockInsightModal(props: {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end gap-2">
               <span className="text-[11px] text-muted-foreground">自动刷新</span>
               <Switch
                 checked={autoRefreshEnabled}

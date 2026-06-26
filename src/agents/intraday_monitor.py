@@ -553,7 +553,7 @@ class IntradayMonitorAgent(BaseAgent):
                     if cost_price > 0
                     else 0
                 )
-                style_label = style_labels.get(pos.trading_style, "波段")
+                style_label = style_labels.get(pos.trading_style, "短线")
                 market_value = current_price * pos.quantity
                 # 找到对应账户的可用资金
                 acc_funds = 0

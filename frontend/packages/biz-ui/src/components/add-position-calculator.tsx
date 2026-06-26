@@ -286,7 +286,7 @@ export default function AddPositionCalculator({
         quantity: tradeQty,
         ...(traded_at ? { traded_at } : {}),
       })
-      toast(`已记录加仓 ${tradeQty} 股 @ ${fmt(addPrice)}，新成本 ${fmtCost(result.position.cost_price)}`, 'success')
+      toast(`已记录加仓 ${tradeQty} 股 @ ${fmt(addPrice)}，新成本 ${fmtCost(result.position.cost_price)}，股票现金已扣减 ${fmtInt(tradeQty * addPrice)} 元`, 'success')
       setAddRaw('')
       setPriceRaw('')
       setTradeTimeRaw('')
@@ -323,8 +323,8 @@ export default function AddPositionCalculator({
       const proceeds = tradeQty * addPrice
       toast(
         isClosed
-          ? `已清仓 ${tradeQty} 股 @ ${fmt(addPrice)}，回款 ${fmtInt(proceeds)} 元已计入可用资金`
-          : `已记录减仓 ${tradeQty} 股 @ ${fmt(addPrice)}，剩余 ${fmtInt(reduceCalc.newQty)} 股，本次盈亏 ${pnl >= 0 ? '+' : ''}${fmt(pnl)}`,
+          ? `已清仓 ${tradeQty} 股 @ ${fmt(addPrice)}，回款 ${fmtInt(proceeds)} 元已计入股票现金`
+          : `已记录减仓 ${tradeQty} 股 @ ${fmt(addPrice)}，剩余 ${fmtInt(reduceCalc.newQty)} 股，回款 ${fmtInt(proceeds)} 元已计入股票现金，本次盈亏 ${pnl >= 0 ? '+' : ''}${fmt(pnl)}`,
         'success',
       )
       setAddRaw('')
