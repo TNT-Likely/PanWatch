@@ -1,0 +1,23 @@
+# 依赖与虚拟环境
+.venv/
+venv/
+env/
+node_modules/
+**/node_modules/
+
+# 构建产物
+dist/
+build/
+static/
+frontend/dist/
+frontend/.vite/
+*.egg-info/
+
+# 缓存
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 运行时数据（体积大、非源码）
+data/

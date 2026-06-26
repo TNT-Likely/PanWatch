@@ -1,0 +1,29 @@
+---
+description: 铁律：默认禁止读取依赖与构建产物目录
+alwaysApply: true
+---
+
+# 依赖目录读取铁律
+
+**默认禁止**读取、搜索、遍历以下目录及其子文件。违反本规则会浪费 token、拖慢响应，且对完成任务毫无帮助。
+
+## 禁止默认访问的目录
+
+- Python 虚拟环境：`.venv/`、`venv/`、`env/`
+- Node 依赖：`node_modules/`、`frontend/node_modules/`、`pnpm-store/`
+- 构建产物：`dist/`、`build/`、`static/`、`frontend/dist/`、`frontend/.vite/`、`*.egg-info/`
+- 缓存：`__pycache__/`、`.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`
+- 运行时数据：`data/`（数据库、缓存、日志等）
+
+## 必须遵守
+
+1. **不要**对以上目录使用 Read、Grep、Glob、SemanticSearch 或等价工具。
+2. **不要**把依赖源码当作项目代码来阅读、分析或修改。
+3. 需要了解依赖版本或 API 时，只读项目内的声明文件：`requirements.txt`、`pyproject.toml`、`package.json`、`pnpm-lock.yaml`；或查官方文档 / Context7，**不要**钻进 `node_modules` 或 `.venv`。
+4. 只有用户**明确要求**排查某个依赖包内部问题时，才可定向读取该包的单个文件，且范围尽量小。
+
+## 正确做法示例
+
+- 查 FastAPI 用法 → 读 `requirements.txt` + 官方文档，不读 `.venv/lib/...`
+- 查前端组件库 API → 读 `frontend/package.json` + 文档，不读 `node_modules/`
+- 理解项目逻辑 → 只读 `src/`、`frontend/src/`、`tests/`、`prompts/` 等自有代码

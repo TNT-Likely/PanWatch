@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## 铁律：禁止默认读取依赖目录
+
+**默认不要**读取、搜索或遍历依赖与构建产物目录。这些目录体积巨大，对理解项目代码没有帮助。
+
+禁止默认访问：`.venv/`、`venv/`、`node_modules/`、`dist/`、`build/`、`static/`、`__pycache__/`、`data/` 等。
+
+需要依赖信息时，只读 `requirements.txt`、`pyproject.toml`、`package.json` 等声明文件，或查官方文档；**不要**钻进 `node_modules` 或 `.venv`。仅当用户明确要求排查某个依赖包内部问题时，才可定向读取单个文件。
+
 ## Project Structure & Module Organization
 - `src/agents/` — Agent implementations (business logic). Add new agents here.
 - `src/collectors/` — Data collectors (quotes, kline, news, etc.).

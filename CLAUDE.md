@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 铁律：禁止默认读取依赖目录
+
+默认不要读取、搜索或遍历 `.venv/`、`node_modules/`、`dist/`、`build/`、`static/`、`__pycache__/`、`data/` 等依赖与构建产物目录。需要依赖信息时读 `requirements.txt` / `pyproject.toml` / `package.json` 或查官方文档，不要钻进依赖源码树。仅当用户明确要求排查某个依赖包时，才可定向读取单个文件。
+
 ## What is PanWatch
 
 PanWatch (盯盘侠) is a self-hosted AI stock assistant with real-time market monitoring, technical analysis, multi-account portfolio management, and paper trading. It supports A-shares (CN), Hong Kong (HK), and US markets.
