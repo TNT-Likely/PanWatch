@@ -2159,7 +2159,12 @@ export default function StockInsightModal(props: {
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓数量</div>
+                            <div className="text-[10px] text-muted-foreground flex items-center justify-between">
+                              <span>持仓数量</span>
+                              {holdingOptions.length > 1 && (
+                                <span className="text-[9px] bg-primary/10 text-primary px-1 rounded">{holdingOptions.length} 个账户</span>
+                              )}
+                            </div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
@@ -2363,6 +2368,56 @@ export default function StockInsightModal(props: {
                       )}
                     </div>
                   </div>
+                  <div className="card p-4 h-full flex flex-col">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="text-[12px] text-muted-foreground">交易记录</div>
+                      {recentTrades.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">共 {recentTrades.length} 条</span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2 overflow-y-auto">
+                      {recentTrades.length === 0 ? (
+                        <div className="text-[12px] text-muted-foreground py-6">
+                          {holdingAgg ? '暂无交易记录' : '未持仓，暂无交易记录'}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {recentTrades.slice(0, 6).map((t) => (
+                            <div
+                              key={t.id}
+                              className="flex items-center justify-between rounded border border-border/30 bg-accent/10 px-2 py-1.5 text-[11px]"
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-muted-foreground truncate">
+                                  {t.account_name || '账户'}
+                                  {t.traded_at ? ` · ${formatTime(t.traded_at)}` : ''}
+                                </span>
+                                <span
+                                  className={`font-medium ${
+                                    t.side === 'sell' ? 'text-emerald-500' : 'text-rose-500'
+                                  }`}
+                                >
+                                  {t.side === 'sell' ? '卖出' : '买入'} {t.quantity} 股
+                                  {t.qty_before != null && t.qty_after != null
+                                    ? ` (${t.qty_before}→${t.qty_after})`
+                                    : ''}
+                                </span>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="font-mono">@{formatNumber(t.price, 4)}</div>
+                                {t.cost_before != null && t.cost_after != null ? (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    成本 {formatNumber(t.cost_before, 4)} → {formatNumber(t.cost_after, 4)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="text-[12px] text-muted-foreground">AI报告</div>

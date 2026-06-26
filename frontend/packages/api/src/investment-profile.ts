@@ -1,5 +1,3 @@
-import { fetchAPI } from './client'
-
 export interface InvestmentProfileAddLevel {
   drawdown_pct: number
   budget_pct: number
