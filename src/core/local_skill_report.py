@@ -1,4 +1,4 @@
-"""通用本地 Skill 报告 — 复用 PanWatch 数据管道 + Hermes CLI。"""
+"""通用本地 Skill 报告 — 复用 AlphaMind 数据管道 + Hermes CLI。"""
 
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
 
 _LMD_SKILL_SLUGS = frozenset({"lmd-finance-perspective"})
 
-_PANWATCH_TASK_PREFIX = """你正在 PanWatch 盯盘系统中为自选股生成**可入库的完整 Markdown 分析报告**（不是情报简报、不是执行摘要）。
+_PANWATCH_TASK_PREFIX = """你正在智盘 Alpha（AlphaMind）系统中为自选股生成**可入库的完整 Markdown 分析报告**（不是情报简报、不是执行摘要）。
 
 要求：
 - 最终回复 = **一篇完整 Markdown 报告正文**，用户会直接展示在 UI。
-- 基于下方 PanWatch 已采集的数据展开分析；缺失数据请诚实标注。
+- 基于下方 AlphaMind 已采集的数据展开分析；缺失数据请诚实标注。
 - 遵循你已加载 skill 中的分析框架与输出格式。
 - 开头声明非投资建议；结尾有风险提示。
 

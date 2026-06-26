@@ -216,7 +216,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
             )
         except Exception as e:
             _emit_toolkit_log("warning", "ERROR", method_name, symbol, error=str(e)[:200])
-            return f"[PanWatch error: {e}]"
+            return f"[AlphaMind error: {e}]"
 
     # 港股:先把 ticker 转成 yfinance 格式(00241 → 0241.HK)试上游,
     # yfinance 返回有数据就用,无数据(No data found / 极短返回)fallback 到 PanWatch。
@@ -262,7 +262,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
                 pass
             except Exception as e:
                 _emit_toolkit_log("warning", "ERROR", method_name, symbol, error=str(e)[:200])
-                return f"[PanWatch error: {e}]"
+                return f"[AlphaMind error: {e}]"
         # 港股两边都没 = ERROR
         _emit_toolkit_log(
             "warning", "ERROR", method_name, symbol,
@@ -564,7 +564,7 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         klines = _cache().get("klines") or []
         if klines:
             return f"{header}\n\n{_klines_to_csv(klines)}"
-        return f"{header}\n\n[No kline data available from PanWatch for {symbol}]"
+        return f"{header}\n\n[No kline data available from AlphaMind for {symbol}]"
 
     # 2) 公告/事件/新闻:get_finnhub_news / get_news / get_events / get_global_news / get_insider_*
     if any(k in method for k in ("news", "event", "announce", "insider")):
@@ -730,7 +730,7 @@ def _quote_to_lightweight_fundamentals(symbol: str) -> str:
     if not isinstance(quote, dict):
         return f"[No lightweight fundamentals available for {symbol}]"
 
-    lines = ["[Lightweight Fundamentals (from PanWatch real-time quote)]"]
+    lines = ["[Lightweight Fundamentals (from AlphaMind real-time quote)]"]
     fields = [
         ("PE ratio", "pe_ratio"),
         ("Total market cap", "total_market_value"),

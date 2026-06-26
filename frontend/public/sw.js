@@ -1,4 +1,4 @@
-// PanWatch Service Worker
+// AlphaMind Service Worker
 const CACHE_NAME = 'panwatch-v2';
 
 // 需要缓存的静态资源

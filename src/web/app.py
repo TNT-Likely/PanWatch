@@ -37,7 +37,7 @@ from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
-    title="PanWatch API",
+    title="AlphaMind API",
     version="0.1.0",
     redirect_slashes=False,  # 避免重定向丢失 Authorization header
 )

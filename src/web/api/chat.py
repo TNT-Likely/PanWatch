@@ -47,7 +47,7 @@ from src.web.models import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-SYSTEM_PROMPT = """你是 PanWatch 的 AI 投资助手。
+SYSTEM_PROMPT = """你是智盘 Alpha（AlphaMind）的 AI 投资助手。
 
 你可以使用工具获取用户的投资数据。当用户的问题涉及具体数据时，主动调用工具获取，不要让用户自己提供。
 

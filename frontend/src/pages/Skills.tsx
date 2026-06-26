@@ -143,7 +143,7 @@ export default function SkillsPage() {
           <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-700 dark:text-amber-300 flex gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
-              当前环境未检测到 Hermes CLI。请在「设置 → Hermes」配置可执行路径，并确保 PanWatch 后端运行在本机（非 Docker 隔离环境）。
+              当前环境未检测到 Hermes CLI。请在「设置 → Hermes」配置可执行路径，并确保 AlphaMind 后端运行在本机（非 Docker 隔离环境）。
             </div>
           </div>
         ) : null}

@@ -126,7 +126,7 @@ async def probe_notify_channel(channel, *, send: bool = False) -> dict:
             return _item("notify", f"nc:{channel.id}", name, "ok", latency,
                          note="仅校验配置格式,未真实发送(勾选「含真实发送」可发测试消息)")
         result = await notifier.notify_with_result(
-            title="系统自检", content="盯盘侠系统自检测试消息。", bypass_quiet_hours=True)
+            title="系统自检", content="智盘 Alpha 系统自检测试消息。", bypass_quiet_hours=True)
         latency = int((time.monotonic() - t0) * 1000)
         ok = bool(result.get("success"))
         return _item("notify", f"nc:{channel.id}", name, _status_for(ok, latency), latency,

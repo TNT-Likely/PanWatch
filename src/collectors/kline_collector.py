@@ -134,7 +134,7 @@ def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
     stooq_sym = f"{sym}.us"
     url = "https://stooq.com/q/d/l/"
     params = {"s": stooq_sym, "i": "d"}
-    headers = {"User-Agent": "PanWatch/1.0 (+https://github.com/)"}
+    headers = {"User-Agent": "AlphaMind/1.0 (+https://github.com/)"}
     last_err = None
     text = ""
     for attempt in range(3):

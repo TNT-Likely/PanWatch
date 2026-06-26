@@ -1,4 +1,4 @@
-# 盯盘侠 PanWatch
+# 智盘 Alpha · AlphaMind
 
 **自托管 AI 盯盘助手 · 集成 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投资决策** — A 股 / 港股 / 美股实时监控、持仓管理、智能分析、全渠道推送
 
@@ -8,7 +8,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/PanWatch)](https://github.com/TNT-Likely/PanWatch/commits/main)
 [![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/PanWatch)
 
-![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
+![智盘 Alpha · AlphaMind · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
 
 > 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
 
@@ -31,7 +31,7 @@
 
 </details>
 
-> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
+> 💡 如果智盘 Alpha 对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
 
 ## 🧠 深度分析：TradingAgents 多 Agent 决策
 
@@ -41,7 +41,7 @@
 - 3-5 分钟输出完整推理链，结论同步推送到 Telegram / 微信 / 钉钉
 - 默认 deepseek-chat，单次 ~$0.05，月度预算可控
 
-## 为什么选择盯盘侠？
+## 为什么选择智盘 Alpha？
 
 - **数据私有** — 自托管部署，持仓数据不经过任何第三方
 - **AI 原生** — 不是简单的指标堆砌，而是让 AI 理解你的持仓、风格和目标
@@ -216,7 +216,7 @@ cd frontend && pnpm install && pnpm dev       # 前端 :5183
 
 ## 捐赠支持
 
-如果你觉得 PanWatch 有帮助，欢迎请作者喝杯咖啡：
+如果你觉得 AlphaMind 有帮助，欢迎请作者喝杯咖啡：
 
 | 微信赞赏 | 支付宝 |
 |:---:|:---:|

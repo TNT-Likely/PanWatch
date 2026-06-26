@@ -1,4 +1,4 @@
-"""PanWatch 统一服务入口 - Web 后台 + Agent 调度"""
+"""AlphaMind 统一服务入口 - Web 后台 + Agent 调度"""
 
 import logging
 import os
@@ -1406,7 +1406,7 @@ if os.path.exists(static_dir):
 
 
 if __name__ == "__main__":
-    print("盯盘侠启动: http://127.0.0.1:8000")
+    print("智盘 Alpha 启动: http://127.0.0.1:8000")
     print("API 文档: http://127.0.0.1:8000/docs")
     # 生产(Docker `python server.py`)不应开 reload:uvicorn 文件监听会多起一个 reloader
     # 子进程、浪费资源,且监听 data/ 写入易误触发重启。本地热重载用 `make dev-api`

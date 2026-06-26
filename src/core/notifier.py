@@ -393,7 +393,7 @@ class NotifierManager:
             if link_m:
                 notice = f"\n\n…内容过长已截断,完整报告 👉 {link_m.group(1)}"
             else:
-                notice = "\n\n…内容过长已截断,完整报告请在 PanWatch 查看"
+                notice = "\n\n…内容过长已截断,完整报告请在智盘 Alpha 查看"
             text = text[: 3900 - len(notice)].rstrip() + notice
         payload = {
             "chat_id": chat_id,

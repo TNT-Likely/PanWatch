@@ -1,4 +1,4 @@
-# PanWatch Dockerfile
+# AlphaMind Dockerfile
 # 多阶段构建，减小最终镜像大小
 
 # ===== Stage 1: 前端构建 =====

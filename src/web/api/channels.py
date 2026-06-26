@@ -102,7 +102,7 @@ async def test_channel(channel_id: int, db: Session = Depends(get_db)):
 
     result = await notifier.notify_with_result(
         title="测试通知",
-        content="这是一条来自盯盘侠的测试通知，如果您收到此消息说明通知渠道配置正确。",
+        content="这是一条来自智盘 Alpha 的测试通知，如果您收到此消息说明通知渠道配置正确。",
         bypass_quiet_hours=True,
     )
 

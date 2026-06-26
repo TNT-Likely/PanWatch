@@ -1778,7 +1778,7 @@ export default function StockInsightModal(props: {
   const shareText = useMemo(() => {
     const { marketLabel, price, chg, action, signal, reason, risks, trigger, invalidation, technicalBrief, levelsBrief, source, ts } = shareCardPayload
     const lines = [
-      `【PanWatch 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
+      `【智盘 Alpha 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
       `时间：${ts}`,
       `现价：${price}（${chg}）`,
       `建议：${action}`,
@@ -1821,7 +1821,7 @@ export default function StockInsightModal(props: {
   </defs>
   <rect x="0" y="0" width="1200" height="630" fill="url(#bg)"/>
   <rect x="40" y="30" width="1120" height="570" rx="22" fill="#0f172a" stroke="#1f2937"/>
-  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">PanWatch 洞察</text>
+  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">智盘 Alpha 洞察</text>
   <text x="76" y="150" fill="#f8fafc" font-size="42" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(`${resolvedName}（${symbol} · ${marketLabel}）`, 28))}</text>
   <text x="76" y="198" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(ts)}</text>
 
@@ -1866,7 +1866,7 @@ export default function StockInsightModal(props: {
       const png = canvas.toDataURL('image/png')
       const a = document.createElement('a')
       a.href = png
-      a.download = `panwatch-${symbol}-${Date.now()}.png`
+      a.download = `alphamind-${symbol}-${Date.now()}.png`
       a.click()
       toast('分享图片已生成并下载', 'success')
     } catch {

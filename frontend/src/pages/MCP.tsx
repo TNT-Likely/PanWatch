@@ -184,7 +184,7 @@ export default function MCPPage() {
   const bearerTemplate = `{
   "mcpServers": {
     "panwatch": {
-      "description": "PanWatch 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
+      "description": "AlphaMind 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
       "type": "streamableHttp",
       "url": "http://127.0.0.1:8000/api/mcp",
       "headers": {
@@ -197,7 +197,7 @@ export default function MCPPage() {
   const basicTemplate = `{
   "mcpServers": {
     "panwatch": {
-      "description": "PanWatch 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
+      "description": "AlphaMind 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
       "type": "streamableHttp",
       "url": "http://127.0.0.1:8000/api/mcp",
       "headers": {
@@ -224,7 +224,7 @@ export default function MCPPage() {
           <div>
             <h1 className="text-[20px] md:text-[24px] font-bold text-foreground tracking-tight">MCP 接口中心</h1>
             <p className="text-[13px] text-muted-foreground mt-1">
-              PanWatch 提供 40+ MCP 工具，覆盖自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等功能。
+              AlphaMind 提供 40+ MCP 工具，覆盖自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等功能。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -428,7 +428,7 @@ export default function MCPPage() {
       <div className="card p-5">
         <h2 className="text-[14px] font-semibold mb-2">MCP 传输类型说明</h2>
         <div className="text-[12px] text-muted-foreground space-y-1">
-          <p>当前 PanWatch MCP 使用 <span className="font-medium text-foreground">JSON-RPC over HTTP</span>。</p>
+          <p>当前 AlphaMind MCP 使用 <span className="font-medium text-foreground">JSON-RPC over HTTP</span>。</p>
           <p>类型上属于 <span className="font-medium text-foreground">HTTP 接口调用</span>，不是 SSE 推送通道。</p>
           <p>每次请求都通过 POST 到 <span className="font-mono text-foreground">/api/mcp</span>，返回标准 JSON-RPC 结果。</p>
         </div>

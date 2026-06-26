@@ -115,7 +115,7 @@ def render_fundamentals_summary(data: dict) -> str:
     if not periods or not ind:
         return "[No financial data available]"
 
-    lines = ["[Real Financial Data from PanWatch (akshare)]"]
+    lines = ["[Real Financial Data from AlphaMind (akshare)]"]
     lines.append(f"Reporting periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
 
@@ -151,7 +151,7 @@ def render_income_statement(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No income statement data]"
-    lines = ["[Income Statement (real data from PanWatch / akshare)]"]
+    lines = ["[Income Statement (real data from AlphaMind / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [
@@ -179,7 +179,7 @@ def render_balance_sheet(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No balance sheet data]"
-    lines = ["[Balance Sheet (real data from PanWatch / akshare)]"]
+    lines = ["[Balance Sheet (real data from AlphaMind / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [
@@ -205,7 +205,7 @@ def render_cashflow(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No cash flow data]"
-    lines = ["[Cash Flow Statement (real data from PanWatch / akshare)]"]
+    lines = ["[Cash Flow Statement (real data from AlphaMind / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [

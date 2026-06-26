@@ -374,7 +374,7 @@ def require_mcp_user(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """MCP 认证：优先允许 Bearer（已登录态），其次 Basic（用户名/密码）。"""
-    realm = "Basic realm=PanWatch-MCP"
+    realm = "Basic realm=AlphaMind-MCP"
     auth_value = request.headers.get("authorization", "")
 
     if auth_value.startswith("Bearer "):
@@ -398,7 +398,7 @@ def require_mcp_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="MCP 需要用户名密码，或使用已登录 token",
-            headers={"WWW-Authenticate": "Bearer, Basic realm=PanWatch-MCP"},
+            headers={"WWW-Authenticate": "Bearer, Basic realm=AlphaMind-MCP"},
         )
 
     username, password = basic_user_pass

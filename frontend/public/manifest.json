@@ -1,6 +1,6 @@
 {
-  "name": "盯盘侠 PanWatch",
-  "short_name": "盯盘侠",
+  "name": "智盘 Alpha · AlphaMind",
+  "short_name": "智盘 Alpha",
   "description": "AI 驱动的股票监控助手",
   "start_url": "/",
   "display": "standalone",
