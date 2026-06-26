@@ -19,6 +19,7 @@ from src.models.market import MarketCode
 logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "lmd_outlook.txt"
+REPORTS_DIR = Path(__file__).parent.parent.parent / "reports"
 
 # builtin 模式：追加到外部 skill 文件末尾
 _PANWATCH_APPENDIX_BUILTIN = """
@@ -41,6 +42,7 @@ _HERMES_TASK_PREFIX = """你正在 PanWatch 盯盘系统中为自选股生成**�
 【交付物 — 最高优先级，覆盖 profile/SOUL 中的简洁偏好】
 - 最终回复 = **一篇完整 Markdown 报告正文**，用户会直接展示在 UI，不会再追问。
 - **禁止**输出「报告完成」「执行摘要」「研究阶段 Step 2」「结论 Step 3」等过程性内容；Step 2 研究在工具调用中静默完成。
+- **禁止**在最终回复中输出 `review diff`、git diff 或文件变更摘要；用户要看的是报告正文，不是 diff。
 - **禁止**使用 delegate_task / subagent 把写报告外包；研究与成稿必须在你本会话的最终回复中完成。
 - 正文须含以下二级标题（缺一不可）：
   ## 一、整体定位
@@ -363,6 +365,7 @@ class LmdOutlookAgent(BaseAgent):
         self, context: AgentContext, data: dict
     ) -> AnalysisResult:
         user_content = self.build_user_content(data, context, for_hermes=True)
+        symbol = context.watchlist[0].symbol if context.watchlist else ""
         content = await run_hermes_chat(
             query=user_content,
             skill=self.hermes_skill,
@@ -375,6 +378,9 @@ class LmdOutlookAgent(BaseAgent):
             model=self.hermes_model,
             ignore_rules=self.hermes_ignore_rules,
             auto_expand_summary=self.hermes_auto_expand_summary,
+            report_fallback_dir=REPORTS_DIR,
+            report_fallback_symbol=symbol,
+            report_fallback_date=date.today(),
         )
         profile_label = self.hermes_profile or "default"
         if context.model_label:

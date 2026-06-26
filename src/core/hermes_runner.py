@@ -7,6 +7,8 @@ import logging
 import os
 import re
 import shutil
+import time
+from datetime import date
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -33,9 +35,9 @@ _SUMMARY_ONLY_MARKERS = (
     "结论(Step 3)",
 )
 
-_FOLLOWUP_PROMPT = """你上一轮的回复只是研究摘要/执行摘要，不是可入库的完整报告。
+_FOLLOWUP_PROMPT = """你上一轮的回复只是研究摘要/执行摘要或文件 diff，不是可入库的完整报告。
 
-请**立即**在同一话题下输出完整的老马视角 Markdown 成稿（不要再写「报告完成」「执行摘要」「Step 2/Step 3」等过程标题）。
+请**立即**在同一话题下输出完整的老马视角 Markdown 成稿（不要再写「报告完成」「执行摘要」「Step 2/Step 3」「review diff」等过程内容）。
 
 必须包含以下二级标题（缺一不可，可在此基础上扩展三级标题）：
 ## 一、整体定位
@@ -47,8 +49,10 @@ _FOLLOWUP_PROMPT = """你上一轮的回复只是研究摘要/执行摘要，不
 要求：
 - 单股正文不少于 1800 字；五维须逐项展开论证，引用已研究的具体数字。
 - 用第一人称「我」、老马语气；开头声明非投资建议，结尾有风险提示。
-- 禁止 delegate/subagent；这就是最终交付物，直接输出全文。
+- 禁止 delegate/subagent；禁止输出 git diff / review diff；这就是最终交付物，直接输出全文。
 """
+
+_FINAL_REPORT_TAG = "老马产业周期分析"
 
 
 def find_hermes_bin(custom_bin: str = "") -> str | None:
@@ -109,9 +113,35 @@ def parse_hermes_stdout(raw: str) -> tuple[str, str]:
     return text.strip(), session_id
 
 
+def is_diff_artifact(content: str) -> bool:
+    """判断 Hermes 输出是否为 review diff / git diff 等工具产物。"""
+    text = (content or "").strip()
+    if not text:
+        return False
+    lower = text.lower()
+    if "review diff" in lower:
+        return True
+    if lower.startswith("diff --git") or "diff a/" in lower or "diff b/" in lower:
+        return True
+    lines = text.splitlines()
+    hunk_lines = sum(1 for ln in lines if ln.startswith("@@ "))
+    plus_minus = sum(
+        1 for ln in lines if ln.startswith("+") or ln.startswith("-")
+    )
+    if hunk_lines >= 1 and plus_minus >= 8:
+        if not any(marker in text for marker in _FULL_REPORT_MARKERS):
+            return True
+    if plus_minus >= 12 and plus_minus / max(len(lines), 1) > 0.25:
+        if not any(marker in text for marker in _FULL_REPORT_MARKERS):
+            return True
+    return False
+
+
 def is_incomplete_lmd_report(content: str) -> bool:
     """判断 Hermes 输出是否仅为摘要而非完整五段式报告。"""
     text = (content or "").strip()
+    if is_diff_artifact(text):
+        return True
     if len(text) < 1200:
         return True
     if any(marker in text for marker in _SUMMARY_ONLY_MARKERS):
@@ -119,6 +149,96 @@ def is_incomplete_lmd_report(content: str) -> bool:
             return True
     section_hits = sum(1 for marker in _FULL_REPORT_MARKERS if marker in text)
     return section_hits < 2
+
+
+def find_lmd_report_file(
+    reports_dir: Path | str,
+    symbol: str,
+    *,
+    analysis_date: date | None = None,
+    min_mtime: float | None = None,
+) -> Path | None:
+    """在 reports/ 下查找老马视角成稿（优先最终报告，跳过 Research 底稿）。"""
+    root = Path(reports_dir)
+    if not root.is_dir():
+        return None
+
+    sym = (symbol or "").strip()
+    if not sym:
+        return None
+
+    date_token = analysis_date.strftime("%Y%m%d") if analysis_date else ""
+    candidates: list[Path] = []
+
+    for path in root.glob("*.md"):
+        name = path.name
+        if sym not in name:
+            continue
+        if "_Research_" in name:
+            continue
+        if date_token and not name.endswith(f"_{date_token}.md"):
+            continue
+        if _FINAL_REPORT_TAG in name or "老马" in name:
+            candidates.append(path)
+
+    if not candidates:
+        for path in root.glob(f"*{sym}*.md"):
+            if "_Research_" in path.name:
+                continue
+            if date_token and not path.name.endswith(f"_{date_token}.md"):
+                continue
+            candidates.append(path)
+
+    if min_mtime is not None:
+        candidates = [p for p in candidates if p.stat().st_mtime >= min_mtime]
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def resolve_lmd_report_content(
+    content: str,
+    *,
+    symbol: str,
+    reports_dir: Path | str,
+    analysis_date: date | None = None,
+    started_at: float | None = None,
+) -> str:
+    """Hermes 若返回 diff/摘要，尝试从磁盘读取已落盘的成稿。"""
+    text = (content or "").strip()
+    if not is_incomplete_lmd_report(text) and not is_diff_artifact(text):
+        return text
+
+    min_mtime = (started_at - 120.0) if started_at is not None else None
+    report_path = find_lmd_report_file(
+        reports_dir,
+        symbol,
+        analysis_date=analysis_date,
+        min_mtime=min_mtime,
+    )
+    if not report_path or not report_path.is_file():
+        return text
+
+    try:
+        disk_content = report_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning("hermes_runner: 读取成稿失败 %s: %s", report_path, exc)
+        return text
+
+    if not disk_content or is_diff_artifact(disk_content):
+        return text
+    if is_incomplete_lmd_report(disk_content) and len(disk_content) <= len(text):
+        return text
+
+    logger.info(
+        "hermes_runner: 使用磁盘成稿 %s 替代 Hermes 输出 (disk=%s, stdout=%s)",
+        report_path.name,
+        len(disk_content),
+        len(text),
+    )
+    return disk_content
 
 
 def _build_hermes_cmd(
@@ -206,6 +326,9 @@ async def run_hermes_chat(
     ignore_rules: bool = True,
     auto_expand_summary: bool = True,
     followup_timeout_sec: float = 300,
+    report_fallback_dir: Path | str = "",
+    report_fallback_symbol: str = "",
+    report_fallback_date: date | None = None,
 ) -> str:
     """非交互调用 Hermes chat，预加载 skill，返回完整 Markdown 报告。
 
@@ -242,6 +365,7 @@ async def run_hermes_chat(
         ignore_rules,
     )
 
+    started_at = time.time()
     content, session_id = await _run_hermes_cmd(
         cmd, profile=profile, timeout_sec=timeout_sec
     )
@@ -271,6 +395,15 @@ async def run_hermes_chat(
             not is_incomplete_lmd_report(expanded) or len(expanded) > len(content)
         ):
             content = expanded
+
+    if (report_fallback_dir or "").__str__().strip() and (report_fallback_symbol or "").strip():
+        content = resolve_lmd_report_content(
+            content,
+            symbol=report_fallback_symbol.strip(),
+            reports_dir=report_fallback_dir,
+            analysis_date=report_fallback_date,
+            started_at=started_at,
+        )
 
     return content
 

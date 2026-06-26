@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import logging
 
-import httpx
-
 from src.collectors.kline_collector import _eastmoney_secid
-from src.collectors.market_http import TTLCache
+from src.collectors.market_http import TTLCache, market_get
 from src.core.cn_symbol import is_cn_sh
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
 
 _CONCEPT_CACHE = TTLCache(default_ttl_sec=3600.0)
+_EASTMONEY_HOST = "push2.eastmoney.com"
+_EASTMONEY_MIN_INTERVAL_S = 0.35
 _SLIST_URL = "https://push2.eastmoney.com/api/qt/slist/get"
 _STOCK_URL = "https://push2.eastmoney.com/api/qt/stock/get"
 _HEADERS = {
@@ -47,6 +47,54 @@ def _dedupe_tags(names: list[str]) -> list[str]:
     return out
 
 
+def _parse_slist_diff(data: dict | None) -> list[str]:
+    diff = ((data or {}).get("data") or {}).get("diff") or []
+    if isinstance(diff, dict):
+        diff = list(diff.values())
+    concepts: list[str] = []
+    for item in diff:
+        if not isinstance(item, dict):
+            continue
+        name = _normalize_tag(str(item.get("f14") or ""))
+        if name:
+            concepts.append(name)
+    return concepts
+
+
+def _fetch_industry(
+    secid: str,
+    *,
+    symbol: str,
+    timeout_s: float,
+    proxy: str | None,
+) -> str:
+    """可选：拉取所属行业，用于从概念列表中剔除重复项。"""
+    data = market_get(
+        _STOCK_URL,
+        host_key=_EASTMONEY_HOST,
+        params={
+            "secid": secid,
+            "fields": "f127",
+            "ut": _UT,
+            "fltt": "2",
+            "invt": "2",
+        },
+        headers=_HEADERS,
+        min_interval_s=_EASTMONEY_MIN_INTERVAL_S,
+        timeout=timeout_s,
+        retries=1,
+        parse="json",
+        symbol=symbol,
+        log_label="概念行业",
+        verify=False,
+        proxy=proxy,
+    )
+    if not data:
+        return ""
+    stock_data = data.get("data") or {}
+    return _normalize_tag(str(stock_data.get("f127") or ""))
+
+
 def fetch_cn_concept_tags(
     symbol: str,
     *,
@@ -65,55 +113,38 @@ def fetch_cn_concept_tags(
         return list(cached)
 
     secid = _eastmoney_secid(sym, MarketCode.CN)
-    industry = ""
-    concepts: list[str] = []
-
-    try:
-        with httpx.Client(
-            timeout=timeout_s,
-            verify=verify_ssl,
-            follow_redirects=True,
-            trust_env=False,
-            headers=_HEADERS,
-            proxy=proxy,
-        ) as client:
-            stock_resp = client.get(
-                _STOCK_URL,
-                params={
-                    "secid": secid,
-                    "fields": "f127",
-                    "ut": _UT,
-                    "fltt": "2",
-                    "invt": "2",
-                },
-            )
-            stock_resp.raise_for_status()
-            stock_data = (stock_resp.json() or {}).get("data") or {}
-            industry = _normalize_tag(str(stock_data.get("f127") or ""))
-
-            slist_resp = client.get(
-                _SLIST_URL,
-                params={
-                    "secid": secid,
-                    "fields": "f12,f14",
-                    "spt": "3",
-                    "ut": _UT,
-                },
-            )
-            slist_resp.raise_for_status()
-            diff = ((slist_resp.json() or {}).get("data") or {}).get("diff") or []
-            if isinstance(diff, dict):
-                diff = list(diff.values())
-            for item in diff:
-                if not isinstance(item, dict):
-                    continue
-                name = _normalize_tag(str(item.get("f14") or ""))
-                if name:
-                    concepts.append(name)
-    except Exception as e:
-        logger.warning("拉取 %s 概念标签失败: %s", sym, e)
+    slist_data = market_get(
+        _SLIST_URL,
+        host_key=_EASTMONEY_HOST,
+        params={
+            "forcect": "1",
+            "spt": "3",
+            "fields": "f1,f12,f152,f3,f14,f128,f136",
+            "pi": "0",
+            "pz": "1000",
+            "po": "1",
+            "fid": "f3",
+            "fid0": "f4003",
+            "invt": "2",
+            "secid": secid,
+        },
+        headers=_HEADERS,
+        min_interval_s=_EASTMONEY_MIN_INTERVAL_S,
+        timeout=timeout_s,
+        retries=2,
+        parse="json",
+        symbol=sym,
+        log_label="概念标签",
+        verify=verify_ssl,
+        proxy=proxy,
+    )
+    if not slist_data:
         return []
 
+    industry = _fetch_industry(
+        secid, symbol=sym, timeout_s=timeout_s, proxy=proxy
+    )
+    concepts = _parse_slist_diff(slist_data)
     if industry:
         concepts = [c for c in concepts if c != industry]
     tags = _dedupe_tags(concepts)

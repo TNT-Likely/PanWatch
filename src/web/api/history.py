@@ -1,7 +1,8 @@
 """分析历史 API"""
 
 import logging
-from datetime import timezone
+from datetime import date, datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
@@ -18,6 +19,9 @@ from src.core.agent_catalog import (
     CAPABILITY_AGENT_NAMES,
     infer_agent_kind,
 )
+from src.core.hermes_runner import resolve_lmd_report_content
+
+REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
 
 
 def _format_datetime(dt) -> str:
@@ -43,6 +47,28 @@ def _format_datetime(dt) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/history", tags=["history"])
+
+
+def _sanitize_history_content(record: AnalysisHistory) -> str:
+    """展示前修正 Hermes diff 等异常入库内容。"""
+    content = record.content or ""
+    if record.agent_name != "lmd_outlook" or record.stock_symbol in ("", "*"):
+        return content
+
+    analysis_date: date | None = None
+    try:
+        analysis_date = datetime.strptime(
+            str(record.analysis_date or ""), "%Y-%m-%d"
+        ).date()
+    except (ValueError, TypeError):
+        analysis_date = None
+
+    return resolve_lmd_report_content(
+        content,
+        symbol=record.stock_symbol,
+        reports_dir=REPORTS_DIR,
+        analysis_date=analysis_date,
+    )
 
 
 class HistoryResponse(BaseModel):
@@ -131,7 +157,7 @@ def list_history(
             stock_symbol=r.stock_symbol,
             analysis_date=r.analysis_date,
             title=r.title or "",
-            content=r.content,
+            content=_sanitize_history_content(r),
             suggestions=r.raw_data.get("suggestions") if r.raw_data else None,
             news=r.raw_data.get("news") if r.raw_data else None,
             quality_overview=r.raw_data.get("quality_overview") if r.raw_data else None,
@@ -165,7 +191,7 @@ def get_history_detail(
         stock_symbol=record.stock_symbol,
         analysis_date=record.analysis_date,
         title=record.title or "",
-        content=record.content,
+        content=_sanitize_history_content(record),
         suggestions=record.raw_data.get("suggestions") if record.raw_data else None,
         news=record.raw_data.get("news") if record.raw_data else None,
         quality_overview=record.raw_data.get("quality_overview")

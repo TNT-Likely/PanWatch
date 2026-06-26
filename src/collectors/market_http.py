@@ -83,6 +83,7 @@ def market_get(
     trust_env: bool = False,  # 默认直连,绕过 env 代理
     follow_redirects: bool = True,
     verify: bool = True,
+    proxy: str | None = None,
 ) -> Any | None:
     """直连 + 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源的日志。"""
     last_err: Any = None
@@ -95,6 +96,7 @@ def market_get(
                 headers=headers,
                 trust_env=trust_env,
                 verify=verify,
+                proxy=proxy,
             ) as client:
                 resp = client.get(url, params=params)
                 if raise_for_status:

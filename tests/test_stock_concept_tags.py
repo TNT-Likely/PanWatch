@@ -32,42 +32,20 @@ def test_merge_concept_tags_manual_first(monkeypatch):
 
 def test_fetch_cn_concept_tags_parses_slist(monkeypatch):
     """东财 slist 响应应解析为概念标签列表。"""
-    class FakeResp:
-        def __init__(self, payload):
-            self._payload = payload
+    def fake_market_get(url, **kwargs):
+        if "stock/get" in url:
+            return {"data": {"f127": "白酒"}}
+        return {
+            "data": {
+                "diff": [
+                    {"f14": "白酒"},
+                    {"f14": "人工智能"},
+                    {"f14": "人工智能"},
+                ]
+            }
+        }
 
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self._payload
-
-    class FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def get(self, url, params=None):
-            if "stock/get" in url:
-                return FakeResp({"data": {"f127": "白酒"}})
-            return FakeResp(
-                {
-                    "data": {
-                        "diff": [
-                            {"f14": "白酒"},
-                            {"f14": "人工智能"},
-                            {"f14": "人工智能"},
-                        ]
-                    }
-                }
-            )
-
-    monkeypatch.setattr(concept_collector.httpx, "Client", FakeClient)
+    monkeypatch.setattr(concept_collector, "market_get", fake_market_get)
     concept_collector._CONCEPT_CACHE.clear()
 
     tags = concept_collector.fetch_cn_concept_tags("600519")

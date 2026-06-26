@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,9 +11,12 @@ import pytest
 from src.core.hermes_runner import (
     ensure_hermes_profile_skill,
     find_hermes_bin,
+    find_lmd_report_file,
+    is_diff_artifact,
     is_hermes_available,
     is_incomplete_lmd_report,
     parse_hermes_stdout,
+    resolve_lmd_report_content,
     run_hermes_chat,
 )
 
@@ -39,6 +43,44 @@ def test_is_incomplete_lmd_report_accepts_full_sections():
         "## 三、路径推演\n路径\n## 四、诚实边界\n边界\n## 五、风险提示\n风险"
     )
     assert is_incomplete_lmd_report(full) is False
+
+
+def test_is_diff_artifact_detects_review_diff():
+    """review diff 输出应判定为 diff 产物。"""
+    diff = "review diff a/reports/000960_Research_20260626.md →\n@@ -1,3 +1,5 @@\n-old\n+new"
+    assert is_diff_artifact(diff) is True
+    assert is_incomplete_lmd_report(diff) is True
+
+
+def test_resolve_lmd_report_content_reads_disk(tmp_path):
+    """stdout 为 diff 时应回退读取 reports/ 成稿。"""
+    report = tmp_path / "锡业股份_000960_老马产业周期分析_20260626.md"
+    report.write_text(
+        "## 一、整体定位\n" + "正文" * 500 + "\n## 二、五维周期定位\n分析\n",
+        encoding="utf-8",
+    )
+    diff = "review diff a/reports/000960_Research_20260626.md →\n@@ -1 +1 @@\n+x"
+    out = resolve_lmd_report_content(
+        diff,
+        symbol="000960",
+        reports_dir=tmp_path,
+        analysis_date=date(2026, 6, 26),
+    )
+    assert "## 一、整体定位" in out
+    assert "review diff" not in out
+
+
+def test_find_lmd_report_file_skips_research_draft(tmp_path):
+    """应优先最终成稿，跳过 Research 底稿。"""
+    (tmp_path / "000960_Research_20260626.md").write_text("research", encoding="utf-8")
+    final = tmp_path / "锡业股份_000960_老马产业周期分析_20260626.md"
+    final.write_text("final", encoding="utf-8")
+    found = find_lmd_report_file(
+        tmp_path,
+        "000960",
+        analysis_date=date(2026, 6, 26),
+    )
+    assert found == final
 
 
 def test_find_hermes_bin_custom_path(tmp_path):
