@@ -366,37 +366,54 @@ def refresh_stock_concept_tags_api(stock_id: int, db: Session = Depends(get_db))
 def _portfolio_snapshot_for_stock(db: Session, stock: Stock) -> dict:
     """汇总该股票相关持仓与账户资金，供加仓计划评估。"""
     from src.web.models import Account
-
-    positions = (
-        db.query(Position)
-        .join(Account, Position.account_id == Account.id)
-        .filter(Position.stock_id == stock.id, Account.enabled == True)  # noqa: E712
-        .all()
+    from src.web.api.accounts import (
+        _fetch_quotes_for_stocks,
+        get_hkd_cny_rate,
+        get_usd_cny_rate,
     )
-    position_value = 0.0
-    total_qty = 0
-    total_cost_value = 0.0
-    available_cash = 0.0
-    for acc in db.query(Account).filter(Account.enabled == True).all():  # noqa: E712
-        available_cash += float(acc.available_funds or 0)
-    for pos in positions:
-        qty = int(pos.quantity or 0)
-        cost = float(pos.cost_price or 0)
-        total_qty += qty
-        total_cost_value += qty * cost
-        position_value += qty * cost  # 无实时价时用成本近似
 
-    total_cost_all = 0.0
+    enabled_accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
+    available_cash = sum(float(acc.available_funds or 0) for acc in enabled_accounts)
+
     all_positions = (
         db.query(Position)
         .join(Account, Position.account_id == Account.id)
         .filter(Account.enabled == True)  # noqa: E712
         .all()
     )
-    for pos in all_positions:
-        total_cost_all += float(pos.cost_price or 0) * int(pos.quantity or 0)
+    open_positions = [p for p in all_positions if (p.status or "open") == "open"]
 
-    total_assets = available_cash + total_cost_all
+    stock_ids = {p.stock_id for p in open_positions}
+    stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all() if stock_ids else []
+    stock_map = {s.id: s for s in stocks}
+    quotes = _fetch_quotes_for_stocks(stocks)
+    hkd_rate = get_hkd_cny_rate()
+    usd_rate = get_usd_cny_rate()
+
+    total_market_value = 0.0
+    position_market_value = 0.0
+    total_qty = 0
+    total_cost_value = 0.0
+
+    for pos in open_positions:
+        s = stock_map.get(pos.stock_id)
+        if not s:
+            continue
+        qty = int(pos.quantity or 0)
+        cost = float(pos.cost_price or 0)
+        rate = hkd_rate if s.market == "HK" else usd_rate if s.market == "US" else 1.0
+
+        quote = quotes.get(s.symbol)
+        price = quote["current_price"] if quote and quote.get("current_price") else cost
+        mv_cny = float(price) * qty * rate
+        total_market_value += mv_cny
+
+        if pos.stock_id == stock.id:
+            total_qty += qty
+            total_cost_value += qty * cost
+            position_market_value += mv_cny
+
+    total_assets = total_market_value + available_cash
     avg_cost = total_cost_value / total_qty if total_qty > 0 else None
 
     from src.core.position_trades_context import summarize_today_trades
@@ -405,9 +422,10 @@ def _portfolio_snapshot_for_stock(db: Session, stock: Stock) -> dict:
 
     return {
         "avg_cost": avg_cost,
-        "position_value": position_value,
-        "total_assets": total_assets,
-        "available_cash": available_cash,
+        "position_value": round(position_market_value, 2),
+        "total_assets": round(total_assets, 2),
+        "total_market_value": round(total_market_value, 2),
+        "available_cash": round(available_cash, 2),
         "has_buy_today": today.get("has_buy_today", False),
     }
 
@@ -476,6 +494,10 @@ def evaluate_investment_profile(
         "symbol": db_stock.symbol,
         "market": db_stock.market,
         "current_price": current_price,
+        "total_assets": snap.get("total_assets"),
+        "total_market_value": snap.get("total_market_value"),
+        "available_cash": snap.get("available_cash"),
+        "position_value": snap.get("position_value"),
         **result,
     }
 

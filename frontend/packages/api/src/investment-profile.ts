@@ -25,6 +25,11 @@ export interface InvestmentProfileEvaluateResult {
   symbol: string
   market: string
   current_price: number | null
+  /** 组合总资产 = 持仓市值 + 可用现金 */
+  total_assets?: number
+  total_market_value?: number
+  available_cash?: number
+  position_value?: number
   eligible: boolean
   current_drawdown_pct: number
   weight_pct: number

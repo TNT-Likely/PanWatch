@@ -187,6 +187,9 @@ export function LongTermPlanPanel({ stock, onSaved }: LongTermPlanPanelProps) {
 
       {evalResult && (
         <div className="rounded-xl bg-accent/30 p-3 text-[12px] space-y-1">
+          {evalResult.total_assets != null && evalResult.total_assets > 0 && (
+            <div>组合总资产：{evalResult.total_assets.toFixed(0)} 元（市值+可用）</div>
+          )}
           <div>相对成本：{evalResult.current_drawdown_pct.toFixed(1)}%</div>
           <div>当前仓位：{evalResult.weight_pct.toFixed(1)}%</div>
           {evalResult.eligible ? (

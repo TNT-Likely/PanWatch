@@ -2237,6 +2237,10 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">可用</div>
                       <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">{formatMoney(account.available_funds)}</div>
                     </div>
+                    <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">总资产</div>
+                      <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_assets)}</div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-0 md:gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                     <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)}>
@@ -2270,6 +2274,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">成本</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">持仓</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">总资产</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">盈亏</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">今日</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">风格</th>
@@ -2383,6 +2388,9 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                         ) : <span>{formatMoney(pos.market_value)}</span>}
                                       </div>
                                     ) : '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
+                                    {formatMoney(account.total_assets)}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pnlColor}`}>
                                     {pos.pnl != null ? (
@@ -2562,8 +2570,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   {rollingBrief}
                                 </button>
                               )}
-                              {/* Row 3: Stats grid (4 cols, whitespace-nowrap to prevent "万" wrapping) */}
-                              <div className="grid grid-cols-4 gap-2 text-[11px]">
+                              {/* Row 3: Stats grid */}
+                              <div className="grid grid-cols-3 gap-2 text-[11px]">
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">成本</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.cost_price)}>{formatPrice(pos.cost_price)}</div>
@@ -2574,6 +2582,16 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">数量</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">市值</div>
+                                  <div className="font-mono text-foreground whitespace-nowrap">
+                                    {pos.market_value_cny != null ? formatMoney(pos.market_value_cny) : (pos.market_value != null ? formatMoney(pos.market_value) : '—')}
+                                  </div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">总资产</div>
+                                  <div className="font-mono text-foreground whitespace-nowrap">{formatMoney(account.total_assets)}</div>
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">盈亏</div>

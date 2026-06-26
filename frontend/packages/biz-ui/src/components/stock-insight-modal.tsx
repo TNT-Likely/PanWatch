@@ -131,8 +131,15 @@ interface PortfolioSummaryResponse {
   accounts: Array<{
     id?: number
     name?: string
+    available_funds?: number
+    total_assets?: number
     positions: PortfolioPosition[]
   }>
+  total?: {
+    total_market_value?: number
+    available_funds?: number
+    total_assets?: number
+  }
 }
 
 export type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
@@ -483,6 +490,9 @@ export default function StockInsightModal(props: {
     unitCost: number
     marketValue: number
     pnl: number
+    totalAssets: number
+    totalMarketValue: number
+    availableCash: number
   } | null>(null)
   const [holdingOptions, setHoldingOptions] = useState<PositionHoldingOption[]>([])
   const [recentTrades, setRecentTrades] = useState<PortfolioRecentTrade[]>([])
@@ -706,8 +716,21 @@ export default function StockInsightModal(props: {
         }
       }
       setHoldingOptions(options)
-      if (quantity > 0) setHoldingAgg({ quantity, cost, unitCost: cost / quantity, marketValue, pnl })
-      else setHoldingAgg(null)
+      const totalAssets = Number(data?.total?.total_assets || 0)
+      const totalMarketValue = Number(data?.total?.total_market_value || 0)
+      const availableCash = Number(data?.total?.available_funds || 0)
+      if (quantity > 0) {
+        setHoldingAgg({
+          quantity,
+          cost,
+          unitCost: cost / quantity,
+          marketValue,
+          pnl,
+          totalAssets,
+          totalMarketValue,
+          availableCash,
+        })
+      } else setHoldingAgg(null)
 
       try {
         const tradeRows = await positionsApi.recentTrades(50)
@@ -755,6 +778,9 @@ export default function StockInsightModal(props: {
                   unitCost: cost / quantity,
                   marketValue: agg?.marketValue ?? 0,
                   pnl: agg?.pnl ?? 0,
+                  totalAssets: agg?.totalAssets ?? 0,
+                  totalMarketValue: agg?.totalMarketValue ?? 0,
+                  availableCash: agg?.availableCash ?? 0,
                 }
               : null,
           )
@@ -2186,6 +2212,13 @@ export default function StockInsightModal(props: {
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">持仓市值</div>
                             <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue)}</div>
+                          </div>
+                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                            <div className="text-[10px] text-muted-foreground">总资产</div>
+                            <div className="font-mono">{formatCompactNumber(holdingAgg.totalAssets)}</div>
+                            <div className="text-[9px] text-muted-foreground/70 mt-0.5">
+                              组合市值+可用
+                            </div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">总盈亏</div>
