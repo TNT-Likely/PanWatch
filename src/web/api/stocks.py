@@ -50,6 +50,10 @@ class StockUpdate(BaseModel):
     name: str | None = None
 
 
+class StockFeaturedUpdate(BaseModel):
+    is_featured: bool
+
+
 class StockAgentInfo(BaseModel):
     agent_name: str
     schedule: str = ""
@@ -69,6 +73,7 @@ class StockResponse(BaseModel):
     market: str
     security_type: str = "stock"
     sort_order: int
+    is_featured: bool = False
     concept_tags: list[StockConceptTag] = []
     concept_tags_auto: list[str] = []
     concept_tags_manual: list[str] = []
@@ -118,6 +123,14 @@ class StockReorderRequest(BaseModel):
     items: list[StockReorderItem]
 
 
+def _stock_list_query(db: Session):
+    return db.query(Stock).order_by(
+        Stock.is_featured.desc(),
+        Stock.sort_order.asc(),
+        Stock.id.asc(),
+    )
+
+
 def _stock_to_response(stock: Stock) -> dict:
     profile = normalize_investment_profile(stock.investment_profile)
     return {
@@ -127,6 +140,7 @@ def _stock_to_response(stock: Stock) -> dict:
         "market": stock.market,
         "security_type": stock.security_type or "stock",
         "sort_order": stock.sort_order or 0,
+        "is_featured": bool(stock.is_featured),
         "concept_tags": merge_concept_tags(stock),
         "concept_tags_auto": stock.concept_tags_auto or [],
         "concept_tags_manual": stock.concept_tags_manual or [],
@@ -242,7 +256,7 @@ def refresh_list():
 
 @router.get("", response_model=list[StockResponse])
 def list_stocks(db: Session = Depends(get_db)):
-    stocks = db.query(Stock).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
+    stocks = _stock_list_query(db).all()
     if any(
         (s.market or "").upper() == "CN" and not (s.concept_tags_auto or [])
         for s in stocks
@@ -335,6 +349,31 @@ def refresh_concept_tags_batch(
     limit = max(1, min(int((body.limit if body else 20)), 50))
     schedule_refresh_missing_concept_tags(limit=limit)
     return {"queued": True, "limit": limit}
+
+
+@router.put("/{stock_id}/featured", response_model=StockResponse)
+def update_stock_featured(
+    stock_id: int,
+    body: StockFeaturedUpdate,
+    db: Session = Depends(get_db),
+):
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+
+    db_stock.is_featured = bool(body.is_featured)
+    if db_stock.is_featured:
+        featured_orders = [
+            int(s.sort_order or 0)
+            for s in db.query(Stock)
+            .filter(Stock.is_featured == True, Stock.id != stock_id)  # noqa: E712
+            .all()
+        ]
+        db_stock.sort_order = (min(featured_orders) - 1) if featured_orders else 1
+
+    db.commit()
+    db.refresh(db_stock)
+    return _stock_to_response(db_stock)
 
 
 @router.put("/{stock_id}/concept-tags", response_model=StockResponse)

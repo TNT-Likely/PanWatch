@@ -23,6 +23,7 @@ export interface StockItem {
   market: string
   security_type?: string
   sort_order?: number
+  is_featured?: boolean
   concept_tags?: StockConceptTag[]
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
@@ -159,6 +160,11 @@ export const stocksApi = {
     fetchAPI<StockItem>(`/stocks/${id}/investment-profile`, {
       method: 'PUT',
       body: JSON.stringify(profile),
+    }),
+  setFeatured: (id: number, isFeatured: boolean) =>
+    fetchAPI<StockItem>(`/stocks/${id}/featured`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_featured: isFeatured }),
     }),
   evaluateInvestmentProfile: (id: number, price?: number) => {
     const q = price != null && price > 0 ? `?price=${price}` : ''

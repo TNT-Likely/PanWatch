@@ -225,7 +225,11 @@ def bootstrap_all_missing_stocks() -> int:
         if not _auto_bootstrap_enabled(db):
             logger.info("[lmd_bootstrap] 自动补全已关闭，跳过启动扫描")
             return 0
-        stocks = db.query(Stock).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
+        stocks = db.query(Stock).order_by(
+            Stock.is_featured.desc(),
+            Stock.sort_order.asc(),
+            Stock.id.asc(),
+        ).all()
     finally:
         db.close()
 

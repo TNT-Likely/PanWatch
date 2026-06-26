@@ -154,7 +154,11 @@ def _build_chat_tools(db: Session) -> list[dict]:
 
 def _build_watchlist_context(db: Session) -> str:
     """构建用户自选股列表。"""
-    stocks = db.query(Stock).order_by(Stock.sort_order.asc()).all()
+    stocks = db.query(Stock).order_by(
+        Stock.is_featured.desc(),
+        Stock.sort_order.asc(),
+        Stock.id.asc(),
+    ).all()
     if not stocks:
         return "用户暂无自选股。"
     lines = [f"- {s.name}({s.market}:{s.symbol})" for s in stocks]

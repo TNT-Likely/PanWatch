@@ -226,6 +226,11 @@ def _migrate(engine):
             "concept_tags_updated_at",
             "ALTER TABLE stocks ADD COLUMN concept_tags_updated_at DATETIME",
         ),
+        (
+            "stocks",
+            "is_featured",
+            "ALTER TABLE stocks ADD COLUMN is_featured INTEGER DEFAULT 0",
+        ),
     ]
     with engine.connect() as conn:
         for table, column, sql in migrations:

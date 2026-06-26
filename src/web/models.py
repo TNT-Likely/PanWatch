@@ -92,6 +92,7 @@ class Stock(Base):
     quantity = Column(Integer, nullable=True)
     invested_amount = Column(Float, nullable=True)
     sort_order = Column(Integer, default=0)
+    is_featured = Column(Boolean, default=False)  # 精华：关注列表优先展示
     concept_tags_auto = Column(JSON, default=[])
     concept_tags_manual = Column(JSON, default=[])
     concept_tags_updated_at = Column(DateTime, nullable=True)

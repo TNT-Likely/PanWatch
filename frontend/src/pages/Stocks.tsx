@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive } from 'lucide-react'
+import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive, Star } from 'lucide-react'
 import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
@@ -34,6 +34,14 @@ interface AgentResult {
   skipped?: boolean
 }
 
+function sortWatchlistStocks<T extends { id: number; sort_order?: number; is_featured?: boolean }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const featuredDiff = Number(Boolean(b.is_featured)) - Number(Boolean(a.is_featured))
+    if (featuredDiff !== 0) return featuredDiff
+    return Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id
+  })
+}
+
 interface StockAgentInfo {
   agent_name: string
   schedule: string
@@ -48,6 +56,7 @@ interface Stock {
   market: string
   security_type?: string
   sort_order?: number
+  is_featured?: boolean
   concept_tags?: StockConceptTagItem[]
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
@@ -557,6 +566,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
+  const [watchlistFeaturedOnly, setWatchlistFeaturedOnly] = useLocalStorage<boolean>('panwatch_watchlist_featured_only', false)
   const [watchlistTagFilter, setWatchlistTagFilter] = useLocalStorage<string>('panwatch_watchlist_tag_filter', '')
 
   // Remove watchlist modal
@@ -596,7 +606,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const previewWatchlistReorder = useCallback((fromId: number, toId: number) => {
     if (fromId === toId) return
     setStocks(prev => {
-      const ordered = [...prev].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+      const ordered = sortWatchlistStocks(prev)
       const moved = moveById(ordered, fromId, toId)
       return moved.map((s, idx) => ({ ...s, sort_order: idx + 1 }))
     })
@@ -1272,7 +1282,26 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       .map(([name, count]) => ({ name, count }))
   }, [watchlistStocks])
 
-  const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistTagFilter !== ''
+  const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistFeaturedOnly || watchlistTagFilter !== ''
+
+  const toggleWatchlistFeatured = useCallback(async (stock: Stock) => {
+    const next = !stock.is_featured
+    setStocks(prev => prev.map(s => (
+      s.id === stock.id ? { ...s, is_featured: next } : s
+    )))
+    try {
+      const updated = await stocksApi.setFeatured(stock.id, next)
+      setStocks(prev => sortWatchlistStocks(prev.map(s => (
+        s.id === updated.id ? { ...s, ...updated } : s
+      ))))
+      toast(next ? '已加入精华' : '已移出精华', 'success')
+    } catch (e) {
+      setStocks(prev => prev.map(s => (
+        s.id === stock.id ? { ...s, is_featured: stock.is_featured } : s
+      )))
+      toast(e instanceof Error ? e.message : '更新精华状态失败', 'error')
+    }
+  }, [toast])
 
   const toggleWatchlistTagFilter = useCallback((name: string) => {
     setWatchlistTagFilter((prev) => (prev === name ? '' : name))
@@ -2822,6 +2851,17 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
             <div className="text-[11px] text-muted-foreground">筛选</div>
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setWatchlistFeaturedOnly(!watchlistFeaturedOnly)}
+                className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                  watchlistFeaturedOnly
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-600'
+                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-amber-500/30'
+                }`}
+                title="只显示精华股票"
+              >
+                仅精华
+              </button>
+              <button
                 onClick={() => setWatchlistOnlyAlerts(!watchlistOnlyAlerts)}
                 className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
                   watchlistOnlyAlerts
@@ -2893,13 +2933,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {(() => {
-                const visibleWatchlistStocks = watchlistStocks
+                const visibleWatchlistStocks = sortWatchlistStocks(watchlistStocks)
                   .filter(s => !stockListFilter || s.market === stockListFilter)
                   .filter(s => {
                     if (!watchlistTagFilter) return true
                     return (s.concept_tags || []).some((tag) => tag.name === watchlistTagFilter)
                   })
-                  .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+                  .filter(s => !watchlistFeaturedOnly || s.is_featured)
                   .filter(stock => {
                     if (!watchlistOnlyAlerts) return true
                     const { suggestion } = getSuggestionForStock(stock.symbol, stock.market, false)
@@ -2959,7 +2999,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                       setDraggingWatchStockId(null)
                       watchDragSnapshotRef.current = null
                     }}
-                    className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
+                    className={`group rounded-xl border transition-colors p-3 cursor-pointer ${
+                      stock.is_featured
+                        ? 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'
+                        : 'border-border/40 bg-background/30 hover:bg-accent/20'
+                    } ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
                       openStockDetail(stock.symbol, stock.market, stock.name, isHolding)
@@ -2974,6 +3018,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           {stock.security_type === 'etf' && (
                             <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-500 shrink-0">
                               ETF
+                            </span>
+                          )}
+                          {stock.is_featured && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
+                              精华
                             </span>
                           )}
                           {isHolding && (
@@ -3062,6 +3111,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${stock.is_featured ? 'text-amber-500 hover:text-amber-600' : 'hover:text-amber-500'}`}
+                          onClick={() => toggleWatchlistFeatured(stock)}
+                          title={stock.is_featured ? '移出精华' : '加入精华'}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${stock.is_featured ? 'fill-current' : ''}`} />
+                        </Button>
                         {!isHolding ? (
                           <Button
                             variant="ghost"
@@ -3194,6 +3252,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                   concept_tags: updated.concept_tags,
                   concept_tags_auto: updated.concept_tags_auto,
                   concept_tags_manual: updated.concept_tags_manual,
+                  is_featured: updated.is_featured,
                 }
               : s
           )))

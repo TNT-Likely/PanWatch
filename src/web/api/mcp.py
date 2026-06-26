@@ -781,8 +781,11 @@ def _list_watchlist(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
         query = query.filter(Stock.id > since_id)
 
     total = query.count()
-    rows = query.order_by(Stock.sort_order.asc(), Stock.id.asc()) \
-        .offset((page - 1) * page_size).limit(page_size).all()
+    rows = query.order_by(
+        Stock.is_featured.desc(),
+        Stock.sort_order.asc(),
+        Stock.id.asc(),
+    ).offset((page - 1) * page_size).limit(page_size).all()
     items = [
         {
             "id": row.id,
@@ -790,6 +793,7 @@ def _list_watchlist(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
             "name": row.name,
             "market": row.market,
             "sort_order": row.sort_order or 0,
+            "is_featured": bool(row.is_featured),
         }
         for row in rows
     ]
@@ -950,6 +954,7 @@ def _stock_to_dict(stock: Stock) -> dict[str, Any]:
         "name": stock.name,
         "market": stock.market,
         "sort_order": stock.sort_order or 0,
+        "is_featured": bool(stock.is_featured),
     }
 
 
