@@ -152,6 +152,20 @@ def fetch_cn_concept_tags(
     return tags
 
 
+def fetch_cn_industry(
+    symbol: str,
+    *,
+    timeout_s: float = 8.0,
+    proxy: str | None = None,
+) -> str:
+    """拉取 A 股所属行业（东财 f127）。"""
+    sym = (symbol or "").strip()
+    if not sym or not sym.isdigit():
+        return ""
+    secid = _eastmoney_secid(sym, MarketCode.CN)
+    return _fetch_industry(secid, symbol=sym, timeout_s=timeout_s, proxy=proxy)
+
+
 def can_auto_fetch_concept_tags(market: str) -> bool:
     return (market or "").strip().upper() == "CN"
 

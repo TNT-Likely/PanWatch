@@ -85,6 +85,12 @@ def refresh_stock_concept_tags(db: Session, stock: Stock) -> list[str]:
     stock.concept_tags_updated_at = utc_now()
     db.commit()
     db.refresh(stock)
+    try:
+        from src.core.stock_industry_chain import refresh_stock_industry_chain
+
+        refresh_stock_industry_chain(db, stock)
+    except Exception:
+        logger.exception("概念标签刷新后更新产业链分类失败: %s", stock.symbol)
     return tags
 
 

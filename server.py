@@ -1322,6 +1322,16 @@ async def lifespan(app):
 
     threading.Thread(target=_bootstrap_lmd_reports, daemon=True, name="lmd-bootstrap-scan").start()
 
+    def _bootstrap_industry_chains():
+        try:
+            from src.core.stock_industry_chain import schedule_refresh_missing_industry_chains
+
+            schedule_refresh_missing_industry_chains()
+        except Exception as e:
+            logger.warning("产业链分类启动补全失败,跳过: %s", e)
+
+    threading.Thread(target=_bootstrap_industry_chains, daemon=True, name="industry-chain-scan").start()
+
     global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()
     scheduler.start()

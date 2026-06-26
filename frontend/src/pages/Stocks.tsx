@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive, Star } from 'lucide-react'
-import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile } from '@panwatch/api'
+import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile, type IndustryChainInfo } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
@@ -60,8 +60,15 @@ interface Stock {
   concept_tags?: StockConceptTagItem[]
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
+  industry_chain?: IndustryChainInfo | null
   investment_profile?: InvestmentProfile
   agents: StockAgentInfo[]
+}
+
+const CHAIN_LAYER_STYLES: Record<string, string> = {
+  upstream: 'bg-sky-500/15 text-sky-600',
+  midstream: 'bg-violet-500/15 text-violet-600',
+  downstream: 'bg-emerald-500/15 text-emerald-600',
 }
 
 interface Account {
@@ -568,6 +575,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
   const [watchlistFeaturedOnly, setWatchlistFeaturedOnly] = useLocalStorage<boolean>('panwatch_watchlist_featured_only', false)
   const [watchlistTagFilter, setWatchlistTagFilter] = useLocalStorage<string>('panwatch_watchlist_tag_filter', '')
+  const [watchlistChainFilter, setWatchlistChainFilter] = useLocalStorage<string>('panwatch_watchlist_chain_filter', '')
 
   // Remove watchlist modal
   const [removeWatchStock, setRemoveWatchStock] = useState<Stock | null>(null)
@@ -692,7 +700,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       ])
       setStocks(stockData)
       setAccounts(accountData)
-      if (stockData.some(s => s.market === 'CN' && !(s.concept_tags_auto || []).length)) {
+      if (stockData.some(s => s.market === 'CN' && !(s.concept_tags_auto || []).length)
+        || stockData.some(s => !s.industry_chain?.layer)) {
         window.setTimeout(async () => {
           try {
             const refreshed = await fetchAPI<Stock[]>('/stocks')
@@ -1282,7 +1291,26 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       .map(([name, count]) => ({ name, count }))
   }, [watchlistStocks])
 
-  const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistFeaturedOnly || watchlistTagFilter !== ''
+  const watchlistChainOptions = useMemo(() => {
+    const counts = new Map<string, { display: string; layer: string; count: number }>()
+    for (const stock of watchlistStocks) {
+      const chain = stock.industry_chain
+      if (!chain?.sector || !chain?.layer) continue
+      const key = `${chain.sector}:${chain.layer}`
+      const prev = counts.get(key)
+      counts.set(key, {
+        display: chain.display || `${chain.sector_label || chain.sector}·${chain.layer_label || chain.layer}`,
+        layer: chain.layer,
+        count: (prev?.count || 0) + 1,
+      })
+    }
+    const layerOrder: Record<string, number> = { upstream: 0, midstream: 1, downstream: 2 }
+    return Array.from(counts.entries())
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => (layerOrder[a.layer] ?? 9) - (layerOrder[b.layer] ?? 9) || a.display.localeCompare(b.display, 'zh-CN'))
+  }, [watchlistStocks])
+
+  const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistFeaturedOnly || watchlistTagFilter !== '' || watchlistChainFilter !== ''
 
   const toggleWatchlistFeatured = useCallback(async (stock: Stock) => {
     const next = !stock.is_featured
@@ -1306,6 +1334,10 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const toggleWatchlistTagFilter = useCallback((name: string) => {
     setWatchlistTagFilter((prev) => (prev === name ? '' : name))
   }, [setWatchlistTagFilter])
+
+  const toggleWatchlistChainFilter = useCallback((key: string) => {
+    setWatchlistChainFilter((prev) => (prev === key ? '' : key))
+  }, [setWatchlistChainFilter])
 
   const removeFromWatchlist = async (stock: Stock) => {
     if (hasAnyPositionForStockId(stock.id)) {
@@ -2874,6 +2906,39 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               </button>
             </div>
           </div>
+          {watchlistChainOptions.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[11px] text-muted-foreground">产业链（老马框架）</div>
+                {watchlistChainFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setWatchlistChainFilter('')}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    清除产业链筛选
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {watchlistChainOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => toggleWatchlistChainFilter(opt.key)}
+                    className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                      watchlistChainFilter === opt.key
+                        ? 'bg-primary text-primary-foreground'
+                        : `${CHAIN_LAYER_STYLES[opt.layer] || 'bg-accent/50 text-muted-foreground'} hover:opacity-90`
+                    }`}
+                    title={`筛选「${opt.display}」`}
+                  >
+                    {opt.display} ({opt.count})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {watchlistConceptTagOptions.length > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -2939,6 +3004,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                     if (!watchlistTagFilter) return true
                     return (s.concept_tags || []).some((tag) => tag.name === watchlistTagFilter)
                   })
+                  .filter(s => {
+                    if (!watchlistChainFilter) return true
+                    const chain = s.industry_chain
+                    if (!chain?.sector || !chain?.layer) return false
+                    return `${chain.sector}:${chain.layer}` === watchlistChainFilter
+                  })
                   .filter(s => !watchlistFeaturedOnly || s.is_featured)
                   .filter(stock => {
                     if (!watchlistOnlyAlerts) return true
@@ -2957,6 +3028,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           className="mt-2 text-[11px] text-primary hover:underline"
                         >
                           清除标签「{watchlistTagFilter}」
+                        </button>
+                      )}
+                      {watchlistChainFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setWatchlistChainFilter('')}
+                          className="mt-2 ml-2 text-[11px] text-primary hover:underline"
+                        >
+                          清除产业链筛选
                         </button>
                       )}
                     </div>
@@ -3024,6 +3104,23 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                             <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-600 shrink-0">
                               精华
                             </span>
+                          )}
+                          {stock.industry_chain?.display && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const chain = stock.industry_chain
+                                if (!chain?.sector || !chain?.layer) return
+                                toggleWatchlistChainFilter(`${chain.sector}:${chain.layer}`)
+                              }}
+                              className={`text-[9px] px-1 py-0.5 rounded shrink-0 transition-opacity hover:opacity-80 ${
+                                CHAIN_LAYER_STYLES[stock.industry_chain.layer] || 'bg-accent/50 text-muted-foreground'
+                              }`}
+                              title={stock.industry_chain.description || stock.industry_chain.display}
+                            >
+                              {stock.industry_chain.display}
+                            </button>
                           )}
                           {isHolding && (
                             <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 shrink-0">

@@ -25,6 +25,11 @@ from src.core.stock_concept_tags import (
     schedule_refresh_missing_concept_tags,
     schedule_refresh_stock_concept_tags,
 )
+from src.core.stock_industry_chain import (
+    refresh_stock_industry_chain,
+    schedule_refresh_missing_industry_chains,
+    schedule_refresh_stock_industry_chain,
+)
 from src.core.long_term_plan import (
     evaluate_add_plan,
     normalize_investment_profile,
@@ -66,6 +71,17 @@ class StockConceptTag(BaseModel):
     source: str  # auto / manual
 
 
+class IndustryChainInfo(BaseModel):
+    sector: str = ""
+    sector_label: str = ""
+    layer: str = ""
+    layer_label: str = ""
+    display: str = ""
+    description: str = ""
+    score: int = 0
+    match_source: str = ""
+
+
 class StockResponse(BaseModel):
     id: int
     symbol: str
@@ -77,6 +93,7 @@ class StockResponse(BaseModel):
     concept_tags: list[StockConceptTag] = []
     concept_tags_auto: list[str] = []
     concept_tags_manual: list[str] = []
+    industry_chain: IndustryChainInfo | None = None
     investment_profile: dict = {}
     agents: list[StockAgentInfo] = []
 
@@ -101,6 +118,10 @@ class StockConceptTagsUpdate(BaseModel):
 
 class StockConceptTagsRefreshRequest(BaseModel):
     limit: int = 20
+
+
+class IndustryChainRefreshRequest(BaseModel):
+    limit: int = 50
 
 
 class StockAgentItem(BaseModel):
@@ -131,6 +152,25 @@ def _stock_list_query(db: Session):
     )
 
 
+def _industry_chain_to_response(raw: dict | None) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    sector = str(raw.get("sector") or "").strip()
+    layer = str(raw.get("layer") or "").strip()
+    if not sector or not layer:
+        return None
+    return {
+        "sector": sector,
+        "sector_label": str(raw.get("sector_label") or sector),
+        "layer": layer,
+        "layer_label": str(raw.get("layer_label") or layer),
+        "display": str(raw.get("display") or f"{sector}·{layer}"),
+        "description": str(raw.get("description") or ""),
+        "score": int(raw.get("score") or 0),
+        "match_source": str(raw.get("match_source") or ""),
+    }
+
+
 def _stock_to_response(stock: Stock) -> dict:
     profile = normalize_investment_profile(stock.investment_profile)
     return {
@@ -144,6 +184,7 @@ def _stock_to_response(stock: Stock) -> dict:
         "concept_tags": merge_concept_tags(stock),
         "concept_tags_auto": stock.concept_tags_auto or [],
         "concept_tags_manual": stock.concept_tags_manual or [],
+        "industry_chain": _industry_chain_to_response(stock.industry_chain_auto),
         "investment_profile": profile,
         "agents": [
             {
@@ -262,6 +303,15 @@ def list_stocks(db: Session = Depends(get_db)):
         for s in stocks
     ):
         schedule_refresh_missing_concept_tags()
+    if any(
+        not (
+            isinstance(s.industry_chain_auto, dict)
+            and s.industry_chain_auto.get("sector")
+            and s.industry_chain_auto.get("layer")
+        )
+        for s in stocks
+    ):
+        schedule_refresh_missing_industry_chains()
     return [_stock_to_response(s) for s in stocks]
 
 
@@ -314,6 +364,7 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_stock)
     schedule_refresh_stock_concept_tags(db_stock.id)
+    schedule_refresh_stock_industry_chain(db_stock.id)
     try:
         from src.core.lmd_auto_bootstrap import ensure_lmd_report
 
@@ -348,6 +399,16 @@ def refresh_concept_tags_batch(
     """后台刷新尚未拉取概念标签的 A 股。"""
     limit = max(1, min(int((body.limit if body else 20)), 50))
     schedule_refresh_missing_concept_tags(limit=limit)
+    return {"queued": True, "limit": limit}
+
+
+@router.post("/industry-chains/refresh")
+def refresh_industry_chains_batch(
+    body: IndustryChainRefreshRequest | None = None,
+):
+    """后台刷新尚未完成产业链归类的自选股。"""
+    limit = max(1, min(int((body.limit if body else 50)), 100))
+    schedule_refresh_missing_industry_chains(limit=limit)
     return {"queued": True, "limit": limit}
 
 
@@ -389,6 +450,10 @@ def update_stock_concept_tags(
     db_stock.concept_tags_manual = normalize_manual_tags(body.manual)
     db.commit()
     db.refresh(db_stock)
+    try:
+        refresh_stock_industry_chain(db, db_stock)
+    except Exception as e:
+        logger.warning("更新手动标签后刷新产业链分类失败 %s: %s", db_stock.symbol, e)
     return _stock_to_response(db_stock)
 
 
@@ -402,9 +467,23 @@ def refresh_stock_concept_tags_api(stock_id: int, db: Session = Depends(get_db))
 
     try:
         refresh_stock_concept_tags(db, db_stock)
+        refresh_stock_industry_chain(db, db_stock)
     except Exception as e:
         logger.error("刷新概念标签失败 %s: %s", db_stock.symbol, e)
         raise HTTPException(503, "概念标签数据源暂不可用，请稍后重试")
+    return _stock_to_response(db_stock)
+
+
+@router.post("/{stock_id}/industry-chain/refresh", response_model=StockResponse)
+def refresh_stock_industry_chain_api(stock_id: int, db: Session = Depends(get_db)):
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+    try:
+        refresh_stock_industry_chain(db, db_stock)
+    except Exception as e:
+        logger.error("刷新产业链分类失败 %s: %s", db_stock.symbol, e)
+        raise HTTPException(503, "产业链分类暂不可用，请稍后重试")
     return _stock_to_response(db_stock)
 
 

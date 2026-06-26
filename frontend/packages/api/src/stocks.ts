@@ -16,6 +16,17 @@ export interface StockConceptTag {
   source: 'auto' | 'manual' | string
 }
 
+export interface IndustryChainInfo {
+  sector: string
+  sector_label: string
+  layer: 'upstream' | 'midstream' | 'downstream' | string
+  layer_label: string
+  display: string
+  description?: string
+  score?: number
+  match_source?: string
+}
+
 export interface StockItem {
   id: number
   symbol: string
@@ -27,6 +38,7 @@ export interface StockItem {
   concept_tags?: StockConceptTag[]
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
+  industry_chain?: IndustryChainInfo | null
   investment_profile?: InvestmentProfile
   agents?: StockAgentInfo[]
 }
@@ -137,6 +149,13 @@ export const stocksApi = {
       method: 'POST',
       body: JSON.stringify({ limit }),
     }),
+  refreshIndustryChains: (limit = 50) =>
+    fetchAPI<{ queued: boolean; limit: number }>('/stocks/industry-chains/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  refreshIndustryChain: (id: number) =>
+    fetchAPI<StockItem>(`/stocks/${id}/industry-chain/refresh`, { method: 'POST' }),
   updateAgents: (id: number, payload: StockAgentUpdatePayload) =>
     fetchAPI<StockItem>(`/stocks/${id}/agents`, {
       method: 'PUT',
