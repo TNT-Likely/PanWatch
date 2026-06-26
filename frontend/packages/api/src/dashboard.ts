@@ -49,10 +49,18 @@ export interface DashboardPosition {
   change_pct: number | null
 }
 
+export interface OtherFundItem {
+  label: string
+  amount: number
+}
+
 export interface DashboardAccountSummary {
   id: number
   name: string
   available_funds: number
+  other_funds?: number
+  other_fund_items?: OtherFundItem[]
+  base_currency?: string
   total_cost: number
   total_market_value: number
   total_pnl: number
@@ -69,6 +77,7 @@ export interface DashboardPortfolioSummary {
     total_pnl: number
     total_pnl_pct: number
     available_funds: number
+    other_funds?: number
     total_assets: number
   }
   exchange_rates?: {

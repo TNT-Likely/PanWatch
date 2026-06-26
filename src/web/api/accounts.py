@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from datetime import datetime, timedelta, timezone
 
@@ -28,6 +28,8 @@ router = APIRouter()
 _hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港币默认汇率 0.92
 _usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元默认汇率 7.25
 EXCHANGE_RATE_TTL = 3600  # 1 小时缓存
+
+SUPPORTED_ACCOUNT_CURRENCIES = frozenset({"CNY", "HKD", "USD"})
 
 
 def get_hkd_cny_rate() -> float:
@@ -98,16 +100,164 @@ def get_usd_cny_rate() -> float:
     return _usd_rate_cache["rate"]
 
 
+def _normalize_currency(currency: str | None) -> str:
+    cur = (currency or "CNY").upper()
+    if cur not in SUPPORTED_ACCOUNT_CURRENCIES:
+        raise HTTPException(400, "币种仅支持 CNY/HKD/USD")
+    return cur
+
+
+def _market_currency(market: str | None) -> str:
+    return {"HK": "HKD", "US": "USD"}.get(market or "CN", "CNY")
+
+
+def _currency_cny_rate(currency: str) -> float:
+    currency = (currency or "CNY").upper()
+    if currency == "HKD":
+        return get_hkd_cny_rate()
+    if currency == "USD":
+        return get_usd_cny_rate()
+    return 1.0
+
+
+def _to_cny_amount(amount: float, currency: str) -> float:
+    """把账户币种金额换算为人民币。"""
+    return round(float(amount) * _currency_cny_rate(currency), 4)
+
+
+def _convert_amount(amount: float, from_currency: str, to_currency: str) -> float:
+    from_currency = (from_currency or "CNY").upper()
+    to_currency = (to_currency or "CNY").upper()
+    if from_currency == to_currency:
+        return round(float(amount), 4)
+    amount_cny = float(amount) * _currency_cny_rate(from_currency)
+    to_rate = _currency_cny_rate(to_currency)
+    return round(amount_cny / to_rate, 4) if to_rate else round(float(amount), 4)
+
+
+def _market_amount_to_account_currency(
+    amount: float,
+    market: str | None,
+    account_currency: str,
+) -> float:
+    """把股票成交金额(原币种)换算为账户币种。"""
+    return _convert_amount(amount, _market_currency(market), account_currency)
+
+
+def _normalize_other_fund_items(
+    items: list | None,
+    legacy_other_funds: float | None = None,
+) -> list[dict]:
+    """规范化其他资产分类列表。"""
+    normalized: list[dict] = []
+    for raw in items or []:
+        if isinstance(raw, dict):
+            label = str(raw.get("label") or "").strip()
+            amount = float(raw.get("amount") or 0)
+        elif hasattr(raw, "model_dump"):
+            dumped = raw.model_dump()
+            label = str(dumped.get("label") or "").strip()
+            amount = float(dumped.get("amount") or 0)
+        else:
+            continue
+        if not label:
+            continue
+        normalized.append({"label": label, "amount": round(amount, 4)})
+    if not normalized and legacy_other_funds is not None and float(legacy_other_funds or 0) > 0:
+        normalized = [{"label": "其他", "amount": round(float(legacy_other_funds), 4)}]
+    return normalized
+
+
+def _sum_other_fund_items(items: list | None) -> float:
+    return round(sum(float(item.get("amount") or 0) for item in (items or [])), 4)
+
+
+def _apply_account_other_funds(
+    account: Account,
+    items: list | None = None,
+    legacy_other_funds: float | None = None,
+) -> None:
+    normalized = _normalize_other_fund_items(
+        items if items is not None else getattr(account, "other_fund_items", None),
+        legacy_other_funds,
+    )
+    account.other_fund_items = normalized
+    account.other_funds = _sum_other_fund_items(normalized)
+
+
+def _account_other_funds_total(account: Account) -> float:
+    items = getattr(account, "other_fund_items", None)
+    if items:
+        return _sum_other_fund_items(items)
+    return float(account.other_funds or 0)
+
+
+def _account_open_cost_cny(account: Account, db: Session) -> float:
+    """汇总账户在持持仓成本（人民币）。"""
+    rows = (
+        db.query(Position, Stock)
+        .join(Stock, Position.stock_id == Stock.id)
+        .filter(Position.account_id == account.id)
+        .all()
+    )
+    total = 0.0
+    for pos, stock in rows:
+        if (pos.status or "open") != "open":
+            continue
+        rate = _currency_cny_rate(_market_currency(stock.market))
+        total += float(pos.cost_price or 0) * int(pos.quantity or 0) * rate
+    return round(total, 4)
+
+
+def _compute_initial_funds(
+    available_funds: float,
+    other_funds: float,
+    cost_cny: float,
+    account_currency: str,
+) -> float:
+    """初始资金 = 总资产 - 盈亏 = 现金 + 其他 + 持仓成本（账户币种）。"""
+    initial_cny = (
+        _to_cny_amount(available_funds, account_currency)
+        + _to_cny_amount(other_funds, account_currency)
+        + float(cost_cny or 0)
+    )
+    return round(_convert_amount(initial_cny, "CNY", account_currency), 2)
+
+
+def _sync_account_initial_funds(account: Account, db: Session) -> None:
+    currency = str(getattr(account, "base_currency", "CNY") or "CNY").upper()
+    cost_cny = _account_open_cost_cny(account, db)
+    account.initial_funds = _compute_initial_funds(
+        float(account.available_funds or 0),
+        _account_other_funds_total(account),
+        cost_cny,
+        currency,
+    )
+
+
 # ========== Pydantic Models ==========
+
+class OtherFundItem(BaseModel):
+    label: str
+    amount: float = 0
+
 
 class AccountCreate(BaseModel):
     name: str
     available_funds: float = 0
+    other_funds: float = 0
+    other_fund_items: list[OtherFundItem] | None = None
+    initial_funds: float | None = None
+    base_currency: str = "CNY"
 
 
 class AccountUpdate(BaseModel):
     name: str | None = None
     available_funds: float | None = None
+    other_funds: float | None = None
+    other_fund_items: list[OtherFundItem] | None = None
+    initial_funds: float | None = None
+    base_currency: str | None = None
     enabled: bool | None = None
 
 
@@ -115,10 +265,38 @@ class AccountResponse(BaseModel):
     id: int
     name: str
     available_funds: float
+    other_funds: float = 0
+    other_fund_items: list[OtherFundItem] = []
+    initial_funds: float = 0
+    base_currency: str = "CNY"
     enabled: bool
+
+    @field_validator("other_fund_items", mode="before")
+    @classmethod
+    def _coerce_other_fund_items(cls, value):
+        if not value:
+            return []
+        items: list[OtherFundItem] = []
+        for raw in value:
+            if isinstance(raw, OtherFundItem):
+                items.append(raw)
+            elif isinstance(raw, dict):
+                label = str(raw.get("label") or "").strip()
+                if label:
+                    items.append(OtherFundItem(label=label, amount=float(raw.get("amount") or 0)))
+            elif hasattr(raw, "model_dump"):
+                dumped = raw.model_dump()
+                label = str(dumped.get("label") or "").strip()
+                if label:
+                    items.append(OtherFundItem(label=label, amount=float(dumped.get("amount") or 0)))
+        return items
 
     class Config:
         from_attributes = True
+
+
+def _serialize_account(account: Account) -> AccountResponse:
+    return AccountResponse.model_validate(account)
 
 
 class PositionCreate(BaseModel):
@@ -232,21 +410,6 @@ def _normalize_traded_at(dt: datetime | None) -> datetime:
     return to_utc(dt).replace(tzinfo=None)
 
 
-def _to_cny_amount(amount: float, market: str | None) -> float:
-    """把成交金额按市场换算为人民币(available_funds 以 CNY 口径维护)。
-
-    CN 直接返回；HK/US 用缓存的汇率换算。换算失败时按原值返回(不阻塞交易)。
-    """
-    try:
-        if market == "HK":
-            return amount * get_hkd_cny_rate()
-        if market == "US":
-            return amount * get_usd_cny_rate()
-    except Exception as e:
-        logger.warning(f"换算 {market} 成交金额为 CNY 失败，按原值处理: {e}")
-    return amount
-
-
 def _format_dt_naive(dt) -> str | None:
     """格式化 naive datetime 为 ISO 字符串(供响应序列化)。"""
     if not dt:
@@ -294,7 +457,7 @@ def _serialize_position_trade(trade: PositionTrade) -> dict:
 @router.get("/accounts", response_model=list[AccountResponse])
 def list_accounts(db: Session = Depends(get_db)):
     """获取所有账户"""
-    return db.query(Account).order_by(Account.id).all()
+    return [_serialize_account(account) for account in db.query(Account).order_by(Account.id).all()]
 
 
 @router.get("/accounts/{account_id}", response_model=AccountResponse)
@@ -303,18 +466,34 @@ def get_account(account_id: int, db: Session = Depends(get_db)):
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(404, "账户不存在")
-    return account
+    return _serialize_account(account)
 
 
 @router.post("/accounts", response_model=AccountResponse)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     """创建账户"""
-    account = Account(name=data.name, available_funds=data.available_funds)
+    currency = _normalize_currency(data.base_currency)
+    other_items = _normalize_other_fund_items(
+        [item.model_dump() for item in data.other_fund_items] if data.other_fund_items is not None else None,
+        data.other_funds if data.other_fund_items is None else None,
+    )
+    other_total = _sum_other_fund_items(other_items)
+    account = Account(
+        name=data.name,
+        available_funds=data.available_funds,
+        other_funds=other_total,
+        other_fund_items=other_items,
+        initial_funds=0,
+        base_currency=currency,
+    )
     db.add(account)
     db.commit()
     db.refresh(account)
+    _sync_account_initial_funds(account, db)
+    db.commit()
+    db.refresh(account)
     logger.info(f"创建账户: {account.name}")
-    return account
+    return _serialize_account(account)
 
 
 @router.put("/accounts/{account_id}", response_model=AccountResponse)
@@ -328,13 +507,20 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         account.name = data.name
     if data.available_funds is not None:
         account.available_funds = data.available_funds
+    if data.other_fund_items is not None:
+        _apply_account_other_funds(account, [item.model_dump() for item in data.other_fund_items])
+    elif data.other_funds is not None:
+        _apply_account_other_funds(account, legacy_other_funds=data.other_funds)
+    if data.base_currency is not None:
+        account.base_currency = _normalize_currency(data.base_currency)
     if data.enabled is not None:
         account.enabled = data.enabled
 
+    _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(account)
     logger.info(f"更新账户: {account.name}")
-    return account
+    return _serialize_account(account)
 
 
 @router.delete("/accounts/{account_id}")
@@ -417,7 +603,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         position = existing
         position.cost_price = cost
         position.quantity = qty
-        position.invested_amount = data.invested_amount if data.invested_amount is not None else round(cost * qty, 4)
+        position.invested_amount = round(cost * qty, 4)
         position.trading_style = data.trading_style or position.trading_style
         position.status = "open"
         position.closed_at = None
@@ -447,7 +633,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
             stock_id=data.stock_id,
             cost_price=cost,
             quantity=qty,
-            invested_amount=data.invested_amount,
+            invested_amount=round(cost * qty, 4),
             sort_order=int(max_order) + 1,
             trading_style=data.trading_style,
             status="open",
@@ -472,9 +658,14 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(position)
 
-    # 建仓扣减可用资金(以 CNY 口径)
-    buy_cost_cny = round(_to_cny_amount(round(cost * qty, 4), stock.market), 4)
-    account.available_funds = round(float(account.available_funds or 0.0) - buy_cost_cny, 4)
+    # 建仓扣减可用资金（账户币种）
+    account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
+    buy_cost = round(
+        _market_amount_to_account_currency(round(cost * qty, 4), stock.market, account_currency),
+        4,
+    )
+    account.available_funds = round(float(account.available_funds or 0.0) - buy_cost, 4)
+    _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(account)
 
@@ -543,9 +734,7 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         position.cost_price = new_cost
     if data.quantity is not None:
         position.quantity = new_qty
-    if data.invested_amount is not None:
-        position.invested_amount = data.invested_amount
-    elif data.quantity is not None or data.cost_price is not None:
+    if data.quantity is not None or data.cost_price is not None:
         position.invested_amount = round(new_cost * new_qty, 4)
     if data.trading_style is not None:
         # 空字符串表示清空，设为 None
@@ -559,6 +748,9 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         position.realized_pnl = compute_realized_pnl(db, position.id)
         closed_by_edit = True
 
+    account = position.account
+    if account is not None:
+        _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(position)
 
@@ -624,17 +816,27 @@ def add_to_position(
     else:
         position.invested_amount = round(new_cost * new_qty, 4)
 
-    # 买入扣减可用资金(以 CNY 口径)
+    # 买入扣减可用资金（账户币种）
     account = position.account
     if account is not None:
-        cost_cny = round(_to_cny_amount(add_amount, position.stock.market if position.stock else None), 4)
-        account.available_funds = round(float(account.available_funds or 0.0) - cost_cny, 4)
+        account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
+        cost_in_account = round(
+            _market_amount_to_account_currency(
+                add_amount,
+                position.stock.market if position.stock else None,
+                account_currency,
+            ),
+            4,
+        )
+        account.available_funds = round(float(account.available_funds or 0.0) - cost_in_account, 4)
 
     if is_revive:
         position.status = "open"
         position.closed_at = None
         position.realized_pnl = 0.0
 
+    if account is not None:
+        _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(position)
     db.refresh(trade)
@@ -715,11 +917,19 @@ def reduce_from_position(
     position.quantity = new_qty
     position.invested_amount = round(cost_before * new_qty, 4)
 
-    # 卖出回款计入可用资金(以 CNY 口径,港股/美股按汇率换算)
+    # 卖出回款计入可用资金（账户币种）
     account = position.account
     if account is not None:
-        proceeds_cny = round(_to_cny_amount(sell_amount, position.stock.market if position.stock else None), 4)
-        account.available_funds = round(float(account.available_funds or 0.0) + proceeds_cny, 4)
+        account_currency = str(getattr(account, "base_currency", "CNY") or "CNY")
+        proceeds = round(
+            _market_amount_to_account_currency(
+                sell_amount,
+                position.stock.market if position.stock else None,
+                account_currency,
+            ),
+            4,
+        )
+        account.available_funds = round(float(account.available_funds or 0.0) + proceeds, 4)
 
     if is_closed:
         # 清仓:标记 closed 并锁定累计实现盈亏(按交易流水汇总,原币种口径)
@@ -727,6 +937,8 @@ def reduce_from_position(
         position.closed_at = traded_at
         position.realized_pnl = compute_realized_pnl(db, position.id)
 
+    if account is not None:
+        _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(position)
     db.refresh(trade)
@@ -865,7 +1077,10 @@ def delete_position(position_id: int, db: Session = Depends(get_db)):
     if not position:
         raise HTTPException(404, "持仓不存在")
 
+    account = position.account
     db.delete(position)
+    if account is not None:
+        _sync_account_initial_funds(account, db)
     db.commit()
     logger.info(f"删除持仓: {position.account.name} - {position.stock.name}")
     return {"success": True}
@@ -923,6 +1138,7 @@ def get_portfolio_summary(
                 "total_pnl": 0,
                 "total_pnl_pct": 0,
                 "available_funds": 0,
+                "other_funds": 0,
                 "total_assets": 0,
             }
         }
@@ -953,6 +1169,7 @@ def get_portfolio_summary(
     grand_total_market_value = 0
     grand_total_cost = 0
     grand_available_funds = 0
+    grand_other_funds = 0
     grand_daily_pnl = 0
 
     for acc in accounts:
@@ -1051,19 +1268,33 @@ def get_portfolio_summary(
                 "exchange_rate": rate if is_foreign else None,
             })
 
+        acc_other_funds = _account_other_funds_total(acc)
+        acc_other_items = getattr(acc, "other_fund_items", None) or []
+        acc_currency = str(getattr(acc, "base_currency", "CNY") or "CNY").upper()
+        acc_available_cny = _to_cny_amount(acc.available_funds, acc_currency)
+        acc_other_cny = _to_cny_amount(acc_other_funds, acc_currency)
         if include_quotes:
             acc_pnl = acc_market_value - acc_cost
             acc_pnl_pct = (acc_pnl / acc_cost * 100) if acc_cost > 0 else 0
-            acc_total_assets = acc_market_value + acc.available_funds
+            acc_total_assets = acc_market_value + acc_available_cny + acc_other_cny
         else:
             acc_pnl = 0
             acc_pnl_pct = 0
-            acc_total_assets = acc.available_funds
+            acc_total_assets = acc_available_cny + acc_other_cny
 
         account_summaries.append({
             "id": acc.id,
             "name": acc.name,
+            "base_currency": acc_currency,
             "available_funds": acc.available_funds,
+            "other_funds": round(acc_other_funds, 2),
+            "other_fund_items": acc_other_items,
+            "initial_funds": _compute_initial_funds(
+                float(acc.available_funds or 0),
+                acc_other_funds,
+                acc_cost,
+                acc_currency,
+            ),
             "total_market_value": round(acc_market_value, 2),
             "total_cost": round(acc_cost, 2),
             "total_pnl": round(acc_pnl, 2),
@@ -1075,17 +1306,18 @@ def get_portfolio_summary(
 
         grand_total_market_value += acc_market_value
         grand_total_cost += acc_cost
-        grand_available_funds += acc.available_funds
+        grand_available_funds += acc_available_cny
+        grand_other_funds += acc_other_cny
         grand_daily_pnl += acc_daily_pnl
 
     if include_quotes:
         grand_pnl = grand_total_market_value - grand_total_cost
         grand_pnl_pct = (grand_pnl / grand_total_cost * 100) if grand_total_cost > 0 else 0
-        grand_total_assets = grand_total_market_value + grand_available_funds
+        grand_total_assets = grand_total_market_value + grand_available_funds + grand_other_funds
     else:
         grand_pnl = 0
         grand_pnl_pct = 0
-        grand_total_assets = grand_available_funds
+        grand_total_assets = grand_available_funds + grand_other_funds
 
     # 构建 quotes 字典（用于前端股票列表显示）
     quotes_dict = {}
@@ -1105,6 +1337,7 @@ def get_portfolio_summary(
             "total_pnl_pct": round(grand_pnl_pct, 2),
             "total_daily_pnl": round(grand_daily_pnl, 2),
             "available_funds": round(grand_available_funds, 2),
+            "other_funds": round(grand_other_funds, 2),
             "total_assets": round(grand_total_assets, 2),
         },
         "exchange_rates": {

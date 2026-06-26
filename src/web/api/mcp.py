@@ -1269,6 +1269,9 @@ def _account_to_dict(account: Account) -> dict[str, Any]:
         "market": str(getattr(account, "market", "CN") or "CN").upper(),
         "base_currency": str(getattr(account, "base_currency", "CNY") or "CNY").upper(),
         "available_funds": account.available_funds,
+        "other_funds": float(getattr(account, "other_funds", 0) or 0),
+        "other_fund_items": list(getattr(account, "other_fund_items", None) or []),
+        "initial_funds": float(getattr(account, "initial_funds", 0) or 0),
         "enabled": account.enabled,
     }
 
@@ -1286,6 +1289,15 @@ def _create_account(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
     _require_args(arguments, ["name"])
     name = str(arguments["name"]).strip()
     available_funds = float(arguments.get("available_funds", 0) or 0)
+    other_funds = float(arguments.get("other_funds", 0) or 0)
+    raw_other_items = arguments.get("other_fund_items")
+    from src.web.api.accounts import _normalize_other_fund_items, _sum_other_fund_items
+
+    other_items = _normalize_other_fund_items(
+        raw_other_items if isinstance(raw_other_items, list) else None,
+        other_funds if raw_other_items is None else None,
+    )
+    other_total = _sum_other_fund_items(other_items)
     market = str(arguments.get("market", "CN") or "CN").upper()
     base_currency = str(arguments.get("base_currency", "CNY") or "CNY").upper()
     if market not in _SUPPORTED_ACCOUNT_MARKETS:
@@ -1305,10 +1317,17 @@ def _create_account(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
     account = Account(
         name=name,
         available_funds=available_funds,
-        market=market,
+        other_funds=other_total,
+        other_fund_items=other_items,
+        initial_funds=0,
         base_currency=base_currency,
     )
     db.add(account)
+    db.commit()
+    db.refresh(account)
+    from src.web.api.accounts import _sync_account_initial_funds
+
+    _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(account)
     return _account_to_dict(account)
@@ -1329,17 +1348,14 @@ def _update_account(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
         account.name = str(arguments["name"]).strip()
     if "available_funds" in arguments:
         account.available_funds = float(arguments["available_funds"])
-    next_market = str(getattr(account, "market", "CN") or "CN").upper()
-    next_base_currency = str(
-        getattr(account, "base_currency", "CNY") or "CNY").upper()
-    if "market" in arguments:
-        next_market = str(arguments["market"] or "CN").upper()
-        if next_market not in _SUPPORTED_ACCOUNT_MARKETS:
-            raise McpToolError(
-                error_code=ERR_INVALID_PARAMS,
-                message="market 仅支持 CN/HK/US/FUND",
-                hint="请传入 market=CN/HK/US/FUND",
-            )
+    if "other_fund_items" in arguments and isinstance(arguments["other_fund_items"], list):
+        from src.web.api.accounts import _apply_account_other_funds
+
+        _apply_account_other_funds(account, arguments["other_fund_items"])
+    elif "other_funds" in arguments:
+        from src.web.api.accounts import _apply_account_other_funds
+
+        _apply_account_other_funds(account, legacy_other_funds=float(arguments["other_funds"]))
     if "base_currency" in arguments:
         next_base_currency = str(arguments["base_currency"] or "CNY").upper()
         if next_base_currency not in _SUPPORTED_ACCOUNT_CURRENCIES:
@@ -1348,12 +1364,13 @@ def _update_account(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
                 message="base_currency 仅支持 CNY/HKD/USD",
                 hint="请传入 base_currency=CNY/HKD/USD",
             )
-    _validate_account_market_currency(next_market, next_base_currency)
-    account.market = next_market
-    account.base_currency = next_base_currency
+        account.base_currency = next_base_currency
     if "enabled" in arguments:
         account.enabled = bool(arguments["enabled"])
 
+    from src.web.api.accounts import _sync_account_initial_funds
+
+    _sync_account_initial_funds(account, db)
     db.commit()
     db.refresh(account)
     return _account_to_dict(account)
@@ -3088,6 +3105,7 @@ TOOLS: list[dict[str, Any]] = [
                 "market": {"type": "string", "default": "CN", "description": "账户市场：CN/HK/US/FUND。"},
                 "base_currency": {"type": "string", "default": "CNY", "description": "账户币种：CNY/HKD/USD。"},
                 "available_funds": {"type": "number", "default": 0, "description": "可用资金。"},
+                "other_funds": {"type": "number", "default": 0, "description": "其他资金（理财等，计入总资产）。"},
             },
             "additionalProperties": False,
         },
@@ -3111,6 +3129,7 @@ TOOLS: list[dict[str, Any]] = [
                 "market": {"type": "string", "description": "账户市场：CN/HK/US/FUND。"},
                 "base_currency": {"type": "string", "description": "账户币种：CNY/HKD/USD。"},
                 "available_funds": {"type": "number", "description": "新的可用资金。"},
+                "other_funds": {"type": "number", "description": "新的其他资金（理财等）。"},
                 "enabled": {"type": "boolean", "description": "是否启用。"},
             },
             "additionalProperties": False,

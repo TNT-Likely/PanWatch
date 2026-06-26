@@ -250,12 +250,16 @@ def get_dashboard_overview(
         bucket["invested_cost"] += cost
     watchlist_count = int((db.query(func.count(Stock.id)).scalar() or 0))
     from src.web.models import Account  # local import to avoid circular import at module import time
+    from src.web.api.accounts import _to_cny_amount
 
-    total_available = float(
-        db.query(func.coalesce(func.sum(Account.available_funds), 0.0))
-        .filter(Account.enabled.is_(True))
-        .scalar()
-        or 0.0
+    enabled_accounts = db.query(Account).filter(Account.enabled.is_(True)).all()
+    total_available = sum(
+        _to_cny_amount(float(acc.available_funds or 0), str(getattr(acc, "base_currency", "CNY") or "CNY"))
+        for acc in enabled_accounts
+    )
+    total_other_funds = sum(
+        _to_cny_amount(float(acc.other_funds or 0), str(getattr(acc, "base_currency", "CNY") or "CNY"))
+        for acc in enabled_accounts
     )
 
     # Market pulse from latest market scan snapshot (stable even without外网).
@@ -356,8 +360,9 @@ def get_dashboard_overview(
             "watchlist_count": watchlist_count,
             "positions_count": len(positions),
             "available_funds": round(total_available, 2),
+            "other_funds": round(total_other_funds, 2),
             "invested_cost": round(float(invested_cost), 2),
-            "total_assets_estimate": round(float(total_available + invested_cost), 2),
+            "total_assets_estimate": round(float(total_available + total_other_funds + invested_cost), 2),
             "executable_opportunities": len(action_items),
             "risk_positions": len(risk_items),
             "win_rate_3d": win_rate_3d,
@@ -368,6 +373,7 @@ def get_dashboard_overview(
             "positions_count": len(positions),
             "watchlist_count": watchlist_count,
             "available_funds": round(total_available, 2),
+            "other_funds": round(total_other_funds, 2),
             "invested_cost": round(float(invested_cost), 2),
             "by_market": sorted(list(by_market.values()), key=lambda x: x["market"]),
         },

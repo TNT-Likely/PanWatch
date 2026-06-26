@@ -158,6 +158,7 @@ interface StockItem {
   symbol: string
   name: string
   market: string
+  is_featured?: boolean
   concept_tags?: Array<{ name: string; source: string }>
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
@@ -950,6 +951,8 @@ export default function StockInsightModal(props: {
     baselineReportUpdatedAt: string | null
     baselineSuggestionCount: number
     maxWaitMs?: number
+    /** 自动补全场景下留在弹窗内，不跳转历史页 */
+    navigateOnComplete?: boolean
   }) => {
     stopReportPoll()
     const startedAt = Date.now()
@@ -971,16 +974,20 @@ export default function StockInsightModal(props: {
       const freshSuggestions = await loadSuggestions()
       const suggestionsChanged = freshSuggestions.length > opts.baselineSuggestionCount
       const isSuggestionAgent = opts.agentName === 'intraday_monitor'
+      const isLmdAgent = opts.agentName === 'lmd_outlook'
       const done = isSuggestionAgent
         ? suggestionsChanged
-        : (lmdReady || reportChanged || suggestionsChanged)
+        : isLmdAgent
+          ? lmdReady
+          : (reportChanged || suggestionsChanged)
       if (!done) return
       stopReportPoll()
       setReportGenerating(null)
       const targetReport = lmdReady
         ? freshReports.find(r => r.agent_name === 'lmd_outlook')
         : freshReports[0]
-      if (!isSuggestionAgent && targetReport?.id) {
+      const shouldNavigate = opts.navigateOnComplete !== false
+      if (!isSuggestionAgent && targetReport?.id && shouldNavigate) {
         navigateToHistoryReport(targetReport.id)
         return
       }
@@ -992,6 +999,8 @@ export default function StockInsightModal(props: {
       )
       if (isSuggestionAgent) {
         setTab('suggestions')
+      } else if (isLmdAgent || targetReport?.id) {
+        setTab('reports')
       }
     }
     reportPollRef.current = setInterval(() => {
@@ -1015,18 +1024,20 @@ export default function StockInsightModal(props: {
       if (resp.deduplicated) {
         toast(resp.message || '老马视角报告生成中', 'info')
       }
+      const suggestionList = await loadSuggestions().catch(() => suggestions)
       void pollForNewReport({
         agentName: 'lmd_outlook',
         baselineReportId: loaded[0]?.id ?? null,
         baselineReportCount: loaded.length,
         baselineReportUpdatedAt: loaded[0]?.updated_at ?? null,
-        baselineSuggestionCount: suggestions.length,
+        baselineSuggestionCount: suggestionList.length,
         maxWaitMs: 420_000,
+        navigateOnComplete: false,
       })
     } catch {
       lmdEnsureKeyRef.current = ''
     }
-  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, suggestions.length, toast])
+  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, loadSuggestions, suggestions, toast])
 
   const triggerReportGeneration = useCallback(async () => {
     if (!symbol || reportGenerating) return
@@ -2055,6 +2066,7 @@ export default function StockInsightModal(props: {
                 </DialogTitle>
                 {watchingStock && (
                   <StockConceptTags
+                    key={`${market}:${symbol}`}
                     tags={watchingStock.concept_tags || []}
                     market={market}
                     editable

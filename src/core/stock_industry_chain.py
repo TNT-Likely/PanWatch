@@ -1,4 +1,4 @@
-"""自选股产业链自动分类（老马 LMD 框架：上游 / 中游 / 下游）。"""
+"""自选股产业链自动分类（老马 LMD 框架：底层 → 中间件 → 集成 → 应用）。"""
 
 from __future__ import annotations
 
@@ -38,6 +38,10 @@ def load_chain_taxonomy() -> dict[str, Any]:
     return data.get("chains") or {}
 
 
+def clear_chain_taxonomy_cache() -> None:
+    load_chain_taxonomy.cache_clear()
+
+
 def _normalize_symbol(symbol: str, market: str) -> str:
     sym = (symbol or "").strip().upper()
     mkt = (market or "CN").strip().upper()
@@ -70,13 +74,39 @@ def _keyword_hit(keyword: str, blob: str) -> bool:
     return False
 
 
+def _sector_gate_passed(sector: dict[str, Any], blob: str) -> bool:
+    """标的须先命中赛道关键词，才允许按层级关键词归类。"""
+    for kw in sector.get("sector_keywords") or []:
+        if _keyword_hit(str(kw), blob):
+            return True
+    return False
+
+
+def _build_other_category(*, industry: str = "") -> dict[str, Any]:
+    """未命中任何产业链赛道时归入「其他」。"""
+    matched: list[str] = []
+    if industry:
+        matched.append(industry)
+    return {
+        "sector": "OTHER",
+        "sector_label": "其他",
+        "layer": "other",
+        "layer_label": "其他",
+        "description": "不属于人工智能产业链的标的",
+        "score": 1,
+        "matched": matched[:8],
+        "match_source": "fallback",
+        "display": "其他",
+    }
+
+
 def classify_stock(
     stock: Stock,
     *,
     industry: str = "",
     taxonomy: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    """将单只股票归入产业链层级，未匹配则返回 None。"""
+) -> dict[str, Any]:
+    """将单只股票归入产业链层级，未命中 AI 赛道则归入「其他」。"""
     chains = taxonomy if taxonomy is not None else load_chain_taxonomy()
     if not chains:
         return None
@@ -91,6 +121,8 @@ def classify_stock(
     for sector_key, sector in chains.items():
         display_name = str(sector.get("display_name") or sector_key)
         layers = sector.get("layers") or {}
+        ai_related = _sector_gate_passed(sector, blob)
+
         for layer_key, layer in layers.items():
             score = 0
             matched: list[str] = []
@@ -106,10 +138,13 @@ def classify_stock(
                 matched.append(f"symbol:{symbol}")
                 match_source = "symbol"
 
-            for kw in layer.get("keywords") or []:
-                if _keyword_hit(str(kw), blob):
-                    score += 10
-                    matched.append(str(kw))
+            if match_source != "symbol":
+                if not ai_related:
+                    continue
+                for kw in layer.get("keywords") or []:
+                    if _keyword_hit(str(kw), blob):
+                        score += 10
+                        matched.append(str(kw))
 
             if score > best_score:
                 best_score = score
@@ -126,7 +161,7 @@ def classify_stock(
                 }
 
     if not best or best_score < _MIN_SCORE:
-        return None
+        return _build_other_category(industry=industry)
     return best
 
 
@@ -162,7 +197,27 @@ def refresh_stock_industry_chain_by_id(stock_id: int) -> bool:
         db.close()
 
 
+def refresh_industry_chains(limit: int = 100) -> int:
+    """重新归类自选股产业链；每次最多处理 limit 只。"""
+    db = SessionLocal()
+    refreshed = 0
+    try:
+        rows = db.query(Stock).order_by(Stock.id.asc()).all()
+        for stock in rows:
+            if refreshed >= limit:
+                break
+            try:
+                refresh_stock_industry_chain(db, stock)
+                refreshed += 1
+            except Exception:
+                logger.exception("批量刷新产业链分类失败: %s", stock.symbol)
+        return refreshed
+    finally:
+        db.close()
+
+
 def refresh_missing_industry_chains(limit: int = 50) -> int:
+    """仅刷新尚未完成产业链归类的自选股。"""
     db = SessionLocal()
     refreshed = 0
     try:

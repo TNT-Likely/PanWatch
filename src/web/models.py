@@ -69,7 +69,11 @@ class Account(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)  # 账户名称，如 "招商证券"、"华泰证券"
-    available_funds = Column(Float, default=0)  # 可用资金
+    available_funds = Column(Float, default=0)  # 现金（账户币种）
+    other_funds = Column(Float, default=0)  # 其他资产合计（账户币种，由 other_fund_items 汇总）
+    other_fund_items = Column(JSON, default=list)  # [{"label":"理财","amount":10000}, ...]
+    initial_funds = Column(Float, default=0)  # 初始资金（账户币种，= 现金 + 其他 + 持仓成本，自动计算）
+    base_currency = Column(String, nullable=False, server_default="CNY")  # CNY / HKD / USD
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

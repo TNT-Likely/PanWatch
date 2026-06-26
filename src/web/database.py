@@ -241,6 +241,26 @@ def _migrate(engine):
             "industry_chain_updated_at",
             "ALTER TABLE stocks ADD COLUMN industry_chain_updated_at DATETIME",
         ),
+        (
+            "accounts",
+            "other_funds",
+            "ALTER TABLE accounts ADD COLUMN other_funds REAL DEFAULT 0",
+        ),
+        (
+            "accounts",
+            "base_currency",
+            "ALTER TABLE accounts ADD COLUMN base_currency TEXT DEFAULT 'CNY'",
+        ),
+        (
+            "accounts",
+            "initial_funds",
+            "ALTER TABLE accounts ADD COLUMN initial_funds REAL DEFAULT 0",
+        ),
+        (
+            "accounts",
+            "other_fund_items",
+            "ALTER TABLE accounts ADD COLUMN other_fund_items TEXT DEFAULT '[]'",
+        ),
     ]
     with engine.connect() as conn:
         for table, column, sql in migrations:
@@ -254,6 +274,31 @@ def _migrate(engine):
         # (因为 SQLite 在 INSERT 时校验 FK 引用的表是否存在)。
         _drop_dangling_ai_provider_fk(conn, "agent_configs")
         _drop_dangling_ai_provider_fk(conn, "stock_agents")
+
+        if _has_column(conn, "accounts", "other_fund_items") and _has_column(
+            conn, "accounts", "other_funds"
+        ):
+            import json
+
+            rows = conn.execute(
+                text(
+                    "SELECT id, other_funds, other_fund_items FROM accounts "
+                    "WHERE other_funds IS NOT NULL AND other_funds > 0"
+                )
+            ).fetchall()
+            for row in rows:
+                raw_items = row[2]
+                if raw_items and raw_items not in ("[]", "null", None):
+                    continue
+                items = json.dumps(
+                    [{"label": "其他", "amount": float(row[1] or 0)}],
+                    ensure_ascii=False,
+                )
+                conn.execute(
+                    text("UPDATE accounts SET other_fund_items = :items WHERE id = :id"),
+                    {"items": items, "id": row[0]},
+                )
+            conn.commit()
 
         # 初始化排序字段（仅对未初始化数据）
         if _has_column(conn, "stocks", "sort_order"):

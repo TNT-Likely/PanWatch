@@ -80,6 +80,7 @@ class IndustryChainInfo(BaseModel):
     description: str = ""
     score: int = 0
     match_source: str = ""
+    matched: list[str] = []
 
 
 class StockResponse(BaseModel):
@@ -168,6 +169,11 @@ def _industry_chain_to_response(raw: dict | None) -> dict | None:
         "description": str(raw.get("description") or ""),
         "score": int(raw.get("score") or 0),
         "match_source": str(raw.get("match_source") or ""),
+        "matched": [
+            str(x).strip()
+            for x in (raw.get("matched") or [])
+            if str(x).strip()
+        ],
     }
 
 
@@ -492,12 +498,20 @@ def _portfolio_snapshot_for_stock(db: Session, stock: Stock) -> dict:
     from src.web.models import Account
     from src.web.api.accounts import (
         _fetch_quotes_for_stocks,
+        _to_cny_amount,
         get_hkd_cny_rate,
         get_usd_cny_rate,
     )
 
     enabled_accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
-    available_cash = sum(float(acc.available_funds or 0) for acc in enabled_accounts)
+    available_cash = sum(
+        _to_cny_amount(float(acc.available_funds or 0), str(getattr(acc, "base_currency", "CNY") or "CNY"))
+        for acc in enabled_accounts
+    )
+    other_funds = sum(
+        _to_cny_amount(float(acc.other_funds or 0), str(getattr(acc, "base_currency", "CNY") or "CNY"))
+        for acc in enabled_accounts
+    )
 
     all_positions = (
         db.query(Position)
@@ -537,7 +551,7 @@ def _portfolio_snapshot_for_stock(db: Session, stock: Stock) -> dict:
             total_cost_value += qty * cost
             position_market_value += mv_cny
 
-    total_assets = total_market_value + available_cash
+    total_assets = total_market_value + available_cash + other_funds
     avg_cost = total_cost_value / total_qty if total_qty > 0 else None
 
     from src.core.position_trades_context import summarize_today_trades

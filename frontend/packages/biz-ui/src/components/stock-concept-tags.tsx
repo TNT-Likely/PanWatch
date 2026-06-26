@@ -3,6 +3,7 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { BadgeChip } from '@panwatch/biz-ui/components/badge-chip'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
+import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 import { cn } from '@panwatch/base-ui'
 
 export interface StockConceptTagItem {
@@ -36,8 +37,6 @@ export function StockConceptTags({
   onRefreshAuto,
 }: StockConceptTagsProps) {
   const manualTags = tags.filter((t) => t.source === 'manual').map((t) => t.name)
-  const visible = tags.slice(0, maxVisible)
-  const hiddenCount = Math.max(0, tags.length - visible.length)
 
   if (!editable && tags.length === 0) {
     return null
@@ -46,8 +45,7 @@ export function StockConceptTags({
   return (
     <ConceptTagsEditor
       tags={tags}
-      visible={visible}
-      hiddenCount={hiddenCount}
+      maxVisible={maxVisible}
       manualTags={manualTags}
       market={market}
       editable={editable}
@@ -62,8 +60,8 @@ export function StockConceptTags({
 }
 
 function ConceptTagsEditor({
-  visible,
-  hiddenCount,
+  tags,
+  maxVisible,
   manualTags,
   market,
   editable,
@@ -75,8 +73,7 @@ function ConceptTagsEditor({
   onRefreshAuto,
 }: {
   tags: StockConceptTagItem[]
-  visible: StockConceptTagItem[]
-  hiddenCount: number
+  maxVisible: number
   manualTags: string[]
   market: string
   editable: boolean
@@ -90,6 +87,11 @@ function ConceptTagsEditor({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  const visibleTags = expanded ? tags : tags.slice(0, maxVisible)
+  const hiddenTags = expanded ? [] : tags.slice(maxVisible)
+  const hiddenCount = hiddenTags.length
 
   const saveManual = async (nextManual: string[]) => {
     if (!onUpdateManual) return
@@ -127,49 +129,79 @@ function ConceptTagsEditor({
     }
   }
 
+  const renderTagChip = (tag: StockConceptTagItem) => {
+    const isActive = !!activeTag && activeTag === tag.name
+    return (
+      <BadgeChip
+        key={`${tag.source}:${tag.name}`}
+        size={compact ? 'xs' : 'sm'}
+        label={tag.name}
+        title={
+          onTagClick
+            ? '点击筛选该标签'
+            : tag.source === 'manual'
+              ? '手动标签（点击移除）'
+              : '自动标签'
+        }
+        className={cn(
+          tag.source === 'manual'
+            ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300'
+            : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+          isActive && 'ring-1 ring-primary/60',
+          onTagClick && 'cursor-pointer hover:opacity-80',
+        )}
+        onClick={
+          onTagClick
+            ? (e) => {
+                e.stopPropagation()
+                onTagClick(tag.name)
+              }
+            : editable && tag.source === 'manual'
+              ? (e) => removeManual(tag.name, e)
+              : undefined
+        }
+      />
+    )
+  }
+
+  const hoverPreviewTags = compact ? tags : hiddenTags
+
   return (
     <div
       className={cn('flex flex-wrap items-center gap-1', compact ? 'gap-0.5' : 'gap-1', className)}
       onClick={(e) => e.stopPropagation()}
     >
-      {visible.map((tag) => {
-        const isActive = !!activeTag && activeTag === tag.name
-        return (
-          <BadgeChip
-            key={`${tag.source}:${tag.name}`}
-            size={compact ? 'xs' : 'sm'}
-            label={tag.name}
-            title={
-              onTagClick
-                ? '点击筛选该标签'
-                : tag.source === 'manual'
-                  ? '手动标签（点击移除）'
-                  : '自动标签'
-            }
-            className={cn(
-              tag.source === 'manual'
-                ? 'bg-violet-500/15 text-violet-600 dark:text-violet-300'
-                : 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-              isActive && 'ring-1 ring-primary/60',
-              onTagClick && 'cursor-pointer hover:opacity-80',
-            )}
-            onClick={
-              onTagClick
-                ? (e) => {
-                    e.stopPropagation()
-                    onTagClick(tag.name)
-                  }
-                : editable && tag.source === 'manual'
-                  ? (e) => removeManual(tag.name, e)
-                  : undefined
-            }
-          />
-        )
-      })}
+      {visibleTags.map(renderTagChip)}
       {hiddenCount > 0 && (
-        <span className={cn('text-muted-foreground', compact ? 'text-[10px]' : 'text-[11px]')}>
-          +{hiddenCount}
-        </span>
+        <HoverPopover
+          side="top"
+          align="start"
+          popoverClassName="w-auto max-w-[min(22rem,90vw)]"
+          title={compact ? '全部标签' : `还有 ${hiddenCount} 个标签`}
+          trigger={
+            <button
+              type="button"
+              className={cn(
+                'rounded px-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground',
+                compact ? 'text-[10px]' : 'text-[11px]',
+              )}
+              title={compact ? '悬停查看全部标签' : '悬停预览，点击展开全部'}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!compact) {
+                  setExpanded(true)
+                }
+              }}
+            >
+              +{hiddenCount}
+            </button>
+          }
+          content={
+            <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+              {hoverPreviewTags.map(renderTagChip)}
+            </div>
+          }
+        />
       )}
       {editable && (
         <div className="flex items-center gap-1 w-full sm:w-auto mt-1 sm:mt-0">

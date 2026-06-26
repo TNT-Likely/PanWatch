@@ -5,6 +5,7 @@ import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIServ
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
+import { IndustryChainBadge } from '@panwatch/biz-ui/components/industry-chain-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -66,15 +67,52 @@ interface Stock {
 }
 
 const CHAIN_LAYER_STYLES: Record<string, string> = {
+  foundation: 'bg-sky-500/15 text-sky-600',
+  middleware: 'bg-violet-500/15 text-violet-600',
+  integration: 'bg-amber-500/15 text-amber-600',
+  application: 'bg-emerald-500/15 text-emerald-600',
+  other: 'bg-slate-500/15 text-slate-600',
+  // 兼容旧版产业链分层（上游/中游/下游）
   upstream: 'bg-sky-500/15 text-sky-600',
   midstream: 'bg-violet-500/15 text-violet-600',
   downstream: 'bg-emerald-500/15 text-emerald-600',
+}
+
+/** 旧版 localStorage / 数据库中的产业链层级键 → 新版四层键 */
+const LEGACY_CHAIN_LAYER_MAP: Record<string, string> = {
+  upstream: 'foundation',
+  midstream: 'middleware',
+  downstream: 'application',
+}
+
+function normalizeChainFilterKey(key: string): string {
+  const trimmed = (key || '').trim()
+  if (!trimmed) return ''
+  const sep = trimmed.indexOf(':')
+  if (sep <= 0) return trimmed
+  const sector = trimmed.slice(0, sep)
+  const layer = trimmed.slice(sep + 1)
+  return `${sector}:${LEGACY_CHAIN_LAYER_MAP[layer] || layer}`
+}
+
+function stockChainFilterKey(chain: IndustryChainInfo | null | undefined): string | null {
+  if (!chain?.sector || !chain?.layer) return null
+  return normalizeChainFilterKey(`${chain.sector}:${chain.layer}`)
+}
+
+interface OtherFundItem {
+  label: string
+  amount: number
 }
 
 interface Account {
   id: number
   name: string
   available_funds: number
+  other_funds?: number
+  other_fund_items?: OtherFundItem[]
+  initial_funds?: number
+  base_currency?: 'CNY' | 'HKD' | 'USD' | string
   enabled: boolean
 }
 
@@ -107,6 +145,10 @@ interface AccountSummary {
   id: number
   name: string
   available_funds: number
+  other_funds?: number
+  other_fund_items?: OtherFundItem[]
+  initial_funds?: number
+  base_currency?: 'CNY' | 'HKD' | 'USD' | string
   total_market_value: number
   total_cost: number
   total_pnl: number
@@ -125,6 +167,7 @@ interface PortfolioSummary {
     total_pnl_pct: number
     total_daily_pnl: number
     available_funds: number
+    other_funds?: number
     total_assets: number
   }
   exchange_rates?: {
@@ -175,9 +218,16 @@ interface StockForm {
   security_type?: string
 }
 
+interface OtherFundItemForm {
+  label: string
+  amount: string
+}
+
 interface AccountForm {
   name: string
+  base_currency: 'CNY' | 'HKD' | 'USD'
   available_funds: string
+  other_fund_items: OtherFundItemForm[]
 }
 
 interface PositionForm {
@@ -251,7 +301,59 @@ interface PriceAlertRuleSummary {
 }
 
 const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN', security_type: 'stock' }
-const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
+const emptyAccountForm: AccountForm = { name: '', base_currency: 'CNY', available_funds: '0', other_fund_items: [] }
+
+const OTHER_FUND_LABEL_PRESETS = ['理财', '存款', '国债', '货币基金', '其他']
+
+const sumOtherFundItems = (items: OtherFundItem[] | OtherFundItemForm[] | undefined) =>
+  (items || []).reduce((sum, item) => sum + (parseFloat(String(item.amount)) || 0), 0)
+
+const formatOtherFundSummary = (
+  items: OtherFundItem[] | undefined,
+  currency: string | undefined,
+  formatAccountFunds: (value: number, currency?: string) => string,
+) => {
+  if (!items?.length) return ''
+  return items.map((item) => `${item.label} ${formatAccountFunds(item.amount, currency)}`).join(' · ')
+}
+
+const ACCOUNT_CURRENCY_OPTIONS = [
+  { value: 'CNY' as const, label: '人民币 (CNY)' },
+  { value: 'HKD' as const, label: '港元 (HKD)' },
+  { value: 'USD' as const, label: '美元 (USD)' },
+]
+
+const accountCurrencyLabel = (currency?: string) =>
+  ACCOUNT_CURRENCY_OPTIONS.find((opt) => opt.value === currency)?.label?.replace(/ \(.*\)$/, '') || '人民币'
+
+const accountFundsToCny = (
+  amount: number,
+  currency: string | undefined,
+  rates: { HKD_CNY?: number; USD_CNY?: number },
+) => {
+  const cur = currency || 'CNY'
+  if (cur === 'HKD') return amount * (rates.HKD_CNY ?? 0.92)
+  if (cur === 'USD') return amount * (rates.USD_CNY ?? 7.25)
+  return amount
+}
+
+const cnyToAccountFunds = (
+  amountCny: number,
+  currency: string | undefined,
+  rates: { HKD_CNY?: number; USD_CNY?: number },
+) => {
+  const cur = currency || 'CNY'
+  if (cur === 'HKD') return amountCny / (rates.HKD_CNY ?? 0.92)
+  if (cur === 'USD') return amountCny / (rates.USD_CNY ?? 7.25)
+  return amountCny
+}
+
+const calcPositionInitialFunds = (costPrice: string, quantity: string) => {
+  const cost = parseFloat(costPrice)
+  const qty = parseInt(quantity, 10)
+  if (!isFinite(cost) || !isFinite(qty) || cost <= 0 || qty <= 0) return ''
+  return String(round2(cost * qty))
+}
 
 const round2 = (value: number) => Math.round(value * 100) / 100
 
@@ -343,6 +445,7 @@ const mergePortfolioQuotes = (
   let grandMarketValue = 0
   let grandCost = 0
   let grandAvailable = 0
+  let grandOtherFunds = 0
   let grandDailyPnl = 0
 
   const accounts = portfolio.accounts.map(account => {
@@ -413,15 +516,23 @@ const mergePortfolioQuotes = (
 
     const accPnl = accMarketValue - accCost
     const accPnlPct = accCost > 0 ? (accPnl / accCost * 100) : 0
-    const accTotalAssets = accMarketValue + account.available_funds
+    const accCurrency = account.base_currency || 'CNY'
+    const accAvailableCny = accountFundsToCny(account.available_funds, accCurrency, portfolio.exchange_rates || {})
+    const accOtherFunds = account.other_funds ?? 0
+    const accOtherCny = accountFundsToCny(accOtherFunds, accCurrency, portfolio.exchange_rates || {})
+    const accTotalAssets = accMarketValue + accAvailableCny + accOtherCny
 
     grandMarketValue += accMarketValue
     grandCost += accCost
-    grandAvailable += account.available_funds
+    grandAvailable += accAvailableCny
+    grandOtherFunds += accOtherCny
     grandDailyPnl += accDailyPnl
 
     return {
       ...account,
+      base_currency: accCurrency,
+      other_funds: round2(accOtherFunds),
+      initial_funds: round2(cnyToAccountFunds(accTotalAssets - accPnl, accCurrency, portfolio.exchange_rates || {})),
       total_market_value: round2(accMarketValue),
       total_cost: round2(accCost),
       total_pnl: round2(accPnl),
@@ -434,7 +545,7 @@ const mergePortfolioQuotes = (
 
   const grandPnl = grandMarketValue - grandCost
   const grandPnlPct = grandCost > 0 ? (grandPnl / grandCost * 100) : 0
-  const grandTotalAssets = grandMarketValue + grandAvailable
+  const grandTotalAssets = grandMarketValue + grandAvailable + grandOtherFunds
 
   return {
     ...portfolio,
@@ -446,6 +557,7 @@ const mergePortfolioQuotes = (
       total_pnl_pct: round2(grandPnlPct),
       total_daily_pnl: round2(grandDailyPnl),
       available_funds: round2(grandAvailable),
+      other_funds: round2(grandOtherFunds),
       total_assets: round2(grandTotalAssets),
     },
   }
@@ -1295,20 +1407,57 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     const counts = new Map<string, { display: string; layer: string; count: number }>()
     for (const stock of watchlistStocks) {
       const chain = stock.industry_chain
-      if (!chain?.sector || !chain?.layer) continue
-      const key = `${chain.sector}:${chain.layer}`
+      const key = stockChainFilterKey(chain)
+      if (!key || !chain) continue
+      const layer = LEGACY_CHAIN_LAYER_MAP[chain.layer] || chain.layer
       const prev = counts.get(key)
       counts.set(key, {
         display: chain.display || `${chain.sector_label || chain.sector}·${chain.layer_label || chain.layer}`,
-        layer: chain.layer,
+        layer,
         count: (prev?.count || 0) + 1,
       })
     }
-    const layerOrder: Record<string, number> = { upstream: 0, midstream: 1, downstream: 2 }
+    const layerOrder: Record<string, number> = {
+      foundation: 0,
+      middleware: 1,
+      integration: 2,
+      application: 3,
+      other: 9,
+    }
     return Array.from(counts.entries())
       .map(([key, value]) => ({ key, ...value }))
       .sort((a, b) => (layerOrder[a.layer] ?? 9) - (layerOrder[b.layer] ?? 9) || a.display.localeCompare(b.display, 'zh-CN'))
   }, [watchlistStocks])
+
+  // 产业链分层改版后，清除 localStorage 中已失效的筛选键
+  useEffect(() => {
+    if (!watchlistChainFilter) return
+    const normalized = normalizeChainFilterKey(watchlistChainFilter)
+    if (normalized !== watchlistChainFilter) {
+      setWatchlistChainFilter(normalized)
+      return
+    }
+    if (watchlistChainOptions.length === 0) {
+      setWatchlistChainFilter('')
+      return
+    }
+    const valid = new Set(watchlistChainOptions.map((opt) => opt.key))
+    if (!valid.has(watchlistChainFilter)) {
+      setWatchlistChainFilter('')
+    }
+  }, [watchlistChainFilter, watchlistChainOptions, setWatchlistChainFilter])
+
+  useEffect(() => {
+    if (!watchlistTagFilter) return
+    if (watchlistConceptTagOptions.length === 0) {
+      setWatchlistTagFilter('')
+      return
+    }
+    const valid = new Set(watchlistConceptTagOptions.map((opt) => opt.name))
+    if (!valid.has(watchlistTagFilter)) {
+      setWatchlistTagFilter('')
+    }
+  }, [watchlistTagFilter, watchlistConceptTagOptions, setWatchlistTagFilter])
 
   const watchlistReorderDisabled = stockListFilter !== '' || watchlistOnlyAlerts || watchlistFeaturedOnly || watchlistTagFilter !== '' || watchlistChainFilter !== ''
 
@@ -1363,7 +1512,17 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   // ========== Account handlers ==========
   const openAccountDialog = (account?: Account) => {
     if (account) {
-      setAccountForm({ name: account.name, available_funds: account.available_funds.toString() })
+      setAccountForm({
+        name: account.name,
+        base_currency: (account.base_currency || 'CNY') as AccountForm['base_currency'],
+        available_funds: account.available_funds.toString(),
+        other_fund_items: (account.other_fund_items?.length
+          ? account.other_fund_items
+          : (account.other_funds ?? 0) > 0
+            ? [{ label: '其他', amount: account.other_funds ?? 0 }]
+            : []
+        ).map(item => ({ label: item.label, amount: String(item.amount) })),
+      })
       setEditAccountId(account.id)
     } else {
       setAccountForm(emptyAccountForm)
@@ -1374,9 +1533,18 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
 
   const handleAccountSubmit = async () => {
     try {
+      const availableFunds = parseFloat(accountForm.available_funds) || 0
+      const otherFundItems = accountForm.other_fund_items
+        .map(item => ({
+          label: item.label.trim(),
+          amount: parseFloat(item.amount) || 0,
+        }))
+        .filter(item => item.label)
       const payload = {
         name: accountForm.name,
-        available_funds: parseFloat(accountForm.available_funds) || 0,
+        base_currency: accountForm.base_currency,
+        available_funds: availableFunds,
+        other_fund_items: otherFundItems,
       }
       if (editAccountId) {
         await fetchAPI(`/accounts/${editAccountId}`, { method: 'PUT', body: JSON.stringify(payload) })
@@ -1416,7 +1584,8 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         stock_id: position.stock_id,
         cost_price: position.cost_price.toString(),
         quantity: position.quantity.toString(),
-        invested_amount: position.invested_amount?.toString() || '',
+        invested_amount: position.invested_amount?.toString()
+          || calcPositionInitialFunds(position.cost_price.toString(), position.quantity.toString()),
         trading_style: position.trading_style || '',
         trade_time: '',
         stock_symbol: position.symbol,
@@ -1519,12 +1688,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       }
 
       const tradedAt = tradeDatetimeLocalToIso(positionForm.trade_time)
+      const costPrice = parseFloat(positionForm.cost_price)
+      const quantity = parseInt(positionForm.quantity)
       const payload = {
         account_id: positionForm.account_id,
         stock_id: stockId,
-        cost_price: parseFloat(positionForm.cost_price),
-        quantity: parseInt(positionForm.quantity),
-        invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
+        cost_price: costPrice,
+        quantity,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
         ...(tradedAt ? { traded_at: tradedAt } : {}),
       }
@@ -1554,7 +1724,6 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               method: 'PUT',
               body: JSON.stringify({
                 trading_style: payload.trading_style,
-                invested_amount: payload.invested_amount,
               }),
             })
           }
@@ -1619,6 +1788,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       const resp = await fetchAPI<{
         result?: AgentResult
         queued?: boolean
+        deduplicated?: boolean
         message?: string
         trace_id?: string
         success?: boolean
@@ -1726,6 +1896,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       return `${(value / 10000).toFixed(2)}万`
     }
     return value.toFixed(2)
+  }
+
+  const formatAccountFunds = (value: number, currency?: string) => {
+    const suffix = currency && currency !== 'CNY' ? ` ${currency}` : ''
+    return `${formatMoney(value)}${suffix}`
   }
 
   const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m
@@ -2122,12 +2297,25 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Wallet className="w-4 h-4" />
-              <span className="text-[12px]">可用资金</span>
+              <span className="text-[12px]">现金</span>
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.available_funds)}
             </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">折合人民币</div>
           </div>
+          {(portfolio.total.other_funds ?? 0) > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                <PieChart className="w-4 h-4" />
+                <span className="text-[12px]">其他资产</span>
+              </div>
+              <div className="text-[20px] font-bold text-foreground font-mono">
+                {formatMoney(portfolio.total.other_funds ?? 0)}
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">折合人民币</div>
+            </div>
+          )}
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <PiggyBank className="w-4 h-4" />
@@ -2135,6 +2323,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.total_assets)}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
+              {(portfolio.total.other_funds ?? 0) > 0
+                ? `折合人民币，含其他资产 ${formatMoney(portfolio.total.other_funds ?? 0)}`
+                : '折合人民币'}
             </div>
           </div>
 
@@ -2299,10 +2492,36 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
                       </div>
                     </div>
+                    {(account.initial_funds ?? 0) > 0 && (
+                      <div className="text-left md:text-right hidden lg:block">
+                        <div className="text-[10px] md:text-[11px] text-muted-foreground">初始</div>
+                        <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">
+                          {formatAccountFunds(account.initial_funds ?? 0, account.base_currency)}
+                        </div>
+                      </div>
+                    )}
                     <div className="text-left md:text-right hidden sm:block">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">可用</div>
-                      <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">{formatMoney(account.available_funds)}</div>
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">现金</div>
+                      <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">
+                        {formatAccountFunds(account.available_funds, account.base_currency)}
+                      </div>
                     </div>
+                    {(account.other_funds ?? 0) > 0 && (
+                      <div className="text-left md:text-right hidden md:block">
+                        <div className="text-[10px] md:text-[11px] text-muted-foreground">其他</div>
+                        <div
+                          className="text-[12px] md:text-[13px] font-mono whitespace-nowrap"
+                          title={formatOtherFundSummary(account.other_fund_items, account.base_currency, formatAccountFunds)}
+                        >
+                          {formatAccountFunds(account.other_funds ?? 0, account.base_currency)}
+                        </div>
+                        {account.other_fund_items && account.other_fund_items.length > 0 && (
+                          <div className="text-[9px] text-muted-foreground/80 truncate max-w-[120px]">
+                            {account.other_fund_items.map(item => item.label).join('、')}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">总资产</div>
                       <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_assets)}</div>
@@ -2339,6 +2558,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">涨跌</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">成本</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">持仓</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">初始资金</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">总资产</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">盈亏</th>
@@ -2444,6 +2664,23 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   </td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
+                                    {pos.invested_amount != null ? (
+                                      <div className="flex flex-col items-end">
+                                        <span>
+                                          {formatMoney(pos.invested_amount)}
+                                          {isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}
+                                        </span>
+                                        {isForeign && pos.exchange_rate ? (
+                                          <span className="text-[10px] text-muted-foreground/60">
+                                            ≈{formatMoney(pos.invested_amount * pos.exchange_rate)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <span>{formatMoney(pos.cost_price * pos.quantity)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
                                     {pos.market_value != null ? (
                                       <div className="flex flex-col items-end">
                                         {isForeign ? (
@@ -2547,6 +2784,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
                           const rollingBrief = rollingCostBriefMap.get(pos.id) || null
                           const badge = marketBadge(pos.market)
+                          const isForeign = pos.market === 'HK' || pos.market === 'US'
                           const changeColor = pos.change_pct != null
                             ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                             : 'text-muted-foreground'
@@ -2648,6 +2886,13 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">数量</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">初始资金</div>
+                                  <div className="font-mono text-foreground whitespace-nowrap">
+                                    {formatMoney(pos.invested_amount ?? pos.cost_price * pos.quantity)}
+                                    {isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}
+                                  </div>
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">市值</div>
@@ -2909,7 +3154,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
           {watchlistChainOptions.length > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="text-[11px] text-muted-foreground">产业链（老马框架）</div>
+                <div className="text-[11px] text-muted-foreground">产业链（底层→中间件→集成→应用）</div>
                 {watchlistChainFilter && (
                   <button
                     type="button"
@@ -3006,9 +3251,9 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                   })
                   .filter(s => {
                     if (!watchlistChainFilter) return true
-                    const chain = s.industry_chain
-                    if (!chain?.sector || !chain?.layer) return false
-                    return `${chain.sector}:${chain.layer}` === watchlistChainFilter
+                    const key = stockChainFilterKey(s.industry_chain)
+                    if (!key) return false
+                    return key === normalizeChainFilterKey(watchlistChainFilter)
                   })
                   .filter(s => !watchlistFeaturedOnly || s.is_featured)
                   .filter(stock => {
@@ -3018,6 +3263,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                   })
 
                 if (visibleWatchlistStocks.length === 0) {
+                  const hasActiveWatchlistFilters = stockListFilter !== ''
+                    || watchlistOnlyAlerts
+                    || watchlistFeaturedOnly
+                    || watchlistTagFilter !== ''
+                    || watchlistChainFilter !== ''
                   return (
                     <div className="col-span-full py-10 text-center">
                       <div className="text-[13px] text-muted-foreground">没有符合当前筛选条件的股票</div>
@@ -3037,6 +3287,21 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                           className="mt-2 ml-2 text-[11px] text-primary hover:underline"
                         >
                           清除产业链筛选
+                        </button>
+                      )}
+                      {hasActiveWatchlistFilters && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStockListFilter('')
+                            setWatchlistOnlyAlerts(false)
+                            setWatchlistFeaturedOnly(false)
+                            setWatchlistTagFilter('')
+                            setWatchlistChainFilter('')
+                          }}
+                          className="mt-2 block mx-auto text-[11px] text-primary hover:underline"
+                        >
+                          重置全部筛选
                         </button>
                       )}
                     </div>
@@ -3106,21 +3371,15 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                             </span>
                           )}
                           {stock.industry_chain?.display && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const chain = stock.industry_chain
-                                if (!chain?.sector || !chain?.layer) return
-                                toggleWatchlistChainFilter(`${chain.sector}:${chain.layer}`)
+                            <IndustryChainBadge
+                              chain={stock.industry_chain}
+                              compact
+                              onClick={() => {
+                                const key = stockChainFilterKey(stock.industry_chain)
+                                if (!key) return
+                                toggleWatchlistChainFilter(key)
                               }}
-                              className={`text-[9px] px-1 py-0.5 rounded shrink-0 transition-opacity hover:opacity-80 ${
-                                CHAIN_LAYER_STYLES[stock.industry_chain.layer] || 'bg-accent/50 text-muted-foreground'
-                              }`}
-                              title={stock.industry_chain.description || stock.industry_chain.display}
-                            >
-                              {stock.industry_chain.display}
-                            </button>
+                            />
                           )}
                           {isHolding && (
                             <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/15 text-emerald-500 shrink-0">
@@ -3420,7 +3679,28 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               />
             </div>
             <div>
-              <Label>可用资金（元）</Label>
+              <Label>资金币种</Label>
+              <Select
+                value={accountForm.base_currency}
+                onValueChange={(value) =>
+                  setAccountForm({ ...accountForm, base_currency: value as AccountForm['base_currency'] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACCOUNT_CURRENCY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px] text-muted-foreground">现金与其他资产均按此币种填写；切换币种不会自动换算</p>
+            </div>
+            <div>
+              <Label>现金（{accountCurrencyLabel(accountForm.base_currency)}）</Label>
               <Input
                 value={accountForm.available_funds}
                 onChange={e => setAccountForm({ ...accountForm, available_funds: e.target.value })}
@@ -3428,6 +3708,89 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                 className="font-mono"
                 inputMode="decimal"
               />
+              <p className="mt-1 text-[11px] text-muted-foreground">证券账户内可用于交易的现金</p>
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <Label>其他资产（{accountCurrencyLabel(accountForm.base_currency)}）</Label>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() =>
+                    setAccountForm({
+                      ...accountForm,
+                      other_fund_items: [...accountForm.other_fund_items, { label: '', amount: '' }],
+                    })
+                  }
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  添加分类
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {OTHER_FUND_LABEL_PRESETS.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="text-[11px] px-2 py-0.5 rounded bg-accent/60 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    onClick={() =>
+                      setAccountForm({
+                        ...accountForm,
+                        other_fund_items: [...accountForm.other_fund_items, { label, amount: '' }],
+                      })
+                    }
+                  >
+                    + {label}
+                  </button>
+                ))}
+              </div>
+              {accountForm.other_fund_items.length === 0 ? (
+                <p className="mt-2 text-[11px] text-muted-foreground">如理财、存款等，点击上方标签快速添加</p>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  {accountForm.other_fund_items.map((item, index) => (
+                    <div key={`${item.label}-${index}`} className="flex items-center gap-2">
+                      <Input
+                        value={item.label}
+                        onChange={(e) => {
+                          const next = [...accountForm.other_fund_items]
+                          next[index] = { ...next[index], label: e.target.value }
+                          setAccountForm({ ...accountForm, other_fund_items: next })
+                        }}
+                        placeholder="分类名称"
+                        className="flex-1"
+                      />
+                      <Input
+                        value={item.amount}
+                        onChange={(e) => {
+                          const next = [...accountForm.other_fund_items]
+                          next[index] = { ...next[index], amount: e.target.value }
+                          setAccountForm({ ...accountForm, other_fund_items: next })
+                        }}
+                        placeholder="0"
+                        className="w-[120px] font-mono"
+                        inputMode="decimal"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 hover:text-destructive"
+                        onClick={() =>
+                          setAccountForm({
+                            ...accountForm,
+                            other_fund_items: accountForm.other_fund_items.filter((_, i) => i !== index),
+                          })
+                        }
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setAccountDialogOpen(false)}>取消</Button>
@@ -3550,7 +3913,14 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                 <Label>成本价</Label>
                 <Input
                   value={positionForm.cost_price}
-                  onChange={e => setPositionForm({ ...positionForm, cost_price: e.target.value })}
+                  onChange={e => {
+                    const cost_price = e.target.value
+                    setPositionForm(prev => ({
+                      ...prev,
+                      cost_price,
+                      invested_amount: calcPositionInitialFunds(cost_price, prev.quantity) || prev.invested_amount,
+                    }))
+                  }}
                   placeholder="0.00"
                   className="font-mono"
                   inputMode="decimal"
@@ -3560,7 +3930,14 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                 <Label>持仓数量</Label>
                 <Input
                   value={positionForm.quantity}
-                  onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
+                  onChange={e => {
+                    const quantity = e.target.value
+                    setPositionForm(prev => ({
+                      ...prev,
+                      quantity,
+                      invested_amount: calcPositionInitialFunds(prev.cost_price, quantity) || prev.invested_amount,
+                    }))
+                  }}
                   placeholder="0"
                   className="font-mono"
                   inputMode="numeric"
@@ -3568,16 +3945,6 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>投入资金 <span className="text-muted-foreground/60 text-[11px]">(选填)</span></Label>
-                <Input
-                  value={positionForm.invested_amount}
-                  onChange={e => setPositionForm({ ...positionForm, invested_amount: e.target.value })}
-                  placeholder="选填"
-                  className="font-mono"
-                  inputMode="decimal"
-                />
-              </div>
               <div>
                 <Label>交易风格 <span className="text-muted-foreground font-normal">(选填)</span></Label>
                 <Select

@@ -19,12 +19,13 @@ export interface StockConceptTag {
 export interface IndustryChainInfo {
   sector: string
   sector_label: string
-  layer: 'upstream' | 'midstream' | 'downstream' | string
+  layer: 'foundation' | 'middleware' | 'integration' | 'application' | string
   layer_label: string
   display: string
   description?: string
   score?: number
   match_source?: string
+  matched?: string[]
 }
 
 export interface StockItem {
