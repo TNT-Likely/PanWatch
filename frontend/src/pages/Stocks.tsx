@@ -1566,6 +1566,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         { method: 'POST', timeoutMs: syncWait ? 720_000 : undefined },
       )
 
+      if (resp?.deduplicated) {
+        toast(resp.message || '报告生成中，请稍候', 'info')
+        return
+      }
+
       if (resp?.queued) {
         toast(
           resp.message || '已提交后台执行，约 1–2 分钟后可在侧边栏「历史」查看',
@@ -2588,10 +2593,9 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                   <div className="font-mono text-foreground whitespace-nowrap">
                                     {pos.market_value_cny != null ? formatMoney(pos.market_value_cny) : (pos.market_value != null ? formatMoney(pos.market_value) : '—')}
                                   </div>
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">总资产</div>
-                                  <div className="font-mono text-foreground whitespace-nowrap">{formatMoney(account.total_assets)}</div>
+                                  {pos.exchange_rate && pos.market_value != null && (
+                                    <div className="text-[9px] text-muted-foreground">≈{formatMoney(pos.market_value)}</div>
+                                  )}
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">盈亏</div>

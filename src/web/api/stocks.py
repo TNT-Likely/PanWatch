@@ -720,6 +720,20 @@ async def trigger_stock_agent(
             )
         analyst_types_override = requested
 
+    # 幂等性兜底：老马视角 Hermes 单次 2–5 分钟，自动补全与手动触发共用 in-flight 集合。
+    if agent_name == "lmd_outlook" and not force_refresh:
+        from src.core.lmd_auto_bootstrap import try_acquire_lmd_generation
+
+        if not try_acquire_lmd_generation(trigger_stock.symbol):
+            logger.info(
+                f"[trigger 幂等] {trigger_stock.symbol} 老马视角报告生成中，跳过重复触发"
+            )
+            return {
+                "queued": False,
+                "deduplicated": True,
+                "message": "老马视角报告生成中，请稍候",
+            }
+
     # 幂等性兜底:TradingAgents 单次 3-5 分钟,前端误操作/双击可能并发触发同一标的。
     # 后端先查"该 symbol 是否有真正在跑的 TA 任务",有则返回现有 trace_id(不启新任务)。
     # force_refresh=true 时跳过去重,允许用户主动强制重跑(老任务自然终止,新 trace_id)。
@@ -780,6 +794,11 @@ async def trigger_stock_agent(
                 logger.info(f"Agent {agent_name} 后台执行完成 - {trigger_stock.symbol}")
             except Exception:
                 logger.exception(f"Agent {agent_name} 后台执行失败 - {trigger_stock.symbol}")
+            finally:
+                if agent_name == "lmd_outlook":
+                    from src.core.lmd_auto_bootstrap import release_lmd_generation
+
+                    release_lmd_generation(trigger_stock.symbol)
 
         t = threading.Thread(
             target=_runner,
@@ -815,3 +834,8 @@ async def trigger_stock_agent(
     except Exception as e:
         logger.error(f"Agent {agent_name} 执行失败 - {trigger_stock.symbol}: {e}")
         raise HTTPException(500, f"Agent 执行失败: {e}")
+    finally:
+        if agent_name == "lmd_outlook":
+            from src.core.lmd_auto_bootstrap import release_lmd_generation
+
+            release_lmd_generation(trigger_stock.symbol)

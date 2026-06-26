@@ -125,6 +125,47 @@ def test_pdf_endpoint_returns_full_detail_content():
         db.close()
 
 
+def test_history_pdf_endpoint_returns_pdf():
+    """历史记录 PDF 端点应返回 application/pdf 附件。"""
+    from src.web.api import history as history_api
+    from src.web.models import AnalysisHistory
+
+    db = _mem_db()
+    try:
+        db.add(AnalysisHistory(
+            agent_name="lmd_outlook",
+            stock_symbol="600110",
+            analysis_date="2026-06-26",
+            title="【老马视角】诺德股份(600110)",
+            content="## 一、整体定位\n\n正文" + "分析" * 200,
+            raw_data={},
+        ))
+        db.commit()
+        record = db.query(AnalysisHistory).first()
+        resp = history_api.export_history_pdf(history_id=record.id, db=db)
+        assert resp.media_type == "application/pdf"
+        assert bytes(resp.body[:4]) == b"%PDF"
+        assert "attachment" in resp.headers["content-disposition"]
+    finally:
+        db.close()
+
+
+def test_history_pdf_endpoint_404_when_missing():
+    """历史 PDF 端点:无记录 → HTTP 404。"""
+    import pytest
+    from fastapi import HTTPException
+
+    from src.web.api import history as history_api
+
+    db = _mem_db()
+    try:
+        with pytest.raises(HTTPException) as ei:
+            history_api.export_history_pdf(history_id=99999, db=db)
+        assert ei.value.status_code == 404
+    finally:
+        db.close()
+
+
 def test_pdf_endpoint_404_when_missing():
     """端点:无记录 → HTTP 404。"""
     import pytest

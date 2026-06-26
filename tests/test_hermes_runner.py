@@ -31,7 +31,7 @@ def test_parse_hermes_stdout_strips_session_id():
 
 def test_is_incomplete_lmd_report_detects_summary():
     """执行摘要式短回复应判定为不完整。"""
-    summary = "报告完成。以下是执行摘要：\n\n研究阶段（Step 2）：\n✅ 产业链"
+    summary = "报告已完成，输出在回复正文中。要点：\n\n整体结论：..."
     assert is_incomplete_lmd_report(summary) is True
 
 
@@ -43,6 +43,15 @@ def test_is_incomplete_lmd_report_accepts_full_sections():
         "## 三、路径推演\n路径\n## 四、诚实边界\n边界\n## 五、风险提示\n风险"
     )
     assert is_incomplete_lmd_report(full) is False
+
+
+def test_is_incomplete_lmd_report_rejects_research_dump():
+    """研究底稿（无五段式主题）不应误判为完整成稿。"""
+    research = (
+        "## 一、业务构成\n" + "表格" * 300 + "\n"
+        "## 二、最新财务数据\n" + "数据" * 300
+    )
+    assert is_incomplete_lmd_report(research) is True
 
 
 def test_is_diff_artifact_detects_review_diff():
@@ -74,6 +83,39 @@ def test_find_lmd_report_file_skips_research_draft(tmp_path):
     """应优先最终成稿，跳过 Research 底稿。"""
     (tmp_path / "000960_Research_20260626.md").write_text("research", encoding="utf-8")
     final = tmp_path / "锡业股份_000960_老马产业周期分析_20260626.md"
+    final.write_text("final", encoding="utf-8")
+    found = find_lmd_report_file(
+        tmp_path,
+        "000960",
+        analysis_date=date(2026, 6, 26),
+    )
+    assert found == final
+
+
+def test_find_lmd_report_file_skips_fundamental_info_dump(tmp_path):
+    """应跳过基本面汇总等中间产物，避免误当最终成稿。"""
+    (tmp_path / "兴发集团_600141_基本面和行业信息_20260626.md").write_text(
+        "## 一、业务构成\n" + "x" * 1500,
+        encoding="utf-8",
+    )
+    final = tmp_path / "兴发集团_600141_老马产业周期分析_20260626.md"
+    final.write_text(
+        "## 一、整体定位\n" + "正文" * 500 + "\n## 二、五维周期定位\n",
+        encoding="utf-8",
+    )
+    found = find_lmd_report_file(
+        tmp_path,
+        "600141",
+        analysis_date=date(2026, 6, 26),
+    )
+    assert found == final
+
+
+def test_find_lmd_report_file_in_symbol_subdir(tmp_path):
+    """应能在 reports/{代码}/ 子目录中找到成稿。"""
+    sub = tmp_path / "000960"
+    sub.mkdir()
+    final = sub / "锡业股份_000960_老马产业周期分析_20260626.md"
     final.write_text("final", encoding="utf-8")
     found = find_lmd_report_file(
         tmp_path,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from pathlib import Path
 
 from src.agents.base import AgentContext
 from src.agents.lmd_outlook import LmdOutlookAgent, _fetch_fundamental_line
@@ -18,6 +19,10 @@ from src.web.database import SessionLocal
 from src.web.models import LocalSkill
 
 logger = logging.getLogger(__name__)
+
+REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
+
+_LMD_SKILL_SLUGS = frozenset({"lmd-finance-perspective"})
 
 _PANWATCH_TASK_PREFIX = """你正在 PanWatch 盯盘系统中为自选股生成**可入库的完整 Markdown 分析报告**（不是情报简报、不是执行摘要）。
 
@@ -101,10 +106,18 @@ class LocalSkillReportService:
         }
 
     def build_user_content(
-        self, data: dict, context: AgentContext, *, skill_display_name: str
+        self,
+        data: dict,
+        context: AgentContext,
+        *,
+        skill_display_name: str,
+        skill_slug: str = "",
     ) -> str:
         lmd = LmdOutlookAgent()
         lmd_body = lmd.build_user_content(data, context, for_hermes=True)
+        slug = (skill_slug or "").strip()
+        if slug in _LMD_SKILL_SLUGS:
+            return lmd_body
         marker = "## 日期"
         idx = lmd_body.find(marker)
         body = lmd_body[idx:] if idx >= 0 else lmd_body
@@ -137,8 +150,12 @@ class LocalSkillReportService:
 
         data = await self.collect(context, slug)
         user_content = self.build_user_content(
-            data, context, skill_display_name=display
+            data,
+            context,
+            skill_display_name=display,
+            skill_slug=slug,
         )
+        symbol = context.watchlist[0].symbol if context.watchlist else ""
 
         content = await run_hermes_chat(
             query=user_content,
@@ -152,6 +169,9 @@ class LocalSkillReportService:
             model=self.hermes.hermes_model,
             ignore_rules=self.hermes.hermes_ignore_rules,
             auto_expand_summary=self.hermes.hermes_auto_expand_summary,
+            report_fallback_dir=REPORTS_DIR,
+            report_fallback_symbol=symbol,
+            report_fallback_date=date.today(),
         )
 
         profile_label = self.hermes.hermes_profile or "default"

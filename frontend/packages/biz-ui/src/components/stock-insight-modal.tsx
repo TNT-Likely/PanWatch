@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Brain, Copy, Download, ExternalLink, Play, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
   fetchAPI,
@@ -39,6 +40,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator, { type PositionHoldingOption } from '@panwatch/biz-ui/components/add-position-calculator'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
+import { groupReportsByAgent } from '../lib/report-toc'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
 import { DeepAnalysisModePicker } from '@panwatch/biz-ui/components/deep-analysis-mode-picker'
@@ -430,6 +432,7 @@ export default function StockInsightModal(props: {
   onStockUpdated?: (stock: StockItem) => void
 }) {
   const { toast } = useToast()
+  const navigate = useNavigate()
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
@@ -457,7 +460,6 @@ export default function StockInsightModal(props: {
   const [news, setNews] = useState<NewsItem[]>([])
   const [announcements, setAnnouncements] = useState<NewsItem[]>([])
   const [reports, setReports] = useState<HistoryRecord[]>([])
-  const [selectedReportId, setSelectedReportId] = useState<number | null>(null)
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
   const [deepLoaded, setDeepLoaded] = useState(false)
@@ -503,8 +505,23 @@ export default function StockInsightModal(props: {
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
   const stockCacheRef = useRef<Record<string, StockItem>>({})
-  const pendingReportIdRef = useRef<number | null>(null)
   const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
+
+  const navigateToHistoryReport = useCallback((reportId: number) => {
+    props.onOpenChange(false)
+    const params = new URLSearchParams()
+    params.set('id', String(reportId))
+    if (symbol) params.set('symbol', symbol)
+    navigate(`/history?${params.toString()}`)
+  }, [navigate, props.onOpenChange, symbol])
+
+  const navigateToHistoryList = useCallback(() => {
+    props.onOpenChange(false)
+    const params = new URLSearchParams()
+    if (symbol) params.set('symbol', symbol)
+    const qs = params.toString()
+    navigate(qs ? `/history?${qs}` : '/history')
+  }, [navigate, props.onOpenChange, symbol])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
@@ -964,7 +981,8 @@ export default function StockInsightModal(props: {
         ? freshReports.find(r => r.agent_name === 'lmd_outlook')
         : freshReports[0]
       if (!isSuggestionAgent && targetReport?.id) {
-        setSelectedReportId(targetReport.id)
+        navigateToHistoryReport(targetReport.id)
+        return
       }
       toast(
         isSuggestionAgent
@@ -980,7 +998,7 @@ export default function StockInsightModal(props: {
       void tick()
     }, 5_000)
     await tick()
-  }, [loadReports, loadSuggestions, stopReportPoll, toast])
+  }, [loadReports, loadSuggestions, navigateToHistoryReport, stopReportPoll, toast])
 
   const ensureLmdReportIfNeeded = useCallback(async (loaded: HistoryRecord[]) => {
     if (!watchingStock?.id || reportGenerating) return
@@ -992,8 +1010,11 @@ export default function StockInsightModal(props: {
     try {
       const resp = await stocksApi.ensureLmdReport(watchingStock.id)
       if (resp.has_report) return
-      if (!resp.queued) return
+      if (!resp.queued && !resp.deduplicated) return
       setReportGenerating('lmd_outlook')
+      if (resp.deduplicated) {
+        toast(resp.message || '老马视角报告生成中', 'info')
+      }
       void pollForNewReport({
         agentName: 'lmd_outlook',
         baselineReportId: loaded[0]?.id ?? null,
@@ -1005,7 +1026,7 @@ export default function StockInsightModal(props: {
     } catch {
       lmdEnsureKeyRef.current = ''
     }
-  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, suggestions.length])
+  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, suggestions.length, toast])
 
   const triggerReportGeneration = useCallback(async () => {
     if (!symbol || reportGenerating) return
@@ -1036,8 +1057,11 @@ export default function StockInsightModal(props: {
           { wait: true, timeoutMs: 720_000 },
         )
         const fresh = await loadReports()
-        setSelectedReportId(fresh[0]?.id ?? baselineReportId)
-        toast('Skill 报告已生成', 'success')
+        if (fresh[0]?.id) {
+          navigateToHistoryReport(fresh[0].id)
+        } else {
+          toast('Skill 报告已生成', 'success')
+        }
         return
       }
 
@@ -1074,6 +1098,19 @@ export default function StockInsightModal(props: {
         resp = await stocksApi.triggerAgent(stockId, agentName, triggerOpts)
       }
 
+      if (resp?.deduplicated) {
+        toast(resp.message || '报告生成中，请稍候...', 'info')
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+          maxWaitMs: agentName === 'lmd_outlook' ? 420_000 : undefined,
+        })
+        return
+      }
+
       if (resp?.queued) {
         toast(resp.message || '已提交后台执行，报告生成中...', 'info')
         await pollForNewReport({
@@ -1097,11 +1134,12 @@ export default function StockInsightModal(props: {
         return
       }
       const fresh = await loadReports()
-      setSelectedReportId(fresh[0]?.id ?? baselineReportId)
-      await loadSuggestions()
       if (agentName === 'intraday_monitor') {
+        await loadSuggestions()
         toast('AI 建议已更新，可在「建议」查看', 'success')
         setTab('suggestions')
+      } else if (fresh[0]?.id) {
+        navigateToHistoryReport(fresh[0].id)
       } else {
         toast(agentName === 'lmd_outlook' ? '老马视角报告已生成' : '报告已生成', 'success')
       }
@@ -1129,6 +1167,7 @@ export default function StockInsightModal(props: {
     pollForNewReport,
     loadReports,
     loadSuggestions,
+    navigateToHistoryReport,
     toast,
   ])
 
@@ -1359,14 +1398,17 @@ export default function StockInsightModal(props: {
   }, [deepAnalysisMode, deepResult, startDeepPolling, symbol])
 
   useEffect(() => {
+    if (!props.open || !props.initialReportId) return
+    navigateToHistoryReport(props.initialReportId)
+  }, [props.open, props.initialReportId, navigateToHistoryReport])
+
+  useEffect(() => {
     if (!props.open || !symbol) return
     setTab(props.initialTab ?? 'overview')
-    pendingReportIdRef.current = props.initialReportId ?? null
     setSuggestions([])
     setNews([])
     setAnnouncements([])
     setReports([])
-    setSelectedReportId(props.initialReportId ?? null)
     setMiniKlines([])
     setWatchingStock(null)
     setDeepResult(null)
@@ -1381,7 +1423,7 @@ export default function StockInsightModal(props: {
     setReportGenerating(null)
     stopReportPoll()
     loadCore()
-  }, [props.open, symbol, market, props.initialTab, props.initialReportId, loadCore, stopDeepPoll, stopReportPoll])
+  }, [props.open, symbol, market, props.initialTab, loadCore, stopDeepPoll, stopReportPoll])
 
   useEffect(() => {
     if (!props.open) return
@@ -1464,8 +1506,9 @@ export default function StockInsightModal(props: {
   }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
 
   useEffect(() => {
+    if (!props.open) return
     lmdEnsureKeyRef.current = ''
-  }, [symbol, market])
+  }, [props.open, symbol, market])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -1599,26 +1642,9 @@ export default function StockInsightModal(props: {
     return ((hi - lo) / pre) * 100
   }, [quote?.high_price, quote?.low_price, quote?.prev_close])
 
-  useEffect(() => {
-    if (!reports.length) {
-      setSelectedReportId(null)
-      return
-    }
-    const pending = pendingReportIdRef.current
-    if (pending != null && reports.some(r => r.id === pending)) {
-      setSelectedReportId(pending)
-      pendingReportIdRef.current = null
-      return
-    }
-    if (selectedReportId && reports.some(r => r.id === selectedReportId)) return
-    setSelectedReportId(reports[0].id)
-  }, [reports, selectedReportId])
-
-  const activeReport = useMemo(
-    () => reports.find(r => r.id === selectedReportId) || reports[0] || null,
-    [reports, selectedReportId],
-  )
+  const groupedReports = useMemo(() => groupReportsByAgent(reports), [reports])
   const latestReport = reports[0] || null
+
   const latestShareSuggestion = suggestions[0] || technicalFallbackSuggestion
   const shareCardPayload = useMemo(() => {
     const jsonSources = [
@@ -2497,28 +2523,51 @@ export default function StockInsightModal(props: {
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="text-[12px] text-muted-foreground">AI报告</div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('reports')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px] text-muted-foreground"
+                        onClick={navigateToHistoryList}
+                      >
                         更多
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="space-y-2 py-3">
-                        <div className="text-[12px] text-muted-foreground">暂无报告</div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-7 px-2.5 text-[11px]"
-                          disabled={!!reportGenerating}
-                          onClick={() => {
-                            setTab('reports')
-                            void triggerReportGeneration()
-                          }}
-                        >
-                          {reportGenerating ? '生成中...' : '立即生成报告'}
-                        </Button>
-                      </div>
+                      reportGenerating ? (
+                        <div className="space-y-2 py-3">
+                          <div className="text-[12px] text-muted-foreground">
+                            {reportGenerating === 'lmd_outlook'
+                              ? '正在生成老马视角报告，约需 2–5 分钟…'
+                              : `${AGENT_LABELS[reportGenerating] || reportGenerating} 报告生成中…`}
+                          </div>
+                          <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            生成中
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 py-3">
+                          <div className="text-[12px] text-muted-foreground">暂无报告</div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px]"
+                            disabled={!!reportGenerating}
+                            onClick={() => {
+                              setTab('reports')
+                              void triggerReportGeneration()
+                            }}
+                          >
+                            立即生成报告
+                          </Button>
+                        </div>
+                      )
                     ) : (
-                      <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
+                      <button
+                        type="button"
+                        onClick={() => navigateToHistoryReport(latestReport.id)}
+                        className="w-full rounded-lg border border-border/30 bg-accent/10 p-2.5 text-left transition-colors hover:bg-accent/20"
+                      >
                         <div className="text-[11px] text-muted-foreground">
                           {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
                         </div>
@@ -2526,7 +2575,11 @@ export default function StockInsightModal(props: {
                         <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">
                           {markdownToPlainText(latestReport.content) || '暂无报告内容'}
                         </div>
-                      </div>
+                        <div className="mt-2 text-[11px] text-primary inline-flex items-center gap-1">
+                          查看完整报告
+                          <ExternalLink className="w-3 h-3" />
+                        </div>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -2600,16 +2653,17 @@ export default function StockInsightModal(props: {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                <div className="md:col-span-4 card p-2 max-h-[62vh] overflow-y-auto scrollbar">
+                <div className="card p-2 max-h-[62vh] overflow-y-auto scrollbar">
                   {reports.length === 0 ? (
                     <div className="p-6 text-center space-y-3">
                       <div className="text-[12px] text-muted-foreground">
-                        {reportGenerating === 'lmd_outlook'
-                          ? '正在自动生成老马视角报告，约需 2–5 分钟…'
+                        {reportGenerating
+                          ? (reportGenerating === 'lmd_outlook'
+                            ? '正在生成老马视角报告，约需 2–5 分钟…'
+                            : `${AGENT_LABELS[reportGenerating] || reportGenerating} 报告生成中…`)
                           : '暂无报告'}
                       </div>
-                      {reportGenerating === 'lmd_outlook' ? (
+                      {reportGenerating ? (
                         <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                           <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                           生成中
@@ -2627,86 +2681,47 @@ export default function StockInsightModal(props: {
                       )}
                     </div>
                   ) : (
-                    <div className="divide-y divide-border/30">
-                      {reports.map(r => {
-                        const active = r.id === activeReport?.id
-                        const stockSuggestion = r.suggestions?.[symbol]
-                        return (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => setSelectedReportId(r.id)}
-                            className={`w-full text-left px-2.5 py-2.5 rounded-lg transition-colors ${
-                              active ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] text-muted-foreground">
-                                {resolveAgentLabel(r.agent_name, reportAgents)}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground shrink-0">{r.analysis_date}</span>
-                            </div>
-                            <div className={`mt-0.5 text-[12px] line-clamp-2 ${active ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
-                              {r.title || '报告摘要'}
-                            </div>
-                            {stockSuggestion?.action_label && (
-                              <div className="mt-1 text-[10px] inline-flex px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                                {stockSuggestion.action_label}
-                              </div>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-                {!activeReport ? (
-                  <div className="md:col-span-8 card p-6 text-[12px] text-muted-foreground text-center">选择左侧报告查看详情</div>
-                ) : (
-                  <div className="md:col-span-8 card p-4 space-y-3">
-                    <div className="text-[11px] text-muted-foreground">
-                      {resolveAgentLabel(activeReport.agent_name, reportAgents)} · {activeReport.analysis_date}
-                    </div>
-                    <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
-                    {activeReport.suggestions && activeReport.suggestions[symbol]?.action_label && (
-                      <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {activeReport.suggestions[symbol].action_label}
+                    <>
+                      <div className="px-2.5 py-2 text-[11px] text-muted-foreground border-b border-border/30">
+                        点击报告将在「历史」页打开完整阅读（含目录导航）
                       </div>
-                    )}
-                    <div className="rounded-lg bg-accent/10 p-3 max-h-[58vh] overflow-y-auto scrollbar">
-                      <ReportMarkdown content={activeReport.content} />
-                    </div>
-                    {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
-                      <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
-                        {activeReport.prompt_stats ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                      <div className="divide-y divide-border/30">
+                        {groupedReports.map(group => (
+                          <div key={group.agentName} className="py-1">
+                            <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground">
+                              {resolveAgentLabel(group.agentName, reportAgents)}
+                            </div>
+                            {group.items.map(r => {
+                              const stockSuggestion = r.suggestions?.[symbol]
+                              return (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  onClick={() => navigateToHistoryReport(r.id)}
+                                  className="w-full text-left px-2.5 py-2 rounded-lg transition-colors hover:bg-accent/40"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[12px] text-foreground/90 line-clamp-1">
+                                      {r.title || '报告摘要'}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground shrink-0 inline-flex items-center gap-1">
+                                      {r.analysis_date}
+                                      <ExternalLink className="w-3 h-3" />
+                                    </span>
+                                  </div>
+                                  {stockSuggestion?.action_label && (
+                                    <div className="mt-1 text-[10px] inline-flex px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                      {stockSuggestion.action_label}
+                                    </div>
+                                  )}
+                                </button>
+                              )
+                            })}
                           </div>
-                        ) : null}
-                        {activeReport.news_debug ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.context_payload ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.prompt_context ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
-                          </div>
-                        ) : null}
-                      </details>
-                    )}
-                  </div>
-                )}
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

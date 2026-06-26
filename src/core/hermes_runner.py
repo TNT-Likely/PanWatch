@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 _SESSION_ID_RE = re.compile(r"^session_id:\s*(\S+)\s*$", re.MULTILINE)
 _DEFAULT_CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
 
-# 完整报告应包含的章节（至少其二）
+# 完整老马视角成稿应覆盖的主题（至少其三）
 _FULL_REPORT_MARKERS = (
-    "## 一、",
-    "## 二、",
+    "整体定位",
     "五维",
     "路径推演",
+    "诚实边界",
     "风险提示",
 )
 
@@ -29,10 +29,19 @@ _FULL_REPORT_MARKERS = (
 _SUMMARY_ONLY_MARKERS = (
     "执行摘要",
     "报告完成",
+    "报告已完成",
+    "输出在回复正文中",
     "研究阶段（Step 2）",
     "研究阶段(Step 2)",
     "结论（Step 3）",
     "结论(Step 3)",
+)
+
+# 非最终成稿的中间产物文件名片段
+_NON_FINAL_REPORT_NAME_PARTS = (
+    "_Research_",
+    "基本面和行业信息",
+    "行业信息汇总",
 )
 
 _FOLLOWUP_PROMPT = """你上一轮的回复只是研究摘要/执行摘要或文件 diff，不是可入库的完整报告。
@@ -148,7 +157,7 @@ def is_incomplete_lmd_report(content: str) -> bool:
         if not any(marker in text for marker in _FULL_REPORT_MARKERS):
             return True
     section_hits = sum(1 for marker in _FULL_REPORT_MARKERS if marker in text)
-    return section_hits < 2
+    return section_hits < 3
 
 
 def find_lmd_report_file(
@@ -167,14 +176,16 @@ def find_lmd_report_file(
     if not sym:
         return None
 
+    from src.core.report_paths import iter_report_md_files
+
     date_token = analysis_date.strftime("%Y%m%d") if analysis_date else ""
     candidates: list[Path] = []
 
-    for path in root.glob("*.md"):
+    for path in iter_report_md_files(root):
         name = path.name
         if sym not in name:
             continue
-        if "_Research_" in name:
+        if any(part in name for part in _NON_FINAL_REPORT_NAME_PARTS):
             continue
         if date_token and not name.endswith(f"_{date_token}.md"):
             continue
@@ -182,10 +193,13 @@ def find_lmd_report_file(
             candidates.append(path)
 
     if not candidates:
-        for path in root.glob(f"*{sym}*.md"):
-            if "_Research_" in path.name:
+        for path in iter_report_md_files(root):
+            name = path.name
+            if sym not in name:
                 continue
-            if date_token and not path.name.endswith(f"_{date_token}.md"):
+            if any(part in name for part in _NON_FINAL_REPORT_NAME_PARTS):
+                continue
+            if date_token and not name.endswith(f"_{date_token}.md"):
                 continue
             candidates.append(path)
 

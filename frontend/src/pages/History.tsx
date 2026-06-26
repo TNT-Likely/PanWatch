@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Clock, Trash2, FileText, ArrowLeft, ExternalLink } from 'lucide-react'
-import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
-import { fetchAPI, stocksApi, type StockItem, parseLocalSkillSlug } from '@panwatch/api'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Clock, Trash2, FileText, ArrowLeft, ExternalLink, FileDown } from 'lucide-react'
+import { ReportViewer } from '@panwatch/biz-ui/components/report-markdown'
+import { fetchAPI, stocksApi, insightApi, type StockItem, parseLocalSkillSlug } from '@panwatch/api'
 import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
@@ -80,20 +80,26 @@ function extractStockNameFromTitle(title: string, symbol: string): string | unde
 export default function HistoryPage() {
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const deepLinkId = searchParams.get('id')
+  const deepLinkSymbol = searchParams.get('symbol')?.trim() || ''
+  const pendingDeepLinkRef = useRef<number | null>(null)
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [listReady, setListReady] = useState(!deepLinkId)
   const [selectedAgent, setSelectedAgent] = useState<string>('all')
   const [historyKind, setHistoryKind] = useState<'workflow' | 'capability' | 'all'>('workflow')
+  const [stockSymbolFilter, setStockSymbolFilter] = useState(deepLinkSymbol)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mobileView, setMobileView] = useState<'list' | 'reader'>('list')
   const [detailRecord, setDetailRecord] = useState<HistoryRecord | null>(null)
+  const [pdfBusyId, setPdfBusyId] = useState<number | null>(null)
   const [stockIndex, setStockIndex] = useState<Record<string, StockItem>>({})
   const [stockModal, setStockModal] = useState<{
     open: boolean
     symbol: string
     market: string
     name?: string
-    reportId?: number | null
     tab?: InsightTab
   }>({ open: false, symbol: '', market: 'CN' })
 
@@ -135,6 +141,7 @@ export default function HistoryPage() {
     try {
       const params = new URLSearchParams()
       if (selectedAgent && selectedAgent !== 'all') params.set('agent_name', selectedAgent)
+      if (stockSymbolFilter) params.set('stock_symbol', stockSymbolFilter)
       params.set('kind', historyKind)
       params.set('limit', '50')
       const data = await fetchAPI<HistoryRecord[]>(`/history?${params.toString()}`)
@@ -146,7 +153,53 @@ export default function HistoryPage() {
     }
   }
 
-  useEffect(() => { load() }, [selectedAgent, historyKind])
+  useEffect(() => {
+    setStockSymbolFilter(deepLinkSymbol)
+  }, [deepLinkSymbol])
+
+  useEffect(() => {
+    if (!deepLinkId) {
+      pendingDeepLinkRef.current = null
+      setListReady(true)
+      return
+    }
+    const id = Number(deepLinkId)
+    if (!Number.isFinite(id) || id <= 0) {
+      setListReady(true)
+      return
+    }
+    pendingDeepLinkRef.current = id
+    let cancelled = false
+    ;(async () => {
+      try {
+        const record = await fetchAPI<HistoryRecord>(`/history/${id}`)
+        if (cancelled) return
+        if (record.agent_kind === 'capability') {
+          setHistoryKind('capability')
+        } else if (record.agent_kind === 'workflow') {
+          setHistoryKind('workflow')
+        } else {
+          setHistoryKind('all')
+        }
+        setSelectedId(id)
+        setMobileView('reader')
+        setRecords(prev => (prev.some(r => r.id === id) ? prev : [record, ...prev]))
+      } catch (e) {
+        if (!cancelled) {
+          toast(e instanceof Error ? e.message : '报告不存在', 'error')
+          pendingDeepLinkRef.current = null
+        }
+      } finally {
+        if (!cancelled) setListReady(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [deepLinkId, toast])
+
+  useEffect(() => {
+    if (!listReady) return
+    load()
+  }, [selectedAgent, historyKind, stockSymbolFilter, listReady])
 
   useEffect(() => {
     stocksApi.list()
@@ -177,9 +230,17 @@ export default function HistoryPage() {
       setMobileView('list')
       return
     }
+    const pending = pendingDeepLinkRef.current
+    if (pending != null && records.some(r => r.id === pending)) {
+      setSelectedId(pending)
+      setMobileView('reader')
+      pendingDeepLinkRef.current = null
+      return
+    }
     if (selectedId && records.some(r => r.id === selectedId)) return
+    if (deepLinkId) return
     setSelectedId(records[0].id)
-  }, [records, selectedId])
+  }, [records, selectedId, deepLinkId])
 
   const deleteRecord = async (id: number) => {
     if (!confirm('确定删除这条记录吗？')) return
@@ -223,6 +284,19 @@ export default function HistoryPage() {
     }
   }
 
+  const handleExportPdf = async (record: HistoryRecord) => {
+    if (pdfBusyId != null) return
+    setPdfBusyId(record.id)
+    try {
+      await insightApi.downloadHistoryPdf(record.id)
+      toast('PDF 已导出', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '导出失败', 'error')
+    } finally {
+      setPdfBusyId(null)
+    }
+  }
+
   const resolveRecordMarket = useCallback((symbol: string) => {
     const hit = stockIndex[symbol.toUpperCase()]
     return hit?.market || inferMarket(symbol)
@@ -234,7 +308,7 @@ export default function HistoryPage() {
     return extractStockNameFromTitle(record.title || '', symbol)
   }, [stockIndex])
 
-  const openStockFromRecord = useCallback((record: HistoryRecord, tab: InsightTab = 'reports') => {
+  const openStockFromRecord = useCallback((record: HistoryRecord, tab: InsightTab = 'overview') => {
     const symbol = resolveHistoryStockSymbol(record)
     if (!symbol) {
       toast('该报告未关联具体股票', 'info')
@@ -245,7 +319,6 @@ export default function HistoryPage() {
       symbol,
       market: resolveRecordMarket(symbol),
       name: resolveRecordStockName(record, symbol),
-      reportId: record.id,
       tab,
     })
   }, [resolveRecordMarket, resolveRecordStockName, toast])
@@ -264,6 +337,11 @@ export default function HistoryPage() {
           <div className="hidden md:flex px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
             共 <span className="font-mono text-foreground/90">{records.length}</span> 条
           </div>
+          {stockSymbolFilter ? (
+            <Badge variant="secondary" className="text-[10px] font-mono">
+              {stockSymbolFilter}
+            </Badge>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -407,6 +485,15 @@ export default function HistoryPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      disabled={pdfBusyId === selectedRecord.id}
+                      onClick={() => void handleExportPdf(selectedRecord)}
+                    >
+                      <FileDown className="w-3.5 h-3.5 mr-1" />
+                      {pdfBusyId === selectedRecord.id ? '导出中…' : '导出 PDF'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => {
                         // TradingAgents 深度记录 → 独立详细阅读页;其余 agent 维持原详情弹窗
                         if (selectedRecord.agent_name === 'tradingagents' && selectedRecord.stock_symbol) {
@@ -430,8 +517,12 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-accent/20 rounded-xl max-h-[62vh] md:max-h-[62vh] overflow-y-auto scrollbar">
-                  <ReportMarkdown content={selectedRecord.content} />
+                <div className="mt-4">
+                  <ReportViewer
+                    content={selectedRecord.content}
+                    exportBusy={pdfBusyId === selectedRecord.id}
+                    onExportPdf={() => handleExportPdf(selectedRecord)}
+                  />
                 </div>
               </div>
             ) : (
@@ -454,8 +545,14 @@ export default function HistoryPage() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 p-4 bg-accent/20 rounded-lg max-h-[60vh] overflow-y-auto scrollbar">
-            {detailRecord && <ReportMarkdown content={detailRecord.content} />}
+          <div className="mt-4">
+            {detailRecord && (
+              <ReportViewer
+                content={detailRecord.content}
+                exportBusy={pdfBusyId === detailRecord.id}
+                onExportPdf={() => handleExportPdf(detailRecord)}
+              />
+            )}
           </div>
           {detailRecord?.prompt_stats ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
@@ -491,7 +588,6 @@ export default function HistoryPage() {
         market={stockModal.market}
         stockName={stockModal.name}
         initialTab={stockModal.tab}
-        initialReportId={stockModal.reportId}
       />
     </div>
   )

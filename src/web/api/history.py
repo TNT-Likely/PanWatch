@@ -19,7 +19,8 @@ from src.core.agent_catalog import (
     CAPABILITY_AGENT_NAMES,
     infer_agent_kind,
 )
-from src.core.hermes_runner import resolve_lmd_report_content
+from src.core.hermes_config import parse_local_skill_slug
+from src.core.hermes_runner import is_incomplete_lmd_report, resolve_lmd_report_content
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
 
@@ -49,10 +50,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/history", tags=["history"])
 
 
+def _should_resolve_lmd_report(record: AnalysisHistory) -> bool:
+    """判断历史记录是否应尝试从 reports/ 回退读取完整成稿。"""
+    if record.stock_symbol in ("", "*"):
+        return False
+    if record.agent_name == "lmd_outlook":
+        return True
+    slug = parse_local_skill_slug(record.agent_name)
+    if slug == "lmd-finance-perspective":
+        return True
+    if slug and is_incomplete_lmd_report(record.content or ""):
+        return True
+    return False
+
+
 def _sanitize_history_content(record: AnalysisHistory) -> str:
     """展示前修正 Hermes diff 等异常入库内容。"""
     content = record.content or ""
-    if record.agent_name != "lmd_outlook" or record.stock_symbol in ("", "*"):
+    if not _should_resolve_lmd_report(record):
         return content
 
     analysis_date: date | None = None
@@ -214,6 +229,42 @@ def get_history_detail(
         else None,
         created_at=_format_datetime(record.created_at),
         updated_at=_format_datetime(record.updated_at),
+    )
+
+
+def _build_history_pdf_markdown(record: AnalysisHistory) -> str:
+    """组装用于 PDF 导出的 markdown 正文。"""
+    if record.agent_name == "tradingagents":
+        from src.core.pdf_export import assemble_report_markdown
+
+        assembled = assemble_report_markdown(record.raw_data or {})
+        if assembled:
+            return assembled
+    return _sanitize_history_content(record)
+
+
+@router.get("/{history_id}/pdf")
+def export_history_pdf(history_id: int, db: Session = Depends(get_db)):
+    """把任意分析历史记录导出为 PDF 附件。"""
+    from urllib.parse import quote
+
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    from src.core.pdf_export import render_analysis_pdf
+
+    record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
+    if not record:
+        raise HTTPException(404, "记录不存在")
+
+    report_md = _build_history_pdf_markdown(record)
+    pdf_bytes = render_analysis_pdf(record.title or "分析报告", report_md)
+    base = (record.title or f"{record.stock_symbol} 分析报告").replace("/", "-").replace("\\", "-").strip()
+    filename = f"{base}-{record.analysis_date}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 

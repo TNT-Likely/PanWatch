@@ -1,4 +1,4 @@
-import { fetchAPI } from './client'
+import { fetchAPI, getToken } from './client'
 
 type QueryValue = string | number | boolean | null | undefined
 
@@ -81,6 +81,43 @@ export const insightApi = {
       body: JSON.stringify(params),
       timeoutMs: 40000,
     }),
+
+  /** 把任意分析历史记录导出为 PDF 并触发浏览器下载。 */
+  async downloadHistoryPdf(historyId: number): Promise<void> {
+    const token = getToken()
+    const resp = await fetch(`/api/history/${historyId}/pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!resp.ok) {
+      let msg = `导出失败 (${resp.status})`
+      try {
+        const j = await resp.json()
+        msg = (j && (j.message || j.detail)) || msg
+      } catch {
+        /* 非 JSON 错误体 */
+      }
+      throw new Error(msg)
+    }
+    const blob = await resp.blob()
+    let filename = `分析报告-${historyId}.pdf`
+    const cd = resp.headers.get('Content-Disposition') || ''
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
+    if (m) {
+      try {
+        filename = decodeURIComponent(m[1])
+      } catch {
+        /* 保留默认文件名 */
+      }
+    }
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
 
 export interface AnnouncementToneItem {

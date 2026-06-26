@@ -74,7 +74,17 @@ def _stock_payload(stock: Any) -> SimpleNamespace:
     )
 
 
-def _try_mark_in_flight(symbol: str) -> bool:
+def is_lmd_in_flight(symbol: str) -> bool:
+    """该标的是否正在生成老马视角报告（含自动补全与手动触发）。"""
+    sym = (symbol or "").strip()
+    if not sym:
+        return False
+    with _in_flight_lock:
+        return sym in _in_flight
+
+
+def try_acquire_lmd_generation(symbol: str) -> bool:
+    """尝试占用生成槽位；已在生成中则返回 False。"""
     sym = (symbol or "").strip()
     if not sym:
         return False
@@ -85,12 +95,21 @@ def _try_mark_in_flight(symbol: str) -> bool:
         return True
 
 
-def _clear_in_flight(symbol: str) -> None:
+def release_lmd_generation(symbol: str) -> None:
+    """释放生成槽位（任务结束或失败时调用）。"""
     sym = (symbol or "").strip()
     if not sym:
         return
     with _in_flight_lock:
         _in_flight.discard(sym)
+
+
+def _try_mark_in_flight(symbol: str) -> bool:
+    return try_acquire_lmd_generation(symbol)
+
+
+def _clear_in_flight(symbol: str) -> None:
+    release_lmd_generation(symbol)
 
 
 def _ensure_worker() -> None:

@@ -89,5 +89,16 @@ def test_ensure_deduplicates_inflight(monkeypatch):
         result = mod.ensure_lmd_report(SimpleNamespace(symbol="600519", name="茅台", market="CN", id=1))
         assert result["deduplicated"] is True
         assert result["queued"] is False
+        assert "生成中" in result["message"]
     finally:
         mod._in_flight.discard("600519")
+
+
+def test_try_acquire_lmd_generation():
+    """生成槽位占用与释放应成对生效。"""
+    mod._in_flight.discard("000001")
+    assert mod.try_acquire_lmd_generation("000001") is True
+    assert mod.is_lmd_in_flight("000001") is True
+    assert mod.try_acquire_lmd_generation("000001") is False
+    mod.release_lmd_generation("000001")
+    assert mod.is_lmd_in_flight("000001") is False

@@ -95,6 +95,8 @@ export interface TriggerStockAgentResponse {
   success?: boolean
   message: string
   queued?: boolean
+  deduplicated?: boolean
+  trace_id?: string
 }
 
 function withQuery(path: string, params: TriggerStockAgentOptions): string {

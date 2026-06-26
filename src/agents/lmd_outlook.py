@@ -32,9 +32,9 @@ _PANWATCH_APPENDIX_BUILTIN = """
 - 用户消息已包含系统采集的行情、技术、资金、新闻与持仓，请直接基于这些数据展开分析。
 - 不要尝试 WebSearch；缺失的数据诚实标注即可。
 - 输出一篇完整 Markdown 报告，遵循上文「输出结构」五段式。
-- 若需将 Markdown 写入磁盘：**必须**保存到 `reports/` 目录，禁止写入项目根目录。
-  - 成稿：`reports/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
-  - 研究底稿：`reports/{代码或Ticker}_Research_{YYYYMMDD}.md`
+- 若需将 Markdown 写入磁盘：**必须**保存到 `reports/{代码}/` 子目录，禁止写入项目根目录或其它路径。
+  - 成稿：`reports/{代码}/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
+  - 研究底稿：`reports/{代码}/{代码或Ticker}_Research_{YYYYMMDD}.md`
 """
 
 _HERMES_TASK_PREFIX = """你正在 PanWatch 盯盘系统中为自选股生成**可入库的完整老马视角产业周期分析报告**（不是情报简报、不是执行摘要）。
@@ -58,9 +58,9 @@ _HERMES_TASK_PREFIX = """你正在 PanWatch 盯盘系统中为自选股生成**�
 2. 在同一轮最终回复中直接输出 Step 3 **完整成稿**（不是摘要）。
 
 【本地文件落盘 — 若写入磁盘】
-- **必须**保存到 PanWatch 项目下的 `reports/` 目录，禁止写入项目根目录或其它路径。
-- 老马视角成稿：`reports/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
-- Step 2 研究底稿（英文/中文均可）：`reports/{代码或Ticker}_Research_{YYYYMMDD}.md`
+- **必须**保存到 PanWatch 项目下的 `reports/{代码}/` 子目录，禁止写入项目根目录或其它路径。
+- 老马视角成稿：`reports/{代码}/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
+- Step 2 研究底稿（英文/中文均可）：`reports/{代码}/{代码或Ticker}_Research_{YYYYMMDD}.md`
 
 ---
 
