@@ -95,7 +95,7 @@ def chan_emotion_strategy(
 
 @router.post("/analysis-brief/batch", response_model=list[AnalysisBriefResponse])
 def analysis_brief_batch(body: AnalysisBriefBatchRequest, db: Session = Depends(get_db)):
-    """批量返回老马视角 / 深度分析摘要，供卡片问 AI 快速注入上下文。"""
+    """批量返回产业周期视角 / 深度分析摘要，供卡片问 AI 快速注入上下文。"""
     if not body.items:
         return []
 

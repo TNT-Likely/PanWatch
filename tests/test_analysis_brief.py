@@ -6,12 +6,12 @@ from src.core.analysis_brief import format_deep_brief, format_lmd_brief
 
 
 def test_format_lmd_brief_returns_none_without_report():
-    """无老马视角报告时应返回 None。"""
+    """无产业周期视角报告时应返回 None。"""
     assert format_lmd_brief(None) is None
 
 
 def test_format_lmd_brief_from_cached_snapshot():
-    """有结构化快照时应拼出老马视角摘要。"""
+    """有结构化快照时应拼出产业周期视角摘要。"""
     record = SimpleNamespace(
         analysis_date="2026-06-25",
         content="",
@@ -26,7 +26,7 @@ def test_format_lmd_brief_from_cached_snapshot():
     )
     brief = format_lmd_brief(record)
     assert brief is not None
-    assert "老马视角" in brief
+    assert "产业周期视角" in brief
     assert "估值68分" in brief
     assert "偏贵" in brief
 

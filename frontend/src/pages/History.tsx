@@ -36,7 +36,7 @@ const AGENT_LABELS: Record<string, string> = {
   news_digest: '新闻速递',
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
-  lmd_outlook: '老马视角',
+  lmd_outlook: LMD_DISPLAY_NAME,
 }
 
 function resolveHistoryAgentLabel(agentName: string, title?: string): string {

@@ -1,6 +1,6 @@
 import type { LmdReportSnapshot } from '@panwatch/api'
 
-/** 从卡片已加载的老马视角快照拼一句结论（无报告则返回 null）。 */
+/** 从卡片已加载的产业周期视角快照拼一句结论（无报告则返回 null）。 */
 export function formatLmdBriefFromSnapshot(snapshot: LmdReportSnapshot | null | undefined): string | null {
   if (!snapshot?.has_report) return null
   const parts: string[] = []
@@ -17,5 +17,5 @@ export function formatLmdBriefFromSnapshot(snapshot: LmdReportSnapshot | null | 
   }
   if (parts.length === 0) return null
   const date = snapshot.report_date ? `(${snapshot.report_date})` : ''
-  return `老马视角${date}：${parts.join('，')}`
+  return `产业周期视角${date}：${parts.join('，')}`
 }

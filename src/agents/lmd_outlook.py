@@ -1,4 +1,4 @@
-"""老马视角 Agent — 将 LMD 产业周期框架与 AlphaMind 数据管道结合。"""
+"""产业周期视角 Agent — 将 LMD 产业周期框架与 AlphaMind 数据管道结合。"""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ _PANWATCH_APPENDIX_BUILTIN = """
   - 研究底稿：`reports/{代码}/{代码或Ticker}_Research_{YYYYMMDD}.md`
 """
 
-_HERMES_TASK_PREFIX = """你正在智盘 Alpha（AlphaMind）系统中为自选股生成**可入库的完整老马视角产业周期分析报告**（不是情报简报、不是执行摘要）。
+_HERMES_TASK_PREFIX = """你正在智盘 Alpha（AlphaMind）系统中为自选股生成**可入库的完整产业周期分析报告**（不是情报简报、不是执行摘要）。
 
 【交付物 — 最高优先级，覆盖 profile/SOUL 中的简洁偏好】
 - 最终回复 = **一篇完整 Markdown 报告正文**，用户会直接展示在 UI，不会再追问。
@@ -59,7 +59,7 @@ _HERMES_TASK_PREFIX = """你正在智盘 Alpha（AlphaMind）系统中为自选�
 
 【本地文件落盘 — 若写入磁盘】
 - **必须**保存到 AlphaMind 项目下的 `reports/{代码}/` 子目录，禁止写入项目根目录或其它路径。
-- 老马视角成稿：`reports/{代码}/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
+- 产业周期成稿：`reports/{代码}/{股票名}_{代码}_老马产业周期分析_{YYYYMMDD}.md`
 - Step 2 研究底稿（英文/中文均可）：`reports/{代码}/{代码或Ticker}_Research_{YYYYMMDD}.md`
 
 ---
@@ -112,10 +112,10 @@ async def _fetch_fundamental_line(symbol: str, market: MarketCode) -> str:
 
 
 class LmdOutlookAgent(BaseAgent):
-    """老马视角 — 产业周期 × 情绪博弈框架下的单股/组合分析。"""
+    """产业周期视角 — 产业周期 × 情绪博弈框架下的单股/组合分析。"""
 
     name = "lmd_outlook"
-    display_name = "老马视角"
+    display_name = "产业周期视角"
     description = (
         "以老马投资研究的产业周期×情绪博弈框架，"
         "结合行情/技术/资金/新闻生成深度分析报告（手动触发）"
@@ -151,7 +151,7 @@ class LmdOutlookAgent(BaseAgent):
 
     async def collect(self, context: AgentContext) -> dict:
         if not context.watchlist:
-            raise RuntimeError("自选股列表为空，无法生成老马视角报告")
+            raise RuntimeError("自选股列表为空，无法生成产业周期视角报告")
 
         sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
         builder = SignalPackBuilder()
@@ -340,12 +340,12 @@ class LmdOutlookAgent(BaseAgent):
             w0 = context.watchlist[0]
             user_hint = (
                 f"请对 {w0.name}（{w0.symbol}）"
-                "生成一篇完整的老马视角产业周期分析报告。"
+                "生成一篇完整的产业周期分析报告。"
             )
         else:
             names = "、".join(s.name for s in context.watchlist[:5])
             user_hint = (
-                f"请对以下自选股分别生成老马视角分析，并给出组合层面的周期观察：{names}"
+                f"请对以下自选股分别生成产业周期视角分析，并给出组合层面的周期观察：{names}"
             )
 
         lines.append(f"\n## 任务\n{user_hint}")

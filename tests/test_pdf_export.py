@@ -136,7 +136,7 @@ def test_history_pdf_endpoint_returns_pdf():
             agent_name="lmd_outlook",
             stock_symbol="600110",
             analysis_date="2026-06-26",
-            title="【老马视角】诺德股份(600110)",
+            title="【产业周期视角】诺德股份(600110)",
             content="## 一、整体定位\n\n正文" + "分析" * 200,
             raw_data={},
         ))

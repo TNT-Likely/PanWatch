@@ -1318,7 +1318,7 @@ async def lifespan(app):
 
             bootstrap_all_missing_stocks()
         except Exception as e:
-            logger.warning("老马视角报告启动补全失败,跳过: %s", e)
+            logger.warning("产业周期视角报告启动补全失败,跳过: %s", e)
 
     threading.Thread(target=_bootstrap_lmd_reports, daemon=True, name="lmd-bootstrap-scan").start()
 

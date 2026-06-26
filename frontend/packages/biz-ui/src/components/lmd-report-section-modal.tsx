@@ -69,7 +69,7 @@ export function LmdReportSectionModal({
           (records || []).filter(r => isLmdReportAgent(r.agent_name)),
         )
         if (!report?.content?.trim()) {
-          if (!cancelled) setError('暂无老马视角报告，请先在报告页生成')
+          if (!cancelled) setError(`暂无${LMD_DISPLAY_NAME}报告，请先在报告页生成`)
           return
         }
         const slug = findLmdReportSectionSlug(report.content, section)
@@ -80,7 +80,7 @@ export function LmdReportSectionModal({
           if (!slug) setError(`报告中未找到「${SECTION_LABELS[section]}」章节`)
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : '加载老马视角报告失败')
+        if (!cancelled) setError(e instanceof Error ? e.message : `加载${LMD_DISPLAY_NAME}报告失败`)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -99,12 +99,12 @@ export function LmdReportSectionModal({
             {stockName || symbol}
             <span className="ml-1.5 font-mono text-[13px] text-muted-foreground font-normal">{symbol}</span>
             <span className="mx-1.5 text-muted-foreground/50">·</span>
-            老马视角 · {sectionLabel}
+            {LMD_DISPLAY_NAME} · {sectionLabel}
           </DialogTitle>
           {reportTitle ? (
             <DialogDescription className="text-[11px] line-clamp-1">{reportTitle}</DialogDescription>
           ) : (
-            <DialogDescription className="sr-only">老马视角报告章节预览</DialogDescription>
+            <DialogDescription className="sr-only">{LMD_DISPLAY_NAME}报告章节预览</DialogDescription>
           )}
         </DialogHeader>
 

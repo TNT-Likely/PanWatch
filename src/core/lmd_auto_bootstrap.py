@@ -1,4 +1,4 @@
-"""自选股老马视角报告自动补全 — 无报告则后台排队生成。"""
+"""自选股产业周期视角报告自动补全 — 无报告则后台排队生成。"""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def _suppress_notify_default(db: Session) -> bool:
 
 
 def has_lmd_report(db: Session, stock_symbol: str) -> bool:
-    """该标的是否已有任意一条老马视角分析记录。"""
+    """该标的是否已有任意一条产业周期视角分析记录。"""
     sym = (stock_symbol or "").strip()
     if not sym:
         return False
@@ -77,7 +77,7 @@ def _stock_payload(stock: Any) -> SimpleNamespace:
 
 
 def is_lmd_in_flight(symbol: str) -> bool:
-    """该标的是否正在生成老马视角报告（含自动补全与手动触发）。"""
+    """该标的是否正在生成产业周期视角报告（含自动补全与手动触发）。"""
     sym = (symbol or "").strip()
     if not sym:
         return False
@@ -137,9 +137,9 @@ def _worker_loop() -> None:
             symbol = getattr(stock, "symbol", "") or ""
             try:
                 asyncio.run(_run_lmd_trigger(stock, suppress_notify=suppress_notify))
-                logger.info("[lmd_bootstrap] 老马视角报告已生成 - %s", symbol)
+                logger.info("[lmd_bootstrap] 产业周期视角报告已生成 - %s", symbol)
             except Exception:
-                logger.exception("[lmd_bootstrap] 老马视角报告生成失败 - %s", symbol)
+                logger.exception("[lmd_bootstrap] 产业周期视角报告生成失败 - %s", symbol)
             finally:
                 _clear_in_flight(symbol)
         finally:
@@ -163,7 +163,7 @@ async def _run_lmd_trigger(stock: Any, *, suppress_notify: bool) -> None:
 
 
 def ensure_lmd_report(stock: Any, *, suppress_notify: bool | None = None) -> dict:
-    """若该自选股尚无老马视角报告，则加入后台生成队列。
+    """若该自选股尚无产业周期视角报告，则加入后台生成队列。
 
     Returns:
         {has_report, queued, deduplicated, message}
@@ -184,14 +184,14 @@ def ensure_lmd_report(stock: Any, *, suppress_notify: bool | None = None) -> dic
                 "has_report": has_lmd_report(db, payload.symbol),
                 "queued": False,
                 "deduplicated": False,
-                "message": "老马视角自动补全已关闭",
+                "message": "产业周期视角自动补全已关闭",
             }
         if has_lmd_report(db, payload.symbol):
             return {
                 "has_report": True,
                 "queued": False,
                 "deduplicated": False,
-                "message": "已有老马视角报告",
+                "message": "已有产业周期视角报告",
             }
         notify = (
             _suppress_notify_default(db)
@@ -206,17 +206,17 @@ def ensure_lmd_report(stock: Any, *, suppress_notify: bool | None = None) -> dic
             "has_report": False,
             "queued": False,
             "deduplicated": True,
-            "message": "老马视角报告生成中",
+            "message": "产业周期视角报告生成中",
         }
 
     _ensure_worker()
     _task_queue.put((payload, notify))
-    logger.info("[lmd_bootstrap] 已排队老马视角报告 - %s", payload.symbol)
+    logger.info("[lmd_bootstrap] 已排队产业周期视角报告 - %s", payload.symbol)
     return {
         "has_report": False,
         "queued": True,
         "deduplicated": False,
-        "message": "已提交老马视角报告生成",
+        "message": "已提交产业周期视角报告生成",
     }
 
 
@@ -241,5 +241,5 @@ def bootstrap_all_missing_stocks() -> int:
         if result.get("queued"):
             queued += 1
     if queued:
-        logger.info("[lmd_bootstrap] 启动扫描：已为 %s 只自选股排队老马视角报告", queued)
+        logger.info("[lmd_bootstrap] 启动扫描：已为 %s 只自选股排队产业周期视角报告", queued)
     return queued

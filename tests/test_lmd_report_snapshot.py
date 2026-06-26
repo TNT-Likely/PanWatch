@@ -1,4 +1,4 @@
-"""老马视角报告快照解析测试。"""
+"""产业周期视角报告快照解析测试。"""
 
 from src.core.lmd_report_snapshot import (
     attach_lmd_snapshot_to_raw_data,

@@ -22,13 +22,13 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Popover, PopoverContent, PopoverTrigger } from '@panwatch/base-ui/components/ui/popover'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { useRestoreStockInsight } from '@/lib/use-restore-stock-insight'
 import { EtfOverviewModal } from '@panwatch/biz-ui/components/etf-overview-modal'
 import { LmdReportSectionModal } from '@panwatch/biz-ui/components/lmd-report-section-modal'
+import { LMD_DISPLAY_NAME } from '@panwatch/biz-ui/lib/lmd-report'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import type { LmdReportSection } from '@panwatch/biz-ui/lib/report-toc'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
@@ -601,7 +601,6 @@ const POSITION_ACTION_TONES = {
   ai: 'bg-indigo-500/12 text-indigo-600 hover:bg-indigo-500/20 dark:text-indigo-300',
   add: 'bg-rose-500/12 text-rose-600 hover:bg-rose-500/20 dark:text-rose-300',
   reduce: 'bg-emerald-500/12 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-300',
-  more: 'bg-accent/50 text-muted-foreground hover:bg-accent hover:text-foreground',
 } as const
 
 type PositionActionTone = keyof typeof POSITION_ACTION_TONES
@@ -674,62 +673,150 @@ function PositionAgentBadges({
   )
 }
 
-function PositionMoreMenu({
+function PositionExtraActions({
   onNews,
   onEdit,
   onDelete,
   onAgentConfig,
+  btnClass = '',
 }: {
   onNews: () => void
   onEdit: () => void
   onDelete: () => void
   onAgentConfig?: () => void
+  btnClass?: string
 }) {
-  const [open, setOpen] = useState(false)
+  return (
+    <>
+      {onAgentConfig ? (
+        <PositionActionButton tone="ai" className={btnClass} title="Agent 配置" onClick={onAgentConfig}>
+          Agent
+        </PositionActionButton>
+      ) : null}
+      <PositionActionButton tone="default" className={btnClass} title="相关资讯" onClick={onNews}>
+        资讯
+      </PositionActionButton>
+      <PositionActionButton tone="default" className={btnClass} title="编辑持仓" onClick={onEdit}>
+        编辑
+      </PositionActionButton>
+      <PositionActionButton
+        tone="reduce"
+        className={`${btnClass} text-destructive hover:bg-destructive/10`}
+        title="删除持仓"
+        onClick={onDelete}
+      >
+        删除
+      </PositionActionButton>
+    </>
+  )
+}
 
-  const run = (action: () => void) => {
-    setOpen(false)
-    action()
-  }
+function PositionRowActions({
+  stockId,
+  symbol,
+  market,
+  stockName,
+  showKline = false,
+  compact = false,
+  align = 'center',
+  onKline,
+  onReports,
+  onAnalysis,
+  onHistory,
+  onAskAI,
+  onAdd,
+  onReduce,
+  onAgentConfig,
+  onNews,
+  onEdit,
+  onDelete,
+  onPriceAlertChanged,
+  getPriceAlertSummary,
+}: {
+  stockId: number
+  symbol: string
+  market: string
+  stockName: string
+  showKline?: boolean
+  compact?: boolean
+  align?: 'start' | 'center' | 'end'
+  onKline: () => void
+  onReports: () => void
+  onAnalysis: () => void
+  onHistory: () => void
+  onAskAI: () => void
+  onAdd: () => void
+  onReduce: () => void
+  onAgentConfig?: () => void
+  onNews: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onPriceAlertChanged: () => void
+  getPriceAlertSummary: (symbol: string, market: string) => { total: number; enabled: number }
+}) {
+  const btnClass = compact ? 'h-6 px-1.5 text-[10px]' : 'h-7 px-2 text-[11px]'
+  const alertClass = compact
+    ? 'h-6 px-1.5 text-[10px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'
+    : 'h-7 px-2 text-[11px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'
+  const alignClass = align === 'end' ? 'justify-end' : align === 'start' ? 'justify-start' : 'justify-center'
+  const rowClass = `flex items-center gap-0.5 flex-wrap ${alignClass}`
+
+  const priceAlert = (
+    <StockPriceAlertPanel
+      mode="text"
+      stockId={stockId}
+      symbol={symbol}
+      market={market}
+      stockName={stockName}
+      initialTotal={getPriceAlertSummary(symbol, market).total}
+      initialEnabled={getPriceAlertSummary(symbol, market).enabled}
+      onChanged={onPriceAlertChanged}
+      triggerClassName={alertClass}
+    />
+  )
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <PositionActionButton tone="more" title="更多操作">更多</PositionActionButton>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-28 p-1">
-        {onAgentConfig ? (
-          <button
-            type="button"
-            className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
-            onClick={() => run(onAgentConfig)}
-          >
-            Agent配置
-          </button>
+    <div className="flex flex-col gap-1">
+      <div className={rowClass}>
+        {showKline ? (
+          <PositionActionButton tone="kline" className={btnClass} onClick={onKline} title="K线指标">
+            K线
+          </PositionActionButton>
         ) : null}
-        <button
-          type="button"
-          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
-          onClick={() => run(onNews)}
-        >
-          资讯
-        </button>
-        <button
-          type="button"
-          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] hover:bg-accent/60 transition-colors"
-          onClick={() => run(onEdit)}
-        >
-          编辑
-        </button>
-        <button
-          type="button"
-          className="flex w-full items-center rounded-md px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 transition-colors"
-          onClick={() => run(onDelete)}
-        >
-          删除
-        </button>
-      </PopoverContent>
-    </Popover>
+        {priceAlert}
+        <PositionActionButton tone="report" className={btnClass} onClick={onReports} title="查看 Agent 报告">
+          报告
+        </PositionActionButton>
+      </div>
+      <div className={rowClass}>
+        <PositionActionButton tone="analysis" className={btnClass} onClick={onAnalysis} title="深度分析">
+          分析
+        </PositionActionButton>
+        <PositionActionButton tone="history" className={btnClass} onClick={onHistory} title="历史交易明细">
+          历史交易
+        </PositionActionButton>
+      </div>
+      <div className={rowClass}>
+        <PositionActionButton tone="ai" className={btnClass} onClick={onAskAI} title="问 AI">
+          问AI
+        </PositionActionButton>
+        <PositionActionButton tone="add" className={btnClass} onClick={onAdd} title="加仓">
+          加仓
+        </PositionActionButton>
+        <PositionActionButton tone="reduce" className={btnClass} onClick={onReduce} title="减仓">
+          减仓
+        </PositionActionButton>
+      </div>
+      <div className={rowClass}>
+        <PositionExtraActions
+          btnClass={btnClass}
+          onAgentConfig={onAgentConfig}
+          onNews={onNews}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -850,8 +937,8 @@ function WatchlistRowActions({
         triggerClassName={alertClass}
       />
       <PositionActionButton tone="report" className={btnClass} onClick={onReports} title="查看 Agent 报告">报告</PositionActionButton>
-      <PositionActionButton tone="default" className={btnClass} onClick={onValuation} title="老马视角 · 估值">估值</PositionActionButton>
-      <PositionActionButton tone="default" className={btnClass} onClick={onFundamentals} title="老马视角 · 基本面">基本面</PositionActionButton>
+      <PositionActionButton tone="default" className={btnClass} onClick={onValuation} title={`${LMD_DISPLAY_NAME} · 估值`}>估值</PositionActionButton>
+      <PositionActionButton tone="default" className={btnClass} onClick={onFundamentals} title={`${LMD_DISPLAY_NAME} · 基本面`}>基本面</PositionActionButton>
       <PositionActionButton tone="analysis" className={btnClass} onClick={onAnalysis} title="深度分析">分析</PositionActionButton>
       <PositionActionButton tone="ai" className={btnClass} onClick={onAskAI} title="问 AI">问AI</PositionActionButton>
       {!isHolding ? (
@@ -1339,7 +1426,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       }
       setLmdSnapshots(map)
     } catch (e) {
-      console.warn('加载老马视角快照失败:', e)
+      console.warn(`加载${LMD_DISPLAY_NAME}快照失败:`, e)
     }
   }, [pageMode, stocks])
 
@@ -2253,7 +2340,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setRunningAgents(prev => ({ ...prev, [stockId]: agentName }))
     // 触发后立即关闭配置弹窗，避免多层弹窗干扰
     setAgentDialogStock(null)
-    // 老马视角：Hermes 联网研究，同步等待（约 2–5 分钟），完成后弹窗展示
+    // 产业周期视角：Hermes 联网研究，同步等待（约 2–5 分钟），完成后弹窗展示
     const syncWait = agentName === 'lmd_outlook'
     const query = syncWait
       ? '?bypass_throttle=true&wait=true'
@@ -2297,12 +2384,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
         }
         if (agentName === 'lmd_outlook') {
           setAgentResultDialog({
-            title: result.title || '老马视角',
+            title: result.title || LMD_DISPLAY_NAME,
             content: result.content || '',
             should_alert: !!result.should_alert,
             notified: !!result.notified,
           })
-          toast('老马视角报告已生成，也可在「历史」中查看', 'success')
+          toast(`${LMD_DISPLAY_NAME}报告已生成，也可在「历史」中查看`, 'success')
           return
         }
         toast(result.should_alert ? 'AI 建议关注' : 'AI 判断无需关注', result.should_alert ? 'success' : 'info')
@@ -3403,49 +3490,27 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                       />
                                     ) : null}
                                   </td>
-                                  <td className="px-3 py-2 text-center min-w-[18rem]">
-                                    <div className="flex items-center justify-center gap-1 flex-wrap">
-                                      {(!suggestion && !kline) ? (
-                                        <PositionActionButton tone="kline" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标">
-                                          K线
-                                        </PositionActionButton>
-                                      ) : null}
-                                      <StockPriceAlertPanel
-                                        mode="text"
-                                        stockId={pos.stock_id}
-                                        symbol={pos.symbol}
-                                        market={pos.market}
-                                        stockName={pos.name}
-                                        initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
-                                        initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
-                                        onChanged={loadPriceAlertSummaries}
-                                        triggerClassName="h-8 px-2.5 text-[12px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
-                                      />
-                                      <PositionActionButton tone="report" title="查看 Agent 报告" onClick={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}>
-                                        报告
-                                      </PositionActionButton>
-                                      <PositionActionButton tone="analysis" title="深度分析" onClick={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}>
-                                        分析
-                                      </PositionActionButton>
-                                      <PositionActionButton tone="history" title="历史交易明细" onClick={() => openPositionTradesDialog(pos, account.name)}>
-                                        历史交易
-                                      </PositionActionButton>
-                                      <PositionActionButton tone="ai" title="问 AI" onClick={() => openPositionChat(pos, account.name, suggestion, kline)}>
-                                        问AI
-                                      </PositionActionButton>
-                                      <PositionActionButton tone="add" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}>
-                                        加仓
-                                      </PositionActionButton>
-                                      <PositionActionButton tone="reduce" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}>
-                                        减仓
-                                      </PositionActionButton>
-                                      <PositionMoreMenu
-                                        onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
-                                        onNews={() => openNewsDialog(pos.name)}
-                                        onEdit={() => openPositionDialog(account.id, pos)}
-                                        onDelete={() => handleDeletePosition(pos.id)}
-                                      />
-                                    </div>
+                                  <td className="px-3 py-2 text-center align-top min-w-[11rem]">
+                                    <PositionRowActions
+                                      stockId={pos.stock_id}
+                                      symbol={pos.symbol}
+                                      market={pos.market}
+                                      stockName={pos.name}
+                                      showKline={!suggestion && !kline}
+                                      onKline={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)}
+                                      onReports={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}
+                                      onAnalysis={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}
+                                      onHistory={() => openPositionTradesDialog(pos, account.name)}
+                                      onAskAI={() => openPositionChat(pos, account.name, suggestion, kline)}
+                                      onAdd={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}
+                                      onReduce={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}
+                                      onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
+                                      onNews={() => openNewsDialog(pos.name)}
+                                      onEdit={() => openPositionDialog(account.id, pos)}
+                                      onDelete={() => handleDeletePosition(pos.id)}
+                                      onPriceAlertChanged={loadPriceAlertSummaries}
+                                      getPriceAlertSummary={getPriceAlertSummary}
+                                    />
                                   </td>
                                 </tr>
                               )
@@ -3613,58 +3678,36 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                 </div>
                               </div>
                               {/* Row 4: Actions */}
-                              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/20">
-                                <div className="min-w-0">
-                                  {stock ? (
-                                    <PositionAgentBadges
-                                      stockAgents={stock.agents}
-                                      agentConfigs={agents}
-                                      runningAgentName={runningAgents[stock.id]}
-                                    />
-                                  ) : null}
-                                </div>
-                                <div className="flex items-center flex-wrap justify-end gap-1">
-                                  {(!suggestion && !kline) ? (
-                                    <PositionActionButton tone="kline" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标">
-                                      K线
-                                    </PositionActionButton>
-                                  ) : null}
-                                  <StockPriceAlertPanel
-                                    mode="text"
-                                    stockId={pos.stock_id}
-                                    symbol={pos.symbol}
-                                    market={pos.market}
-                                    stockName={pos.name}
-                                    initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
-                                    initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
-                                    onChanged={loadPriceAlertSummaries}
-                                    triggerClassName="h-8 px-2.5 text-[12px] font-medium bg-amber-500/12 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                              <div className="mt-2 pt-2 border-t border-border/20 space-y-2">
+                                {stock ? (
+                                  <PositionAgentBadges
+                                    stockAgents={stock.agents}
+                                    agentConfigs={agents}
+                                    runningAgentName={runningAgents[stock.id]}
                                   />
-                                  <PositionActionButton tone="report" title="查看 Agent 报告" onClick={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}>
-                                    报告
-                                  </PositionActionButton>
-                                  <PositionActionButton tone="analysis" title="深度分析" onClick={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}>
-                                    分析
-                                  </PositionActionButton>
-                                  <PositionActionButton tone="history" title="历史交易明细" onClick={() => openPositionTradesDialog(pos, account.name)}>
-                                    历史交易
-                                  </PositionActionButton>
-                                  <PositionActionButton tone="ai" title="问 AI" onClick={() => openPositionChat(pos, account.name, suggestion, kline)}>
-                                    问AI
-                                  </PositionActionButton>
-                                  <PositionActionButton tone="add" title="加仓" onClick={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}>
-                                    加仓
-                                  </PositionActionButton>
-                                  <PositionActionButton tone="reduce" title="减仓" onClick={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}>
-                                    减仓
-                                  </PositionActionButton>
-                                  <PositionMoreMenu
-                                    onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
-                                    onNews={() => openNewsDialog(pos.name)}
-                                    onEdit={() => openPositionDialog(account.id, pos)}
-                                    onDelete={() => handleDeletePosition(pos.id)}
-                                  />
-                                </div>
+                                ) : null}
+                                <PositionRowActions
+                                  compact
+                                  align="end"
+                                  stockId={pos.stock_id}
+                                  symbol={pos.symbol}
+                                  market={pos.market}
+                                  stockName={pos.name}
+                                  showKline={!suggestion && !kline}
+                                  onKline={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)}
+                                  onReports={() => openStockDetailReports(pos.symbol, pos.market, pos.name)}
+                                  onAnalysis={() => openStockDetailDeep(pos.symbol, pos.market, pos.name)}
+                                  onHistory={() => openPositionTradesDialog(pos, account.name)}
+                                  onAskAI={() => openPositionChat(pos, account.name, suggestion, kline)}
+                                  onAdd={() => openStockDetailAddPosition(pos.symbol, pos.market, pos.name)}
+                                  onReduce={() => openStockDetailReducePosition(pos.symbol, pos.market, pos.name)}
+                                  onAgentConfig={stock ? () => setAgentDialogStock(stock) : undefined}
+                                  onNews={() => openNewsDialog(pos.name)}
+                                  onEdit={() => openPositionDialog(account.id, pos)}
+                                  onDelete={() => handleDeletePosition(pos.id)}
+                                  onPriceAlertChanged={loadPriceAlertSummaries}
+                                  getPriceAlertSummary={getPriceAlertSummary}
+                                />
                               </div>
                             </div>
                           )
@@ -4264,7 +4307,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                             onEnsureReport={() => {
                               stocksApi.ensureLmdReport(stock.id)
                                 .then((resp) => {
-                                  toast(resp.message || '老马视角报告生成中', 'info')
+                                  toast(resp.message || `${LMD_DISPLAY_NAME}报告生成中`, 'info')
                                   refreshLmdSnapshots().catch(() => undefined)
                                 })
                                 .catch((e) => toast(e instanceof Error ? e.message : '触发生成失败', 'error'))

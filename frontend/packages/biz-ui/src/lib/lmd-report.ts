@@ -1,12 +1,12 @@
 import { localSkillAgentName, parseLocalSkillSlug } from '@panwatch/api'
 
-/** Hermes skill 名；与 lmd_outlook Agent 共用同一套老马视角报告。 */
+/** Hermes skill 名；与 lmd_outlook Agent 共用同一套产业周期视角报告。 */
 export const LMD_SKILL_SLUG = 'lmd-finance-perspective'
 
 /** 工作流 Agent 名（报告列表、触发生成统一用这个）。 */
 export const LMD_AGENT_NAME = 'lmd_outlook'
 
-export const LMD_DISPLAY_NAME = '老马视角'
+export const LMD_DISPLAY_NAME = '产业周期视角'
 
 export const LMD_LOCAL_SKILL_AGENT_NAME = localSkillAgentName(LMD_SKILL_SLUG)
 
@@ -38,7 +38,7 @@ function reportTimeMs(record: {
   return 0
 }
 
-/** 从报告列表中取最新一条老马视角（含 lmd_outlook 与 local_skill:lmd-finance-perspective）。 */
+/** 从报告列表中取最新一条产业周期视角（含 lmd_outlook 与 local_skill:lmd-finance-perspective）。 */
 export function pickLatestLmdReport<T extends {
   agent_name: string
   updated_at?: string

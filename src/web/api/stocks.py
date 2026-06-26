@@ -388,7 +388,7 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
 
         ensure_lmd_report(db_stock)
     except Exception as e:
-        logger.warning("新增自选股后排队老马视角报告失败: %s", e)
+        logger.warning("新增自选股后排队产业周期视角报告失败: %s", e)
     return _stock_to_response(db_stock)
 
 
@@ -786,7 +786,7 @@ class LmdSnapshotResponse(BaseModel):
 
 @router.post("/lmd-snapshots/batch", response_model=list[LmdSnapshotResponse])
 def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get_db)):
-    """批量返回自选股最新老马视角报告中的估值/基本面快照。"""
+    """批量返回自选股最新产业周期视角报告中的估值/基本面快照。"""
     symbols = [s.strip() for s in (body.symbols or []) if s and s.strip()]
     if not symbols:
         return []
@@ -820,16 +820,16 @@ def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get
 
 @router.post("/ensure-lmd-reports")
 def ensure_all_lmd_reports(db: Session = Depends(get_db)):
-    """为所有尚无老马视角报告的自选股排队生成。"""
+    """为所有尚无产业周期视角报告的自选股排队生成。"""
     from src.core.lmd_auto_bootstrap import bootstrap_all_missing_stocks
 
     queued = bootstrap_all_missing_stocks()
-    return {"queued": queued, "message": f"已为 {queued} 只自选股排队老马视角报告"}
+    return {"queued": queued, "message": f"已为 {queued} 只自选股排队产业周期视角报告"}
 
 
 @router.post("/{stock_id}/agents/lmd_outlook/ensure", response_model=EnsureLmdReportResponse)
 def ensure_stock_lmd_report(stock_id: int, db: Session = Depends(get_db)):
-    """若该自选股尚无老马视角报告，则后台排队生成。"""
+    """若该自选股尚无产业周期视角报告，则后台排队生成。"""
     from src.core.lmd_auto_bootstrap import ensure_lmd_report
 
     db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
@@ -936,18 +936,18 @@ async def trigger_stock_agent(
             )
         analyst_types_override = requested
 
-    # 幂等性兜底：老马视角 Hermes 单次 2–5 分钟，自动补全与手动触发共用 in-flight 集合。
+    # 幂等性兜底：产业周期视角 Hermes 单次 2–5 分钟，自动补全与手动触发共用 in-flight 集合。
     if agent_name == "lmd_outlook" and not force_refresh:
         from src.core.lmd_auto_bootstrap import try_acquire_lmd_generation
 
         if not try_acquire_lmd_generation(trigger_stock.symbol):
             logger.info(
-                f"[trigger 幂等] {trigger_stock.symbol} 老马视角报告生成中，跳过重复触发"
+                f"[trigger 幂等] {trigger_stock.symbol} 产业周期视角报告生成中，跳过重复触发"
             )
             return {
                 "queued": False,
                 "deduplicated": True,
-                "message": "老马视角报告生成中，请稍候",
+                "message": "产业周期视角报告生成中，请稍候",
             }
 
     # 幂等性兜底:TradingAgents 单次 3-5 分钟,前端误操作/双击可能并发触发同一标的。

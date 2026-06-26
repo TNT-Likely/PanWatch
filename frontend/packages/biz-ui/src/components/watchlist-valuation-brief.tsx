@@ -1,6 +1,7 @@
 import { cn } from '@panwatch/base-ui'
 import type { LmdReportSnapshot } from '@panwatch/api'
 import type { MouseEvent } from 'react'
+import { LMD_DISPLAY_NAME } from '../lib/lmd-report'
 
 function formatPe(value: number | null | undefined): string | null {
   if (value == null) return null
@@ -83,10 +84,10 @@ export function WatchlistValuationBrief(props: {
   if (chips.length === 0 && !showPending) return null
 
   const title = snapshot?.report_date
-    ? `老马视角 · ${snapshot.report_date}`
+    ? `${LMD_DISPLAY_NAME} · ${snapshot.report_date}`
     : showPending
-      ? '点击排队生成老马视角报告'
-      : '老马视角估值快照'
+      ? `点击排队生成${LMD_DISPLAY_NAME}报告`
+      : `${LMD_DISPLAY_NAME}估值快照`
 
   const handleClick = (e: MouseEvent) => {
     e.stopPropagation()
@@ -114,7 +115,7 @@ export function WatchlistValuationBrief(props: {
             compact ? 'text-[9px]' : 'text-[10px]',
           )}
         >
-          待生成老马报告
+          待生成周期报告
         </span>
       )}
       {chips.map((chip) => (

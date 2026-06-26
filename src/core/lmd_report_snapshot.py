@@ -1,4 +1,4 @@
-"""从老马视角报告 Markdown 提取关注列表可用的估值/基本面快照。"""
+"""从产业周期视角报告 Markdown 提取关注列表可用的估值/基本面快照。"""
 
 from __future__ import annotations
 
@@ -186,7 +186,7 @@ def _truncate(text: str | None, limit: int = 18) -> str | None:
 
 
 def extract_lmd_report_snapshot(markdown: str, *, report_date: str | None = None) -> LmdReportSnapshot:
-    """从老马视角报告正文提取卡片展示用的结构化快照。"""
+    """从产业周期视角报告正文提取卡片展示用的结构化快照。"""
     content = (markdown or "").strip()
     if not content:
         return LmdReportSnapshot(has_report=False, report_date=report_date)
@@ -321,7 +321,7 @@ def snapshot_from_history_record(record: Any) -> LmdReportSnapshot:
 
 
 def load_latest_lmd_reports_by_symbol(db: Any, symbols: list[str]) -> dict[str, Any]:
-    """按 symbol 取最新一条老马视角报告记录。"""
+    """按 symbol 取最新一条产业周期视角报告记录。"""
     if not symbols:
         return {}
 

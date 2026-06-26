@@ -76,7 +76,7 @@ function headingMatchesLmdSection(text: string, section: LmdReportSection): bool
   return false
 }
 
-/** 在老马视角报告 Markdown 中定位「基本面 / 估值」章节锚点。 */
+/** 在产业周期视角报告 Markdown 中定位「基本面 / 估值」章节锚点。 */
 export function findLmdReportSectionSlug(
   markdown: string,
   section: LmdReportSection,

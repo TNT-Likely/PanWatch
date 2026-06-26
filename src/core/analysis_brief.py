@@ -1,4 +1,4 @@
-"""从分析历史快速提取 AI 聊天用的老马视角 / 深度分析摘要（无报告则跳过）。"""
+"""从分析历史快速提取 AI 聊天用的产业周期视角 / 深度分析摘要（无报告则跳过）。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from src.core.lmd_report_snapshot import snapshot_from_history_record
 
 
 def format_lmd_brief(record: Any | None) -> str | None:
-    """老马视角结论：优先结构化快照，忽略无报告。"""
+    """产业周期视角结论：优先结构化快照，忽略无报告。"""
     if not record:
         return None
     snap = snapshot_from_history_record(record)
@@ -30,7 +30,7 @@ def format_lmd_brief(record: Any | None) -> str | None:
         return None
 
     date = str(getattr(record, "analysis_date", "") or "").strip()
-    prefix = f"老马视角({date})" if date else "老马视角"
+    prefix = f"产业周期视角({date})" if date else "产业周期视角"
     return f"{prefix}：{'，'.join(parts)}"
 
 

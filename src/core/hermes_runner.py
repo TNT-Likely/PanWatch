@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _SESSION_ID_RE = re.compile(r"^session_id:\s*(\S+)\s*$", re.MULTILINE)
 _DEFAULT_CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
 
-# 完整老马视角成稿应覆盖的主题（至少其三）
+# 完整产业周期视角成稿应覆盖的主题（至少其三）
 _FULL_REPORT_MARKERS = (
     "整体定位",
     "五维",
@@ -46,7 +46,7 @@ _NON_FINAL_REPORT_NAME_PARTS = (
 
 _FOLLOWUP_PROMPT = """你上一轮的回复只是研究摘要/执行摘要或文件 diff，不是可入库的完整报告。
 
-请**立即**在同一话题下输出完整的老马视角 Markdown 成稿（不要再写「报告完成」「执行摘要」「Step 2/Step 3」「review diff」等过程内容）。
+请**立即**在同一话题下输出完整的产业周期视角 Markdown 成稿（不要再写「报告完成」「执行摘要」「Step 2/Step 3」「review diff」等过程内容）。
 
 必须包含以下二级标题（缺一不可，可在此基础上扩展三级标题）：
 ## 一、整体定位
@@ -167,7 +167,7 @@ def find_lmd_report_file(
     analysis_date: date | None = None,
     min_mtime: float | None = None,
 ) -> Path | None:
-    """在 reports/ 下查找老马视角成稿（优先最终报告，跳过 Research 底稿）。"""
+    """在 reports/ 下查找产业周期视角成稿（优先最终报告，跳过 Research 底稿）。"""
     root = Path(reports_dir)
     if not root.is_dir():
         return None

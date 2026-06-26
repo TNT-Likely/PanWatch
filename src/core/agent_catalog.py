@@ -171,7 +171,7 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
     ),
     AgentSeedSpec(
         name="lmd_outlook",
-        display_name="老马视角",
+        display_name="产业周期视角",
         description="以老马投资研究的产业周期×情绪博弈框架，结合行情/技术/资金/新闻生成深度分析报告。需手动触发。",
         enabled=False,
         schedule="",
@@ -195,7 +195,7 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "hermes_auto_expand_summary": True,
             # builtin 模式：留空用 prompts/lmd_outlook.txt；可填外部 skill 绝对路径
             "skill_path": "",
-            # 自选股默认补全老马视角报告（启动扫描 + 新增自选股时排队）
+            # 自选股默认补全产业周期视角报告（启动扫描 + 新增自选股时排队）
             "auto_bootstrap": {
                 "enabled": True,
                 "suppress_notify": True,

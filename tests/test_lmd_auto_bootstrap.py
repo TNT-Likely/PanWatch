@@ -1,4 +1,4 @@
-"""老马视角自动补全测试。"""
+"""产业周期视角自动补全测试。"""
 
 from types import SimpleNamespace
 
@@ -44,13 +44,13 @@ class _FakeSession:
 
 
 def test_has_lmd_report_false():
-    """无历史记录时应判定为尚未生成老马视角报告。"""
+    """无历史记录时应判定为尚未生成产业周期视角报告。"""
     db = _FakeSession(has_report=False)
     assert mod.has_lmd_report(db, "600519") is False
 
 
 def test_has_lmd_report_true():
-    """已有历史记录时应判定为已生成老马视角报告。"""
+    """已有历史记录时应判定为已生成产业周期视角报告。"""
     db = _FakeSession(has_report=True)
     assert mod.has_lmd_report(db, "600519") is True
 

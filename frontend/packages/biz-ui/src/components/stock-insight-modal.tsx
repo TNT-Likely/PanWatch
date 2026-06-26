@@ -207,7 +207,7 @@ const AGENT_LABELS: Record<string, string> = {
   news_digest: '新闻速递',
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
-  lmd_outlook: '老马视角',
+  lmd_outlook: LMD_DISPLAY_NAME,
 }
 
 function resolveAgentLabel(agentName: string, agents: ReportAgentConfig[] = []): string {
@@ -1028,7 +1028,7 @@ export default function StockInsightModal(props: {
       toast(
         isSuggestionAgent
           ? 'AI 建议已更新，可在「建议」查看'
-          : (isLmdReportAgent(opts.agentName) ? '老马视角报告已生成' : '报告已生成'),
+          : (isLmdReportAgent(opts.agentName) ? `${LMD_DISPLAY_NAME}报告已生成` : '报告已生成'),
         'success',
       )
       if (isSuggestionAgent) {
@@ -1056,7 +1056,7 @@ export default function StockInsightModal(props: {
       if (!resp.queued && !resp.deduplicated) return
       setReportGenerating('lmd_outlook')
       if (resp.deduplicated) {
-        toast(resp.message || '老马视角报告生成中', 'info')
+        toast(resp.message || `${LMD_DISPLAY_NAME}报告生成中`, 'info')
       }
       const suggestionList = await loadSuggestions().catch(() => suggestions)
       void pollForNewReport({
@@ -1189,7 +1189,7 @@ export default function StockInsightModal(props: {
       } else if (fresh[0]?.id) {
         navigateToHistoryReport(fresh[0].id)
       } else {
-        toast(isLmdReportAgent(agentName) ? '老马视角报告已生成' : '报告已生成', 'success')
+        toast(isLmdReportAgent(agentName) ? `${LMD_DISPLAY_NAME}报告已生成` : '报告已生成', 'success')
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '报告生成失败'
@@ -2576,7 +2576,7 @@ export default function StockInsightModal(props: {
                         <div className="space-y-2 py-3">
                           <div className="text-[12px] text-muted-foreground">
                             {isLmdReportAgent(reportGenerating || '')
-                              ? '正在生成老马视角报告，约需 2–5 分钟…'
+                              ? `正在生成${LMD_DISPLAY_NAME}报告，约需 2–5 分钟…`
                               : `${resolveAgentLabel(reportGenerating || '', reportAgents)} 报告生成中…`}
                           </div>
                           <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -2702,7 +2702,7 @@ export default function StockInsightModal(props: {
                       <div className="text-[12px] text-muted-foreground">
                         {reportGenerating
                           ? (isLmdReportAgent(reportGenerating)
-                            ? '正在生成老马视角报告，约需 2–5 分钟…'
+                            ? `正在生成${LMD_DISPLAY_NAME}报告，约需 2–5 分钟…`
                             : `${resolveAgentLabel(reportGenerating, reportAgents)} 报告生成中…`)
                           : '暂无报告'}
                       </div>

@@ -24,7 +24,7 @@ export function buildReportAgentOptions(
 
   const workflow = (workflowAgents || [])
     .filter(a => {
-      // 已启用对应 Hermes skill 时，下拉只保留 skill 项「老马视角」，避免重复
+      // 已启用对应 Hermes skill 时，下拉只保留 skill 项「产业周期视角」，避免重复
       if (a.name === LMD_AGENT_NAME && lmdSkillEnabled) return false
       return true
     })
