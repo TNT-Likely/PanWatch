@@ -56,6 +56,31 @@ def test_list_stocks_featured_first(client, db, auth_token):
     assert items[0]["is_featured"] is True
 
 
+def test_create_stock_prepends_non_featured(client, db, auth_token):
+    """新添加的非精华股票排在非精华区最前。"""
+    db.add_all([
+        Stock(symbol="000001", name="平安银行", market="CN", sort_order=1, is_featured=True),
+        Stock(symbol="000002", name="万科A", market="CN", sort_order=5, is_featured=False),
+        Stock(symbol="000003", name="国农科技", market="CN", sort_order=8, is_featured=False),
+    ])
+    db.commit()
+
+    r = client.post(
+        "/api/stocks",
+        headers=_auth_headers(auth_token),
+        json={"symbol": "601127", "name": "赛力斯", "market": "CN"},
+    )
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["is_featured"] is False
+    assert data["sort_order"] == 4
+
+    listed = client.get("/api/stocks", headers=_auth_headers(auth_token)).json()["data"]
+    symbols = [item["symbol"] for item in listed]
+    assert symbols[0] == "000001"
+    assert symbols[1] == "601127"
+
+
 def test_set_stock_featured(client, db, auth_token):
     """可切换股票精华状态。"""
     stock = Stock(symbol="601127", name="赛力斯", market="CN", sort_order=5, is_featured=False)

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import { ChevronDown, FileDown, List } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -82,17 +82,31 @@ export function ReportViewer({
   emptyText = '暂无报告内容',
   onExportPdf,
   exportBusy = false,
+  initialSectionSlug,
 }: {
   content?: string | null
   className?: string
   emptyText?: string
   onExportPdf?: () => void | Promise<void>
   exportBusy?: boolean
+  initialSectionSlug?: string | null
 }) {
   const text = String(content || '').trim()
   const headings = useMemo(() => parseReportHeadings(text), [text])
   const [tocOpen, setTocOpen] = useState(true)
   const [activeSlug, setActiveSlug] = useState('')
+
+  useEffect(() => {
+    if (!text || !initialSectionSlug) return
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(initialSectionSlug)
+      if (!el) return
+      setActiveSlug(initialSectionSlug)
+      setTocOpen(true)
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }, [text, initialSectionSlug, headings])
 
   if (!text) {
     return <div className="text-[12px] text-muted-foreground">{emptyText}</div>

@@ -101,6 +101,7 @@ class Stock(Base):
     concept_tags_manual = Column(JSON, default=[])
     concept_tags_updated_at = Column(DateTime, nullable=True)
     industry_chain_auto = Column(JSON, default={})  # LMD 产业链自动分类
+    industry_chain_manual = Column(JSON, default={})  # 手动覆盖的产业链分类
     industry_chain_updated_at = Column(DateTime, nullable=True)
     investment_profile = Column(JSON, default={})  # 长线投资计划
     created_at = Column(DateTime, server_default=func.now())

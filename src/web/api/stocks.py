@@ -26,9 +26,13 @@ from src.core.stock_concept_tags import (
     schedule_refresh_stock_concept_tags,
 )
 from src.core.stock_industry_chain import (
+    normalize_chain_display,
     refresh_stock_industry_chain,
+    resolve_industry_chain,
     schedule_refresh_missing_industry_chains,
     schedule_refresh_stock_industry_chain,
+    set_manual_industry_chain,
+    needs_industry_chain_refresh,
 )
 from src.core.long_term_plan import (
     evaluate_add_plan,
@@ -80,6 +84,7 @@ class IndustryChainInfo(BaseModel):
     description: str = ""
     score: int = 0
     match_source: str = ""
+    source: str = ""  # manual / auto
     matched: list[str] = []
 
 
@@ -125,6 +130,10 @@ class IndustryChainRefreshRequest(BaseModel):
     limit: int = 50
 
 
+class IndustryChainManualUpdate(BaseModel):
+    layer: str | None = None  # 空值表示清除手动覆盖
+
+
 class StockAgentItem(BaseModel):
     agent_name: str
     schedule: str = ""
@@ -165,10 +174,11 @@ def _industry_chain_to_response(raw: dict | None) -> dict | None:
         "sector_label": str(raw.get("sector_label") or sector),
         "layer": layer,
         "layer_label": str(raw.get("layer_label") or layer),
-        "display": str(raw.get("display") or f"{sector}·{layer}"),
+        "display": normalize_chain_display(raw),
         "description": str(raw.get("description") or ""),
         "score": int(raw.get("score") or 0),
         "match_source": str(raw.get("match_source") or ""),
+        "source": str(raw.get("source") or ("manual" if raw.get("match_source") == "manual" else "auto")),
         "matched": [
             str(x).strip()
             for x in (raw.get("matched") or [])
@@ -190,7 +200,8 @@ def _stock_to_response(stock: Stock) -> dict:
         "concept_tags": merge_concept_tags(stock),
         "concept_tags_auto": stock.concept_tags_auto or [],
         "concept_tags_manual": stock.concept_tags_manual or [],
-        "industry_chain": _industry_chain_to_response(stock.industry_chain_auto),
+        "industry_chain": _industry_chain_to_response(resolve_industry_chain(stock)),
+        "industry_chain_manual": stock.industry_chain_manual or {},
         "investment_profile": profile,
         "agents": [
             {
@@ -309,14 +320,7 @@ def list_stocks(db: Session = Depends(get_db)):
         for s in stocks
     ):
         schedule_refresh_missing_concept_tags()
-    if any(
-        not (
-            isinstance(s.industry_chain_auto, dict)
-            and s.industry_chain_auto.get("sector")
-            and s.industry_chain_auto.get("layer")
-        )
-        for s in stocks
-    ):
+    if any(needs_industry_chain_refresh(s) for s in stocks):
         schedule_refresh_missing_industry_chains()
     return [_stock_to_response(s) for s in stocks]
 
@@ -364,8 +368,16 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(400, f"股票 {stock.symbol} 已存在")
 
-    max_order = db.query(func.max(Stock.sort_order)).scalar() or 0
-    db_stock = Stock(**stock.model_dump(), sort_order=int(max_order) + 1)
+    non_featured_orders = [
+        int(s.sort_order or 0)
+        for s in db.query(Stock).filter(Stock.is_featured == False).all()  # noqa: E712
+    ]
+    if non_featured_orders:
+        next_order = min(non_featured_orders) - 1
+    else:
+        max_order = db.query(func.max(Stock.sort_order)).scalar() or 0
+        next_order = int(max_order) + 1
+    db_stock = Stock(**stock.model_dump(), sort_order=next_order)
     db.add(db_stock)
     db.commit()
     db.refresh(db_stock)
@@ -477,6 +489,22 @@ def refresh_stock_concept_tags_api(stock_id: int, db: Session = Depends(get_db))
     except Exception as e:
         logger.error("刷新概念标签失败 %s: %s", db_stock.symbol, e)
         raise HTTPException(503, "概念标签数据源暂不可用，请稍后重试")
+    return _stock_to_response(db_stock)
+
+
+@router.put("/{stock_id}/industry-chain", response_model=StockResponse)
+def update_stock_industry_chain(
+    stock_id: int,
+    body: IndustryChainManualUpdate,
+    db: Session = Depends(get_db),
+):
+    db_stock = db.query(Stock).filter(Stock.id == stock_id).first()
+    if not db_stock:
+        raise HTTPException(404, "股票不存在")
+    try:
+        set_manual_industry_chain(db, db_stock, layer=body.layer)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     return _stock_to_response(db_stock)
 
 
@@ -732,6 +760,62 @@ class EnsureLmdReportResponse(BaseModel):
     queued: bool
     deduplicated: bool = False
     message: str = ""
+
+
+class LmdSnapshotBatchRequest(BaseModel):
+    symbols: list[str]
+
+
+class LmdSnapshotResponse(BaseModel):
+    symbol: str
+    market: str = "CN"
+    pe_ttm: float | None = None
+    forward_pe: float | None = None
+    pb: float | None = None
+    profit_yoy_pct: float | None = None
+    revenue_yoy_pct: float | None = None
+    roe_pct: float | None = None
+    gross_margin_pct: float | None = None
+    consensus_eps: float | None = None
+    valuation_score: int | None = None
+    valuation_verdict: str | None = None
+    expectation_hint: str | None = None
+    report_date: str | None = None
+    has_report: bool = False
+
+
+@router.post("/lmd-snapshots/batch", response_model=list[LmdSnapshotResponse])
+def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get_db)):
+    """批量返回自选股最新老马视角报告中的估值/基本面快照。"""
+    symbols = [s.strip() for s in (body.symbols or []) if s and s.strip()]
+    if not symbols:
+        return []
+
+    from src.core.lmd_report_snapshot import (
+        load_latest_lmd_reports_by_symbol,
+        snapshot_from_history_record,
+    )
+
+    stocks = db.query(Stock).filter(Stock.symbol.in_(symbols)).all()
+    market_by_symbol = {s.symbol: s.market for s in stocks}
+    latest = load_latest_lmd_reports_by_symbol(db, symbols)
+
+    results: list[LmdSnapshotResponse] = []
+    for symbol in symbols:
+        record = latest.get(symbol)
+        if record:
+            snap = snapshot_from_history_record(record)
+            payload = snap.to_dict()
+        else:
+            payload = {"has_report": False}
+        results.append(
+            LmdSnapshotResponse(
+                symbol=symbol,
+                market=market_by_symbol.get(symbol, "CN"),
+                **payload,
+            )
+        )
+    return results
 
 
 @router.post("/ensure-lmd-reports")

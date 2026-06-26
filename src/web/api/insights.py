@@ -1,3 +1,6 @@
+"""聚合洞察 API：行情/K线摘要、缠论情绪策略、加仓评估等。"""
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
@@ -19,7 +22,6 @@ from src.web.database import get_db
 from src.web.models import Stock
 import asyncio
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,9 @@ _ANN_CACHE = TTLCache(default_ttl_sec=21600)  # 6h
 
 router = APIRouter()
 
+_CHAN_EMOTION_CACHE: dict[str, tuple[float, dict]] = {}
+_CHAN_EMOTION_TTL_SEC = 120.0
+
 
 class InsightItem(BaseModel):
     symbol: str = Field(..., description="股票代码")
@@ -35,6 +40,17 @@ class InsightItem(BaseModel):
 
 
 class InsightsBatchRequest(BaseModel):
+    items: List[InsightItem]
+
+
+class AnalysisBriefResponse(BaseModel):
+    symbol: str
+    market: str
+    lmd_brief: str | None = None
+    deep_brief: str | None = None
+
+
+class AnalysisBriefBatchRequest(BaseModel):
     items: List[InsightItem]
 
 
@@ -58,6 +74,11 @@ def chan_emotion_strategy(
     )
 
     mkt = _parse_market(market)
+    cache_key = f"{mkt.value}:{symbol}:{'1' if holding else '0'}"
+    now = time.time()
+    cached = _CHAN_EMOTION_CACHE.get(cache_key)
+    if cached and (now - cached[0] < _CHAN_EMOTION_TTL_SEC):
+        return cached[1]
     try:
         result = analyze_chan_emotion(
             symbol,
@@ -67,7 +88,43 @@ def chan_emotion_strategy(
     except Exception as e:
         logger.warning(f"缠论情绪策略分析失败 {market}:{symbol}: {e}")
         raise HTTPException(502, f"策略分析失败: {e}")
-    return serialize_chan_emotion_result(result)
+    payload = serialize_chan_emotion_result(result)
+    _CHAN_EMOTION_CACHE[cache_key] = (now, payload)
+    return payload
+
+
+@router.post("/analysis-brief/batch", response_model=list[AnalysisBriefResponse])
+def analysis_brief_batch(body: AnalysisBriefBatchRequest, db: Session = Depends(get_db)):
+    """批量返回老马视角 / 深度分析摘要，供卡片问 AI 快速注入上下文。"""
+    if not body.items:
+        return []
+
+    from src.core.analysis_brief import (
+        format_deep_brief,
+        format_lmd_brief,
+        load_latest_deep_reports_by_symbol,
+    )
+    from src.core.lmd_report_snapshot import load_latest_lmd_reports_by_symbol
+
+    symbols = list(dict.fromkeys(it.symbol.strip() for it in body.items if it.symbol.strip()))
+    lmd_by_symbol = load_latest_lmd_reports_by_symbol(db, symbols)
+    deep_by_symbol = load_latest_deep_reports_by_symbol(db, symbols)
+
+    results: list[AnalysisBriefResponse] = []
+    for it in body.items:
+        market = _parse_market(it.market).value
+        sym = it.symbol.strip()
+        lmd_brief = format_lmd_brief(lmd_by_symbol.get(sym))
+        deep_brief = format_deep_brief(deep_by_symbol.get(sym))
+        results.append(
+            AnalysisBriefResponse(
+                symbol=sym,
+                market=market,
+                lmd_brief=lmd_brief,
+                deep_brief=deep_brief,
+            )
+        )
+    return results
 
 
 @router.post("/batch")

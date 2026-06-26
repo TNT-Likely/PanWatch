@@ -9,8 +9,8 @@ from pathlib import Path
 
 from src.agents.base import AgentContext, BaseAgent, AnalysisResult
 from src.collectors.akshare_collector import _fetch_tencent_quotes, _tencent_symbol
-from src.core.analysis_history import save_analysis
-from src.core.analysis_history import get_analysis, get_latest_analysis
+from src.core.lmd_report_snapshot import attach_lmd_snapshot_to_raw_data
+from src.core.analysis_history import save_analysis, get_analysis, get_latest_analysis
 from src.core.context_builder import ContextBuilder
 from src.core.hermes_runner import is_hermes_available, run_hermes_chat
 from src.core.signals import SignalPackBuilder
@@ -425,11 +425,15 @@ class LmdOutlookAgent(BaseAgent):
                 stock_symbol=symbol,
                 content=result.content,
                 title=result.title,
-                raw_data={
-                    "timestamp": data.get("timestamp"),
-                    "quality_overview": data.get("quality_overview"),
-                    "engine": actual_engine,
-                },
+                raw_data=attach_lmd_snapshot_to_raw_data(
+                    {
+                        "timestamp": data.get("timestamp"),
+                        "quality_overview": data.get("quality_overview"),
+                        "engine": actual_engine,
+                    },
+                    result.content,
+                    report_date=date.today().strftime("%Y-%m-%d"),
+                ),
             )
         except Exception as e:
             logger.warning("lmd_outlook save_analysis 失败,不影响主流程: %s", e)

@@ -23,7 +23,6 @@ import {
   localSkillsApi,
   isLocalSkillAgentName,
   parseLocalSkillSlug,
-  localSkillAgentName,
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
@@ -41,10 +40,19 @@ import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator, { type PositionHoldingOption } from '@panwatch/biz-ui/components/add-position-calculator'
 import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
 import { groupReportsByAgent } from '../lib/report-toc'
+import {
+  isLmdReportAgent,
+  LMD_AGENT_NAME,
+  LMD_DISPLAY_NAME,
+  LMD_LOCAL_SKILL_AGENT_NAME,
+  pickLatestLmdReport,
+} from '../lib/lmd-report'
+import { buildReportAgentOptions } from '../lib/report-agents'
 import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
 import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
 import { DeepAnalysisModePicker } from '@panwatch/biz-ui/components/deep-analysis-mode-picker'
 import { StockConceptTags } from '@panwatch/biz-ui/components/stock-concept-tags'
+import { StockIndustryChainEditor } from '@panwatch/biz-ui/components/stock-industry-chain-editor'
 
 interface QuoteResponse {
   symbol: string
@@ -172,6 +180,8 @@ interface StockItem {
   concept_tags?: Array<{ name: string; source: string }>
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
+  industry_chain?: import('@panwatch/api').IndustryChainInfo | null
+  industry_chain_manual?: { sector?: string; layer?: string } | null
   agents?: StockAgentInfo[]
 }
 
@@ -201,6 +211,7 @@ const AGENT_LABELS: Record<string, string> = {
 }
 
 function resolveAgentLabel(agentName: string, agents: ReportAgentConfig[] = []): string {
+  if (isLmdReportAgent(agentName)) return LMD_DISPLAY_NAME
   const slug = parseLocalSkillSlug(agentName)
   if (slug) {
     const hit = agents.find(a => a.name === agentName)
@@ -890,25 +901,23 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, resolvedName])
 
-  const loadReportAgents = useCallback(async () => {
+  const loadReportAgents = useCallback(async (opts?: { refreshSkills?: boolean }) => {
     try {
       const [list, localSkills] = await Promise.all([
         fetchAPI<ReportAgentConfig[]>('/agents'),
-        localSkillsApi.list({ enabledOnly: true }).catch(() => []),
+        localSkillsApi.list({ enabledOnly: true, refresh: !!opts?.refreshSkills }).catch(() => []),
       ])
       const filtered = (list || []).filter(
         a => a.enabled && REPORT_TRIGGER_AGENT_NAMES.includes(a.name as (typeof REPORT_TRIGGER_AGENT_NAMES)[number]),
       )
-      const localAgents: ReportAgentConfig[] = (localSkills || []).map(s => ({
-        name: localSkillAgentName(s.slug),
-        display_name: s.display_name || s.slug,
-        enabled: true,
-      }))
-      const merged = [...filtered, ...localAgents]
+      const merged = buildReportAgentOptions(filtered, localSkills || [])
       if (merged.length > 0) {
         setReportAgents(merged)
         if (!merged.some(a => a.name === reportAgentName)) {
-          const preferred = merged.find(a => a.name === 'daily_report') || merged[0]
+          const preferred =
+            merged.find(a => a.name === LMD_AGENT_NAME || a.name === LMD_LOCAL_SKILL_AGENT_NAME)
+            || merged.find(a => a.name === 'daily_report')
+            || merged[0]
           setReportAgentName(preferred.name)
         }
         return
@@ -994,12 +1003,12 @@ export default function StockInsightModal(props: {
         freshReports.length > opts.baselineReportCount
         || (freshReports[0]?.id != null && freshReports[0].id !== opts.baselineReportId)
         || (parseToMs(freshReports[0]?.updated_at || '') ?? 0) > (parseToMs(opts.baselineReportUpdatedAt || '') ?? 0)
-      const lmdReady = opts.agentName === 'lmd_outlook'
-        && freshReports.some(r => r.agent_name === 'lmd_outlook')
+      const lmdReady = isLmdReportAgent(opts.agentName)
+        && freshReports.some(r => isLmdReportAgent(r.agent_name))
       const freshSuggestions = await loadSuggestions()
       const suggestionsChanged = freshSuggestions.length > opts.baselineSuggestionCount
       const isSuggestionAgent = opts.agentName === 'intraday_monitor'
-      const isLmdAgent = opts.agentName === 'lmd_outlook'
+      const isLmdAgent = isLmdReportAgent(opts.agentName)
       const done = isSuggestionAgent
         ? suggestionsChanged
         : isLmdAgent
@@ -1009,7 +1018,7 @@ export default function StockInsightModal(props: {
       stopReportPoll()
       setReportGenerating(null)
       const targetReport = lmdReady
-        ? freshReports.find(r => r.agent_name === 'lmd_outlook')
+        ? pickLatestLmdReport(freshReports)
         : freshReports[0]
       const shouldNavigate = opts.navigateOnComplete !== false
       if (!isSuggestionAgent && targetReport?.id && shouldNavigate) {
@@ -1019,7 +1028,7 @@ export default function StockInsightModal(props: {
       toast(
         isSuggestionAgent
           ? 'AI 建议已更新，可在「建议」查看'
-          : (opts.agentName === 'lmd_outlook' ? '老马视角报告已生成' : '报告已生成'),
+          : (isLmdReportAgent(opts.agentName) ? '老马视角报告已生成' : '报告已生成'),
         'success',
       )
       if (isSuggestionAgent) {
@@ -1036,7 +1045,7 @@ export default function StockInsightModal(props: {
 
   const ensureLmdReportIfNeeded = useCallback(async (loaded: HistoryRecord[]) => {
     if (!watchingStock?.id || reportGenerating) return
-    const hasLmd = (loaded || []).some(r => r.agent_name === 'lmd_outlook')
+    const hasLmd = (loaded || []).some(r => isLmdReportAgent(r.agent_name))
     if (hasLmd) return
     const key = `${market}:${symbol}`
     if (lmdEnsureKeyRef.current === key) return
@@ -1090,14 +1099,17 @@ export default function StockInsightModal(props: {
             market,
             name: resolvedName || symbol,
           },
-          { wait: true, timeoutMs: 720_000 },
+          { wait: true, timeoutMs: isLmdReportAgent(agentName) ? 720_000 : 720_000 },
         )
-        const fresh = await loadReports()
-        if (fresh[0]?.id) {
-          navigateToHistoryReport(fresh[0].id)
-        } else {
-          toast('Skill 报告已生成', 'success')
-        }
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+          maxWaitMs: isLmdReportAgent(agentName) ? 420_000 : undefined,
+          navigateOnComplete: false,
+        })
         return
       }
 
@@ -1115,7 +1127,7 @@ export default function StockInsightModal(props: {
         bypass_market_hours: true,
         ...unboundOpts,
       }
-      const syncWait = agentName === 'lmd_outlook' || isLocalSkillAgentName(agentName)
+      const syncWait = isLmdReportAgent(agentName) || isLocalSkillAgentName(agentName)
       let resp: TriggerStockAgentResponse
       if (syncWait) {
         const qs = new URLSearchParams({
@@ -1142,7 +1154,7 @@ export default function StockInsightModal(props: {
           baselineReportCount,
           baselineReportUpdatedAt,
           baselineSuggestionCount,
-          maxWaitMs: agentName === 'lmd_outlook' ? 420_000 : undefined,
+          maxWaitMs: isLmdReportAgent(agentName) ? 420_000 : undefined,
         })
         return
       }
@@ -1177,7 +1189,7 @@ export default function StockInsightModal(props: {
       } else if (fresh[0]?.id) {
         navigateToHistoryReport(fresh[0].id)
       } else {
-        toast(agentName === 'lmd_outlook' ? '老马视角报告已生成' : '报告已生成', 'success')
+        toast(isLmdReportAgent(agentName) ? '老马视角报告已生成' : '报告已生成', 'success')
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '报告生成失败'
@@ -1531,6 +1543,11 @@ export default function StockInsightModal(props: {
     if (!props.open) return
     void loadReportAgents()
   }, [props.open, loadReportAgents])
+
+  useEffect(() => {
+    if (!props.open || tab !== 'reports') return
+    void loadReportAgents({ refreshSkills: true })
+  }, [props.open, tab, loadReportAgents])
 
   useEffect(() => {
     return () => stopReportPoll()
@@ -2021,6 +2038,24 @@ export default function StockInsightModal(props: {
     toast('概念标签已刷新', 'success')
   }, [market, props, symbol, toast, watchingStock])
 
+  const handleUpdateIndustryChain = useCallback(async (layer: string | null) => {
+    if (!watchingStock) return
+    const updated = await stocksApi.updateIndustryChain(watchingStock.id, layer)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast(layer ? '产业链标签已更新' : '已恢复自动分类', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
+  const handleRefreshIndustryChain = useCallback(async () => {
+    if (!watchingStock) return
+    const updated = await stocksApi.refreshIndustryChain(watchingStock.id)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast('产业链已重新分类', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
   const triggerAutoAiSuggestion = useCallback(async () => {
     // 自动建议仅针对”确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
@@ -2097,6 +2132,15 @@ export default function StockInsightModal(props: {
                   className="mt-2"
                   onUpdateManual={handleUpdateManualConceptTags}
                   onRefreshAuto={handleRefreshConceptTags}
+                />
+              )}
+              {watchingStock && (
+                <StockIndustryChainEditor
+                  className="mt-1.5"
+                  chain={watchingStock.industry_chain}
+                  manualLayer={watchingStock.industry_chain_manual?.layer}
+                  onUpdateManual={handleUpdateIndustryChain}
+                  onRefreshAuto={handleRefreshIndustryChain}
                 />
               )}
               <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
@@ -2531,9 +2575,9 @@ export default function StockInsightModal(props: {
                       reportGenerating ? (
                         <div className="space-y-2 py-3">
                           <div className="text-[12px] text-muted-foreground">
-                            {reportGenerating === 'lmd_outlook'
+                            {isLmdReportAgent(reportGenerating || '')
                               ? '正在生成老马视角报告，约需 2–5 分钟…'
-                              : `${AGENT_LABELS[reportGenerating] || reportGenerating} 报告生成中…`}
+                              : `${resolveAgentLabel(reportGenerating || '', reportAgents)} 报告生成中…`}
                           </div>
                           <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                             <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -2595,12 +2639,12 @@ export default function StockInsightModal(props: {
               <div className="space-y-3">
                 <div className="card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="text-[12px] text-muted-foreground">
-                    选择 Agent 立即生成该股票报告，无需返回列表页配置
+                    选择 Agent 或本地 Skill 生成报告；Skill 需在「Skill 广场」启用
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Select value={reportAgentName} onValueChange={setReportAgentName}>
-                      <SelectTrigger className="h-8 w-[148px] text-[11px]">
-                        <SelectValue placeholder="选择 Agent" />
+                      <SelectTrigger className="h-8 w-[min(100%,200px)] text-[11px]">
+                        <SelectValue placeholder="选择 Agent / Skill" />
                       </SelectTrigger>
                       <SelectContent>
                         {(reportAgents.length > 0
@@ -2641,7 +2685,11 @@ export default function StockInsightModal(props: {
                       size="sm"
                       className="h-8 px-2.5 text-[11px]"
                       disabled={!!reportGenerating}
-                      onClick={() => void loadReports()}
+                      title="刷新 Skill 与报告列表"
+                      onClick={() => {
+                        void loadReportAgents({ refreshSkills: true })
+                        void loadReports()
+                      }}
                     >
                       <RefreshCw className="w-3 h-3" />
                     </Button>
@@ -2653,9 +2701,9 @@ export default function StockInsightModal(props: {
                     <div className="p-6 text-center space-y-3">
                       <div className="text-[12px] text-muted-foreground">
                         {reportGenerating
-                          ? (reportGenerating === 'lmd_outlook'
+                          ? (isLmdReportAgent(reportGenerating)
                             ? '正在生成老马视角报告，约需 2–5 分钟…'
-                            : `${AGENT_LABELS[reportGenerating] || reportGenerating} 报告生成中…`)
+                            : `${resolveAgentLabel(reportGenerating, reportAgents)} 报告生成中…`)
                           : '暂无报告'}
                       </div>
                       {reportGenerating ? (

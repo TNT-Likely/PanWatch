@@ -19,12 +19,13 @@ export interface StockConceptTag {
 export interface IndustryChainInfo {
   sector: string
   sector_label: string
-  layer: 'foundation' | 'middleware' | 'integration' | 'application' | string
+  layer: string
   layer_label: string
   display: string
   description?: string
   score?: number
   match_source?: string
+  source?: 'manual' | 'auto' | string
   matched?: string[]
 }
 
@@ -40,6 +41,7 @@ export interface StockItem {
   concept_tags_auto?: string[]
   concept_tags_manual?: string[]
   industry_chain?: IndustryChainInfo | null
+  industry_chain_manual?: { sector?: string; layer?: string } | null
   investment_profile?: InvestmentProfile
   agents?: StockAgentInfo[]
 }
@@ -125,6 +127,24 @@ function withQuery(path: string, params: TriggerStockAgentOptions): string {
   return s ? `${path}?${s}` : path
 }
 
+export interface LmdReportSnapshot {
+  symbol: string
+  market: string
+  pe_ttm?: number | null
+  forward_pe?: number | null
+  pb?: number | null
+  profit_yoy_pct?: number | null
+  revenue_yoy_pct?: number | null
+  roe_pct?: number | null
+  gross_margin_pct?: number | null
+  consensus_eps?: number | null
+  valuation_score?: number | null
+  valuation_verdict?: string | null
+  expectation_hint?: string | null
+  report_date?: string | null
+  has_report: boolean
+}
+
 export const stocksApi = {
   list: () => fetchAPI<StockItem[]>('/stocks'),
   create: (payload: StockCreatePayload) =>
@@ -157,6 +177,11 @@ export const stocksApi = {
     }),
   refreshIndustryChain: (id: number) =>
     fetchAPI<StockItem>(`/stocks/${id}/industry-chain/refresh`, { method: 'POST' }),
+  updateIndustryChain: (id: number, layer: string | null) =>
+    fetchAPI<StockItem>(`/stocks/${id}/industry-chain`, {
+      method: 'PUT',
+      body: JSON.stringify({ layer }),
+    }),
   updateAgents: (id: number, payload: StockAgentUpdatePayload) =>
     fetchAPI<StockItem>(`/stocks/${id}/agents`, {
       method: 'PUT',
@@ -172,6 +197,11 @@ export const stocksApi = {
       `/stocks/${id}/agents/lmd_outlook/ensure`,
       { method: 'POST' },
     ),
+  lmdSnapshotsBatch: (symbols: string[]) =>
+    fetchAPI<LmdReportSnapshot[]>('/stocks/lmd-snapshots/batch', {
+      method: 'POST',
+      body: JSON.stringify({ symbols }),
+    }),
   getInvestmentProfile: (id: number) =>
     fetchAPI<{ stock_id: number; symbol: string; market: string; investment_profile: InvestmentProfile; portfolio_role_label: string }>(
       `/stocks/${id}/investment-profile`,

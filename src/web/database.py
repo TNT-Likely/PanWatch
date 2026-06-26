@@ -242,6 +242,11 @@ def _migrate(engine):
             "ALTER TABLE stocks ADD COLUMN industry_chain_updated_at DATETIME",
         ),
         (
+            "stocks",
+            "industry_chain_manual",
+            "ALTER TABLE stocks ADD COLUMN industry_chain_manual TEXT DEFAULT '{}'",
+        ),
+        (
             "accounts",
             "other_funds",
             "ALTER TABLE accounts ADD COLUMN other_funds REAL DEFAULT 0",

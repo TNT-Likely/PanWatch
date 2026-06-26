@@ -12,6 +12,7 @@ interface StockContext {
   market: string
   stockName: string
   pageContext?: string
+  initialMessage?: string
 }
 
 interface CreateConversationParams {
@@ -238,33 +239,93 @@ export default function ChatWidget() {
     }
   }, [resumeLastConversation])
 
+  const sendMessageToConversation = useCallback(async (convId: number, content: string) => {
+    const trimmed = content.trim()
+    if (!trimmed || sending) return
+
+    setInput('')
+    setSending(true)
+    setSuggestedQuestions([])
+    writeLastConvId(convId)
+    setActiveConvId(convId)
+    setView('chat')
+
+    const tempUserMsg: ChatMessage = {
+      id: Date.now(),
+      role: 'user',
+      content: trimmed,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, tempUserMsg])
+
+    try {
+      const reply = await chatApi.sendMessage(convId, trimmed)
+      setMessages((prev) => [...prev, reply])
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, title: c.title || trimmed.slice(0, 20) } : c)),
+      )
+    } catch (e) {
+      const errMsg: ChatMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: `请求失败：${e instanceof Error ? e.message : '未知错误'}`,
+        created_at: new Date().toISOString(),
+      }
+      setMessages((prev) => [...prev, errMsg])
+    } finally {
+      setSending(false)
+    }
+  }, [sending])
+
   const openChatFromStock = useCallback(async (detail: StockContext) => {
+    const initialMessage = detail.initialMessage?.trim() || ''
     setOpen(true)
     setStockContext(detail)
     setOpening(true)
 
     try {
+      let convId: number | null = null
       const recent = await chatApi.findRecentConversations(detail.symbol, detail.market, 1)
       if (recent.length > 0) {
-        await openConversation(recent[0], detail.stockName)
-        return
+        const conv = recent[0]
+        await openConversation(conv, detail.stockName)
+        setStockContext({
+          symbol: detail.symbol,
+          market: detail.market,
+          stockName: detail.stockName,
+          pageContext: detail.pageContext,
+        })
+        convId = conv.id
+      } else {
+        const conv = await createNewConversation(
+          {
+            stock_symbol: detail.symbol,
+            stock_market: detail.market,
+            initial_context: detail.pageContext,
+          },
+          { deleteActive: false, deleteSameStock: false },
+        )
+        if (conv) {
+          setStockContext({
+            symbol: detail.symbol,
+            market: detail.market,
+            stockName: detail.stockName,
+            pageContext: detail.pageContext,
+          })
+          convId = conv.id
+        }
       }
 
-      await createNewConversation(
-        {
-          stock_symbol: detail.symbol,
-          stock_market: detail.market,
-          initial_context: detail.pageContext,
-        },
-        { deleteActive: false, deleteSameStock: false },
-      )
+      if (initialMessage && convId) {
+        await sendMessageToConversation(convId, initialMessage)
+      }
     } catch {
       setView('chat')
       toast('打开 AI 助手失败', 'error')
     } finally {
       setOpening(false)
     }
-  }, [createNewConversation, openConversation, toast])
+  }, [createNewConversation, openConversation, sendMessageToConversation, toast])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -320,37 +381,8 @@ export default function ChatWidget() {
       convId = conv.id
     }
 
-    setInput('')
-    setSending(true)
-    setSuggestedQuestions([])
-    writeLastConvId(convId)
-
-    const tempUserMsg: ChatMessage = {
-      id: Date.now(),
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, tempUserMsg])
-
-    try {
-      const reply = await chatApi.sendMessage(convId, content)
-      setMessages((prev) => [...prev, reply])
-      setConversations((prev) =>
-        prev.map((c) => (c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)),
-      )
-    } catch (e) {
-      const errMsg: ChatMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: `请求失败：${e instanceof Error ? e.message : '未知错误'}`,
-        created_at: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, errMsg])
-    } finally {
-      setSending(false)
-    }
-  }, [input, sending, activeConvId, stockContext, createNewConversation])
+    await sendMessageToConversation(convId, content)
+  }, [input, sending, activeConvId, stockContext, createNewConversation, sendMessageToConversation])
 
   const updateMessageAction = useCallback((actionId: string, nextAction: ChatPendingAction) => {
     setMessages((prev) =>

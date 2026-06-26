@@ -14,10 +14,12 @@ from sqlalchemy.orm import Session
 
 from src.web.database import SessionLocal
 from src.web.models import AgentConfig, AnalysisHistory, Stock
+from src.core.hermes_config import local_skill_agent_name
 
 logger = logging.getLogger(__name__)
 
 LMD_AGENT = "lmd_outlook"
+_LMD_SKILL_AGENT = local_skill_agent_name("lmd-finance-perspective")
 
 _in_flight: set[str] = set()
 _in_flight_lock = threading.Lock()
@@ -56,8 +58,8 @@ def has_lmd_report(db: Session, stock_symbol: str) -> bool:
     return (
         db.query(AnalysisHistory.id)
         .filter(
-            AnalysisHistory.agent_name == LMD_AGENT,
             AnalysisHistory.stock_symbol == sym,
+            AnalysisHistory.agent_name.in_([LMD_AGENT, _LMD_SKILL_AGENT]),
         )
         .first()
         is not None

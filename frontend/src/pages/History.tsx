@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Clock, Trash2, FileText, ArrowLeft, ExternalLink, FileDown } from 'lucide-react'
 import { ReportViewer } from '@panwatch/biz-ui/components/report-markdown'
+import { resolveLmdReportSectionSlug } from '@panwatch/biz-ui/lib/report-toc'
+import { isLmdReportAgent, LMD_DISPLAY_NAME } from '@panwatch/biz-ui/lib/lmd-report'
 import { fetchAPI, stocksApi, insightApi, type StockItem, parseLocalSkillSlug } from '@panwatch/api'
 import StockInsightModal, { INSIGHT_TAB_LABELS, type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -38,6 +40,7 @@ const AGENT_LABELS: Record<string, string> = {
 }
 
 function resolveHistoryAgentLabel(agentName: string, title?: string): string {
+  if (isLmdReportAgent(agentName)) return LMD_DISPLAY_NAME
   const slug = parseLocalSkillSlug(agentName)
   if (slug) {
     const m = (title || '').match(/^【([^】]+)】/)
@@ -87,6 +90,7 @@ export default function HistoryPage() {
   const returnPath = searchParams.get('return')?.trim() || ''
   const returnMarket = searchParams.get('market')?.trim() || ''
   const returnTab = (searchParams.get('tab') as InsightTab | null) || 'reports'
+  const deepLinkSection = searchParams.get('section')?.trim() || ''
   const pendingDeepLinkRef = useRef<number | null>(null)
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -267,6 +271,10 @@ export default function HistoryPage() {
   }
 
   const selectedRecord = selectedId ? records.find(r => r.id === selectedId) || null : null
+  const selectedReportSectionSlug = useMemo(() => {
+    if (!selectedRecord?.content || !deepLinkSection) return null
+    return resolveLmdReportSectionSlug(selectedRecord.content, deepLinkSection)
+  }, [selectedRecord?.content, deepLinkSection])
   const selectedStockSymbol = useMemo(
     () => (selectedRecord ? resolveHistoryStockSymbol(selectedRecord) : null),
     [selectedRecord],
@@ -582,6 +590,7 @@ export default function HistoryPage() {
                     content={selectedRecord.content}
                     exportBusy={pdfBusyId === selectedRecord.id}
                     onExportPdf={() => handleExportPdf(selectedRecord)}
+                    initialSectionSlug={selectedReportSectionSlug}
                   />
                 </div>
               </div>

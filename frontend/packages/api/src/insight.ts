@@ -75,6 +75,16 @@ export const insightApi = {
       { timeoutMs: 45000 },
     ),
 
+  analysisBriefBatch: (items: Array<{ symbol: string; market: string }>) =>
+    fetchAPI<AnalysisBriefItem[]>(
+      '/insights/analysis-brief/batch',
+      {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+        timeoutMs: 15_000,
+      },
+    ),
+
   announcementEval: (params: { symbol: string; market: string; model_id?: number }) =>
     fetchAPI<AnnouncementEvalResult>('/insights/announcement-eval', {
       method: 'POST',
@@ -165,6 +175,22 @@ export interface ChanEmotionLevelAnalysis {
   pivot: { zd: number; zg: number } | null
   divergence: string | null
   signal_tags: string[]
+}
+
+export interface ChanEmotionBrief {
+  action: string
+  action_label: string
+  win_rate: number
+  emotion_phase: string
+  emotion_label: string
+  reason?: string
+}
+
+export interface AnalysisBriefItem {
+  symbol: string
+  market: string
+  lmd_brief: string | null
+  deep_brief: string | null
 }
 
 export interface ChanEmotionStrategyResult {

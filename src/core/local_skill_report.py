@@ -8,6 +8,7 @@ from pathlib import Path
 
 from src.agents.base import AgentContext
 from src.agents.lmd_outlook import LmdOutlookAgent, _fetch_fundamental_line
+from src.core.lmd_report_snapshot import attach_lmd_snapshot_to_raw_data
 from src.core.analysis_history import save_analysis
 from src.core.hermes_config import HermesConfig, local_skill_agent_name, load_hermes_config
 from src.core.hermes_runner import is_hermes_available, run_hermes_chat
@@ -190,15 +191,19 @@ class LocalSkillReportService:
             stock_symbol=stock.symbol,
             content=content,
             title=title,
-            raw_data={
-                "timestamp": data.get("timestamp"),
-                "quality_overview": data.get("quality_overview"),
-                "engine": "hermes",
-                "skill_slug": slug,
-                "skill_display_name": display,
-                "hermes_skill": hermes_skill,
-                "hermes_profile": self.hermes.hermes_profile,
-            },
+            raw_data=attach_lmd_snapshot_to_raw_data(
+                {
+                    "timestamp": data.get("timestamp"),
+                    "quality_overview": data.get("quality_overview"),
+                    "engine": "hermes",
+                    "skill_slug": slug,
+                    "skill_display_name": display,
+                    "hermes_skill": hermes_skill,
+                    "hermes_profile": self.hermes.hermes_profile,
+                },
+                content,
+                report_date=date.today().strftime("%Y-%m-%d"),
+            ),
         )
 
         return {
