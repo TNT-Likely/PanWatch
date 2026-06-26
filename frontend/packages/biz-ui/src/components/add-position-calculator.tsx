@@ -319,8 +319,12 @@ export default function AddPositionCalculator({
         ...(traded_at ? { traded_at } : {}),
       })
       const pnl = reduceCalc.realizedPnl
+      const isClosed = result.closed === true
+      const proceeds = tradeQty * addPrice
       toast(
-        `已记录减仓 ${tradeQty} 股 @ ${fmt(addPrice)}，剩余 ${fmtInt(reduceCalc.newQty)} 股，本次盈亏 ${pnl >= 0 ? '+' : ''}${fmt(pnl)}`,
+        isClosed
+          ? `已清仓 ${tradeQty} 股 @ ${fmt(addPrice)}，回款 ${fmtInt(proceeds)} 元已计入可用资金`
+          : `已记录减仓 ${tradeQty} 股 @ ${fmt(addPrice)}，剩余 ${fmtInt(reduceCalc.newQty)} 股，本次盈亏 ${pnl >= 0 ? '+' : ''}${fmt(pnl)}`,
         'success',
       )
       setAddRaw('')

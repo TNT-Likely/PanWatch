@@ -1781,6 +1781,49 @@ WHERE security_type IS NULL OR TRIM(security_type) = '' OR security_type = 'stoc
             )
 
 
+def _m125_position_status_closed(conn: Connection) -> None:
+    """持仓新增清仓状态字段:status(open/closed)、closed_at、realized_pnl。
+
+    卖到 0 股即视为清仓,标记 closed 后从持仓列表移出(股票仍在关注列表),
+    保留 Position 行以留存历史成交明细(PositionTrade),不随删除级联丢失。
+    """
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "status",
+        "ALTER TABLE positions ADD COLUMN status TEXT DEFAULT 'open'",
+    )
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "closed_at",
+        "ALTER TABLE positions ADD COLUMN closed_at DATETIME",
+    )
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "realized_pnl",
+        "ALTER TABLE positions ADD COLUMN realized_pnl REAL DEFAULT 0.0",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_positions_status",
+        "CREATE INDEX ix_positions_status ON positions(status)",
+    )
+    if not _has_table(conn, "positions"):
+        return
+    # 回填:存量持仓 status 置 open;quantity<=0 视为已清仓
+    conn.execute(
+        text(
+            """
+UPDATE positions
+SET status = CASE WHEN COALESCE(quantity, 0) <= 0 THEN 'closed' ELSE 'open' END
+WHERE status IS NULL OR TRIM(status) = ''
+"""
+        )
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1806,6 +1849,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(122, "chat_pending_actions", _m122_chat_pending_actions),
     Migration(123, "stock_security_type", _m123_stock_security_type),
     Migration(124, "paper_trading_security_type", _m124_paper_trading_security_type),
+    Migration(125, "position_status_closed", _m125_position_status_closed),
 )
 
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart } from 'lucide-react'
-import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type InvestmentProfile } from '@panwatch/api'
+import { Plus, Minus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, PieChart, Archive } from 'lucide-react'
+import { fetchAPI, stocksApi, positionsApi, tradeDatetimeLocalToIso, type AIService, type NotifyChannel, type PositionAddResult, type PortfolioRecentTrade, type ClosedPosition, type InvestmentProfile } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, KlineLevelsBrief, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { StockConceptTags, type StockConceptTagItem } from '@panwatch/biz-ui/components/stock-concept-tags'
@@ -565,6 +565,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
   const [draggingWatchStockId, setDraggingWatchStockId] = useState<number | null>(null)
   const [draggingPositionId, setDraggingPositionId] = useState<number | null>(null)
   const [draggingPositionAccountId, setDraggingPositionAccountId] = useState<number | null>(null)
+
+  // 已清仓记录
+  const [closedPositions, setClosedPositions] = useState<ClosedPosition[]>([])
+  const [closedPositionsLoading, setClosedPositionsLoading] = useState(false)
+  const [closedTradesDialog, setClosedTradesDialog] = useState<ClosedPosition | null>(null)
   const watchDragSnapshotRef = useRef<Stock[] | null>(null)
   const positionDragSnapshotRef = useRef<PortfolioSummary | null>(null)
 
@@ -742,6 +747,18 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     }
   }, [])
 
+  const loadClosedPositions = useCallback(async () => {
+    setClosedPositionsLoading(true)
+    try {
+      const rows = await positionsApi.closedPositions(100)
+      setClosedPositions(rows || [])
+    } catch {
+      setClosedPositions([])
+    } finally {
+      setClosedPositionsLoading(false)
+    }
+  }, [])
+
   const handlePortfolioChanged = useCallback(
     (result?: PositionAddResult) => {
       if (result?.position) {
@@ -777,11 +794,12 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
       }
       void loadPortfolio()
       void loadPositionRecentTrades()
+      void loadClosedPositions()
       if (pageMode === 'watchlist' && result?.position) {
         toast('已建仓，可在持仓页查看', 'success')
       }
     },
-    [loadPositionRecentTrades, pageMode, toast],
+    [loadPositionRecentTrades, loadClosedPositions, pageMode, toast],
   )
 
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
@@ -1020,7 +1038,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     ])
   }, [refreshQuotes, loadPoolSuggestions, refreshKlines])
 
-  useEffect(() => { load(); loadPortfolio(); loadPositionRecentTrades(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
+  useEffect(() => { load(); loadPortfolio(); loadPositionRecentTrades(); loadClosedPositions(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
 
   // 仅关注列表场景（无持仓）也要在列表加载后预取 K 线摘要，保证技术指标徽章可见
   const watchlistKlineInitDone = useRef(false)
@@ -2634,9 +2652,120 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
               )}
             </div>
           ))}
+
+          {/* 已清仓记录 */}
+          {closedPositions.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="flex items-center justify-between p-3 md:p-4 border-b border-border/50">
+                <div className="flex items-center gap-2">
+                  <Archive className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-[14px] md:text-[15px] font-semibold text-foreground">已清仓</span>
+                  <span className="text-[11px] md:text-[12px] text-muted-foreground">{closedPositions.length} 只</span>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => loadClosedPositions()}>
+                  <RefreshCw className={`w-3 h-3 mr-1 ${closedPositionsLoading ? 'animate-spin' : ''}`} />
+                  刷新
+                </Button>
+              </div>
+              <div className="divide-y divide-border/40">
+                {closedPositions.map(pos => {
+                  const pnl = pos.realized_pnl || 0
+                  const pnlPct = pos.invested_amount && pos.invested_amount > 0 ? (pnl / pos.invested_amount) * 100 : 0
+                  return (
+                    <div key={pos.id} className="flex items-center justify-between gap-3 p-3 md:p-4 hover:bg-accent/20 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] md:text-[14px] font-medium text-foreground truncate">{pos.stock_name || pos.stock_symbol}</span>
+                          <Badge variant="secondary" className="text-[10px]">{marketLabel(pos.market || 'CN')}</Badge>
+                          <span className="text-[11px] text-muted-foreground shrink-0">{pos.account_name}</span>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-1">
+                          清仓于 {pos.closed_at ? new Date(pos.closed_at).toLocaleDateString('zh-CN') : '-'}
+                          <span className="ml-2">建仓成本 {pos.cost_price.toFixed(4)}</span>
+                          <span className="ml-2">{pos.trades.length} 笔成交</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <div className="text-[11px] text-muted-foreground">实现盈亏</div>
+                          <div className={`text-[13px] md:text-[14px] font-mono font-medium ${pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {pnl >= 0 ? '+' : ''}{formatMoney(pnl)}
+                            <span className="text-[10px] ml-1">({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)</span>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setClosedTradesDialog(pos)}>
+                          成交明细
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
         )
       )}
+
+      {/* 已清仓成交明细弹窗 */}
+      <Dialog open={!!closedTradesDialog} onOpenChange={(open) => { if (!open) setClosedTradesDialog(null) }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {closedTradesDialog?.stock_name || closedTradesDialog?.stock_symbol} · 历史成交明细
+            </DialogTitle>
+            <DialogDescription>
+              {closedTradesDialog?.account_name} · 共 {closedTradesDialog?.trades.length || 0} 笔成交
+              {closedTradesDialog && closedTradesDialog.realized_pnl !== 0 && (
+                <span className="ml-2">
+                  实现盈亏
+                  <span className={`ml-1 font-medium ${closedTradesDialog.realized_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {closedTradesDialog.realized_pnl >= 0 ? '+' : ''}{formatMoney(closedTradesDialog.realized_pnl)}
+                  </span>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {closedTradesDialog && closedTradesDialog.trades.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-8">暂无成交记录</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-xs">
+                    <th className="text-left py-2 pr-3">时间</th>
+                    <th className="text-left py-2 px-2">方向</th>
+                    <th className="text-right py-2 px-2">股数</th>
+                    <th className="text-right py-2 px-2">价格</th>
+                    <th className="text-right py-2 px-2">金额</th>
+                    <th className="text-right py-2 pl-2">持仓变化</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closedTradesDialog?.trades.map(t => (
+                    <tr key={t.id} className="border-b border-border/40">
+                      <td className="py-2 pr-3 text-xs text-muted-foreground">
+                        {t.traded_at ? new Date(t.traded_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span className={`text-xs font-medium ${t.side === 'sell' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          {t.side === 'sell' ? '卖出' : '买入'}
+                        </span>
+                      </td>
+                      <td className="text-right py-2 px-2 font-mono">{t.quantity}</td>
+                      <td className="text-right py-2 px-2 font-mono">{Number(t.price).toFixed(4)}</td>
+                      <td className="text-right py-2 px-2 font-mono">{formatMoney(t.amount)}</td>
+                      <td className="text-right py-2 pl-2 text-xs text-muted-foreground font-mono">
+                        {t.qty_before != null && t.qty_after != null ? `${t.qty_before}→${t.qty_after}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Watchlist */}
       {pageMode === 'watchlist' && (

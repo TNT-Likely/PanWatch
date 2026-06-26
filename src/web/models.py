@@ -129,6 +129,9 @@ class Position(Base):
     trading_style = Column(
         String, default="swing"
     )  # short: 短线, swing: 波段, long: 长线
+    status = Column(String, default="open")  # open: 持仓中 / closed: 已清仓
+    closed_at = Column(DateTime, nullable=True)  # 清仓时间
+    realized_pnl = Column(Float, default=0.0)  # 清仓时锁定的累计实现盈亏
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -160,6 +160,7 @@ class PositionResponse(BaseModel):
     invested_amount: float | None
     sort_order: int
     trading_style: str | None
+    status: str | None = None
     # 关联信息
     account_name: str | None = None
     stock_symbol: str | None = None
@@ -229,6 +230,45 @@ def _normalize_traded_at(dt: datetime | None) -> datetime:
     if dt is None:
         return datetime.now(timezone.utc).replace(tzinfo=None)
     return to_utc(dt).replace(tzinfo=None)
+
+
+def _to_cny_amount(amount: float, market: str | None) -> float:
+    """把成交金额按市场换算为人民币(available_funds 以 CNY 口径维护)。
+
+    CN 直接返回；HK/US 用缓存的汇率换算。换算失败时按原值返回(不阻塞交易)。
+    """
+    try:
+        if market == "HK":
+            return amount * get_hkd_cny_rate()
+        if market == "US":
+            return amount * get_usd_cny_rate()
+    except Exception as e:
+        logger.warning(f"换算 {market} 成交金额为 CNY 失败，按原值处理: {e}")
+    return amount
+
+
+def _format_dt_naive(dt) -> str | None:
+    """格式化 naive datetime 为 ISO 字符串(供响应序列化)。"""
+    if not dt:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    return dt.isoformat(timespec="seconds")
+
+
+def compute_realized_pnl(db: Session, position_id: int) -> float:
+    """按交易流水汇总某持仓的累计实现盈亏:卖出净额 − 买入成本(原币种)。
+
+    清仓时调用,锁定该持仓生命周期内的实现盈亏。
+    """
+    rows = (
+        db.query(PositionTrade)
+        .filter(PositionTrade.position_id == position_id)
+        .all()
+    )
+    buy_cost = sum(float(t.amount) for t in rows if t.side == "buy")
+    sell_proceeds = sum(float(t.amount) for t in rows if t.side == "sell")
+    return round(sell_proceeds - buy_cost, 4)
 
 
 def _serialize_position_trade(trade: PositionTrade) -> dict:
@@ -316,14 +356,17 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
 def list_positions(
     account_id: int | None = None,
     stock_id: int | None = None,
+    status: str | None = "open",
     db: Session = Depends(get_db)
 ):
-    """获取持仓列表，可按账户或股票筛选"""
+    """获取持仓列表，可按账户或股票筛选。status 默认仅返回 open(持仓中)。"""
     query = db.query(Position)
     if account_id:
         query = query.filter(Position.account_id == account_id)
     if stock_id:
         query = query.filter(Position.stock_id == stock_id)
+    if status and status != "all":
+        query = query.filter(Position.status == status)
 
     positions = query.order_by(Position.account_id.asc(), Position.sort_order.asc(), Position.id.asc()).all()
     result = []
@@ -337,6 +380,7 @@ def list_positions(
             "invested_amount": pos.invested_amount,
             "sort_order": pos.sort_order or 0,
             "trading_style": pos.trading_style,
+            "status": pos.status or "open",
             "account_name": pos.account.name if pos.account else None,
             "stock_symbol": pos.stock.symbol if pos.stock else None,
             "stock_name": pos.stock.name if pos.stock else None,
@@ -361,44 +405,78 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         Position.account_id == data.account_id,
         Position.stock_id == data.stock_id,
     ).first()
-    if existing:
+    if existing and (existing.status or "open") == "open":
         raise HTTPException(400, f"账户 {account.name} 已有 {stock.name} 的持仓，请编辑现有持仓")
-
-    max_order = db.query(func.max(Position.sort_order)).filter(
-        Position.account_id == data.account_id
-    ).scalar() or 0
-
-    position = Position(
-        account_id=data.account_id,
-        stock_id=data.stock_id,
-        cost_price=data.cost_price,
-        quantity=data.quantity,
-        invested_amount=data.invested_amount,
-        sort_order=int(max_order) + 1,
-        trading_style=data.trading_style,
-    )
-    db.add(position)
-    db.flush()
 
     qty = int(data.quantity)
     cost = float(data.cost_price)
     traded_at = _normalize_traded_at(data.traded_at)
-    trade = PositionTrade(
-        position_id=position.id,
-        side="buy",
-        price=cost,
-        quantity=qty,
-        amount=round(cost * qty, 4),
-        cost_before=None,
-        qty_before=None,
-        cost_after=cost,
-        qty_after=qty,
-        note="建仓",
-        traded_at=traded_at,
-    )
-    db.add(trade)
+
+    if existing:
+        # 复活已清仓持仓:保留历史流水,以本次建仓重置为新成本/股数
+        position = existing
+        position.cost_price = cost
+        position.quantity = qty
+        position.invested_amount = data.invested_amount if data.invested_amount is not None else round(cost * qty, 4)
+        position.trading_style = data.trading_style or position.trading_style
+        position.status = "open"
+        position.closed_at = None
+        position.realized_pnl = 0.0
+        trade = PositionTrade(
+            position_id=position.id,
+            side="buy",
+            price=cost,
+            quantity=qty,
+            amount=round(cost * qty, 4),
+            cost_before=None,
+            qty_before=0,
+            cost_after=cost,
+            qty_after=qty,
+            note="清仓后重新建仓",
+            traded_at=traded_at,
+        )
+        db.add(trade)
+        db.flush()
+    else:
+        max_order = db.query(func.max(Position.sort_order)).filter(
+            Position.account_id == data.account_id
+        ).scalar() or 0
+
+        position = Position(
+            account_id=data.account_id,
+            stock_id=data.stock_id,
+            cost_price=cost,
+            quantity=qty,
+            invested_amount=data.invested_amount,
+            sort_order=int(max_order) + 1,
+            trading_style=data.trading_style,
+            status="open",
+        )
+        db.add(position)
+        db.flush()
+
+        trade = PositionTrade(
+            position_id=position.id,
+            side="buy",
+            price=cost,
+            quantity=qty,
+            amount=round(cost * qty, 4),
+            cost_before=None,
+            qty_before=None,
+            cost_after=cost,
+            qty_after=qty,
+            note="建仓",
+            traded_at=traded_at,
+        )
+        db.add(trade)
     db.commit()
     db.refresh(position)
+
+    # 建仓扣减可用资金(以 CNY 口径)
+    buy_cost_cny = round(_to_cny_amount(round(cost * qty, 4), stock.market), 4)
+    account.available_funds = round(float(account.available_funds or 0.0) - buy_cost_cny, 4)
+    db.commit()
+    db.refresh(account)
 
     logger.info(f"创建持仓: {account.name} - {stock.name}")
     return {
@@ -410,6 +488,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         "invested_amount": position.invested_amount,
         "sort_order": position.sort_order or 0,
         "trading_style": position.trading_style,
+        "status": position.status or "open",
         "account_name": account.name,
         "stock_symbol": stock.symbol,
         "stock_name": stock.name,
@@ -472,6 +551,14 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         # 空字符串表示清空，设为 None
         position.trading_style = data.trading_style if data.trading_style else None
 
+    # 手动调整到 0 股视为清仓(仅当产生了卖出流水时回款)
+    closed_by_edit = False
+    if data.quantity is not None and new_qty <= 0 and (position.status or "open") == "open":
+        position.status = "closed"
+        position.closed_at = _normalize_traded_at(None)
+        position.realized_pnl = compute_realized_pnl(db, position.id)
+        closed_by_edit = True
+
     db.commit()
     db.refresh(position)
 
@@ -485,6 +572,8 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
         "invested_amount": position.invested_amount,
         "sort_order": position.sort_order or 0,
         "trading_style": position.trading_style,
+        "status": position.status or "open",
+        "closed": closed_by_edit,
         "account_name": position.account.name,
         "stock_symbol": position.stock.symbol,
         "stock_name": position.stock.name,
@@ -504,13 +593,11 @@ def add_to_position(
     add_price = float(data.price)
     cost_before = float(position.cost_price)
     qty_before = int(position.quantity)
+    is_revive = (position.status or "open") == "closed"
 
-    try:
-        new_qty, new_cost = _calc_weighted_cost(
-            qty_before, cost_before, add_qty, add_price
-        )
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from e
+    # 已清仓持仓重新加仓:以本次买入为新成本起点(qty_before 视为 0)
+    base_qty = 0 if is_revive else qty_before
+    new_qty, new_cost = _calc_weighted_cost(base_qty, cost_before, add_qty, add_price)
 
     add_amount = round(add_price * add_qty, 4)
     traded_at = _normalize_traded_at(data.traded_at)
@@ -525,30 +612,44 @@ def add_to_position(
         qty_before=qty_before,
         cost_after=new_cost,
         qty_after=new_qty,
-        note=(data.note or "").strip() or None,
+        note=(data.note or "").strip() or ("清仓后重新建仓" if is_revive else None),
         traded_at=traded_at,
     )
     db.add(trade)
 
     position.quantity = new_qty
     position.cost_price = new_cost
-    if position.invested_amount is not None:
+    if position.invested_amount is not None and not is_revive:
         position.invested_amount = round(float(position.invested_amount) + add_amount, 4)
     else:
         position.invested_amount = round(new_cost * new_qty, 4)
 
+    # 买入扣减可用资金(以 CNY 口径)
+    account = position.account
+    if account is not None:
+        cost_cny = round(_to_cny_amount(add_amount, position.stock.market if position.stock else None), 4)
+        account.available_funds = round(float(account.available_funds or 0.0) - cost_cny, 4)
+
+    if is_revive:
+        position.status = "open"
+        position.closed_at = None
+        position.realized_pnl = 0.0
+
     db.commit()
     db.refresh(position)
     db.refresh(trade)
+    if account is not None:
+        db.refresh(account)
 
     logger.info(
-        "加仓: %s - %s +%d@%s → 成本 %.4f, 股数 %d",
-        position.account.name,
-        position.stock.name,
+        "加仓: %s - %s +%d@%s → 成本 %.4f, 股数 %d%s",
+        account.name if account else "未知账户",
+        position.stock.name if position.stock else position.stock_id,
         add_qty,
         add_price,
         new_cost,
         new_qty,
+        "（已清仓后重新建仓）" if is_revive else "",
     )
     return {
         "position": {
@@ -560,11 +661,15 @@ def add_to_position(
             "invested_amount": position.invested_amount,
             "sort_order": position.sort_order or 0,
             "trading_style": position.trading_style,
-            "account_name": position.account.name,
-            "stock_symbol": position.stock.symbol,
-            "stock_name": position.stock.name,
+            "status": position.status or "open",
+            "closed_at": _format_dt_naive(position.closed_at),
+            "realized_pnl": float(position.realized_pnl or 0.0),
+            "account_name": account.name if account else None,
+            "stock_symbol": position.stock.symbol if position.stock else None,
+            "stock_name": position.stock.name if position.stock else None,
         },
         "trade": _serialize_position_trade(trade),
+        "available_funds": float(account.available_funds) if account else None,
     }
 
 
@@ -589,6 +694,9 @@ def reduce_from_position(
     sell_amount = round(sell_price * sell_qty, 4)
     traded_at = _normalize_traded_at(data.traded_at)
 
+    # 清仓判断:卖完后剩余 0 股即视为清仓
+    is_closed = new_qty <= 0
+
     trade = PositionTrade(
         position_id=position.id,
         side="sell",
@@ -599,29 +707,41 @@ def reduce_from_position(
         qty_before=qty_before,
         cost_after=cost_before,
         qty_after=new_qty,
-        note=(data.note or "").strip() or None,
+        note=(data.note or "").strip() or ("清仓" if is_closed else None),
         traded_at=traded_at,
     )
     db.add(trade)
 
     position.quantity = new_qty
-    if position.invested_amount is not None:
-        position.invested_amount = round(cost_before * new_qty, 4)
-    else:
-        position.invested_amount = round(cost_before * new_qty, 4)
+    position.invested_amount = round(cost_before * new_qty, 4)
+
+    # 卖出回款计入可用资金(以 CNY 口径,港股/美股按汇率换算)
+    account = position.account
+    if account is not None:
+        proceeds_cny = round(_to_cny_amount(sell_amount, position.stock.market if position.stock else None), 4)
+        account.available_funds = round(float(account.available_funds or 0.0) + proceeds_cny, 4)
+
+    if is_closed:
+        # 清仓:标记 closed 并锁定累计实现盈亏(按交易流水汇总,原币种口径)
+        position.status = "closed"
+        position.closed_at = traded_at
+        position.realized_pnl = compute_realized_pnl(db, position.id)
 
     db.commit()
     db.refresh(position)
     db.refresh(trade)
+    if account is not None:
+        db.refresh(account)
 
     logger.info(
-        "减仓: %s - %s -%d@%s → 成本 %.4f, 股数 %d",
-        position.account.name,
-        position.stock.name,
+        "减仓: %s - %s -%d@%s → 成本 %.4f, 股数 %d%s",
+        account.name if account else "未知账户",
+        position.stock.name if position.stock else position.stock_id,
         sell_qty,
         sell_price,
         cost_before,
         new_qty,
+        "（已清仓）" if is_closed else "",
     )
     return {
         "position": {
@@ -633,12 +753,62 @@ def reduce_from_position(
             "invested_amount": position.invested_amount,
             "sort_order": position.sort_order or 0,
             "trading_style": position.trading_style,
-            "account_name": position.account.name,
-            "stock_symbol": position.stock.symbol,
-            "stock_name": position.stock.name,
+            "status": position.status or "open",
+            "closed_at": _format_dt_naive(position.closed_at),
+            "realized_pnl": float(position.realized_pnl or 0.0),
+            "account_name": account.name if account else None,
+            "stock_symbol": position.stock.symbol if position.stock else None,
+            "stock_name": position.stock.name if position.stock else None,
         },
         "trade": _serialize_position_trade(trade),
+        "available_funds": float(account.available_funds) if account else None,
+        "closed": is_closed,
     }
+
+
+@router.get("/portfolio/closed-positions")
+def list_closed_positions(
+    account_id: int | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """已清仓持仓列表(含历史成交明细),默认按清仓时间倒序。"""
+    query = db.query(Position).filter(Position.status == "closed")
+    acc_q = db.query(Account).filter(Account.enabled == True)  # noqa: E712
+    if account_id:
+        query = query.filter(Position.account_id == account_id)
+    rows = (
+        query.order_by(Position.closed_at.desc().nullslast(), Position.id.desc())
+        .limit(max(1, min(int(limit), 500)))
+        .all()
+    )
+    out: list[dict] = []
+    for pos in rows:
+        trades = (
+            db.query(PositionTrade)
+            .filter(PositionTrade.position_id == pos.id)
+            .order_by(PositionTrade.traded_at.desc(), PositionTrade.id.desc())
+            .limit(50)
+            .all()
+        )
+        out.append({
+            "id": pos.id,
+            "account_id": pos.account_id,
+            "stock_id": pos.stock_id,
+            "stock_symbol": pos.stock.symbol if pos.stock else None,
+            "stock_name": pos.stock.name if pos.stock else None,
+            "market": pos.stock.market if pos.stock else None,
+            "account_name": pos.account.name if pos.account else None,
+            "cost_price": pos.cost_price,
+            "quantity": pos.quantity,
+            "invested_amount": pos.invested_amount,
+            "realized_pnl": float(pos.realized_pnl or 0.0),
+            "opened_at": _format_dt_naive(pos.created_at),
+            "closed_at": _format_dt_naive(pos.closed_at),
+            "trading_style": pos.trading_style,
+            "trades": [_serialize_position_trade(t) for t in trades],
+        })
+    return out
 
 
 @router.get("/positions/{position_id}/trades")
@@ -647,7 +817,7 @@ def list_position_trades(
     limit: int = 20,
     db: Session = Depends(get_db),
 ):
-    """获取持仓变动流水(最近 N 条)"""
+    """获取持仓变动流水(最近 N 条,含已清仓持仓的历史明细)"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
         raise HTTPException(404, "持仓不存在")
@@ -757,11 +927,13 @@ def get_portfolio_summary(
             }
         }
 
-    # 获取所有相关股票
+    # 获取所有相关股票(仅持仓中,排除已清仓)
     all_stock_ids = set()
     all_position_ids: list[int] = []
     for acc in accounts:
         for pos in acc.positions:
+            if (pos.status or "open") != "open":
+                continue
             all_stock_ids.add(pos.stock_id)
             all_position_ids.append(pos.id)
 
@@ -790,7 +962,7 @@ def get_portfolio_summary(
         acc_daily_pnl = 0
 
         positions_sorted = sorted(
-            list(acc.positions or []),
+            [p for p in (acc.positions or []) if (p.status or "open") == "open"],
             key=lambda p: (int(getattr(p, "sort_order", 0) or 0), int(p.id)),
         )
         for pos in positions_sorted:
@@ -993,7 +1165,8 @@ def _holdings_signature(db: Session) -> str:
 def _gather_holdings(db: Session) -> list[dict]:
     """汇总所有启用账户的真实持仓为统一列表(CNY 市值/浮盈 + fx),多账户同股合并。"""
     accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
-    stock_ids = {p.stock_id for acc in accounts for p in acc.positions}
+    open_positions = [p for acc in accounts for p in (acc.positions or []) if (p.status or "open") == "open"]
+    stock_ids = {p.stock_id for p in open_positions}
     stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all() if stock_ids else []
     stock_map = {s.id: s for s in stocks}
     quotes = _fetch_quotes_for_stocks(stocks) if stocks else {}
@@ -1002,7 +1175,9 @@ def _gather_holdings(db: Session) -> list[dict]:
     out: list[dict] = []
     seen: dict[tuple[str, str], dict] = {}
     for acc in accounts:
-        for pos in acc.positions:
+        for pos in (acc.positions or []):
+            if (pos.status or "open") != "open":
+                continue
             stock = stock_map.get(pos.stock_id)
             if not stock:
                 continue
@@ -1078,7 +1253,7 @@ def portfolio_todos(db: Session = Depends(get_db)):
     """首页空态待办:持仓但未设提醒 / 提醒即将到期(可行动,盘后也不空)。"""
     todos: list[dict] = []
     accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
-    held_ids = {p.stock_id for acc in accounts for p in acc.positions}
+    held_ids = {p.stock_id for acc in accounts for p in (acc.positions or []) if (p.status or "open") == "open"}
     if held_ids:
         ruled = {
             r.stock_id

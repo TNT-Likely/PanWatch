@@ -33,6 +33,10 @@ export interface PositionSnapshot {
 export interface PositionAddResult {
   position: PositionSnapshot
   trade: PositionTrade
+  /** 卖出后账户可用资金(清仓/减仓回款已计入) */
+  available_funds?: number | null
+  /** 本次卖出是否导致清仓 */
+  closed?: boolean
 }
 
 export interface PortfolioRecentTrade extends PositionTrade {
@@ -40,6 +44,26 @@ export interface PortfolioRecentTrade extends PositionTrade {
   symbol: string
   market: string
   stock_name: string
+}
+
+export interface ClosedPositionTrade extends PositionTrade {}
+
+export interface ClosedPosition {
+  id: number
+  account_id: number
+  stock_id: number
+  stock_symbol: string | null
+  stock_name: string | null
+  market: string | null
+  account_name: string | null
+  cost_price: number
+  quantity: number
+  invested_amount: number | null
+  realized_pnl: number
+  opened_at: string | null
+  closed_at: string | null
+  trading_style: string | null
+  trades: ClosedPositionTrade[]
 }
 
 export const positionsApi = {
@@ -70,4 +94,8 @@ export const positionsApi = {
   /** 全账户最近加仓/变动流水 */
   recentTrades: (limit = 50) =>
     fetchAPI<PortfolioRecentTrade[]>(`/portfolio/recent-trades?limit=${limit}`),
+
+  /** 已清仓持仓列表(含历史成交明细) */
+  closedPositions: (limit = 100) =>
+    fetchAPI<ClosedPosition[]>(`/portfolio/closed-positions?limit=${limit}`),
 }
