@@ -7,6 +7,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from src.core.app_shutdown import scheduler_job, shutdown_async_scheduler
 from src.core.price_alert_engine import ENGINE
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ class PriceAlertScheduler:
         self.interval_seconds = max(15, int(interval_seconds))
         self._running = False
 
+    @scheduler_job
     async def _scan_job(self):
         if self._running:
             logger.debug("[价格提醒] 上轮扫描仍在执行，跳过本轮")
@@ -62,8 +64,4 @@ class PriceAlertScheduler:
         logger.info(f"价格提醒调度器已启动，扫描间隔 {self.interval_seconds}s")
 
     def shutdown(self):
-        try:
-            self.scheduler.shutdown(wait=False)
-        except Exception:
-            pass
-        logger.info("价格提醒调度器已关闭")
+        shutdown_async_scheduler(self.scheduler, wait=False)

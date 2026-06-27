@@ -80,10 +80,12 @@ export function KlineLevelsBrief({
   kline,
   className,
   align = 'left',
+  onClick,
 }: {
   kline?: KlineSummary | null
   className?: string
   align?: 'left' | 'right'
+  onClick?: () => void
 }) {
   if (!kline) return null
   const sup = kline.support
@@ -95,8 +97,10 @@ export function KlineLevelsBrief({
     <div
       className={`font-mono text-[10px] leading-tight text-muted-foreground/80 ${
         align === 'right' ? 'text-right' : ''
-      } ${className || ''}`}
-      title="支撑/压力"
+      } ${onClick ? 'cursor-pointer hover:text-primary transition-colors' : ''} ${className || ''}`}
+      title={onClick ? '点击查看 K 线' : '支撑/压力'}
+      onClick={onClick ? (e) => { e.stopPropagation(); onClick() } : undefined}
+      onMouseDown={onClick ? (e) => e.stopPropagation() : undefined}
     >
       {fmt(sup)}/{fmt(res)}
     </div>

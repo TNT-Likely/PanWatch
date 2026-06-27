@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -18,6 +19,46 @@ from src.core.timezone import beijing_now
 from src.models.market import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
+
+
+def _finite_float(value) -> float | None:
+    """转为 float；nan/inf 视为无效(None)，避免 JSON 序列化失败。"""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _filter_valid_klines(bars: list["KlineData"]) -> list["KlineData"]:
+    """去掉 OHLC 含 nan/inf 的脏 K 线。"""
+    out: list[KlineData] = []
+    for k in bars or []:
+        if all(
+            _finite_float(x) is not None
+            for x in (k.open, k.close, k.high, k.low)
+        ):
+            out.append(k)
+    return out
+
+
+def _slice_klines(bars: list["KlineData"], need: int) -> list["KlineData"]:
+    clean = _filter_valid_klines(bars)
+    return clean[-need:] if len(clean) > need else clean
+
+
+def _sanitize_json_floats(value):
+    """递归将 dict/list 中的 nan/inf 浮点转为 None。"""
+    if isinstance(value, dict):
+        return {k: _sanitize_json_floats(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_json_floats(v) for v in value]
+    if isinstance(value, float):
+        return _finite_float(value)
+    return value
+
 
 # 腾讯日K线 API
 TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
@@ -258,13 +299,19 @@ def _fetch_yfinance_klines(
             )
             for idx, row in hist.iterrows():
                 try:
+                    o = float(row["Open"])
+                    c = float(row["Close"])
+                    h = float(row["High"])
+                    l = float(row["Low"])
+                    if not all(math.isfinite(x) for x in (o, c, h, l)):
+                        continue
                     out.append(
                         KlineData(
                             date=idx.strftime("%Y-%m-%d"),
-                            open=float(row["Open"]),
-                            close=float(row["Close"]),
-                            high=float(row["High"]),
-                            low=float(row["Low"]),
+                            open=o,
+                            close=c,
+                            high=h,
+                            low=l,
                             volume=float(row.get("Volume") or 0),
                         )
                     )
@@ -1494,13 +1541,13 @@ class KlineCollector:
         # 1) 快路径:命中新鲜正缓存,无需加锁
         hit = self._cache_hit(cache_key, need)
         if hit is not None:
-            return hit
+            return _slice_klines(hit, need)
 
         # 2) 同标的并发合并:仅一个线程实际联网,其余等待后复用结果
         with _get_fetch_lock(cache_key):
             hit = self._cache_hit(cache_key, need)
             if hit is not None:
-                return hit
+                return _slice_klines(hit, need)
 
             now = time.time()
             # 3) 负缓存:刚失败过的标的,冷却窗口内返回陈旧/空,不再联网
@@ -1517,9 +1564,9 @@ class KlineCollector:
                         and _cn_kline_insufficient_for_need(bars, need)
                     )
                 ):
-                    return bars[-need:] if len(bars) > need else bars
+                    return _slice_klines(bars, need)
 
-            klines = self._fetch_all_sources(symbol, days)
+            klines = _filter_valid_klines(self._fetch_all_sources(symbol, days))
             if klines and len(klines) >= need:
                 # 成功且条数足够:固化正缓存并清除冷却标记
                 _KLINE_CACHE[cache_key] = (now, len(klines), list(klines))
@@ -1540,7 +1587,7 @@ class KlineCollector:
                     _FAIL_UNTIL[cache_key] = now + min(_fail_cooldown(self.market), 15.0)
                 else:
                     _FAIL_UNTIL[cache_key] = now + _fail_cooldown(self.market)
-            return klines[-need:] if len(klines) > need else klines
+            return _slice_klines(klines, need)
 
     def _cache_hit(self, cache_key: str, need: int) -> list[KlineData] | None:
         """命中新鲜正缓存(TTL 内且条数足够)则返回切片,否则 None。"""
@@ -1798,7 +1845,7 @@ class KlineCollector:
 
     def get_kline_summary(self, symbol: str) -> dict:
         """获取 K 线摘要（用于 prompt 和前端展示）"""
-        klines = self.get_klines(symbol, days=120)
+        klines = _filter_valid_klines(self.get_klines(symbol, days=120))
         if not klines:
             return {"error": "无K线数据"}
         indicators = self.get_technical_indicators(klines=klines)
@@ -1857,7 +1904,7 @@ class KlineCollector:
 
         # 布林带状态
         boll_status = None
-        last_close = klines[-1].close if klines else None
+        last_close = _finite_float(klines[-1].close) if klines else None
         if last_close and indicators.boll_upper and indicators.boll_lower:
             if last_close > indicators.boll_upper:
                 boll_status = "突破上轨"
@@ -1874,7 +1921,7 @@ class KlineCollector:
         last_date = klines[-1].date if klines else None
         now = datetime.now(timezone.utc).isoformat()
 
-        return {
+        summary = {
             # meta
             "timeframe": "1d",
             "computed_at": now,
@@ -1939,6 +1986,7 @@ class KlineCollector:
             # K线形态
             "kline_pattern": indicators.kline_pattern,
         }
+        return _sanitize_json_floats(summary)
 
     def get_intraday_trends(self, symbol: str) -> IntradayTrendsResult:
         """获取当日分时曲线(逐分钟),交易时段短 TTL 缓存。"""

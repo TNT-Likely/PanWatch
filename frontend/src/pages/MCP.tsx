@@ -183,8 +183,8 @@ export default function MCPPage() {
 
   const bearerTemplate = `{
   "mcpServers": {
-    "panwatch": {
-      "description": "AlphaMind 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
+    "mindalpha": {
+      "description": "MindAlpha 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
       "type": "streamableHttp",
       "url": "http://127.0.0.1:8000/api/mcp",
       "headers": {
@@ -196,8 +196,8 @@ export default function MCPPage() {
 
   const basicTemplate = `{
   "mcpServers": {
-    "panwatch": {
-      "description": "AlphaMind 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
+    "mindalpha": {
+      "description": "MindAlpha 投资分析 MCP：支持自选股、持仓、K线、新闻、价格提醒、基金、AI Agent 等 40+ 工具",
       "type": "streamableHttp",
       "url": "http://127.0.0.1:8000/api/mcp",
       "headers": {

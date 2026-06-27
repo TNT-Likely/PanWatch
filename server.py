@@ -22,6 +22,7 @@ from src.web.log_handler import DBLogHandler
 from src.config import Settings, AppConfig, StockConfig
 from src.models.market import MarketCode
 from src.core.ai_client import AIClient
+from src.core.async_runner import close_ai_client
 from src.core.notifier import NotifierManager
 from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
@@ -366,7 +367,11 @@ def seed_agents():
                 auto = cfg.get("auto_bootstrap")
                 if not isinstance(auto, dict):
                     auto = {}
-                for key, default in (("enabled", True), ("suppress_notify", True)):
+                for key, default in (
+                    ("enabled", True),
+                    ("suppress_notify", True),
+                    ("scan_on_startup", False),
+                ):
                     if key not in auto:
                         auto[key] = default
                 cfg["auto_bootstrap"] = auto
@@ -1117,6 +1122,8 @@ async def trigger_agent(agent_name: str) -> str:
                 model_label=context.model_label,
             )
             raise
+        finally:
+            await close_ai_client(context.ai_client)
 
 
 async def trigger_agent_for_stock(
@@ -1240,6 +1247,8 @@ async def trigger_agent_for_stock(
                 model_label=model_label,
             )
             raise
+        finally:
+            await close_ai_client(ai_client)
 
     # 返回详细结果
     skipped = bool(result.raw_data.get("skipped", False))
@@ -1369,18 +1378,14 @@ async def lifespan(app):
     except Exception as e:
         logger.error(f"上下文维护调度器启动失败: {e}")
     yield
-    if scheduler:
-        scheduler.shutdown()
-        logger.info("Agent 调度器已关闭")
-    if price_alert_scheduler:
-        price_alert_scheduler.shutdown()
-        logger.info("价格提醒调度器已关闭")
-    if paper_trading_scheduler:
-        paper_trading_scheduler.shutdown()
-        logger.info("模拟盘调度器已关闭")
-    if context_maintenance_scheduler:
-        context_maintenance_scheduler.shutdown()
-        logger.info("上下文维护调度器已关闭")
+    from src.core.app_shutdown import graceful_shutdown
+
+    graceful_shutdown(
+        agent_scheduler=scheduler,
+        price_alert_scheduler=price_alert_scheduler,
+        paper_trading_scheduler=paper_trading_scheduler,
+        context_maintenance_scheduler=context_maintenance_scheduler,
+    )
 
 
 # 模块级 app 实例，供 uvicorn reload 使用

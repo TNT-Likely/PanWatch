@@ -81,7 +81,9 @@ def _spawn_async_run(fn, *args, name: str) -> None:
 
     def _runner():
         try:
-            asyncio.run(fn(*args))
+            from src.core.async_runner import run_async_isolated
+
+            run_async_isolated(fn(*args))
         except Exception:
             logger.exception(f"后台任务失败: {name}")
 

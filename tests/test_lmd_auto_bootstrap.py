@@ -19,9 +19,16 @@ class _FakeQuery:
 
 
 class _FakeSession:
-    def __init__(self, *, has_report: bool = False, enabled: bool = True):
+    def __init__(
+        self,
+        *,
+        has_report: bool = False,
+        enabled: bool = True,
+        scan_on_startup: bool = False,
+    ):
         self._has_report = has_report
         self._enabled = enabled
+        self._scan_on_startup = scan_on_startup
 
     def query(self, model):
         model_key = str(model)
@@ -33,6 +40,7 @@ class _FakeSession:
                     "auto_bootstrap": {
                         "enabled": self._enabled,
                         "suppress_notify": True,
+                        "scan_on_startup": self._scan_on_startup,
                     }
                 }
             )
@@ -102,3 +110,66 @@ def test_try_acquire_lmd_generation():
     assert mod.try_acquire_lmd_generation("000001") is False
     mod.release_lmd_generation("000001")
     assert mod.is_lmd_in_flight("000001") is False
+
+
+def test_bootstrap_skips_when_startup_scan_disabled(monkeypatch):
+    """启动全量扫描关闭时不应排队。"""
+    monkeypatch.setattr(mod, "ensure_lmd_report", lambda stock: {"queued": True})
+
+    stocks = [
+        SimpleNamespace(symbol="600519", name="茅台", market="CN", id=1),
+    ]
+
+    class _StockQuery:
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def all(self):
+            return stocks
+
+    class _FakeSessionScanOff(_FakeSession):
+        def query(self, model):
+            model_key = str(model)
+            if model_key.endswith("Stock") or "Stock" in model_key:
+                return _StockQuery()
+            return super().query(model)
+
+    monkeypatch.setattr(mod, "SessionLocal", lambda: _FakeSessionScanOff(scan_on_startup=False))
+    assert mod.bootstrap_all_missing_stocks() == 0
+
+
+def test_bootstrap_queues_when_startup_scan_enabled(monkeypatch):
+    """启动全量扫描开启时应为缺失报告标的排队。"""
+    queued: list[str] = []
+
+    def _ensure(stock):
+        queued.append(getattr(stock, "symbol", ""))
+        return {"queued": True}
+
+    monkeypatch.setattr(mod, "ensure_lmd_report", _ensure)
+
+    stocks = [
+        SimpleNamespace(symbol="600519", name="茅台", market="CN", id=1),
+    ]
+
+    class _StockQuery:
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def all(self):
+            return stocks
+
+    class _FakeSessionScanOn(_FakeSession):
+        def query(self, model):
+            model_key = str(model)
+            if model_key.endswith("Stock") or "Stock" in model_key:
+                return _StockQuery()
+            return super().query(model)
+
+    monkeypatch.setattr(
+        mod,
+        "SessionLocal",
+        lambda: _FakeSessionScanOn(scan_on_startup=True),
+    )
+    assert mod.bootstrap_all_missing_stocks() == 1
+    assert queued == ["600519"]

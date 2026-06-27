@@ -1654,6 +1654,17 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
     setInsightOpen(true)
   }, [])
 
+  const openStockDetailKline = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+    setInsightExpandAddPosition(false)
+    setInsightExpandReducePosition(false)
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(!!hasPosition)
+    setInsightInitialTab('kline')
+    setInsightOpen(true)
+  }, [])
+
   const openLmdReportSection = useCallback((
     stockSymbol: string,
     stockMarket: string,
@@ -4322,7 +4333,11 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         <div className="text-[10px]">
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                         </div>
-                        <KlineLevelsBrief kline={kline} align="right" />
+                        <KlineLevelsBrief
+                          kline={kline}
+                          align="right"
+                          onClick={() => openStockDetailKline(stock.symbol, stock.market, stock.name, isHolding)}
+                        />
                       </div>
                       </div>
                     </div>
@@ -4375,7 +4390,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                         compact
                         stock={stock}
                         isHolding={isHolding}
-                        onKline={() => openKlineDialog(stock.symbol, stock.market, stock.name, isHolding)}
+                        onKline={() => openStockDetailKline(stock.symbol, stock.market, stock.name, isHolding)}
                         onReports={() => openStockDetailReports(stock.symbol, stock.market, stock.name, isHolding)}
                         onValuation={() => openLmdReportSection(stock.symbol, stock.market, stock.name, 'valuation')}
                         onFundamentals={() => openLmdReportSection(stock.symbol, stock.market, stock.name, 'fundamentals')}

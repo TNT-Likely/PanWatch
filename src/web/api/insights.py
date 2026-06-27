@@ -109,10 +109,18 @@ def analysis_brief_batch(body: AnalysisBriefBatchRequest, db: Session = Depends(
         format_lmd_brief,
         load_latest_deep_reports_by_symbol,
     )
-    from src.core.lmd_report_snapshot import load_latest_lmd_reports_by_symbol
+    from src.core.lmd_report_snapshot import (
+        commit_lmd_history_backfills,
+        load_latest_lmd_reports_by_symbol,
+    )
 
     symbols = list(dict.fromkeys(it.symbol.strip() for it in body.items if it.symbol.strip()))
     lmd_by_symbol = load_latest_lmd_reports_by_symbol(db, symbols)
+    for record in lmd_by_symbol.values():
+        from src.core.lmd_report_snapshot import resolve_lmd_history_content
+
+        resolve_lmd_history_content(record, db, commit_backfill=False)
+    commit_lmd_history_backfills(db)
     deep_by_symbol = load_latest_deep_reports_by_symbol(db, symbols)
 
     results: list[AnalysisBriefResponse] = []

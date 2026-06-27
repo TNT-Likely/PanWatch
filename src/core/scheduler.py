@@ -7,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from src.agents.base import BaseAgent, AgentContext
 from src.collectors.kline_collector import kline_source
 from src.core.agent_runs import record_agent_run
+from src.core.app_shutdown import scheduler_job, shutdown_async_scheduler
 from src.core.log_context import log_context
 from src.models.market import MARKETS
 from src.core.schedule_parser import parse_schedule
@@ -61,6 +62,7 @@ class AgentScheduler:
 
     # NOTE: cron/interval 解析逻辑统一放在 src/core/schedule_parser.py
 
+    @scheduler_job
     async def _run_agent(self, agent_name: str):
         """执行指定 Agent（动态构建 context）"""
         if not self.context_builder:
@@ -189,5 +191,4 @@ class AgentScheduler:
 
     def shutdown(self):
         """关闭调度器"""
-        self.scheduler.shutdown()
-        logger.info("调度器已关闭")
+        shutdown_async_scheduler(self.scheduler, wait=False)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import queue
 import threading
@@ -28,24 +27,33 @@ _worker_lock = threading.Lock()
 _worker_thread: threading.Thread | None = None
 
 
-def _auto_bootstrap_enabled(db: Session) -> bool:
+def _auto_bootstrap_cfg(db: Session) -> dict:
     agent = db.query(AgentConfig).filter(AgentConfig.name == LMD_AGENT).first()
     if not agent:
-        return True
+        return {}
     cfg = agent.config if isinstance(agent.config, dict) else {}
     auto = cfg.get("auto_bootstrap") or {}
-    if isinstance(auto, dict) and "enabled" in auto:
+    return auto if isinstance(auto, dict) else {}
+
+
+def _auto_bootstrap_enabled(db: Session) -> bool:
+    auto = _auto_bootstrap_cfg(db)
+    if "enabled" in auto:
         return bool(auto["enabled"])
     return True
 
 
+def _startup_scan_enabled(db: Session) -> bool:
+    """启动时是否全量扫描缺失报告的自选股（默认关闭）。"""
+    auto = _auto_bootstrap_cfg(db)
+    if "scan_on_startup" in auto:
+        return bool(auto["scan_on_startup"])
+    return False
+
+
 def _suppress_notify_default(db: Session) -> bool:
-    agent = db.query(AgentConfig).filter(AgentConfig.name == LMD_AGENT).first()
-    if not agent:
-        return True
-    cfg = agent.config if isinstance(agent.config, dict) else {}
-    auto = cfg.get("auto_bootstrap") or {}
-    if isinstance(auto, dict) and "suppress_notify" in auto:
+    auto = _auto_bootstrap_cfg(db)
+    if "suppress_notify" in auto:
         return bool(auto["suppress_notify"])
     return True
 
@@ -127,6 +135,20 @@ def _ensure_worker() -> None:
         _worker_thread.start()
 
 
+def shutdown_lmd_bootstrap_worker(timeout: float = 1.0) -> None:
+    """停止后台 LMD 生成 worker，避免进程退出时线程池仍在跑协程。"""
+    global _worker_thread
+    with _worker_lock:
+        thread = _worker_thread
+    if thread is None or not thread.is_alive():
+        return
+    _task_queue.put(None)
+    thread.join(timeout=timeout)
+    with _worker_lock:
+        if _worker_thread is thread and not thread.is_alive():
+            _worker_thread = None
+
+
 def _worker_loop() -> None:
     while True:
         item = _task_queue.get()
@@ -136,7 +158,13 @@ def _worker_loop() -> None:
             stock, suppress_notify = item
             symbol = getattr(stock, "symbol", "") or ""
             try:
-                asyncio.run(_run_lmd_trigger(stock, suppress_notify=suppress_notify))
+                from src.core.app_shutdown import is_shutting_down
+                from src.core.async_runner import run_async_isolated
+
+                if is_shutting_down():
+                    logger.debug("[lmd_bootstrap] 服务关闭中，跳过 %s", symbol)
+                    continue
+                run_async_isolated(_run_lmd_trigger(stock, suppress_notify=suppress_notify))
                 logger.info("[lmd_bootstrap] 产业周期视角报告已生成 - %s", symbol)
             except Exception:
                 logger.exception("[lmd_bootstrap] 产业周期视角报告生成失败 - %s", symbol)
@@ -226,6 +254,9 @@ def bootstrap_all_missing_stocks() -> int:
     try:
         if not _auto_bootstrap_enabled(db):
             logger.info("[lmd_bootstrap] 自动补全已关闭，跳过启动扫描")
+            return 0
+        if not _startup_scan_enabled(db):
+            logger.info("[lmd_bootstrap] 启动全量扫描已关闭，跳过")
             return 0
         stocks = db.query(Stock).order_by(
             Stock.is_featured.desc(),

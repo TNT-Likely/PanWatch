@@ -46,7 +46,13 @@ export default function IntradayChart(props: {
   symbol: string
   market: string
   autoRefresh?: boolean
+  mainHeight?: number
+  volumeHeight?: number
+  fullscreen?: boolean
 }) {
+  const mainHeight = props.mainHeight ?? 300
+  const volumeHeight = props.volumeHeight ?? 80
+  const fullscreen = !!props.fullscreen
   const autoRefresh = props.autoRefresh !== false
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -131,7 +137,7 @@ export default function IntradayChart(props: {
 
     const chart = createChart(container, {
       width: container.clientWidth,
-      height: 300,
+      height: mainHeight,
       localization: chartMarketLocalization,
       layout: {
         background: { color: `hsl(${bg})` },
@@ -140,10 +146,11 @@ export default function IntradayChart(props: {
       rightPriceScale: { borderVisible: false },
       timeScale: {
         borderVisible: false,
-        fixRightEdge: true,
+        fixRightEdge: !fullscreen,
         rightOffset: 2,
         barSpacing: 3,
         minBarSpacing: 1,
+        lockVisibleTimeRangeOnResize: true,
         timeVisible: true,
         secondsVisible: false,
       },
@@ -188,7 +195,7 @@ export default function IntradayChart(props: {
     if (volEl) {
       const volChart = createChart(volEl, {
         width: volEl.clientWidth,
-        height: 80,
+        height: volumeHeight,
         localization: chartMarketLocalization,
         layout: {
           background: { color: `hsl(${bg})` },
@@ -213,10 +220,43 @@ export default function IntradayChart(props: {
         if (range) chart.timeScale().setVisibleLogicalRange(range)
       })
       const ro = new ResizeObserver(() => {
-        volChart.applyOptions({ width: volEl.clientWidth })
+        chart.applyOptions({ width: container.clientWidth, height: mainHeight })
+        volChart.applyOptions({ width: volEl.clientWidth, height: volumeHeight })
       })
+      ro.observe(container)
       ro.observe(volEl)
+
+      chart.subscribeCrosshairMove(param => {
+        if (!param.time || !param.point) {
+          setHover(null)
+          return
+        }
+        const t = typeof param.time === 'number' ? param.time : null
+        if (t == null) {
+          setHover(null)
+          return
+        }
+        const idx = series.prices.findIndex(p => p.time === t)
+        if (idx < 0) {
+          setHover(null)
+          return
+        }
+        const row = series.points[idx]
+        const cp =
+          series.preClose && series.preClose > 0
+            ? ((row.price - series.preClose) / series.preClose) * 100
+            : null
+        setHover({
+          time: row.time,
+          price: row.price,
+          avg_price: row.avg_price,
+          volume: row.volume,
+          changePct: cp,
+        })
+      })
+
       chart.timeScale().fitContent()
+
       return () => {
         ro.disconnect()
         volChart.remove()
@@ -254,7 +294,7 @@ export default function IntradayChart(props: {
     })
 
     const ro = new ResizeObserver(() => {
-      chart.applyOptions({ width: container.clientWidth })
+      chart.applyOptions({ width: container.clientWidth, height: mainHeight })
     })
     ro.observe(container)
     chart.timeScale().fitContent()
@@ -263,7 +303,7 @@ export default function IntradayChart(props: {
       ro.disconnect()
       chart.remove()
     }
-  }, [series])
+  }, [series, mainHeight, volumeHeight, fullscreen])
 
   const display = hover || (series.last
     ? {
@@ -345,14 +385,14 @@ export default function IntradayChart(props: {
 
       <div className="relative">
         {showSkeleton ? (
-          <div className="w-full h-[300px] rounded-xl overflow-hidden border border-border/50 p-3 animate-pulse">
+          <div className="w-full rounded-xl overflow-hidden border border-border/50 p-3 animate-pulse" style={{ height: mainHeight }}>
             <div className="h-full w-full rounded-lg bg-accent/20" />
           </div>
         ) : (
-          <div ref={containerRef} className="w-full h-[300px] rounded-xl overflow-hidden border border-border/50" />
+          <div ref={containerRef} className="w-full touch-none rounded-xl overflow-hidden border border-border/50" style={{ height: mainHeight }} />
         )}
       </div>
-      <div ref={volRef} className="w-full h-[80px] mt-1 rounded-xl overflow-hidden border border-border/50" />
+      <div ref={volRef} className="w-full mt-1 touch-none rounded-xl overflow-hidden border border-border/50" style={{ height: volumeHeight }} />
     </div>
   )
 }

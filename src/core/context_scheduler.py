@@ -9,6 +9,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.collectors.kline_collector import kline_source
+from src.core.app_shutdown import raise_if_shutting_down, scheduler_job, shutdown_async_scheduler
 from src.core.context_store import cleanup_context_data
 from src.core.entry_candidates import evaluate_entry_candidate_outcomes
 from src.core.prediction_outcome import evaluate_pending_prediction_outcomes
@@ -37,6 +38,7 @@ class ContextMaintenanceScheduler:
         self._cleaning = False
         self._refreshing = False
 
+    @scheduler_job
     async def _evaluate_job(self):
         if self._evaluating:
             logger.debug("[上下文维护] 上一轮后验评估仍在执行，跳过本轮")
@@ -44,6 +46,7 @@ class ContextMaintenanceScheduler:
         self._evaluating = True
         try:
             stats = await asyncio.to_thread(evaluate_pending_prediction_outcomes)
+            raise_if_shutting_down()
             level = logging.INFO if stats.get("evaluated", 0) else logging.DEBUG
             logger.log(
                 level,
@@ -61,6 +64,7 @@ class ContextMaintenanceScheduler:
                     snapshot_days=45,
                     limit=500,
                 )
+            raise_if_shutting_down()
             level = logging.INFO if cand_stats.get("evaluated", 0) else logging.DEBUG
             logger.log(
                 level,
@@ -78,6 +82,7 @@ class ContextMaintenanceScheduler:
                     snapshot_days=60,
                     limit=1200,
                 )
+            raise_if_shutting_down()
             level = logging.INFO if strategy_stats.get("evaluated", 0) else logging.DEBUG
             logger.log(
                 level,
@@ -95,6 +100,7 @@ class ContextMaintenanceScheduler:
                 alpha=0.35,
                 regime="default",
             )
+            raise_if_shutting_down()
             level = logging.INFO if rebalance.get("changed", 0) else logging.DEBUG
             logger.log(
                 level,
@@ -124,6 +130,7 @@ class ContextMaintenanceScheduler:
         finally:
             self._evaluating = False
 
+    @scheduler_job
     async def _cleanup_job(self):
         if self._cleaning:
             logger.debug("[上下文维护] 上一轮清理仍在执行，跳过本轮")
@@ -185,6 +192,7 @@ class ContextMaintenanceScheduler:
             "factor_calibration": factor_calibration_stats,
         }
 
+    @scheduler_job
     async def _refresh_opportunities_job(self):
         """定时刷新机会池（候选 + 策略信号）。"""
         if self._refreshing:
@@ -290,8 +298,4 @@ class ContextMaintenanceScheduler:
         )
 
     def shutdown(self):
-        try:
-            self.scheduler.shutdown(wait=False)
-        except Exception:
-            pass
-        logger.info("上下文维护调度器已关闭")
+        shutdown_async_scheduler(self.scheduler, wait=False)

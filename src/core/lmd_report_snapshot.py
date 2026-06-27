@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass, fields as dataclass_fields
 from datetime import date, datetime
@@ -15,6 +16,8 @@ LMD_AGENT_NAME = "lmd_outlook"
 LMD_SKILL_AGENT_NAME = local_skill_agent_name(LMD_SKILL_SLUG)
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
+
+logger = logging.getLogger(__name__)
 
 _HEADING_RE = re.compile(r"^(#{2,4})\s+(.+?)\s*#*$")
 _PE_TTM_RE = re.compile(
@@ -271,50 +274,118 @@ def attach_lmd_snapshot_to_raw_data(
 def _should_resolve_lmd_report(record: Any) -> bool:
     if getattr(record, "stock_symbol", "") in ("", "*"):
         return False
-    if record.agent_name == LMD_AGENT_NAME:
-        return True
-    slug = parse_local_skill_slug(record.agent_name)
-    if slug == LMD_SKILL_SLUG:
-        return True
-    from src.core.hermes_runner import is_incomplete_lmd_report
 
-    if slug and is_incomplete_lmd_report(record.content or ""):
+    from src.core.hermes_runner import is_diff_artifact, is_incomplete_lmd_report
+
+    content = record.content or ""
+    agent = getattr(record, "agent_name", "") or ""
+    slug = parse_local_skill_slug(agent)
+    is_lmd = agent == LMD_AGENT_NAME or slug == LMD_SKILL_SLUG
+
+    if not content.strip():
+        return is_lmd
+
+    if is_diff_artifact(content) or is_incomplete_lmd_report(content):
         return True
+
     return False
 
 
-def _resolve_report_content(record: Any) -> str:
+def _parse_record_analysis_date(record: Any) -> date | None:
+    try:
+        return datetime.strptime(
+            str(record.analysis_date or ""), "%Y-%m-%d"
+        ).date()
+    except (ValueError, TypeError):
+        return None
+
+
+def resolve_lmd_history_content(
+    record: Any,
+    db: Any | None = None,
+    *,
+    commit_backfill: bool = True,
+) -> str:
+    """解析 LMD 历史正文；若磁盘成稿优于 DB 且提供 db，则懒回填入库。"""
     content = record.content or ""
     if not _should_resolve_lmd_report(record):
         return content
 
-    analysis_date: date | None = None
-    try:
-        analysis_date = datetime.strptime(
-            str(record.analysis_date or ""), "%Y-%m-%d"
-        ).date()
-    except (ValueError, TypeError):
-        analysis_date = None
+    from src.core.hermes_runner import (
+        clear_resolve_lmd_cache,
+        is_incomplete_lmd_report,
+        resolve_lmd_report_content,
+    )
 
-    from src.core.hermes_runner import resolve_lmd_report_content
-
-    return resolve_lmd_report_content(
+    resolved = resolve_lmd_report_content(
         content,
         symbol=record.stock_symbol,
         reports_dir=REPORTS_DIR,
-        analysis_date=analysis_date,
+        analysis_date=_parse_record_analysis_date(record),
     )
+    if (
+        db is not None
+        and resolved != content
+        and not is_incomplete_lmd_report(resolved)
+        and getattr(record, "id", None)
+    ):
+        report_date = str(record.analysis_date or "") or None
+        record.content = resolved
+        raw = dict(getattr(record, "raw_data", None) or {})
+        record.raw_data = attach_lmd_snapshot_to_raw_data(
+            raw, resolved, report_date=report_date
+        )
+        if commit_backfill:
+            try:
+                db.commit()
+                clear_resolve_lmd_cache()
+            except Exception as exc:
+                db.rollback()
+                logger.warning(
+                    "lmd_report: 磁盘成稿回填 DB 失败 id=%s %s: %s",
+                    record.id,
+                    record.stock_symbol,
+                    exc,
+                )
+                return resolved
+            logger.debug(
+                "lmd_report: 磁盘成稿已回填 DB id=%s %s",
+                record.id,
+                record.stock_symbol,
+            )
+    return resolved
 
 
-def snapshot_from_history_record(record: Any) -> LmdReportSnapshot:
+def commit_lmd_history_backfills(db: Any) -> None:
+    """批量懒回填后统一提交。"""
+    from src.core.hermes_runner import clear_resolve_lmd_cache
+
+    if not db.new and not db.dirty and not db.deleted:
+        return
+    try:
+        db.commit()
+        clear_resolve_lmd_cache()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("lmd_report: 批量回填 DB 提交失败: %s", exc)
+
+
+def snapshot_from_history_record(
+    record: Any,
+    db: Any | None = None,
+    *,
+    commit_backfill: bool = True,
+) -> LmdReportSnapshot:
     report_date = str(record.analysis_date or "") or None
     cached = (getattr(record, "raw_data", None) or {}).get("lmd_snapshot")
-    if isinstance(cached, dict) and cached:
+    if isinstance(cached, dict) and cached and not _should_resolve_lmd_report(record):
         snap = snapshot_from_dict(cached, report_date=report_date)
         snap.has_report = True
         return snap
 
-    content = _resolve_report_content(record)
+    content = resolve_lmd_history_content(
+        record, db=db, commit_backfill=commit_backfill
+    )
     snap = extract_lmd_report_snapshot(content, report_date=report_date)
     snap.has_report = bool(content.strip())
     return snap

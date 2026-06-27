@@ -195,10 +195,11 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "hermes_auto_expand_summary": True,
             # builtin 模式：留空用 prompts/lmd_outlook.txt；可填外部 skill 绝对路径
             "skill_path": "",
-            # 自选股默认补全产业周期视角报告（启动扫描 + 新增自选股时排队）
+            # 自选股默认补全产业周期视角报告（新增自选股时排队；启动全量扫描默认关）
             "auto_bootstrap": {
                 "enabled": True,
                 "suppress_notify": True,
+                "scan_on_startup": False,
             },
         },
     ),

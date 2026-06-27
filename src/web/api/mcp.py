@@ -109,6 +109,7 @@ WRITE_TOOL_NAMES = {
 }
 
 MCP_SERVER_VERSION = "0.3.1"
+MCP_SERVER_NAME = "MindAlpha"
 
 ERR_INVALID_PARAMS = "MCP_INVALID_PARAMS"
 ERR_AUTH_FAILED = "MCP_AUTH_FAILED"
@@ -921,7 +922,7 @@ def _mcp_health(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
     _ = db
     return {
         "status": "ok",
-        "server": "panwatch-mcp",
+        "server": MCP_SERVER_NAME,
         "version": MCP_SERVER_VERSION,
         "time_ms": int(time.time() * 1000),
     }
@@ -939,7 +940,7 @@ def _mcp_version(arguments: dict[str, Any], db: Session) -> dict[str, Any]:
     _ = arguments
     _ = db
     return {
-        "name": "panwatch-mcp",
+        "name": MCP_SERVER_NAME,
         "version": MCP_SERVER_VERSION,
         "protocolVersion": "2024-11-05",
     }
@@ -3759,7 +3760,7 @@ def mcp_rpc(
                     "tools": {},
                 },
                 "serverInfo": {
-                    "name": "panwatch-mcp",
+                    "name": MCP_SERVER_NAME,
                     "version": MCP_SERVER_VERSION,
                 },
             },

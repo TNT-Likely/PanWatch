@@ -17,6 +17,8 @@ interface StockConceptTagsProps {
   editable?: boolean
   compact?: boolean
   maxVisible?: number
+  /** 初始是否展开全部标签（用于股票详情等场景） */
+  defaultExpanded?: boolean
   className?: string
   activeTag?: string
   onTagClick?: (name: string) => void
@@ -30,6 +32,7 @@ export function StockConceptTags({
   editable = false,
   compact = false,
   maxVisible = 6,
+  defaultExpanded = false,
   className,
   activeTag = '',
   onTagClick,
@@ -46,6 +49,7 @@ export function StockConceptTags({
     <ConceptTagsEditor
       tags={tags}
       maxVisible={maxVisible}
+      defaultExpanded={defaultExpanded}
       manualTags={manualTags}
       market={market}
       editable={editable}
@@ -62,6 +66,7 @@ export function StockConceptTags({
 function ConceptTagsEditor({
   tags,
   maxVisible,
+  defaultExpanded,
   manualTags,
   market,
   editable,
@@ -74,6 +79,7 @@ function ConceptTagsEditor({
 }: {
   tags: StockConceptTagItem[]
   maxVisible: number
+  defaultExpanded: boolean
   manualTags: string[]
   market: string
   editable: boolean
@@ -87,7 +93,7 @@ function ConceptTagsEditor({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
   const visibleTags = expanded ? tags : tags.slice(0, maxVisible)
   const hiddenTags = expanded ? [] : tags.slice(maxVisible)

@@ -59,7 +59,7 @@ def test_mcp_initialize_returns_jsonrpc_result(client, auth_token):
     assert data["jsonrpc"] == "2.0"
     assert data["id"] == 1
     assert data["result"]["protocolVersion"] == "2024-11-05"
-    assert data["result"]["serverInfo"]["name"] == "panwatch-mcp"
+    assert data["result"]["serverInfo"]["name"] == "MindAlpha"
 
 
 def test_mcp_tools_list_returns_tools(client, auth_token):
@@ -95,7 +95,7 @@ def test_mcp_basic_auth_works(client, db):
         headers={"Authorization": auth_header},
     )
     assert r.status_code == 200
-    assert r.json()["result"]["serverInfo"]["name"] == "panwatch-mcp"
+    assert r.json()["result"]["serverInfo"]["name"] == "MindAlpha"
 
 
 def test_mcp_no_auth_returns_401(client):

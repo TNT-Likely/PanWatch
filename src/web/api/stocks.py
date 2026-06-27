@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import threading
 from types import SimpleNamespace
@@ -792,6 +791,7 @@ def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get
         return []
 
     from src.core.lmd_report_snapshot import (
+        commit_lmd_history_backfills,
         load_latest_lmd_reports_by_symbol,
         snapshot_from_history_record,
     )
@@ -804,7 +804,9 @@ def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get
     for symbol in symbols:
         record = latest.get(symbol)
         if record:
-            snap = snapshot_from_history_record(record)
+            snap = snapshot_from_history_record(
+                record, db=db, commit_backfill=False
+            )
             payload = snap.to_dict()
         else:
             payload = {"has_report": False}
@@ -815,6 +817,7 @@ def batch_lmd_snapshots(body: LmdSnapshotBatchRequest, db: Session = Depends(get
                 **payload,
             )
         )
+    commit_lmd_history_backfills(db)
     return results
 
 
@@ -996,7 +999,9 @@ async def trigger_stock_agent(
 
         def _runner():
             try:
-                asyncio.run(trigger_agent_for_stock(
+                from src.core.async_runner import run_async_isolated
+
+                run_async_isolated(trigger_agent_for_stock(
                     agent_name,
                     trigger_stock,
                     stock_agent_id=sa_id,

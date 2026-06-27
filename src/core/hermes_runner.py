@@ -13,6 +13,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_RESOLVE_CACHE: dict[tuple, tuple[float, str, float | None]] = {}
+_RESOLVE_CACHE_TTL_SEC = 120.0
+_RESOLVE_CACHE_MAX_ENTRIES = 512
+
 _SESSION_ID_RE = re.compile(r"^session_id:\s*(\S+)\s*$", re.MULTILINE)
 _DEFAULT_CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
 
@@ -212,6 +216,47 @@ def find_lmd_report_file(
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+def clear_resolve_lmd_cache() -> None:
+    """清空 resolve_lmd_report_content 内存缓存（测试或回填后可用）。"""
+    _RESOLVE_CACHE.clear()
+
+
+def _resolve_cache_key(
+    symbol: str,
+    reports_dir: Path | str,
+    analysis_date: date | None,
+    content: str,
+) -> tuple:
+    text = content or ""
+    root = Path(reports_dir)
+    try:
+        root_key = str(root.resolve())
+    except OSError:
+        root_key = str(root)
+    return (
+        (symbol or "").strip(),
+        root_key,
+        analysis_date.isoformat() if analysis_date else "",
+        len(text),
+        hash(text[:2048]),
+    )
+
+
+def _prune_resolve_cache(now: float) -> None:
+    expired = [
+        key
+        for key, (cached_at, _, _) in _RESOLVE_CACHE.items()
+        if now - cached_at > _RESOLVE_CACHE_TTL_SEC
+    ]
+    for key in expired:
+        _RESOLVE_CACHE.pop(key, None)
+    overflow = len(_RESOLVE_CACHE) - _RESOLVE_CACHE_MAX_ENTRIES
+    if overflow > 0:
+        oldest = sorted(_RESOLVE_CACHE.items(), key=lambda item: item[1][0])
+        for key, _ in oldest[:overflow]:
+            _RESOLVE_CACHE.pop(key, None)
+
+
 def resolve_lmd_report_content(
     content: str,
     *,
@@ -222,7 +267,31 @@ def resolve_lmd_report_content(
 ) -> str:
     """Hermes 若返回 diff/摘要，尝试从磁盘读取已落盘的成稿。"""
     text = (content or "").strip()
+    cache_key = _resolve_cache_key(symbol, reports_dir, analysis_date, text)
+    now = time.time()
+    cached = _RESOLVE_CACHE.get(cache_key)
+    if cached:
+        cached_at, cached_result, cached_mtime = cached
+        if now - cached_at <= _RESOLVE_CACHE_TTL_SEC:
+            if cached_mtime is None:
+                return cached_result
+            min_mtime = (started_at - 120.0) if started_at is not None else None
+            report_path = find_lmd_report_file(
+                reports_dir,
+                symbol,
+                analysis_date=analysis_date,
+                min_mtime=min_mtime,
+            )
+            if (
+                report_path
+                and report_path.is_file()
+                and report_path.stat().st_mtime == cached_mtime
+            ):
+                return cached_result
+
     if not is_incomplete_lmd_report(text) and not is_diff_artifact(text):
+        _RESOLVE_CACHE[cache_key] = (now, text, None)
+        _prune_resolve_cache(now)
         return text
 
     min_mtime = (started_at - 120.0) if started_at is not None else None
@@ -233,25 +302,36 @@ def resolve_lmd_report_content(
         min_mtime=min_mtime,
     )
     if not report_path or not report_path.is_file():
+        _RESOLVE_CACHE[cache_key] = (now, text, None)
+        _prune_resolve_cache(now)
         return text
 
     try:
         disk_content = report_path.read_text(encoding="utf-8").strip()
     except OSError as exc:
         logger.warning("hermes_runner: 读取成稿失败 %s: %s", report_path, exc)
+        _RESOLVE_CACHE[cache_key] = (now, text, None)
+        _prune_resolve_cache(now)
         return text
 
     if not disk_content or is_diff_artifact(disk_content):
+        _RESOLVE_CACHE[cache_key] = (now, text, None)
+        _prune_resolve_cache(now)
         return text
     if is_incomplete_lmd_report(disk_content) and len(disk_content) <= len(text):
+        _RESOLVE_CACHE[cache_key] = (now, text, None)
+        _prune_resolve_cache(now)
         return text
 
-    logger.info(
+    logger.debug(
         "hermes_runner: 使用磁盘成稿 %s 替代 Hermes 输出 (disk=%s, stdout=%s)",
         report_path.name,
         len(disk_content),
         len(text),
     )
+    file_mtime = report_path.stat().st_mtime
+    _RESOLVE_CACHE[cache_key] = (now, disk_content, file_mtime)
+    _prune_resolve_cache(now)
     return disk_content
 
 

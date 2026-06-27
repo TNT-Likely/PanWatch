@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.core.hermes_runner import (
+    clear_resolve_lmd_cache,
     ensure_hermes_profile_skill,
     find_hermes_bin,
     find_lmd_report_file,
@@ -63,6 +65,7 @@ def test_is_diff_artifact_detects_review_diff():
 
 def test_resolve_lmd_report_content_reads_disk(tmp_path):
     """stdout 为 diff 时应回退读取 reports/ 成稿。"""
+    clear_resolve_lmd_cache()
     report = tmp_path / "锡业股份_000960_老马产业周期分析_20260626.md"
     report.write_text(
         "## 一、整体定位\n" + "正文" * 500 + "\n## 二、五维周期定位\n分析\n",
@@ -77,6 +80,39 @@ def test_resolve_lmd_report_content_reads_disk(tmp_path):
     )
     assert "## 一、整体定位" in out
     assert "review diff" not in out
+
+
+def test_resolve_lmd_report_content_uses_cache(tmp_path, monkeypatch):
+    """相同输入在缓存有效期内应复用结果，不重复读盘。"""
+    clear_resolve_lmd_cache()
+    report = tmp_path / "锡业股份_000960_老马产业周期分析_20260626.md"
+    report.write_text(
+        "## 一、整体定位\n" + "正文" * 500 + "\n## 二、五维周期定位\n分析\n",
+        encoding="utf-8",
+    )
+    diff = "review diff a/reports/000960_Research_20260626.md →\n@@ -1 +1 @@\n+x"
+    reads: list[Path] = []
+    original_read_text = Path.read_text
+
+    def counting_read_text(self, *args, **kwargs):
+        reads.append(self)
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counting_read_text)
+    first = resolve_lmd_report_content(
+        diff,
+        symbol="000960",
+        reports_dir=tmp_path,
+        analysis_date=date(2026, 6, 26),
+    )
+    second = resolve_lmd_report_content(
+        diff,
+        symbol="000960",
+        reports_dir=tmp_path,
+        analysis_date=date(2026, 6, 26),
+    )
+    assert first == second
+    assert len(reads) == 1
 
 
 def test_find_lmd_report_file_skips_research_draft(tmp_path):

@@ -6,6 +6,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from src.core.app_shutdown import scheduler_job, shutdown_async_scheduler
 from src.core.paper_trading_engine import ENGINE
 from src.models.market import MARKETS, MarketCode
 
@@ -27,6 +28,7 @@ class PaperTradingScheduler:
         self.interval_seconds = max(15, int(interval_seconds))
         self._running = False
 
+    @scheduler_job
     async def _scan_job(self):
         if self._running:
             logger.debug("[模拟盘] 上轮扫描仍在执行，跳过本轮")
@@ -54,6 +56,7 @@ class PaperTradingScheduler:
         finally:
             self._running = False
 
+    @scheduler_job
     async def _premarket_job(self):
         """盘前计划通知。"""
         try:
@@ -62,6 +65,7 @@ class PaperTradingScheduler:
         except Exception as e:
             logger.exception(f"[模拟盘] 盘前计划通知异常: {e}")
 
+    @scheduler_job
     async def _summary_job(self):
         """日终摘要通知。"""
         try:
@@ -109,8 +113,4 @@ class PaperTradingScheduler:
         logger.info(f"模拟盘调度器已启动，扫描间隔 {self.interval_seconds}s")
 
     def shutdown(self):
-        try:
-            self.scheduler.shutdown(wait=False)
-        except Exception:
-            pass
-        logger.info("模拟盘调度器已关闭")
+        shutdown_async_scheduler(self.scheduler, wait=False)

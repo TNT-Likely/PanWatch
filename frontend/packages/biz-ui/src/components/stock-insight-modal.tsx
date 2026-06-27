@@ -27,12 +27,13 @@ import {
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { cn } from '@panwatch/base-ui'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
+import InteractiveKline, { klineDialogFullscreenClassName } from '@panwatch/biz-ui/components/InteractiveKline'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
@@ -499,6 +500,7 @@ export default function StockInsightModal(props: {
   const deepPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const deepTriggerStartedRef = useRef(0)
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
+  const [klineFullscreen, setKlineFullscreen] = useState(false)
   const [alerting, setAlerting] = useState(false)
   const [alertPanelKey, setAlertPanelKey] = useState(0)
   const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
@@ -2126,8 +2128,21 @@ export default function StockInsightModal(props: {
 
   return (
     <>
-      <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-        <DialogContent className="w-[92vw] max-w-6xl p-5 md:p-6 overflow-x-hidden">
+      <Dialog
+        open={props.open}
+        onOpenChange={(open) => {
+          if (!open) setKlineFullscreen(false)
+          props.onOpenChange(open)
+        }}
+      >
+        <DialogContent
+          className={cn(
+            klineFullscreen
+              ? klineDialogFullscreenClassName
+              : 'w-[92vw] max-w-6xl p-5 md:p-6 overflow-x-hidden',
+          )}
+        >
+          <div className={klineFullscreen ? 'hidden' : undefined}>
           <DialogHeader className="mb-3 pr-10">
             <div>
               <DialogTitle className="flex items-center gap-2 flex-wrap">
@@ -2141,6 +2156,7 @@ export default function StockInsightModal(props: {
                   tags={watchingStock.concept_tags || []}
                   market={market}
                   editable
+                  defaultExpanded
                   className="mt-2"
                   onUpdateManual={handleUpdateManualConceptTags}
                   onRefreshAuto={handleRefreshConceptTags}
@@ -2245,8 +2261,15 @@ export default function StockInsightModal(props: {
               </Select>
             </div>
           </div>
+          </div>
 
-          <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden pr-1 scrollbar">
+          <div
+            className={cn(
+              klineFullscreen
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                : 'max-h-[68vh] overflow-y-auto overflow-x-hidden pr-1 scrollbar',
+            )}
+          >
             {tab === 'overview' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
@@ -2638,11 +2661,12 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'kline' && (
-              <div className="card p-4">
+              <div className={cn(klineFullscreen ? 'flex min-h-0 flex-1 flex-col' : 'card p-4')}>
                 <InteractiveKline
                   symbol={symbol}
                   market={market}
                   initialInterval={klineInterval}
+                  onFullscreenChange={setKlineFullscreen}
                 />
               </div>
             )}

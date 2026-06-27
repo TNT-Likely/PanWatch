@@ -129,6 +129,28 @@ class AIClient:
             logger.error(f"AI tool use 调用失败: {e}")
             raise
 
+    async def aclose(self) -> None:
+        """关闭底层 httpx 连接池。
+
+        在 ``asyncio.run()`` 返回前必须调用,否则事件循环关闭后
+        AsyncOpenAI 析构会触发 ``RuntimeError: Event loop is closed``。
+        """
+        try:
+            close = getattr(self.client, "close", None)
+            if close is not None:
+                await close()
+        except RuntimeError as e:
+            if "Event loop is closed" not in str(e):
+                raise
+        except Exception:
+            logger.debug("AIClient 关闭连接池时出错", exc_info=True)
+
+    async def aclose(self) -> None:
+        """释放底层 httpx 连接,避免事件循环关闭后 aclose 报错。"""
+        close = getattr(self.client, "close", None)
+        if close is not None:
+            await close()
+
     def _encode_image(self, image_path: str) -> str | None:
         """将图片文件编码为 base64"""
         path = Path(image_path)

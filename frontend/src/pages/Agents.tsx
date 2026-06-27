@@ -1,3 +1,4 @@
+import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { useState, useEffect } from 'react'
 import { Play, Power, Clock, Cpu, Bot, Bell, Settings2 } from 'lucide-react'
 import { fetchAPI, type AIService, type NotifyChannel } from '@panwatch/api'
@@ -8,6 +9,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+
+interface AutoBootstrapConfig {
+  enabled?: boolean
+  suppress_notify?: boolean
+  scan_on_startup?: boolean
+}
+
+function readAutoBootstrap(config: Record<string, unknown>): AutoBootstrapConfig {
+  const raw = config.auto_bootstrap
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as AutoBootstrapConfig
+  }
+  return {}
+}
 
 interface AgentConfig {
   id: number
@@ -172,6 +187,8 @@ export default function AgentsPage() {
   // TradingAgents 深度配置弹窗(双模型 / 预算 / 超时 / 模拟盘对接)
   const [taConfigAgent, setTaConfigAgent] = useState<AgentConfig | null>(null)
   const [taConfigForm, setTaConfigForm] = useState<Record<string, unknown>>({})
+  const [lmdConfigAgent, setLmdConfigAgent] = useState<AgentConfig | null>(null)
+  const [lmdAutoBootstrap, setLmdAutoBootstrap] = useState<AutoBootstrapConfig>({})
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ type: 'daily', time: '15:30' })
   const [schedulePreview, setSchedulePreview] = useState<SchedulePreview | { error: string } | null>(null)
   const [schedulePreviewLoading, setSchedulePreviewLoading] = useState(false)
@@ -449,6 +466,12 @@ export default function AgentsPage() {
     }
   }, [taConfigAgent])
 
+  useEffect(() => {
+    if (lmdConfigAgent) {
+      setLmdAutoBootstrap(readAutoBootstrap(lmdConfigAgent.config || {}))
+    }
+  }, [lmdConfigAgent])
+
   const saveTaConfig = async () => {
     if (!taConfigAgent) return
     try {
@@ -458,6 +481,28 @@ export default function AgentsPage() {
       })
       toast('TradingAgents 配置已保存', 'success')
       setTaConfigAgent(null)
+      load()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '保存失败', 'error')
+    }
+  }
+
+  const saveLmdConfig = async () => {
+    if (!lmdConfigAgent) return
+    try {
+      const nextConfig = {
+        ...(lmdConfigAgent.config || {}),
+        auto_bootstrap: {
+          ...readAutoBootstrap(lmdConfigAgent.config || {}),
+          ...lmdAutoBootstrap,
+        },
+      }
+      await fetchAPI(`/agents/${lmdConfigAgent.name}`, {
+        method: 'PUT',
+        body: JSON.stringify({ config: nextConfig }),
+      })
+      toast('产业周期视角补全配置已保存', 'success')
+      setLmdConfigAgent(null)
       load()
     } catch (e) {
       toast(e instanceof Error ? e.message : '保存失败', 'error')
@@ -579,6 +624,16 @@ export default function AgentsPage() {
                         >
                           <Settings2 className="w-3.5 h-3.5" />
                           <span className="text-[12px]">深度配置</span>
+                        </button>
+                      )}
+                      {agent.name === 'lmd_outlook' && (
+                        <button
+                          onClick={() => setLmdConfigAgent(agent)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors text-primary"
+                          title="编辑产业周期视角自动补全与启动扫描配置"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                          <span className="text-[12px]">补全配置</span>
                         </button>
                       )}
                     </div>
@@ -1159,6 +1214,64 @@ export default function AgentsPage() {
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setTaConfigAgent(null)}>取消</Button>
               <Button onClick={saveTaConfig}>保存</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 产业周期视角补全配置 */}
+      <Dialog open={!!lmdConfigAgent} onOpenChange={open => !open && setLmdConfigAgent(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>产业周期视角 · 自动补全</DialogTitle>
+            <DialogDescription>
+              控制缺失报告时的自动排队行为。启动全量扫描默认关闭，避免 dev 重启时批量调用 Hermes。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 mt-2 text-[13px]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="font-medium">新增自选股时自动补全</div>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  添加自选股后，若尚无产业周期视角报告则后台排队生成。
+                </p>
+              </div>
+              <Switch
+                checked={lmdAutoBootstrap.enabled !== false}
+                onCheckedChange={checked => setLmdAutoBootstrap(prev => ({ ...prev, enabled: checked }))}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="font-medium">启动时全量扫描</div>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  服务启动后扫描全部自选股，为缺失报告的标的排队。默认关闭。
+                </p>
+              </div>
+              <Switch
+                checked={lmdAutoBootstrap.scan_on_startup === true}
+                onCheckedChange={checked => setLmdAutoBootstrap(prev => ({ ...prev, scan_on_startup: checked }))}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="font-medium">自动补全时不发通知</div>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  后台补全报告完成后不推送通知渠道。
+                </p>
+              </div>
+              <Switch
+                checked={lmdAutoBootstrap.suppress_notify !== false}
+                onCheckedChange={checked => setLmdAutoBootstrap(prev => ({ ...prev, suppress_notify: checked }))}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setLmdConfigAgent(null)}>取消</Button>
+              <Button onClick={saveLmdConfig}>保存</Button>
             </div>
           </div>
         </DialogContent>
