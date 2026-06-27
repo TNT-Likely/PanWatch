@@ -1,7 +1,7 @@
-"""雪球 Cookie 健康状态探测测试"""
+"""雪球采集健康状态探测测试"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from src.collectors.news_collector import (
     build_xueqiu_cookie_health_record,
@@ -48,16 +48,17 @@ def test_normalize_xueqiu_cookies_parse_failure_keeps_raw():
     assert normalize_xueqiu_cookies(raw) == raw
 
 
-def test_resolve_xueqiu_cookie_health_not_configured():
-    """未配置 Cookie 时返回未配置状态"""
+def test_resolve_xueqiu_cookie_health_unknown_by_default():
+    """未检测时返回待检测，且提示 Playwright 无需 Cookie"""
     health = resolve_xueqiu_cookie_health({})
     assert health is not None
-    assert health["status"] == "not_configured"
-    assert health["label"] == "未配置"
+    assert health["status"] == "unknown"
+    assert health["label"] == "待检测"
+    assert "Playwright" in health["message"]
 
 
 def test_resolve_xueqiu_cookie_health_unknown_when_cookie_present():
-    """已配置但未检测时返回待检测"""
+    """已配置 Cookie 但未检测时仍返回待检测"""
     health = resolve_xueqiu_cookie_health({"cookies": "xq_a_token=abc"})
     assert health is not None
     assert health["status"] == "unknown"
@@ -87,88 +88,55 @@ def test_resolve_xueqiu_cookie_health_uses_cached_record():
 def test_build_xueqiu_cookie_health_record():
     """探测结果可写入 config 缓存结构"""
     record = build_xueqiu_cookie_health_record(
-        {"status": "expired", "label": "已过期", "message": "请更新", "sample_count": 0}
+        {"status": "error", "label": "检测失败", "message": "请更新", "sample_count": 0}
     )
-    assert record["status"] == "expired"
-    assert record["label"] == "已过期"
+    assert record["status"] == "error"
+    assert record["label"] == "检测失败"
     assert record["message"] == "请更新"
     assert record["checked_at"]
 
 
-def test_probe_xueqiu_cookie_not_configured():
-    """空 Cookie 探测返回未配置"""
-    result = asyncio.run(probe_xueqiu_cookie(""))
-    assert result["status"] == "not_configured"
-
-
-def test_probe_xueqiu_cookie_ok():
-    """有效 JSON 响应判定为正常"""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.text = '{"list":[{"id":1,"title":"测试"}]}'
-    mock_resp.json.return_value = {"list": [{"id": 1, "title": "测试"}]}
-    mock_resp.raise_for_status = MagicMock()
-
+def _mock_browser_client(items=None, error=None):
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=mock_resp)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.fetch_timeline = AsyncMock(return_value=(items or [], error))
+    return patch(
+        "src.collectors.news_collector._XueqiuBrowserClient.get",
+        AsyncMock(return_value=mock_client),
+    )
 
-    with patch("src.collectors.news_collector.httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(probe_xueqiu_cookie("xq_a_token=abc", test_symbol="600519"))
+
+def test_probe_xueqiu_cookie_ok_without_cookie():
+    """无 Cookie 时 Playwright 探测成功"""
+    items = [{"id": 1, "title": "测试", "created_at": 1_700_000_000_000}]
+    with _mock_browser_client(items=items):
+        result = asyncio.run(probe_xueqiu_cookie("", test_symbol="600519"))
 
     assert result["status"] == "ok"
     assert result["sample_count"] == 1
 
 
 def test_probe_xueqiu_cookie_blocked_by_waf():
-    """WAF 页面判定为拦截"""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.text = "<html>aliyun_waf challenge</html>"
-
-    mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=mock_resp)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-
-    with patch("src.collectors.news_collector.httpx.AsyncClient", return_value=mock_client):
+    """WAF 拦截判定为 blocked"""
+    with _mock_browser_client(error="被雪球 WAF 拦截"):
         result = asyncio.run(probe_xueqiu_cookie("xq_a_token=abc"))
 
     assert result["status"] == "blocked"
 
 
-def test_probe_xueqiu_cookie_netscape_blocked_message():
-    """Netscape 格式被 WAF 拦截时提示改用请求头 Cookie"""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.text = '<textarea id="renderData">{"_waf_abc":"x"}</textarea>'
+def test_probe_xueqiu_cookie_playwright_error():
+    """Playwright 未安装时返回检测失败"""
+    with _mock_browser_client(error="未安装 Playwright，请运行: pip install playwright && playwright install chromium"):
+        result = asyncio.run(probe_xueqiu_cookie(""))
 
-    mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=mock_resp)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-
-    with patch("src.collectors.news_collector.httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(probe_xueqiu_cookie(NETSCAPE_SAMPLE))
-
-    assert result["status"] == "blocked"
-    assert "Netscape" in result["message"]
-    assert "Request Headers" in result["message"]
+    assert result["status"] == "error"
+    assert "Playwright" in result["message"]
 
 
-def test_probe_xueqiu_cookie_expired_on_400():
-    """HTTP 400 判定为过期"""
-    mock_resp = MagicMock()
-    mock_resp.status_code = 400
-    mock_resp.text = "bad request"
+def test_probe_xueqiu_cookie_ok_with_empty_list():
+    """接口正常但无新闻时仍判定为 ok"""
+    with _mock_browser_client(items=[]):
+        result = asyncio.run(probe_xueqiu_cookie(""))
 
-    mock_client = AsyncMock()
-    mock_client.get = AsyncMock(return_value=mock_resp)
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-
-    with patch("src.collectors.news_collector.httpx.AsyncClient", return_value=mock_client):
-        result = asyncio.run(probe_xueqiu_cookie("xq_a_token=abc"))
-
-    assert result["status"] == "expired"
+    assert result["status"] == "ok"
+    assert result["sample_count"] == 0
+    assert "暂无新闻" in result["message"]

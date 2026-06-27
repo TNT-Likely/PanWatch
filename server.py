@@ -387,7 +387,7 @@ def seed_data_sources():
             "provider": "xueqiu",
             "config": {
                 "cookies": "",
-                "description": "雪球个股新闻聚合，需要登录 cookie",
+                "description": "雪球个股新闻聚合，通过 Playwright 采集，Cookie 可选",
             },
             "enabled": False,
             "priority": 0,

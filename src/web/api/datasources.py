@@ -230,14 +230,7 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
     if _is_xueqiu_news(source):
         cookies = str((source.config or {}).get("cookies") or "").strip()
         test_symbol = (source.test_symbols or ["600519"])[0]
-        if not cookies:
-            probe = {
-                "status": "not_configured",
-                "label": "未配置",
-                "message": "未配置 Cookie，请在编辑数据源时粘贴雪球登录 Cookie",
-                "sample_count": 0,
-            }
-        elif result.success:
+        if result.success:
             probe = {
                 "status": "ok",
                 "label": "正常",
@@ -271,12 +264,12 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{source_id}/probe-cookie")
 async def probe_datasource_cookie(source_id: int, db: Session = Depends(get_db)):
-    """轻量检测雪球 Cookie 状态（仅 xueqiu 新闻源）。"""
+    """轻量检测雪球新闻采集连通性（Playwright，Cookie 可选）。"""
     source = db.query(DataSource).filter(DataSource.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="数据源不存在")
     if not _is_xueqiu_news(source):
-        raise HTTPException(status_code=400, detail="仅雪球新闻数据源支持 Cookie 检测")
+        raise HTTPException(status_code=400, detail="仅雪球新闻数据源支持连通检测")
 
     cookies = str((source.config or {}).get("cookies") or "").strip()
     test_symbol = (source.test_symbols or ["600519"])[0]

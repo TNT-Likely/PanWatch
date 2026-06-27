@@ -52,7 +52,7 @@ function XueqiuCookieGuide({ health, compact }: { health?: DataSourceCookieHealt
         <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[12px] font-medium text-foreground">雪球 Cookie 说明</span>
+            <span className="text-[12px] font-medium text-foreground">雪球采集说明</span>
             {health?.label && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded ${style}`}>
                 {health.label}
@@ -66,14 +66,12 @@ function XueqiuCookieGuide({ health, compact }: { health?: DataSourceCookieHealt
             <p className="text-[11px] text-muted-foreground leading-relaxed">{health.message}</p>
           )}
           <div className="text-[11px] text-muted-foreground leading-relaxed space-y-1">
-            <p>雪球新闻需浏览器登录态，Cookie 通常 <span className="text-foreground/80">几天到几周</span> 失效，无法配置永久凭证。</p>
-            <p className="text-foreground/80 font-medium">更新步骤：</p>
+            <p>雪球新闻通过 <span className="text-foreground/80">Playwright 无头浏览器</span> 采集，一般 <span className="text-foreground/80">无需配置 Cookie</span>。</p>
+            <p className="text-foreground/80 font-medium">首次使用前请确认：</p>
             <ol className="list-decimal list-inside space-y-0.5">
-              <li>浏览器打开并登录 <a href="https://xueqiu.com" target="_blank" rel="noreferrer" className="text-primary hover:underline">xueqiu.com</a></li>
-              <li>按 F12 → Network → 刷新页面 → 点任意 xueqiu.com 请求</li>
-              <li>复制 Request Headers 里的 <span className="text-foreground/80">Cookie 字符串</span>（形如 <code className="text-[10px]">xq_a_token=...; xq_r_token=...</code>）</li>
-              <li className="text-amber-700/90 dark:text-amber-400/90">不要粘贴 cookies.txt / Netscape 导出文件</li>
-              <li>粘贴到下方「雪球资讯」设置 → 保存 → 点「检测 Cookie」或「测试」验证</li>
+              <li>后端环境已安装 Chromium：<code className="text-[10px]">playwright install chromium</code></li>
+              <li>在数据源列表点击「检测连通」或「测试」验证采集是否正常</li>
+              <li>可选：粘贴登录 Cookie 以获取需登录态的内容（通常不需要）</li>
             </ol>
           </div>
         </div>
@@ -218,10 +216,10 @@ export default function DataSourcesPage() {
       )
       const health = result.cookie_health
       const ok = health?.status === 'ok'
-      toast(health?.message || (ok ? 'Cookie 有效' : 'Cookie 检测未通过'), ok ? 'success' : 'error')
+      toast(health?.message || (ok ? '采集正常' : '采集检测未通过'), ok ? 'success' : 'error')
       load()
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Cookie 检测失败', 'error')
+      toast(e instanceof Error ? e.message : '采集检测失败', 'error')
     } finally {
       setProbing(null)
     }
@@ -291,7 +289,7 @@ export default function DataSourcesPage() {
                                 XUEQIU_COOKIE_STATUS_STYLE[source.cookie_health.status]
                                 || XUEQIU_COOKIE_STATUS_STYLE.unknown
                               }`}>
-                                Cookie {source.cookie_health.label}
+                                采集 {source.cookie_health.label}
                               </span>
                             )}
                           </div>
@@ -319,7 +317,7 @@ export default function DataSourcesPage() {
                             className="h-7 w-7"
                             onClick={() => probeCookie(source.id)}
                             disabled={probing === source.id}
-                            title="检测 Cookie"
+                            title="检测连通"
                           >
                             {probing === source.id ? (
                               <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -408,16 +406,16 @@ export default function DataSourcesPage() {
                 />
                 <div>
                   <Label>
-                    雪球 Cookies
+                    雪球 Cookies（可选）
                   </Label>
                   <Input
                     type="password"
                     value={(form.config?.cookies as string) || ''}
                     onChange={e => setForm({ ...form, config: { ...form.config, cookies: e.target.value } })}
-                    placeholder="xq_a_token=...; xq_r_token=...; ..."
+                    placeholder="一般留空即可；可选粘贴 xq_a_token=...; xq_r_token=..."
                   />
                   <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    保存后建议点击列表中的「检测 Cookie」验证；Cookie 变更后旧检测状态会自动清除。
+                    保存后建议点击列表中的「检测连通」验证；Cookie 变更后旧检测状态会自动清除。
                   </p>
                 </div>
               </div>
@@ -507,7 +505,7 @@ export default function DataSourcesPage() {
                   : 'bg-amber-500/5 border-amber-500/20'
               }`}>
                 <div className="text-[11px] font-medium text-foreground mb-1">
-                  Cookie 状态：{testResult.cookie_health.label}
+                  采集状态：{testResult.cookie_health.label}
                   {testResult.cookie_health.checked_at ? ` · ${testResult.cookie_health.checked_at}` : ''}
                 </div>
                 <div className="text-[12px] text-muted-foreground">{testResult.cookie_health.message}</div>
