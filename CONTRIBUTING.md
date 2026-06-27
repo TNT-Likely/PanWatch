@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你对 PanWatch 的兴趣！本文档将指导你如何贡献代码，特别是如何编写 Agent 和数据源。
+感谢你对 AlphaMind 的兴趣！本文档将指导你如何贡献代码，特别是如何编写 Agent 和数据源。
 
 ## 目录
 
@@ -15,7 +15,7 @@
 ## 项目结构
 
 ```
-PanWatch/
+AlphaMind/
 ├── src/
 │   ├── agents/           # Agent 实现
 │   │   ├── base.py       # 基类和数据结构
@@ -55,7 +55,7 @@ pnpm dev
 
 ## 编写 Agent
 
-Agent 是 PanWatch 的核心分析单元，负责采集数据、调用 AI 分析、发送通知。
+Agent 是 AlphaMind 的核心分析单元，负责采集数据、调用 AI 分析、发送通知。
 
 ### 1. 创建 Agent 文件
 

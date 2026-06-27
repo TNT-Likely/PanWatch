@@ -76,8 +76,9 @@ def map_state_to_result(
         "action": action,
         "action_label": action_label,
         "rating_raw": rating_raw or "hold",  # 保留原始 5 档,前端/历史可查
-        "signal": _truncate(state.get("trader_investment_plan", ""), 200),
-        "reason": state.get("final_trade_decision") or short_reason,
+        # signal 必须与 PM 最终决策一致;trader_investment_plan 是中间环节,常出现 Action:Sell 但 PM 定 Hold
+        "signal": _extract_signal(state, limit=200),
+        "reason": final_text or short_reason,
         "should_alert": rating_raw in ("buy", "overweight", "underweight", "sell"),
         "agent_name": "tradingagents",
         "agent_label": "TradingAgents 深度",
@@ -217,6 +218,35 @@ def _extract_confidence(state: dict, rating_raw: str = "") -> float:
                     continue
     # B 兜底:按评级推导(无可识别评级才回退 5.0)
     return _RATING_CONFIDENCE_FALLBACK.get(rating_raw, 5.0)
+
+
+_EXEC_SUMMARY_RE = re.compile(
+    r"(?:Executive\s+Summary|决策摘要|核心结论|执行摘要)"
+    r"[\s\*:：\-—－]+(.+?)(?=\*\*[A-Za-z\u4e00-\u9fff]|$)",
+    re.I | re.S,
+)
+
+
+def _extract_executive_summary(text: str) -> str:
+    """从 PM 最终决策书里抽 Executive Summary / 决策摘要(一行信号用)。"""
+    if not text:
+        return ""
+    m = _EXEC_SUMMARY_RE.search(text)
+    if not m:
+        return ""
+    summary = re.sub(r"\*\*", "", m.group(1)).strip()
+    return summary
+
+
+def _extract_signal(state: dict, limit: int = 200) -> str:
+    """建议池 signal:优先 PM 决策摘要,与 action/action_label 对齐。"""
+    final_text = (state.get("final_trade_decision") or "").strip()
+    summary = _extract_executive_summary(final_text)
+    if summary:
+        return _truncate(summary, limit)
+    if final_text:
+        return _short_reason({"final_trade_decision": final_text}, limit=limit)
+    return _truncate(state.get("trader_investment_plan", ""), limit)
 
 
 def _short_reason(state: dict, limit: int = 120) -> str:

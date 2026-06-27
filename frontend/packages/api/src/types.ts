@@ -23,6 +23,15 @@ export interface NotifyChannel {
   is_default: boolean
 }
 
+export interface DataSourceCookieHealth {
+  status: 'not_configured' | 'unknown' | 'ok' | 'expired' | 'blocked' | 'error'
+  label: string
+  message: string
+  checked_at?: string | null
+  sample_count?: number
+  update_hint?: string
+}
+
 export interface DataSource {
   id: number
   name: string
@@ -33,4 +42,5 @@ export interface DataSource {
   priority: number
   supports_batch: boolean
   test_symbols: string[]
+  cookie_health?: DataSourceCookieHealth | null
 }

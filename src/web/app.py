@@ -26,6 +26,8 @@ from src.web.api import (
     dashboard,
     paper_trading,
     chat,
+    local_skills,
+    mcp,
 )
 from src.web.api import factors
 from src.web.api import health
@@ -35,7 +37,7 @@ from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
-    title="PanWatch API",
+    title="AlphaMind API",
     version="0.1.0",
     redirect_slashes=False,  # 避免重定向丢失 Authorization header
 )
@@ -171,6 +173,16 @@ app.include_router(
     tags=["chat"],
     dependencies=protected,
 )
+app.include_router(
+    local_skills.router,
+    prefix="/api/local-skills",
+    tags=["local-skills"],
+    dependencies=protected,
+)
+
+# MCP JSON-RPC 端点：自带 require_mcp_user 鉴权（Bearer/Basic），
+# 不挂 protected 依赖；响应为原生 JSON-RPC，已被 ResponseWrapperMiddleware 放行。
+app.include_router(mcp.router, prefix="/api/mcp", tags=["mcp"])
 
 
 @app.get("/api/health")

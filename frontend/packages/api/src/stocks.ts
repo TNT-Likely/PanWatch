@@ -1,4 +1,8 @@
 import { fetchAPI } from './client'
+import type { InvestmentProfile, InvestmentProfileEvaluateResult } from './investment-profile'
+
+export type { InvestmentProfile, InvestmentProfileEvaluateResult } from './investment-profile'
+export { DEFAULT_INVESTMENT_PROFILE } from './investment-profile'
 
 export interface StockAgentInfo {
   agent_name: string
@@ -7,12 +11,38 @@ export interface StockAgentInfo {
   notify_channel_ids: number[]
 }
 
+export interface StockConceptTag {
+  name: string
+  source: 'auto' | 'manual' | string
+}
+
+export interface IndustryChainInfo {
+  sector: string
+  sector_label: string
+  layer: string
+  layer_label: string
+  display: string
+  description?: string
+  score?: number
+  match_source?: string
+  source?: 'manual' | 'auto' | string
+  matched?: string[]
+}
+
 export interface StockItem {
   id: number
   symbol: string
   name: string
   market: string
+  security_type?: string
   sort_order?: number
+  is_featured?: boolean
+  concept_tags?: StockConceptTag[]
+  concept_tags_auto?: string[]
+  concept_tags_manual?: string[]
+  industry_chain?: IndustryChainInfo | null
+  industry_chain_manual?: { sector?: string; layer?: string } | null
+  investment_profile?: InvestmentProfile
   agents?: StockAgentInfo[]
 }
 
@@ -20,6 +50,40 @@ export interface StockCreatePayload {
   symbol: string
   name: string
   market: string
+  security_type?: string
+}
+
+export interface EtfSpot {
+  symbol: string
+  name: string
+  price: number | null
+  iopv: number | null
+  premium_pct: number | null
+  change_pct: number | null
+  turnover: number | null
+  total_value: number | null
+  turnover_rate: number | null
+  volume: number | null
+}
+
+export interface EtfHolding {
+  symbol: string
+  name: string
+  weight_pct: number
+}
+
+export interface EtfNavPoint {
+  date: string
+  unit_nav: number | null
+  cum_nav: number | null
+  change_pct: number | null
+}
+
+export interface EtfOverview {
+  symbol: string
+  spot: EtfSpot | null
+  holdings: EtfHolding[]
+  nav_history: EtfNavPoint[]
 }
 
 export interface StockAgentUpdatePayload {
@@ -47,6 +111,8 @@ export interface TriggerStockAgentResponse {
   success?: boolean
   message: string
   queued?: boolean
+  deduplicated?: boolean
+  trace_id?: string
 }
 
 function withQuery(path: string, params: TriggerStockAgentOptions): string {
@@ -61,6 +127,24 @@ function withQuery(path: string, params: TriggerStockAgentOptions): string {
   return s ? `${path}?${s}` : path
 }
 
+export interface LmdReportSnapshot {
+  symbol: string
+  market: string
+  pe_ttm?: number | null
+  forward_pe?: number | null
+  pb?: number | null
+  profit_yoy_pct?: number | null
+  revenue_yoy_pct?: number | null
+  roe_pct?: number | null
+  gross_margin_pct?: number | null
+  consensus_eps?: number | null
+  valuation_score?: number | null
+  valuation_verdict?: string | null
+  expectation_hint?: string | null
+  report_date?: string | null
+  has_report: boolean
+}
+
 export const stocksApi = {
   list: () => fetchAPI<StockItem[]>('/stocks'),
   create: (payload: StockCreatePayload) =>
@@ -68,7 +152,36 @@ export const stocksApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  etfOverview: (code: string, top = 30, navDays = 180) =>
+    fetchAPI<EtfOverview>(
+      `/stocks/etf/${encodeURIComponent(code)}/overview?top=${top}&nav_days=${navDays}`,
+      { timeoutMs: 30_000 }
+    ),
   remove: (id: number) => fetchAPI<{ ok: boolean }>(`/stocks/${id}`, { method: 'DELETE' }),
+  updateConceptTags: (id: number, manual: string[]) =>
+    fetchAPI<StockItem>(`/stocks/${id}/concept-tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ manual }),
+    }),
+  refreshConceptTags: (id: number) =>
+    fetchAPI<StockItem>(`/stocks/${id}/concept-tags/refresh`, { method: 'POST' }),
+  refreshMissingConceptTags: (limit = 20) =>
+    fetchAPI<{ queued: boolean; limit: number }>('/stocks/concept-tags/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  refreshIndustryChains: (limit = 50) =>
+    fetchAPI<{ queued: boolean; limit: number }>('/stocks/industry-chains/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  refreshIndustryChain: (id: number) =>
+    fetchAPI<StockItem>(`/stocks/${id}/industry-chain/refresh`, { method: 'POST' }),
+  updateIndustryChain: (id: number, layer: string | null) =>
+    fetchAPI<StockItem>(`/stocks/${id}/industry-chain`, {
+      method: 'PUT',
+      body: JSON.stringify({ layer }),
+    }),
   updateAgents: (id: number, payload: StockAgentUpdatePayload) =>
     fetchAPI<StockItem>(`/stocks/${id}/agents`, {
       method: 'PUT',
@@ -79,4 +192,32 @@ export const stocksApi = {
       withQuery(`/stocks/${id}/agents/${encodeURIComponent(agentName)}/trigger`, options),
       { method: 'POST', timeoutMs: 120_000 }
     ),
+  ensureLmdReport: (id: number) =>
+    fetchAPI<{ has_report: boolean; queued: boolean; deduplicated?: boolean; message?: string }>(
+      `/stocks/${id}/agents/lmd_outlook/ensure`,
+      { method: 'POST' },
+    ),
+  lmdSnapshotsBatch: (symbols: string[]) =>
+    fetchAPI<LmdReportSnapshot[]>('/stocks/lmd-snapshots/batch', {
+      method: 'POST',
+      body: JSON.stringify({ symbols }),
+    }),
+  getInvestmentProfile: (id: number) =>
+    fetchAPI<{ stock_id: number; symbol: string; market: string; investment_profile: InvestmentProfile; portfolio_role_label: string }>(
+      `/stocks/${id}/investment-profile`,
+    ),
+  updateInvestmentProfile: (id: number, profile: Partial<InvestmentProfile>) =>
+    fetchAPI<StockItem>(`/stocks/${id}/investment-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(profile),
+    }),
+  setFeatured: (id: number, isFeatured: boolean) =>
+    fetchAPI<StockItem>(`/stocks/${id}/featured`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_featured: isFeatured }),
+    }),
+  evaluateInvestmentProfile: (id: number, price?: number) => {
+    const q = price != null && price > 0 ? `?price=${price}` : ''
+    return fetchAPI<InvestmentProfileEvaluateResult>(`/stocks/${id}/investment-profile/evaluate${q}`)
+  },
 }

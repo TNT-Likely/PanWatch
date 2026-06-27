@@ -111,6 +111,58 @@ def test_get_kline_summary_fetches_klines_once(monkeypatch):
     assert summary.get("ma5") is not None, "指标应基于复用的 K线算出"
 
 
+def test_kline_summary_sanitizes_nan_floats(monkeypatch):
+    """摘要中的 nan/inf 应转为 None,避免 API JSON 序列化崩溃。"""
+    import math
+
+    bars = _mk_bars(130)
+    bars[-1] = kline_collector.KlineData(
+        date=bars[-1].date,
+        open=math.nan,
+        close=math.nan,
+        high=math.nan,
+        low=math.nan,
+        volume=0.0,
+    )
+
+    def fake_get_klines(self, symbol, days=60):
+        return list(bars)
+
+    monkeypatch.setattr(
+        kline_collector.KlineCollector, "get_klines", fake_get_klines
+    )
+
+    summary = kline_collector.KlineCollector(MarketCode.US).get_kline_summary("FOTO")
+
+    import json
+
+    json.dumps(summary)
+    assert summary.get("last_close") == bars[-2].close
+    for key in ("ma5", "macd_hist", "rsi6", "boll_upper"):
+        val = summary.get(key)
+        if val is not None:
+            assert math.isfinite(val), f"{key} 不应为 nan/inf"
+
+
+def test_filter_valid_klines_drops_nan_bars():
+    """含 nan OHLC 的 K 线应在取数链路中被过滤。"""
+    import math
+
+    good = kline_collector.KlineData(
+        date="2026-06-26", open=10.0, close=11.0, high=12.0, low=9.0, volume=100.0
+    )
+    bad = kline_collector.KlineData(
+        date="2026-06-27",
+        open=math.nan,
+        close=math.nan,
+        high=math.nan,
+        low=math.nan,
+        volume=0.0,
+    )
+    out = kline_collector._filter_valid_klines([good, bad])
+    assert out == [good]
+
+
 def test_failure_log_includes_caller_source(monkeypatch, caplog):
     """失败日志应带上调用来源 [src=...],便于定位是哪个调度任务在刷屏。"""
     monkeypatch.setattr(kline_collector, "_throttle_tencent", lambda: None)

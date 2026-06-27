@@ -27,7 +27,7 @@ class PositionInfo:
     cost_price: float
     quantity: int
     invested_amount: float | None = None
-    trading_style: str = "swing"  # short: 短线, swing: 波段, long: 长线
+    trading_style: str = "short"  # short: 短线, swing: 波段, long: 长线
 
     @property
     def cost_value(self) -> float:
@@ -341,3 +341,14 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.error(f"Agent [{self.display_name}] 执行失败: {e}")
             raise
+        finally:
+            await self._close_context_ai_client(context)
+
+    @staticmethod
+    async def _close_context_ai_client(context: AgentContext) -> None:
+        client = getattr(context, "ai_client", None)
+        if client is None:
+            return
+        aclose = getattr(client, "aclose", None)
+        if aclose is not None:
+            await aclose()

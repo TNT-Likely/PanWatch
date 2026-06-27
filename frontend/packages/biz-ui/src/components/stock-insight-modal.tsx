@@ -1,27 +1,59 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Brain, Copy, Download, ExternalLink, Play, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
+  fetchAPI,
   insightApi,
+  positionsApi,
   stocksApi,
   tradingAgentsApi,
+  analystTypesForMode,
+  deepAnalysisModeEta,
+  loadDeepAnalysisMode,
+  type BudgetInfo,
+  type DeepAnalysisMode,
   type DeepAnalysisResult,
   type HistoryComparisonResponse,
+  type ProgressResponse,
+  type ProgressStage,
+  type PositionAddResult,
+  type PortfolioRecentTrade,
+  type TradingAgentsTriggerResult,
+  type TriggerStockAgentResponse,
+  localSkillsApi,
+  isLocalSkillAgentName,
+  parseLocalSkillSlug,
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { cn } from '@panwatch/base-ui'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
+import InteractiveKline, { klineDialogFullscreenClassName } from '@panwatch/biz-ui/components/InteractiveKline'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
-import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import AddPositionCalculator, { type PositionHoldingOption } from '@panwatch/biz-ui/components/add-position-calculator'
+import { ReportMarkdown } from '@panwatch/biz-ui/components/report-markdown'
+import { groupReportsByAgent } from '../lib/report-toc'
+import {
+  isLmdReportAgent,
+  LMD_AGENT_NAME,
+  LMD_DISPLAY_NAME,
+  LMD_LOCAL_SKILL_AGENT_NAME,
+  pickLatestLmdReport,
+} from '../lib/lmd-report'
+import { buildReportAgentOptions } from '../lib/report-agents'
+import { RollingCostPlanPanel } from '@panwatch/biz-ui/components/rolling-cost-plan'
+import { ChanEmotionStrategyPanel } from '@panwatch/biz-ui/components/chan-emotion-strategy-panel'
+import { DeepAnalysisModePicker } from '@panwatch/biz-ui/components/deep-analysis-mode-picker'
+import { StockConceptTags } from '@panwatch/biz-ui/components/stock-concept-tags'
+import { StockIndustryChainEditor } from '@panwatch/biz-ui/components/stock-industry-chain-editor'
 
 interface QuoteResponse {
   symbol: string
@@ -96,21 +128,42 @@ interface HistoryRecord {
 }
 
 interface PortfolioPosition {
+  id?: number
   symbol: string
   market: string
   quantity: number
   cost_price: number
   market_value_cny: number | null
   pnl: number | null
+  account_name?: string
 }
 
 interface PortfolioSummaryResponse {
   accounts: Array<{
+    id?: number
+    name?: string
+    available_funds?: number
+    total_assets?: number
     positions: PortfolioPosition[]
   }>
+  total?: {
+    total_market_value?: number
+    available_funds?: number
+    total_assets?: number
+  }
 }
 
-type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+export type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+
+export const INSIGHT_TAB_LABELS: Record<InsightTab, string> = {
+  overview: '概览',
+  kline: 'K线',
+  suggestions: '建议',
+  news: '新闻',
+  announcements: '公告',
+  reports: '报告',
+  deep: '深度',
+}
 
 interface StockAgentInfo {
   agent_name: string
@@ -124,13 +177,65 @@ interface StockItem {
   symbol: string
   name: string
   market: string
+  is_featured?: boolean
+  concept_tags?: Array<{ name: string; source: string }>
+  concept_tags_auto?: string[]
+  concept_tags_manual?: string[]
+  industry_chain?: import('@panwatch/api').IndustryChainInfo | null
+  industry_chain_manual?: { sector?: string; layer?: string } | null
   agents?: StockAgentInfo[]
 }
+
+interface ReportAgentConfig {
+  name: string
+  display_name: string
+  description?: string
+  enabled: boolean
+  execution_mode?: string
+}
+
+const REPORT_TRIGGER_AGENT_NAMES = [
+  'daily_report',
+  'premarket_outlook',
+  'intraday_monitor',
+  'lmd_outlook',
+] as const
 
 const AGENT_LABELS: Record<string, string> = {
   daily_report: '盘后日报',
   premarket_outlook: '盘前分析',
+  intraday_monitor: '盘中监测',
   news_digest: '新闻速递',
+  chart_analyst: '技术分析',
+  tradingagents: 'TradingAgents 深度',
+  lmd_outlook: LMD_DISPLAY_NAME,
+}
+
+function resolveAgentLabel(agentName: string, agents: ReportAgentConfig[] = []): string {
+  if (isLmdReportAgent(agentName)) return LMD_DISPLAY_NAME
+  const slug = parseLocalSkillSlug(agentName)
+  if (slug) {
+    const hit = agents.find(a => a.name === agentName)
+    if (hit?.display_name) return hit.display_name
+    return slug
+  }
+  return AGENT_LABELS[agentName] || agentName
+}
+
+function historyRecordMatchesStock(
+  record: HistoryRecord,
+  sym: string,
+  name?: string,
+): boolean {
+  const upperSymbol = sym.toUpperCase()
+  const sug = record?.suggestions || {}
+  const keys = Object.keys(sug || {})
+  if (keys.includes(sym) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
+  const text = `${record?.title || ''}\n${record?.content || ''}`.toUpperCase()
+  if (upperSymbol && text.includes(upperSymbol)) return true
+  const trimmedName = (name || '').trim()
+  if (trimmedName && `${record?.title || ''}\n${record?.content || ''}`.includes(trimmedName)) return true
+  return false
 }
 
 function formatNumber(value: number | null | undefined, digits = 2): string {
@@ -170,6 +275,7 @@ function formatTime(isoTime?: string): string {
   const d = new Date(isoTime)
   if (isNaN(d.getTime())) return ''
   return d.toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -337,8 +443,20 @@ export default function StockInsightModal(props: {
   market: string
   stockName?: string
   hasPosition?: boolean
+  initialTab?: InsightTab
+  initialReportId?: number | null
+  /** 打开弹窗时自动展开加仓面板 */
+  initialExpandAddPosition?: boolean
+  /** 打开弹窗时自动展开减仓面板 */
+  initialExpandReducePosition?: boolean
+  /** 加仓成功后通知外部刷新持仓列表 */
+  onPortfolioChanged?: (result: PositionAddResult) => void
+  /** 关注股票信息变更（如概念标签） */
+  onStockUpdated?: (stock: StockItem) => void
 }) {
   const { toast } = useToast()
+  const navigate = useNavigate()
+  const location = useLocation()
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
@@ -366,19 +484,33 @@ export default function StockInsightModal(props: {
   const [news, setNews] = useState<NewsItem[]>([])
   const [announcements, setAnnouncements] = useState<NewsItem[]>([])
   const [reports, setReports] = useState<HistoryRecord[]>([])
-  const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report' | 'news_digest'>('premarket_outlook')
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
   const [deepLoaded, setDeepLoaded] = useState(false)
+  const [deepRunStage, setDeepRunStage] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [deepTraceId, setDeepTraceId] = useState<string | null>(null)
+  const [deepProgress, setDeepProgress] = useState<ProgressResponse | null>(null)
+  const [deepBudget, setDeepBudget] = useState<BudgetInfo | null>(null)
+  const [deepTriggerError, setDeepTriggerError] = useState('')
   const [deepShowAnalyst, setDeepShowAnalyst] = useState(false)
   const [deepShowDebate, setDeepShowDebate] = useState(false)
   const [deepHistory, setDeepHistory] = useState<HistoryComparisonResponse | null>(null)
   const [deepHistoryLoading, setDeepHistoryLoading] = useState(false)
+  const [deepAnalysisMode, setDeepAnalysisMode] = useState<DeepAnalysisMode>(() => loadDeepAnalysisMode())
+  const deepPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const deepTriggerStartedRef = useRef(0)
   const [klineInterval] = useState<'1d' | '1w' | '1m'>('1d')
+  const [klineFullscreen, setKlineFullscreen] = useState(false)
   const [alerting, setAlerting] = useState(false)
+  const [alertPanelKey, setAlertPanelKey] = useState(0)
   const [watchingStock, setWatchingStock] = useState<StockItem | null>(null)
   const [watchToggleLoading, setWatchToggleLoading] = useState(false)
   const [autoSuggesting, setAutoSuggesting] = useState(false)
+  const [reportAgents, setReportAgents] = useState<ReportAgentConfig[]>([])
+  const [reportAgentName, setReportAgentName] = useState<string>('daily_report')
+  const [reportGenerating, setReportGenerating] = useState<string | null>(null)
+  const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lmdEnsureKeyRef = useRef<string>('')
   const [imageExporting, setImageExporting] = useState(false)
   const [holdingAgg, setHoldingAgg] = useState<{
     quantity: number
@@ -386,12 +518,49 @@ export default function StockInsightModal(props: {
     unitCost: number
     marketValue: number
     pnl: number
+    totalAssets: number
+    totalMarketValue: number
+    availableCash: number
   } | null>(null)
+  const [holdingOptions, setHoldingOptions] = useState<PositionHoldingOption[]>([])
+  const [recentTrades, setRecentTrades] = useState<PortfolioRecentTrade[]>([])
+  const [addPositionExpandSignal, setAddPositionExpandSignal] = useState(0)
+  const [tradeExpandMode, setTradeExpandMode] = useState<'add' | 'reduce'>('add')
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
   const stockCacheRef = useRef<Record<string, StockItem>>({})
   const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
+
+  const navigateToHistoryReport = useCallback((reportId: number) => {
+    props.onOpenChange(false)
+    const params = new URLSearchParams()
+    params.set('id', String(reportId))
+    if (symbol) params.set('symbol', symbol)
+    params.set('from', 'stock')
+    params.set('market', market)
+    params.set('tab', tab)
+    const returnPath = `${location.pathname}${location.search}`
+    if (returnPath && !returnPath.startsWith('/history')) {
+      params.set('return', returnPath)
+    }
+    navigate(`/history?${params.toString()}`)
+  }, [location.pathname, location.search, market, navigate, props.onOpenChange, symbol, tab])
+
+  const navigateToHistoryList = useCallback(() => {
+    props.onOpenChange(false)
+    const params = new URLSearchParams()
+    if (symbol) params.set('symbol', symbol)
+    params.set('from', 'stock')
+    params.set('market', market)
+    params.set('tab', tab)
+    const returnPath = `${location.pathname}${location.search}`
+    if (returnPath && !returnPath.startsWith('/history')) {
+      params.set('return', returnPath)
+    }
+    const qs = params.toString()
+    navigate(`/history?${qs}`)
+  }, [location.pathname, location.search, market, navigate, props.onOpenChange, symbol, tab])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
@@ -423,8 +592,8 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
-  const loadSuggestions = useCallback(async () => {
-    if (!symbol) return
+  const loadSuggestions = useCallback(async (): Promise<SuggestionInfo[]> => {
+    if (!symbol) return []
     const data = await insightApi.suggestions<any[]>(symbol, {
       market,
       limit: 20,
@@ -447,6 +616,7 @@ export default function StockInsightModal(props: {
       meta: item.meta,
     })) as SuggestionInfo[]
     setSuggestions(list)
+    return list
   }, [symbol, market, includeExpiredSuggestions])
 
   const loadNews = useCallback(async () => {
@@ -584,80 +754,472 @@ export default function StockInsightModal(props: {
       let cost = 0
       let marketValue = 0
       let pnl = 0
+      const options: PositionHoldingOption[] = []
       for (const acc of data?.accounts || []) {
         for (const p of acc.positions || []) {
           if (p.symbol !== symbol || p.market !== market) continue
+          if (p.id != null) {
+            options.push({
+              id: p.id,
+              account_name: p.account_name || acc.name || '默认账户',
+              quantity: Number(p.quantity || 0),
+              cost_price: Number(p.cost_price || 0),
+            })
+          }
           quantity += Number(p.quantity || 0)
           cost += Number(p.cost_price || 0) * Number(p.quantity || 0)
           marketValue += Number(p.market_value_cny || 0)
           pnl += Number(p.pnl || 0)
         }
       }
-      if (quantity > 0) setHoldingAgg({ quantity, cost, unitCost: cost / quantity, marketValue, pnl })
-      else setHoldingAgg(null)
+      setHoldingOptions(options)
+      const totalAssets = Number(data?.total?.total_assets || 0)
+      const totalMarketValue = Number(data?.total?.total_market_value || 0)
+      const availableCash = Number(data?.total?.available_funds || 0)
+      if (quantity > 0) {
+        setHoldingAgg({
+          quantity,
+          cost,
+          unitCost: cost / quantity,
+          marketValue,
+          pnl,
+          totalAssets,
+          totalMarketValue,
+          availableCash,
+        })
+      } else setHoldingAgg(null)
+
+      try {
+        const tradeRows = await positionsApi.recentTrades(50)
+        const sym = String(symbol || '').toUpperCase()
+        setRecentTrades(
+          (tradeRows || []).filter(
+            (t) => String(t.symbol || '').toUpperCase() === sym && String(t.market || '') === market,
+          ),
+        )
+      } catch {
+        setRecentTrades([])
+      }
     } catch {
-      setHoldingAgg(null)
       setHoldingLoadError(true)
     } finally {
       setHoldingLoaded(true)
     }
   }, [symbol, market])
 
-  const loadReports = useCallback(async () => {
-    if (!symbol) return
-    try {
-      const agents = ['premarket_outlook', 'daily_report', 'news_digest']
-      const bySymbolResults = await Promise.all(
-        agents.map(agent =>
-          insightApi.history<HistoryRecord[]>({
-            agent_name: agent,
-            stock_symbol: symbol,
-            limit: 1,
-          }).catch(() => [])
-        )
-      )
-      let merged = bySymbolResults
-        .flatMap(items => items || [])
-        .filter(Boolean)
-      // 兼容全局记录（stock_symbol="*"）场景：从最近全局记录中筛选与当前股票相关的报告。
-      if (merged.length === 0) {
-        const globalResults = await Promise.all(
-          agents.map(agent =>
-            insightApi.history<HistoryRecord[]>({
-              agent_name: agent,
-              stock_symbol: '*',
-              limit: 20,
-            }).catch(() => [])
+  const handlePositionApplied = useCallback(
+    (result: PositionAddResult) => {
+      if (result?.position) {
+        const pos = result.position
+        setHoldingOptions((prev) => {
+          const next = prev.map((h) =>
+            h.id === pos.id
+              ? {
+                  ...h,
+                  quantity: pos.quantity,
+                  cost_price: pos.cost_price,
+                }
+              : h,
           )
-        )
-        const upperSymbol = symbol.toUpperCase()
-        const name = (resolvedName || '').trim()
-        merged = globalResults
-          .map(items => {
-            const rows = (items || []).filter(Boolean)
-            const hit = rows.find((r) => {
-              const sug = r?.suggestions || {}
-              const keys = Object.keys(sug || {})
-              if (keys.includes(symbol) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
-              const text = `${r?.title || ''}\n${r?.content || ''}`.toUpperCase()
-              if (upperSymbol && text.includes(upperSymbol)) return true
-              if (name && `${r?.title || ''}\n${r?.content || ''}`.includes(name)) return true
-              return false
-            })
-            return hit || null
+          let quantity = 0
+          let cost = 0
+          for (const h of next) {
+            quantity += h.quantity
+            cost += h.cost_price * h.quantity
+          }
+          setHoldingAgg((agg) =>
+            quantity > 0
+              ? {
+                  quantity,
+                  cost,
+                  unitCost: cost / quantity,
+                  marketValue: agg?.marketValue ?? 0,
+                  pnl: agg?.pnl ?? 0,
+                  totalAssets: agg?.totalAssets ?? 0,
+                  totalMarketValue: agg?.totalMarketValue ?? 0,
+                  availableCash: agg?.availableCash ?? 0,
+                }
+              : null,
+          )
+          return next
+        })
+        if (result.trade) {
+          const sym = String(symbol || '').toUpperCase()
+          setRecentTrades((prev) => {
+            const entry: PortfolioRecentTrade = {
+              ...result.trade,
+              account_name: pos.account_name || '',
+              symbol: pos.stock_symbol || symbol,
+              market,
+              stock_name: pos.stock_name || '',
+            }
+            if (String(entry.symbol || '').toUpperCase() !== sym || entry.market !== market) {
+              return prev
+            }
+            return [entry, ...prev.filter((t) => t.id !== entry.id)]
           })
-          .filter(Boolean) as HistoryRecord[]
+        }
       }
-      merged = merged.sort((a, b) => {
-        const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
-        const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
-        return bm - am
-      })
+      void loadHoldingAgg()
+      props.onPortfolioChanged?.(result)
+    },
+    [loadHoldingAgg, props, symbol, market],
+  )
+
+  const loadReports = useCallback(async (): Promise<HistoryRecord[]> => {
+    if (!symbol) return []
+    try {
+      const [bySymbol, globals] = await Promise.all([
+        insightApi.history<HistoryRecord[]>({
+          stock_symbol: symbol,
+          kind: 'all',
+          limit: 50,
+        }).catch(() => []),
+        insightApi.history<HistoryRecord[]>({
+          stock_symbol: '*',
+          kind: 'all',
+          limit: 80,
+        }).catch(() => []),
+      ])
+      const name = (resolvedName || '').trim()
+      const globalHits = (globals || []).filter(r => historyRecordMatchesStock(r, symbol, name))
+      const seen = new Set<number>()
+      const merged = [...(bySymbol || []), ...globalHits]
+        .filter((r): r is HistoryRecord => {
+          if (!r?.id || seen.has(r.id)) return false
+          seen.add(r.id)
+          return true
+        })
+        .sort((a, b) => {
+          const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
+          const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
+          return bm - am
+        })
       setReports(merged)
+      return merged
     } catch {
       setReports([])
+      return []
     }
   }, [symbol, resolvedName])
+
+  const loadReportAgents = useCallback(async (opts?: { refreshSkills?: boolean }) => {
+    try {
+      const [list, localSkills] = await Promise.all([
+        fetchAPI<ReportAgentConfig[]>('/agents'),
+        localSkillsApi.list({ enabledOnly: true, refresh: !!opts?.refreshSkills }).catch(() => []),
+      ])
+      const filtered = (list || []).filter(
+        a => a.enabled && REPORT_TRIGGER_AGENT_NAMES.includes(a.name as (typeof REPORT_TRIGGER_AGENT_NAMES)[number]),
+      )
+      const merged = buildReportAgentOptions(filtered, localSkills || [])
+      if (merged.length > 0) {
+        setReportAgents(merged)
+        if (!merged.some(a => a.name === reportAgentName)) {
+          const preferred =
+            merged.find(a => a.name === LMD_AGENT_NAME || a.name === LMD_LOCAL_SKILL_AGENT_NAME)
+            || merged.find(a => a.name === 'daily_report')
+            || merged[0]
+          setReportAgentName(preferred.name)
+        }
+        return
+      }
+    } catch {
+      // fallback below
+    }
+    setReportAgents(
+      REPORT_TRIGGER_AGENT_NAMES.map(name => ({
+        name,
+        display_name: AGENT_LABELS[name] || name,
+        enabled: true,
+      })),
+    )
+  }, [reportAgentName])
+
+  const stopReportPoll = useCallback(() => {
+    if (reportPollRef.current) {
+      clearInterval(reportPollRef.current)
+      reportPollRef.current = null
+    }
+  }, [])
+
+  const ensureStockAgentBinding = useCallback(async (agentName: string): Promise<{
+    stockId: number
+    useUnbound: boolean
+  }> => {
+    const stocks = await stocksApi.list()
+    let stock =
+      watchingStock
+      || stockCacheRef.current[`${market}:${symbol}`]
+      || (stocks || []).find(s => s.symbol === symbol && s.market === market)
+      || null
+
+    if (!stock) {
+      return { stockId: 0, useUnbound: true }
+    }
+
+    const existingAgents = (stock.agents || []).map(a => ({
+      agent_name: a.agent_name,
+      schedule: a.schedule || '',
+      ai_model_id: a.ai_model_id ?? null,
+      notify_channel_ids: a.notify_channel_ids || [],
+    }))
+    if (existingAgents.some(a => a.agent_name === agentName)) {
+      return { stockId: stock.id, useUnbound: false }
+    }
+
+    const updated = await stocksApi.updateAgents(stock.id, {
+      agents: [
+        ...existingAgents,
+        { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] },
+      ],
+    })
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    toast(`已自动关联 ${AGENT_LABELS[agentName] || agentName}`, 'info')
+    return { stockId: updated.id, useUnbound: false }
+  }, [market, symbol, toast, watchingStock])
+
+  const pollForNewReport = useCallback(async (opts: {
+    agentName: string
+    baselineReportId: number | null
+    baselineReportCount: number
+    baselineReportUpdatedAt: string | null
+    baselineSuggestionCount: number
+    maxWaitMs?: number
+    /** 自动补全场景下留在弹窗内，不跳转历史页 */
+    navigateOnComplete?: boolean
+  }) => {
+    stopReportPoll()
+    const startedAt = Date.now()
+    const maxWaitMs = opts.maxWaitMs ?? 180_000
+    const tick = async () => {
+      if (Date.now() - startedAt > maxWaitMs) {
+        stopReportPoll()
+        setReportGenerating(null)
+        toast('报告生成超时，请稍后刷新列表', 'info')
+        return
+      }
+      const freshReports = await loadReports()
+      const reportChanged =
+        freshReports.length > opts.baselineReportCount
+        || (freshReports[0]?.id != null && freshReports[0].id !== opts.baselineReportId)
+        || (parseToMs(freshReports[0]?.updated_at || '') ?? 0) > (parseToMs(opts.baselineReportUpdatedAt || '') ?? 0)
+      const lmdReady = isLmdReportAgent(opts.agentName)
+        && freshReports.some(r => isLmdReportAgent(r.agent_name))
+      const freshSuggestions = await loadSuggestions()
+      const suggestionsChanged = freshSuggestions.length > opts.baselineSuggestionCount
+      const isSuggestionAgent = opts.agentName === 'intraday_monitor'
+      const isLmdAgent = isLmdReportAgent(opts.agentName)
+      const done = isSuggestionAgent
+        ? suggestionsChanged
+        : isLmdAgent
+          ? lmdReady
+          : (reportChanged || suggestionsChanged)
+      if (!done) return
+      stopReportPoll()
+      setReportGenerating(null)
+      const targetReport = lmdReady
+        ? pickLatestLmdReport(freshReports)
+        : freshReports[0]
+      const shouldNavigate = opts.navigateOnComplete !== false
+      if (!isSuggestionAgent && targetReport?.id && shouldNavigate) {
+        navigateToHistoryReport(targetReport.id)
+        return
+      }
+      toast(
+        isSuggestionAgent
+          ? 'AI 建议已更新，可在「建议」查看'
+          : (isLmdReportAgent(opts.agentName) ? `${LMD_DISPLAY_NAME}报告已生成` : '报告已生成'),
+        'success',
+      )
+      if (isSuggestionAgent) {
+        setTab('suggestions')
+      } else if (isLmdAgent || targetReport?.id) {
+        setTab('reports')
+      }
+    }
+    reportPollRef.current = setInterval(() => {
+      void tick()
+    }, 5_000)
+    await tick()
+  }, [loadReports, loadSuggestions, navigateToHistoryReport, stopReportPoll, toast])
+
+  const ensureLmdReportIfNeeded = useCallback(async (loaded: HistoryRecord[]) => {
+    if (!watchingStock?.id || reportGenerating) return
+    const hasLmd = (loaded || []).some(r => isLmdReportAgent(r.agent_name))
+    if (hasLmd) return
+    const key = `${market}:${symbol}`
+    if (lmdEnsureKeyRef.current === key) return
+    lmdEnsureKeyRef.current = key
+    try {
+      const resp = await stocksApi.ensureLmdReport(watchingStock.id)
+      if (resp.has_report) return
+      if (!resp.queued && !resp.deduplicated) return
+      setReportGenerating('lmd_outlook')
+      if (resp.deduplicated) {
+        toast(resp.message || `${LMD_DISPLAY_NAME}报告生成中`, 'info')
+      }
+      const suggestionList = await loadSuggestions().catch(() => suggestions)
+      void pollForNewReport({
+        agentName: 'lmd_outlook',
+        baselineReportId: loaded[0]?.id ?? null,
+        baselineReportCount: loaded.length,
+        baselineReportUpdatedAt: loaded[0]?.updated_at ?? null,
+        baselineSuggestionCount: suggestionList.length,
+        maxWaitMs: 420_000,
+        navigateOnComplete: false,
+      })
+    } catch {
+      lmdEnsureKeyRef.current = ''
+    }
+  }, [market, symbol, watchingStock, reportGenerating, pollForNewReport, loadSuggestions, suggestions, toast])
+
+  const triggerReportGeneration = useCallback(async () => {
+    if (!symbol || reportGenerating) return
+    const agentName = reportAgentName || 'daily_report'
+    const baselineReportId = reports[0]?.id ?? null
+    const baselineReportCount = reports.length
+    const baselineReportUpdatedAt = reports[0]?.updated_at ?? null
+    const baselineSuggestionCount = suggestions.length
+    setReportGenerating(agentName)
+    try {
+      if (isLocalSkillAgentName(agentName)) {
+        const slug = parseLocalSkillSlug(agentName)
+        if (!slug) throw new Error('无效的本地 Skill')
+        const stocks = await stocksApi.list()
+        const stock =
+          watchingStock
+          || stockCacheRef.current[`${market}:${symbol}`]
+          || (stocks || []).find(s => s.symbol === symbol && s.market === market)
+          || null
+        await localSkillsApi.trigger(
+          slug,
+          {
+            stock_id: stock?.id || 0,
+            symbol,
+            market,
+            name: resolvedName || symbol,
+          },
+          { wait: true, timeoutMs: isLmdReportAgent(agentName) ? 720_000 : 720_000 },
+        )
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+          maxWaitMs: isLmdReportAgent(agentName) ? 420_000 : undefined,
+          navigateOnComplete: false,
+        })
+        return
+      }
+
+      const { stockId, useUnbound } = await ensureStockAgentBinding(agentName)
+      const unboundOpts = useUnbound
+        ? {
+            allow_unbound: true,
+            symbol,
+            market,
+            name: resolvedName || symbol,
+          }
+        : {}
+      const triggerOpts = {
+        bypass_throttle: true,
+        bypass_market_hours: true,
+        ...unboundOpts,
+      }
+      const syncWait = isLmdReportAgent(agentName) || isLocalSkillAgentName(agentName)
+      let resp: TriggerStockAgentResponse
+      if (syncWait) {
+        const qs = new URLSearchParams({
+          bypass_throttle: 'true',
+          bypass_market_hours: 'true',
+          wait: 'true',
+          ...Object.fromEntries(
+            Object.entries(unboundOpts).map(([k, v]) => [k, String(v)]),
+          ),
+        })
+        resp = await fetchAPI<TriggerStockAgentResponse>(
+          `/stocks/${stockId}/agents/${encodeURIComponent(agentName)}/trigger?${qs.toString()}`,
+          { method: 'POST', timeoutMs: 720_000 },
+        )
+      } else {
+        resp = await stocksApi.triggerAgent(stockId, agentName, triggerOpts)
+      }
+
+      if (resp?.deduplicated) {
+        toast(resp.message || '报告生成中，请稍候...', 'info')
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+          maxWaitMs: isLmdReportAgent(agentName) ? 420_000 : undefined,
+        })
+        return
+      }
+
+      if (resp?.queued) {
+        toast(resp.message || '已提交后台执行，报告生成中...', 'info')
+        await pollForNewReport({
+          agentName,
+          baselineReportId,
+          baselineReportCount,
+          baselineReportUpdatedAt,
+          baselineSuggestionCount,
+        })
+        return
+      }
+
+      const result = resp?.result
+      if (result?.success === false) {
+        toast(result.message || result.content || '报告生成未通过', 'info')
+        return
+      }
+      const isSkipped = !!result?.skipped || /已跳过执行|非交易时段/.test(result?.content || '')
+      if (isSkipped) {
+        toast(result?.content || '当前非交易时段，已跳过执行', 'info')
+        return
+      }
+      const fresh = await loadReports()
+      if (agentName === 'intraday_monitor') {
+        await loadSuggestions()
+        toast('AI 建议已更新，可在「建议」查看', 'success')
+        setTab('suggestions')
+      } else if (fresh[0]?.id) {
+        navigateToHistoryReport(fresh[0].id)
+      } else {
+        toast(isLmdReportAgent(agentName) ? `${LMD_DISPLAY_NAME}报告已生成` : '报告已生成', 'success')
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '报告生成失败'
+      if (/非交易时段|跳过执行/.test(msg)) {
+        toast(msg, 'info')
+      } else {
+        toast(msg, 'error')
+      }
+    } finally {
+      if (!reportPollRef.current) {
+        setReportGenerating(null)
+      }
+    }
+  }, [
+    symbol,
+    reportGenerating,
+    reportAgentName,
+    reports,
+    suggestions.length,
+    market,
+    resolvedName,
+    ensureStockAgentBinding,
+    pollForNewReport,
+    loadReports,
+    loadSuggestions,
+    navigateToHistoryReport,
+    toast,
+  ])
 
   const loadCore = useCallback(async () => {
     if (!symbol) return
@@ -713,8 +1275,10 @@ export default function StockInsightModal(props: {
         tradingAgentsApi.getLatestForStock(symbol),
         tradingAgentsApi.getHistoryComparison(symbol, market, 90),
       ])
-      setDeepResult(latest.status === 'fulfilled' ? latest.value : null)
+      const nextResult = latest.status === 'fulfilled' ? latest.value : null
+      setDeepResult(nextResult)
       setDeepHistory(history.status === 'fulfilled' ? history.value : null)
+      if (nextResult) setDeepRunStage('done')
     } catch {
       setDeepResult(null)
       setDeepHistory(null)
@@ -725,9 +1289,172 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, market])
 
+  const stopDeepPoll = useCallback(() => {
+    if (deepPollRef.current) {
+      clearInterval(deepPollRef.current)
+      deepPollRef.current = null
+    }
+  }, [])
+
+  const resolveStockId = useCallback(async (): Promise<number> => {
+    if (watchingStock?.id) return watchingStock.id
+    const cached = stockCacheRef.current[`${market}:${symbol}`]
+    if (cached?.id) return cached.id
+    try {
+      const stocks = await stocksApi.list()
+      const found = (stocks || []).find(s => s.symbol === symbol && s.market === market)
+      return found?.id ?? 0
+    } catch {
+      return 0
+    }
+  }, [market, symbol, watchingStock])
+
+  const triggerDeepAnalysis = useCallback(async (force = false, analystTypes?: string[]): Promise<TradingAgentsTriggerResult> => {
+    const types = analystTypes ?? analystTypesForMode(deepAnalysisMode)
+    const stockId = await resolveStockId()
+    if (stockId > 0) {
+      return tradingAgentsApi.trigger(stockId, { force, analystTypes: types })
+    }
+    const qs = new URLSearchParams({
+      allow_unbound: 'true',
+      symbol,
+      market,
+      name: resolvedName || symbol,
+    })
+    if (force) qs.set('force_refresh', 'true')
+    return fetchAPI<TradingAgentsTriggerResult>(
+      `/stocks/0/agents/tradingagents/trigger?${qs.toString()}`,
+      { method: 'POST', body: JSON.stringify({ analyst_types: types }) },
+    )
+  }, [deepAnalysisMode, market, resolveStockId, resolvedName, symbol])
+
+  const pollDeepProgress = useCallback(async (tid: string) => {
+    try {
+      const resp = await tradingAgentsApi.getProgress(tid)
+      setDeepProgress(resp)
+      if (resp.status === 'success' && resp.run) {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        const latest = await tradingAgentsApi.getLatestForStock(symbol)
+        if (latest) {
+          setDeepResult(latest)
+          setDeepRunStage('done')
+          setDeepLoaded(true)
+        } else {
+          setDeepTriggerError('结果未落库，请稍后刷新')
+          setDeepRunStage('error')
+        }
+      } else if (resp.status === 'failed') {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        setDeepTriggerError(resp.run?.error || '分析失败')
+        setDeepRunStage('error')
+      } else if (resp.status === 'stale') {
+        stopDeepPoll()
+        clearDeepRunningTrace(symbol)
+        setDeepTraceId(null)
+        setDeepProgress(null)
+        setDeepRunStage('idle')
+      } else if (resp.status === 'not_found') {
+        const sinceTrigger = Date.now() - deepTriggerStartedRef.current
+        if (deepTriggerStartedRef.current > 0 && sinceTrigger > DEEP_NOT_FOUND_GRACE_MS) {
+          stopDeepPoll()
+          clearDeepRunningTrace(symbol)
+          setDeepTraceId(null)
+          setDeepProgress(null)
+          setDeepRunStage('idle')
+        }
+      }
+    } catch {
+      /* polling 失败不立即终止 */
+    }
+  }, [symbol, stopDeepPoll])
+
+  const startDeepPolling = useCallback((tid: string) => {
+    stopDeepPoll()
+    deepPollRef.current = setInterval(() => {
+      void pollDeepProgress(tid)
+    }, DEEP_POLL_INTERVAL_MS)
+    void pollDeepProgress(tid)
+  }, [pollDeepProgress, stopDeepPoll])
+
+  const handleDeepStart = useCallback(async (force = false) => {
+    setDeepRunStage('running')
+    setDeepTriggerError('')
+    setDeepProgress(null)
+    deepTriggerStartedRef.current = Date.now()
+    try {
+      const resp = await triggerDeepAnalysis(force)
+      const tid = resp.trace_id || ''
+      setDeepTraceId(tid)
+      if (!tid) {
+        setDeepRunStage('done')
+        toast(resp.message || '已触发', 'success')
+        await loadDeepResult()
+        return
+      }
+      saveDeepRunningTrace(symbol, tid)
+      startDeepPolling(tid)
+    } catch (e) {
+      setDeepRunStage('error')
+      setDeepTriggerError(e instanceof Error ? e.message : '触发失败')
+    }
+  }, [loadDeepResult, startDeepPolling, symbol, toast, triggerDeepAnalysis])
+
+  const syncDeepRunState = useCallback(async () => {
+    const analystTypes = analystTypesForMode(deepAnalysisMode)
+    const [runningInfo, budgetInfo] = await Promise.all([
+      tradingAgentsApi.findRunning(symbol).catch(() => ({ trace_id: null, status: 'none' as const })),
+      tradingAgentsApi.getBudget(analystTypes).catch(() => null),
+    ])
+    setDeepBudget(budgetInfo)
+
+    if (runningInfo.status === 'running' && runningInfo.trace_id) {
+      const tid = runningInfo.trace_id
+      setDeepTraceId(tid)
+      setDeepRunStage('running')
+      deepTriggerStartedRef.current = Date.now() - DEEP_NOT_FOUND_GRACE_MS - 1
+      const resp = await tradingAgentsApi.getProgress(tid).catch(() => null)
+      if (resp) setDeepProgress(resp)
+      startDeepPolling(tid)
+      return
+    }
+
+    if (runningInfo.status === 'stale' || runningInfo.status === 'failed') {
+      clearDeepRunningTrace(symbol)
+    }
+
+    if (runningInfo.status === 'none') {
+      const localTrace = loadDeepRunningTrace(symbol)
+      if (localTrace) {
+        setDeepTraceId(localTrace)
+        setDeepRunStage('running')
+        deepTriggerStartedRef.current = Date.now()
+        const resp = await tradingAgentsApi.getProgress(localTrace).catch(() => null)
+        if (resp) setDeepProgress(resp)
+        startDeepPolling(localTrace)
+        return
+      }
+    }
+
+    if (deepResult) {
+      setDeepRunStage('done')
+      clearDeepRunningTrace(symbol)
+      return
+    }
+
+    setDeepRunStage('idle')
+    clearDeepRunningTrace(symbol)
+  }, [deepAnalysisMode, deepResult, startDeepPolling, symbol])
+
+  useEffect(() => {
+    if (!props.open || !props.initialReportId) return
+    navigateToHistoryReport(props.initialReportId)
+  }, [props.open, props.initialReportId, navigateToHistoryReport])
+
   useEffect(() => {
     if (!props.open || !symbol) return
-    setTab('overview')
+    setTab(props.initialTab ?? 'overview')
     setSuggestions([])
     setNews([])
     setAnnouncements([])
@@ -737,8 +1464,27 @@ export default function StockInsightModal(props: {
     setDeepResult(null)
     setDeepLoaded(false)
     setDeepHistory(null)
+    setDeepRunStage('idle')
+    setDeepTraceId(null)
+    setDeepProgress(null)
+    setDeepBudget(null)
+    setDeepTriggerError('')
+    stopDeepPoll()
+    setReportGenerating(null)
+    stopReportPoll()
     loadCore()
-  }, [props.open, symbol, market, loadCore])
+  }, [props.open, symbol, market, props.initialTab, loadCore, stopDeepPoll, stopReportPoll])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (props.initialExpandReducePosition) {
+      setTradeExpandMode('reduce')
+      setAddPositionExpandSignal((s) => s + 1)
+    } else if (props.initialExpandAddPosition) {
+      setTradeExpandMode('add')
+      setAddPositionExpandSignal((s) => s + 1)
+    }
+  }, [props.open, props.initialExpandAddPosition, props.initialExpandReducePosition, symbol])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -747,6 +1493,21 @@ export default function StockInsightModal(props: {
       loadDeepResult()
     }
   }, [tab, props.open, symbol, deepLoaded, deepLoading, loadDeepResult])
+
+  useEffect(() => {
+    if (!props.open || !symbol || tab !== 'deep' || !deepLoaded) return
+    void syncDeepRunState()
+  }, [props.open, symbol, tab, deepLoaded, syncDeepRunState])
+
+  useEffect(() => {
+    if (!props.open || tab !== 'deep' || deepRunStage !== 'idle') return
+    tradingAgentsApi.getBudget(analystTypesForMode(deepAnalysisMode)).then(setDeepBudget).catch(() => null)
+  }, [deepAnalysisMode, deepRunStage, props.open, tab])
+
+  useEffect(() => {
+    if (!props.open) stopDeepPoll()
+    return () => stopDeepPoll()
+  }, [props.open, stopDeepPoll])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -781,14 +1542,35 @@ export default function StockInsightModal(props: {
   }, [props.open, symbol, announcementHours, loadAnnouncements])
 
   useEffect(() => {
+    if (!props.open) return
+    void loadReportAgents()
+  }, [props.open, loadReportAgents])
+
+  useEffect(() => {
+    if (!props.open || tab !== 'reports') return
+    void loadReportAgents({ refreshSkills: true })
+  }, [props.open, tab, loadReportAgents])
+
+  useEffect(() => {
+    return () => stopReportPoll()
+  }, [stopReportPoll])
+
+  useEffect(() => {
     if (!props.open || !symbol) return
     loadSuggestions().catch(() => setSuggestions([]))
   }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
 
   useEffect(() => {
+    if (!props.open) return
+    lmdEnsureKeyRef.current = ''
+  }, [props.open, symbol, market])
+
+  useEffect(() => {
     if (!props.open || !symbol) return
-    loadReports().catch(() => setReports([]))
-  }, [props.open, symbol, loadReports])
+    loadReports()
+      .then(loaded => ensureLmdReportIfNeeded(loaded))
+      .catch(() => setReports([]))
+  }, [props.open, symbol, loadReports, ensureLmdReportIfNeeded])
 
   useEffect(() => {
     if (!props.open || !symbol || !autoRefreshEnabled) return
@@ -825,6 +1607,24 @@ export default function StockInsightModal(props: {
       },
     }
   }, [klineSummary, technicalScored])
+  const formatTradeContextLine = (t: PortfolioRecentTrade) => {
+    const side = t.side === 'sell' ? '卖出' : '买入'
+    const time = t.traded_at ? new Date(t.traded_at) : null
+    const today = (() => {
+      if (!time || Number.isNaN(time.getTime())) return false
+      const now = new Date()
+      return time.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        === now.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    })()
+    const timeLabel = time && !Number.isNaN(time.getTime())
+      ? time.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : ''
+    const after = t.qty_after != null && t.cost_after != null
+      ? ` → 持仓${t.qty_after}股 成本${Number(t.cost_after).toFixed(4)}`
+      : ''
+    return `${today ? '【今日】' : ''}${side} ${t.quantity}股 @${t.price}${after} (${t.account_name || '账户'}, ${timeLabel})`
+  }
+
   const buildPageContext = useCallback(() => {
     const parts: string[] = []
     if (quote) {
@@ -860,10 +1660,35 @@ export default function StockInsightModal(props: {
       parts.push(`最近AI建议：\n${lines.join('\n')}`)
     }
     if (holdingAgg) {
-      parts.push(`持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
+      const holdingLines = holdingOptions.length > 0
+        ? holdingOptions.map(h => `- ${h.account_name}: ${h.quantity}股 成本${Number(h.cost_price).toFixed(4)}`)
+        : []
+      parts.push(
+        `持仓汇总：${holdingAgg.quantity}股，加权成本${holdingAgg.unitCost.toFixed(4)}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`
+        + (holdingLines.length ? `\n分账户：\n${holdingLines.join('\n')}` : ''),
+      )
     }
+    const todayTrades = recentTrades.filter(t => formatTradeContextLine(t).startsWith('【今日】'))
+    const tradesForContext = todayTrades.length > 0 ? todayTrades : recentTrades.slice(0, 5)
+    if (tradesForContext.length > 0) {
+      const title = todayTrades.length > 0 ? '今日持仓变动' : '最近持仓变动'
+      parts.push(`${title}：\n${tradesForContext.map(t => `- ${formatTradeContextLine(t)}`).join('\n')}`)
+    }
+    if (announcements.length > 0) {
+      const lines = announcements.slice(0, 3).map(
+        (item) => `- ${item.title}（${item.publish_time || ''}）`,
+      )
+      parts.push(`近期公告：\n${lines.join('\n')}`)
+    }
+    if (news.length > 0) {
+      const lines = news.slice(0, 3).map(
+        (item) => `- ${item.title}（${item.publish_time || ''}）`,
+      )
+      parts.push(`近期新闻：\n${lines.join('\n')}`)
+    }
+    parts.push(`数据时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`)
     return parts.join('\n')
-  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg])
+  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, holdingOptions, recentTrades, announcements, news])
 
   const quoteUp = (quote?.change_pct || 0) > 0
   const quoteDown = (quote?.change_pct || 0) < 0
@@ -884,19 +1709,9 @@ export default function StockInsightModal(props: {
     return ((hi - lo) / pre) * 100
   }, [quote?.high_price, quote?.low_price, quote?.prev_close])
 
-  const reportMap = useMemo(() => {
-    const out: Record<string, HistoryRecord | null> = {
-      premarket_outlook: null,
-      daily_report: null,
-      news_digest: null,
-    }
-    for (const r of reports) {
-      if (!out[r.agent_name]) out[r.agent_name] = r
-    }
-    return out
-  }, [reports])
-  const activeReport = reportMap[reportTab]
+  const groupedReports = useMemo(() => groupReportsByAgent(reports), [reports])
   const latestReport = reports[0] || null
+
   const latestShareSuggestion = suggestions[0] || technicalFallbackSuggestion
   const shareCardPayload = useMemo(() => {
     const jsonSources = [
@@ -963,6 +1778,7 @@ export default function StockInsightModal(props: {
       : '--'
     const source = latestShareSuggestion?.agent_label || latestShareSuggestion?.agent_name || '技术指标'
     const ts = new Date().toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -976,7 +1792,7 @@ export default function StockInsightModal(props: {
   const shareText = useMemo(() => {
     const { marketLabel, price, chg, action, signal, reason, risks, trigger, invalidation, technicalBrief, levelsBrief, source, ts } = shareCardPayload
     const lines = [
-      `【PanWatch 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
+      `【智盘 Alpha 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
       `时间：${ts}`,
       `现价：${price}（${chg}）`,
       `建议：${action}`,
@@ -1019,7 +1835,7 @@ export default function StockInsightModal(props: {
   </defs>
   <rect x="0" y="0" width="1200" height="630" fill="url(#bg)"/>
   <rect x="40" y="30" width="1120" height="570" rx="22" fill="#0f172a" stroke="#1f2937"/>
-  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">PanWatch 洞察</text>
+  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">智盘 Alpha 洞察</text>
   <text x="76" y="150" fill="#f8fafc" font-size="42" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(`${resolvedName}（${symbol} · ${marketLabel}）`, 28))}</text>
   <text x="76" y="198" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(ts)}</text>
 
@@ -1064,7 +1880,7 @@ export default function StockInsightModal(props: {
       const png = canvas.toDataURL('image/png')
       const a = document.createElement('a')
       a.href = png
-      a.download = `panwatch-${symbol}-${Date.now()}.png`
+      a.download = `alphamind-${symbol}-${Date.now()}.png`
       a.click()
       toast('分享图片已生成并下载', 'success')
     } catch {
@@ -1219,6 +2035,41 @@ export default function StockInsightModal(props: {
     }
   }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
 
+  const handleUpdateManualConceptTags = useCallback(async (manual: string[]) => {
+    if (!watchingStock) return
+    const updated = await stocksApi.updateConceptTags(watchingStock.id, manual)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+  }, [market, props, symbol, watchingStock])
+
+  const handleRefreshConceptTags = useCallback(async () => {
+    if (!watchingStock) return
+    const updated = await stocksApi.refreshConceptTags(watchingStock.id)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast('概念标签已刷新', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
+  const handleUpdateIndustryChain = useCallback(async (layer: string | null) => {
+    if (!watchingStock) return
+    const updated = await stocksApi.updateIndustryChain(watchingStock.id, layer)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast(layer ? '产业链标签已更新' : '已恢复自动分类', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
+  const handleRefreshIndustryChain = useCallback(async () => {
+    if (!watchingStock) return
+    const updated = await stocksApi.refreshIndustryChain(watchingStock.id)
+    stockCacheRef.current[`${market}:${symbol}`] = updated
+    setWatchingStock(updated)
+    props.onStockUpdated?.(updated)
+    toast('产业链已重新分类', 'success')
+  }, [market, props, symbol, toast, watchingStock])
+
   const triggerAutoAiSuggestion = useCallback(async () => {
     // 自动建议仅针对”确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
@@ -1277,72 +2128,63 @@ export default function StockInsightModal(props: {
 
   return (
     <>
-      <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-        <DialogContent className="w-[92vw] max-w-6xl p-5 md:p-6 overflow-x-hidden">
-          <DialogHeader className="mb-3">
-            <div className="flex items-start justify-between gap-3 pr-10 md:pr-8">
-              <div className="shrink-0">
-                <DialogTitle className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
-                  <span className="break-all">{resolvedName}</span>
-                  <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
-                </DialogTitle>
-                <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
-              </div>
-              <div className="hidden md:flex items-center gap-2">
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleExportShareImage()} disabled={imageExporting}>
-                  <Download className={`w-3.5 h-3.5 ${imageExporting ? 'animate-pulse' : ''}`} />
-                  <span>{imageExporting ? '生成中' : '图片'}</span>
-                </Button>
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleShareInsight()}>
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>分享</span>
-                </Button>
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleCopyShareText()}>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>复制</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 px-2.5"
-                  onClick={toggleWatch}
-                  disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
-                  title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
-                >
-                  {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
-                </Button>
-                <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
-                <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>
-                  {alerting ? '设置中...' : '一键设提醒'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 px-2.5"
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
-                      detail: { symbol, market, stockName: resolvedName, pageContext: buildPageContext() }
-                    }))
-                    props.onOpenChange(false)
-                  }}
-                >
-                  <Sparkles className="w-3.5 h-3.5 mr-1" /> 问 AI
-                </Button>
-                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading}>
-                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
-              </div>
+      <Dialog
+        open={props.open}
+        onOpenChange={(open) => {
+          if (!open) setKlineFullscreen(false)
+          props.onOpenChange(open)
+        }}
+      >
+        <DialogContent
+          className={cn(
+            klineFullscreen
+              ? klineDialogFullscreenClassName
+              : 'w-[92vw] max-w-6xl p-5 md:p-6 overflow-x-hidden',
+          )}
+        >
+          <div className={klineFullscreen ? 'hidden' : undefined}>
+          <DialogHeader className="mb-3 pr-10">
+            <div>
+              <DialogTitle className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                <span className="break-all">{resolvedName}</span>
+                <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
+              </DialogTitle>
+              {watchingStock && (
+                <StockConceptTags
+                  key={`${market}:${symbol}`}
+                  tags={watchingStock.concept_tags || []}
+                  market={market}
+                  editable
+                  defaultExpanded
+                  className="mt-2"
+                  onUpdateManual={handleUpdateManualConceptTags}
+                  onRefreshAuto={handleRefreshConceptTags}
+                />
+              )}
+              {watchingStock && (
+                <StockIndustryChainEditor
+                  className="mt-1.5"
+                  chain={watchingStock.industry_chain}
+                  manualLayer={watchingStock.industry_chain_manual?.layer}
+                  onUpdateManual={handleUpdateIndustryChain}
+                  onRefreshAuto={handleRefreshIndustryChain}
+                />
+              )}
+              <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
             </div>
-            <div className="flex md:hidden items-center gap-2 mt-2 overflow-x-auto scrollbar-none pb-1 -mb-1">
+            <div className="flex items-center gap-2 mt-2 overflow-x-auto scrollbar-none pb-1 -mb-1">
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleExportShareImage()} disabled={imageExporting}>
                 <Download className={`w-3.5 h-3.5 ${imageExporting ? 'animate-pulse' : ''}`} />
+                <span className="hidden sm:inline">{imageExporting ? '生成中' : '图片'}</span>
               </Button>
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleShareInsight()}>
                 <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">分享</span>
               </Button>
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleCopyShareText()}>
                 <Copy className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">复制</span>
               </Button>
               <Button
                 variant="secondary"
@@ -1350,10 +2192,11 @@ export default function StockInsightModal(props: {
                 className="h-8 px-2.5 shrink-0"
                 onClick={toggleWatch}
                 disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
+                title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
               >
                 {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
               </Button>
-              <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
+              <StockPriceAlertPanel key={alertPanelKey} mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={handleSetAlert} disabled={alerting}>
                 {alerting ? '设置中...' : '一键设提醒'}
               </Button>
@@ -1376,8 +2219,8 @@ export default function StockInsightModal(props: {
             </div>
           </DialogHeader>
 
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-            <div className="flex items-center gap-1 flex-wrap">
+          <div className="mb-3 space-y-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(4.75rem,1fr))] gap-1.5">
               {[
                 { id: 'overview', label: '概览' },
                 { id: 'suggestions', label: `建议 (${suggestions.length})` },
@@ -1390,7 +2233,7 @@ export default function StockInsightModal(props: {
                 <button
                   key={item.id}
                   onClick={() => setTab(item.id as InsightTab)}
-                  className={`text-[11px] px-2.5 py-1 rounded transition-colors ${
+                  className={`text-center text-[11px] px-2.5 py-1.5 rounded transition-colors whitespace-nowrap ${
                     tab === item.id ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'
                   }`}
                 >
@@ -1398,7 +2241,7 @@ export default function StockInsightModal(props: {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end gap-2">
               <span className="text-[11px] text-muted-foreground">自动刷新</span>
               <Switch
                 checked={autoRefreshEnabled}
@@ -1418,8 +2261,15 @@ export default function StockInsightModal(props: {
               </Select>
             </div>
           </div>
+          </div>
 
-          <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden pr-1 scrollbar">
+          <div
+            className={cn(
+              klineFullscreen
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                : 'max-h-[68vh] overflow-y-auto overflow-x-hidden pr-1 scrollbar',
+            )}
+          >
             {tab === 'overview' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
@@ -1444,11 +2294,46 @@ export default function StockInsightModal(props: {
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
-                      <div className="text-[11px] text-muted-foreground mb-2">持仓信息</div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-muted-foreground">持仓信息</div>
+                        {holdingAgg ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px]"
+                              onClick={() => {
+                                setTradeExpandMode('add')
+                                setAddPositionExpandSignal((s) => s + 1)
+                              }}
+                            >
+                              加仓
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-[10px] border-rose-500/30 text-rose-600 hover:bg-rose-500/10"
+                              onClick={() => {
+                                setTradeExpandMode('reduce')
+                                setAddPositionExpandSignal((s) => s + 1)
+                              }}
+                            >
+                              减仓
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓数量</div>
+                            <div className="text-[10px] text-muted-foreground flex items-center justify-between">
+                              <span>持仓数量</span>
+                              {holdingOptions.length > 1 && (
+                                <span className="text-[9px] bg-primary/10 text-primary px-1 rounded">{holdingOptions.length} 个账户</span>
+                              )}
+                            </div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
@@ -1464,12 +2349,19 @@ export default function StockInsightModal(props: {
                                   : 'text-foreground'
                               }`}
                             >
-                              {formatNumber(holdingAgg.unitCost)}
+                              {formatNumber(holdingAgg.unitCost, 4)}
                             </div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">持仓市值</div>
                             <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue)}</div>
+                          </div>
+                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                            <div className="text-[10px] text-muted-foreground">总资产</div>
+                            <div className="font-mono">{formatCompactNumber(holdingAgg.totalAssets)}</div>
+                            <div className="text-[9px] text-muted-foreground/70 mt-0.5">
+                              组合市值+可用
+                            </div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">总盈亏</div>
@@ -1487,6 +2379,26 @@ export default function StockInsightModal(props: {
                         currentQuantity={holdingAgg?.quantity ?? 0}
                         currentCost={holdingAgg?.unitCost ?? 0}
                         currentPrice={quote?.current_price ?? null}
+                        holdings={holdingOptions}
+                        onApplied={handlePositionApplied}
+                        defaultOpen={holdingOptions.length > 0}
+                        expandSignal={addPositionExpandSignal}
+                        expandMode={tradeExpandMode}
+                      />
+                      <RollingCostPlanPanel
+                        symbol={symbol}
+                        stockName={resolvedName || symbol}
+                        market={market}
+                        currentQuantity={holdingAgg?.quantity ?? 0}
+                        currentCost={holdingAgg?.unitCost ?? 0}
+                        currentPrice={quote?.current_price ?? null}
+                        kline={klineSummary}
+                        onAlertsCreated={() => setAlertPanelKey(v => v + 1)}
+                      />
+                      <ChanEmotionStrategyPanel
+                        symbol={symbol}
+                        market={market}
+                        hasPosition={hasHolding}
                       />
                     </div>
                   </div>
@@ -1634,15 +2546,102 @@ export default function StockInsightModal(props: {
                   </div>
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="text-[12px] text-muted-foreground">交易记录</div>
+                      {recentTrades.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">共 {recentTrades.length} 条</span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2 overflow-y-auto">
+                      {recentTrades.length === 0 ? (
+                        <div className="text-[12px] text-muted-foreground py-6">
+                          {holdingAgg ? '暂无交易记录' : '未持仓，暂无交易记录'}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {recentTrades.slice(0, 6).map((t) => (
+                            <div
+                              key={t.id}
+                              className="flex items-center justify-between rounded border border-border/30 bg-accent/10 px-2 py-1.5 text-[11px]"
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-muted-foreground truncate">
+                                  {t.account_name || '账户'}
+                                  {t.traded_at ? ` · ${formatTime(t.traded_at)}` : ''}
+                                </span>
+                                <span
+                                  className={`font-medium ${
+                                    t.side === 'sell' ? 'text-emerald-500' : 'text-rose-500'
+                                  }`}
+                                >
+                                  {t.side === 'sell' ? '卖出' : '买入'} {t.quantity} 股
+                                  {t.qty_before != null && t.qty_after != null
+                                    ? ` (${t.qty_before}→${t.qty_after})`
+                                    : ''}
+                                </span>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="font-mono">@{formatNumber(t.price, 4)}</div>
+                                {t.cost_before != null && t.cost_after != null ? (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    成本 {formatNumber(t.cost_before, 4)} → {formatNumber(t.cost_after, 4)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card p-4 h-full flex flex-col">
+                    <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="text-[12px] text-muted-foreground">AI报告</div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('reports')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px] text-muted-foreground"
+                        onClick={navigateToHistoryList}
+                      >
                         更多
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="text-[12px] text-muted-foreground py-3">暂无报告</div>
+                      reportGenerating ? (
+                        <div className="space-y-2 py-3">
+                          <div className="text-[12px] text-muted-foreground">
+                            {isLmdReportAgent(reportGenerating || '')
+                              ? `正在生成${LMD_DISPLAY_NAME}报告，约需 2–5 分钟…`
+                              : `${resolveAgentLabel(reportGenerating || '', reportAgents)} 报告生成中…`}
+                          </div>
+                          <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            生成中
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 py-3">
+                          <div className="text-[12px] text-muted-foreground">暂无报告</div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px]"
+                            disabled={!!reportGenerating}
+                            onClick={() => {
+                              setTab('reports')
+                              void triggerReportGeneration()
+                            }}
+                          >
+                            立即生成报告
+                          </Button>
+                        </div>
+                      )
                     ) : (
-                      <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
+                      <button
+                        type="button"
+                        onClick={() => navigateToHistoryReport(latestReport.id)}
+                        className="w-full rounded-lg border border-border/30 bg-accent/10 p-2.5 text-left transition-colors hover:bg-accent/20"
+                      >
                         <div className="text-[11px] text-muted-foreground">
                           {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
                         </div>
@@ -1650,7 +2649,11 @@ export default function StockInsightModal(props: {
                         <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">
                           {markdownToPlainText(latestReport.content) || '暂无报告内容'}
                         </div>
-                      </div>
+                        <div className="mt-2 text-[11px] text-primary inline-flex items-center gap-1">
+                          查看完整报告
+                          <ExternalLink className="w-3 h-3" />
+                        </div>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1658,85 +2661,147 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'kline' && (
-              <div className="card p-4">
+              <div className={cn(klineFullscreen ? 'flex min-h-0 flex-1 flex-col' : 'card p-4')}>
                 <InteractiveKline
                   symbol={symbol}
                   market={market}
                   initialInterval={klineInterval}
+                  onFullscreenChange={setKlineFullscreen}
                 />
               </div>
             )}
 
             {tab === 'reports' && (
               <div className="space-y-3">
-                <div className="card p-3">
-                  <div className="flex items-center gap-1">
-                    {([
-                      { key: 'premarket_outlook', label: '盘前' },
-                      { key: 'daily_report', label: '盘后' },
-                      { key: 'news_digest', label: '新闻' },
-                    ] as const).map(item => (
-                      <button
-                        key={item.key}
-                        onClick={() => setReportTab(item.key)}
-                        className={`text-[11px] px-2.5 py-1 rounded ${
-                          reportTab === item.key ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-muted-foreground hover:bg-accent'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                <div className="card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-[12px] text-muted-foreground">
+                    选择 Agent 或本地 Skill 生成报告；Skill 需在「Skill 广场」启用
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={reportAgentName} onValueChange={setReportAgentName}>
+                      <SelectTrigger className="h-8 w-[min(100%,200px)] text-[11px]">
+                        <SelectValue placeholder="选择 Agent / Skill" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(reportAgents.length > 0
+                          ? reportAgents
+                          : REPORT_TRIGGER_AGENT_NAMES.map(name => ({
+                              name,
+                              display_name: AGENT_LABELS[name] || name,
+                              enabled: true,
+                            }))
+                        ).map(agent => (
+                          <SelectItem key={agent.name} value={agent.name}>
+                            {agent.display_name || AGENT_LABELS[agent.name] || agent.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-8 px-2.5 text-[11px]"
+                      disabled={!!reportGenerating}
+                      onClick={() => void triggerReportGeneration()}
+                    >
+                      {reportGenerating ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          生成中...
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Play className="w-3 h-3" />
+                          立即生成报告
+                        </span>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-[11px]"
+                      disabled={!!reportGenerating}
+                      title="刷新 Skill 与报告列表"
+                      onClick={() => {
+                        void loadReportAgents({ refreshSkills: true })
+                        void loadReports()
+                      }}
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </Button>
                   </div>
                 </div>
-                {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
-                ) : (
-                  <div className="card p-4 space-y-3">
-                    <div className="text-[11px] text-muted-foreground">
-                      {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
-                    </div>
-                    <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
-                    {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
-                      <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {(activeReport.suggestions as any)[symbol].action_label}
+
+                <div className="card p-2 max-h-[62vh] overflow-y-auto scrollbar">
+                  {reports.length === 0 ? (
+                    <div className="p-6 text-center space-y-3">
+                      <div className="text-[12px] text-muted-foreground">
+                        {reportGenerating
+                          ? (isLmdReportAgent(reportGenerating)
+                            ? `正在生成${LMD_DISPLAY_NAME}报告，约需 2–5 分钟…`
+                            : `${resolveAgentLabel(reportGenerating, reportAgents)} 报告生成中…`)
+                          : '暂无报告'}
                       </div>
-                    )}
-                    <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
-                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
-                      </div>
+                      {reportGenerating ? (
+                        <div className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          生成中
+                        </div>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 px-3 text-[11px]"
+                          disabled={!!reportGenerating}
+                          onClick={() => void triggerReportGeneration()}
+                        >
+                          {reportGenerating ? '生成中...' : '立即生成报告'}
+                        </Button>
+                      )}
                     </div>
-                    {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
-                      <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
-                        {activeReport.prompt_stats ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                  ) : (
+                    <>
+                      <div className="px-2.5 py-2 text-[11px] text-muted-foreground border-b border-border/30">
+                        点击报告将在「历史」页打开完整阅读（含目录导航）
+                      </div>
+                      <div className="divide-y divide-border/30">
+                        {groupedReports.map(group => (
+                          <div key={group.agentName} className="py-1">
+                            <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground">
+                              {resolveAgentLabel(group.agentName, reportAgents)}
+                            </div>
+                            {group.items.map(r => {
+                              const stockSuggestion = r.suggestions?.[symbol]
+                              return (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  onClick={() => navigateToHistoryReport(r.id)}
+                                  className="w-full text-left px-2.5 py-2 rounded-lg transition-colors hover:bg-accent/40"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[12px] text-foreground/90 line-clamp-1">
+                                      {r.title || '报告摘要'}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground shrink-0 inline-flex items-center gap-1">
+                                      {r.analysis_date}
+                                      <ExternalLink className="w-3 h-3" />
+                                    </span>
+                                  </div>
+                                  {stockSuggestion?.action_label && (
+                                    <div className="mt-1 text-[10px] inline-flex px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                      {stockSuggestion.action_label}
+                                    </div>
+                                  )}
+                                </button>
+                              )
+                            })}
                           </div>
-                        ) : null}
-                        {activeReport.news_debug ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.context_payload ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.prompt_context ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
-                          </div>
-                        ) : null}
-                      </details>
-                    )}
-                  </div>
-                )}
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1760,16 +2825,26 @@ export default function StockInsightModal(props: {
                   </div>
                 )}
                 <DeepAnalysisSection
+                  symbol={symbol}
                   loading={deepLoading}
                   loaded={deepLoaded}
                   result={deepResult}
                   history={deepHistory}
                   historyLoading={deepHistoryLoading}
+                  runStage={deepRunStage}
+                  progress={deepProgress}
+                  traceId={deepTraceId}
+                  budget={deepBudget}
+                  triggerError={deepTriggerError}
+                  analysisMode={deepAnalysisMode}
+                  onAnalysisModeChange={setDeepAnalysisMode}
                   showAnalyst={deepShowAnalyst}
                   setShowAnalyst={setDeepShowAnalyst}
                   showDebate={deepShowDebate}
                   setShowDebate={setDeepShowDebate}
                   onRefresh={loadDeepResult}
+                  onStart={() => void handleDeepStart(false)}
+                  onRerun={() => void handleDeepStart(true)}
                 />
               </div>
             )}
@@ -1913,28 +2988,106 @@ const DEEP_STAGE_LABEL: Record<string, string> = {
   fundamentals: '基本面分析师',
 }
 
+const DEEP_PROGRESS_STAGE_LABEL: Record<string, string> = {
+  market_analyst: '技术分析师',
+  social_analyst: '情绪分析师',
+  news_analyst: '新闻分析师',
+  fundamentals_analyst: '基本面分析师',
+  bull_bear_debate: '看多看空辩论',
+  research_manager: '研究主管',
+  trader: '交易员决策',
+  risk_judge: '风控判定',
+  final_decision: 'PM 整合',
+}
+
+const DEEP_POLL_INTERVAL_MS = 2000
+const DEEP_NOT_FOUND_GRACE_MS = 60_000
+const DEEP_TRACE_STORAGE_PREFIX = 'panwatch:tradingagents:running:'
+const DEEP_TRACE_MAX_AGE_MS = 20 * 60 * 1000
+
+function loadDeepRunningTrace(stockSymbol: string): string | null {
+  try {
+    const raw = localStorage.getItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { traceId: string; startedAt: number }
+    if (!parsed.traceId || !parsed.startedAt) return null
+    if (Date.now() - parsed.startedAt > DEEP_TRACE_MAX_AGE_MS) {
+      localStorage.removeItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+      return null
+    }
+    return parsed.traceId
+  } catch {
+    return null
+  }
+}
+
+function saveDeepRunningTrace(stockSymbol: string, traceId: string): void {
+  try {
+    localStorage.setItem(
+      DEEP_TRACE_STORAGE_PREFIX + stockSymbol,
+      JSON.stringify({ traceId, startedAt: Date.now() }),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearDeepRunningTrace(stockSymbol: string): void {
+  try {
+    localStorage.removeItem(DEEP_TRACE_STORAGE_PREFIX + stockSymbol)
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatDeepElapsed(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`
+}
+
 function DeepAnalysisSection({
+  symbol,
   loading,
   loaded,
   result,
   history,
   historyLoading,
+  runStage,
+  progress,
+  traceId,
+  budget,
+  triggerError,
+  analysisMode,
+  onAnalysisModeChange,
   showAnalyst,
   setShowAnalyst,
   showDebate,
   setShowDebate,
   onRefresh,
+  onStart,
+  onRerun,
 }: {
+  symbol: string
   loading: boolean
   loaded: boolean
   result: DeepAnalysisResult | null
   history: HistoryComparisonResponse | null
   historyLoading: boolean
+  runStage: 'idle' | 'running' | 'done' | 'error'
+  progress: ProgressResponse | null
+  traceId: string | null
+  budget: BudgetInfo | null
+  triggerError: string
+  analysisMode: DeepAnalysisMode
+  onAnalysisModeChange: (mode: DeepAnalysisMode) => void
   showAnalyst: boolean
   setShowAnalyst: (v: boolean) => void
   showDebate: boolean
   setShowDebate: (v: boolean) => void
   onRefresh: () => void
+  onStart: () => void
+  onRerun: () => void
 }) {
   if (loading && !loaded) {
     return (
@@ -1944,12 +3097,100 @@ function DeepAnalysisSection({
       </div>
     )
   }
-  if (!result && !history?.items?.length) {
+
+  if (runStage === 'running') {
+    const elapsed = progress?.elapsed_sec ?? 0
+    const cost = progress?.total_cost_usd ?? 0
+    const stages = progress?.stages ?? []
     return (
-      <div className="card p-6 text-center text-[12px] text-muted-foreground space-y-2">
-        <div>暂无深度分析报告</div>
-        <div className="text-[11px] text-muted-foreground/70">
-          可在持仓 / 自选页点击 🧠 深度分析按钮触发
+      <div className="card p-4 space-y-3 text-[13px]">
+        <div className="rounded-lg bg-accent/30 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded-full bg-primary animate-pulse" />
+            <span className="font-medium">深度分析进行中...</span>
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              已用 {formatDeepElapsed(elapsed)} · ${cost.toFixed(4)}
+            </span>
+          </div>
+          <div className="space-y-1 mt-2">
+            {stages.length > 0 ? stages.map((stage) => (
+              <DeepProgressStageRow key={stage.name} stage={stage} />
+            )) : (
+              <div className="text-[12px] text-muted-foreground">准备中...</div>
+            )}
+          </div>
+          {traceId ? (
+            <div className="text-[10px] text-muted-foreground/70 font-mono">
+              trace_id: {traceId.slice(0, 16)}...
+            </div>
+          ) : null}
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          分析需 3-8 分钟，可切换其他标签页；完成后会通过通知渠道推送，也可稍后回来刷新查看。
+        </div>
+      </div>
+    )
+  }
+
+  if (runStage === 'error') {
+    return (
+      <div className="card p-4 space-y-3 text-[13px]">
+        <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-rose-600">
+          <div className="font-semibold mb-1">分析失败</div>
+          <div className="text-[12px]">{triggerError || '未知错误'}</div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onStart}>重试</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!result) {
+    const overBudget = budget?.exceeded && budget.over_budget_action === 'reject'
+    const est = budget?.estimate_next_run
+    return (
+      <div className="space-y-3 text-[13px]">
+        {history?.items?.length ? (
+          <DeepHistoryComparison history={history} loading={historyLoading} />
+        ) : null}
+        <div className="card p-4 space-y-3">
+          <div className="text-center text-[12px] text-muted-foreground">暂无深度分析报告</div>
+          <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
+            <div className="font-medium">即将分析：{symbol}</div>
+            <DeepAnalysisModePicker mode={analysisMode} onChange={onAnalysisModeChange} />
+            <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
+              <div>⏱ 预计耗时：{deepAnalysisModeEta(analysisMode)}</div>
+              {est ? (
+                <div>💰 预估成本：${est.cost_low_usd.toFixed(2)} - ${est.cost_high_usd.toFixed(2)} ({est.model})</div>
+              ) : (
+                <div>💰 预估成本：加载中...</div>
+              )}
+              <div>ℹ️ 异步执行，可关闭弹窗，完成时推送通知</div>
+            </div>
+          </div>
+          {budget && (
+            <div className={`rounded-lg p-3 text-[12px] ${overBudget ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-accent/20'}`}>
+              <div className="flex items-center justify-between">
+                <span className="font-medium">本月预算</span>
+                <span className={overBudget ? 'text-rose-600' : 'text-muted-foreground'}>
+                  ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
+                  {budget.runs_this_month > 0 && ` · ${budget.runs_this_month} 次`}
+                </span>
+              </div>
+              {overBudget && (
+                <div className="text-[11px] text-rose-600 mt-1">
+                  ⚠️ 本月预算已用尽，请到「设置 → Agent → TradingAgents」调高预算
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-center">
+            <Button onClick={onStart} disabled={overBudget} className="gap-1.5">
+              <Brain className="w-4 h-4" />
+              开始深度分析
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -1967,9 +3208,19 @@ function DeepAnalysisSection({
         <div className="text-[11px] text-muted-foreground">
           TradingAgents 深度{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
         </div>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
-          <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={onRerun}
+          >
+            重新分析
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       {sug && (
@@ -1995,9 +3246,7 @@ function DeepAnalysisSection({
 
       {result?.content && (
         <div className="rounded-lg border border-border/50 p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <ReactMarkdown>{result.content}</ReactMarkdown>
-          </div>
+          <ReportMarkdown content={result.content} />
         </div>
       )}
 
@@ -2054,6 +3303,23 @@ function DeepAnalysisSection({
       <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
         本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
       </div>
+    </div>
+  )
+}
+
+function DeepProgressStageRow({ stage }: { stage: ProgressStage }) {
+  const label = DEEP_PROGRESS_STAGE_LABEL[stage.name] || stage.name
+  const done = stage.status === 'done'
+  const running = stage.status === 'running'
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${done ? 'bg-emerald-500' : running ? 'bg-primary animate-pulse' : 'bg-muted-foreground/30'}`} />
+      <span className={done ? 'text-foreground' : running ? 'text-primary font-medium' : 'text-muted-foreground'}>
+        {label}
+      </span>
+      {typeof stage.duration_sec === 'number' && stage.duration_sec > 0 && (
+        <span className="ml-auto text-[10px] text-muted-foreground">{formatDeepElapsed(stage.duration_sec)}</span>
+      )}
     </div>
   )
 }

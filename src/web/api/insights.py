@@ -1,3 +1,6 @@
+"""聚合洞察 API：行情/K线摘要、缠论情绪策略、加仓评估等。"""
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
@@ -14,12 +17,16 @@ from src.web.api.chat import (
     _fetch_technical_context,
     _get_ai_client,
 )
+from src.core.regulatory_red_flags import (
+    REGULATORY_VETO_PROMPT,
+    RegulatoryTier,
+    scan_text,
+)
 from src.collectors.market_http import TTLCache
 from src.web.database import get_db
 from src.web.models import Stock
 import asyncio
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +34,9 @@ logger = logging.getLogger(__name__)
 _ANN_CACHE = TTLCache(default_ttl_sec=21600)  # 6h
 
 router = APIRouter()
+
+_CHAN_EMOTION_CACHE: dict[str, tuple[float, dict]] = {}
+_CHAN_EMOTION_TTL_SEC = 120.0
 
 
 class InsightItem(BaseModel):
@@ -38,11 +48,96 @@ class InsightsBatchRequest(BaseModel):
     items: List[InsightItem]
 
 
+class AnalysisBriefResponse(BaseModel):
+    symbol: str
+    market: str
+    lmd_brief: str | None = None
+    deep_brief: str | None = None
+
+
+class AnalysisBriefBatchRequest(BaseModel):
+    items: List[InsightItem]
+
+
 def _parse_market(market: str) -> MarketCode:
     try:
         return MarketCode(market)
     except ValueError:
         raise HTTPException(400, f"不支持的市场: {market}")
+
+
+@router.get("/chan-emotion/{symbol}")
+def chan_emotion_strategy(
+    symbol: str,
+    market: str = "CN",
+    holding: bool = False,
+):
+    """缠论+养家心法多级别策略分析（日线/30分/5分）。"""
+    from src.core.signals.chan_emotion_strategy import (
+        analyze_chan_emotion,
+        serialize_chan_emotion_result,
+    )
+
+    mkt = _parse_market(market)
+    cache_key = f"{mkt.value}:{symbol}:{'1' if holding else '0'}"
+    now = time.time()
+    cached = _CHAN_EMOTION_CACHE.get(cache_key)
+    if cached and (now - cached[0] < _CHAN_EMOTION_TTL_SEC):
+        return cached[1]
+    try:
+        result = analyze_chan_emotion(
+            symbol,
+            mkt.value,
+            holding=bool(holding),
+        )
+    except Exception as e:
+        logger.warning(f"缠论情绪策略分析失败 {market}:{symbol}: {e}")
+        raise HTTPException(502, f"策略分析失败: {e}")
+    payload = serialize_chan_emotion_result(result)
+    _CHAN_EMOTION_CACHE[cache_key] = (now, payload)
+    return payload
+
+
+@router.post("/analysis-brief/batch", response_model=list[AnalysisBriefResponse])
+def analysis_brief_batch(body: AnalysisBriefBatchRequest, db: Session = Depends(get_db)):
+    """批量返回产业周期视角 / 深度分析摘要，供卡片问 AI 快速注入上下文。"""
+    if not body.items:
+        return []
+
+    from src.core.analysis_brief import (
+        format_deep_brief,
+        format_lmd_brief,
+        load_latest_deep_reports_by_symbol,
+    )
+    from src.core.lmd_report_snapshot import (
+        commit_lmd_history_backfills,
+        load_latest_lmd_reports_by_symbol,
+    )
+
+    symbols = list(dict.fromkeys(it.symbol.strip() for it in body.items if it.symbol.strip()))
+    lmd_by_symbol = load_latest_lmd_reports_by_symbol(db, symbols)
+    for record in lmd_by_symbol.values():
+        from src.core.lmd_report_snapshot import resolve_lmd_history_content
+
+        resolve_lmd_history_content(record, db, commit_backfill=False)
+    commit_lmd_history_backfills(db)
+    deep_by_symbol = load_latest_deep_reports_by_symbol(db, symbols)
+
+    results: list[AnalysisBriefResponse] = []
+    for it in body.items:
+        market = _parse_market(it.market).value
+        sym = it.symbol.strip()
+        lmd_brief = format_lmd_brief(lmd_by_symbol.get(sym))
+        deep_brief = format_deep_brief(deep_by_symbol.get(sym))
+        results.append(
+            AnalysisBriefResponse(
+                symbol=sym,
+                market=market,
+                lmd_brief=lmd_brief,
+                deep_brief=deep_brief,
+            )
+        )
+    return results
 
 
 @router.post("/batch")
@@ -173,24 +268,12 @@ async def _fetch_fundamental_context(symbol: str, market: str) -> str:
 
 async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
     """消息面摘要:近 3 天新闻/公告标题 + 本地最近 AI 建议/分析(失败降级为空)。"""
-    parts: list[str] = []
-    try:
-        from src.collectors.news_collector import NewsCollector
+    from src.core.stock_news_context import fetch_stock_news_context
 
-        stock = db.query(Stock).filter(Stock.symbol == symbol).first()
-        name = stock.name if stock else symbol
-        collector = NewsCollector.from_database()
-        items = await collector.fetch_all(
-            symbols=[symbol], since_hours=72, symbol_names={symbol: name}
-        )
-        items = sorted(items, key=lambda x: x.publish_time, reverse=True)[:5]
-        if items:
-            lines = [
-                f"- {it.title}（{it.publish_time.strftime('%m-%d')}）" for it in items
-            ]
-            parts.append("近期新闻/公告:\n" + "\n".join(lines))
-    except Exception as e:
-        logger.debug(f"消息面新闻获取失败 {symbol}: {e}")
+    parts: list[str] = []
+    news_ctx = await fetch_stock_news_context(db, symbol, since_hours=72)
+    if news_ctx:
+        parts.append(news_ctx)
 
     try:
         ctx = _build_stock_context(db, symbol, market)
@@ -226,6 +309,28 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     technical = await _fetch_technical_context(req.symbol, market)
     message = await _fetch_message_context(db, req.symbol, market)
 
+    reg_hit = scan_text(message)
+    if reg_hit and reg_hit.tier == RegulatoryTier.S:
+        content = (
+            "结论: 不适合\n"
+            f"理由:\n"
+            f"- 近期出现监管红线（{reg_hit.keyword}），属 S 级合规风险，优先级高于技术面与估值\n"
+            f"- 在监管风险未实质缓解前，不建议{action}\n"
+            "风险: 警示/立案等事件可能引发持续抛压、融资受限与估值下修"
+        )
+        return {
+            "symbol": req.symbol,
+            "market": market,
+            "action": action,
+            "new_cost": round(new_cost, 4),
+            "dilute_abs": round(dilute_abs, 4),
+            "dilute_pct": round(dilute_pct, 4),
+            "total_quantity": new_q,
+            "total_invested": round(new_q * new_cost, 2),
+            "verdict": "不适合",
+            "content": content,
+        }
+
     holding_line = (
         f"当前持仓 {cur_q:.0f} 股,成本(单价) {cur_c:.3f}"
         if is_add
@@ -250,6 +355,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
         "结论: 适合 / 谨慎 / 不适合(三选一)\n"
         "理由:\n- (2~3 条,结合摊薄成本、估值/基本面、技术面与消息面)\n"
         "风险: (一句话最大风险)"
+        + REGULATORY_VETO_PROMPT
     )
 
     try:
@@ -337,7 +443,8 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
     )
     system_prompt = (
         "你是 A股公告解读助手。对每条公告判断对股价的影响倾向(利好/利空/中性)并给一句话理由,"
-        "只依据给定信息、不臆造。严格逐条一行,格式: 序号|利好或利空或中性|一句话"
+        "只依据给定信息、不臆造。警示函、监管函、立案调查等监管红线必须判为利空。"
+        "严格逐条一行,格式: 序号|利好或利空或中性|一句话"
     )
     user_content = f"标的 {name}({market}:{req.symbol}) 近期公告:\n{listing}"
     try:
@@ -356,7 +463,13 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
 
     items = []
     for i, a in enumerate(top):
-        tone, note = tone_map.get(i, ("中性", ""))
+        reg = scan_text(a.get("content", ""), title=a["title"], time=a["time"])
+        if reg and reg.tier == RegulatoryTier.S:
+            tone, note = "利空", f"监管红线（{reg.keyword}），严重合规风险，不宜建仓"
+        elif reg and reg.tier == RegulatoryTier.A:
+            tone, note = "利空", f"重大利空（{reg.keyword}），原则上不新开仓"
+        else:
+            tone, note = tone_map.get(i, ("中性", ""))
         items.append({"title": a["title"], "time": a["time"], "tone": tone, "summary": note})
     result = {"symbol": req.symbol, "market": market, "items": items}
     _ANN_CACHE.set(cache_key, result)

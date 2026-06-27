@@ -1,4 +1,4 @@
-"""PanWatch 统一服务入口 - Web 后台 + Agent 调度"""
+"""AlphaMind 统一服务入口 - Web 后台 + Agent 调度"""
 
 import logging
 import os
@@ -22,6 +22,7 @@ from src.web.log_handler import DBLogHandler
 from src.config import Settings, AppConfig, StockConfig
 from src.models.market import MarketCode
 from src.core.ai_client import AIClient
+from src.core.async_runner import close_ai_client
 from src.core.notifier import NotifierManager
 from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
@@ -41,6 +42,8 @@ from src.agents.chart_analyst import ChartAnalystAgent
 from src.agents.intraday_monitor import IntradayMonitorAgent
 from src.agents.premarket_outlook import PremarketOutlookAgent
 from src.agents.tradingagents import TradingAgentsAgent
+from src.agents.lmd_outlook import LmdOutlookAgent
+from src.agents.etf_holding_analyst import EtfHoldingAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +347,35 @@ def seed_agents():
                 if isinstance(cfg, dict) and "event_only" not in cfg:
                     cfg["event_only"] = True
                     existing.config = cfg
+            if existing.name == "lmd_outlook":
+                cfg = existing.config if isinstance(existing.config, dict) else {}
+                for key, default in (
+                    ("engine", "hermes"),
+                    ("hermes_skill", "lmd-finance-perspective"),
+                    ("hermes_profile", "agent-1-qingbaoxianfeng"),
+                    ("hermes_skill_source_dir", ""),
+                    ("hermes_bin", ""),
+                    ("hermes_max_turns", 40),
+                    ("hermes_timeout_sec", 420),
+                    ("hermes_followup_timeout_sec", 300),
+                    ("hermes_model", ""),
+                    ("hermes_ignore_rules", True),
+                    ("hermes_auto_expand_summary", True),
+                ):
+                    if key not in cfg:
+                        cfg[key] = default
+                auto = cfg.get("auto_bootstrap")
+                if not isinstance(auto, dict):
+                    auto = {}
+                for key, default in (
+                    ("enabled", True),
+                    ("suppress_notify", True),
+                    ("scan_on_startup", False),
+                ):
+                    if key not in auto:
+                        auto[key] = default
+                cfg["auto_bootstrap"] = auto
+                existing.config = cfg
 
     db.commit()
     db.close()
@@ -360,7 +392,7 @@ def seed_data_sources():
             "provider": "xueqiu",
             "config": {
                 "cookies": "",
-                "description": "雪球个股新闻聚合，需要登录 cookie",
+                "description": "雪球个股新闻聚合，通过 Playwright 采集，Cookie 可选",
             },
             "enabled": False,
             "priority": 0,
@@ -549,6 +581,7 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
                     symbol=s.symbol,
                     name=s.name,
                     market=market,
+                    security_type=s.security_type or "stock",
                 )
             )
         return result
@@ -606,7 +639,7 @@ def load_portfolio_for_agent(agent_name: str) -> PortfolioInfo:
                         cost_price=pos.cost_price,
                         quantity=pos.quantity,
                         invested_amount=pos.invested_amount,
-                        trading_style=pos.trading_style or "swing",
+                        trading_style=pos.trading_style or "short",
                     )
                 )
 
@@ -665,7 +698,7 @@ def load_portfolio_for_stock(stock_id: int) -> PortfolioInfo:
                         cost_price=pos.cost_price,
                         quantity=pos.quantity,
                         invested_amount=pos.invested_amount,
-                        trading_style=pos.trading_style or "swing",
+                        trading_style=pos.trading_style or "short",
                     )
                 )
 
@@ -896,6 +929,8 @@ AGENT_REGISTRY: dict[str, type] = {
     "chart_analyst": ChartAnalystAgent,
     "intraday_monitor": IntradayMonitorAgent,
     "tradingagents": TradingAgentsAgent,
+    "lmd_outlook": LmdOutlookAgent,
+    "etf_holding_analyst": EtfHoldingAnalystAgent,
 }
 
 
@@ -1087,6 +1122,8 @@ async def trigger_agent(agent_name: str) -> str:
                 model_label=context.model_label,
             )
             raise
+        finally:
+            await close_ai_client(context.ai_client)
 
 
 async def trigger_agent_for_stock(
@@ -1098,6 +1135,7 @@ async def trigger_agent_for_stock(
     suppress_notify: bool = False,
     trace_id: str | None = None,
     force_refresh: bool = False,
+    analyst_types_override: list[str] | None = None,
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
@@ -1118,6 +1156,7 @@ async def trigger_agent_for_stock(
         symbol=stock.symbol,
         name=stock.name,
         market=market,
+        security_type=getattr(stock, "security_type", None) or "stock",
     )
 
     # 加载该股票的持仓信息
@@ -1144,6 +1183,8 @@ async def trigger_agent_for_stock(
     # AgentContext 不强制声明此字段,通过 setattr 注入,其他 agent 不受影响。
     setattr(context, "_trace_id", trace_id)
     setattr(context, "_force_refresh", force_refresh)
+    if analyst_types_override:
+        setattr(context, "_analyst_types_override", analyst_types_override)
 
     # 创建 agent，支持手动触发参数。TradingAgents 等新 agent 从 AgentConfig 读 config。
     if agent_name == "intraday_monitor":
@@ -1153,6 +1194,15 @@ async def trigger_agent_for_stock(
         )
     elif agent_name == "tradingagents":
         # 从 AgentConfig.config 读取实例化参数
+        agent_kwargs = get_agent_config(agent_name) or {}
+        override_types = getattr(context, "_analyst_types_override", None)
+        if override_types:
+            agent_kwargs = {**agent_kwargs, "analyst_types": override_types}
+        try:
+            agent = agent_cls(**agent_kwargs)
+        except TypeError:
+            agent = agent_cls()
+    elif agent_name == "lmd_outlook":
         agent_kwargs = get_agent_config(agent_name) or {}
         try:
             agent = agent_cls(**agent_kwargs)
@@ -1197,6 +1247,8 @@ async def trigger_agent_for_stock(
                 model_label=model_label,
             )
             raise
+        finally:
+            await close_ai_client(ai_client)
 
     # 返回详细结果
     skipped = bool(result.raw_data.get("skipped", False))
@@ -1239,6 +1291,15 @@ async def lifespan(app):
     seed_strategies()
     seed_sample_stocks()
 
+    try:
+        from src.core.analysis_history import prune_duplicate_analysis_reports
+
+        removed = prune_duplicate_analysis_reports()
+        if removed:
+            logger.info("启动时清理重复分析报告: %s 条", removed)
+    except Exception as e:
+        logger.warning("启动时分析报告去重失败,跳过: %s", e)
+
     # 启动时回填历史 TradingAgents 决策到建议池(stock_suggestions)
     # 早期 TA 运行没写建议池,这次启动一次性补齐,让「AI 建议」面板能看到。
     # 幂等:已存在不重复写;每次启动重跑代价极低(只查最近 7 天 + dedupe)。
@@ -1259,6 +1320,26 @@ async def lifespan(app):
             refresh_stock_list()
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
+
+    def _bootstrap_lmd_reports():
+        try:
+            from src.core.lmd_auto_bootstrap import bootstrap_all_missing_stocks
+
+            bootstrap_all_missing_stocks()
+        except Exception as e:
+            logger.warning("产业周期视角报告启动补全失败,跳过: %s", e)
+
+    threading.Thread(target=_bootstrap_lmd_reports, daemon=True, name="lmd-bootstrap-scan").start()
+
+    def _bootstrap_industry_chains():
+        try:
+            from src.core.stock_industry_chain import schedule_refresh_missing_industry_chains
+
+            schedule_refresh_missing_industry_chains()
+        except Exception as e:
+            logger.warning("产业链分类启动补全失败,跳过: %s", e)
+
+    threading.Thread(target=_bootstrap_industry_chains, daemon=True, name="industry-chain-scan").start()
 
     global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()
@@ -1297,18 +1378,14 @@ async def lifespan(app):
     except Exception as e:
         logger.error(f"上下文维护调度器启动失败: {e}")
     yield
-    if scheduler:
-        scheduler.shutdown()
-        logger.info("Agent 调度器已关闭")
-    if price_alert_scheduler:
-        price_alert_scheduler.shutdown()
-        logger.info("价格提醒调度器已关闭")
-    if paper_trading_scheduler:
-        paper_trading_scheduler.shutdown()
-        logger.info("模拟盘调度器已关闭")
-    if context_maintenance_scheduler:
-        context_maintenance_scheduler.shutdown()
-        logger.info("上下文维护调度器已关闭")
+    from src.core.app_shutdown import graceful_shutdown
+
+    graceful_shutdown(
+        agent_scheduler=scheduler,
+        price_alert_scheduler=price_alert_scheduler,
+        paper_trading_scheduler=paper_trading_scheduler,
+        context_maintenance_scheduler=context_maintenance_scheduler,
+    )
 
 
 # 模块级 app 实例，供 uvicorn reload 使用
@@ -1334,7 +1411,7 @@ if os.path.exists(static_dir):
 
 
 if __name__ == "__main__":
-    print("盯盘侠启动: http://127.0.0.1:8000")
+    print("智盘 Alpha 启动: http://127.0.0.1:8000")
     print("API 文档: http://127.0.0.1:8000/docs")
     # 生产(Docker `python server.py`)不应开 reload:uvicorn 文件监听会多起一个 reloader
     # 子进程、浪费资源,且监听 data/ 写入易误触发重启。本地热重载用 `make dev-api`

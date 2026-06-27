@@ -66,7 +66,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <TrendingUp className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-[20px] font-bold text-foreground mb-2">
-                欢迎使用盯盘侠
+                欢迎使用智盘 Alpha
               </h2>
               <p className="text-[14px] text-muted-foreground mb-6">
                 {hasStocks

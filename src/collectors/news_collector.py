@@ -14,6 +14,119 @@ from src.core.cn_symbol import get_cn_prefix
 
 logger = logging.getLogger(__name__)
 
+XUEQIU_COOKIE_STATUS_LABELS = {
+    "not_configured": "未配置",
+    "unknown": "待检测",
+    "ok": "正常",
+    "expired": "已过期",
+    "blocked": "WAF 拦截",
+    "error": "检测失败",
+}
+
+XUEQIU_COOKIE_UPDATE_HINT = (
+    "雪球新闻默认通过 Playwright 无头浏览器采集，一般无需配置 Cookie。"
+    "若采集失败，请确认已安装 Chromium：playwright install chromium。"
+    "可选：粘贴登录 Cookie 以获取需登录态的内容。"
+)
+
+XUEQIU_TIMELINE_FETCH_JS = """
+async (args) => {
+  const params = new URLSearchParams({
+    symbol_id: args.symbolId,
+    count: String(args.count),
+    source: args.source,
+    page: '1',
+  });
+  const resp = await fetch('/statuses/stock_timeline.json?' + params.toString(), {
+    credentials: 'include',
+  });
+  const text = await resp.text();
+  if (!text.trim().startsWith('{')) {
+    return {
+      ok: false,
+      status: resp.status,
+      waf: text.includes('aliyun_waf') || text.includes('_waf_'),
+      preview: text.slice(0, 120),
+    };
+  }
+  const data = JSON.parse(text);
+  return { ok: true, status: resp.status, list: data.list || [] };
+}
+"""
+
+XUEQIU_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Referer": "https://xueqiu.com/",
+    "Origin": "https://xueqiu.com",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+
+def _parse_netscape_cookie_line(line: str) -> tuple[str, str] | None:
+    """解析 Netscape cookies.txt 单行，兼容制表符或空格分隔。"""
+    if "\t" in line:
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            return parts[5], parts[6]
+    match = re.match(
+        r"^(\S+)\s+(?:TRUE|FALSE)\s+\S+\s+(?:TRUE|FALSE)\s+\d+\s+(\S+)\s+(.+)$",
+        line,
+    )
+    if match:
+        return match.group(2), match.group(3)
+    return None
+
+
+def is_netscape_cookie_format(raw: str) -> bool:
+    """判断是否为 Netscape cookies.txt 导出格式。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return False
+    if raw.startswith("# Netscape"):
+        return True
+    for line in raw.splitlines()[:8]:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if _parse_netscape_cookie_line(line) and "xueqiu.com" in line:
+            return True
+    return False
+
+
+def normalize_xueqiu_cookies(raw: str) -> str:
+    """将 Netscape cookies.txt 或 HTTP Cookie 头格式统一为请求头字符串。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if not is_netscape_cookie_format(raw):
+        return raw
+
+    pairs: list[str] = []
+    seen: set[str] = set()
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parsed = _parse_netscape_cookie_line(line)
+        if not parsed:
+            continue
+        name, value = parsed
+        if not name:
+            continue
+        if name in seen:
+            pairs = [pair for pair in pairs if not pair.startswith(f"{name}=")]
+            seen.discard(name)
+        pairs.append(f"{name}={value}")
+        seen.add(name)
+    if not pairs:
+        return raw
+    return "; ".join(pairs)
+
 # 简单内存缓存（5分钟过期）
 _news_cache: dict[str, tuple[datetime, list]] = {}
 _cache_ttl = timedelta(minutes=5)
@@ -67,21 +180,233 @@ class BaseNewsCollector(ABC):
         ...
 
 
+def resolve_xueqiu_cookie_health(config: dict | None) -> dict | None:
+    """根据 config 中的 Cookie 与缓存检测结果，生成前端展示用的健康状态。"""
+    config = config or {}
+    cookies = str(config.get("cookies") or "").strip()
+    cached = config.get("cookie_health")
+    if isinstance(cached, dict) and cached.get("status"):
+        return {
+            "status": cached.get("status", "unknown"),
+            "label": cached.get("label")
+            or XUEQIU_COOKIE_STATUS_LABELS.get(str(cached.get("status")), "待检测"),
+            "message": cached.get("message") or "",
+            "checked_at": cached.get("checked_at"),
+            "sample_count": int(cached.get("sample_count") or 0),
+            "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
+        }
+    return {
+        "status": "unknown",
+        "label": XUEQIU_COOKIE_STATUS_LABELS["unknown"],
+        "message": "默认通过 Playwright 采集，无需 Cookie，请点击「检测连通」或「测试」验证",
+        "checked_at": None,
+        "sample_count": 0,
+        "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
+    }
+
+
+def build_xueqiu_cookie_health_record(probe: dict) -> dict:
+    """将探测结果转为可写入数据源 config 的结构。"""
+    status = str(probe.get("status") or "error")
+    return {
+        "status": status,
+        "label": probe.get("label") or XUEQIU_COOKIE_STATUS_LABELS.get(status, "检测失败"),
+        "message": probe.get("message") or "",
+        "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "sample_count": int(probe.get("sample_count") or 0),
+    }
+
+
+async def probe_xueqiu_cookie(cookies: str, test_symbol: str = "600519") -> dict:
+    """轻量探测雪球新闻采集是否可用（Playwright，Cookie 可选）。"""
+    raw_cookies = (cookies or "").strip()
+    cookies = normalize_xueqiu_cookies(raw_cookies)
+    symbol_id = XueqiuNewsCollector._get_symbol_id(test_symbol)
+
+    try:
+        client = await _XueqiuBrowserClient.get()
+        items, error = await client.fetch_timeline(
+            symbol_id,
+            count=3,
+            cookies=cookies,
+        )
+    except Exception as e:
+        logger.debug(f"雪球采集探测失败: {e}")
+        return {
+            "status": "error",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["error"],
+            "message": f"采集探测失败: {e}",
+            "sample_count": 0,
+        }
+
+    if error:
+        status = "blocked" if "WAF" in error else "error"
+        if "Playwright" in error or "Chromium" in error:
+            status = "error"
+        return {
+            "status": status,
+            "label": XUEQIU_COOKIE_STATUS_LABELS[status],
+            "message": error,
+            "sample_count": 0,
+        }
+
+    count = len(items)
+    if count > 0:
+        message = f"采集正常，探测到 {count} 条样本新闻"
+    else:
+        message = "采集通道正常，但当前测试股票暂无新闻"
+    return {
+        "status": "ok",
+        "label": XUEQIU_COOKIE_STATUS_LABELS["ok"],
+        "message": message,
+        "sample_count": count,
+    }
+
+
+class _XueqiuBrowserClient:
+    """雪球 Playwright 会话：预热 WAF 后在页面内 fetch timeline API。"""
+
+    _instance: "_XueqiuBrowserClient | None" = None
+    _class_lock = asyncio.Lock()
+
+    def __init__(self) -> None:
+        self._playwright = None
+        self._browser = None
+        self._context = None
+        self._page = None
+        self._warmed_up = False
+        self._cookies = ""
+        self._init_lock = asyncio.Lock()
+
+    @classmethod
+    async def get(cls) -> "_XueqiuBrowserClient":
+        async with cls._class_lock:
+            if cls._instance is None:
+                cls._instance = cls()
+            return cls._instance
+
+    async def fetch_timeline(
+        self,
+        symbol_id: str,
+        count: int = 15,
+        cookies: str = "",
+    ) -> tuple[list[dict], str | None]:
+        """拉取单只股票 timeline，返回 (items, error_message)。"""
+        try:
+            await self._ensure_ready(cookies)
+        except ImportError:
+            return [], "未安装 Playwright，请运行: pip install playwright && playwright install chromium"
+        except Exception as e:
+            logger.debug(f"雪球 Playwright 初始化失败: {e}")
+            return [], f"Playwright 启动失败: {e}"
+
+        try:
+            result = await self._page.evaluate(
+                XUEQIU_TIMELINE_FETCH_JS,
+                {
+                    "symbolId": symbol_id,
+                    "count": count,
+                    "source": "自选股新闻",
+                },
+            )
+        except Exception as e:
+            logger.debug(f"雪球 timeline fetch 失败 ({symbol_id}): {e}")
+            return [], f"雪球新闻请求失败: {e}"
+
+        if not result.get("ok"):
+            if result.get("waf"):
+                return [], "被雪球 WAF 拦截"
+            return [], f"接口返回异常 (HTTP {result.get('status')})"
+
+        return result.get("list") or [], None
+
+    async def _ensure_ready(self, cookies: str = "") -> None:
+        cookies = normalize_xueqiu_cookies(cookies or "")
+        async with self._init_lock:
+            if self._page is not None and self._warmed_up and cookies == self._cookies:
+                return
+            if self._page is not None and cookies != self._cookies:
+                await self._close_unlocked()
+
+            from playwright.async_api import async_playwright
+
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                ],
+            )
+            self._context = await self._browser.new_context(
+                locale="zh-CN",
+                user_agent=XUEQIU_HTTP_HEADERS["User-Agent"],
+            )
+            if cookies:
+                await self._inject_cookies(cookies)
+            self._page = await self._context.new_page()
+            await self._page.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+            )
+            await self._page.goto(
+                "https://xueqiu.com/",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            await self._page.wait_for_timeout(1500)
+            self._warmed_up = True
+            self._cookies = cookies
+
+    async def _inject_cookies(self, cookies: str) -> None:
+        cookie_list = []
+        for part in cookies.split(";"):
+            part = part.strip()
+            if "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            cookie_list.append(
+                {"name": name, "domain": ".xueqiu.com", "path": "/", "value": value}
+            )
+        if cookie_list:
+            await self._context.add_cookies(cookie_list)
+
+    async def _close_unlocked(self) -> None:
+        if self._browser:
+            await self._browser.close()
+        if self._playwright:
+            await self._playwright.stop()
+        self._browser = None
+        self._playwright = None
+        self._context = None
+        self._page = None
+        self._warmed_up = False
+        self._cookies = ""
+
+    @classmethod
+    async def close(cls) -> None:
+        async with cls._class_lock:
+            if cls._instance is not None:
+                await cls._instance._close_unlocked()
+                cls._instance = None
+
+
 class XueqiuNewsCollector(BaseNewsCollector):
     """
     雪球个股新闻采集器
 
     API: https://xueqiu.com/statuses/stock_timeline.json
-    特点: 新闻聚合质量高，包含资讯+公告，需要登录 cookie
+    特点: 新闻聚合质量高，包含资讯+公告；通过 Playwright 绕过 WAF，Cookie 可选
     """
 
     source = "xueqiu"
     API_URL = "https://xueqiu.com/statuses/stock_timeline.json"
 
     def __init__(self, cookies: str = ""):
-        self.cookies = cookies
+        self.cookies = normalize_xueqiu_cookies(cookies)
 
-    def _get_symbol_id(self, symbol: str) -> str:
+    @staticmethod
+    def _get_symbol_id(symbol: str) -> str:
         """转换为雪球 symbol_id 格式"""
         if len(symbol) == 6 and symbol.isdigit():
             prefix = get_cn_prefix(symbol, upper=True)
@@ -91,74 +416,38 @@ class XueqiuNewsCollector(BaseNewsCollector):
         return symbol
 
     async def fetch_news(self, symbols: list[str] | None = None, since: datetime | None = None) -> list[NewsItem]:
-        """获取雪球个股新闻（并发请求）"""
+        """获取雪球个股新闻（Playwright 单会话顺序请求）"""
         if not symbols:
             return []
 
-        import asyncio
-
-        # 只处理 A 股代码
         a_share_symbols = [s for s in symbols if len(s) == 6 and s.isdigit()]
         if not a_share_symbols:
             return []
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Referer": "https://xueqiu.com/",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        if self.cookies:
-            headers["Cookie"] = self.cookies
-
-        async with httpx.AsyncClient(timeout=8, headers=headers, trust_env=False) as client:  # CN 源直连,绕过 env 代理
-            tasks = [self._fetch_for_symbol(client, symbol, since) for symbol in a_share_symbols]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        all_news = []
-        for result in results:
-            if isinstance(result, list):
-                all_news.extend(result)
-
-        logger.debug(f"雪球新闻采集到 {len(all_news)} 条")
-        return all_news
-
-    async def _fetch_for_symbol(self, client: httpx.AsyncClient, symbol: str, since: datetime | None) -> list[NewsItem]:
-        """获取单只股票的新闻"""
-        symbol_id = self._get_symbol_id(symbol)
-
-        params = {
-            "symbol_id": symbol_id,
-            "count": 15,
-            "source": "自选股新闻",
-            "page": 1,
-        }
-
-        try:
-            resp = await client.get(self.API_URL, params=params)
-            if resp.status_code == 400:
-                # 需要登录，跳过
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-
-            items = data.get("list", [])
-            result = []
-
+        client = await _XueqiuBrowserClient.get()
+        all_news: list[NewsItem] = []
+        for symbol in a_share_symbols:
+            symbol_id = self._get_symbol_id(symbol)
+            items, error = await client.fetch_timeline(
+                symbol_id,
+                count=15,
+                cookies=self.cookies,
+            )
+            if error:
+                logger.warning(f"雪球新闻采集失败 ({symbol}): {error}")
+                continue
             for item in items:
                 try:
                     news = self._parse_item(item, symbol)
                     if news:
                         if since and news.publish_time < since:
                             continue
-                        result.append(news)
+                        all_news.append(news)
                 except Exception as e:
                     logger.debug(f"解析雪球新闻失败: {e}")
 
-            return result
-
-        except Exception as e:
-            logger.debug(f"雪球新闻采集失败 ({symbol}): {e}")
-            return []
+        logger.debug(f"雪球新闻采集到 {len(all_news)} 条")
+        return all_news
 
     def _parse_item(self, item: dict, symbol: str) -> NewsItem | None:
         """解析单条新闻"""

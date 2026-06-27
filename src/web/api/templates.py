@@ -41,6 +41,7 @@ class TemplateStock(BaseModel):
     symbol: str
     name: str
     market: str
+    security_type: str = "stock"
     agents: list[TemplateStockAgent] = Field(default_factory=list)
 
 
@@ -110,6 +111,7 @@ def export_template(
                 "symbol": s.symbol,
                 "name": s.name,
                 "market": s.market,
+                "security_type": s.security_type or "stock",
                 "agents": [
                     {
                         "agent_name": sa.agent_name,
@@ -214,13 +216,19 @@ def import_template(
             .first()
         )
         if not stock:
-            stock = Stock(symbol=s.symbol, name=s.name, market=s.market)
+            stock = Stock(
+                symbol=s.symbol,
+                name=s.name,
+                market=s.market,
+                security_type=s.security_type or "stock",
+            )
             db.add(stock)
             db.flush()  # assign id
             created_stocks += 1
         else:
             updated_stocks += 1
             stock.name = s.name or stock.name
+            stock.security_type = s.security_type or stock.security_type or "stock"
 
         if not s.agents:
             continue

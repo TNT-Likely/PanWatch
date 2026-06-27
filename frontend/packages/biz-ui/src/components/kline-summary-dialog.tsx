@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { LineChart, Sparkles } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import { resolveSuggestionActionDescription } from '@panwatch/biz-ui/components/suggestion-action'
+import KlineModal from '@panwatch/biz-ui/components/KlineModal'
+import StockExternalLink from '@panwatch/biz-ui/components/stock-external-link'
 import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 
 export interface KlineSummaryData {
@@ -92,6 +95,7 @@ export function KlineSummaryDialog({
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<KlineSummaryData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [klineModalOpen, setKlineModalOpen] = useState(false)
 
   const buildSuggestion = (s: KlineSummaryData, holding?: boolean) => {
     const scored = buildKlineSuggestion(s, holding)
@@ -152,6 +156,12 @@ export function KlineSummaryDialog({
   const effectiveSummary = initialSummary || summary
   const suggestion = effectiveSummary ? buildSuggestion(effectiveSummary, hasPosition) : null
 
+  const handleOpenKline = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onOpenChange(false)
+    setKlineModalOpen(true)
+  }, [onOpenChange])
+
   const handleAskAI = useCallback(() => {
     if (!effectiveSummary) return
     const s = effectiveSummary
@@ -183,6 +193,7 @@ export function KlineSummaryDialog({
   }, [effectiveSummary, suggestion, symbol, market, stockName, onOpenChange])
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-md"
@@ -192,6 +203,18 @@ export function KlineSummaryDialog({
           <DialogTitle>K线 / 技术指标</DialogTitle>
           <DialogDescription>
             <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-accent hover:text-primary/80"
+                  onClick={handleOpenKline}
+                  title="查看交互式 K 线图"
+                >
+                  <LineChart className="w-3 h-3 shrink-0" />
+                  查看 K 线图
+                </button>
+                <StockExternalLink symbol={symbol} market={market} />
+              </div>
               <div>{stockName ? `${stockName} (${symbol})` : symbol}</div>
               {(effectiveSummary?.timeframe || effectiveSummary?.computed_at || effectiveSummary?.asof) && (
                 <div className="text-[11px] text-muted-foreground/70">
@@ -215,10 +238,27 @@ export function KlineSummaryDialog({
             {suggestion && (
               <div className="p-3 rounded-lg bg-accent/20 border border-border/30">
                 <div className="flex items-center justify-between gap-2">
-                  <TechnicalBadge
-                    label={suggestion.action_label}
-                    tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
-                    size="sm"
+                  <HoverPopover
+                    title={`建议：${suggestion.action_label}`}
+                    content={
+                      <div className="space-y-2">
+                        <div>{resolveSuggestionActionDescription(suggestion.action, suggestion.action_label)}</div>
+                        <ul className="list-disc pl-4 space-y-1 text-[10px] text-muted-foreground/80">
+                          <li><span className="font-medium text-foreground">买入/建仓</span>：可以考虑进场</li>
+                          <li><span className="font-medium text-foreground">观望</span>：中性，等更清晰信号</li>
+                          <li><span className="font-medium text-foreground">回避</span>：风险较大，不建议参与</li>
+                          <li><span className="font-medium text-foreground">减仓/卖出</span>：已有持仓时的离场建议</li>
+                        </ul>
+                      </div>
+                    }
+                    trigger={
+                      <TechnicalBadge
+                        label={suggestion.action_label}
+                        tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
+                        size="sm"
+                        help
+                      />
+                    }
                   />
                   <span className="text-[10px] text-muted-foreground">
                     {hasPosition ? '已持仓' : '未持仓'} · score {suggestion.score}
@@ -254,7 +294,7 @@ export function KlineSummaryDialog({
             )}
 
             <div className="text-[10px] text-muted-foreground/60">
-              提示：悬停指标标签可查看详细说明
+              提示：悬停建议或指标标签可查看详细说明
             </div>
 
             <div className="flex flex-wrap gap-2 text-[11px]">
@@ -751,5 +791,13 @@ export function KlineSummaryDialog({
         )}
       </DialogContent>
     </Dialog>
+    <KlineModal
+      open={klineModalOpen}
+      onOpenChange={setKlineModalOpen}
+      symbol={symbol}
+      market={market}
+      title={stockName ? `K线：${stockName}` : symbol ? `K线：${symbol}` : 'K线'}
+    />
+    </>
   )
 }

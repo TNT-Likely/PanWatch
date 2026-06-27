@@ -11,6 +11,7 @@ from sqlalchemy import and_, case, func
 from src.collectors.kline_collector import KlineCollector
 from src.core.entry_candidates import refresh_entry_candidates
 from src.core.json_safe import to_jsonable
+from src.core.regulatory_red_flags import event_bias_for_text
 from src.core.strategy_catalog import (
     ensure_strategy_catalog,
     get_effective_weight_map,
@@ -191,6 +192,10 @@ NEGATIVE_EVENT_KEYWORDS = (
     "下调",
     "违约",
     "处罚",
+    "警示函",
+    "监管函",
+    "问询函",
+    "立案",
     "暴跌",
     "利空",
     "预警",
@@ -532,7 +537,7 @@ def _load_news_metrics(
         title = str(n.title or "")
         content = str(n.content or "")
         text = f"{title} {content}".lower()
-        event_bias = 0.0
+        event_bias = event_bias_for_text(f"{title} {content}")
         for kw in POSITIVE_EVENT_KEYWORDS:
             if kw.lower() in text:
                 event_bias += 1.0
@@ -561,9 +566,12 @@ def _load_news_metrics(
                     "latest_age_hours": None,
                     "event_score": 0.0,
                     "event_bias": 0.0,
+                    "fatal_regulatory_count": 0,
                 },
             )
             m["news_count"] += 1
+            if event_bias_for_text(f"{title} {content}") <= -8.0:
+                m["fatal_regulatory_count"] += 1
             if importance >= 2:
                 m["high_importance_count"] += 1
             m["importance_weighted"] += float(event_weight)
@@ -806,6 +814,7 @@ def _compute_factor_breakdown(
     event_score = float(_safe_float(nm.get("event_score")) or 0.0)
     event_bias = float(_safe_float(nm.get("event_bias")) or 0.0)
     event_count = int(nm.get("news_count") or 0)
+    fatal_regulatory = int(nm.get("fatal_regulatory_count") or 0)
 
     alpha_score = _clamp((base_score - 50.0) * 0.45, -12.0, 18.0)
     if relative_strength_pct is not None:
@@ -847,6 +856,9 @@ def _compute_factor_breakdown(
         risk_penalty += 1.5
     if event_bias < -0.9:
         risk_penalty += 2.2
+    if fatal_regulatory > 0:
+        risk_penalty += 10.0
+        catalyst_score -= 8.0
 
     crowd_penalty = 0.0
     if quote_change_pct is not None and quote_change_pct >= 9.0:

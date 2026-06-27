@@ -112,7 +112,7 @@ def build_portfolio_context(
         styles = list({p.trading_style for p in positions if p.trading_style})
         style_text = "/".join(styles) if styles else "swing"
         style_map = {"short": "短线", "swing": "波段", "long": "长线"}
-        style_zh = "/".join(style_map.get(s, s) for s in styles) if styles else "波段"
+        style_zh = "/".join(style_map.get(s, s) for s in styles) if styles else "短线"
 
         lines.append(f"\n## Holding for {stock_symbol}")
         lines.append(f"- Quantity: {total_qty} shares (across {len(positions)} account(s))")
@@ -160,6 +160,33 @@ def build_portfolio_context(
     lines.append(
         "- Quote the user's average cost in your decision if relevant for stop-loss/profit-take."
     )
+
+    # 近期交易流水
+    try:
+        from src.core.position_trades_context import fetch_recent_trades
+        from src.web.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            trades = fetch_recent_trades(db, symbol=stock_symbol, limit=8)
+        finally:
+            db.close()
+        if trades:
+            lines.append("\n## Recent Trades")
+            lines.append(
+                "User's recent buy/sell activity for this stock. "
+                "Do not recommend repeating today's direction."
+            )
+            for t in trades:
+                side = "Buy" if t.get("side") == "buy" else "Sell"
+                today = " [TODAY]" if t.get("is_today") else ""
+                note = f" ({t['note']})" if t.get("note") else ""
+                lines.append(
+                    f"- {side}{today}: {t.get('quantity')} shares @ {t.get('price')} "
+                    f"→ {t.get('qty_after')} shares cost {t.get('cost_after')}{note}"
+                )
+    except Exception:
+        pass
 
     return "\n".join(lines)
 

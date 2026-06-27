@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, Star, Wand2, Plug } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -13,7 +13,9 @@ import HistoryPage from '@/pages/History'
 import AnalysisDetailPage from '@/pages/AnalysisDetail'
 import PriceAlertsPage from '@/pages/PriceAlerts'
 import PaperTradingPage from '@/pages/PaperTrading'
+import SkillsPage from '@/pages/Skills'
 import LoginPage from '@/pages/Login'
+import MCPPage from '@/pages/MCP'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import ChatWidget from '@/components/ChatWidget'
@@ -25,16 +27,19 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '首页' },
   { to: '/portfolio', icon: List, label: '持仓' },
+  { to: '/watchlist', icon: Star, label: '关注' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
   { to: '/paper-trading', icon: Activity, label: '模拟盘' },
   { to: '/alerts', icon: BellRing, label: '提醒' },
   { to: '/agents', icon: Bot, label: 'Agent' },
+  { to: '/skills', icon: Wand2, label: 'Skill' },
   { to: '/history', icon: Clock, label: '历史' },
   { to: '/datasources', icon: Database, label: '数据源' },
+  { to: '/mcp', icon: Plug, label: 'MCP' },
   { to: '/settings', icon: Settings, label: '设置' },
 ]
-const desktopPrimaryNavItems = navItems.slice(0, 5)
-const desktopMoreNavItems = navItems.slice(5)
+const desktopPrimaryNavItems = navItems.slice(0, 6)
+const desktopMoreNavItems = navItems.slice(6)
 const mobilePrimaryNavItems = navItems.slice(0, 5)
 const mobileMoreNavItems = navItems.slice(5)
 
@@ -128,7 +133,7 @@ function App() {
               <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-4 h-4 text-white" />
               </div>
-              <span className="text-[15px] font-bold text-foreground">PanWatch</span>
+              <span className="text-[15px] font-bold text-foreground">智盘 Alpha</span>
               {version && <span className="text-[11px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
 
@@ -199,7 +204,7 @@ function App() {
               <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
-              <span className="text-[14px] font-bold text-foreground">PanWatch</span>
+              <span className="text-[14px] font-bold text-foreground">智盘 Alpha</span>
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
@@ -257,12 +262,15 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
-          <Route path="/portfolio" element={<StocksPage />} />
+          <Route path="/portfolio" element={<StocksPage mode="positions" />} />
+          <Route path="/watchlist" element={<StocksPage mode="watchlist" />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/skills" element={<SkillsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/alerts" element={<PriceAlertsPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
+          <Route path="/mcp" element={<MCPPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
         </Routes>

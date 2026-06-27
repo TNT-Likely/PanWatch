@@ -22,12 +22,12 @@ from src.models.market import MarketCode
 @pytest.fixture(autouse=True)
 def _clear_caches():
     """每个用例前后清空进程级缓存,避免相互污染。"""
-    for name in ("_KLINE_CACHE", "_EASTMONEY_CACHE", "_FAIL_UNTIL", "_FETCH_LOCKS"):
+    for name in ("_KLINE_CACHE", "_EASTMONEY_CACHE", "_EASTMONEY_FAIL_UNTIL", "_FAIL_UNTIL", "_FETCH_LOCKS", "_BAOSTOCK_CACHE", "_BAOSTOCK_FAIL_UNTIL"):
         d = getattr(kc, name, None)
         if isinstance(d, dict):
             d.clear()
     yield
-    for name in ("_KLINE_CACHE", "_EASTMONEY_CACHE", "_FAIL_UNTIL", "_FETCH_LOCKS"):
+    for name in ("_KLINE_CACHE", "_EASTMONEY_CACHE", "_EASTMONEY_FAIL_UNTIL", "_FAIL_UNTIL", "_FETCH_LOCKS", "_BAOSTOCK_CACHE", "_BAOSTOCK_FAIL_UNTIL"):
         d = getattr(kc, name, None)
         if isinstance(d, dict):
             d.clear()
@@ -114,3 +114,181 @@ def test_insufficient_result_negative_cached(monkeypatch):
     col.get_klines("06082", days=120)  # 拿到 30 < need(120) → 冷却 + 缓存部分
     col.get_klines("06082", days=120)  # 冷却内,服务缓存,不再联网
     assert calls["n"] == 1, f"不足 need 时也应负缓存,实际联网 {calls['n']} 次"
+
+
+def test_us_kline_skips_eastmoney_and_falls_back_to_yfinance(monkeypatch):
+    """腾讯美股仅返回少量K线时,应跳过东财(批量易断连)直接走 yfinance。"""
+    few = [
+        kc.KlineData(date="2011-06-02", open=1, close=1, high=1, low=1, volume=1),
+        kc.KlineData(date="2026-06-18", open=2, close=2, high=2, low=2, volume=2),
+    ]
+    many = [
+        kc.KlineData(
+            date=f"2026-01-{(i % 28) + 1:02d}",
+            open=10 + i,
+            close=10 + i,
+            high=11 + i,
+            low=9 + i,
+            volume=100 + i,
+        )
+        for i in range(60)
+    ]
+    em_calls: list[tuple[str, MarketCode, int]] = []
+    yf_calls: list[tuple[str, MarketCode, int]] = []
+
+    def fake_em(symbol, market, days):
+        em_calls.append((symbol, market, days))
+        return list(many)
+
+    def fake_yf(symbol, market, days):
+        yf_calls.append((symbol, market, days))
+        return list(many)
+
+    monkeypatch.setattr(kc, "_fetch_tencent_klines", lambda *a, **k: list(few))
+    monkeypatch.setattr(kc, "_fetch_stooq_us_klines", lambda *a, **k: [])
+    monkeypatch.setattr(kc, "_fetch_eastmoney_klines", fake_em)
+    monkeypatch.setattr(kc, "_fetch_yfinance_klines", fake_yf)
+
+    col = kc.KlineCollector(MarketCode.US)
+    out = col.get_klines("TSM", days=60)
+
+    assert len(out) == 60
+    assert em_calls == []
+    assert len(yf_calls) == 1
+    assert yf_calls[0] == ("TSM", MarketCode.US, 120)
+
+
+def test_eastmoney_failure_is_negative_cached(monkeypatch):
+    """东财取数失败后,冷却窗口内再次调用不再联网。"""
+    calls = {"n": 0}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def get(self, *a, **k):
+            calls["n"] += 1
+            raise RuntimeError("Server disconnected without sending a response")
+
+    monkeypatch.setattr(kc.httpx, "Client", FakeClient)
+    monkeypatch.setattr(kc, "_throttle_eastmoney", lambda: None)
+
+    out1 = kc._fetch_eastmoney_klines("06082", MarketCode.HK, 120)
+    out2 = kc._fetch_eastmoney_klines("06082", MarketCode.HK, 120)
+
+    assert out1 == []
+    assert out2 == []
+    assert calls["n"] == 2  # 首次 2 次重试,冷却内不再联网
+
+
+def test_us_kline_falls_back_to_yfinance_when_eastmoney_empty(monkeypatch):
+    """东方财富不可达时,美股应继续回退 yfinance。"""
+    few = [
+        kc.KlineData(date="2011-06-02", open=1, close=1, high=1, low=1, volume=1),
+        kc.KlineData(date="2026-06-18", open=2, close=2, high=2, low=2, volume=2),
+    ]
+    many = [
+        kc.KlineData(
+            date=f"2026-01-{(i % 28) + 1:02d}",
+            open=10 + i,
+            close=10 + i,
+            high=11 + i,
+            low=9 + i,
+            volume=100 + i,
+        )
+        for i in range(60)
+    ]
+
+    monkeypatch.setattr(kc, "_fetch_tencent_klines", lambda *a, **k: list(few))
+    monkeypatch.setattr(kc, "_fetch_eastmoney_klines", lambda *a, **k: [])
+    monkeypatch.setattr(kc, "_fetch_stooq_us_klines", lambda *a, **k: [])
+    monkeypatch.setattr(
+        kc, "_fetch_yfinance_klines", lambda symbol, market, days: list(many)
+    )
+
+    col = kc.KlineCollector(MarketCode.US)
+    out = col.get_klines("AAPL", days=60)
+
+    assert len(out) == 60
+
+
+def test_intraday_klines_falls_back_to_eastmoney(monkeypatch):
+    """腾讯分钟线失败时应走东财兜底。"""
+    em_bars = [
+        kc.KlineData(
+            date=f"2024-01-15 09:{35 + i:02d}",
+            open=10 + i * 0.1,
+            close=10.1 + i * 0.1,
+            high=10.2 + i * 0.1,
+            low=9.9 + i * 0.1,
+            volume=1000 + i,
+        )
+        for i in range(48)
+    ]
+
+    monkeypatch.setattr(kc, "_fetch_tencent_klines_interval", lambda *a, **k: [])
+    monkeypatch.setattr(
+        kc, "_fetch_eastmoney_intraday_klines", lambda *a, **k: list(em_bars)
+    )
+
+    col = kc.KlineCollector(MarketCode.CN)
+    out = col.get_intraday_klines("600519", interval="m5", count=48)
+    assert len(out) == 48
+    assert "09:35" in out[0].date
+
+
+def test_intraday_klines_falls_back_to_baostock(monkeypatch):
+    """东财分钟线也失败时应走 Baostock 兜底(A股)。"""
+    bs_bars = [
+        kc.KlineData(
+            date="2024-01-15 09:35",
+            open=10.0,
+            close=10.2,
+            high=10.3,
+            low=9.9,
+            volume=1000,
+        )
+        for _ in range(60)
+    ]
+
+    monkeypatch.setattr(kc, "_fetch_tencent_klines_interval", lambda *a, **k: [])
+    monkeypatch.setattr(kc, "_fetch_eastmoney_intraday_klines", lambda *a, **k: [])
+    monkeypatch.setattr(
+        kc, "_fetch_baostock_intraday_klines", lambda *a, **k: list(bs_bars)
+    )
+
+    col = kc.KlineCollector(MarketCode.CN)
+    out = col.get_intraday_klines("000725", interval="m5", count=60)
+    assert len(out) == 60
+    assert out[0].date.endswith("09:35")
+
+
+def test_cn_daily_klines_falls_back_to_baostock(monkeypatch):
+    """A股日K在腾讯/东财失败时应走 Baostock 兜底。"""
+    daily = [
+        kc.KlineData(
+            date=f"2024-01-{i + 1:02d}",
+            open=10 + i * 0.1,
+            close=10.1 + i * 0.1,
+            high=10.2 + i * 0.1,
+            low=9.9 + i * 0.1,
+            volume=1000 + i,
+        )
+        for i in range(80)
+    ]
+
+    monkeypatch.setattr(kc, "_fetch_tencent_klines", lambda *a, **k: [])
+    monkeypatch.setattr(kc, "_fetch_eastmoney_klines", lambda *a, **k: [])
+    monkeypatch.setattr(
+        kc, "_fetch_baostock_daily_klines", lambda *a, **k: list(daily)
+    )
+
+    col = kc.KlineCollector(MarketCode.CN)
+    out = col.get_klines("000725", days=60)
+    assert len(out) == 60

@@ -69,7 +69,11 @@ class Account(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)  # 账户名称，如 "招商证券"、"华泰证券"
-    available_funds = Column(Float, default=0)  # 可用资金
+    available_funds = Column(Float, default=0)  # 股票现金（账户币种，可用于买股票）
+    other_funds = Column(Float, default=0)  # 其他资产合计（账户币种，由 other_fund_items 汇总）
+    other_fund_items = Column(JSON, default=list)  # [{"label":"理财","amount":10000}, ...]
+    initial_funds = Column(Float, default=0)  # 初始资金（账户币种，= 股票现金 + 其他 + 持仓成本，自动计算）
+    base_currency = Column(String, nullable=False, server_default="CNY")  # CNY / HKD / USD
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -86,11 +90,20 @@ class Stock(Base):
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
     market = Column(String, nullable=False)  # CN / HK / US
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     # 以下字段已废弃，持仓信息移至 Position 表
     cost_price = Column(Float, nullable=True)
     quantity = Column(Integer, nullable=True)
     invested_amount = Column(Float, nullable=True)
     sort_order = Column(Integer, default=0)
+    is_featured = Column(Boolean, default=False)  # 精华：关注列表优先展示
+    concept_tags_auto = Column(JSON, default=[])
+    concept_tags_manual = Column(JSON, default=[])
+    concept_tags_updated_at = Column(DateTime, nullable=True)
+    industry_chain_auto = Column(JSON, default={})  # LMD 产业链自动分类
+    industry_chain_manual = Column(JSON, default={})  # 手动覆盖的产业链分类
+    industry_chain_updated_at = Column(DateTime, nullable=True)
+    investment_profile = Column(JSON, default={})  # 长线投资计划
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -122,13 +135,46 @@ class Position(Base):
     invested_amount = Column(Float, nullable=True)  # 投入资金（用于盘中监控）
     sort_order = Column(Integer, default=0)
     trading_style = Column(
-        String, default="swing"
+        String, default="short"
     )  # short: 短线, swing: 波段, long: 长线
+    status = Column(String, default="open")  # open: 持仓中 / closed: 已清仓
+    closed_at = Column(DateTime, nullable=True)  # 清仓时间
+    realized_pnl = Column(Float, default=0.0)  # 清仓时锁定的累计实现盈亏
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     account = relationship("Account", back_populates="positions")
     stock = relationship("Stock", back_populates="positions")
+    trades = relationship(
+        "PositionTrade", back_populates="position", cascade="all, delete-orphan"
+    )
+
+
+class PositionTrade(Base):
+    """持仓变动流水（买入/加仓等）"""
+
+    __tablename__ = "position_trades"
+    __table_args__ = (
+        Index("ix_position_trades_position_id", "position_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    position_id = Column(
+        Integer, ForeignKey("positions.id", ondelete="CASCADE"), nullable=False
+    )
+    side = Column(String, nullable=False, default="buy")  # buy | sell
+    price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False)  # price * quantity
+    cost_before = Column(Float, nullable=True)
+    qty_before = Column(Integer, nullable=True)
+    cost_after = Column(Float, nullable=True)
+    qty_after = Column(Integer, nullable=True)
+    note = Column(String, nullable=True)
+    traded_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    position = relationship("Position", back_populates="trades")
 
 
 class StockAgent(Base):
@@ -227,6 +273,24 @@ class AppSettings(Base):
     key = Column(String, unique=True, nullable=False)
     value = Column(String, default="")
     description = Column(String, default="")
+
+
+class LocalSkill(Base):
+    """本地 Hermes skill 注册（Skill 广场）。"""
+
+    __tablename__ = "local_skills"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String, unique=True, nullable=False)
+    display_name = Column(String, nullable=False)
+    description = Column(String, default="")
+    skill_path = Column(String, default="")
+    source_root = Column(String, default="")
+    enabled = Column(Boolean, default=False)
+    config = Column(JSON, default={})
+    last_seen_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class DataSource(Base):
@@ -1004,6 +1068,7 @@ class PaperTradingPosition(Base):
     stock_symbol = Column(String, nullable=False)
     stock_market = Column(String, nullable=False, default="CN")
     stock_name = Column(String, default="")
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     quantity = Column(Integer, nullable=False, default=100)
     entry_price = Column(Float, nullable=False)
     stop_loss = Column(Float, nullable=True)
@@ -1034,6 +1099,7 @@ class PaperTradingTrade(Base):
     stock_symbol = Column(String, nullable=False)
     stock_market = Column(String, nullable=False, default="CN")
     stock_name = Column(String, default="")
+    security_type = Column(String, nullable=False, server_default="stock")  # stock / etf / index
     quantity = Column(Integer, nullable=False, default=100)
     entry_price = Column(Float, nullable=False)
     exit_price = Column(Float, nullable=False)
@@ -1081,3 +1147,25 @@ class ChatMessage(Base):
     role = Column(String, nullable=False, default="user")  # user/assistant/system
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ChatPendingAction(Base):
+    """AI 对话待确认操作"""
+
+    __tablename__ = "chat_pending_actions"
+    __table_args__ = (
+        Index("ix_chat_pending_conv", "conversation_id", "status"),
+        Index("ix_chat_pending_msg", "message_id"),
+    )
+
+    id = Column(String, primary_key=True)
+    conversation_id = Column(Integer, nullable=False)
+    message_id = Column(Integer, nullable=True)
+    action_type = Column(String, nullable=False)
+    payload = Column(JSON, default={})
+    preview = Column(JSON, default={})
+    status = Column(String, default="pending")
+    result = Column(JSON, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -27,6 +27,9 @@ NEGATIVE_HINTS = (
     "风险",
     "违规",
     "处罚",
+    "警示函",
+    "监管函",
+    "立案",
     "利空",
     "退市",
 )
@@ -119,6 +122,8 @@ def rank_news_items(items: list[dict], symbol: str = "") -> list[dict]:
 
         if symbol and symbol in str(it.get("symbols") or []):
             s += 2.0
+        if any(k in title for k in ("警示函", "监管函", "立案", "退市风险")):
+            s += 8.0
         if any(k in title for k in ("重大", "业绩", "增持", "减持", "停牌", "解禁", "回购", "分红", "快报")):
             s += 2.0
         if "公告" in title:

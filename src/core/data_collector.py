@@ -440,7 +440,11 @@ class DataCollectorManager:
                 error_msg = ""
                 if len(news) == 0:
                     if source.provider == "xueqiu":
-                        error_msg = "无数据，请检查 cookie 是否有效"
+                        error_msg = (
+                            "无数据：Playwright 采集未返回新闻。"
+                            "请确认已安装 Chromium（playwright install chromium），"
+                            "或在数据源页点击「检测连通」查看详情"
+                        )
                     elif source.provider == "eastmoney_news" and not symbol_names:
                         error_msg = "未找到测试股票的名称，请先添加自选股"
                     else:

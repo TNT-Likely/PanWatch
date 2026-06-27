@@ -375,3 +375,22 @@ def test_confidence_derived_from_rating_when_absent():
     assert hold.raw_data["suggestion"]["confidence"] == 5.0
     assert sell.raw_data["suggestion"]["confidence"] == 7.0
     assert buy.raw_data["suggestion"]["confidence"] > hold.raw_data["suggestion"]["confidence"]
+
+
+# ============================================================
+# signal 与 PM 最终决策对齐(不取交易员中间计划)
+# ============================================================
+
+def test_signal_from_final_decision_not_trader_plan():
+    """signal 应取自 PM Executive Summary,而非交易员 Action:Sell(避免与 Rating:Hold 矛盾)"""
+    state = {
+        "final_trade_decision": (
+            "**Rating**: Hold **Executive Summary**: 建议持币观望,等待回调至5.50-5.80元"
+        ),
+        "trader_investment_plan": "Action: Sell\n\nReasoning: 风险大,建议减仓",
+    }
+    r = map_state_to_result(stock=_stock(), ta_result={"decision": "Hold", "final_state": state, "cost_usd": 0.01})
+    sig = r.raw_data["suggestion"]["signal"]
+    assert "Sell" not in sig
+    assert "持币观望" in sig
+    assert r.raw_data["suggestion"]["action"] == "hold"

@@ -302,6 +302,7 @@ class TradingAgentsAgent(BaseAgent):
             ta_result=ta_result,
             model_label=context.model_label,
         )
+        result.raw_data["analyst_types"] = list(self.analyst_types)
 
         # 存分析时实时价 → 历史决策表"分析价"立即显示(不必等当日 K线收盘回填)
         _quote = data.get("quote") or {}
@@ -426,6 +427,13 @@ class TradingAgentsAgent(BaseAgent):
         except Exception:
             return None
         if not history or not history.raw_data:
+            return None
+        cached_types = sorted(
+            (history.raw_data or {}).get("analyst_types")
+            or ["fundamentals", "market", "news", "social"]
+        )
+        current_types = sorted(self.analyst_types)
+        if cached_types != current_types:
             return None
         return AnalysisResult(
             agent_name=self.name,

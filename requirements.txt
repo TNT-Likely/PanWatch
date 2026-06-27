@@ -2,6 +2,7 @@ apprise>=1.6.0
 openai>=1.0.0
 efinance>=0.4.0
 akshare>=1.10.0
+baostock>=0.8.8
 apscheduler>=3.10.0
 httpx>=0.25.0
 pydantic>=2.0.0

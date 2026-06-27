@@ -132,3 +132,16 @@
     display: none;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ai-chain-flow,
+  .animate-ai-chain-pulse-hot,
+  .animate-ai-chain-pulse-next,
+  .animate-ai-chain-pulse-theme,
+  .animate-ai-chain-badge-hot,
+  .animate-ai-chain-badge-next,
+  .animate-ai-chain-badge-theme,
+  .animate-ai-chain-arrow {
+    animation: none !important;
+  }
+}

@@ -27,7 +27,7 @@ interface ShareCardDialogProps {
  * 设计要点:
  * - 卡片容器固定宽度(默认 640px),自带白→#f8fafc 渐变背景、圆角、内边距、系统字体、显式深色文字,
  *   保证导出 PNG 在任何主题(亮/暗)下都一致。各业务卡只需提供「正脸」children。
- * - 页脚(免责 + 盯盘侠 PanWatch · github 引流行)由外壳统一渲染,作为全体分享卡的一致性锚点。
+ * - 页脚(免责 + 智盘 Alpha · AlphaMind · github 引流行)由外壳统一渲染,作为全体分享卡的一致性锚点。
  * - 「下载图片」用 html-to-image 的 toPng(pixelRatio:2, cacheBust:true)导出为 ${filename}.png。
  */
 export default function ShareCardDialog({
@@ -119,7 +119,7 @@ export default function ShareCardDialog({
               >
                 盯
               </span>
-              <span>盯盘侠 PanWatch</span>
+              <span>智盘 Alpha · AlphaMind</span>
               <span style={{ color: '#cbd5e1', fontWeight: 400 }}>·</span>
               <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12.5 }}>
                 github.com/TNT-Likely/PanWatch

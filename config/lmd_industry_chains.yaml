@@ -1,0 +1,285 @@
+# 老马投资研究 · AI 行情轮动分类框架
+# 沿 AI 物理连接顺序投资（以 GPU 为起点），非传统产业链上中下游分层
+#
+# 主轮动：AI算力 → 云服务和大模型 → 软件应用 → 物理AI
+# A股建议跳过「云&大模型」「软件应用」环节（美股例外）
+#
+# AI算力细分（轮动次序）：
+#   GPU → CPO → HBM → PCB → 液冷 → 半导体&设备 → 服务器 → IDC → 电力
+chains:
+  AI:
+    display_name: 人工智能
+    sector_keywords:
+      - 人工智能
+      - AIGC
+      - 大模型
+      - 算力
+      - 智算
+      - 机器学习
+      - 深度学习
+      - 生成式人工智能
+      - 多模态
+      - 智能体
+      - AGI
+      - AI应用
+      - 人工智能应用
+      - 算力租赁
+      - 东数西算
+      - AI芯片
+      - 算力芯片
+      - AI算力
+      - 智算中心
+      - 英伟达概念
+      - 华为昇腾
+      - 昇腾
+      - ChatGPT
+      - GPT
+      - Sora概念
+      - 文心一言
+      - 液冷服务器
+      - AI服务器
+      - 人形机器人
+      - 物理AI
+    layers:
+      gpu:
+        label: GPU
+        order: 1
+        description: AI算力起点，GPU与算力芯片
+        keywords:
+          - GPU
+          - AI芯片
+          - 算力芯片
+          - 英伟达概念
+          - 华为昇腾
+          - 昇腾
+        symbols:
+          CN:
+            - "688256"  # 寒武纪
+            - "688041"  # 海光信息
+            - "300474"  # 景嘉微
+          HK: []
+          US:
+            - NVDA
+            - AMD
+            - INTC
+      cpo:
+        label: CPO
+        order: 2
+        description: 光模块与光电共封装，算力互联扩容
+        keywords:
+          - CPO
+          - 光模块
+          - 光通信
+          - 高速互联
+          - 共封装光学
+        symbols:
+          CN:
+            - "300308"  # 中际旭创
+            - "300502"  # 新易盛
+            - "002281"  # 光迅科技
+          HK: []
+          US:
+            - AVGO
+            - COHR
+            - LITE
+            - MRVL
+            - ANET
+      hbm:
+        label: HBM
+        order: 3
+        description: 高带宽存储，GPU显存配套
+        keywords:
+          - HBM
+          - 存储芯片
+          - 存储器
+          - 高带宽内存
+        symbols:
+          CN:
+            - "603986"  # 兆易创新
+          HK: []
+          US:
+            - MU
+      pcb:
+        label: PCB
+        order: 4
+        description: AI服务器高速印制电路板
+        keywords:
+          - PCB
+          - 印制电路板
+          - 高速PCB
+        symbols:
+          CN:
+            - "002463"  # 沪电股份
+            - "002916"  # 深南电路
+            - "002436"  # 兴森科技
+          HK: []
+          US: []
+      liquid_cooling:
+        label: 液冷
+        order: 5
+        description: 高功率密度散热，液冷基础设施
+        keywords:
+          - 液冷
+          - 液冷服务器
+          - 散热
+          - 温控
+        symbols:
+          CN: []
+          HK: []
+          US: []
+      semi_pcb_equip:
+        label: 材料&设备
+        order: 6
+        description: 半导体制造与PCB上游材料设备（当前轮动热点）
+        keywords:
+          - 半导体设备
+          - 刻蚀
+          - 光刻
+          - 封测
+          - 晶圆
+          - 电子化学品
+          - 覆铜板
+        symbols:
+          CN:
+            - "002371"  # 北方华创
+            - "688981"  # 中芯国际
+            - "002049"  # 紫光国微
+            - "603501"  # 韦尔股份
+            - "600584"  # 长电科技
+          HK:
+            - "0981"    # 中芯国际
+            - "1347"    # 华虹半导体
+          US:
+            - ASML
+            - AMAT
+            - LRCX
+            - TSM
+      server:
+        label: 服务器
+        order: 7
+        description: AI服务器整机与算力交付（材料设备后的下一站）
+        keywords:
+          - AI服务器
+          - 服务器
+          - 算力服务器
+        symbols:
+          CN:
+            - "601138"  # 工业富联
+            - "000977"  # 浪潮信息
+            - "603019"  # 中科曙光
+          HK: []
+          US: []
+      idc:
+        label: IDC
+        order: 8
+        description: 智算中心与数据中心，算力落地载体
+        keywords:
+          - IDC
+          - 数据中心
+          - 智算中心
+          - 算力租赁
+          - 东数西算
+        symbols:
+          CN:
+            - "603881"  # 数据港
+            - "300383"  # 光环新网
+            - "000938"  # 紫光股份
+          HK: []
+          US: []
+      power:
+        label: 电力
+        order: 9
+        description: 算力用电与电力基础设施
+        keywords:
+          - 电力
+          - 智能电网
+          - 特高压
+          - 储能
+          - 核电
+          - 变压器
+        symbols:
+          CN: []
+          HK: []
+          US: []
+      cloud_llm:
+        label: 云&大模型
+        order: 10
+        description: 云服务与大模型（A股建议跳过，美股可投）
+        a_share_skip: true
+        keywords:
+          - 大模型
+          - 云计算
+          - 云服务
+          - ChatGPT
+          - GPT
+          - 文心一言
+          - AI平台
+        symbols:
+          CN:
+            - "002230"  # 科大讯飞
+          HK:
+            - "0700"    # 腾讯
+            - "9988"    # 阿里
+            - "9888"    # 百度
+          US:
+            - MSFT
+            - GOOGL
+            - GOOG
+            - AMZN
+            - ORCL
+            - PLTR
+      software_app:
+        label: 软件应用
+        order: 11
+        description: AI软件与应用层（A股建议跳过，美股可投）
+        a_share_skip: true
+        keywords:
+          - AIGC
+          - AI应用
+          - 人工智能应用
+          - 办公软件
+          - 数字人
+          - 虚拟数字人
+        symbols:
+          CN:
+            - "688111"  # 金山办公
+            - "002410"  # 广联达
+            - "600570"  # 恒生电子
+            - "300058"  # 蓝色光标
+            - "002131"  # 利欧股份
+            - "603533"  # 掌阅科技
+            - "002908"  # 德生科技
+            - "600588"  # 用友网络
+          HK: []
+          US:
+            - META
+            - ADBE
+            - NOW
+            - CRM
+            - SNOW
+            - CRWD
+      physical_ai:
+        label: 物理AI
+        order: 12
+        description: 机器人、智驾等物理世界AI落地（算力链后的主战场）
+        keywords:
+          - 物理AI
+          - 人形机器人
+          - 机器人
+          - 智能驾驶
+          - 自动驾驶
+          - 机器视觉
+          - 智能座舱
+        symbols:
+          CN:
+            - "300024"  # 机器人
+            - "002747"  # 埃斯顿
+            - "002920"  # 德赛西威
+            - "688169"  # 石头科技
+            - "300496"  # 中科创达
+          HK:
+            - "9866"    # 蔚来
+            - "9868"    # 小鹏
+          US:
+            - TSLA
+            - UBER

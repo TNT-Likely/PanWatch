@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 
 from src.web.api import insights
-from src.web.database import SessionLocal
 
 
 class _FakeAIClient:
@@ -24,7 +23,7 @@ def test_parse_tone():
     assert insights._parse_tone("看不出") == "中性"
 
 
-def test_announcement_eval_maps_tone_per_item(monkeypatch):
+def test_announcement_eval_maps_tone_per_item(monkeypatch, db):
     """逐条公告映射 AI 判定的利好/利空。"""
     insights._ANN_CACHE.clear()
 
@@ -42,18 +41,14 @@ def test_announcement_eval_maps_tone_per_item(monkeypatch):
     )
 
     req = insights.AnnouncementEvalRequest(symbol="600519", market="CN")
-    db = SessionLocal()
-    try:
-        res = asyncio.run(insights.announcement_eval(req, db))
-    finally:
-        db.close()
+    res = asyncio.run(insights.announcement_eval(req, db))
 
     assert len(res["items"]) == 2
     assert res["items"][0]["tone"] == "利好"
     assert res["items"][1]["tone"] == "利空"
 
 
-def test_announcement_eval_empty(monkeypatch):
+def test_announcement_eval_empty(monkeypatch, db):
     """无公告时返回空列表,不调 AI。"""
     insights._ANN_CACHE.clear()
 
@@ -70,10 +65,6 @@ def test_announcement_eval_empty(monkeypatch):
     monkeypatch.setattr(insights, "_get_ai_client", fake_ai)
 
     req = insights.AnnouncementEvalRequest(symbol="000001", market="CN")
-    db = SessionLocal()
-    try:
-        res = asyncio.run(insights.announcement_eval(req, db))
-    finally:
-        db.close()
+    res = asyncio.run(insights.announcement_eval(req, db))
     assert res["items"] == []
     assert called["ai"] == 0

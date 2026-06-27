@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock } from 'lucide-react'
-import { fetchAPI, type DataSource } from '@panwatch/api'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock, AlertCircle, RefreshCw } from 'lucide-react'
+import { fetchAPI, type DataSource, type DataSourceCookieHealth } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -31,6 +31,53 @@ interface TestResult {
   error?: string
   items?: unknown[] | { image?: string }  // array for most types, object for chart
   logs: TestLogItem[]
+  cookie_health?: DataSourceCookieHealth | null
+}
+
+const XUEQIU_COOKIE_STATUS_STYLE: Record<string, string> = {
+  ok: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  not_configured: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  unknown: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+  expired: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  blocked: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  error: 'bg-red-500/10 text-red-600 dark:text-red-400',
+}
+
+function XueqiuCookieGuide({ health, compact }: { health?: DataSourceCookieHealth | null; compact?: boolean }) {
+  const status = health?.status || 'unknown'
+  const style = XUEQIU_COOKIE_STATUS_STYLE[status] || XUEQIU_COOKIE_STATUS_STYLE.unknown
+  return (
+    <div className={`rounded-xl border border-amber-500/20 bg-amber-500/5 ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-start gap-2">
+        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] font-medium text-foreground">雪球采集说明</span>
+            {health?.label && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${style}`}>
+                {health.label}
+              </span>
+            )}
+            {health?.checked_at && (
+              <span className="text-[10px] text-muted-foreground">检测于 {health.checked_at}</span>
+            )}
+          </div>
+          {health?.message && (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{health.message}</p>
+          )}
+          <div className="text-[11px] text-muted-foreground leading-relaxed space-y-1">
+            <p>雪球新闻通过 <span className="text-foreground/80">Playwright 无头浏览器</span> 采集，一般 <span className="text-foreground/80">无需配置 Cookie</span>。</p>
+            <p className="text-foreground/80 font-medium">首次使用前请确认：</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>后端环境已安装 Chromium：<code className="text-[10px]">playwright install chromium</code></li>
+              <li>在数据源列表点击「检测连通」或「测试」验证采集是否正常</li>
+              <li>可选：粘贴登录 Cookie 以获取需登录态的内容（通常不需要）</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 interface DataSourceForm {
@@ -69,6 +116,7 @@ export default function DataSourcesPage() {
   const [form, setForm] = useState<DataSourceForm>(emptyForm)
   const [editId, setEditId] = useState<number | null>(null)
   const [testing, setTesting] = useState<number | null>(null)
+  const [probing, setProbing] = useState<number | null>(null)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const [testResultOpen, setTestResultOpen] = useState(false)
   const [testSymbolsInput, setTestSymbolsInput] = useState('')
@@ -151,10 +199,29 @@ export default function DataSourcesPage() {
       const result = await fetchAPI<TestResult>(`/datasources/${id}/test`, { method: 'POST' })
       setTestResult(result)
       setTestResultOpen(true)
+      load()
     } catch (e) {
       toast(e instanceof Error ? e.message : '测试失败', 'error')
     } finally {
       setTesting(null)
+    }
+  }
+
+  const probeCookie = async (id: number) => {
+    setProbing(id)
+    try {
+      const result = await fetchAPI<{ cookie_health: DataSourceCookieHealth }>(
+        `/datasources/${id}/probe-cookie`,
+        { method: 'POST' },
+      )
+      const health = result.cookie_health
+      const ok = health?.status === 'ok'
+      toast(health?.message || (ok ? '采集正常' : '采集检测未通过'), ok ? 'success' : 'error')
+      load()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '采集检测失败', 'error')
+    } finally {
+      setProbing(null)
     }
   }
 
@@ -165,6 +232,8 @@ export default function DataSourcesPage() {
     acc[type].push(source)
     return acc
   }, {} as Record<string, DataSource[]>)
+
+  const xueqiuNewsSource = sources.find(s => s.type === 'news' && s.provider === 'xueqiu')
 
   if (loading) {
     return (
@@ -196,6 +265,9 @@ export default function DataSourcesPage() {
               <p className="text-[13px] text-muted-foreground text-center py-6">暂无{label}数据源</p>
             ) : (
               <div className="space-y-2">
+                {type === 'news' && xueqiuNewsSource && (
+                  <XueqiuCookieGuide health={xueqiuNewsSource.cookie_health} />
+                )}
                 {groupedSources[type].map(source => (
                     <div
                       key={source.id}
@@ -212,10 +284,23 @@ export default function DataSourcesPage() {
                                 批量
                               </span>
                             )}
+                            {source.type === 'news' && source.provider === 'xueqiu' && source.cookie_health && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                XUEQIU_COOKIE_STATUS_STYLE[source.cookie_health.status]
+                                || XUEQIU_COOKIE_STATUS_STYLE.unknown
+                              }`}>
+                                采集 {source.cookie_health.label}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-[11px] text-muted-foreground font-mono">{source.provider}</span>
                             <span className="text-[11px] text-muted-foreground">优先级: {source.priority}</span>
+                            {source.type === 'news' && source.provider === 'xueqiu' && source.cookie_health?.checked_at && (
+                              <span className="text-[10px] text-muted-foreground">
+                                检测: {source.cookie_health.checked_at}
+                              </span>
+                            )}
                             {source.test_symbols?.length > 0 && (
                               <span className="text-[10px] text-muted-foreground">
                                 测试: {source.test_symbols.slice(0, 3).join(', ')}{source.test_symbols.length > 3 ? '...' : ''}
@@ -225,6 +310,22 @@ export default function DataSourcesPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        {source.type === 'news' && source.provider === 'xueqiu' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => probeCookie(source.id)}
+                            disabled={probing === source.id}
+                            title="检测连通"
+                          >
+                            {probing === source.id ? (
+                              <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -298,19 +399,25 @@ export default function DataSourcesPage() {
               </div>
             )}
             {form.provider === 'xueqiu' && form.type === 'news' && (
-              <div>
-                <Label>
-                  雪球 Cookies
-                  <span className="text-muted-foreground font-normal ml-1">
-                    (浏览器开发者工具 → Network → 复制完整 cookie 字符串)
-                  </span>
-                </Label>
-                <Input
-                  type="password"
-                  value={(form.config?.cookies as string) || ''}
-                  onChange={e => setForm({ ...form, config: { ...form.config, cookies: e.target.value } })}
-                  placeholder="xq_a_token=...; xq_r_token=...; ..."
+              <div className="space-y-3">
+                <XueqiuCookieGuide
+                  health={sources.find(s => s.id === editId)?.cookie_health}
+                  compact
                 />
+                <div>
+                  <Label>
+                    雪球 Cookies（可选）
+                  </Label>
+                  <Input
+                    type="password"
+                    value={(form.config?.cookies as string) || ''}
+                    onChange={e => setForm({ ...form, config: { ...form.config, cookies: e.target.value } })}
+                    placeholder="一般留空即可；可选粘贴 xq_a_token=...; xq_r_token=..."
+                  />
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    保存后建议点击列表中的「检测连通」验证；Cookie 变更后旧检测状态会自动清除。
+                  </p>
+                </div>
               </div>
             )}
 
@@ -388,6 +495,20 @@ export default function DataSourcesPage() {
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
                 <div className="text-[11px] text-red-500 font-medium mb-1">错误信息</div>
                 <div className="text-[12px] text-red-600 dark:text-red-400">{testResult.error}</div>
+              </div>
+            )}
+
+            {testResult?.provider === 'xueqiu' && testResult.cookie_health && (
+              <div className={`p-3 rounded-lg border ${
+                testResult.cookie_health.status === 'ok'
+                  ? 'bg-emerald-500/5 border-emerald-500/20'
+                  : 'bg-amber-500/5 border-amber-500/20'
+              }`}>
+                <div className="text-[11px] font-medium text-foreground mb-1">
+                  采集状态：{testResult.cookie_health.label}
+                  {testResult.cookie_health.checked_at ? ` · ${testResult.cookie_health.checked_at}` : ''}
+                </div>
+                <div className="text-[12px] text-muted-foreground">{testResult.cookie_health.message}</div>
               </div>
             )}
 

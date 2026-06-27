@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## 铁律：禁止默认读取依赖目录
+
+**默认不要**读取、搜索或遍历依赖与构建产物目录。这些目录体积巨大，对理解项目代码没有帮助。
+
+禁止默认访问：`.venv/`、`venv/`、`node_modules/`、`dist/`、`build/`、`static/`、`__pycache__/`、`data/` 等。
+
+需要依赖信息时，只读 `requirements.txt`、`pyproject.toml`、`package.json` 等声明文件，或查官方文档；**不要**钻进 `node_modules` 或 `.venv`。仅当用户明确要求排查某个依赖包内部问题时，才可定向读取单个文件。
+
 ## Project Structure & Module Organization
 - `src/agents/` — Agent implementations (business logic). Add new agents here.
 - `src/collectors/` — Data collectors (quotes, kline, news, etc.).
@@ -31,6 +39,13 @@
 - Backend: structure tests as `tests/test_<module>.py`; prefer fast, isolated unit tests around agents, collectors, and core.
 - Coverage: target meaningful coverage for new modules (no strict threshold yet, but include happy-path and error cases).
 - Fixtures: use factory helpers for DB models; avoid network calls (mock collectors and AI clients).
+
+## Trading Discipline
+- Long-term position architecture lives in `docs/long-term-position-architecture.md`; follow it when changing trading logic, prompts, portfolio context, or related UI.
+- A long-term holding is not a slower short-term stop-loss flow. Respect the user's thesis, target weight, max weight, staged add plan, and recent trade history.
+- Core and satellite positions must be treated separately: protect core positions for the long-term thesis; use satellite positions for swing adjustments.
+- Never suggest unlimited averaging down. Any add suggestion must check max allocation, available cash, triggered levels, and today's trades.
+- Today's trade records take priority: do not repeat add suggestions after a same-day buy, and do not repeat reduce/sell suggestions after a same-day sell.
 
 ## Commit & Pull Request Guidelines
 - Commit format: `<type>: <subject>` where type ∈ `{feat, fix, docs, refactor, style, test}`.

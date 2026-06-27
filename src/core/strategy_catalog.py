@@ -78,6 +78,14 @@ DEFAULT_STRATEGIES: tuple[StrategySpec, ...] = (
         params={"horizon_days": 3},
         default_weight=1.08,
     ),
+    StrategySpec(
+        code="chan_emotion",
+        name="缠论情绪博弈",
+        description="缠论几何+养家心法：多级别联立、背驰触发、情绪仓位",
+        risk_level="medium",
+        params={"horizon_days": 5},
+        default_weight=1.12,
+    ),
 )
 
 

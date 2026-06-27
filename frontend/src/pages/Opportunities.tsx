@@ -11,7 +11,8 @@ import {
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useLocalStorage } from '@/lib/utils'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import StockInsightModal, { type InsightTab } from '@panwatch/biz-ui/components/stock-insight-modal'
+import { useRestoreStockInsight } from '@/lib/use-restore-stock-insight'
 import FactorWeightsPanel from '@/components/FactorWeightsPanel'
 import SignalScoreShareCard from '@/components/SignalScoreShareCard'
 
@@ -243,6 +244,7 @@ export default function OpportunitiesPage() {
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
+  const [insightInitialTab, setInsightInitialTab] = useState<InsightTab | undefined>(undefined)
 
   // 个股 AI 评分分享卡:当前分享的信号
   const [shareSignal, setShareSignal] = useState<StrategySignalItem | null>(null)
@@ -252,8 +254,18 @@ export default function OpportunitiesPage() {
     setInsightMarket(item.stock_market || 'CN')
     setInsightName(item.stock_name)
     setInsightHasPosition(!!item.is_holding_snapshot)
+    setInsightInitialTab(undefined)
     setInsightOpen(true)
   }, [])
+
+  useRestoreStockInsight(useCallback((payload) => {
+    setInsightSymbol(payload.symbol)
+    setInsightMarket(payload.market || 'CN')
+    setInsightName(payload.name)
+    setInsightHasPosition(!!payload.hasPosition)
+    setInsightInitialTab(payload.tab || 'reports')
+    setInsightOpen(true)
+  }, []))
 
   const loadWatchlist = useCallback(async () => {
     try {
@@ -840,11 +852,15 @@ export default function OpportunitiesPage() {
 
       <StockInsightModal
         open={insightOpen}
-        onOpenChange={setInsightOpen}
+        onOpenChange={(open) => {
+          setInsightOpen(open)
+          if (!open) setInsightInitialTab(undefined)
+        }}
         symbol={insightSymbol}
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
+        initialTab={insightInitialTab}
       />
 
       {shareSignal && (

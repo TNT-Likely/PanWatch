@@ -1,7 +1,7 @@
 """分析历史 API"""
 
 import logging
-from datetime import timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
@@ -17,6 +17,10 @@ from src.core.agent_catalog import (
     AGENT_KIND_WORKFLOW,
     CAPABILITY_AGENT_NAMES,
     infer_agent_kind,
+)
+from src.core.lmd_report_snapshot import (
+    commit_lmd_history_backfills,
+    resolve_lmd_history_content,
 )
 
 
@@ -43,6 +47,20 @@ def _format_datetime(dt) -> str:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/history", tags=["history"])
+
+
+def _sanitize_history_content(
+    record: AnalysisHistory,
+    db: Session | None = None,
+    *,
+    commit_backfill: bool = True,
+) -> str:
+    """展示前修正 Hermes diff 等异常入库内容。"""
+    return resolve_lmd_history_content(
+        record,
+        db,
+        commit_backfill=commit_backfill,
+    )
 
 
 class HistoryResponse(BaseModel):
@@ -123,7 +141,7 @@ def list_history(
         .all()
     )
 
-    return [
+    responses = [
         HistoryResponse(
             id=r.id,
             agent_name=r.agent_name,
@@ -131,7 +149,7 @@ def list_history(
             stock_symbol=r.stock_symbol,
             analysis_date=r.analysis_date,
             title=r.title or "",
-            content=r.content,
+            content=_sanitize_history_content(r, db, commit_backfill=False),
             suggestions=r.raw_data.get("suggestions") if r.raw_data else None,
             news=r.raw_data.get("news") if r.raw_data else None,
             quality_overview=r.raw_data.get("quality_overview") if r.raw_data else None,
@@ -145,6 +163,8 @@ def list_history(
         )
         for r in records
     ]
+    commit_lmd_history_backfills(db)
+    return responses
 
 
 @router.get("/{history_id}")
@@ -165,7 +185,7 @@ def get_history_detail(
         stock_symbol=record.stock_symbol,
         analysis_date=record.analysis_date,
         title=record.title or "",
-        content=record.content,
+        content=_sanitize_history_content(record, db),
         suggestions=record.raw_data.get("suggestions") if record.raw_data else None,
         news=record.raw_data.get("news") if record.raw_data else None,
         quality_overview=record.raw_data.get("quality_overview")
@@ -188,6 +208,45 @@ def get_history_detail(
         else None,
         created_at=_format_datetime(record.created_at),
         updated_at=_format_datetime(record.updated_at),
+    )
+
+
+def _build_history_pdf_markdown(
+    record: AnalysisHistory,
+    db: Session | None = None,
+) -> str:
+    """组装用于 PDF 导出的 markdown 正文。"""
+    if record.agent_name == "tradingagents":
+        from src.core.pdf_export import assemble_report_markdown
+
+        assembled = assemble_report_markdown(record.raw_data or {})
+        if assembled:
+            return assembled
+    return _sanitize_history_content(record, db)
+
+
+@router.get("/{history_id}/pdf")
+def export_history_pdf(history_id: int, db: Session = Depends(get_db)):
+    """把任意分析历史记录导出为 PDF 附件。"""
+    from urllib.parse import quote
+
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    from src.core.pdf_export import render_analysis_pdf
+
+    record = db.query(AnalysisHistory).filter(AnalysisHistory.id == history_id).first()
+    if not record:
+        raise HTTPException(404, "记录不存在")
+
+    report_md = _build_history_pdf_markdown(record, db)
+    pdf_bytes = render_analysis_pdf(record.title or "分析报告", report_md)
+    base = (record.title or f"{record.stock_symbol} 分析报告").replace("/", "-").replace("\\", "-").strip()
+    filename = f"{base}-{record.analysis_date}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
 
 

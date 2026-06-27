@@ -1,10 +1,18 @@
 """数据源管理 API"""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from src.collectors.news_collector import (
+    XUEQIU_COOKIE_UPDATE_HINT,
+    build_xueqiu_cookie_health_record,
+    normalize_xueqiu_cookies,
+    probe_xueqiu_cookie,
+    resolve_xueqiu_cookie_health,
+)
 from src.web.database import get_db
 from src.web.models import DataSource
 
@@ -64,7 +72,7 @@ class DataSourceResponse(BaseModel):
 
 def _to_response(source: DataSource) -> dict:
     """转换为响应格式"""
-    return {
+    payload = {
         "id": source.id,
         "name": source.name,
         "type": source.type,
@@ -76,6 +84,51 @@ def _to_response(source: DataSource) -> dict:
         "supports_batch": source.supports_batch or False,
         "test_symbols": source.test_symbols or [],
     }
+    if source.type == "news" and source.provider == "xueqiu":
+        payload["cookie_health"] = resolve_xueqiu_cookie_health(source.config)
+    return payload
+
+
+def _is_xueqiu_news(source: DataSource) -> bool:
+    return source.type == "news" and source.provider == "xueqiu"
+
+
+def _persist_xueqiu_cookie_health(db: Session, source: DataSource, probe: dict) -> dict:
+    config = dict(source.config or {})
+    config["cookie_health"] = build_xueqiu_cookie_health_record(probe)
+    source.config = config
+    db.commit()
+    db.refresh(source)
+    return resolve_xueqiu_cookie_health(source.config) or {}
+
+
+def _normalize_xueqiu_config(config: dict | None) -> dict | None:
+    if config is None:
+        return None
+    cookies = str(config.get("cookies") or "").strip()
+    if not cookies:
+        return config
+    normalized = normalize_xueqiu_cookies(cookies)
+    if not normalized or normalized == cookies:
+        return config
+    merged = dict(config)
+    merged["cookies"] = normalized
+    merged.pop("cookie_health", None)
+    return merged
+
+
+def _clear_xueqiu_cookie_health_if_changed(
+    source: DataSource, new_config: dict | None
+) -> dict | None:
+    if not _is_xueqiu_news(source) or new_config is None:
+        return new_config
+    old_cookies = str((source.config or {}).get("cookies") or "").strip()
+    new_cookies = str(new_config.get("cookies") or "").strip()
+    if old_cookies == new_cookies:
+        return new_config
+    merged = dict(new_config)
+    merged.pop("cookie_health", None)
+    return merged
 
 
 @router.get("")
@@ -106,11 +159,14 @@ def get_datasource(source_id: int, db: Session = Depends(get_db)):
 @router.post("")
 def create_datasource(data: DataSourceCreate, db: Session = Depends(get_db)):
     """创建数据源"""
+    config = data.config
+    if data.type == "news" and data.provider == "xueqiu":
+        config = _normalize_xueqiu_config(config) or config
     source = DataSource(
         name=data.name,
         type=data.type,
         provider=data.provider,
-        config=data.config,
+        config=config,
         enabled=data.enabled,
         priority=data.priority,
         supports_batch=data.supports_batch,
@@ -133,6 +189,9 @@ def update_datasource(
         raise HTTPException(status_code=404, detail="数据源不存在")
 
     for key, value in data.model_dump(exclude_unset=True).items():
+        if key == "config":
+            value = _normalize_xueqiu_config(value)
+            value = _clear_xueqiu_cookie_health_if_changed(source, value)
         setattr(source, key, value)
 
     db.commit()
@@ -168,6 +227,22 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
 
     result = await manager.test_source(source)
 
+    if _is_xueqiu_news(source):
+        cookies = str((source.config or {}).get("cookies") or "").strip()
+        test_symbol = (source.test_symbols or ["600519"])[0]
+        if result.success:
+            probe = {
+                "status": "ok",
+                "label": "正常",
+                "message": f"测试成功，获取到 {result.count} 条新闻",
+                "sample_count": result.count,
+            }
+        else:
+            probe = await probe_xueqiu_cookie(cookies, test_symbol=test_symbol)
+        cookie_health = _persist_xueqiu_cookie_health(db, source, probe)
+    else:
+        cookie_health = None
+
     # 不用 success / data 作为顶层字段,避免被 ResponseWrapperMiddleware 当成业务响应
     # 拆解后导致 metadata 丢失(详见 src/web/response.py:59 的特殊分支)。
     return {
@@ -183,4 +258,24 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
         "error": result.error,
         "items": result.data,
         "logs": manager.get_logs(),
+        "cookie_health": cookie_health,
+    }
+
+
+@router.post("/{source_id}/probe-cookie")
+async def probe_datasource_cookie(source_id: int, db: Session = Depends(get_db)):
+    """轻量检测雪球新闻采集连通性（Playwright，Cookie 可选）。"""
+    source = db.query(DataSource).filter(DataSource.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="数据源不存在")
+    if not _is_xueqiu_news(source):
+        raise HTTPException(status_code=400, detail="仅雪球新闻数据源支持连通检测")
+
+    cookies = str((source.config or {}).get("cookies") or "").strip()
+    test_symbol = (source.test_symbols or ["600519"])[0]
+    probe = await probe_xueqiu_cookie(cookies, test_symbol=test_symbol)
+    cookie_health = _persist_xueqiu_cookie_health(db, source, probe)
+    return {
+        "cookie_health": cookie_health,
+        "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
     }

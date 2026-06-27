@@ -4,31 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from src.web import models as M
 from src.web.api import accounts as accounts_api
 from src.web.api import price_alerts as alerts_api
-from src.web.database import Base
-
-
-@pytest.fixture
-def db():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    s = Session()
-    try:
-        yield s
-    finally:
-        s.close()
 
 
 def _seed(s):

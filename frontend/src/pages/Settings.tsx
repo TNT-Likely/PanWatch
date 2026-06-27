@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User } from 'lucide-react'
-import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
+import { fetchAPI, notifyAppSettingsChanged, type AIService, type AIModel, type NotifyChannel, localSkillsApi } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -183,6 +183,7 @@ export default function SettingsPage() {
   // Feedback stats
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
   const [fbLoading, setFbLoading] = useState(false)
+  const [hermesTesting, setHermesTesting] = useState(false)
 
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
@@ -354,6 +355,7 @@ export default function SettingsPage() {
       setEdited(newEdited)
       setSaved(key)
       setTimeout(() => setSaved(null), 2000)
+      notifyAppSettingsChanged(key)
       load()
     } catch {
       toast('保存失败', 'error')
@@ -556,14 +558,47 @@ export default function SettingsPage() {
 
   const filteredSettings = settings.filter(s => {
     const q = systemQuery.trim().toLowerCase()
+    if (s.key.startsWith('hermes_') || s.key.startsWith('local_skill_') || s.key.startsWith('chat_action_')) return false
+    if (s.key === 'kline_external_link_enabled' || s.key === 'stock_link_platform') return false
     if (!q) return true
     return (s.description || '').toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
   })
 
+  const klineExternalLinkSetting = settings.find(s => s.key === 'kline_external_link_enabled')
+
+  const hermesSettings = settings.filter(s =>
+    s.key.startsWith('hermes_') || s.key.startsWith('local_skill_'),
+  )
+
+  const chatActionSettings = settings.filter(s => s.key.startsWith('chat_action_'))
+
+  const handleChatActionToggle = async (key: string, enabled: boolean) => {
+    setSaving(key)
+    try {
+      await fetchAPI(`/settings/${key}`, {
+        method: 'PUT',
+        body: JSON.stringify({ value: enabled ? 'true' : 'false' }),
+      })
+      setSettings(prev => prev.map(s => (s.key === key ? { ...s, value: enabled ? 'true' : 'false' } : s)))
+      notifyAppSettingsChanged(key)
+      toast('已保存', 'success')
+    } catch {
+      toast('保存失败', 'error')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const handleKlineExternalLinkToggle = async (enabled: boolean) => {
+    await handleChatActionToggle('kline_external_link_enabled', enabled)
+  }
+
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
+    { id: 'sec-chat-actions', label: '助手权限' },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
+    { id: 'sec-hermes', label: 'Hermes' },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
     { id: 'sec-pack', label: '配置包' },
     { id: 'sec-feedback', label: '反馈' },
@@ -731,6 +766,36 @@ export default function SettingsPage() {
           )}
         </section>
 
+        {chatActionSettings.length > 0 && (
+          <section id="sec-chat-actions" className="card p-4 md:p-6 lg:col-span-7">
+            <div className="mb-4 md:mb-5">
+              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">AI 助手操作权限</h3>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                控制 AI 对话能否提议创建提醒、记录加仓/减仓。所有操作均需你在对话中确认后才会执行。
+              </p>
+            </div>
+            <div className="space-y-4">
+              {chatActionSettings.map(setting => {
+                const enabled = (setting.value || '').toLowerCase() === 'true'
+                return (
+                  <div key={setting.key} className="flex items-center justify-between gap-3 rounded-xl bg-accent/30 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-foreground">
+                        {setting.description || setting.key}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={enabled}
+                      disabled={saving === setting.key}
+                      onCheckedChange={(v) => handleChatActionToggle(setting.key, v)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Notify Channel Section */}
         <section id="sec-notify" className="card p-4 md:p-6 lg:col-span-5">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
@@ -788,6 +853,79 @@ export default function SettingsPage() {
           )}
         </section>
 
+        {hermesSettings.length > 0 && (
+          <section id="sec-hermes" className="card p-4 md:p-6 lg:col-span-12">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 md:mb-5">
+              <div>
+                <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">Hermes & 本地 Skill</h3>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  配置本地 Hermes CLI 与 skill 扫描路径，供 Skill 广场与报告生成使用
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-9"
+                disabled={hermesTesting}
+                onClick={async () => {
+                  setHermesTesting(true)
+                  try {
+                    const resp = await localSkillsApi.testHermes()
+                    toast(resp.ok ? (resp.message || 'Hermes 连接正常') : (resp.message || '测试失败'), resp.ok ? 'success' : 'error')
+                  } catch (e) {
+                    toast(e instanceof Error ? e.message : '测试失败', 'error')
+                  } finally {
+                    setHermesTesting(false)
+                  }
+                }}
+              >
+                {hermesTesting ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5" />
+                )}
+                测试 Hermes
+              </Button>
+            </div>
+            <div className="space-y-5">
+              {hermesSettings.map(setting => {
+                const currentValue = edited[setting.key] ?? setting.value
+                const isChanged = setting.key in edited
+                return (
+                  <div key={setting.key}>
+                    <Label>{setting.description || setting.key}</Label>
+                    <div className="flex items-center gap-2.5">
+                      <Input
+                        value={currentValue}
+                        onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
+                        className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
+                        placeholder={setting.key}
+                      />
+                      <button
+                        onClick={() => handleSave(setting.key)}
+                        disabled={!isChanged || saving === setting.key}
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                          saved === setting.key
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : isChanged
+                              ? 'bg-primary text-white'
+                              : 'text-muted-foreground/30'
+                        }`}
+                      >
+                        {saving === setting.key ? (
+                          <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         {/* General Settings */}
         {settings.length > 0 && (
           <section id="sec-system" className="card p-4 md:p-6 lg:col-span-12">
@@ -812,36 +950,74 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-5">
+              {klineExternalLinkSetting && (
+                <div className="rounded-xl border border-border/40 bg-accent/20 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-foreground">
+                        {klineExternalLinkSetting.description || 'K线弹窗显示外部行情链接'}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        开启后，K线弹窗会显示跳转雪球的链接；默认关闭。
+                      </p>
+                    </div>
+                    <Switch
+                      checked={(klineExternalLinkSetting.value || '').toLowerCase() === 'true'}
+                      disabled={saving === 'kline_external_link_enabled'}
+                      onCheckedChange={(v) => void handleKlineExternalLinkToggle(v)}
+                    />
+                  </div>
+                  {(klineExternalLinkSetting.value || '').toLowerCase() === 'true' && settings.some(s => s.key === 'stock_link_platform') ? (
+                    <div className="pt-1 border-t border-border/30">
+                      <Label className="text-[11px] text-muted-foreground">行情平台</Label>
+                      <div className="mt-2 flex items-center gap-2.5">
+                        <Select
+                          value={(edited.stock_link_platform ?? settings.find(s => s.key === 'stock_link_platform')?.value) || 'xueqiu'}
+                          onValueChange={v => setEdited({ ...edited, stock_link_platform: v })}
+                        >
+                          <SelectTrigger className={`max-w-xs ${'stock_link_platform' in edited ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="xueqiu">雪球</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={() => handleSave('stock_link_platform')}
+                          disabled={!('stock_link_platform' in edited) || saving === 'stock_link_platform'}
+                          className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                            saved === 'stock_link_platform'
+                              ? 'bg-emerald-500/10 text-emerald-600'
+                              : 'stock_link_platform' in edited
+                                ? 'bg-primary text-white'
+                                : 'text-muted-foreground/30'
+                          }`}
+                        >
+                          {saving === 'stock_link_platform' ? (
+                            <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {filteredSettings.map(setting => {
                 const currentValue = edited[setting.key] ?? setting.value
                 const isChanged = setting.key in edited
-                const STOCK_LINK_OPTIONS: Record<string, string> = { xueqiu: '雪球' }
                 return (
                   <div key={setting.key}>
                     <Label>{setting.description || setting.key}</Label>
                     <div className="flex items-center gap-2.5">
-                      {setting.key === 'stock_link_platform' ? (
-                        <Select
-                          value={currentValue || 'xueqiu'}
-                          onValueChange={v => setEdited({ ...edited, [setting.key]: v })}
-                        >
-                          <SelectTrigger className={`${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.entries(STOCK_LINK_OPTIONS).map(([val, label]) => (
-                              <SelectItem key={val} value={val}>{label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
                       <Input
                         value={currentValue}
                         onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
                         className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
                         placeholder={setting.key}
                       />
-                      )}
                       <button
                         onClick={() => handleSave(setting.key)}
                         disabled={!isChanged || saving === setting.key}
@@ -1178,7 +1354,7 @@ export default function SettingsPage() {
       {/* Version Footer */}
       {version && (
         <div className="mt-8 text-center text-[11px] text-muted-foreground/60">
-          PanWatch v{version}
+          智盘 Alpha v{version}
         </div>
       )}
     </div>

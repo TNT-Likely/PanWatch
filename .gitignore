@@ -14,6 +14,7 @@ dist/
 build/
 static/
 data/
+reports/
 
 # Frontend
 node_modules/

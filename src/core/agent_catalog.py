@@ -21,11 +21,14 @@ WORKFLOW_AGENT_NAMES: tuple[str, ...] = (
 CAPABILITY_AGENT_NAMES: tuple[str, ...] = (
     "news_digest",
     "chart_analyst",
+    "etf_holding_analyst",
 )
 
 
 def infer_agent_kind(agent_name: str | None) -> str:
     name = (agent_name or "").strip()
+    if name.startswith("local_skill:"):
+        return AGENT_KIND_WORKFLOW
     if name in CAPABILITY_AGENT_NAMES:
         return AGENT_KIND_CAPABILITY
     return AGENT_KIND_WORKFLOW
@@ -128,6 +131,20 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
         display_order=120,
     ),
     AgentSeedSpec(
+        name="etf_holding_analyst",
+        display_name="ETF 成分分析（能力）",
+        description="内部能力：场内 ETF 详情页按需触发，分析成分股/折溢价/与持仓重叠，不独立调度",
+        enabled=False,
+        schedule="",
+        execution_mode="single",
+        kind=AGENT_KIND_CAPABILITY,
+        visible=False,
+        display_order=130,
+        config={
+            "top_holdings": 15,
+        },
+    ),
+    AgentSeedSpec(
         name="tradingagents",
         display_name="TradingAgents 深度分析",
         description="多 Agent 投资决策框架(基本面/情绪/新闻/技术 + 看多看空辩论 + 风控 + PM)。"
@@ -150,6 +167,40 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "timeout_minutes": 15,
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
+        },
+    ),
+    AgentSeedSpec(
+        name="lmd_outlook",
+        display_name="产业周期视角",
+        description="以老马投资研究的产业周期×情绪博弈框架，结合行情/技术/资金/新闻生成深度分析报告。需手动触发。",
+        enabled=False,
+        schedule="",
+        execution_mode="single",
+        kind=AGENT_KIND_WORKFLOW,
+        visible=True,
+        display_order=50,
+        config={
+            # engine=hermes：委托本地 Hermes CLI + lmd-finance-perspective skill（需 Mac 本地安装 hermes）
+            # engine=builtin：PanWatch 内置单次 LLM（Docker/无 Hermes 环境）
+            "engine": "hermes",
+            "hermes_skill": "lmd-finance-perspective",
+            "hermes_profile": "agent-1-qingbaoxianfeng",
+            "hermes_skill_source_dir": "",
+            "hermes_bin": "",
+            "hermes_max_turns": 40,
+            "hermes_timeout_sec": 420,
+            "hermes_followup_timeout_sec": 300,
+            "hermes_model": "",
+            "hermes_ignore_rules": True,
+            "hermes_auto_expand_summary": True,
+            # builtin 模式：留空用 prompts/lmd_outlook.txt；可填外部 skill 绝对路径
+            "skill_path": "",
+            # 自选股默认补全产业周期视角报告（新增自选股时排队；启动全量扫描默认关）
+            "auto_bootstrap": {
+                "enabled": True,
+                "suppress_notify": True,
+                "scan_on_startup": False,
+            },
         },
     ),
 )

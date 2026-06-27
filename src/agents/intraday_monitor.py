@@ -18,6 +18,7 @@ from src.core.context_store import (
 from src.core.suggestion_pool import save_suggestion
 from src.core.signals import SignalPackBuilder
 from src.core.signals.structured_output import try_parse_action_json
+from src.core.timezone import format_beijing
 from src.models.market import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,91 @@ class IntradayMonitorAgent(BaseAgent):
             analysis_date=date.today(),
         )
 
+        today_trades = {}
+        try:
+            from src.core.position_trades_context import summarize_today_trades
+            from src.web.database import SessionLocal
+
+            db = SessionLocal()
+            try:
+                today_trades = summarize_today_trades(
+                    db, symbol=symbol, market=market.value
+                )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("加载今日持仓流水失败，继续盘中分析")
+
+        add_plan_eval = {}
+        try:
+            from src.core.long_term_plan import evaluate_add_plan
+            from src.web.database import SessionLocal
+            from src.web.models import Account, Position, Stock as StockModel
+
+            db = SessionLocal()
+            try:
+                db_stock = (
+                    db.query(StockModel)
+                    .filter(
+                        StockModel.symbol == symbol,
+                        StockModel.market == market.value,
+                    )
+                    .first()
+                )
+                profile = (symbol_context or {}).get("investment_profile") or {}
+                if db_stock and profile.get("long_term_enabled"):
+                    positions = (
+                        db.query(Position)
+                        .join(Account, Position.account_id == Account.id)
+                        .filter(
+                            Position.stock_id == db_stock.id,
+                            Account.enabled == True,  # noqa: E712
+                        )
+                        .all()
+                    )
+                    total_qty = sum(int(p.quantity or 0) for p in positions)
+                    total_cost_value = sum(
+                        int(p.quantity or 0) * float(p.cost_price or 0)
+                        for p in positions
+                    )
+                    avg_cost = (
+                        total_cost_value / total_qty if total_qty > 0 else None
+                    )
+                    pos_value = total_cost_value
+                    if stock_data and stock_data.current_price and total_qty > 0:
+                        pos_value = stock_data.current_price * total_qty
+                    available = sum(
+                        float(a.available_funds or 0)
+                        for a in db.query(Account)
+                        .filter(Account.enabled == True)  # noqa: E712
+                        .all()
+                    )
+                    all_pos = (
+                        db.query(Position)
+                        .join(Account, Position.account_id == Account.id)
+                        .filter(Account.enabled == True)  # noqa: E712
+                        .all()
+                    )
+                    total_cost_all = sum(
+                        float(p.cost_price or 0) * int(p.quantity or 0)
+                        for p in all_pos
+                    )
+                    total_assets = available + total_cost_all
+                    add_plan_eval = evaluate_add_plan(
+                        profile,
+                        current_price=stock_data.current_price if stock_data else None,
+                        avg_cost=avg_cost,
+                        position_value=float(pos_value or 0),
+                        total_assets=float(total_assets or 0),
+                        available_cash=float(available or 0),
+                        has_buy_today=bool(today_trades.get("has_buy_today")),
+                        market=market.value,
+                    )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("评估长线加仓计划失败，继续盘中分析")
+
         return {
             "stocks": [stock_data] if stock_data else [],
             "stock_data": stock_data,
@@ -173,6 +259,8 @@ class IntradayMonitorAgent(BaseAgent):
             "premarket_analysis": premarket_analysis.content
             if premarket_analysis
             else None,
+            "today_trades": today_trades,
+            "add_plan_eval": add_plan_eval,
             "symbol_context": symbol_context,
             "quality_overview": quality_overview,
             "timestamp": datetime.now().isoformat(),
@@ -465,7 +553,7 @@ class IntradayMonitorAgent(BaseAgent):
                     if cost_price > 0
                     else 0
                 )
-                style_label = style_labels.get(pos.trading_style, "波段")
+                style_label = style_labels.get(pos.trading_style, "短线")
                 market_value = current_price * pos.quantity
                 # 找到对应账户的可用资金
                 acc_funds = 0
@@ -486,9 +574,98 @@ class IntradayMonitorAgent(BaseAgent):
                     pnl_note = "（触发止盈提醒）"
                 lines.append(f"- 浮动盈亏：{pnl_pct:+.1f}%{pnl_note}")
                 lines.append(f"- 账户可用：{acc_funds:.0f} 元")
+
+            recent_trades = constraints.get("recent_trades") or []
+            if recent_trades:
+                lines.append("\n## 近期交易记录")
+                lines.append(
+                    "（含近几笔历史流水；是否「今日已交易」以下方「今日持仓变动」为准，勿把历史流水当成今日操作）"
+                )
+                for t in recent_trades[:8]:
+                    side = "买入" if t.get("side") == "buy" else "卖出"
+                    today = "【今日】" if t.get("is_today") else ""
+                    note = f" {t['note']}" if t.get("note") else ""
+                    time_str = ""
+                    if t.get("traded_at"):
+                        try:
+                            raw = str(t["traded_at"]).replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(raw)
+                            time_str = f"，{format_beijing(dt, '%m-%d %H:%M')}"
+                        except (ValueError, TypeError):
+                            pass
+                    lines.append(
+                        f"- {today}{side} {t.get('quantity')}股 @{t.get('price')} "
+                        f"→ 持仓{t.get('qty_after')}股 成本{t.get('cost_after')}{time_str}{note}"
+                    )
         else:
             lines.append("\n## 未持仓（仅关注）")
             lines.append(f"- 可用资金充足，可考虑建仓")
+
+        today_trades = data.get("today_trades") or {}
+        trade_ctx = today_trades.get("context") if isinstance(today_trades, dict) else ""
+        symbol_ctx = data.get("symbol_context") or {}
+        investment_profile = symbol_ctx.get("investment_profile") or {}
+        if investment_profile.get("long_term_enabled"):
+            from src.core.long_term_plan import format_profile_summary, portfolio_role_label
+
+            lines.append("\n## 长线投资计划")
+            lines.append(f"- 计划摘要：{format_profile_summary(investment_profile)}")
+            lines.append(
+                f"- 仓位角色：{portfolio_role_label(investment_profile.get('portfolio_role', 'watch'))}"
+            )
+            if investment_profile.get("thesis"):
+                lines.append(f"- 持有逻辑：{investment_profile['thesis'][:300]}")
+            inv = investment_profile.get("thesis_invalidations") or []
+            if inv:
+                lines.append("- 逻辑失效条件：" + "；".join(inv[:5]))
+            add_eval = data.get("add_plan_eval") or {}
+            if add_eval:
+                lines.append(
+                    f"- 当前相对成本：{add_eval.get('current_drawdown_pct', 0):+.1f}%"
+                    f"，仓位占比：{add_eval.get('weight_pct', 0):.1f}%"
+                )
+                if add_eval.get("triggered_level"):
+                    lv = add_eval["triggered_level"]
+                    lines.append(
+                        f"- 已触发加仓档：跌幅{lv.get('drawdown_pct')}%"
+                        f"，预算比例{lv.get('budget_pct')}%"
+                    )
+                elif add_eval.get("next_level"):
+                    nl = add_eval["next_level"]
+                    lines.append(
+                        f"- 下一加仓档：跌幅{nl.get('drawdown_pct')}%"
+                        f"（约 {add_eval.get('next_trigger_price')}）"
+                    )
+                if add_eval.get("blockers"):
+                    lines.append("- 加仓限制：" + "；".join(add_eval["blockers"][:3]))
+            lines.append(
+                "- 纪律：核心仓不因短线信号清仓；越跌越买须未超最大仓位且今日未买入"
+            )
+
+        if trade_ctx:
+            lines.append(f"\n## {trade_ctx.split('：', 1)[0]}")
+            trade_body = trade_ctx.split("：", 1)[-1] if "：" in trade_ctx else trade_ctx
+            lines.append(trade_body.strip())
+            if today_trades.get("has_sell_today"):
+                lines.append(
+                    "- 纪律提示：今日已有卖出，勿重复建议减仓/清仓（除非放量跌破关键支撑）"
+                )
+            if today_trades.get("has_buy_today"):
+                lines.append(
+                    "- 纪律提示：今日已有买入，勿重复建议建仓/加仓"
+                )
+            net_qty = today_trades.get("net_qty", 0)
+            if today_trades.get("has_sell_today") and today_trades.get("has_buy_today"):
+                if net_qty > 0:
+                    lines.append(
+                        f"- 净变动：今日卖出{today_trades.get('sell_qty', 0)}股、"
+                        f"买入{today_trades.get('buy_qty', 0)}股，净增{net_qty}股，"
+                        "减仓效果被对冲，倾向持有/观望"
+                    )
+                elif net_qty < 0:
+                    lines.append(
+                        f"- 净变动：今日净减{abs(net_qty)}股"
+                    )
 
         # 历史分析上下文（帮助 AI 做出更好的判断）
         daily_analysis = data.get("daily_analysis")
@@ -509,8 +686,8 @@ class IntradayMonitorAgent(BaseAgent):
 
             if premarket_analysis:
                 content = (
-                    premarket_analysis[:300] + "..."
-                    if len(premarket_analysis) > 300
+                    premarket_analysis[:600] + "..."
+                    if len(premarket_analysis) > 600
                     else premarket_analysis
                 )
                 lines.append(f"\n### 今日盘前分析摘要")
@@ -644,6 +821,82 @@ class IntradayMonitorAgent(BaseAgent):
         result["should_alert"] = result["action"] in {"buy", "add", "reduce", "sell"}
         return result
 
+    def _adjust_suggestion_for_context(
+        self, suggestion: dict, data: dict, stock: StockData
+    ) -> dict:
+        """结合今日流水与价位，降级过激或与纪律冲突的建议。"""
+        today_trades = data.get("today_trades") or {}
+        if not isinstance(today_trades, dict) or not today_trades:
+            return suggestion
+
+        action = suggestion.get("action")
+        kline = data.get("kline_summary") or {}
+        current_price = stock.current_price
+        support_m = kline.get("support_m")
+        broke_support = (
+            support_m is not None
+            and current_price is not None
+            and current_price < float(support_m)
+        )
+
+        def _downgrade(
+            *,
+            new_action: str,
+            new_label: str,
+            reason_suffix: str,
+            alert: bool,
+        ) -> dict:
+            updated = dict(suggestion)
+            updated["action"] = new_action
+            updated["action_label"] = new_label
+            updated["should_alert"] = alert
+            base_reason = (suggestion.get("reason") or "").strip()
+            updated["reason"] = (
+                f"{base_reason} {reason_suffix}".strip()[:160]
+                if base_reason
+                else reason_suffix[:160]
+            )
+            if not alert:
+                sig = (suggestion.get("signal") or "").strip()
+                if sig and "今日已" not in sig:
+                    updated["signal"] = f"{sig}（今日已操作，暂观望）"[:60]
+            return updated
+
+        if today_trades.get("has_sell_today") and action in {"sell", "reduce"}:
+            if not broke_support:
+                return _downgrade(
+                    new_action="hold",
+                    new_label="持有",
+                    reason_suffix="今日已有卖出，暂停重复减仓/清仓，等待下一信号窗口。",
+                    alert=False,
+                )
+
+        if today_trades.get("has_buy_today") and action in {"buy", "add"}:
+            return _downgrade(
+                new_action="watch",
+                new_label="观望",
+                reason_suffix="今日已有买入，暂停重复加仓建议。",
+                alert=False,
+            )
+
+        # 浮亏预警但仍在支撑上方：清仓 → 持有/观望（除非已破位）
+        if action == "sell" and not broke_support:
+            support_s = kline.get("support_s")
+            near_support = False
+            if support_m and current_price:
+                near_support = current_price <= float(support_m) * 1.02
+            if support_s and current_price:
+                near_support = near_support or current_price <= float(support_s) * 1.02
+            if near_support:
+                return _downgrade(
+                    new_action="hold",
+                    new_label="持有",
+                    reason_suffix="接近支撑位，止损预警不等于立即清仓，等待破位或反弹信号。",
+                    alert=today_trades.get("has_sell_today") is not True,
+                )
+
+        return suggestion
+
     def _try_parse_loose_json(self, text: str) -> dict | None:
         """宽松解析 JSON 输出，兜底兼容模型异常格式。"""
         raw = (text or "").strip()
@@ -764,6 +1017,17 @@ class IntradayMonitorAgent(BaseAgent):
 
         # 解析操作建议
         suggestion = self._parse_suggestion(raw_content)
+        suggestion = self._adjust_suggestion_for_context(suggestion, data, stock)
+        symbol_ctx = data.get("symbol_context") or {}
+        profile = symbol_ctx.get("investment_profile") or {}
+        if profile.get("long_term_enabled"):
+            from src.core.long_term_plan import apply_long_term_discipline
+
+            suggestion = apply_long_term_discipline(
+                suggestion,
+                profile=profile,
+                add_eval=data.get("add_plan_eval"),
+            )
         content = raw_content
         analysis_date = (data.get("timestamp") or "")[:10] or datetime.now().strftime(
             "%Y-%m-%d"

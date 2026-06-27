@@ -1533,6 +1533,65 @@ def _m117_chat_initial_context(conn: Connection) -> None:
         pass  # column already exists
 
 
+def _m119_position_trades_table(conn: Connection) -> None:
+    """创建持仓变动流水表，并为无流水的历史持仓回填建仓记录。"""
+    if not _has_table(conn, "position_trades"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE position_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position_id INTEGER NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+    side TEXT NOT NULL DEFAULT 'buy',
+    price REAL NOT NULL,
+    quantity INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    cost_before REAL,
+    qty_before INTEGER,
+    cost_after REAL,
+    qty_after INTEGER,
+    note TEXT,
+    traded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+            )
+        )
+    _create_index_if_missing(
+        conn,
+        "ix_position_trades_position_id",
+        "CREATE INDEX ix_position_trades_position_id ON position_trades(position_id)",
+    )
+    if not _has_table(conn, "positions"):
+        return
+    conn.execute(
+        text(
+            """
+INSERT INTO position_trades (
+    position_id, side, price, quantity, amount,
+    cost_before, qty_before, cost_after, qty_after, note, traded_at
+)
+SELECT
+    p.id,
+    'buy',
+    p.cost_price,
+    p.quantity,
+    ROUND(p.cost_price * p.quantity, 4),
+    NULL,
+    NULL,
+    p.cost_price,
+    p.quantity,
+    '历史持仓导入',
+    COALESCE(p.created_at, CURRENT_TIMESTAMP)
+FROM positions p
+WHERE NOT EXISTS (
+    SELECT 1 FROM position_trades t WHERE t.position_id = p.id
+)
+"""
+        )
+    )
+
+
 def _m118_paper_trading_market_allocations(conn: Connection) -> None:
     """模拟盘账户新增 market_allocations（各市场投资比例），并由 excluded_markets 回填。"""
     _add_column_if_missing(
@@ -1585,6 +1644,186 @@ def _m118_paper_trading_market_allocations(conn: Connection) -> None:
         )
 
 
+def _m120_stock_investment_profile(conn: Connection) -> None:
+    """自选股增加长线投资计划 JSON 配置。"""
+    _add_column_if_missing(
+        conn,
+        "stocks",
+        "investment_profile",
+        "ALTER TABLE stocks ADD COLUMN investment_profile TEXT DEFAULT '{}'",
+    )
+
+
+def _m121_local_skills_table(conn: Connection) -> None:
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS local_skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  skill_path TEXT DEFAULT '',
+  source_root TEXT DEFAULT '',
+  enabled INTEGER DEFAULT 0,
+  config TEXT DEFAULT '{}',
+  last_seen_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_local_skills_enabled",
+        "CREATE INDEX ix_local_skills_enabled ON local_skills(enabled, display_name)",
+    )
+
+
+def _m122_chat_pending_actions(conn: Connection) -> None:
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS chat_pending_actions (
+  id TEXT PRIMARY KEY,
+  conversation_id INTEGER NOT NULL,
+  message_id INTEGER,
+  action_type TEXT NOT NULL,
+  payload TEXT DEFAULT '{}',
+  preview TEXT DEFAULT '{}',
+  status TEXT DEFAULT 'pending',
+  result TEXT,
+  expires_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_chat_pending_conv",
+        "CREATE INDEX ix_chat_pending_conv ON chat_pending_actions(conversation_id, status)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_chat_pending_msg",
+        "CREATE INDEX ix_chat_pending_msg ON chat_pending_actions(message_id)",
+    )
+
+
+def _m123_stock_security_type(conn: Connection) -> None:
+    """stocks 表新增 security_type(stock/etf/index),并按 CN 代码前缀回填场内 ETF。
+
+    A 股场内 ETF/LOF 代码前缀:SH 5xxxxx(510/511/512/513/515/588 等),
+    SZ 15xxxx(159xxx)。SH 6xxxxx 与 SZ 0/3 开头均为股票,故 5/15 前缀可安全判定为 etf。
+    """
+    _add_column_if_missing(
+        conn,
+        "stocks",
+        "security_type",
+        "ALTER TABLE stocks ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+
+    if not _has_table(conn, "stocks"):
+        return
+
+    # 仅回填空值(保留已显式设置的值),CN + 5/15 前缀 → etf
+    conn.execute(
+        text(
+            """
+UPDATE stocks
+SET security_type = 'etf'
+WHERE (security_type IS NULL OR TRIM(security_type) = '' OR security_type = 'stock')
+  AND market = 'CN'
+  AND (symbol LIKE '5%' OR symbol LIKE '15%')
+"""
+        )
+    )
+
+
+def _m124_paper_trading_security_type(conn: Connection) -> None:
+    """模拟盘持仓/已平仓记录新增 security_type,与 stocks 表对齐(ETF 免印花税/过户费)。"""
+    _add_column_if_missing(
+        conn,
+        "paper_trading_positions",
+        "security_type",
+        "ALTER TABLE paper_trading_positions ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+    _add_column_if_missing(
+        conn,
+        "paper_trading_trades",
+        "security_type",
+        "ALTER TABLE paper_trading_trades ADD COLUMN security_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+
+    # 回填:按 stocks 表的 security_type 同步存量持仓/成交(CN 5/15/16 前缀 → etf)
+    if _has_table(conn, "stocks"):
+        for table in ("paper_trading_positions", "paper_trading_trades"):
+            if not _has_table(conn, table):
+                continue
+            conn.execute(
+                text(
+                    f"""
+UPDATE {table}
+SET security_type = COALESCE(
+    (SELECT s.security_type FROM stocks s
+     WHERE s.symbol = {table}.stock_symbol AND s.market = {table}.stock_market
+     LIMIT 1),
+    CASE WHEN {table}.stock_market = 'CN'
+              AND ({table}.stock_symbol LIKE '5%' OR {table}.stock_symbol LIKE '15%')
+         THEN 'etf' ELSE 'stock' END
+)
+WHERE security_type IS NULL OR TRIM(security_type) = '' OR security_type = 'stock'
+"""
+                )
+            )
+
+
+def _m125_position_status_closed(conn: Connection) -> None:
+    """持仓新增清仓状态字段:status(open/closed)、closed_at、realized_pnl。
+
+    卖到 0 股即视为清仓,标记 closed 后从持仓列表移出(股票仍在关注列表),
+    保留 Position 行以留存历史成交明细(PositionTrade),不随删除级联丢失。
+    """
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "status",
+        "ALTER TABLE positions ADD COLUMN status TEXT DEFAULT 'open'",
+    )
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "closed_at",
+        "ALTER TABLE positions ADD COLUMN closed_at DATETIME",
+    )
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "realized_pnl",
+        "ALTER TABLE positions ADD COLUMN realized_pnl REAL DEFAULT 0.0",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_positions_status",
+        "CREATE INDEX ix_positions_status ON positions(status)",
+    )
+    if not _has_table(conn, "positions"):
+        return
+    # 回填:存量持仓 status 置 open;quantity<=0 视为已清仓
+    conn.execute(
+        text(
+            """
+UPDATE positions
+SET status = CASE WHEN COALESCE(quantity, 0) <= 0 THEN 'closed' ELSE 'open' END
+WHERE status IS NULL OR TRIM(status) = ''
+"""
+        )
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1604,6 +1843,13 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(116, "chat_tables", _m116_chat_tables),
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
+    Migration(119, "position_trades_table", _m119_position_trades_table),
+    Migration(120, "stock_investment_profile", _m120_stock_investment_profile),
+    Migration(121, "local_skills_table", _m121_local_skills_table),
+    Migration(122, "chat_pending_actions", _m122_chat_pending_actions),
+    Migration(123, "stock_security_type", _m123_stock_security_type),
+    Migration(124, "paper_trading_security_type", _m124_paper_trading_security_type),
+    Migration(125, "position_status_closed", _m125_position_status_closed),
 )
 
 

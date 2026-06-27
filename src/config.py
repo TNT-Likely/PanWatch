@@ -63,6 +63,7 @@ class StockConfig:
     symbol: str
     name: str
     market: MarketCode
+    security_type: str = "stock"  # stock / etf / index
 
 
 @dataclass
@@ -86,15 +87,31 @@ def load_watchlist(path: str | Path = "config/watchlist.yaml") -> list[StockConf
     for market_group in data.get("markets", []):
         market_code = MarketCode(market_group["code"])
         for stock in market_group.get("stocks", []):
+            symbol = stock["symbol"]
             stocks.append(
                 StockConfig(
-                    symbol=stock["symbol"],
+                    symbol=symbol,
                     name=stock["name"],
                     market=market_code,
+                    security_type=stock.get("security_type") or _infer_security_type(symbol, market_code),
                 )
             )
 
     return stocks
+
+
+def _infer_security_type(symbol: str, market: MarketCode | str) -> str:
+    """未显式声明时按代码前缀推断证券类型(仅 CN 场内 ETF/LOF:5/15/16 开头)。
+
+    market 可传 MarketCode 枚举或字符串(如 "CN"),兼容无绑定触发场景。
+    """
+    mkt = market.value if isinstance(market, MarketCode) else (market or "")
+    if mkt.upper() != "CN":
+        return "stock"
+    sym = (symbol or "").strip()
+    if sym.isdigit() and len(sym) == 6 and (sym[0] == "5" or sym[:2] in ("15", "16")):
+        return "etf"
+    return "stock"
 
 
 def load_config() -> AppConfig:

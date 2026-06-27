@@ -9,6 +9,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 def pytest_itemcollected(item):
@@ -70,6 +73,13 @@ def _clear_market_caches():
         akshare_collector._QUOTE_CACHE.clear()
         capital_flow_collector._FLOW_CACHE.clear()
         discovery_collector._DISCOVERY_CACHE.clear()
+        try:
+            from src.collectors import etf_collector
+            etf_collector._ETF_SPOT_CACHE.clear()
+            etf_collector._HOLDINGS_CACHE.clear()
+            etf_collector._NAV_CACHE.clear()
+        except ImportError:
+            pass
 
     _clear()
     yield
@@ -78,17 +88,34 @@ def _clear_market_caches():
 
 @pytest.fixture(autouse=True, scope="session")
 def _ensure_db_schema():
-    """确保真实 DB 引擎已建表。
+    """确保真实 DB 引擎已建表(CI 全新环境 data/panwatch.db 无表时兜底)。
 
-    少数用例直接用 SessionLocal 传给 async 接口(只读查询),CI 全新环境的
-    data/panwatch.db 无表会报 'no such table: stocks'。这里在会话开始时幂等建表
-    (本地已有表则无副作用),与各用例自建的内存库互不影响。
+    写库用例请用下方 ``db`` fixture(内存 SQLite),勿用 SessionLocal()。
     """
     from src.web import models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
     from src.web.database import Base, engine
 
     Base.metadata.create_all(engine)
     yield
+
+
+@pytest.fixture
+def db():
+    """每个用例独立的内存 SQLite 会话，避免污染 data/panwatch.db。"""
+    from src.web import models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
+    from src.web.database import Base
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 # ---------------------------------------------------------------------------
