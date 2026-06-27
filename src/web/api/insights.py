@@ -17,6 +17,11 @@ from src.web.api.chat import (
     _fetch_technical_context,
     _get_ai_client,
 )
+from src.core.regulatory_red_flags import (
+    REGULATORY_VETO_PROMPT,
+    RegulatoryTier,
+    scan_text,
+)
 from src.collectors.market_http import TTLCache
 from src.web.database import get_db
 from src.web.models import Stock
@@ -296,6 +301,28 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     technical = await _fetch_technical_context(req.symbol, market)
     message = await _fetch_message_context(db, req.symbol, market)
 
+    reg_hit = scan_text(message)
+    if reg_hit and reg_hit.tier == RegulatoryTier.S:
+        content = (
+            "结论: 不适合\n"
+            f"理由:\n"
+            f"- 近期出现监管红线（{reg_hit.keyword}），属 S 级合规风险，优先级高于技术面与估值\n"
+            f"- 在监管风险未实质缓解前，不建议{action}\n"
+            "风险: 警示/立案等事件可能引发持续抛压、融资受限与估值下修"
+        )
+        return {
+            "symbol": req.symbol,
+            "market": market,
+            "action": action,
+            "new_cost": round(new_cost, 4),
+            "dilute_abs": round(dilute_abs, 4),
+            "dilute_pct": round(dilute_pct, 4),
+            "total_quantity": new_q,
+            "total_invested": round(new_q * new_cost, 2),
+            "verdict": "不适合",
+            "content": content,
+        }
+
     holding_line = (
         f"当前持仓 {cur_q:.0f} 股,成本(单价) {cur_c:.3f}"
         if is_add
@@ -320,6 +347,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
         "结论: 适合 / 谨慎 / 不适合(三选一)\n"
         "理由:\n- (2~3 条,结合摊薄成本、估值/基本面、技术面与消息面)\n"
         "风险: (一句话最大风险)"
+        + REGULATORY_VETO_PROMPT
     )
 
     try:
@@ -407,7 +435,8 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
     )
     system_prompt = (
         "你是 A股公告解读助手。对每条公告判断对股价的影响倾向(利好/利空/中性)并给一句话理由,"
-        "只依据给定信息、不臆造。严格逐条一行,格式: 序号|利好或利空或中性|一句话"
+        "只依据给定信息、不臆造。警示函、监管函、立案调查等监管红线必须判为利空。"
+        "严格逐条一行,格式: 序号|利好或利空或中性|一句话"
     )
     user_content = f"标的 {name}({market}:{req.symbol}) 近期公告:\n{listing}"
     try:
@@ -426,7 +455,13 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
 
     items = []
     for i, a in enumerate(top):
-        tone, note = tone_map.get(i, ("中性", ""))
+        reg = scan_text(a.get("content", ""), title=a["title"], time=a["time"])
+        if reg and reg.tier == RegulatoryTier.S:
+            tone, note = "利空", f"监管红线（{reg.keyword}），严重合规风险，不宜建仓"
+        elif reg and reg.tier == RegulatoryTier.A:
+            tone, note = "利空", f"重大利空（{reg.keyword}），原则上不新开仓"
+        else:
+            tone, note = tone_map.get(i, ("中性", ""))
         items.append({"title": a["title"], "time": a["time"], "tone": tone, "summary": note})
     result = {"symbol": req.symbol, "market": market, "items": items}
     _ANN_CACHE.set(cache_key, result)

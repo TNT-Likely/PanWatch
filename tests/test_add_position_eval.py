@@ -73,3 +73,33 @@ def test_zero_add_quantity_rejected_by_schema():
         insights.AddPositionEvalRequest(
             symbol="600519", add_quantity=0, add_price=8,
         )
+
+
+def test_add_position_eval_vetoes_on_fatal_regulatory(monkeypatch, db):
+    """S 级监管红线应直接否决建仓，不调用 AI"""
+    async def _msg_with_warning(*a, **k):
+        return "近期公告:\n- 关于收到警示函的公告（06-26）"
+
+    monkeypatch.setattr(insights, "_fetch_message_context", _msg_with_warning)
+
+    async def _empty(*a, **k):
+        return ""
+
+    monkeypatch.setattr(insights, "_fetch_realtime_context", _empty)
+    monkeypatch.setattr(insights, "_fetch_fundamental_context", _empty)
+    monkeypatch.setattr(insights, "_fetch_technical_context", _empty)
+
+    def _fail_ai(*a, **k):
+        raise AssertionError("不应在监管红线下调用 AI")
+
+    monkeypatch.setattr(insights, "_get_ai_client", _fail_ai)
+
+    req = insights.AddPositionEvalRequest(
+        symbol="600519", market="CN",
+        current_quantity=0, current_cost=0,
+        add_quantity=100, add_price=8,
+    )
+    res = asyncio.run(insights.add_position_eval(req, db))
+    assert res["verdict"] == "不适合"
+    assert "警示函" in res["content"]
+

@@ -439,8 +439,30 @@ class DataCollectorManager:
                 news = await collector.fetch_news(symbols=test_symbols, since=since)
                 error_msg = ""
                 if len(news) == 0:
-                    if source.provider == "xueqiu":
-                        error_msg = "无数据，请检查 cookie 是否有效"
+            if source.provider == "xueqiu":
+                from src.collectors.news_collector import (
+                    is_netscape_cookie_format,
+                    normalize_xueqiu_cookies,
+                )
+
+                cookies = (source.config or {}).get("cookies", "")
+                if not cookies:
+                    error_msg = "未配置 Cookie，请在编辑数据源时粘贴雪球登录 Cookie"
+                elif is_netscape_cookie_format(cookies) and not normalize_xueqiu_cookies(cookies):
+                    error_msg = (
+                        "Cookie 格式错误：检测到 Netscape cookies.txt，但未能解析。"
+                        "请改用浏览器 Network → Request Headers 中的 Cookie 字符串"
+                    )
+                elif is_netscape_cookie_format(cookies):
+                    error_msg = (
+                        "无数据：已识别 Netscape cookies.txt 并自动转换，但仍被雪球 WAF 拦截。"
+                        "请改用 Network 请求头中的 Cookie 重新复制后保存测试"
+                    )
+                else:
+                    error_msg = (
+                        "无数据：Cookie 可能已过期，或被雪球 WAF 拦截。"
+                        "请浏览器登录 xueqiu.com 后从 Network 请求头重新复制 Cookie"
+                    )
                     elif source.provider == "eastmoney_news" and not symbol_names:
                         error_msg = "未找到测试股票的名称，请先添加自选股"
                     else:

@@ -27,6 +27,7 @@ from src.core.chat_actions import (
     serialize_pending_action,
 )
 from src.core.position_trades_context import build_trades_context_text
+from src.core.regulatory_red_flags import REGULATORY_VETO_PROMPT
 from src.core.timezone import format_beijing
 from src.models.market import MarketCode
 from src.web.database import SessionLocal, get_db
@@ -61,7 +62,7 @@ SYSTEM_PROMPT = """你是智盘 Alpha（AlphaMind）的 AI 投资助手。
 - 给出操作建议前，务必以「当前数据」中的最新持仓股数、成本价和今日已执行买卖为准
 - 若用户今日已买入或卖出过，不要重复建议同方向操作；应基于当前剩余仓位和最新成本重新评估
 - 「页面快照」仅为对话开始时的参考，与「当前数据」冲突时以「当前数据」为准
-- 回答买卖/催化剂/利好利空问题时，务必参考「当前数据」中的近期新闻与公告，不臆造未出现的事件"""
+- 回答买卖/催化剂/利好利空问题时，务必参考「当前数据」中的近期新闻与公告，不臆造未出现的事件""" + REGULATORY_VETO_PROMPT
 
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 5

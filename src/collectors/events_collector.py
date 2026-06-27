@@ -306,7 +306,7 @@ class EastMoneyEventsCollector:
             return "financing"
         if any(k in t for k in ["减持", "增持", "股东", "董监高", "持股变动"]):
             return "insider"
-        if any(k in t for k in ["诉讼", "仲裁", "立案", "处罚", "监管", "问询函"]):
+        if any(k in t for k in ["诉讼", "仲裁", "立案", "处罚", "监管", "问询函", "警示函", "监管函"]):
             return "regulatory"
         if any(k in t for k in ["重组", "并购", "收购", "出售资产", "重大资产"]):
             return "restructuring"
@@ -328,11 +328,14 @@ class EastMoneyEventsCollector:
                 "重组",
                 "停牌",
                 "复牌",
+                "警示函",
+                "监管函",
+                "立案调查",
             ]
         ):
             return 3
         if any(
-            k in t for k in ["季报", "分红", "回购", "增持", "减持", "问询函", "处罚"]
+            k in t for k in ["季报", "分红", "回购", "增持", "减持", "问询函", "处罚", "关注函"]
         ):
             return 2
         if any("临时" in k for k in column_names):

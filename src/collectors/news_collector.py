@@ -14,6 +14,94 @@ from src.core.cn_symbol import get_cn_prefix
 
 logger = logging.getLogger(__name__)
 
+XUEQIU_COOKIE_STATUS_LABELS = {
+    "not_configured": "未配置",
+    "unknown": "待检测",
+    "ok": "正常",
+    "expired": "已过期",
+    "blocked": "WAF 拦截",
+    "error": "检测失败",
+}
+
+XUEQIU_COOKIE_UPDATE_HINT = (
+    "浏览器登录 xueqiu.com → F12 → Network → 刷新页面 → 点任意 xueqiu.com 请求 → "
+    "复制 Request Headers 中的 Cookie 字符串（形如 xq_a_token=...; xq_r_token=...）。"
+    "请勿粘贴 cookies.txt / Netscape 导出文件；Cookie 通常几天到几周失效。"
+)
+
+XUEQIU_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Referer": "https://xueqiu.com/",
+    "Origin": "https://xueqiu.com",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+
+def _parse_netscape_cookie_line(line: str) -> tuple[str, str] | None:
+    """解析 Netscape cookies.txt 单行，兼容制表符或空格分隔。"""
+    if "\t" in line:
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            return parts[5], parts[6]
+    match = re.match(
+        r"^(\S+)\s+(?:TRUE|FALSE)\s+\S+\s+(?:TRUE|FALSE)\s+\d+\s+(\S+)\s+(.+)$",
+        line,
+    )
+    if match:
+        return match.group(2), match.group(3)
+    return None
+
+
+def is_netscape_cookie_format(raw: str) -> bool:
+    """判断是否为 Netscape cookies.txt 导出格式。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return False
+    if raw.startswith("# Netscape"):
+        return True
+    for line in raw.splitlines()[:8]:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if _parse_netscape_cookie_line(line) and "xueqiu.com" in line:
+            return True
+    return False
+
+
+def normalize_xueqiu_cookies(raw: str) -> str:
+    """将 Netscape cookies.txt 或 HTTP Cookie 头格式统一为请求头字符串。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if not is_netscape_cookie_format(raw):
+        return raw
+
+    pairs: list[str] = []
+    seen: set[str] = set()
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parsed = _parse_netscape_cookie_line(line)
+        if not parsed:
+            continue
+        name, value = parsed
+        if not name:
+            continue
+        if name in seen:
+            pairs = [pair for pair in pairs if not pair.startswith(f"{name}=")]
+            seen.discard(name)
+        pairs.append(f"{name}={value}")
+        seen.add(name)
+    if not pairs:
+        return raw
+    return "; ".join(pairs)
+
 # 简单内存缓存（5分钟过期）
 _news_cache: dict[str, tuple[datetime, list]] = {}
 _cache_ttl = timedelta(minutes=5)
@@ -67,6 +155,135 @@ class BaseNewsCollector(ABC):
         ...
 
 
+def resolve_xueqiu_cookie_health(config: dict | None) -> dict | None:
+    """根据 config 中的 Cookie 与缓存检测结果，生成前端展示用的健康状态。"""
+    config = config or {}
+    cookies = str(config.get("cookies") or "").strip()
+    cached = config.get("cookie_health")
+    if isinstance(cached, dict) and cached.get("status"):
+        return {
+            "status": cached.get("status", "unknown"),
+            "label": cached.get("label")
+            or XUEQIU_COOKIE_STATUS_LABELS.get(str(cached.get("status")), "待检测"),
+            "message": cached.get("message") or "",
+            "checked_at": cached.get("checked_at"),
+            "sample_count": int(cached.get("sample_count") or 0),
+            "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
+        }
+    if not cookies:
+        return {
+            "status": "not_configured",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["not_configured"],
+            "message": "未配置 Cookie，雪球新闻将无法采集",
+            "checked_at": None,
+            "sample_count": 0,
+            "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
+        }
+    return {
+        "status": "unknown",
+        "label": XUEQIU_COOKIE_STATUS_LABELS["unknown"],
+        "message": "已配置 Cookie，请点击「检测 Cookie」或「测试」验证是否有效",
+        "checked_at": None,
+        "sample_count": 0,
+        "update_hint": XUEQIU_COOKIE_UPDATE_HINT,
+    }
+
+
+def build_xueqiu_cookie_health_record(probe: dict) -> dict:
+    """将探测结果转为可写入数据源 config 的结构。"""
+    status = str(probe.get("status") or "error")
+    return {
+        "status": status,
+        "label": probe.get("label") or XUEQIU_COOKIE_STATUS_LABELS.get(status, "检测失败"),
+        "message": probe.get("message") or "",
+        "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "sample_count": int(probe.get("sample_count") or 0),
+    }
+
+
+async def probe_xueqiu_cookie(cookies: str, test_symbol: str = "600519") -> dict:
+    """轻量探测雪球 Cookie 是否可用（不拉全量新闻）。"""
+    raw_cookies = (cookies or "").strip()
+    from_netscape = is_netscape_cookie_format(raw_cookies)
+    cookies = normalize_xueqiu_cookies(raw_cookies)
+    if not cookies:
+        return {
+            "status": "not_configured",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["not_configured"],
+            "message": "未配置 Cookie",
+            "sample_count": 0,
+        }
+
+    collector = XueqiuNewsCollector(cookies=cookies)
+    symbol_id = collector._get_symbol_id(test_symbol)
+    headers = {**XUEQIU_HTTP_HEADERS, "Cookie": cookies}
+    params = {
+        "symbol_id": symbol_id,
+        "count": 3,
+        "source": "自选股新闻",
+        "page": 1,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=8, headers=headers, trust_env=False) as client:
+            resp = await client.get(XueqiuNewsCollector.API_URL, params=params)
+    except Exception as e:
+        logger.debug(f"雪球 Cookie 探测失败: {e}")
+        return {
+            "status": "error",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["error"],
+            "message": f"网络请求失败: {e}",
+            "sample_count": 0,
+        }
+
+    if resp.status_code == 400:
+        return {
+            "status": "expired",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["expired"],
+            "message": "Cookie 已过期或未登录，请重新登录 xueqiu.com 后复制 Cookie",
+            "sample_count": 0,
+        }
+
+    text = (resp.text or "").lstrip()
+    if text.startswith("<") or "aliyun_waf" in text or "_waf_" in text:
+        message = "被雪球 WAF 拦截或 Cookie 失效，请更新 Cookie 后重试"
+        if from_netscape:
+            message = (
+                "已识别 Netscape cookies.txt 并自动转换，但仍被 WAF 拦截。"
+                "请改用浏览器 Network → Request Headers 中的 Cookie 字符串重新复制"
+            )
+        return {
+            "status": "blocked",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["blocked"],
+            "message": message,
+            "sample_count": 0,
+        }
+
+    try:
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return {
+            "status": "error",
+            "label": XUEQIU_COOKIE_STATUS_LABELS["error"],
+            "message": "接口返回异常，请检查 Cookie 是否完整",
+            "sample_count": 0,
+        }
+
+    items = data.get("list") or []
+    count = len(items) if isinstance(items, list) else 0
+    if count > 0:
+        message = f"Cookie 有效，探测到 {count} 条样本新闻"
+    else:
+        message = "Cookie 有效，但当前测试股票暂无新闻（接口正常）"
+    return {
+        "status": "ok",
+        "label": XUEQIU_COOKIE_STATUS_LABELS["ok"],
+        "message": message,
+        "sample_count": count,
+    }
+
+
 class XueqiuNewsCollector(BaseNewsCollector):
     """
     雪球个股新闻采集器
@@ -79,7 +296,7 @@ class XueqiuNewsCollector(BaseNewsCollector):
     API_URL = "https://xueqiu.com/statuses/stock_timeline.json"
 
     def __init__(self, cookies: str = ""):
-        self.cookies = cookies
+        self.cookies = normalize_xueqiu_cookies(cookies)
 
     def _get_symbol_id(self, symbol: str) -> str:
         """转换为雪球 symbol_id 格式"""
@@ -102,11 +319,7 @@ class XueqiuNewsCollector(BaseNewsCollector):
         if not a_share_symbols:
             return []
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Referer": "https://xueqiu.com/",
-            "X-Requested-With": "XMLHttpRequest",
-        }
+        headers = dict(XUEQIU_HTTP_HEADERS)
         if self.cookies:
             headers["Cookie"] = self.cookies
 
@@ -136,9 +349,17 @@ class XueqiuNewsCollector(BaseNewsCollector):
         try:
             resp = await client.get(self.API_URL, params=params)
             if resp.status_code == 400:
-                # 需要登录，跳过
+                logger.warning(f"雪球新闻需登录 Cookie ({symbol})，请到「数据源」配置雪球 Cookies")
                 return []
             resp.raise_for_status()
+            text = (resp.text or "").lstrip()
+            # 无 Cookie / Cookie 过期时，雪球常返回 200 + WAF 挑战页而非 JSON
+            if text.startswith("<") or "aliyun_waf" in text or "_waf_" in text:
+                logger.warning(
+                    f"雪球新闻被 WAF 拦截或 Cookie 失效 ({symbol})，"
+                    "请到「数据源」更新完整 Cookie 后点「测试」验证"
+                )
+                return []
             data = resp.json()
 
             items = data.get("list", [])

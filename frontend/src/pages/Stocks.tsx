@@ -3408,7 +3408,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                       {pos.symbol}
                                     </span>
                                     <button
-                                      className="ml-1.5 text-[12px] text-muted-foreground hover:text-primary"
+                                      className="ml-1.5 text-[12px] font-semibold text-primary hover:text-primary/80"
                                       onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                     >
                                       {pos.name}
@@ -3575,7 +3575,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                                     {pos.symbol}
                                   </span>
                                   <button
-                                    className="text-[12px] text-muted-foreground hover:text-primary truncate"
+                                    className="text-[12px] font-semibold text-primary hover:text-primary/80 truncate"
                                     onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                   >
                                     {pos.name}
@@ -4296,7 +4296,7 @@ export default function StocksPage({ mode }: { mode?: 'positions' | 'watchlist' 
                             />
                           ) : null}
                         </div>
-                        <div className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5" title={stock.name}>
+                        <div className="text-[11px] font-semibold text-primary truncate leading-tight mt-0.5" title={stock.name}>
                           {stock.name}
                         </div>
                         <div className="mt-1 pl-0">

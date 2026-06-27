@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from src.core.regulatory_red_flags import format_ai_context, scan_items
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
@@ -56,6 +58,10 @@ async def fetch_stock_news_context(
     news = sorted(news, key=lambda x: x.publish_time, reverse=True)[:news_limit]
 
     parts: list[str] = []
+    reg = scan_items(items)
+    reg_ctx = format_ai_context(reg)
+    if reg_ctx:
+        parts.append(reg_ctx)
     if announcements:
         lines = [_format_item_line(it, include_snippet=True) for it in announcements]
         parts.append("近期公告:\n" + "\n".join(lines))
