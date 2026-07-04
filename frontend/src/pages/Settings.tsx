@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -161,6 +161,15 @@ export default function SettingsPage() {
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [modelForm, setModelForm] = useState<ModelForm>(emptyModelForm)
   const [editModelId, setEditModelId] = useState<number | null>(null)
+
+  // 批量选择嗅探到的模型
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchServiceId, setBatchServiceId] = useState<number | null>(null)
+  const [batchCandidates, setBatchCandidates] = useState<string[]>([])
+  const [batchChecked, setBatchChecked] = useState<Set<string>>(new Set())
+  const [batchDefault, setBatchDefault] = useState<string>('')
+  const [submittingBatch, setSubmittingBatch] = useState(false)
+  const [discoveringService, setDiscoveringService] = useState<number | null>(null)
 
   // Channel dialog
   const [channelDialogOpen, setChannelDialogOpen] = useState(false)
@@ -377,15 +386,93 @@ export default function SettingsPage() {
 
   const saveService = async () => {
     try {
+      let serviceId = editServiceId
       if (editServiceId) {
         await fetchAPI(`/providers/services/${editServiceId}`, { method: 'PUT', body: JSON.stringify(serviceForm) })
       } else {
-        await fetchAPI('/providers/services', { method: 'POST', body: JSON.stringify(serviceForm) })
+        const created = await fetchAPI<AIService>('/providers/services', { method: 'POST', body: JSON.stringify(serviceForm) })
+        serviceId = created.id
       }
       setServiceDialogOpen(false)
-      load()
+      await load()
+      if (!editServiceId && serviceId) {
+        try {
+          const res = await fetchAPI<{ models: string[] }>(
+            `/providers/services/${serviceId}/discover-models`,
+            { method: 'POST' },
+          )
+          const found = res.models.filter(Boolean)
+          if (found.length > 0) {
+            setBatchServiceId(serviceId)
+            setBatchCandidates(found)
+            setBatchChecked(new Set())
+            setBatchDefault('')
+            setBatchOpen(true)
+          } else {
+            toast('服务商已保存，未自动发现模型，可手动添加', 'info')
+          }
+        } catch (e) {
+          toast(
+            e instanceof Error
+              ? `服务商已保存，自动嗅探失败：${e.message}，可手动添加模型`
+              : '服务商已保存，该服务商暂不支持自动嗅探，可手动添加模型',
+            'info',
+          )
+        }
+      }
     } catch (e) {
       toast(e instanceof Error ? e.message : '保存失败', 'error')
+    }
+  }
+
+  // 手动对某服务商嗅探并打开批量选择框(排除已添加的模型)
+  const discoverForService = async (serviceId: number) => {
+    setDiscoveringService(serviceId)
+    try {
+      const res = await fetchAPI<{ models: string[] }>(
+        `/providers/services/${serviceId}/discover-models`,
+        { method: 'POST' },
+      )
+      const svc = services.find(s => s.id === serviceId)
+      const added = new Set((svc?.models || []).map(m => m.model))
+      const found = res.models.filter(Boolean).filter(id => !added.has(id))
+      if (found.length === 0) {
+        toast('未发现可新增的模型', 'info')
+        return
+      }
+      setBatchServiceId(serviceId)
+      setBatchCandidates(found)
+      setBatchChecked(new Set())
+      setBatchDefault('')
+      setBatchOpen(true)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '该服务商暂不支持自动嗅探', 'error')
+    } finally {
+      setDiscoveringService(null)
+    }
+  }
+
+  const submitBatchModels = async () => {
+    if (!batchServiceId) return
+    const models = Array.from(batchChecked).map(m => ({
+      name: '',
+      model: m,
+      is_default: m === batchDefault,
+    }))
+    if (models.length === 0) { setBatchOpen(false); return }
+    setSubmittingBatch(true)
+    try {
+      await fetchAPI(`/providers/services/${batchServiceId}/models/batch`, {
+        method: 'POST',
+        body: JSON.stringify({ models }),
+      })
+      setBatchOpen(false)
+      toast(`已添加 ${models.length} 个模型`, 'success')
+      load()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '批量添加失败', 'error')
+    } finally {
+      setSubmittingBatch(false)
     }
   }
 
@@ -676,6 +763,14 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => openModelDialog(svc.id)}>
                         <Plus className="w-3 h-3" /> 模型
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        title="嗅探模型（自动发现可用模型）"
+                        disabled={discoveringService === svc.id}
+                        onClick={() => discoverForService(svc.id)}
+                      >
+                        <Radar className={`w-3.5 h-3.5 ${discoveringService === svc.id ? 'animate-pulse' : ''}`} />
                       </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openServiceDialog(svc)}>
                         <Pencil className="w-3.5 h-3.5" />
@@ -1089,11 +1184,12 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label>模型标识</Label>
+              <Label>模型标识 <span className="text-muted-foreground font-normal">(可用服务商上的「嗅探」批量发现)</span></Label>
               <Input
                 value={modelForm.model}
+                disabled={!modelForm.service_id}
                 onChange={e => setModelForm({ ...modelForm, model: e.target.value })}
-                placeholder="gpt-4o / glm-4-flash"
+                placeholder={modelForm.service_id ? 'gpt-4o / glm-4-flash' : '请先选择服务商'}
                 className="font-mono"
               />
             </div>
@@ -1103,6 +1199,80 @@ export default function SettingsPage() {
                 {editModelId ? '保存' : '创建'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量选择嗅探到的模型 */}
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>发现 {batchCandidates.length} 个模型</DialogTitle>
+            <DialogDescription>勾选要添加的模型，并可指定一个默认模型</DialogDescription>
+          </DialogHeader>
+          <div className="mt-3 flex items-center justify-between px-0.5 text-xs text-muted-foreground">
+            <span>已选 <span className="font-mono text-foreground">{batchChecked.size}</span> / {batchCandidates.length}</span>
+            <button
+              type="button"
+              className="hover:text-foreground"
+              onClick={() => setBatchChecked(
+                batchChecked.size === batchCandidates.length ? new Set() : new Set(batchCandidates),
+              )}
+            >
+              {batchChecked.size === batchCandidates.length ? '取消全选' : '全选'}
+            </button>
+          </div>
+          <div className="mt-1.5 max-h-80 space-y-1.5 overflow-y-auto scrollbar pr-1">
+            {batchCandidates.map(id => {
+              const checked = batchChecked.has(id)
+              const isDefault = batchDefault === id
+              return (
+                <div
+                  key={id}
+                  onClick={() => {
+                    const next = new Set(batchChecked)
+                    if (checked) { next.delete(id); if (isDefault) setBatchDefault('') }
+                    else next.add(id)
+                    setBatchChecked(next)
+                  }}
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                    checked ? 'border-primary/60 bg-primary/10' : 'border-border/50 hover:border-border hover:bg-muted/40'
+                  }`}
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'
+                    }`}>
+                      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                    </span>
+                    <span className="truncate font-mono text-sm">{id}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (isDefault) { setBatchDefault('') }
+                      else {
+                        setBatchDefault(id)
+                        if (!checked) { const next = new Set(batchChecked); next.add(id); setBatchChecked(next) }
+                      }
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                      isDefault ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Star className={`h-3 w-3 ${isDefault ? 'fill-current' : ''}`} />
+                    {isDefault ? '默认' : '设默认'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setBatchOpen(false)}>跳过</Button>
+            <Button onClick={submitBatchModels} disabled={batchChecked.size === 0 || submittingBatch}>
+              {submittingBatch ? '添加中…' : `添加 ${batchChecked.size} 个`}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

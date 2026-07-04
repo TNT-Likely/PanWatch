@@ -113,6 +113,16 @@ class ModelUpdate(BaseModel):
     is_default: bool | None = None
 
 
+class BatchModelItem(BaseModel):
+    name: str = ""
+    model: str
+    is_default: bool = False
+
+
+class BatchModelCreate(BaseModel):
+    models: list[BatchModelItem] = []
+
+
 @router.get("/models", response_model=list[ModelResponse])
 def list_models(db: Session = Depends(get_db)):
     return db.query(AIModel).order_by(AIModel.id).all()
@@ -189,3 +199,41 @@ async def test_model(model_id: int, db: Session = Depends(get_db)):
         return {"ok": True, "reply": reply.strip()}
     except Exception as e:
         raise HTTPException(400, f"测试失败: {e}")
+
+
+@router.post("/services/{service_id}/discover-models")
+async def discover_models(service_id: int, db: Session = Depends(get_db)):
+    service = db.query(AIService).filter(AIService.id == service_id).first()
+    if not service:
+        raise HTTPException(404, "AI 服务商不存在")
+    try:
+        client = AIClient(base_url=service.base_url, api_key=service.api_key)
+        models = await client.list_models()
+        return {"models": models}
+    except Exception as e:
+        raise HTTPException(400, f"嗅探失败: {e}")
+
+
+@router.post("/services/{service_id}/models/batch")
+def batch_add_models(service_id: int, body: BatchModelCreate, db: Session = Depends(get_db)):
+    service = db.query(AIService).filter(AIService.id == service_id).first()
+    if not service:
+        raise HTTPException(404, "AI 服务商不存在")
+
+    existing = {m.model for m in service.models}
+    added = 0
+    for item in body.models:
+        if not item.model or item.model in existing:
+            continue
+        if item.is_default:
+            db.query(AIModel).update({"is_default": False})
+        db.add(AIModel(
+            name=item.name or item.model,
+            service_id=service_id,
+            model=item.model,
+            is_default=item.is_default,
+        ))
+        existing.add(item.model)
+        added += 1
+    db.commit()
+    return {"added": added}

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class AIClient:
     """OpenAI 协议兼容的 AI 客户端"""
 
-    def __init__(self, base_url: str, api_key: str, model: str, proxy: str = ""):
+    def __init__(self, base_url: str, api_key: str, model: str = "", proxy: str = ""):
         kwargs = {
             "base_url": base_url,
             "api_key": api_key,
@@ -128,6 +128,11 @@ class AIClient:
         except Exception as e:
             logger.error(f"AI tool use 调用失败: {e}")
             raise
+
+    async def list_models(self) -> list[str]:
+        """通过 OpenAI 兼容的 /v1/models 拉取可用模型 id 列表。"""
+        resp = await self.client.models.list()
+        return sorted(m.id for m in resp.data)
 
     def _encode_image(self, image_path: str) -> str | None:
         """将图片文件编码为 base64"""
