@@ -30,7 +30,7 @@ class AIClient:
         system_prompt: str,
         user_content: str,
         images: list[str] | None = None,
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
     ) -> str:
         """
         调用 LLM 获取文本回复。
@@ -60,11 +60,10 @@ class AIClient:
             messages.append({"role": "user", "content": user_content})
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-            )
+            create_kwargs = {"model": self.model, "messages": messages}
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
+            response = await self.client.chat.completions.create(**create_kwargs)
             # 记录 token 用量
             if response.usage:
                 self.total_tokens_used += response.usage.total_tokens

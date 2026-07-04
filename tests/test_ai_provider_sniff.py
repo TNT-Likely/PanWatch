@@ -54,6 +54,38 @@ def test_list_models_returns_sorted_ids():
     assert asyncio.run(client.list_models()) == ["aaa", "gpt-4o"]
 
 
+def test_chat_omits_temperature_when_none():
+    """temperature=None 时不向 create 下发该字段。"""
+    client = _make_client()
+    seen: dict = {}
+
+    async def _fake_create(**kwargs):
+        seen.update(kwargs)
+        msg = type("Msg", (), {"content": "ok"})()
+        choice = type("C", (), {"message": msg})()
+        return type("Resp", (), {"usage": None, "choices": [choice]})()
+
+    client.client.chat.completions.create = _fake_create
+    asyncio.run(client.chat("s", "u", temperature=None))
+    assert "temperature" not in seen
+
+
+def test_chat_sends_temperature_when_float():
+    """temperature 为数值时正常下发。"""
+    client = _make_client()
+    seen: dict = {}
+
+    async def _fake_create(**kwargs):
+        seen.update(kwargs)
+        msg = type("Msg", (), {"content": "ok"})()
+        choice = type("C", (), {"message": msg})()
+        return type("Resp", (), {"usage": None, "choices": [choice]})()
+
+    client.client.chat.completions.create = _fake_create
+    asyncio.run(client.chat("s", "u", temperature=0))
+    assert seen["temperature"] == 0
+
+
 def test_discover_models_returns_list(db, monkeypatch):
     """discover-models 用服务商凭证嗅探并返回模型 id 列表。"""
     from src.web.api import providers
@@ -127,6 +159,27 @@ def test_batch_add_skips_duplicates_and_sets_default(db, monkeypatch):
     assert defaults == ["new-a"]
     # 显示名为空的回退为 model 标识
     assert next(m for m in all_models if m.model == "new-b").name == "new-b"
+
+
+def test_test_model_omits_temperature(db, monkeypatch):
+    """测试连通性时不下发 temperature(对不支持该参数的模型也安全)。"""
+    from src.web.api import providers
+
+    m = _seed_service_with_model(db)
+    seen: dict = {}
+
+    class _FakeClient:
+        def __init__(self, **_):
+            pass
+
+        async def chat(self, system_prompt, user_content, temperature=0.4):
+            seen["temperature"] = temperature
+            return "OK"
+
+    monkeypatch.setattr(providers, "AIClient", _FakeClient)
+    res = asyncio.run(providers.test_model(m.id, db))
+    assert res["ok"] is True
+    assert seen["temperature"] is None  # 未带 temperature
 
 
 def test_test_model_error_maps_to_400(db, monkeypatch):
