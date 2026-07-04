@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, Radar } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
 import OpportunitiesPage from '@/pages/Opportunities'
+import WatchlistPage from '@/pages/Watchlist'
 import StocksPage from '@/pages/Stocks'
 import AgentsPage from '@/pages/Agents'
 import SettingsPage from '@/pages/Settings'
@@ -24,6 +25,7 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '首页' },
+  { to: '/watchlist', icon: Radar, label: '盯盘' },
   { to: '/portfolio', icon: List, label: '持仓' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
   { to: '/paper-trading', icon: Activity, label: '模拟盘' },
@@ -256,6 +258,7 @@ function App() {
       <main className="px-4 md:px-6 py-4 md:py-6 w-full">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/watchlist" element={<WatchlistPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
           <Route path="/portfolio" element={<StocksPage />} />
           <Route path="/agents" element={<AgentsPage />} />
