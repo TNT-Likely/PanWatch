@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _clear_orchestrator_instances(source_type: str) -> None:
+    """数据源变更后刷新对应 orchestrator 的 provider 实例缓存。"""
+    try:
+        if source_type == "kline":
+            from src.core.providers.orchestrator import get_kline_orchestrator
+            get_kline_orchestrator().clear_instances()
+        elif source_type == "quote":
+            from src.core.providers.orchestrator import get_quote_orchestrator
+            get_quote_orchestrator().clear_instances()
+        elif source_type == "capital_flow":
+            from src.core.providers.orchestrator import get_capital_flow_orchestrator
+            get_capital_flow_orchestrator().clear_instances()
+        elif source_type == "events":
+            from src.core.providers.orchestrator import get_events_orchestrator
+            get_events_orchestrator().clear_instances()
+    except Exception as e:
+        logger.warning(f"刷新数据源 provider 实例失败: {e}")
+
+
 # 数据源类型说明
 TYPE_LABELS = {
     "news": "新闻资讯",
@@ -119,6 +138,7 @@ def create_datasource(data: DataSourceCreate, db: Session = Depends(get_db)):
     db.add(source)
     db.commit()
     db.refresh(source)
+    _clear_orchestrator_instances(source.type)
     logger.info(f"创建数据源: {source.name} ({source.provider})")
     return _to_response(source)
 
@@ -137,6 +157,7 @@ def update_datasource(
 
     db.commit()
     db.refresh(source)
+    _clear_orchestrator_instances(source.type)
     logger.info(f"更新数据源: {source.name}")
     return _to_response(source)
 
@@ -150,6 +171,7 @@ def delete_datasource(source_id: int, db: Session = Depends(get_db)):
 
     db.delete(source)
     db.commit()
+    _clear_orchestrator_instances(source.type)
     logger.info(f"删除数据源: {source.name}")
     return {"ok": True, "message": f"已删除 {source.name}"}
 

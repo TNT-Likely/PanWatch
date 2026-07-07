@@ -19,7 +19,7 @@ from src.models.market import MARKETS, MarketCode
 logger = logging.getLogger(__name__)
 
 # 腾讯日K线 API
-TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+TENCENT_KLINE_URL = "http://ifzq.gtimg.cn/appstock/app/fqkline/get"
 EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 
 
@@ -661,7 +661,10 @@ def _fetch_tencent_klines(
             klines = _parse_tencent_kline_text(text, tencent_sym)
             if klines:
                 break
-            last_err = "空响应"  # gtimg 突发限流常回空 body,退避后重试
+            if resp.status_code != 200:
+                last_err = f"HTTP {resp.status_code}: {text[:100]}"
+            else:
+                last_err = "空响应"
         except Exception as e:
             last_err = e
         if attempt < 2:
@@ -958,9 +961,15 @@ class KlineCollector:
             kline_pattern=kline_pattern,
         )
 
-    def get_kline_summary(self, symbol: str) -> dict:
-        """获取 K 线摘要（用于 prompt 和前端展示）"""
-        klines = self.get_klines(symbol, days=120)
+    def get_kline_summary(self, symbol: str = "", klines: list[KlineData] | None = None) -> dict:
+        """获取 K 线摘要（用于 prompt 和前端展示）
+
+        Args:
+            symbol: 股票代码（仅当 klines 为空时用于联网获取）
+            klines: 外部传入的 K 线数据（非空则跳过联网获取）
+        """
+        if klines is None:
+            klines = self.get_klines(symbol, days=120)
         if not klines:
             return {"error": "无K线数据"}
         indicators = self.get_technical_indicators(klines=klines)

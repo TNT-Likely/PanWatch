@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from src.collectors.akshare_collector import AkshareCollector
-from src.collectors.kline_collector import KlineCollector
+from src.collectors.kline_collector import KlineCollector, KlineData
 from src.collectors.news_collector import NewsCollector, NewsItem
 from src.models.market import MarketCode
 from src.models.market import StockData
@@ -219,28 +219,30 @@ class SignalPackBuilder:
                         self._tech_cache[key] = {"error": "K线数据源已禁用"}
                         self._tech_source_cache[key] = "disabled"
                     else:
-                        last_err = None
-                        for provider, cfg in kline_providers:
-                            try:
-                                if provider == "tencent":
-                                    collector = KlineCollector(market)
-                                else:
-                                    logger.info(
-                                        f"SignalPack kline 未支持 provider={provider}，跳过"
-                                    )
-                                    continue
-                                self._tech_cache[key] = collector.get_kline_summary(sym)
-                                self._tech_source_cache[key] = provider
-                                last_err = None
-                                break
-                            except Exception as e:
-                                last_err = e
-                                continue
-                        if key not in self._tech_cache:
-                            self._tech_cache[key] = {
-                                "error": str(last_err) if last_err else "获取K线失败"
-                            }
-                            self._tech_source_cache.setdefault(key, "unavailable")
+                        try:
+                            from src.core.providers.orchestrator import get_kline_orchestrator
+                            from src.core.providers.base import ProviderRequest
+
+                            req = ProviderRequest(
+                                symbols=(sym,),
+                                market=market.value,
+                                extra=(("days", 120),),
+                            )
+                            resp = await get_kline_orchestrator().fetch(req)
+                            if resp.success and resp.data:
+                                collector = KlineCollector(market)
+                                self._tech_cache[key] = collector.get_kline_summary(
+                                    sym, klines=list(resp.data)
+                                )
+                                self._tech_source_cache[key] = resp.provider or "orchestrator"
+                            else:
+                                self._tech_cache[key] = {
+                                    "error": resp.error or "获取K线失败"
+                                }
+                                self._tech_source_cache[key] = resp.provider or "unavailable"
+                        except Exception as e:
+                            self._tech_cache[key] = {"error": str(e)}
+                            self._tech_source_cache[key] = "error"
                 tech_map[sym] = self._tech_cache[key]
                 if key in self._tech_cache and key not in self._tech_source_cache:
                     self._tech_source_cache[key] = "cache"

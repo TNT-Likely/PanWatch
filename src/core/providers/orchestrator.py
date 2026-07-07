@@ -299,9 +299,11 @@ def get_kline_orchestrator() -> KlineOrchestrator:
         orch = KlineOrchestrator()
         from src.core.providers.kline.tencent import TencentKlineProvider
         from src.core.providers.kline.tushare import TushareKlineProvider
+        from src.core.providers.kline.tdx import TdxKlineProvider
         from src.core.providers.kline.yfinance import YFinanceKlineProvider
 
         orch.register("tencent", lambda cfg: TencentKlineProvider(config=cfg))
+        orch.register("tdx", lambda cfg: TdxKlineProvider(config=cfg))
         orch.register("tushare", lambda cfg: TushareKlineProvider(config=cfg))
         orch.register("yfinance", lambda cfg: YFinanceKlineProvider(config=cfg))
         _kline_orchestrator = orch

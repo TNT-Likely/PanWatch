@@ -360,7 +360,8 @@ def seed_data_sources():
             "provider": "xueqiu",
             "config": {
                 "cookies": "",
-                "description": "雪球个股新闻聚合，需要登录 cookie",
+                "auto_refresh_waf": True,
+                "description": "雪球个股新闻聚合，需要登录 cookie；超时/风控时自动重新过 WAF",
             },
             "enabled": False,
             "priority": 0,
@@ -397,6 +398,21 @@ def seed_data_sources():
             "priority": 0,
             "supports_batch": False,
             "test_symbols": ["601127", "600519", "300750"],
+        },
+        {
+            "name": "通达信K线",
+            "type": "kline",
+            "provider": "tdx",
+            "config": {
+                "host": "124.71.187.122:7709",
+                "binary": "/app/tools/tdx-kline/tdx-kline",
+                "timeout_sec": 15,
+                "description": "基于 injoyai/tdx 的通达信日K数据。仅 A 股；需编译 helper 二进制。",
+            },
+            "enabled": False,
+            "priority": 5,
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
         },
         {
             "name": "Tushare K线",
@@ -1120,8 +1136,21 @@ async def trigger_agent_for_stock(
         market=market,
     )
 
+    # 从数据库获取 Stock 记录（可能不在自选表中）
+    stock_id = 0
+    db_lookup = SessionLocal()
+    try:
+        db_stock = db_lookup.query(Stock).filter(
+            Stock.symbol == stock.symbol,
+            Stock.market == stock.market,
+        ).first()
+        if db_stock:
+            stock_id = db_stock.id
+    finally:
+        db_lookup.close()
+
     # 加载该股票的持仓信息
-    portfolio = load_portfolio_for_stock(stock.id)
+    portfolio = load_portfolio_for_stock(stock_id)
 
     model, service = resolve_ai_model(agent_name, stock_agent_id)
     channels = [] if suppress_notify else resolve_notify_channels(agent_name, stock_agent_id)

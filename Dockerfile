@@ -1,23 +1,9 @@
 # PanWatch Dockerfile
 # 多阶段构建，减小最终镜像大小
 
-# ===== Stage 1: 前端构建 =====
-FROM node:20-alpine AS frontend-builder
-
-WORKDIR /app/frontend
-
-# 安装 pnpm
-RUN npm install -g pnpm
-
-# 复制依赖文件
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-
-# 安装依赖
-RUN pnpm install --frozen-lockfile
-
-# 复制源码并构建
-COPY frontend/ ./
-RUN pnpm build
+# ===== Stage 1: 前端静态文件 =====
+# 前端已在本机构建(frontend/dist/),直接复制到运行阶段
+# 如需在 Docker 内重建,可回退至:使用 node:20-alpine 执行 pnpm install && pnpm build
 
 
 # ===== Stage 2: Python 运行环境 =====
@@ -93,8 +79,8 @@ COPY prompts/ ./prompts/
 # 写入版本号
 RUN echo "${VERSION}" > VERSION
 
-# 从前端构建阶段复制静态文件
-COPY --from=frontend-builder /app/frontend/dist ./static/
+# 复制本地已构建的前端静态文件
+COPY frontend/dist ./static/
 
 # 创建数据目录
 RUN mkdir -p /app/data
