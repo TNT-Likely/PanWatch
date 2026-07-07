@@ -63,6 +63,10 @@ async def get_news(
         symbol_list = [name_to_symbol.get(n) for n in name_list if name_to_symbol.get(n)]
         # 直接使用传入的名称构建 symbol_names
         passed_symbol_names = {name_to_symbol.get(n, ""): n for n in name_list if name_to_symbol.get(n)}
+        # 名称未匹配到数据库中的股票时，直接用名称作为搜索关键词
+        if not symbol_list:
+            symbol_list = name_list
+            passed_symbol_names = {n: n for n in name_list}
     elif symbols:
         symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
         passed_symbol_names = {s: stock_map.get(s, s) for s in symbol_list}
@@ -100,6 +104,10 @@ async def get_news(
         # 标题或内容包含关键词
         text = item.title + (item.content or "")
         return any(kw in text for kw in keywords)
+
+    # 补充按来源优先级排序（兜底，若 collector 排序变更仍能保证顺序）
+    source_priority = {"eastmoney_news": 3, "eastmoney": 2, "xueqiu": 1}
+    news_items.sort(key=lambda x: (source_priority.get(x.source, 0), x.importance, x.publish_time), reverse=True)
 
     result = []
     for item in news_items:

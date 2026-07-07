@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 import asyncio
 
+import json
+
 import httpx
 
 from src.collectors.market_http import source_suffix
@@ -32,6 +34,217 @@ def _get_cached(key: str) -> list | None:
 def _set_cached(key: str, data: list) -> None:
     """设置缓存"""
     _news_cache[key] = (datetime.now(), data)
+
+
+# --- 雪球 Playwright 浏览器管理器（简化版：无 TTL / 健康检查 / 后台刷新） ---
+_xueqiu_pw = None
+_xueqiu_browser = None
+_xueqiu_page = None
+_xueqiu_page_lock = asyncio.Lock()  # 防止并发创建导致浏览器实例泄露
+
+
+async def _xueqiu_reset_page():
+    """关闭当前页面并清空引用，下次请求自动重建。"""
+    global _xueqiu_page, _xueqiu_browser, _xueqiu_pw
+    for obj in ["_xueqiu_page", "_xueqiu_browser", "_xueqiu_pw"]:
+        try:
+            ref = globals().get(obj)
+            if ref:
+                close_method = getattr(ref, "close", None) or getattr(ref, "stop", None)
+                if close_method:
+                    await close_method()
+        except Exception:
+            pass
+    _xueqiu_page = None
+    _xueqiu_browser = None
+    _xueqiu_pw = None
+
+
+async def _get_xueqiu_page(manual_cookies: str = "") -> "XueqiuPageResult":
+    """获取一个已解析 WAF 的 Playwright 页面。
+
+    页面创建后缓存复用；若 fetch 失败由调用方触发 _xueqiu_reset_page。
+    使用锁保护并发创建，避免多实例泄露。
+    """
+    global _xueqiu_pw, _xueqiu_browser, _xueqiu_page
+
+    if _xueqiu_page is not None:
+        return _xueqiu_page
+
+    async with _xueqiu_page_lock:
+        # 双重检查：持有锁后再次确认页面试图尚未被其他协程创建
+        if _xueqiu_page is not None:
+            return _xueqiu_page
+
+        from playwright.async_api import async_playwright
+
+        logger.info("Playwright 访问 xueqiu.com 解析 WAF...")
+        t0 = datetime.now()
+
+        try:
+            _xueqiu_pw = await async_playwright().start()
+            _xueqiu_browser = await _xueqiu_pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                ]
+            )
+
+            context = await _xueqiu_browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                locale="zh-CN",
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                java_script_enabled=True,
+            )
+    
+            if manual_cookies:
+                for part in manual_cookies.split(";"):
+                    part = part.strip()
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        try:
+                            await context.add_cookies([{
+                                "name": k.strip(), "value": v.strip(),
+                                "domain": ".xueqiu.com", "path": "/"
+                            }])
+                        except Exception:
+                            pass
+    
+            page = await context.new_page()
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            """)
+    
+            await page.goto("https://xueqiu.com/", wait_until="domcontentloaded", timeout=20000)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
+    
+            _xueqiu_page = page
+            logger.info("Playwright 雪球 WAF 已解析，页面就绪 (耗时 %.1fs)", (datetime.now() - t0).total_seconds())
+            return page
+
+        except ImportError:
+            logger.error("Playwright 未安装，无法访问雪球 API")
+            await _xueqiu_reset_page()
+            return None
+        except Exception as e:
+            logger.warning(f"Playwright 初始化雪球页面失败: {e}")
+            await _xueqiu_reset_page()
+            return None
+
+
+async def _xueqiu_fetch_via_playwright(
+    symbol_ids: list[str],
+    count: int = 15,
+    manual_cookies: str = "",
+) -> list[dict]:
+    """通过 Playwright 浏览器内 fetch 调用雪球 API
+
+    Args:
+        symbol_ids: 雪球格式的股票 ID 列表 (如 ["SH600519", "SZ000001"])
+        count: 每只股票获取的新闻条数
+        manual_cookies: 用户配置的 Cookie
+
+    Returns:
+        原始 JSON 数据列表
+    """
+    page = await _get_xueqiu_page(manual_cookies)
+    if not page:
+        return []
+
+    all_items = []
+    # Phase 4: 并发控制，Semaphore(2) 限制并发数
+    sem = asyncio.Semaphore(2)
+    total = len(symbol_ids)
+    now = datetime.now()
+
+    async def _fetch_one(sid: str, index: int) -> list[dict]:
+        """对单只股票执行 fetch，带重试逻辑。"""
+        async with sem:
+            for attempt in range(2):  # Phase 4: 重试一次
+                try:
+                    result = await asyncio.wait_for(
+                        page.evaluate(f"""async () => {{
+                        try {{
+                            const r = await fetch(
+                                "https://xueqiu.com/statuses/stock_timeline.json?" +
+                                new URLSearchParams({{
+                                    symbol_id: "{sid}",
+                                    count: "{count}",
+                                    source: "\u81ea\u9009\u80a1\u65b0\u95fb",
+                                    page: "1",
+                                }}),
+                                {{
+                                    headers: {{
+                                        "X-Requested-With": "XMLHttpRequest",
+                                        "Accept": "application/json, text/plain, */*",
+                                        "Referer": "https://xueqiu.com/",
+                                    }}
+                                }}
+                            );
+                            const text = await r.text();
+                            const data = JSON.parse(text);
+                            return JSON.stringify(data.list || []);
+                        }} catch(e) {{
+                            return JSON.stringify({{error: e.message}});
+                        }}
+                    }}"""),
+                        timeout=15,  # Phase 4: 12s->15s
+                    )
+
+                    data = json.loads(result)
+                    if isinstance(data, list):
+                        return data
+                    elif isinstance(data, dict) and "error" in data:
+                        err_msg = data["error"]
+                        if any(kw in err_msg.lower() for kw in ("401", "403", "unauthorized", "forbidden")):
+                            logger.warning(
+                                "雪球 Playwright fetch Cookie 可能过期 (%s): %s (attempt %d/2)",
+                                sid, err_msg, attempt + 1,
+                            )
+                            if attempt == 1:
+                                return []
+                            await asyncio.sleep(1)
+                            continue
+                        logger.warning(
+                            "雪球 Playwright fetch 失败 (%s): %s (attempt %d/2)",
+                            sid, err_msg, attempt + 1,
+                        )
+
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "雪球 Playwright fetch 超时 (%s) (attempt %d/2, 进度 %d/%d)",
+                        sid, attempt + 1, index + 1, total,
+                    )
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+                        continue
+                except Exception as e:
+                    logger.warning(
+                        "雪球 Playwright fetch 异常 (%s): %s (attempt %d/2)", sid, e, attempt + 1,
+                    )
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+                        continue
+            return []
+
+    # Phase 4: 并发 fetch
+    tasks = [_fetch_one(sid, i) for i, sid in enumerate(symbol_ids)]
+    results = await asyncio.gather(*tasks)
+
+    for items in results:
+        all_items.extend(items)
+
+    return all_items
 
 
 @dataclass
@@ -78,86 +291,105 @@ class XueqiuNewsCollector(BaseNewsCollector):
     source = "xueqiu"
     API_URL = "https://xueqiu.com/statuses/stock_timeline.json"
 
-    def __init__(self, cookies: str = ""):
-        self.cookies = cookies
+    def __init__(self, cookies: str = "", fallback_to_eastmoney: bool = True, auto_refresh_waf: bool = True, symbol_names: dict[str, str] | None = None):
+        self.cookies = cookies.strip()
+        self.last_error: str = ""  # 最近一次错误详情
+        self._fallback_to_eastmoney = fallback_to_eastmoney  # Phase 3: 降级开关
+        self._auto_refresh_waf = auto_refresh_waf  # 超时时自动重新过 WAF
+        self._symbol_names = symbol_names  # 股票名称映射，供降级使用
 
     def _get_symbol_id(self, symbol: str) -> str:
         """转换为雪球 symbol_id 格式"""
         if len(symbol) == 6 and symbol.isdigit():
             prefix = get_cn_prefix(symbol, upper=True)
-            # 雪球 A 股新闻接口仅识别 SH/SZ，BJ 代码保留原值
             if prefix in {"SH", "SZ"}:
                 return f"{prefix}{symbol}"
         return symbol
 
     async def fetch_news(self, symbols: list[str] | None = None, since: datetime | None = None) -> list[NewsItem]:
-        """获取雪球个股新闻（并发请求）"""
+        """获取雪球个股新闻（通过 Playwright 浏览器内 fetch 绕过 WAF）"""
         if not symbols:
             return []
 
-        import asyncio
-
-        # 只处理 A 股代码
         a_share_symbols = [s for s in symbols if len(s) == 6 and s.isdigit()]
         if not a_share_symbols:
             return []
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Referer": "https://xueqiu.com/",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        if self.cookies:
-            headers["Cookie"] = self.cookies
+        if not self.cookies:
+            self.last_error = "雪球 Cookie 为空，请在数据源配置中填写有效的雪球登录 Cookie"
+            logger.warning("雪球新闻采集: Cookie 为空")
+            if self._fallback_to_eastmoney:
+                logger.info("雪球 Cookie 为空，自动降级到东方财富采集")
+                return await self._fallback_fetch(a_share_symbols, since)
+            return []
 
-        async with httpx.AsyncClient(timeout=8, headers=headers, trust_env=False) as client:  # CN 源直连,绕过 env 代理
-            tasks = [self._fetch_for_symbol(client, symbol, since) for symbol in a_share_symbols]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        symbol_ids = [self._get_symbol_id(s) for s in a_share_symbols]
+
+        raw_items = await _xueqiu_fetch_via_playwright(
+            symbol_ids=symbol_ids,
+            count=15,
+            manual_cookies=self.cookies,
+        )
+
+        if not raw_items and self.cookies and self._auto_refresh_waf:
+            # 尝试重新过 WAF 后重试一次
+            logger.info("雪球 fetch 返回空数据，尝试重新过 WAF 后重试")
+            await _xueqiu_reset_page()
+            raw_items = await _xueqiu_fetch_via_playwright(
+                symbol_ids=symbol_ids,
+                count=15,
+                manual_cookies=self.cookies,
+            )
+            if raw_items:
+                logger.info(f"雪球 WAF 刷新后重试成功")
+                self.last_error = ""
+            else:
+                logger.warning("雪球 WAF 刷新后重试仍为空数据")
+
+        if not raw_items:
+            if self.cookies:
+                self.last_error = (
+                    "雪球 Cookie 可能已过期，请重新登录雪球网页后复制最新 Cookie。"
+                    "如果确认 Cookie 有效，可能是雪球 WAF 升级或网络问题。"
+                )
+            else:
+                self.last_error = "雪球 API 未返回数据（Playwright 可能尚未就绪或被 WAF 拦截）"
+            logger.warning(
+                "雪球新闻采集: Playwright 返回空数据 (Cookie=%s...)",
+                self.cookies[:20] if self.cookies else "空",
+            )
+            if self._fallback_to_eastmoney:
+                logger.info("雪球返回空数据，自动降级到东方财富采集")
+                return await self._fallback_fetch(a_share_symbols, since)
+            return []
 
         all_news = []
-        for result in results:
-            if isinstance(result, list):
-                all_news.extend(result)
+        for item in raw_items:
+            try:
+                symbol_id = item.get("symbol_id", "")
+                code = symbol_id[2:] if len(symbol_id) > 2 else ""
+                news = self._parse_item(item, code)
+                if news:
+                    if since and news.publish_time < since:
+                        continue
+                    all_news.append(news)
+            except Exception as e:
+                logger.debug(f"解析雪球新闻失败: {e}")
 
         logger.debug(f"雪球新闻采集到 {len(all_news)} 条")
         return all_news
 
-    async def _fetch_for_symbol(self, client: httpx.AsyncClient, symbol: str, since: datetime | None) -> list[NewsItem]:
-        """获取单只股票的新闻"""
-        symbol_id = self._get_symbol_id(symbol)
-
-        params = {
-            "symbol_id": symbol_id,
-            "count": 15,
-            "source": "自选股新闻",
-            "page": 1,
-        }
-
+    async def _fallback_fetch(self, symbols: list[str], since: datetime | None) -> list[NewsItem]:
+        """Phase 3: 降级到东方财富个股新闻采集器。"""
         try:
-            resp = await client.get(self.API_URL, params=params)
-            if resp.status_code == 400:
-                # 需要登录，跳过
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-
-            items = data.get("list", [])
-            result = []
-
-            for item in items:
-                try:
-                    news = self._parse_item(item, symbol)
-                    if news:
-                        if since and news.publish_time < since:
-                            continue
-                        result.append(news)
-                except Exception as e:
-                    logger.debug(f"解析雪球新闻失败: {e}")
-
-            return result
-
+            fallback = EastMoneyStockNewsCollector(symbol_names=self._symbol_names)
+            news = await fallback.fetch_news(symbols, since)
+            if news:
+                logger.info(f"雪球降级到东方财富成功: 获取到 {len(news)} 条新闻")
+                self.last_error = "雪球不可用，已自动降级到东方财富（降级数据）"
+            return news
         except Exception as e:
-            logger.debug(f"雪球新闻采集失败 ({symbol}): {e}")
+            logger.warning(f"雪球降级到东方财富也失败: {e}")
             return []
 
     def _parse_item(self, item: dict, symbol: str) -> NewsItem | None:
@@ -191,6 +423,8 @@ class XueqiuNewsCollector(BaseNewsCollector):
 
         # 原文链接
         url = item.get("target", "") or f"https://xueqiu.com/{item.get('user_id', '')}/{external_id}"
+        if url.startswith("/"):
+            url = f"https://xueqiu.com{url}"
 
         return NewsItem(
             source=self.source,
@@ -567,12 +801,24 @@ class EastMoneyNewsCollector(BaseNewsCollector):
         )
 
 
+# 来源优先级（数字越大越优先展示）
+SOURCE_PRIORITY = {
+    "eastmoney_news": 3,  # 东方财富资讯（降级/兜底来源）
+    "eastmoney": 2,        # 东方财富公告
+    "xueqiu": 1,           # 雪球（主来源）
+}
+
+
 class NewsCollector:
     """聚合新闻采集器"""
 
     # 数据源 provider 到采集器的映射
     COLLECTOR_MAP = {
-        "xueqiu": lambda config: XueqiuNewsCollector(cookies=config.get("cookies", "")),
+        "xueqiu": lambda config: XueqiuNewsCollector(
+            cookies=config.get("cookies", ""),
+            fallback_to_eastmoney=config.get("fallback_to_eastmoney", True),
+            auto_refresh_waf=config.get("auto_refresh_waf", True),
+        ),
         "eastmoney_news": lambda config: EastMoneyStockNewsCollector(
             symbol_names=config.get("symbol_names")  # 可选，不传则自动从数据库获取
         ),
@@ -642,6 +888,8 @@ class NewsCollector:
             for collector in self.collectors:
                 if isinstance(collector, EastMoneyStockNewsCollector):
                     collector._symbol_names = symbol_names
+                elif isinstance(collector, XueqiuNewsCollector):
+                    collector._symbol_names = symbol_names
 
         # 公告使用更长的时间窗口（因为公告发布较少）
         news_since = datetime.now() - timedelta(hours=since_hours)
@@ -662,8 +910,8 @@ class NewsCollector:
         for news_list in results:
             all_news.extend(news_list)
 
-        # 按时间倒序 + 重要性倒序排列
-        all_news.sort(key=lambda x: (x.publish_time, x.importance), reverse=True)
+        # 按来源优先级 + 重要性 + 时间倒序排列（优先展示东方财富降级数据）
+        all_news.sort(key=lambda x: (SOURCE_PRIORITY.get(x.source, 0), x.importance, x.publish_time), reverse=True)
 
         # 去重（按 source + external_id）
         seen = set()

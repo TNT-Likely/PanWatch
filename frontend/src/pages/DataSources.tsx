@@ -145,10 +145,12 @@ export default function DataSourcesPage() {
     }
   }
 
-  const testSource = async (id: number) => {
+  const testSource = async (id: number, provider: string) => {
     setTesting(id)
     try {
-      const result = await fetchAPI<TestResult>(`/datasources/${id}/test`, { method: 'POST' })
+      // 雪球 Playwright 冷启动较慢，使用更长超时
+      const timeoutMs = provider === 'xueqiu' ? 90000 : 30000
+      const result = await fetchAPI<TestResult>(`/datasources/${id}/test`, { method: 'POST', timeoutMs })
       setTestResult(result)
       setTestResultOpen(true)
     } catch (e) {
@@ -229,7 +231,7 @@ export default function DataSourcesPage() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => testSource(source.id)}
+                          onClick={() => testSource(source.id, source.provider)}
                           disabled={testing === source.id || !source.enabled}
                           title="测试连接"
                         >
