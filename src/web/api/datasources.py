@@ -62,8 +62,13 @@ class DataSourceResponse(BaseModel):
         from_attributes = True
 
 
-def _to_response(source: DataSource) -> dict:
-    """转换为响应格式"""
+# 已接入 marketdata 新引擎的数据类型(随各类型逐步迁移扩充)
+_ENGINE_ATTACHED_TYPES = {"quote"}
+
+
+def _to_response(source: DataSource, health_map: dict | None = None) -> dict:
+    """转换为响应格式。health_map: {provider: 指标快照};缺失则 health=None。"""
+    health = (health_map or {}).get(source.provider)
     return {
         "id": source.id,
         "name": source.name,
@@ -75,6 +80,8 @@ def _to_response(source: DataSource) -> dict:
         "priority": source.priority,
         "supports_batch": source.supports_batch or False,
         "test_symbols": source.test_symbols or [],
+        "engine_attached": source.type in _ENGINE_ATTACHED_TYPES,
+        "health": health,
     }
 
 
@@ -85,7 +92,9 @@ def list_datasources(type: str | None = None, db: Session = Depends(get_db)):
     if type:
         query = query.filter(DataSource.type == type)
     sources = query.order_by(DataSource.type, DataSource.priority, DataSource.id).all()
-    return [_to_response(s) for s in sources]
+    from src.core.marketdata_client import get_market_data
+    health_map = get_market_data().health()
+    return [_to_response(s, health_map) for s in sources]
 
 
 @router.get("/types")

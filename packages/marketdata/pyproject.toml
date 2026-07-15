@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "marketdata"
+version = "0.1.0"
+description = "PanWatch 多市场行情数据抓取层(可插拔数据源)"
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.24"]
+
+[project.optional-dependencies]
+yfinance = ["yfinance>=0.2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/marketdata"]

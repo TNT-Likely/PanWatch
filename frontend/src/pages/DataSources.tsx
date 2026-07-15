@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock } from 'lucide-react'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { fetchAPI, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 interface TestLogItem {
@@ -52,6 +53,18 @@ const DATASOURCE_TYPES = {
   chart: { label: 'K线截图', icon: Image, color: 'text-purple-500' },
 }
 
+interface CredentialFieldDef { key: string; label: string; placeholder: string; secret?: boolean; help?: string }
+
+// provider → 凭证字段(前端持有 UI 元数据,新增带凭证的 provider 时在此加一行)
+const PROVIDER_CREDENTIAL_FIELDS: Record<string, CredentialFieldDef[]> = {
+  tushare: [
+    { key: 'token', label: 'Tushare Token', placeholder: '粘贴 token,留空则读环境变量 TUSHARE_TOKEN', secret: true, help: '登录 tushare.pro 个人主页获取' },
+  ],
+  xueqiu: [
+    { key: 'cookies', label: '雪球 Cookies', placeholder: 'xq_a_token=...; xq_r_token=...', secret: true, help: '浏览器 DevTools → Network → 复制完整 cookie 字符串' },
+  ],
+}
+
 const emptyForm: DataSourceForm = {
   name: '',
   type: '',
@@ -72,6 +85,7 @@ export default function DataSourcesPage() {
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const [testResultOpen, setTestResultOpen] = useState(false)
   const [testSymbolsInput, setTestSymbolsInput] = useState('')
+  const [secretVisible, setSecretVisible] = useState(false)
 
   const { toast } = useToast()
 
@@ -89,7 +103,7 @@ export default function DataSourcesPage() {
 
   useEffect(() => { load() }, [])
 
-  const openDialog = (source?: DataSource) => {
+  const openDialog = (source?: DataSource, presetType?: string) => {
     if (source) {
       setForm({
         name: source.name,
@@ -103,34 +117,29 @@ export default function DataSourcesPage() {
       setTestSymbolsInput((source.test_symbols || []).join(', '))
       setEditId(source.id)
     } else {
-      setForm(emptyForm)
+      setForm({ ...emptyForm, type: presetType || '' })
       setTestSymbolsInput('')
       setEditId(null)
     }
+    setSecretVisible(false)
     setDialogOpen(true)
   }
 
   const saveSource = async () => {
-    if (!editId) return
+    const testSymbols = testSymbolsInput.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean)
     try {
-      // Parse test symbols from comma-separated string
-      const testSymbols = testSymbolsInput
-        .split(/[,，\s]+/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0)
-
-      const payload = {
-        priority: form.priority,
-        test_symbols: testSymbols,
-        config: form.config || {},
+      if (editId) {
+        await fetchAPI(`/datasources/${editId}`, { method: 'PUT',
+          body: JSON.stringify({ priority: form.priority, test_symbols: testSymbols, config: form.config || {} }) })
+      } else {
+        if (!form.name || !form.type || !form.provider) { toast('名称/类型/Provider 必填', 'error'); return }
+        await fetchAPI('/datasources', { method: 'POST', body: JSON.stringify({
+          name: form.name, type: form.type, provider: form.provider,
+          config: form.config || {}, priority: form.priority,
+          supports_batch: form.supports_batch, test_symbols: testSymbols, enabled: true }) })
       }
-      await fetchAPI(`/datasources/${editId}`, { method: 'PUT', body: JSON.stringify(payload) })
-      setDialogOpen(false)
-      load()
-      toast('设置已保存', 'success')
-    } catch (e) {
-      toast(e instanceof Error ? e.message : '保存失败', 'error')
-    }
+      setDialogOpen(false); load(); toast(editId ? '设置已保存' : '已新增数据源', 'success')
+    } catch (e) { toast(e instanceof Error ? e.message : '保存失败', 'error') }
   }
 
   const toggleEnabled = async (source: DataSource) => {
@@ -166,6 +175,30 @@ export default function DataSourcesPage() {
     return acc
   }, {} as Record<string, DataSource[]>)
 
+  // 组内按当前顺序(API 已按 type,priority,id 排序)与相邻源交换优先级
+  const moveSource = async (source: DataSource, dir: -1 | 1) => {
+    const group = groupedSources[source.type] || []
+    const idx = group.findIndex(s => s.id === source.id)
+    const swap = group[idx + dir]
+    if (!swap) return
+    try {
+      await Promise.all([
+        fetchAPI(`/datasources/${source.id}`, { method: 'PUT', body: JSON.stringify({ priority: swap.priority }) }),
+        fetchAPI(`/datasources/${swap.id}`, { method: 'PUT', body: JSON.stringify({ priority: source.priority }) }),
+      ])
+      load()
+    } catch { toast('调整顺序失败', 'error') }
+  }
+
+  const deleteSource = async () => {
+    if (!editId) return
+    if (!window.confirm(`确定删除数据源「${form.name}」?`)) return
+    try {
+      await fetchAPI(`/datasources/${editId}`, { method: 'DELETE' })
+      setDialogOpen(false); load(); toast('已删除', 'success')
+    } catch (e) { toast(e instanceof Error ? e.message : '删除失败', 'error') }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -187,9 +220,13 @@ export default function DataSourcesPage() {
             <div className="flex items-center gap-2 mb-4">
               <Icon className={`w-4 h-4 ${color}`} />
               <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
-              <span className="text-[11px] text-muted-foreground ml-auto">
-                {groupedSources[type]?.length || 0} 个数据源
+              <span className="text-[11px] text-muted-foreground ml-auto mr-2">
+                {groupedSources[type]?.length || 0} 个
               </span>
+              <Button variant="ghost" size="sm" className="h-7 text-[11px]"
+                onClick={() => openDialog(undefined, type)}>
+                <Plus className="w-3.5 h-3.5 mr-1" />新增源
+              </Button>
             </div>
 
             {(!groupedSources[type] || groupedSources[type].length === 0) ? (
@@ -216,15 +253,31 @@ export default function DataSourcesPage() {
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-[11px] text-muted-foreground font-mono">{source.provider}</span>
                             <span className="text-[11px] text-muted-foreground">优先级: {source.priority}</span>
-                            {source.test_symbols?.length > 0 && (
-                              <span className="text-[10px] text-muted-foreground">
-                                测试: {source.test_symbols.slice(0, 3).join(', ')}{source.test_symbols.length > 3 ? '...' : ''}
+                            {source.engine_attached ? (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">已接入新引擎</span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">旧路·待迁移</span>
+                            )}
+                            {source.engine_attached && source.health && source.health.success_rate != null && (
+                              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                                  source.health.success_rate >= 0.95 ? 'bg-emerald-500'
+                                  : source.health.success_rate >= 0.8 ? 'bg-amber-500' : 'bg-red-500'}`} />
+                                成功率 {Math.round(source.health.success_rate * 100)}%
+                                {source.health.p50_latency_ms != null && ` · p50 ${source.health.p50_latency_ms}ms`}
+                                {source.health.last_error ? ` · 最近错误` : ''}
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, -1)} title="上移(提高优先级)">
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, 1)} title="下移">
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -252,14 +305,49 @@ export default function DataSourcesPage() {
         ))}
       </div>
 
-      {/* Edit Dialog - 只允许修改配置项 */}
+      {/* Edit Dialog - 编辑模式只允许修改配置项;新增模式含名称/类型/Provider */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>数据源设置 - {form.name}</DialogTitle>
-            <DialogDescription>{form.provider}</DialogDescription>
+            <DialogTitle>{editId ? `数据源设置 - ${form.name}` : '新增数据源'}</DialogTitle>
+            <DialogDescription>{editId ? form.provider : '选择类型与 Provider,并按需填写凭证'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
+            {!editId && (
+              <>
+                <div>
+                  <Label>名称</Label>
+                  <Input
+                    value={form.name}
+                    onChange={e => setForm({ ...form, name: e.target.value })}
+                    placeholder="如 Tushare K线"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>类型</Label>
+                    <Select value={form.type} onValueChange={val => setForm({ ...form, type: val })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择类型" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(DATASOURCE_TYPES).map(([key, { label }]) => (
+                          <SelectItem key={key} value={key}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Provider</Label>
+                    <Input
+                      value={form.provider}
+                      onChange={e => setForm({ ...form, provider: e.target.value })}
+                      placeholder="如 tushare"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>优先级 <span className="text-muted-foreground font-normal">(越小越高)</span></Label>
@@ -280,39 +368,30 @@ export default function DataSourcesPage() {
               />
             </div>
 
-            {/* 凭证类配置：按 provider 渲染对应字段 */}
-            {form.provider === 'tushare' && (
-              <div>
-                <Label>
-                  Tushare Token
-                  <span className="text-muted-foreground font-normal ml-1">
-                    (登录 tushare.pro 个人主页获取)
-                  </span>
+            {/* 凭证类配置:按 provider 动态渲染对应字段 */}
+            {(PROVIDER_CREDENTIAL_FIELDS[form.provider] || []).map(field => (
+              <div key={field.key}>
+                <Label>{field.label}
+                  {field.help && <span className="text-muted-foreground font-normal ml-1">({field.help})</span>}
                 </Label>
-                <Input
-                  type="password"
-                  value={(form.config?.token as string) || ''}
-                  onChange={e => setForm({ ...form, config: { ...form.config, token: e.target.value } })}
-                  placeholder="粘贴 token,留空则从环境变量 TUSHARE_TOKEN 读取"
-                />
+                <div className="relative">
+                  <Input
+                    type={field.secret && !secretVisible ? 'password' : 'text'}
+                    value={(form.config?.[field.key] as string) || ''}
+                    onChange={e => setForm({ ...form, config: { ...form.config, [field.key]: e.target.value } })}
+                    placeholder={field.placeholder}
+                    className={field.secret ? 'pr-10 font-mono' : 'font-mono'}
+                  />
+                  {field.secret && (
+                    <Button type="button" variant="ghost" size="icon"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                      onClick={() => setSecretVisible(!secretVisible)}>
+                      {secretVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  )}
+                </div>
               </div>
-            )}
-            {form.provider === 'xueqiu' && form.type === 'news' && (
-              <div>
-                <Label>
-                  雪球 Cookies
-                  <span className="text-muted-foreground font-normal ml-1">
-                    (浏览器开发者工具 → Network → 复制完整 cookie 字符串)
-                  </span>
-                </Label>
-                <Input
-                  type="password"
-                  value={(form.config?.cookies as string) || ''}
-                  onChange={e => setForm({ ...form, config: { ...form.config, cookies: e.target.value } })}
-                  placeholder="xq_a_token=...; xq_r_token=...; ..."
-                />
-              </div>
-            )}
+            ))}
 
             {/* 高级:完整 JSON 编辑(只读形式,展开后可编辑) */}
             {Object.keys(form.config || {}).length > 0 && (
@@ -335,9 +414,16 @@ export default function DataSourcesPage() {
               </details>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setDialogOpen(false)}>取消</Button>
-              <Button onClick={saveSource}>保存</Button>
+            <div className="flex justify-between gap-2 pt-2">
+              {editId ? (
+                <Button variant="ghost" className="text-red-500 hover:text-red-600" onClick={deleteSource}>
+                  <Trash2 className="w-4 h-4 mr-1" />删除
+                </Button>
+              ) : <span />}
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setDialogOpen(false)}>取消</Button>
+                <Button onClick={saveSource}>{editId ? '保存' : '新增'}</Button>
+              </div>
             </div>
           </div>
         </DialogContent>

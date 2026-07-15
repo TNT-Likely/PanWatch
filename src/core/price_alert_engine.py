@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.collectors.kline_collector import KlineCollector, kline_source
 from src.core.notifier import NotifierManager
-from src.core.providers import ProviderRequest, get_quote_orchestrator
+from src.core.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
 from src.web.database import SessionLocal
 from src.web.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
@@ -116,19 +116,13 @@ class PriceAlertEngine:
         for s in stocks:
             grouped.setdefault(_to_market(s.market), []).append(s)
 
-        orch = get_quote_orchestrator()
         out: dict[tuple[str, str], dict] = {}
         for market, items in grouped.items():
             symbols = [s.symbol for s in items]
             if not symbols:
                 continue
-            resp = await orch.fetch(
-                ProviderRequest(symbols=tuple(symbols), market=market.value)
-            )
-            if not resp.success:
-                logger.error(f"价格提醒批量拉行情失败 {market.value}: {resp.error}")
-                continue
-            by_symbol = {str(r.get("symbol")): r for r in (resp.data or [])}
+            rows = await asyncio.to_thread(md_quote_rows, symbols, market.value)
+            by_symbol = {str(r.get("symbol")): r for r in rows}
             for sym in symbols:
                 q = by_symbol.get(sym)
                 if q:

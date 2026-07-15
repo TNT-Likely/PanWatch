@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.core.providers import ProviderRequest, get_quote_orchestrator
+from src.core.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
 from src.web.database import SessionLocal
 from src.web.models import (
@@ -260,17 +260,12 @@ class PaperTradingEngine:
             mc = _to_market(market)
             grouped.setdefault(mc, []).append(symbol)
 
-        orch = get_quote_orchestrator()
         out: dict[tuple[str, str], dict] = {}
         for market, symbols in grouped.items():
             if not symbols:
                 continue
-            req = ProviderRequest(symbols=tuple(symbols), market=market.value)
-            resp = orch.fetch_sync(req)
-            if not resp.success:
-                logger.error(f"[模拟盘] 拉行情失败 {market.value}: {resp.error}")
-                continue
-            by_symbol = {str(r.get("symbol")): r for r in (resp.data or [])}
+            rows = md_quote_rows(symbols, market.value)
+            by_symbol = {str(r.get("symbol")): r for r in rows}
             for sym in symbols:
                 q = by_symbol.get(sym)
                 if q:
@@ -678,13 +673,9 @@ class PaperTradingEngine:
             if not pos:
                 return {"ok": False, "error": "持仓不存在或已平仓"}
 
-            # 获取最新报价(走 orchestrator,支持故障转移)
+            # 获取最新报价(走 flag 门控的 md_quote_rows,支持故障转移)
             mc = _to_market(pos.stock_market)
-            orch = get_quote_orchestrator()
-            resp = orch.fetch_sync(
-                ProviderRequest(symbols=(pos.stock_symbol,), market=mc.value)
-            )
-            rows = resp.data if resp.success and resp.data else []
+            rows = md_quote_rows([pos.stock_symbol], mc.value)
 
             exit_price = pos.current_price or pos.entry_price
             if rows:

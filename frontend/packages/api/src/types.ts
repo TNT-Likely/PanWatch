@@ -23,6 +23,14 @@ export interface NotifyChannel {
   is_default: boolean
 }
 
+export interface SourceHealth {
+  count: number
+  success_rate: number | null
+  p50_latency_ms: number | null
+  last_error?: string
+  last_success_at?: number
+}
+
 export interface DataSource {
   id: number
   name: string
@@ -33,4 +41,6 @@ export interface DataSource {
   priority: number
   supports_batch: boolean
   test_symbols: string[]
+  engine_attached?: boolean
+  health?: SourceHealth | null
 }

@@ -1,7 +1,9 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.core.providers import ProviderRequest, get_quote_orchestrator
+from src.core.marketdata_client import md_quote_rows
 from src.models.market import MarketCode
 
 router = APIRouter()
@@ -68,13 +70,10 @@ def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> d
 async def get_quote(symbol: str, market: str = "CN"):
     """获取单只股票实时行情"""
     market_code = _parse_market(market)
-    orch = get_quote_orchestrator()
-    resp = await orch.fetch(
-        ProviderRequest(symbols=(symbol,), market=market_code.value)
-    )
-    if not resp.success or resp.is_empty:
+    rows = await asyncio.to_thread(md_quote_rows, [symbol], market_code.value)
+    if not rows:
         raise HTTPException(404, "行情不存在")
-    quote_map = {item.get("symbol"): item for item in resp.data}
+    quote_map = {item.get("symbol"): item for item in rows}
     quote = quote_map.get(symbol)
     if not quote:
         raise HTTPException(404, "行情不存在")
@@ -92,16 +91,10 @@ async def get_quotes_batch(payload: QuoteBatchRequest):
         market_code = _parse_market(item.market)
         market_items.setdefault(market_code, []).append(item.symbol)
 
-    orch = get_quote_orchestrator()
     quotes_by_market: dict[MarketCode, dict[str, dict]] = {}
     for market_code, symbols in market_items.items():
-        resp = await orch.fetch(
-            ProviderRequest(symbols=tuple(symbols), market=market_code.value)
-        )
-        if resp.success and resp.data:
-            quotes_by_market[market_code] = {item.get("symbol"): item for item in resp.data}
-        else:
-            quotes_by_market[market_code] = {}
+        rows = await asyncio.to_thread(md_quote_rows, symbols, market_code.value)
+        quotes_by_market[market_code] = {item.get("symbol"): item for item in rows}
 
     results = []
     for item in payload.items:

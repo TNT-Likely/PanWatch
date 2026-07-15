@@ -31,3 +31,6 @@ xhtml2pdf>=0.2.17
 # load_ohlcv/get_graph_args/create_initial_state)的符号与签名跨 0.2.5→0.3.0 全部稳定,
 # result_mapper 读的 AgentState 字段全部保留 —— 零代码改动升级(评估见 issue #68)。
 tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.3.0
+
+# 本仓内独立行情数据包(editable 本地安装;发 PyPI 前不占外部依赖)
+-e ./packages/marketdata

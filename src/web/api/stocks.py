@@ -18,7 +18,7 @@ from src.web.models import (
     PriceAlertHit,
 )
 from src.web.stock_list import search_stocks, refresh_stock_list
-from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
+from src.core.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
 from src.core.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 
@@ -197,13 +197,13 @@ def get_quotes(db: Session = Depends(get_db)):
     quotes = {}
     for market, stock_list in market_stocks.items():
         try:
-            market_code = MarketCode(market)
+            MarketCode(market)  # 校验市场合法
         except ValueError:
             continue
 
-        symbols = [_tencent_symbol(s.symbol, market_code) for s in stock_list]
+        symbols = [s.symbol for s in stock_list]   # 原始代码,md 内部按市场格式化
         try:
-            items = _fetch_tencent_quotes(symbols)
+            items = md_quote_rows(symbols, market)
             for item in items:
                 quotes[item["symbol"]] = {
                     "current_price": item["current_price"],

@@ -1,0 +1,114 @@
+"""PanWatch ↔ marketdata 接线:DB 配置端口 + 单例 + flag 门控的报价兼容层。
+
+- DbConfigProvider:把 DataSource 表映射成 marketdata 的 SourceConfig(实现 ConfigProvider 端口)。
+- get_market_data():进程级单例(无状态 vendor + 现查 DB 的配置端口)。
+- md_quote_rows():flag 门控。开→新包 MarketData.quotes 转 dict;关→旧 QuoteOrchestrator。
+  两条路径都返回 list[dict],键与旧 orchestrator 输出一致,消费方零感知切换。
+"""
+
+from __future__ import annotations
+
+import logging
+
+from marketdata import MarketData, Quote, SourceConfig
+
+logger = logging.getLogger(__name__)
+
+
+class DbConfigProvider:
+    """ConfigProvider 端口实现:从 DataSource 表按 priority 读某类型的启用源。"""
+
+    def _query_rows(self, datatype: str) -> list:
+        from src.web.database import SessionLocal
+        from src.web.models import DataSource
+
+        db = SessionLocal()
+        try:
+            return (
+                db.query(DataSource)
+                .filter(DataSource.type == datatype, DataSource.enabled == True)  # noqa: E712
+                .order_by(DataSource.priority)
+                .all()
+            )
+        finally:
+            db.close()
+
+    def sources_for(self, datatype: str, market: str | None) -> list[SourceConfig]:
+        return [
+            SourceConfig(
+                vendor=r.provider,
+                priority=r.priority,
+                enabled=True,
+                config=r.config or {},
+                supports_batch=bool(r.supports_batch),
+            )
+            for r in self._query_rows(datatype)
+        ]
+
+
+_md: MarketData | None = None
+
+
+def get_market_data() -> MarketData:
+    """进程级单例。vendor 无状态、配置现查 DB,故无需失效钩子。"""
+    global _md
+    if _md is None:
+        _md = MarketData(config=DbConfigProvider())
+    return _md
+
+
+def reset_market_data() -> None:
+    """测试或热重载时重置单例。"""
+    global _md
+    _md = None
+
+
+def _use_marketdata() -> bool:
+    """读灰度开关(独立函数便于测试 monkeypatch)。"""
+    from src.config import Settings
+
+    return bool(Settings().use_marketdata)
+
+
+def _quote_to_row(q: Quote) -> dict:
+    """marketdata.Quote → 旧 orchestrator 同形 dict。"""
+    return {
+        "symbol": q.symbol,
+        "name": q.name,
+        "market": q.market,
+        "current_price": q.current_price,
+        "change_pct": q.change_pct,
+        "change_amount": q.change_amount,
+        "prev_close": q.prev_close,
+        "open_price": q.open_price,
+        "high_price": q.high_price,
+        "low_price": q.low_price,
+        "volume": q.volume,
+        "turnover": q.turnover,
+        "turnover_rate": q.turnover_rate,
+        "volume_ratio": q.volume_ratio,
+        "pe_ratio": q.pe_ratio,
+        "circulating_market_value": q.circulating_market_value,
+        "total_market_value": q.total_market_value,
+    }
+
+
+def md_quote_rows(symbols: list[str], market: str) -> list[dict]:
+    """Flag 门控的批量报价,返回 list[dict](与旧 orchestrator 输出同形)。
+
+    同步函数;async 调用方用 `await asyncio.to_thread(md_quote_rows, ...)`。
+    """
+    syms = list(symbols)
+    if not syms:
+        return []
+    if _use_marketdata():
+        quotes = get_market_data().quotes(syms, market=market)
+        return [_quote_to_row(q) for q in quotes]
+    # 旧路径:保持与迁移前完全一致
+    from src.core.providers import ProviderRequest, get_quote_orchestrator
+
+    resp = get_quote_orchestrator().fetch_sync(ProviderRequest(symbols=tuple(syms), market=market))
+    if not resp.success:
+        logger.error(f"[md_quote_rows] 拉行情失败 market={market}: {resp.error}")
+        return []
+    return resp.data or []
