@@ -17,5 +17,5 @@ def test_to_response_includes_health_and_engine_attached(monkeypatch):
                            config={}, enabled=True, priority=1,
                            supports_batch=False, test_symbols=[])
     out2 = ds._to_response(row2, health_map)
-    assert out2["engine_attached"] is False         # kline 尚未接入
+    assert out2["engine_attached"] is True          # kline 已接入(Phase2 Task2)
     assert out2["health"] is None                    # 无该 provider 指标 → null,不编数据

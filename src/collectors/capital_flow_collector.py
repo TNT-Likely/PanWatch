@@ -55,6 +55,18 @@ def _safe_float(value):
         return 0.0
 
 
+def _use_marketdata_cf() -> bool:
+    """读灰度开关(独立函数便于测试 monkeypatch)。"""
+    from src.config import Settings
+    return bool(Settings().use_marketdata)
+
+
+def get_market_data():
+    """惰性导入,避免模块加载时的循环依赖(便于测试 monkeypatch)。"""
+    from src.core.marketdata_client import get_market_data as _g
+    return _g()
+
+
 class CapitalFlowCollector:
     """资金流向采集器"""
 
@@ -68,6 +80,25 @@ class CapitalFlowCollector:
         if cached is not None:
             return cached
 
+        if _use_marketdata_cf():
+            md_cf = get_market_data().capital_flow(symbol, market=self.market.value)
+            if md_cf is None:
+                return None
+            capital_flow = CapitalFlow(
+                symbol=md_cf.symbol,
+                name=md_cf.name,
+                main_net_inflow=md_cf.main_net_inflow,
+                main_net_inflow_pct=md_cf.main_net_inflow_pct,
+                super_net_inflow=md_cf.super_net_inflow,
+                big_net_inflow=md_cf.big_net_inflow,
+                mid_net_inflow=md_cf.mid_net_inflow,
+                small_net_inflow=md_cf.small_net_inflow,
+                main_net_5d=md_cf.main_net_5d,
+            )
+            _FLOW_CACHE.set(cache_key, capital_flow)
+            return capital_flow
+
+        # ↓↓↓ flag 关:原逻辑一字不动 ↓↓↓
         secid = _get_eastmoney_secid(symbol, self.market)
 
         params = {

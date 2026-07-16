@@ -23,6 +23,18 @@ TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 
 
+def _use_marketdata_kline() -> bool:
+    """kline 单独一个 flag,便于与 quote 分别灰度。"""
+    from src.config import Settings
+    return bool(Settings().use_marketdata)
+
+
+def get_market_data():
+    """惰性 import,避免包未装/循环 import 影响本模块加载。"""
+    from src.core.marketdata_client import get_market_data as _g
+    return _g()
+
+
 _STOOQ_CACHE: dict[str, tuple[float, list["KlineData"]]] = {}
 _STOOQ_CACHE_TTL_SECONDS = 300
 _EASTMONEY_CACHE: dict[str, tuple[float, int, list["KlineData"]]] = {}
@@ -772,7 +784,20 @@ class KlineCollector:
         return None
 
     def _fetch_all_sources(self, symbol: str, days: int) -> list[KlineData]:
-        """tencent → stooq(US) / eastmoney(CN/HK) 链路取数(不含缓存/合并逻辑)。"""
+        """tencent → stooq(US) / eastmoney(CN/HK) 链路取数(不含缓存/合并逻辑)。
+
+        flag 开:走 marketdata 新包(Engine 按 DataSource 优先级 + min_count 取数);
+        flag 关:原逻辑一字不动。
+        """
+        if _use_marketdata_kline():
+            # 新包:Engine 按 DataSource 优先级 + min_count(条数不足则换源/取最长)
+            need = (max(10, min(days, 30)) if self.market == MarketCode.US
+                    else (max(120, int(days * 0.6)) if self.market in (MarketCode.CN, MarketCode.HK) else 1))
+            want = min(max(days, 3000), 20000) if self.market in (MarketCode.CN, MarketCode.HK) else days
+            bars = get_market_data().klines(symbol, market=self.market.value, days=want, min_count=need)
+            return [KlineData(date=b.date, open=b.open, close=b.close, high=b.high,
+                              low=b.low, volume=b.volume) for b in bars]
+        # ↓↓↓ flag 关:原逻辑一字不动 ↓↓↓
         klines = _fetch_tencent_klines(symbol, self.market, days)
 
         # Tencent 对部分美股返回的 day 数据异常偏少（仅 1-2 条），使用 Stooq 回退。

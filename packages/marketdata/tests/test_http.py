@@ -31,6 +31,13 @@ class _FailClient(_OkClient):
         raise httpx.ConnectError("boom")
 
 
+class _CapturingClient(_OkClient):
+    captured_kwargs: dict = {}
+
+    def __init__(self, **kw):
+        _CapturingClient.captured_kwargs = kw
+
+
 def test_market_get_returns_text(monkeypatch):
     monkeypatch.setattr(mh.httpx, "Client", _OkClient)
     assert mh.market_get("http://x", host_key="t4a", retries=0) == "hello"
@@ -40,6 +47,18 @@ def test_market_get_returns_none_on_failure(monkeypatch):
     monkeypatch.setattr(mh.httpx, "Client", _FailClient)
     monkeypatch.setattr(mh.time, "sleep", lambda *_: None)
     assert mh.market_get("http://x", host_key="t4b", retries=1) is None
+
+
+def test_market_get_passes_proxy_when_set(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
+    mh.market_get("http://x", host_key="t4d", retries=0, proxy="http://p:1")
+    assert _CapturingClient.captured_kwargs.get("proxy") == "http://p:1"
+
+
+def test_market_get_omits_proxy_when_not_set(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
+    mh.market_get("http://x", host_key="t4e", retries=0)
+    assert "proxy" not in _CapturingClient.captured_kwargs
 
 
 def test_throttle_sleeps_on_second_call(monkeypatch):

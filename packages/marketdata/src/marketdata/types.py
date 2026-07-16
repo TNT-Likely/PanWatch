@@ -49,6 +49,71 @@ class Quote:
 
 
 @dataclass
+class Bar:
+    """标准化日K(对齐 PanWatch KlineData:date/open/close/high/low/volume)。"""
+
+    date: str
+    open: float
+    close: float
+    high: float
+    low: float
+    volume: float = 0.0
+
+
+@dataclass
+class CapitalFlow:
+    """资金流向(对齐 PanWatch src/collectors/capital_flow_collector.CapitalFlow)。"""
+
+    symbol: str
+    name: str
+    main_net_inflow: float | None = None      # 主力净流入
+    main_net_inflow_pct: float | None = None   # 主力净流入占比
+    super_net_inflow: float | None = None      # 超大单净流入
+    big_net_inflow: float | None = None        # 大单净流入
+    mid_net_inflow: float | None = None        # 中单净流入
+    small_net_inflow: float | None = None      # 小单净流入
+    main_net_5d: float | None = None           # 5日主力净流入
+
+
+@dataclass(frozen=True)
+class HotStock:
+    """热门/异动股(对齐 PanWatch src/collectors/discovery_collector.HotStock)。"""
+
+    symbol: str
+    market: str
+    name: str
+    price: float | None
+    change_pct: float | None
+    turnover: float | None
+    volume: float | None
+
+
+@dataclass(frozen=True)
+class HotBoard:
+    """热门板块(对齐 PanWatch src/collectors/discovery_collector.HotBoard)。"""
+
+    code: str
+    name: str
+    change_pct: float | None
+    change_amount: float | None
+    turnover: float | None
+
+
+@dataclass
+class EventItem:
+    """结构化事件(对齐 PanWatch src/collectors/events_collector.EventItem)。"""
+
+    source: str
+    external_id: str
+    event_type: str
+    title: str
+    publish_time: datetime
+    symbols: list[str]
+    importance: int
+    url: str
+
+
+@dataclass
 class Response:
     """Engine 返回:承载 payload + 命中的 vendor/延迟。"""
 

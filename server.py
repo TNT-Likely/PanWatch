@@ -399,6 +399,26 @@ def seed_data_sources():
             "test_symbols": ["601127", "600519", "300750"],
         },
         {
+            "name": "东方财富 K线",
+            "type": "kline",
+            "provider": "eastmoney",
+            "config": {"description": "东方财富日线,A股/港股长历史兜底(免 key)。"},
+            "enabled": True,
+            "priority": 5,   # 腾讯(0)之后、Tushare(10)之前 → CN/HK 兜底
+            "supports_batch": False,
+            "test_symbols": ["600519", "00700"],
+        },
+        {
+            "name": "Stooq K线",
+            "type": "kline",
+            "provider": "stooq",
+            "config": {"description": "Stooq 美股日线兜底(免 key)。"},
+            "enabled": True,
+            "priority": 15,  # US 兜底(腾讯 0 之后)
+            "supports_batch": False,
+            "test_symbols": ["AAPL"],
+        },
+        {
             "name": "Tushare K线",
             "type": "kline",
             "provider": "tushare",

@@ -69,8 +69,13 @@ def market_get(
     trust_env: bool = False,
     follow_redirects: bool = True,
     verify: bool = True,
+    proxy: str | None = None,
 ) -> Any | None:
-    """直连 + 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源日志。"""
+    """直连 + 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源日志。
+
+    proxy: 显式代理(如市场扫描场景需要走代理);仅在给了值时传给 httpx.Client,
+    避免与 trust_env 冲突(不传 proxy 参数时 httpx 行为与此前完全一致)。
+    """
     last_err: Any = None
     for attempt in range(max(1, retries + 1)):
         throttle(host_key, min_interval_s)
@@ -81,6 +86,7 @@ def market_get(
                 headers=headers,
                 trust_env=trust_env,
                 verify=verify,
+                **({"proxy": proxy} if proxy else {}),
             ) as client:
                 resp = client.get(url, params=params)
                 if raise_for_status:

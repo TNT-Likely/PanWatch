@@ -30,7 +30,7 @@ class Engine:
         self.cache = cache
         self.default_ttl = default_ttl
 
-    def fetch(self, req: Request, *, cache_ttl_sec: float | None = None) -> Response:
+    def fetch(self, req: Request, *, cache_ttl_sec: float | None = None, min_count: int = 1) -> Response:
         key = req.cache_key(self.datatype)
         cached = self.cache.get(key)
         if cached is not None:
@@ -41,6 +41,7 @@ class Engine:
         sources = sorted(self.config.sources_for(self.datatype, market), key=lambda s: s.priority)
 
         last_err = ""
+        best: Response | None = None
         for src in sources:
             if not src.enabled:
                 continue
@@ -52,7 +53,8 @@ class Engine:
 
             t0 = time.monotonic()
             try:
-                data = vendor.fetch(syms, src.config)
+                call_config = {**(src.config or {}), "days": req.limit, **dict(req.extra)}
+                data = vendor.fetch(syms, call_config)
             except Exception as e:
                 latency = int((time.monotonic() - t0) * 1000)
                 self.metrics.record(vendor=src.vendor, datatype=self.datatype, market=market,
@@ -66,12 +68,20 @@ class Engine:
                 self.metrics.record(vendor=src.vendor, datatype=self.datatype, market=market,
                                     ok=True, count=len(data), latency_ms=latency)
                 resp = Response(ok=True, data=data, vendor=src.vendor, latency_ms=latency)
-                ttl = cache_ttl_sec if cache_ttl_sec is not None else self.default_ttl
-                self.cache.set(key, resp, ttl_sec=ttl)
-                return resp
+                if len(data) >= min_count:
+                    ttl = cache_ttl_sec if cache_ttl_sec is not None else self.default_ttl
+                    self.cache.set(key, resp, ttl_sec=ttl)
+                    return resp
+                # 非空但不足:记为候选,继续试更优
+                if best is None or len(data) > len(best.data):
+                    best = resp
+            else:
+                self.metrics.record(vendor=src.vendor, datatype=self.datatype, market=market,
+                                    ok=False, count=0, latency_ms=latency, error="empty")
+                last_err = "empty"
 
-            self.metrics.record(vendor=src.vendor, datatype=self.datatype, market=market,
-                                ok=False, count=0, latency_ms=latency, error="empty")
-            last_err = "empty"
-
+        if best is not None:
+            ttl = cache_ttl_sec if cache_ttl_sec is not None else self.default_ttl
+            self.cache.set(key, best, ttl_sec=ttl)
+            return best
         return Response(ok=False, data=None, error=last_err or "no enabled provider")

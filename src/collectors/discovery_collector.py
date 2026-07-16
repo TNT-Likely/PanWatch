@@ -31,6 +31,20 @@ class HotBoard:
     turnover: float | None
 
 
+def _use_marketdata_discovery() -> bool:
+    """读灰度开关(独立函数便于测试 monkeypatch)。"""
+    from src.config import Settings
+
+    return bool(Settings().use_marketdata)
+
+
+def get_market_data():
+    """惰性导入,避免模块加载时的循环依赖(便于测试 monkeypatch)。"""
+    from src.core.marketdata_client import get_market_data as _g
+
+    return _g()
+
+
 class EastMoneyDiscoveryCollector:
     """Discovery ranks via EastMoney push2 (CN/HK/US)."""
 
@@ -59,6 +73,30 @@ class EastMoneyDiscoveryCollector:
         mode: str = "turnover",
         limit: int = 20,
     ) -> list[HotStock]:
+        if _use_marketdata_discovery():
+            import asyncio as _aio
+
+            pkg_items = await _aio.to_thread(
+                get_market_data().hot_stocks,
+                market=market,
+                mode=mode,
+                limit=limit,
+                proxy=self.proxy,
+            )
+            return [
+                HotStock(
+                    symbol=it.symbol,
+                    market=it.market,
+                    name=it.name,
+                    price=it.price,
+                    change_pct=it.change_pct,
+                    turnover=it.turnover,
+                    volume=it.volume,
+                )
+                for it in pkg_items
+            ]
+
+        # ↓↓↓ flag 关:原 async 逻辑一字不动 ↓↓↓
         market = (market or "CN").upper()
 
         fid = "f6" if mode == "turnover" else "f3"
@@ -111,6 +149,28 @@ class EastMoneyDiscoveryCollector:
         mode: str = "gainers",
         limit: int = 12,
     ) -> list[HotBoard]:
+        if _use_marketdata_discovery():
+            import asyncio as _aio
+
+            pkg_items = await _aio.to_thread(
+                get_market_data().hot_boards,
+                market=market,
+                mode=mode,
+                limit=limit,
+                proxy=self.proxy,
+            )
+            return [
+                HotBoard(
+                    code=it.code,
+                    name=it.name,
+                    change_pct=it.change_pct,
+                    change_amount=it.change_amount,
+                    turnover=it.turnover,
+                )
+                for it in pkg_items
+            ]
+
+        # ↓↓↓ flag 关:原 async 逻辑一字不动 ↓↓↓
         if market != "CN":
             return []
 
@@ -155,6 +215,30 @@ class EastMoneyDiscoveryCollector:
         mode: str = "gainers",
         limit: int = 20,
     ) -> list[HotStock]:
+        if _use_marketdata_discovery():
+            import asyncio as _aio
+
+            pkg_items = await _aio.to_thread(
+                get_market_data().board_stocks,
+                board_code=board_code,
+                mode=mode,
+                limit=limit,
+                proxy=self.proxy,
+            )
+            return [
+                HotStock(
+                    symbol=it.symbol,
+                    market=it.market,
+                    name=it.name,
+                    price=it.price,
+                    change_pct=it.change_pct,
+                    turnover=it.turnover,
+                    volume=it.volume,
+                )
+                for it in pkg_items
+            ]
+
+        # ↓↓↓ flag 关:原 async 逻辑一字不动 ↓↓↓
         code = (board_code or "").strip()
         if not code:
             return []

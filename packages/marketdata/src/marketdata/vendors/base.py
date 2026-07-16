@@ -23,3 +23,21 @@ class QuoteVendor(Vendor):
     """报价 vendor:fetch 返回 list[Quote]。"""
 
     pass
+
+
+class KlineVendor(Vendor):
+    """K 线 vendor:fetch 返回 list[Bar]。单 symbol。"""
+
+    pass
+
+
+class CapitalFlowVendor(Vendor):
+    """资金流向 vendor:fetch 返回 list[CapitalFlow]。单 symbol。"""
+
+    pass
+
+
+class EventsVendor(Vendor):
+    """事件 vendor:fetch 返回 list[EventItem]。批量(多 symbol)。"""
+
+    pass

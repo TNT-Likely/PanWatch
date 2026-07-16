@@ -82,3 +82,56 @@ def test_priority_resort_when_config_unsorted():
                 [SourceConfig(vendor="b", priority=2), SourceConfig(vendor="a", priority=1)])
     r = e.fetch(_req())
     assert r.ok and r.vendor == "a"
+
+
+def test_min_count_prefers_first_sufficient():
+    e = _engine({"a": FakeVendor("a", "ok"), "b": FakeVendor("b", "ok")},
+                [SourceConfig(vendor="a", priority=1), SourceConfig(vendor="b", priority=2)])
+    # FakeVendor "ok" 返回 1 条;min_count=2 → a 不足 → 试 b → b 也 1 条 → 都不足 → 取最长(并列取先到的 a)
+    r = e.fetch(Request(symbols=("600519",), market="CN"), min_count=2)
+    assert r.ok and len(r.data) == 1  # 返回了(最长的),不因不足而失败
+
+
+def test_min_count_returns_first_meeting_threshold():
+    class MultiVendor:
+        def __init__(self, name, n): self.name=name; self.supports_markets=set(); self._n=n
+        def fetch(self, symbols, config): return [{"i": i} for i in range(self._n)]
+    e = _engine({"a": MultiVendor("a", 1), "b": MultiVendor("b", 5)},
+                [SourceConfig(vendor="a", priority=1), SourceConfig(vendor="b", priority=2)])
+    r = e.fetch(Request(symbols=("x",), market="CN"), min_count=3)
+    assert r.ok and r.vendor == "b" and len(r.data) == 5  # a 不足(1<3)→ b 足(5≥3)
+
+
+def test_min_count_default_one_unchanged():
+    e = _engine({"a": FakeVendor("a", "ok")}, [SourceConfig(vendor="a", priority=1)])
+    r = e.fetch(Request(symbols=("x",), market="CN"))  # 默认 min_count=1
+    assert r.ok and r.vendor == "a"
+
+
+def test_engine_passes_request_limit_as_days_to_vendor():
+    seen = {}
+    class DaysVendor:
+        name = "d"
+        supports_markets: set = set()
+        def fetch(self, symbols, config):
+            seen["days"] = config.get("days")
+            return [{"x": 1}]
+    e = _engine({"d": DaysVendor()}, [SourceConfig(vendor="d", priority=1)])
+    e.fetch(Request(symbols=("x",), market="CN", limit=250))
+    assert seen["days"] == 250
+
+
+def test_engine_passes_request_extra_to_vendor_config():
+    # 守护测试:events 等 vendor 需要 req.extra(如 since_days)透传进 call_config。
+    seen = {}
+    class ExtraVendor:
+        name = "e"
+        supports_markets: set = set()
+        def fetch(self, symbols, config):
+            seen["since_days"] = config.get("since_days")
+            seen["days"] = config.get("days")
+            return [{"x": 1}]
+    e = _engine({"e": ExtraVendor()}, [SourceConfig(vendor="e", priority=1)])
+    e.fetch(Request(symbols=("x",), market="CN", limit=99, extra=(("since_days", 30),)))
+    assert seen["since_days"] == 30
+    assert seen["days"] == 99  # extra 透传不应破坏原有 days 注入

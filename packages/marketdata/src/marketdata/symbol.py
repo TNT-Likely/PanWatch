@@ -62,3 +62,10 @@ class Symbol:
         if self.market == Market.HK:
             return f"{int(self.code):04d}.HK" if self.code.isdigit() else f"{self.code}.HK"
         return self.code  # US 直接用;CN 由 vendor.supports_markets 拦截,不会走到这
+
+    def to_eastmoney_secid(self) -> str:
+        if self.market == Market.HK:
+            return f"116.{self.code}"
+        if self.market == Market.US:
+            return f"105.{self.code}"
+        return f"{'1' if _cn_exchange(self.code) == 'sh' else '0'}.{self.code}"

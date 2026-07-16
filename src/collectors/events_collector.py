@@ -77,6 +77,18 @@ def fetch_announcement_fulltext(
         return ""
 
 
+def _use_marketdata_events() -> bool:
+    """读灰度开关(独立函数便于测试 monkeypatch)。"""
+    from src.config import Settings
+    return bool(Settings().use_marketdata)
+
+
+def get_market_data():
+    """惰性导入,避免模块加载时的循环依赖(便于测试 monkeypatch)。"""
+    from src.core.marketdata_client import get_market_data as _g
+    return _g()
+
+
 class EastMoneyEventsCollector:
     """A-share event collector based on EastMoney notices.
 
@@ -127,6 +139,62 @@ class EastMoneyEventsCollector:
         since: datetime | None = None,
         page_size: int = 50,
     ) -> list[EventItem]:
+        if _use_marketdata_events():
+            import asyncio as _asyncio
+
+            symbols_list = list(symbols or [])
+            if not symbols_list:
+                return []
+
+            # since 语义对齐:md.events 按 since_days 天窗过滤,原方法按 since 精确datetime过滤。
+            # 用 since 反推一个足够宽松的 since_days,取回数据后再用原 since 精确重过滤,
+            # 使最终结果与 flag-off 路径的 since 截止语义完全一致。
+            if since is not None:
+                delta_days = (datetime.now() - since).days
+                since_days = max(1, delta_days + 1)
+            else:
+                # 原逻辑 since=None 时不按时间过滤;用足够大的窗口近似同等效果
+                # (实际结果仍受上游 API page_size 条数限制,不会引入额外老旧数据)。
+                since_days = 3650
+
+            md_items = await _asyncio.to_thread(
+                get_market_data().events,
+                symbols_list,
+                market="CN",
+                since_days=since_days,
+            )
+
+            result: list[EventItem] = []
+            for it in md_items:
+                if since and it.publish_time < since:
+                    continue
+                result.append(
+                    EventItem(
+                        source=it.source,
+                        external_id=it.external_id,
+                        event_type=it.event_type,
+                        title=it.title,
+                        publish_time=it.publish_time,
+                        symbols=it.symbols,
+                        importance=it.importance,
+                        url=it.url,
+                    )
+                )
+
+            result.sort(key=lambda x: (x.publish_time, x.importance), reverse=True)
+
+            seen: set[tuple[str, str]] = set()
+            uniq: list[EventItem] = []
+            for ev in result:
+                key = (ev.source, ev.external_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                uniq.append(ev)
+
+            return uniq
+
+        # ↓↓↓ flag 关:原 async 逻辑一字不动 ↓↓↓
         if not symbols:
             return []
 
