@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     # 代理
     http_proxy: str = ""
 
-    # marketdata 包灰度开关:1/true 时行情走新 marketdata 包(默认走旧 orchestrator)
-    use_marketdata: bool = False
+    # marketdata 包开关:默认开(行情走新 marketdata 包);置 USE_MARKETDATA=0 回退旧 orchestrator
+    use_marketdata: bool = True
 
     # 通知策略（可通过 UI 的“系统设置”覆盖）
     # 静默时间段（本地时区），格式: HH:MM-HH:MM，空为关闭；跨夜示例: 23:00-07:00

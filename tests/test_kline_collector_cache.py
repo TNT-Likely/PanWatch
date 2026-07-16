@@ -32,6 +32,7 @@ def _mk_bars(n: int) -> list[kline_collector.KlineData]:
 
 def test_get_klines_caches_within_ttl(monkeypatch):
     """同一只 K线在 TTL 内应命中内存缓存,不重复联网(避免批量突发触发限流)。"""
+    monkeypatch.setattr(kline_collector, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
     bars = _mk_bars(130)
 
@@ -51,6 +52,7 @@ def test_get_klines_caches_within_ttl(monkeypatch):
 
 def test_cache_serves_shorter_request_from_longer_entry(monkeypatch):
     """缓存里已有较长序列时,更短的请求应直接切片返回,不再联网。"""
+    monkeypatch.setattr(kline_collector, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
     bars = _mk_bars(130)
 
@@ -72,6 +74,7 @@ def test_cache_serves_shorter_request_from_longer_entry(monkeypatch):
 def test_empty_result_negative_cached_then_retries(monkeypatch):
     """取数为空时进入短冷却:冷却窗口内不再联网(挡住并发/相邻消费者重复打爆源);
     冷却过后仍会重试,不把瞬时故障永久固化为空。"""
+    monkeypatch.setattr(kline_collector, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
 
     def fake_fetch(symbol, market, days):
@@ -113,6 +116,7 @@ def test_get_kline_summary_fetches_klines_once(monkeypatch):
 
 def test_failure_log_includes_caller_source(monkeypatch, caplog):
     """失败日志应带上调用来源 [src=...],便于定位是哪个调度任务在刷屏。"""
+    monkeypatch.setattr(kline_collector, "_use_marketdata_kline", lambda: False)
     monkeypatch.setattr(kline_collector, "_throttle_tencent", lambda: None)
     monkeypatch.setattr(kline_collector.time, "sleep", lambda *_: None)
     monkeypatch.setattr(kline_collector, "_fetch_eastmoney_klines", lambda *a, **k: [])

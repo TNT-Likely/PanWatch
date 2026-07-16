@@ -42,6 +42,7 @@ def test_kline_collector_market_data_bypasses_env_proxy(monkeypatch):
 
 def test_get_klines_retries_tencent_on_empty(monkeypatch):
     """腾讯首次空响应(突发限流)应退避重试,第二次成功即返回——不因瞬时空回包而失败。"""
+    monkeypatch.setattr(kline_collector, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
     good = (
         'kline_dayqfq={"code":0,"data":{"sz000001":'

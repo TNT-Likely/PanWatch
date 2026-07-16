@@ -35,6 +35,7 @@ def _clear_caches():
 
 def test_failed_fetch_is_negative_cached(monkeypatch):
     """同一标的取数失败后,冷却窗口内再次调用不再联网(负缓存)。"""
+    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
 
     def fake_tencent(symbol, market, days):
@@ -52,6 +53,7 @@ def test_failed_fetch_is_negative_cached(monkeypatch):
 
 def test_concurrent_same_symbol_fetches_coalesced(monkeypatch):
     """同一标的的并发取数应合并为一次联网(防突发打爆数据源)。"""
+    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
     guard = threading.Lock()
 
@@ -75,6 +77,7 @@ def test_concurrent_same_symbol_fetches_coalesced(monkeypatch):
 
 def test_different_symbols_not_blocked(monkeypatch):
     """不同标的使用不同锁,不应相互阻塞(各自联网一次)。"""
+    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
     guard = threading.Lock()
 
@@ -98,6 +101,7 @@ def test_insufficient_result_negative_cached(monkeypatch):
     复现 outcome_eval 刷屏:正缓存因 count<need 永不命中,旧逻辑只在"空结果"时负缓存,
     导致每轮都重打 eastmoney 补全源。
     """
+    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: False)
     calls = {"n": 0}
 
     def short_tencent(symbol, market, days):

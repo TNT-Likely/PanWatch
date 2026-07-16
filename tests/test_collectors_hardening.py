@@ -58,6 +58,7 @@ def test_tencent_quotes_cached(monkeypatch):
 
 def test_capital_flow_cached(monkeypatch):
     """资金流为日级数据,同一只在 TTL 内应命中缓存,不重复联网。"""
+    monkeypatch.setattr(capital_flow_collector, "_use_marketdata_cf", lambda: False)
     calls = {"n": 0}
     fake = {
         "data": {
