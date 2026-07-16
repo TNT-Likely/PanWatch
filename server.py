@@ -466,6 +466,16 @@ def seed_data_sources():
             "test_symbols": ["601127", "600519", "300750"],
         },
         {
+            "name": "Sina 行情",
+            "type": "quote",
+            "provider": "sina",
+            "config": {"description": "新浪美股/港股实时行情,免 key 免代理,作腾讯之后的 US/HK 备源。"},
+            "enabled": True,
+            "priority": 5,   # 腾讯(0)之后
+            "supports_batch": True,
+            "test_symbols": ["AAPL", "00700"],
+        },
+        {
             "name": "YFinance 行情",
             "type": "quote",
             "provider": "yfinance",

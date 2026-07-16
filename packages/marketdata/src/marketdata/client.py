@@ -9,6 +9,7 @@ from marketdata.ports import ConfigProvider, MetricsSink
 from marketdata.symbol import Symbol
 from marketdata.types import CapitalFlow, EventItem, HotBoard, HotStock, Quote, Request
 from marketdata.vendors.discovery import DiscoveryVendor
+from marketdata.vendors.sina import SinaQuoteVendor
 from marketdata.vendors.tencent import TencentQuoteVendor
 from marketdata.vendors.yfinance import YFinanceQuoteVendor
 
@@ -21,6 +22,7 @@ class MarketData:
             datatype="quote",
             vendors={
                 "tencent": TencentQuoteVendor(),
+                "sina": SinaQuoteVendor(),
                 "yfinance": YFinanceQuoteVendor(),
             },
             config=config,
