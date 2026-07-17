@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 
 from src.web.database import get_db
-from src.web.models import Account, PriceAlertRule, Position, Stock
+from src.web.models import Account, PriceAlertRule, Position, PositionTrade, Stock
 from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
 from src.collectors.market_http import TTLCache
 from src.models.market import MarketCode
@@ -156,6 +156,29 @@ class PositionReorderItem(BaseModel):
 
 class PositionReorderRequest(BaseModel):
     items: list[PositionReorderItem]
+
+
+class SellPositionRequest(BaseModel):
+    sell_price: float
+    sell_quantity: int
+    fee: float | None = 0.0
+    note: str | None = None
+    sold_at: str | None = None  # ISO datetime, defaults to now
+
+
+class PositionTradeResponse(BaseModel):
+    id: int
+    position_id: int
+    trade_type: str
+    price: float
+    quantity: int
+    fee: float
+    realized_pnl: float | None
+    note: str | None
+    traded_at: str
+
+    class Config:
+        from_attributes = True
 
 
 # ========== Account Endpoints ==========
@@ -372,6 +395,114 @@ def reorder_positions(data: PositionReorderRequest, db: Session = Depends(get_db
         updated += 1
     db.commit()
     return {"updated": updated}
+
+
+# ========== Position Sell / Trade History ==========
+
+@router.post("/positions/{position_id}/sell", response_model=PositionTradeResponse)
+def sell_position(position_id: int, data: SellPositionRequest, db: Session = Depends(get_db)):
+    """卖出持仓：记录卖出流水，更新或关闭持仓"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    if data.sell_quantity <= 0:
+        raise HTTPException(400, "卖出数量必须大于0")
+    if data.sell_quantity > position.quantity:
+        raise HTTPException(400, f"卖出数量({data.sell_quantity})超过当前持仓({position.quantity})")
+    if data.sell_price <= 0:
+        raise HTTPException(400, "卖出价格必须大于0")
+
+    # 计算已实现盈亏
+    fee = data.fee or 0.0
+    realized_pnl = (data.sell_price - position.cost_price) * data.sell_quantity - fee
+
+    # 解析卖出时间
+    traded_at = datetime.now()
+    if data.sold_at:
+        try:
+            traded_at = datetime.fromisoformat(data.sold_at.replace("Z", "+00:00")).replace(tzinfo=None)
+        except (ValueError, AttributeError):
+            pass
+
+    # 创建交易记录
+    trade = PositionTrade(
+        position_id=position_id,
+        trade_type="sell",
+        price=data.sell_price,
+        quantity=data.sell_quantity,
+        fee=fee,
+        realized_pnl=round(realized_pnl, 2),
+        note=data.note,
+        traded_at=traded_at,
+    )
+    db.add(trade)
+
+    # 更新持仓数量
+    position.quantity -= data.sell_quantity
+    if position.quantity > 0:
+        # 按比例更新投入资金
+        if position.invested_amount:
+            position.invested_amount = round(
+                position.invested_amount * (position.quantity / (position.quantity + data.sell_quantity)), 2
+            )
+    else:
+        # 全部卖出，标记为已清仓
+        position.status = "closed"
+        position.invested_amount = 0
+
+    # 更新账户可用资金（卖出所得回流）
+    account = db.query(Account).filter(Account.id == position.account_id).first()
+    if account:
+        proceeds = data.sell_price * data.sell_quantity - fee
+        account.available_funds = round(account.available_funds + proceeds, 2)
+
+    db.commit()
+    db.refresh(trade)
+
+    stock = db.query(Stock).filter(Stock.id == position.stock_id).first()
+    stock_name = stock.name if stock else ""
+    logger.info(f"卖出持仓: {stock_name} {data.sell_quantity}股 @ {data.sell_price}, 盈亏: {realized_pnl:.2f}")
+    return {
+        "id": trade.id,
+        "position_id": trade.position_id,
+        "trade_type": trade.trade_type,
+        "price": trade.price,
+        "quantity": trade.quantity,
+        "fee": trade.fee,
+        "realized_pnl": trade.realized_pnl,
+        "note": trade.note,
+        "traded_at": trade.traded_at.isoformat() if trade.traded_at else "",
+    }
+
+
+@router.get("/positions/{position_id}/trades", response_model=list[PositionTradeResponse])
+def list_position_trades(position_id: int, db: Session = Depends(get_db)):
+    """获取持仓的交易历史"""
+    position = db.query(Position).filter(Position.id == position_id).first()
+    if not position:
+        raise HTTPException(404, "持仓不存在")
+
+    trades = (
+        db.query(PositionTrade)
+        .filter(PositionTrade.position_id == position_id)
+        .order_by(PositionTrade.traded_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": t.id,
+            "position_id": t.position_id,
+            "trade_type": t.trade_type,
+            "price": t.price,
+            "quantity": t.quantity,
+            "fee": t.fee,
+            "realized_pnl": t.realized_pnl,
+            "note": t.note,
+            "traded_at": t.traded_at.isoformat() if t.traded_at else "",
+        }
+        for t in trades
+    ]
 
 
 # ========== Portfolio Summary ==========
