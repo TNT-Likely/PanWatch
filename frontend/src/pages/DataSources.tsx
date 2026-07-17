@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
 import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -61,6 +61,22 @@ const DATASOURCE_TYPES = {
   northbound: { label: '北向资金', icon: ArrowLeftRight, color: 'text-sky-500' },
 }
 
+// 数据源分类分组:仅用于页面展示时的二级归组,不影响数据结构与后端
+const DATASOURCE_CATEGORIES: { key: string; label: string; types: string[] }[] = [
+  { key: 'quote_kline', label: '行情 & K线', types: ['quote', 'kline'] },
+  { key: 'news', label: '资讯 & 快讯', types: ['news', 'flash_news', 'events'] },
+  { key: 'fundamentals', label: '基本面 & 财务', types: ['fundamentals'] },
+  { key: 'capital', label: '资金 & 市场面', types: ['capital_flow', 'dragon_tiger', 'margin', 'shareholders', 'northbound', 'dividend'] },
+  { key: 'chart', label: '图表', types: ['chart'] },
+]
+
+// 兜底:未被以上分类覆盖的 type 归入"其他"(防止将来新增 type 时漏显示)
+const CATEGORIZED_TYPES = new Set(DATASOURCE_CATEGORIES.flatMap(c => c.types))
+const UNCATEGORIZED_TYPES = Object.keys(DATASOURCE_TYPES).filter(t => !CATEGORIZED_TYPES.has(t))
+const ALL_DATASOURCE_CATEGORIES = UNCATEGORIZED_TYPES.length > 0
+  ? [...DATASOURCE_CATEGORIES, { key: 'other', label: '其他', types: UNCATEGORIZED_TYPES }]
+  : DATASOURCE_CATEGORIES
+
 interface CredentialFieldDef { key: string; label: string; placeholder: string; secret?: boolean; help?: string }
 
 // provider → 凭证字段(前端持有 UI 元数据,新增带凭证的 provider 时在此加一行)
@@ -95,6 +111,9 @@ export default function DataSourcesPage() {
   const [testSymbolsInput, setTestSymbolsInput] = useState('')
   const [secretVisible, setSecretVisible] = useState(false)
   const [resetting, setResetting] = useState(false)
+  // 分类折叠态:key 不存在或为 false 视为展开(默认全部展开)
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({})
+  const toggleCategory = (key: string) => setCollapsedCategories(prev => ({ ...prev, [key]: !prev[key] }))
 
   const { toast } = useToast()
 
@@ -222,6 +241,107 @@ export default function DataSourcesPage() {
     } catch (e) { toast(e instanceof Error ? e.message : '删除失败', 'error') }
   }
 
+  // 单个 type 的 section 渲染(结构与此前平铺版本完全一致,仅抽成函数以便按分类复用)
+  const renderTypeSection = (type: string) => {
+    const meta = DATASOURCE_TYPES[type as keyof typeof DATASOURCE_TYPES]
+    if (!meta) return null
+    const { label, icon: Icon, color } = meta
+    return (
+      <section key={type} className="card p-4 md:p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Icon className={`w-4 h-4 ${color}`} />
+          <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
+          <span className="text-[11px] text-muted-foreground ml-auto mr-2">
+            {groupedSources[type]?.length || 0} 个
+          </span>
+          <Button variant="ghost" size="sm" className="h-7 text-[11px]"
+            onClick={() => openDialog(undefined, type)}>
+            <Plus className="w-3.5 h-3.5 mr-1" />新增源
+          </Button>
+        </div>
+
+        {(!groupedSources[type] || groupedSources[type].length === 0) ? (
+          <p className="text-[13px] text-muted-foreground text-center py-6">暂无{label}数据源</p>
+        ) : (
+          <div className="space-y-2">
+            {groupedSources[type].map(source => (
+                <div
+                  key={source.id}
+                  className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <Database className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-foreground">{source.name}</span>
+                        {source.supports_batch && (
+                          <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            <Layers className="w-2.5 h-2.5" />
+                            批量
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[11px] text-muted-foreground font-mono">{source.provider}</span>
+                        <span className="text-[11px] text-muted-foreground">优先级: {source.priority}</span>
+                        {source.engine_attached ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">已接入新引擎</span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">旧路·待迁移</span>
+                        )}
+                        {source.is_orphan && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            无对应源·待清理
+                          </Badge>
+                        )}
+                        {source.engine_attached && source.health && source.health.success_rate != null && (
+                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                              source.health.success_rate >= 0.95 ? 'bg-emerald-500'
+                              : source.health.success_rate >= 0.8 ? 'bg-amber-500' : 'bg-red-500'}`} />
+                            成功率 {Math.round(source.health.success_rate * 100)}%
+                            {source.health.p50_latency_ms != null && ` · p50 ${source.health.p50_latency_ms}ms`}
+                            {source.health.last_error ? ` · 最近错误` : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, -1)} title="上移(提高优先级)">
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, 1)} title="下移">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => testSource(source.id)}
+                      disabled={testing === source.id || !source.enabled}
+                      title="测试连接"
+                    >
+                      {testing === source.id ? (
+                        <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                    <Switch checked={source.enabled} onCheckedChange={() => toggleEnabled(source)} />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDialog(source)} title="设置">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+            ))}
+          </div>
+        )}
+      </section>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -248,100 +368,31 @@ export default function DataSourcesPage() {
       </div>
 
       <div className="space-y-6">
-        {Object.entries(DATASOURCE_TYPES).map(([type, { label, icon: Icon, color }]) => (
-          <section key={type} className="card p-4 md:p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Icon className={`w-4 h-4 ${color}`} />
-              <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
-              <span className="text-[11px] text-muted-foreground ml-auto mr-2">
-                {groupedSources[type]?.length || 0} 个
-              </span>
-              <Button variant="ghost" size="sm" className="h-7 text-[11px]"
-                onClick={() => openDialog(undefined, type)}>
-                <Plus className="w-3.5 h-3.5 mr-1" />新增源
-              </Button>
+        {ALL_DATASOURCE_CATEGORIES.map(category => {
+          const categoryCount = category.types.reduce((sum, t) => sum + (groupedSources[t]?.length || 0), 0)
+          const isOpen = collapsedCategories[category.key] !== true
+          return (
+            <div key={category.key}>
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 mb-3 py-1 text-left group"
+                onClick={() => toggleCategory(category.key)}
+              >
+                <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                <span className="text-[13px] font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
+                  {category.label}
+                </span>
+                <span className="text-[11px] text-muted-foreground/70">{categoryCount} 个源</span>
+                <div className="flex-1 h-px bg-border ml-2" />
+              </button>
+              {isOpen && (
+                <div className="space-y-6 mb-6">
+                  {category.types.map(type => renderTypeSection(type))}
+                </div>
+              )}
             </div>
-
-            {(!groupedSources[type] || groupedSources[type].length === 0) ? (
-              <p className="text-[13px] text-muted-foreground text-center py-6">暂无{label}数据源</p>
-            ) : (
-              <div className="space-y-2">
-                {groupedSources[type].map(source => (
-                    <div
-                      key={source.id}
-                      className="flex items-center justify-between p-3.5 rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <Database className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-foreground">{source.name}</span>
-                            {source.supports_batch && (
-                              <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                <Layers className="w-2.5 h-2.5" />
-                                批量
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[11px] text-muted-foreground font-mono">{source.provider}</span>
-                            <span className="text-[11px] text-muted-foreground">优先级: {source.priority}</span>
-                            {source.engine_attached ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">已接入新引擎</span>
-                            ) : (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">旧路·待迁移</span>
-                            )}
-                            {source.is_orphan && (
-                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
-                                <AlertTriangle className="w-2.5 h-2.5" />
-                                无对应源·待清理
-                              </Badge>
-                            )}
-                            {source.engine_attached && source.health && source.health.success_rate != null && (
-                              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${
-                                  source.health.success_rate >= 0.95 ? 'bg-emerald-500'
-                                  : source.health.success_rate >= 0.8 ? 'bg-amber-500' : 'bg-red-500'}`} />
-                                成功率 {Math.round(source.health.success_rate * 100)}%
-                                {source.health.p50_latency_ms != null && ` · p50 ${source.health.p50_latency_ms}ms`}
-                                {source.health.last_error ? ` · 最近错误` : ''}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, -1)} title="上移(提高优先级)">
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveSource(source, 1)} title="下移">
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => testSource(source.id)}
-                          disabled={testing === source.id || !source.enabled}
-                          title="测试连接"
-                        >
-                          {testing === source.id ? (
-                            <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                          ) : (
-                            <Play className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
-                        <Switch checked={source.enabled} onCheckedChange={() => toggleEnabled(source)} />
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDialog(source)} title="设置">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                ))}
-              </div>
-            )}
-          </section>
-        ))}
+          )
+        })}
       </div>
 
       {/* Edit Dialog - 编辑模式只允许修改配置项;新增模式含名称/类型/Provider */}
