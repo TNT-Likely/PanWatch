@@ -427,707 +427,155 @@ export default function StocksPage() {
   const [sellForm, setSellForm] = useState({ sell_price: '', sell_quantity: '', fee: '0', note: '' })
 
   // Agent dialog
-  const [agentDialogStock, setAgentDialogStock] = useState<Stock | null>(null)
+  const [agentDhå=DÓECB1×¹Ûw!j»(š+myÚ.¶‡öÓ®vŞÚ-jZ]‚ˆX™[¹¢$9§+9.íÏÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›K˜ÛÜİÜšXÙ_BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›KÛÜİÜšXÙNˆK\™Ù]˜[YHJ_BˆXÙZÛ\HŒŒ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH™XÚ[X[‚ˆÏ‚ˆÙ]‚ˆ]‚ˆX™[¹£ y.äù¥l:aãÏÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›Kœ]X[]_BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K]X[]NˆK\™Ù]˜[YHJ_BˆXÙZÛ\HŒ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH›[Y\šXÈ‚ˆÏ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYÜšYXÛÛËLˆØ\M‚ˆ]‚ˆX™[¹¢¥yaiz-a:aäHÜ[ˆÛ\ÜÓ˜[YOH^[]]YY›Ü™YÜ›İ[™ÍŒ^VÌL\HŠ:`"yhjÊOÜÜ[ÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›Kš[™\İYØ[[İ[BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K[™\İYØ[[İ[ˆK\™Ù]˜[YHJ_BˆXÙZÛ\Hº`"yhjÈ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH™XÚ[X[‚ˆÏ‚ˆÙ]‚ˆ]‚ˆX™[¹.©9¦$úhã¹¨/Ü[ˆÛ\ÜÓ˜[YOH^[]]YY›Ü™YÜ›İ[™›Û[›Ü›X[Š:`"yhjÊOÜÜ[ÓX™[‚ˆÙ[Xİˆ˜[YO^ÜÜÚ][Û‘›Ü›K˜Y[™×Üİ[_BˆÛ•˜[YPÚ[™ÙO^İ˜[OˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K˜Y[™×Üİ[Nˆ˜[OOH	××Û›Û™W×ÉÈÈ	ÉÈˆ˜[J_Bˆ‚ˆÙ[XİšYÙÙ\‚ˆÙ[Xİ˜[YHXÙZÛ\H¹.#z+¯¹ïkˆˆÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×Û›Û™W×È¹.#z+¯¹ïkÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHœÚÜ¹çëyî¯È
+KMyi*JOÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHœİÚ[™È¹¬è¹«­H
+KM9dj
+OÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOH›Û™Èºeoùî¯È
+9¥l9§"
+OÔÙ[Xİ][O‚ˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^\İYKY[™Ø\LˆLˆ‚ˆ]Ûˆ˜\šX[H™ÚÜİˆÛÛXÚÏ^Ê
+HOˆÙ]ÜÚ][Û‘X[ÙÓÜ[Š˜[ÙJ_O¹cå¹­¢Ğ]Û‚ˆ]Û‚ˆÛÛXÚÏ^Ú[™TÜÚ][Û”İX›Z]Bˆ\ØX›Y^È\ÜÚ][Û‘›Ü›K˜ÛÜİÜšXÙH\ÜÚ][Û‘›Ü›Kœ]X[]H
+YY]ÜÚ][Û’Y	‰ˆ\ÜÚ][Û‘›Ü›KœİØÚ×ÚY	‰ˆ\ÜÚ][Û‘›Ü›KœİØÚ×ÜŞ[X›Û
+_Bˆ‚ˆÙY]ÜÚ][Û’YÈ	ù/çykf	Èˆ	ù­îùb¨	ßBˆĞ]Û‚ˆÙ]‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆYÙ[\ÜÚYÛ›Y[X[ÙÈ
+‹ßBˆX[ÙÈÜ[^ÈHXYÙ[X[ÙÔİØÚßHÛ“Ü[Ú[™ÙO^ÛÜ[ˆOˆ[Ü[ˆ	‰ˆÙ]YÙ[X[ÙÔİØÚÊ[
+_O‚ˆX[ÙĞÛÛ[‚ˆX[ÙÒXY\‚ˆX[ÙÕ]Oºacyïk¹æäy£©ÈYÙ[ÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[Û‚ˆ9..ˆØYÙ[X[ÙÔİØÚÏË›˜[Y_{ï"ØYÙ[X[ÙÔİØÚÏËœŞ[X›Û{ï"z`"y¢êz) yæäy£©ùæ¡YÙ[ˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ]Lˆ‚ˆØYÙ[Ë›[™İOOHÈ
+ˆÛ\ÜÓ˜[YOH^VÌLÜH^[]]YY›Ü™YÜ›İ[™KM^XÙ[\ˆ¹¦ ¹¥è9cëùå*YÙ[Ü‚ˆ
+Hˆ
+ˆYÙ[Ë›X\
+YÙ[OˆÂˆÛÛœİİØÚĞYÙ[HYÙ[X[ÙÔİØÚÏË˜YÙ[ÏË™š[™
+HOˆK˜YÙ[Û˜[YHOOHYÙ[›˜[YJBˆÛÛœİ\Ğ\ÜÚYÛ™YHH\İØÚĞYÙ[ˆÛÛœİ\Ğ˜]Ú[ÙHHYÙ[™^Xİ][Û—Û[ÙHOOH	Ø˜]Ú	Âˆ™]\›ˆ
+ˆ]ˆÙ^O^ØYÙ[›˜[Y_HÛ\ÜÓ˜[YOHœ›İ[™Y^™ËXXØÙ[ÌÌİ™\˜™ËXXØÙ[ÍL˜[œÚ][Û‹XÛÛÜœÈİ™\™›İËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆLËH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YO^ØËLˆLˆ›İ[™YY[	ØYÙ[™[˜X›YÈ	Ø™ËY[Y\˜[ML	Èˆ	Ø™ËX›Ü™\‰ßXHÏ‚ˆ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLÜH›Û[YY][H^Y›Ü™YÜ›İ[™ØYÙ[™\Ü^WÛ˜[Y_OÜÜ[‚ˆ˜YÙH˜\šX[HœÙXÛÛ™\HˆÛ\ÜÓ˜[YOH^VÎ\H‚ˆÚ\Ğ˜]Ú[ÙHÈ	ù¢nzaãÉÈˆ	ú`$9cê‰ßBˆĞ˜YÙO‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™]LHØYÙ[™\ØÜš\[ÛŸOÜ‚ˆÙ]‚ˆÙ]‚ˆİÚ]ÚˆÚXÚÙY^Ú\Ğ\ÜÚYÛ™YBˆÛÚXÚÙYÚ[™ÙO^Ê
+HOˆYÙ[X[ÙÔİØÚÈ	‰ˆÙÙÛPYÙ[
+YÙ[X[ÙÔİØÚËYÙ[›˜[YJ_Bˆ\ØX›Y^ÈXYÙ[™[˜X›YBˆÏ‚ˆÙ]‚ˆÚ\Ğ\ÜÚYÛ™Y	‰ˆ\Ğ˜]Ú[ÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœLËH‹LËHL‚ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ:, ùn©¸à PRyª(yg¢øà z`&¹çéy®(:`dú+íùg*H™YH‹ØYÙ[ÈˆÛ\ÜÓ˜[YOH^\š[X\Hİ™\[™\›[™HYÙ[:acyïkØOˆ:hmzgh¹îçù. :+¯¹ïk‚ˆÜ‚ˆÙ]‚ˆ
+_BˆÚ\Ğ\ÜÚYÛ™Y	‰ˆZ\Ğ˜]Ú[ÙH	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœLËH‹LËHLÜXÙK^KL‹H‚ˆËÊˆØÚY[KÒ[\˜[Ù[Xİ
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÛØÚÈÛ\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆÙ[Xİˆ˜[YO^ÜİØÚĞYÙ[ËœØÚY[H	××ÙY˜][×ÉßBˆÛ•˜[YPÚ[™ÙO^İ˜[OˆYÙ[X[ÙÔİØÚÈ	‰ˆ\]TİØÚĞYÙ[ØÚY[JYÙ[X[ÙÔİØÚËYÙ[›˜[YK˜[OOH	××ÙY˜][×ÉÈÈ	ÉÈˆ˜[
+_Bˆ‚ˆÙ[XİšYÙÙ\ˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HËX]]ÈZ[‹]ËVÌMHL‹H™ËXXØÙ[ÍL›Ü™\‹X›Ü™\‹ÍL‚ˆÙ[Xİ˜[YHXÙZÛ\H¹¢iú(c:eí:f¥ˆÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×ÙY˜][×Èº-çúf£ùaj9l`ÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌHKLMH
+ˆ
+ˆKMH¹«ãÈH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌÈKLMH
+ˆ
+ˆKMH¹«ãÈÈ9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÍHKLMH
+ˆ
+ˆKMH¹«ãÈH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌLKLMH
+ˆ
+ˆKMH¹«ãÈL9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌMHKLMH
+ˆ
+ˆKMH¹«ãÈMH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌÌKLMH
+ˆ
+ˆKMH¹«ãÈÌ9b!ºd§ÏÔÙ[Xİ][O‚ˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™¹.©9¦$ù¥í¹«­OÜÜ[‚ˆÙ]‚‚ˆËÊˆØÚY[H™]šY]È
+‹ßBˆÊ
 
-  // æ·±åº¦åˆ†æ(TradingAgents)å¼¹çª—
-  const [deepAnalysisTarget, setDeepAnalysisTarget] = useState<{
-    stockId: number
-    symbol: string
-    name: string
-  } | null>(null)
-  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string) => {
-    setDeepAnalysisTarget({ stockId, symbol, name })
-  }, [])
-  const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
-  const [schedulePreviewCache, setSchedulePreviewCache] = useState<Record<string, SchedulePreview | { error: string }>>({})
-  const [schedulePreviewLoading, setSchedulePreviewLoading] = useState<Record<string, boolean>>({})
-  // è¿è¡Œä¸­çš„å•åªè‚¡ç¥¨ Agentï¼ˆæŒ‰è‚¡ç¥¨æ ‡è®°å…·ä½“ Agent åç§°ï¼‰
-  const [runningAgents, setRunningAgents] = useState<Record<number, string | null>>({})
-  const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
+HOˆÂˆÛÛœİY™ˆHY™™Xİ]™TØÚY[JYÙ[İØÚĞYÙ[
+BˆÛÛœİ\Ñ›ÛİÚ[™ÑÛØ˜[HJİØÚĞYÙ[ËœØÚY[H	ÉÊKš[J
+H	‰ˆHJYÙ[œØÚY[H	ÉÊKš[J
+BˆÛÛœİ™]šY]ÈHY™ˆÈØÚY[T™]šY]ĞØXÚVÙY™—Hˆ[ˆÛÛœİ\ÓØY[™ÈHY™ˆÈH\ØÚY[T™]šY]ÓØY[™ÖÙY™—Hˆ˜[ÙBˆYˆ
+YY™ŠH™]\›ˆ[ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›[VÌŒœH›İ[™Y[È›Ü™\ˆ›Ü™\‹X›Ü™\‹Í™ËX˜XÚÙÜ›İ[™ÌÌL‹HKLˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ9§*¹§iz)é¹cäy¥íºeí:h¡:)âÚ\Ñ›ÛİÚ[™ÑÛØ˜[ÈÜ[ˆÛ\ÜÓ˜[YOH›[LHÜXÚ]KMÌŠ:-çúf£ùaj9l`
+OÜÜ[ˆˆ[BˆÙ]‚ˆÚ\ÓØY[™È	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOHËLÈLÈ›Ü™\‹Lˆ›Ü™\‹\š[X\KÌÌ›Ü™\‹]\š[X\H›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆ
+_BˆÙ]‚ˆÉÙ\œ›Ü‰È[ˆ
+™]šY]ÈßJHÈ
+ˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌL\H^[]]YY›Ü™YÜ›İ[™Ê™]šY]È\È[JK™\œ›ÜŸOÙ]‚ˆ
+Hˆ
+™]šY]È\ÈØÚY[T™]šY]È[™Yš[™Y
+OË›™^Ü[œÏË›[™İÈ
+ˆ]ˆÛ\ÜÓ˜[YOH›]LH›^›^]Ü˜\][\ËXÙ[\ˆØ\LKH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆÊ™]šY]È\ÈØÚY[T™]šY]ÊK›™^Ü[œË›X\
 
-  // Stock list filter
-  const [stockListFilter, setStockListFilter] = useState('')  // '' = å…¨éƒ¨, 'CN' = Aè‚¡, 'HK' = æ¸¯è‚¡, 'US' = ç¾è‚¡
-  const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
+JHOˆ
+ˆÜ[ˆÙ^O^Ú_HÛ\ÜÓ˜[YOHœLKHKLH›İ[™Y›Ü™\ˆ›Ü™\‹X›Ü™\‹ÍŒ™ËXXØÙ[ÌŒ›Û[[Û›Èˆ]O^İO‚ˆÙ›Ü›X]™]šY]Õ[YJ
+™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™J_BˆÜÜ[‚ˆ
+J_BˆÊ™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™HÈ
+ˆÜ[ˆÛ\ÜÓ˜[YOH›ÜXÚ]KMŒŠÊ™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™_JOÜÜ[‚ˆ
+Hˆ[BˆÙ]‚ˆ
+Hˆ
+ˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌL\H^[]]YY›Ü™YÜ›İ[™¸ %Ù]‚ˆ
+_Bˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌLH^[]]YY›Ü™YÜ›İ[™ÍÌ›Û[[Û›ÈœØÚY[NˆÙY™ŸOÙ]‚ˆÙ]‚ˆ
+BˆJJ
+_B‚ˆËÊˆRH[Ù[Ù[Xİ
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÜHÛ\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆÙ[Xİˆ˜[YO^ÜİØÚĞYÙ[Ë˜ZWÛ[Ù[ÚYËÔİš[™Ê
+HÏÈ	××ÙY˜][×ÉßBˆÛ•˜[YPÚ[™ÙO^İ˜[OˆYÙ[X[ÙÔİØÚÈ	‰ˆ\]TİØÚĞYÙ[[Ù[
+YÙ[X[ÙÔİØÚËYÙ[›˜[YK˜[OOH	××ÙY˜][×ÉÈÈ[ˆ\œÙR[
+˜[
+J_Bˆ‚ˆÙ[XİšYÙÙ\ˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HËX]]ÈZ[‹]ËVÌMHL‹H™ËXXØÙ[ÍL›Ü™\‹X›Ü™\‹ÍL‚ˆÙ[Xİ˜[YHÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×ÙY˜][×È¹ìîùîçúnæ:+©ÔÙ[Xİ][O‚ˆÜÙ\šXÙ\Ë›X\
+İ˜ÈOˆ
+ˆÙ[XİÜ›İ\Ù^O^Üİ˜ËšYO‚ˆÙ[XİX™[Üİ˜Ë›˜[Y_OÔÙ[XİX™[‚ˆÜİ˜Ë›[Ù[Ë›X\
+HOˆ
+ˆÙ[Xİ][HÙ^O^ÛKšYH˜[YO^ÛKšYÔİš[™Ê
+_O‚ˆÛK›˜[Y_^ÛK›˜[YHOOHK›[Ù[È
+	ÛK›[Ù[JXˆ	ÉßBˆÔÙ[Xİ][O‚ˆ
+J_BˆÔÙ[XİÜ›İ\‚ˆ
+J_BˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÙ]‚ˆËÊˆ›İYšXØ][ÛˆÚ[›™[È
+‹ßBˆØÚ[›™[Ë›[™İˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›^]Ü˜\‚ˆ™[Û\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆØÚ[›™[Ë›X\
+ÚOˆÂˆÛÛœİ\ÔÙ[XİYH
+İØÚĞYÙ[Ë››İYWØÚ[›™[ÚYÈ×JKš[˜ÛY\ÊÚšY
+Bˆ™]\›ˆ
+ˆ]Û‚ˆÙ^O^ØÚšYBˆÛÛXÚÏ^Ê
+HOˆYÙ[X[ÙÔİØÚÈ	‰ˆÙÙÛTİØÚĞYÙ[Ú[›™[
+YÙ[X[ÙÔİØÚËYÙ[›˜[YKÚšY
+_BˆÛ\ÜÓ˜[YO^Ø^VÌLHLˆKLH›İ[™Y[Y›Ü™\ˆ˜[œÚ][Û‹XÛÛÜœÈ	Âˆ\ÔÙ[XİYˆÈ	Ø™Ë\š[X\KÌL›Ü™\‹\š[X\KÌÌ^\š[X\H›Û[YY][IÂˆˆ	Ø™ËXXØÙ[ÌÌ›Ü™\‹X›Ü™\‹ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜›Ü™\‹\š[X\KÌÌ	ÂˆXBˆ‚ˆØÚ›˜[Y_BˆØ]Û‚ˆ
+BˆJ_BˆÊİØÚĞYÙ[Ë››İYWØÚ[›™[ÚYÈ×JK›[™İOOH	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™¹ìîùîçúnæ:+©ÜÜ[‚ˆ
+_BˆÙ]‚ˆ
+_BˆËÊˆšYÙÙ\ˆ]Ûˆ
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆLH‚ˆ]Û‚ˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HL‹H‚ˆ\ØX›Y^İšYÙÙ\š[™ĞYÙ[OOHYÙ[›˜[Y_BˆÛÛXÚÏ^Ê
+HOˆYÙ[X[ÙÔİØÚÈ	‰ˆšYÙÙ\”İØÚĞYÙ[
+YÙ[X[ÙÔİØÚËšYYÙ[›˜[YJ_Bˆ‚ˆİšYÙÙ\š[™ĞYÙ[OOHYÙ[›˜[YHÈ
+ˆÜ[ˆÛ\ÜÓ˜[YOHËLÈLÈ›Ü™\‹Lˆ›Ü™\‹Xİ\œ™[ÌÌ›Ü™\‹]Xİ\œ™[›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆ
+Hˆ
+ˆ^HÛ\ÜÓ˜[YOHËLÈLÈˆÏ‚ˆ
+_Bˆ9êâùclùb!¹§¤ˆĞ]Û‚ˆÙ]‚ˆÙ]‚ˆ
+_BˆÙ]‚ˆ
+BˆJBˆ
+_BˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆYÙ[9b!¹§¤9îäù§§9o.yê¥È
+‹ßBˆX[ÙÈÜ[^ÈHXYÙ[™\İ[X[ÙßHÛ“Ü[Ú[™ÙO^ÛÜ[ˆOˆ[Ü[ˆ	‰ˆÙ]YÙ[™\İ[X[ÙÊ[
+_O‚ˆX[ÙĞÛÛ[Û\ÜÓ˜[YOH›X^]Ë[Y‚ˆX[ÙÒXY\‚ˆX[ÙÕ]HÛ\ÜÓ˜[YOH^X˜\ÙHØYÙ[™\İ[X[ÙÏË]_OÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[ÛˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆLH‚ˆØYÙ[™\İ[X[ÙÏËœÚİ[Ø[\È
+ˆ˜YÙH˜\šX[H™Y˜][ˆÛ\ÜÓ˜[YOH^VÌLH¹nîº+«¹alù¬êĞ˜YÙO‚ˆ
+Hˆ
+ˆ˜YÙH˜\šX[HœÙXÛÛ™\HˆÛ\ÜÓ˜[YOH^VÌLH¹¥è:g 9alù¬êĞ˜YÙO‚ˆ
+_BˆØYÙ[™\İ[X[ÙÏË››İYšYY	‰ˆ
+ˆ˜YÙH˜\šX[H›İ][™HˆÛ\ÜÓ˜[YOH^VÌLH¹mì¹cäz` z`&¹çéOĞ˜YÙO‚ˆ
+_BˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚ˆ]ˆÛ\ÜÓ˜[YOH›]LˆLÈ™ËXXØÙ[ÌÌ›İ[™Y[È‚ˆ™HÛ\ÜÓ˜[YOH^VÌLÜHÚ]\ÜXÙK\™K]Ü˜\›Û\Ø[œÈXY[™Ë\™[^Y‚ˆØYÙ[™\İ[X[ÙÏË˜ÛÛ[BˆÜ™O‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^\İYKY[™]Lˆ‚ˆ]Ûˆ˜\šX[H›İ][™HˆÚ^™OHœÛHˆÛÛXÚÏ^Ê
+HOˆÙ]YÙ[™\İ[X[ÙÊ[
+_O‚ˆ9alúeëBˆĞ]Û‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆ9æî9alú-a:+«ùo.yê¥È
+‹ßBˆX[ÙÈÜ[^Û™]ÜÑX[ÙÓÜ[ŸHÛ“Ü[Ú[™ÙO^ÜÙ]™]ÜÑX[ÙÓÜ[ŸO‚ˆX[ÙĞÛÛ[Û\ÜÓ˜[YOH›X^]ËLX^ZVÎ]šH›^›^XÛÛ‚ˆX[ÙÒXY\‚ˆX[ÙÕ]HÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆ™]ÜÜ\\ˆÛ\ÜÓ˜[YOHËMHMH^X›YKMLˆÏ‚ˆ9æî9alú-a:+«ÂˆÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[Û‚ˆÛ™]ÜÑX[ÙÔŞ[X›ÛˆÈ	Û™]ÜÑX[ÙÔŞ[X›ÛH9æ¡9æî9alù¥¬:eîùd£9ak9db˜ˆˆ	ú!êº`"z ¨yæî9alù¥¬:eîùd£9ak9db»ï":/äHÌˆ9l#ù¥í»ï"IÂˆBˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚‚ˆËÊˆ: ¨yéj9ëfú`"yfj
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›^]Ü˜\KLˆ›Ü™\‹Xˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLœH^[]]YY›Ü™YÜ›İ[™¹ëfú`"NÜÜ[‚ˆ]Û‚ˆÛÛXÚÏ^Ê
+HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
+	ÉÊNÈØY™]ÜÊ
+H_BˆÛ\ÜÓ˜[YO^Ø^VÌL\HL‹HKLH›İ[™Y[Y˜[œÚ][Û‹XÛÛÜœÈ	Âˆ[™]ÜÑX[ÙÔŞ[X›ÛˆÈ	Ø™Ë\š[X\H^\š[X\KY›Ü™YÜ›İ[™	Âˆˆ	Ø™ËXXØÙ[ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜™ËXXØÙ[	ÂˆXBˆ‚ˆ9aj:`êˆØ]Û‚ˆÜİØÚÜËœÛXÙJL
+K›X\
+İØÚÈOˆ
+ˆ]Û‚ˆÙ^O^ÜİØÚËœŞ[X›ÛBˆÛÛXÚÏ^Ê
+HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
+İØÚË›˜[YJNÈØY™]ÜÊİØÚË›˜[YJH_BˆÛ\ÜÓ˜[YO^Ø^VÌL\HL‹HKLH›İ[™Y[Y˜[œÚ][Û‹XÛÛÜœÈ	Âˆ™]ÜÑX[ÙÔŞ[X›ÛOOHİØÚË›˜[YBˆÈ	Ø™Ë\š[X\H^\š[X\KY›Ü™YÜ›İ[™	Âˆˆ	Ø™ËXXØÙ[ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜™ËXXØÙ[	ÂˆXBˆ‚ˆÜİØÚË›˜[Y_BˆØ]Û‚ˆ
+J_BˆÜİØÚÜË›[™İˆL	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™ŠŞÜİØÚÜË›[™İHLOÜÜ[‚ˆ
+_BˆÙ]‚‚ˆËÊˆ9¥¬:eîùb%ú(j
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^LHİ™\™›İË^KX]]ÈZ[‹ZLKLˆ‚ˆÛ™]ÜÓØY[™ÈÈ
+ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKXÙ[\ˆKLLˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOHËMHMH›Ü™\‹Lˆ›Ü™\‹\š[X\KÌÌ›Ü™\‹]\š[X\H›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›[Lˆ^VÌLÜH^[]]YY›Ü™YÜ›İ[™¹b¨:/oy.+K‹‹ÜÜ[‚ˆÙ]‚ˆ
+Hˆ™]ÜË›[™İOOHÈ
+ˆ]ˆÛ\ÜÓ˜[YOH^XÙ[\ˆKLLˆ^[]]YY›Ü™YÜ›İ[™^VÌLÜH‚ˆ9¦ ¹¥è9æî9alú-a:+«ÂˆÙ]‚ˆ
+Hˆ
+ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLˆ‚ˆÛ™]ÜË›X\
 
-  // Remove watchlist modal
-  const [removeWatchStock, setRemoveWatchStock] = useState<Stock | null>(null)
-  const [removingWatchStock, setRemovingWatchStock] = useState(false)
-  const [draggingWatchStockId, setDraggingWatchStockId] = useState<number | null>(null)
-  const [draggingPositionId, setDraggingPositionId] = useState<number | null>(null)
-  const [draggingPositionAccountId, setDraggingPositionAccountId] = useState<number | null>(null)
-  const watchDragSnapshotRef = useRef<Stock[] | null>(null)
-  const positionDragSnapshotRef = useRef<PortfolioSummary | null>(null)
-
-  const { toast } = useToast()
-
-  const moveById = <T extends { id: number }>(list: T[], fromId: number, toId: number): T[] => {
-    const fromIdx = list.findIndex(x => x.id === fromId)
-    const toIdx = list.findIndex(x => x.id === toId)
-    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return list
-    const next = [...list]
-    const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
-    return next
-  }
-
-  const persistWatchlistOrder = useCallback(async (ordered: Stock[]) => {
-    const payload = ordered.map((s, idx) => ({ id: s.id, sort_order: idx + 1 }))
-    await fetchAPI('/stocks/reorder', {
-      method: 'PUT',
-      body: JSON.stringify({ items: payload }),
-    })
-  }, [])
-
-  const previewWatchlistReorder = useCallback((fromId: number, toId: number) => {
-    if (fromId === toId) return
-    setStocks(prev => {
-      const ordered = [...prev].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
-      const moved = moveById(ordered, fromId, toId)
-      return moved.map((s, idx) => ({ ...s, sort_order: idx + 1 }))
-    })
-  }, [])
-
-  const commitWatchlistReorder = useCallback(async () => {
-    const current = stocks
-    if (!current || current.length === 0) return
-    try {
-      await persistWatchlistOrder(current)
-    } catch (e) {
-      if (watchDragSnapshotRef.current) setStocks(watchDragSnapshotRef.current)
-      toast(e instanceof Error ? e.message : 'ä¿å­˜å…³æ³¨æ’åºå¤±è´¥', 'error')
-    }
-  }, [persistWatchlistOrder, stocks, toast])
-
-  const persistPositionOrder = useCallback(async (ordered: Position[]) => {
-    const payload = ordered.map((p, idx) => ({ id: p.id, sort_order: idx + 1 }))
-    await fetchAPI('/positions/reorder/batch', {
-      method: 'PUT',
-      body: JSON.stringify({ items: payload }),
-    })
-  }, [])
-
-  const previewPositionReorder = useCallback((accountId: number, fromId: number, toId: number) => {
-    if (fromId === toId) return
-    setPortfolioRaw(prev => {
-      if (!prev) return prev
-      const accountsNext = prev.accounts.map(acc => {
-        if (acc.id !== accountId) return acc
-        const moved = moveById(acc.positions || [], fromId, toId).map((p, idx) => ({ ...p, sort_order: idx + 1 }))
-        return { ...acc, positions: moved }
-      })
-      return { ...prev, accounts: accountsNext }
-    })
-  }, [])
-
-  const commitPositionReorder = useCallback(async (accountId: number) => {
-    const acc = portfolioRaw?.accounts?.find(a => a.id === accountId)
-    const ordered = acc?.positions || []
-    if (!ordered.length) return
-    try {
-      await persistPositionOrder(ordered)
-    } catch (e) {
-      if (positionDragSnapshotRef.current) setPortfolioRaw(positionDragSnapshotRef.current)
-      toast(e instanceof Error ? e.message : 'ä¿å­˜æŒä»“æ’åºå¤±è´¥', 'error')
-    }
-  }, [persistPositionOrder, portfolioRaw, toast])
-
-  const isSuppressCardClick = () => {
-    try {
-      const until = (window as any).__panwatch_suppress_card_click_until
-      return typeof until === 'number' && Date.now() < until
-    } catch {
-      return false
-    }
-  }
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // éæ ¸å¿ƒæ•°æ®åå°åŠ è½½ï¼ˆä¸é˜»å¡ UIï¼‰
-  const loadConfigAsync = async () => {
-    try {
-      const [agentData, servicesData, channelsData] = await Promise.all([
-        fetchAPI<AgentConfig[]>('/agents'),
-        fetchAPI<AIService[]>('/providers/services'),
-        fetchAPI<NotifyChannel[]>('/channels'),
-      ])
-      setAgents(agentData)
-      setServices(servicesData)
-      setChannels(channelsData)
-    } catch (e) {
-      console.warn('åŠ è½½é…ç½®æ•°æ®å¤±è´¥:', e)
-    }
-  }
-
-  const load = async () => {
-    try {
-      // æ ¸å¿ƒæ•°æ®ï¼ˆç«‹å³éœ€è¦ï¼‰
-      c
-
-... [OUTPUT TRUNCATED - 98686 chars omitted out of 148686 total] ...
-
-         </div>
-            <div>
-              <Label>å–å‡ºæ•°é‡ <span className="text-muted-foreground text-[11px]">(å½“å‰ {sellTarget?.quantity} è‚¡)</span></Label>
-              <Input value={sellForm.sell_quantity} onChange={e => setSellForm({...sellForm, sell_quantity: e.target.value})}
-                placeholder="0" className="font-mono" inputMode="numeric" />
-              <button className="text-[11px] text-primary mt-1" onClick={() => sellTarget && setSellForm({...sellForm, sell_quantity: sellTarget.quantity.toString()})}>
-                å…¨éƒ¨å–å‡º
-              </button>
-            </div>
-            <div>
-              <Label>äº¤æ˜“è´¹ç”¨ <span className="text-muted-foreground text-[11px]">(é€‰å¡«)</span></Label>
-              <Input value={sellForm.fee} onChange={e => setSellForm({...sellForm, fee: e.target.value})}
-                placeholder="0" className="font-mono" inputMode="decimal" />
-            </div>
-            {sellForm.sell_price && sellForm.sell_quantity && sellTarget && (
-              <div className="p-3 rounded-lg bg-accent/30 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">é¢„ä¼°ç›ˆäº</span>
-                  <span className={`font-medium ${(parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0) >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)) >= 0 ? '+' : ''}
-                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)).toFixed(2)} å…ƒ
-                  </span>
-                </div>
-              </div>
-            )}
-            <div>
-              <Label>å¤‡æ³¨ <span className="text-muted-foreground text-[11px]">(é€‰å¡«)</span></Label>
-              <Input value={sellForm.note} onChange={e => setSellForm({...sellForm, note: e.target.value})} placeholder="å–å‡ºåŸå› ..." />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setSellDialogOpen(false)}>å–æ¶ˆ</Button>
-              <Button variant="destructive" onClick={handleSellSubmit}
-                disabled={!sellForm.sell_price || !sellForm.sell_quantity || parseInt(sellForm.sell_quantity) <= 0}>
-                ç¡®è®¤å–å‡º
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Position Dialog */}
-      <Dialog
-        open={positionDialogOpen}
-        onOpenChange={(open) => {
-          setPositionDialogOpen(open)
-          if (!open) {
-            setPositionSearchQuery('')
-            setPositionSearchResults([])
-            setShowPositionDropdown(false)
-            setPositionSearchMarket('')
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editPositionId ? 'ç¼–è¾‘æŒä»“' : 'æ·»åŠ æŒä»“'}</DialogTitle>
-            <DialogDescription>
-              {accounts.find(a => a.id === positionDialogAccountId)?.name} è´¦æˆ·æŒä»“
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            {editPositionId ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
-                  {marketBadge(positionForm.stock_market).label}
-                </span>
-                <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
-                <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Label className="mb-0">æœç´¢è‚¡ç¥¨</Label>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { value: '', label: 'å…¨éƒ¨' },
-                      { value: 'CN', label: 'Aè‚¡' },
-                      { value: 'HK', label: 'æ¸¯è‚¡' },
-                      { value: 'US', label: 'ç¾è‚¡' },
-                    ].map(opt => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => handlePositionSearchMarketChange(opt.value)}
-                        className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
-                          positionSearchMarket === opt.value
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-accent/50 text-muted-foreground hover:bg-accent'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="relative" ref={positionDropdownRef}>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                  <Input
-                    value={positionSearchQuery}
-                    onChange={e => handlePositionSearchInput(e.target.value)}
-                    onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={positionSearchMarket === 'HK' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 00700 æˆ– è…¾è®¯' : positionSearchMarket === 'US' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ LI æˆ– ç†æƒ³æ±½è½¦' : positionSearchMarket === 'CN' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 600519 æˆ– èŒ…å°' : 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 600519 / 00700 / AAPL'}
-                    className="pl-9"
-                    autoComplete="off"
-                  />
-                  {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
-                  {showPositionDropdown && positionSearchResults.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 max-h-48 overflow-auto scrollbar card shadow-lg">
-                      {positionSearchResults.map(item => (
-                        <button
-                          key={`${item.market}-${item.symbol}`}
-                          type="button"
-                          onClick={() => selectPositionStock(item)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] hover:bg-accent/50 text-left transition-colors"
-                        >
-                          <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(item.market).style}`}>
-                            {marketBadge(item.market).label}
-                          </span>
-                          <span className="font-mono text-muted-foreground text-[12px]">{item.symbol}</span>
-                          <span className="flex-1 text-foreground">{item.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {positionForm.stock_symbol && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
-                      {marketBadge(positionForm.stock_market).label}
-                    </span>
-                    <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
-                    <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPositionForm({ ...positionForm, stock_id: 0, stock_symbol: '', stock_name: '', stock_market: '' })
-                        setPositionSearchQuery('')
-                      }}
-                      className="ml-1 text-muted-foreground hover:text-destructive"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>æˆæœ¬ä»·</Label>
-                <Input
-                  value={positionForm.cost_price}
-                  onChange={e => setPositionForm({ ...positionForm, cost_price: e.target.value })}
-                  placeholder="0.00"
-                  className="font-mono"
-                  inputMode="decimal"
-                />
-              </div>
-              <div>
-                <Label>æŒä»“æ•°é‡</Label>
-                <Input
-                  value={positionForm.quantity}
-                  onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
-                  placeholder="0"
-                  className="font-mono"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>æŠ•å…¥èµ„é‡‘ <span className="text-muted-foreground/60 text-[11px]">(é€‰å¡«)</span></Label>
-                <Input
-                  value={positionForm.invested_amount}
-                  onChange={e => setPositionForm({ ...positionForm, invested_amount: e.target.value })}
-                  placeholder="é€‰å¡«"
-                  className="font-mono"
-                  inputMode="decimal"
-                />
-              </div>
-              <div>
-                <Label>äº¤æ˜“é£æ ¼ <span className="text-muted-foreground font-normal">(é€‰å¡«)</span></Label>
-                <Select
-                  value={positionForm.trading_style}
-                  onValueChange={val => setPositionForm({ ...positionForm, trading_style: val === '__none__' ? '' : val })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="ä¸è®¾ç½®" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">ä¸è®¾ç½®</SelectItem>
-                    <SelectItem value="short">çŸ­çº¿ (1-5å¤©)</SelectItem>
-                    <SelectItem value="swing">æ³¢æ®µ (1-4å‘¨)</SelectItem>
-                    <SelectItem value="long">é•¿çº¿ (æ•°æœˆ)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setPositionDialogOpen(false)}>å–æ¶ˆ</Button>
-              <Button
-                onClick={handlePositionSubmit}
-                disabled={!positionForm.cost_price || !positionForm.quantity || (!editPositionId && !positionForm.stock_id && !positionForm.stock_symbol)}
-              >
-                {editPositionId ? 'ä¿å­˜' : 'æ·»åŠ '}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Agent Assignment Dialog */}
-      <Dialog open={!!agentDialogStock} onOpenChange={open => !open && setAgentDialogStock(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>é…ç½®ç›‘æ§ Agent</DialogTitle>
-            <DialogDescription>
-              ä¸º {agentDialogStock?.name}ï¼ˆ{agentDialogStock?.symbol}ï¼‰é€‰æ‹©è¦ç›‘æ§çš„ Agent
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            {agents.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground py-4 text-center">æš‚æ— å¯ç”¨ Agent</p>
-            ) : (
-              agents.map(agent => {
-                const stockAgent = agentDialogStock?.agents?.find(a => a.agent_name === agent.name)
-                const isAssigned = !!stockAgent
-                const isBatchMode = agent.execution_mode === 'batch'
-                return (
-                  <div key={agent.name} className="rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors overflow-hidden">
-                    <div className="flex items-center justify-between p-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-border'}`} />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-foreground">{agent.display_name}</span>
-                            <Badge variant="secondary" className="text-[9px]">
-                              {isBatchMode ? 'æ‰¹é‡' : 'é€åª'}
-                            </Badge>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{agent.description}</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={isAssigned}
-                        onCheckedChange={() => agentDialogStock && toggleAgent(agentDialogStock, agent.name)}
-                        disabled={!agent.enabled}
-                      />
-                    </div>
-                    {isAssigned && isBatchMode && (
-                      <div className="px-3.5 pb-3.5 pt-0">
-                        <p className="text-[11px] text-muted-foreground">
-                          è°ƒåº¦ã€AIæ¨¡å‹ã€é€šçŸ¥æ¸ é“è¯·åœ¨ <a href="/agents" className="text-primary hover:underline">Agent é…ç½®</a> é¡µé¢ç»Ÿä¸€è®¾ç½®
-                        </p>
-                      </div>
-                    )}
-                    {isAssigned && !isBatchMode && (
-                      <div className="px-3.5 pb-3.5 pt-0 space-y-2.5">
-                        {/* Schedule/Interval Select */}
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <Select
-                            value={stockAgent?.schedule || '__default__'}
-                            onValueChange={val => agentDialogStock && updateStockAgentSchedule(agentDialogStock, agent.name, val === '__default__' ? '' : val)}
-                          >
-                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
-                              <SelectValue placeholder="æ‰§è¡Œé—´éš”" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__default__">è·Ÿéšå…¨å±€</SelectItem>
-                              <SelectItem value="*/1 9-15 * * 1-5">æ¯ 1 åˆ†é’Ÿ</SelectItem>
-                              <SelectItem value="*/3 9-15 * * 1-5">æ¯ 3 åˆ†é’Ÿ</SelectItem>
-                              <SelectItem value="*/5 9-15 * * 1-5">æ¯ 5 åˆ†é’Ÿ</SelectItem>
-                              <SelectItem value="*/10 9-15 * * 1-5">æ¯ 10 åˆ†é’Ÿ</SelectItem>
-                              <SelectItem value="*/15 9-15 * * 1-5">æ¯ 15 åˆ†é’Ÿ</SelectItem>
-                              <SelectItem value="*/30 9-15 * * 1-5">æ¯ 30 åˆ†é’Ÿ</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <span className="text-[10px] text-muted-foreground">äº¤æ˜“æ—¶æ®µ</span>
-                        </div>
-
-                        {/* Schedule Preview */}
-                        {(() => {
-                          const eff = effectiveSchedule(agent, stockAgent)
-                          const isFollowingGlobal = !(stockAgent?.schedule || '').trim() && !!(agent.schedule || '').trim()
-                          const preview = eff ? schedulePreviewCache[eff] : null
-                          const isLoading = eff ? !!schedulePreviewLoading[eff] : false
-                          if (!eff) return null
-                          return (
-                            <div className="ml-[22px] rounded-lg border border-border/40 bg-background/30 px-2.5 py-2">
-                              <div className="flex items-center justify-between">
-                                <div className="text-[11px] text-muted-foreground">
-                                  æœªæ¥è§¦å‘æ—¶é—´é¢„è§ˆ{isFollowingGlobal ? <span className="ml-1 opacity-70">(è·Ÿéšå…¨å±€)</span> : null}
-                                </div>
-                                {isLoading && (
-                                  <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                                )}
-                              </div>
-                              {'error' in (preview || {}) ? (
-                                <div className="mt-1 text-[11px] text-muted-foreground">{(preview as any).error}</div>
-                              ) : (preview as SchedulePreview | undefined)?.next_runs?.length ? (
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                                  {(preview as SchedulePreview).next_runs.map((t, i) => (
-                                    <span key={i} className="px-1.5 py-0.5 rounded border border-border/60 bg-accent/20 font-mono" title={t}>
-                                      {formatPreviewTime(t, (preview as SchedulePreview).timezone)}
-                                    </span>
-                                  ))}
-                                  {(preview as SchedulePreview).timezone ? (
-                                    <span className="opacity-60">({(preview as SchedulePreview).timezone})</span>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <div className="mt-1 text-[11px] text-muted-foreground">â€”</div>
-                              )}
-                              <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">schedule: {eff}</div>
-                            </div>
-                          )
-                        })()}
-
-                        {/* AI Model Select */}
-                        <div className="flex items-center gap-2">
-                          <Cpu className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <Select
-                            value={stockAgent?.ai_model_id?.toString() ?? '__default__'}
-                            onValueChange={val => agentDialogStock && updateStockAgentModel(agentDialogStock, agent.name, val === '__default__' ? null : parseInt(val))}
-                          >
-                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__default__">ç³»ç»Ÿé»˜è®¤</SelectItem>
-                              {services.map(svc => (
-                                <SelectGroup key={svc.id}>
-                                  <SelectLabel>{svc.name}</SelectLabel>
-                                  {svc.models.map(m => (
-                                    <SelectItem key={m.id} value={m.id.toString()}>
-                                      {m.name}{m.name !== m.model ? ` (${m.model})` : ''}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {/* Notification Channels */}
-                        {channels.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Bell className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                            {channels.map(ch => {
-                              const isSelected = (stockAgent?.notify_channel_ids || []).includes(ch.id)
-                              return (
-                                <button
-                                  key={ch.id}
-                                  onClick={() => agentDialogStock && toggleStockAgentChannel(agentDialogStock, agent.name, ch.id)}
-                                  className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
-                                    isSelected
-                                      ? 'bg-primary/10 border-primary/30 text-primary font-medium'
-                                      : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-primary/30'
-                                  }`}
-                                >
-                                  {ch.name}
-                                </button>
-                              )
-                            })}
-                            {(stockAgent?.notify_channel_ids || []).length === 0 && (
-                              <span className="text-[10px] text-muted-foreground">ç³»ç»Ÿé»˜è®¤</span>
-                            )}
-                          </div>
-                        )}
-                        {/* Trigger Button */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <Button
-                            variant="secondary" size="sm" className="h-7 text-[11px] px-2.5"
-                            disabled={triggeringAgent === agent.name}
-                            onClick={() => agentDialogStock && triggerStockAgent(agentDialogStock.id, agent.name)}
-                          >
-                            {triggeringAgent === agent.name ? (
-                              <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                            ) : (
-                              <Play className="w-3 h-3" />
-                            )}
-                            ç«‹å³åˆ†æ
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Agent åˆ†æç»“æœå¼¹çª— */}
-      <Dialog open={!!agentResultDialog} onOpenChange={open => !open && setAgentResultDialog(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base">{agentResultDialog?.title}</DialogTitle>
-            <DialogDescription className="flex items-center gap-2 pt-1">
-              {agentResultDialog?.should_alert ? (
-                <Badge variant="default" className="text-[10px]">å»ºè®®å…³æ³¨</Badge>
-              ) : (
-                <Badge variant="secondary" className="text-[10px]">æ— éœ€å…³æ³¨</Badge>
-              )}
-              {agentResultDialog?.notified && (
-                <Badge variant="outline" className="text-[10px]">å·²å‘é€é€šçŸ¥</Badge>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-2 p-3 bg-accent/30 rounded-lg">
-            <pre className="text-[13px] whitespace-pre-wrap font-sans leading-relaxed">
-              {agentResultDialog?.content}
-            </pre>
-          </div>
-          <div className="flex justify-end mt-2">
-            <Button variant="outline" size="sm" onClick={() => setAgentResultDialog(null)}>
-              å…³é—­
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ç›¸å…³èµ„è®¯å¼¹çª— */}
-      <Dialog open={newsDialogOpen} onOpenChange={setNewsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Newspaper className="w-5 h-5 text-blue-500" />
-              ç›¸å…³èµ„è®¯
-            </DialogTitle>
-            <DialogDescription>
-              {newsDialogSymbol
-                ? `${newsDialogSymbol} çš„ç›¸å…³æ–°é—»å’Œå…¬å‘Š`
-                : 'è‡ªé€‰è‚¡ç›¸å…³æ–°é—»å’Œå…¬å‘Šï¼ˆè¿‘ 72 å°æ—¶ï¼‰'
-              }
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* è‚¡ç¥¨ç­›é€‰å™¨ */}
-          <div className="flex items-center gap-2 flex-wrap py-2 border-b">
-            <span className="text-[12px] text-muted-foreground">ç­›é€‰:</span>
-            <button
-              onClick={() => { setNewsDialogSymbol(''); loadNews() }}
-              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
-                !newsDialogSymbol
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-accent/50 text-muted-foreground hover:bg-accent'
-              }`}
-            >
-              å…¨éƒ¨
-            </button>
-            {stocks.slice(0, 10).map(stock => (
-              <button
-                key={stock.symbol}
-                onClick={() => { setNewsDialogSymbol(stock.name); loadNews(stock.name) }}
-                className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
-                  newsDialogSymbol === stock.name
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-accent/50 text-muted-foreground hover:bg-accent'
-                }`}
-              >
-                {stock.name}
-              </button>
-            ))}
-            {stocks.length > 10 && (
-              <span className="text-[10px] text-muted-foreground">+{stocks.length - 10}</span>
-            )}
-          </div>
-
-          {/* æ–°é—»åˆ—è¡¨ */}
-          <div className="flex-1 overflow-y-auto min-h-0 py-2">
-            {newsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <span className="ml-2 text-[13px] text-muted-foreground">åŠ è½½ä¸­...</span>
-              </div>
-            ) : news.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-[13px]">
-                æš‚æ— ç›¸å…³èµ„è®¯
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {news.map((item, idx) => (
-                  <div
-                    key={`${item.source}-${item.external_id}-${idx}`}
-                    className="p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                            item.source === 'eastmoney' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                            item.source === 'eastmoney_news' ? 'bg-blue-500/10 text-blue-500' :
-                            'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          }`}>
-                            {item.source_label}
-                          </span>
-                          {item.importance >= 2 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500">
-                              é‡è¦
-                            </span>
-                          )}
-                          <span className="text-[10px] text-muted-foreground">
-                            {item.publish_time}
-                          </span>
-                        </div>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[13px] font-medium text-foreground hover:text-primary transition-colors block"
-                        >
-                          {item.title}
-                        </a>
-                        {item.symbols.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-2">
-                            {item.symbols.slice(0, 5).map(sym => {
-                              const stockInfo = stocks.find(s => s.symbol === sym)
-                              const stockName = stockInfo?.name || sym
-                              return (
-                                <button
-                                  key={sym}
-                                  onClick={() => { setNewsDialogSymbol(stockName); loadNews(stockName) }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono hover:bg-primary/20 transition-colors"
-                                >
-                                  {stockName}
-                                </button>
-                              )
-                            })}
-                            {item.symbols.length > 5 && (
-                              <span className="text-[10px] text-muted-foreground">+{item.symbols.length - 5}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 p-1.5 rounded-md hover:bg-accent transition-colors"
-                        title="æŸ¥çœ‹åŸæ–‡"
-                      >
-                        <ExternalLink className="w-4 h-4 text-muted-foreground" />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* åº•éƒ¨åˆ·æ–°æŒ‰é’® */}
-          <div className="flex items-center justify-between pt-2 border-t">
-            <span className="text-[11px] text-muted-foreground">
-              å…± {news.length} æ¡èµ„è®¯
-            </span>
-            <Button variant="secondary" size="sm" onClick={() => loadNews(newsDialogSymbol || undefined)} disabled={newsLoading}>
-              <RefreshCw className={`w-3 h-3 ${newsLoading ? 'animate-spin' : ''}`} />
-              åˆ·æ–°
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
+][KY
+HOˆ
+ˆ]‚ˆÙ^O^Ø	Ú][KœÛİ\˜Ù_KIÚ][K™^\›˜[ÚYKIÚYXBˆÛ\ÜÓ˜[YOHœLÈ›İ[™Y[È™ËXXØÙ[ÌÌİ™\˜™ËXXØÙ[ÍL˜[œÚ][Û‹XÛÛÜœÈ‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\İ\\İYKX™]ÙY[ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^LHZ[‹]ËL‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆX‹LKH‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø^VÌLHLKHKLH›İ[™Y	Âˆ][KœÛİ\˜ÙHOOH	ÙX\İ[Û™^IÈÈ	Ø™ËX[X™\‹MLÌL^X[X™\‹MŒ\šÎ^X[X™\‹M	È‚ˆ][KœÛİ\˜ÙHOOH	ÙX\İ[Û™^WÛ™]ÜÉÈÈ	Ø™ËX›YKMLÌL^X›YKML	È‚ˆ	Ø™ËY[Y\˜[MLÌL^Y[Y\˜[MŒ\šÎ^Y[Y\˜[M	ÂˆXO‚ˆÚ][KœÛİ\˜ÙWÛX™[BˆÜÜ[‚ˆÚ][Kš[\Ü[˜ÙHHˆ	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLHLKHKLH›İ[™Y™Ë\›ÜÙKMLÌL^\›ÜÙKML‚ˆ:aãz) BˆÜÜ[‚ˆ
+_BˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™‚ˆÚ][KœX›\Úİ[Y_BˆÜÜ[‚ˆÙ]‚ˆBˆ™Y^Ú][K\›Bˆ\™Ù]H—Ø›[šÈ‚ˆ™[H››ÛÜ[™\ˆ›Ü™Y™\œ™\ˆ‚ˆÛ\ÜÓ˜[YOH^VÌLÜH›Û[YY][H^Y›Ü™YÜ›İ[™İ™\^\š[X\H˜[œÚ][Û‹XÛÛÜœÈ›ØÚÈ‚ˆ‚ˆÚ][K]_BˆØO‚ˆÚ][KœŞ[X›ÛË›[™İˆ	‰ˆ
+ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LKH]Lˆ‚ˆÚ][KœŞ[X›ÛËœÛXÙJJK›X\
+Ş[HOˆÂˆÛÛœİİØÚÒ[™›ÈHİØÚÜË™š[™
+ÈOˆËœŞ[X›ÛOOHŞ[JBˆÛÛœİİØÚÓ˜[YHHİØÚÒ[™›ÏË›˜[YHŞ[Bˆ™]\›ˆ
+ˆ]Û‚ˆÙ^O^ÜŞ[_BˆÛÛXÚÏ^Ê
+HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
+İØÚÓ˜[YJNÈØY™]ÜÊİØÚÓ˜[YJH_BˆÛ\ÜÓ˜[YOH^VÌLHLKHKLH›İ[™Y™Ë\š[X\KÌL^\š[X\H›Û[[Û›Èİ™\˜™Ë\š[X\KÌŒ˜[œÚ][Û‹XÛÛÜœÈ‚ˆ‚ˆÜİØÚÓ˜[Y_BˆØ]Û‚ˆ
+BˆJ_BˆÚ][KœŞ[X›ÛË›[™İˆH	‰ˆ
+ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™ŠŞÚ][KœŞ[X›ÛË›[™İH_OÜÜ[‚ˆ
+_BˆÙ]‚ˆ
+_BˆÙ]‚ˆBˆ™Y^Ú][K\›Bˆ\™Ù]H—Ø›[šÈ‚ˆ™[H››ÛÜ[™\ˆ›Ü™Y™\œ™\ˆ‚ˆÛ\ÜÓ˜[YOH™›^\Úš[šËLLKH›İ[™Y[Yİ™\˜™ËXXØÙ[˜[œÚ][Û‹XÛÛÜœÈ‚ˆ]OH¹§éyç"ùc§ù¥¡È‚ˆ‚ˆ^\›˜[[šÈÛ\ÜÓ˜[YOHËMM^[]]YY›Ü™YÜ›İ[™ˆÏ‚ˆØO‚ˆÙ]‚ˆÙ]‚ˆ
+J_BˆÙ]‚ˆ
+_BˆÙ]‚‚ˆËÊˆ9n¥z`ê9b-ù¥¬9£"zd«ˆ
+‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆLˆ›Ü™\‹]‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ9alHÛ™]ÜË›[™İH9§hz-a:+«ÂˆÜÜ[‚ˆ]Ûˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆÛÛXÚÏ^Ê
+HOˆØY™]ÜÊ™]ÜÑX[ÙÔŞ[X›Û[™Yš[™Y
+_H\ØX›Y^Û™]ÜÓØY[™ßO‚ˆ™Yœ™\ÚİÈÛ\ÜÓ˜[YO^ØËLÈLÈ	Û™]ÜÓØY[™ÈÈ	Ø[š[X]K\Ü[‰Èˆ	ÉßXHÏ‚ˆ9b-ù¥¬ˆĞ]Û‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚ˆÙ]‚ˆ
+BŸB
