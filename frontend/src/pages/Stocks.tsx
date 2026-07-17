@@ -427,155 +427,2804 @@ export default function StocksPage() {
   const [sellForm, setSellForm] = useState({ sell_price: '', sell_quantity: '', fee: '0', note: '' })
 
   // Agent dialog
-  const [agentDhå=DÓECB1×¹Ûw!j»(š+myÚ.¶‡öÓ®vŞÚ-jZ]‚ˆX™[¹¢$9§+9.íÏÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›K˜ÛÜİÜšXÙ_BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›KÛÜİÜšXÙNˆK\™Ù]˜[YHJ_BˆXÙZÛ\HŒŒ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH™XÚ[X[‚ˆÏ‚ˆÙ]‚ˆ]‚ˆX™[¹£ y.äù¥l:aãÏÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›Kœ]X[]_BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K]X[]NˆK\™Ù]˜[YHJ_BˆXÙZÛ\HŒ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH›[Y\šXÈ‚ˆÏ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™ÜšYÜšYXÛÛËLˆØ\M‚ˆ]‚ˆX™[¹¢¥yaiz-a:aäHÜ[ˆÛ\ÜÓ˜[YOH^[]]YY›Ü™YÜ›İ[™ÍŒ^VÌL\HŠ:`"yhjÊOÜÜ[ÓX™[‚ˆ[œ]ˆ˜[YO^ÜÜÚ][Û‘›Ü›Kš[™\İYØ[[İ[BˆÛÚ[™ÙO^ÙHOˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K[™\İYØ[[İ[ˆK\™Ù]˜[YHJ_BˆXÙZÛ\Hº`"yhjÈ‚ˆÛ\ÜÓ˜[YOH™›Û[[Û›È‚ˆ[œ][ÙOH™XÚ[X[‚ˆÏ‚ˆÙ]‚ˆ]‚ˆX™[¹.©9¦$úhã¹¨/Ü[ˆÛ\ÜÓ˜[YOH^[]]YY›Ü™YÜ›İ[™›Û[›Ü›X[Š:`"yhjÊOÜÜ[ÓX™[‚ˆÙ[Xİˆ˜[YO^ÜÜÚ][Û‘›Ü›K˜Y[™×Üİ[_BˆÛ•˜[YPÚ[™ÙO^İ˜[OˆÙ]ÜÚ][Û‘›Ü›JÈ‹‹œÜÚ][Û‘›Ü›K˜Y[™×Üİ[Nˆ˜[OOH	××Û›Û™W×ÉÈÈ	ÉÈˆ˜[J_Bˆ‚ˆÙ[XİšYÙÙ\‚ˆÙ[Xİ˜[YHXÙZÛ\H¹.#z+¯¹ïkˆˆÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×Û›Û™W×È¹.#z+¯¹ïkÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHœÚÜ¹çëyî¯È
-KMyi*JOÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHœİÚ[™È¹¬è¹«­H
-KM9dj
-OÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOH›Û™Èºeoùî¯È
-9¥l9§"
-OÔÙ[Xİ][O‚ˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^\İYKY[™Ø\LˆLˆ‚ˆ]Ûˆ˜\šX[H™ÚÜİˆÛÛXÚÏ^Ê
-HOˆÙ]ÜÚ][Û‘X[ÙÓÜ[Š˜[ÙJ_O¹cå¹­¢Ğ]Û‚ˆ]Û‚ˆÛÛXÚÏ^Ú[™TÜÚ][Û”İX›Z]Bˆ\ØX›Y^È\ÜÚ][Û‘›Ü›K˜ÛÜİÜšXÙH\ÜÚ][Û‘›Ü›Kœ]X[]H
-YY]ÜÚ][Û’Y	‰ˆ\ÜÚ][Û‘›Ü›KœİØÚ×ÚY	‰ˆ\ÜÚ][Û‘›Ü›KœİØÚ×ÜŞ[X›Û
-_Bˆ‚ˆÙY]ÜÚ][Û’YÈ	ù/çykf	Èˆ	ù­îùb¨	ßBˆĞ]Û‚ˆÙ]‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆYÙ[\ÜÚYÛ›Y[X[ÙÈ
-‹ßBˆX[ÙÈÜ[^ÈHXYÙ[X[ÙÔİØÚßHÛ“Ü[Ú[™ÙO^ÛÜ[ˆOˆ[Ü[ˆ	‰ˆÙ]YÙ[X[ÙÔİØÚÊ[
-_O‚ˆX[ÙĞÛÛ[‚ˆX[ÙÒXY\‚ˆX[ÙÕ]Oºacyïk¹æäy£©ÈYÙ[ÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[Û‚ˆ9..ˆØYÙ[X[ÙÔİØÚÏË›˜[Y_{ï"ØYÙ[X[ÙÔİØÚÏËœŞ[X›Û{ï"z`"y¢êz) yæäy£©ùæ¡YÙ[ˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLÈ]Lˆ‚ˆØYÙ[Ë›[™İOOHÈ
-ˆÛ\ÜÓ˜[YOH^VÌLÜH^[]]YY›Ü™YÜ›İ[™KM^XÙ[\ˆ¹¦ ¹¥è9cëùå*YÙ[Ü‚ˆ
-Hˆ
-ˆYÙ[Ë›X\
-YÙ[OˆÂˆÛÛœİİØÚĞYÙ[HYÙ[X[ÙÔİØÚÏË˜YÙ[ÏË™š[™
-HOˆK˜YÙ[Û˜[YHOOHYÙ[›˜[YJBˆÛÛœİ\Ğ\ÜÚYÛ™YHH\İØÚĞYÙ[ˆÛÛœİ\Ğ˜]Ú[ÙHHYÙ[™^Xİ][Û—Û[ÙHOOH	Ø˜]Ú	Âˆ™]\›ˆ
-ˆ]ˆÙ^O^ØYÙ[›˜[Y_HÛ\ÜÓ˜[YOHœ›İ[™Y^™ËXXØÙ[ÌÌİ™\˜™ËXXØÙ[ÍL˜[œÚ][Û‹XÛÛÜœÈİ™\™›İËZY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆLËH‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YO^ØËLˆLˆ›İ[™YY[	ØYÙ[™[˜X›YÈ	Ø™ËY[Y\˜[ML	Èˆ	Ø™ËX›Ü™\‰ßXHÏ‚ˆ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLÜH›Û[YY][H^Y›Ü™YÜ›İ[™ØYÙ[™\Ü^WÛ˜[Y_OÜÜ[‚ˆ˜YÙH˜\šX[HœÙXÛÛ™\HˆÛ\ÜÓ˜[YOH^VÎ\H‚ˆÚ\Ğ˜]Ú[ÙHÈ	ù¢nzaãÉÈˆ	ú`$9cê‰ßBˆĞ˜YÙO‚ˆÙ]‚ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™]LHØYÙ[™\ØÜš\[ÛŸOÜ‚ˆÙ]‚ˆÙ]‚ˆİÚ]ÚˆÚXÚÙY^Ú\Ğ\ÜÚYÛ™YBˆÛÚXÚÙYÚ[™ÙO^Ê
-HOˆYÙ[X[ÙÔİØÚÈ	‰ˆÙÙÛPYÙ[
-YÙ[X[ÙÔİØÚËYÙ[›˜[YJ_Bˆ\ØX›Y^ÈXYÙ[™[˜X›YBˆÏ‚ˆÙ]‚ˆÚ\Ğ\ÜÚYÛ™Y	‰ˆ\Ğ˜]Ú[ÙH	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœLËH‹LËHL‚ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ:, ùn©¸à PRyª(yg¢øà z`&¹çéy®(:`dú+íùg*H™YH‹ØYÙ[ÈˆÛ\ÜÓ˜[YOH^\š[X\Hİ™\[™\›[™HYÙ[:acyïkØOˆ:hmzgh¹îçù. :+¯¹ïk‚ˆÜ‚ˆÙ]‚ˆ
-_BˆÚ\Ğ\ÜÚYÛ™Y	‰ˆZ\Ğ˜]Ú[ÙH	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœLËH‹LËHLÜXÙK^KL‹H‚ˆËÊˆØÚY[KÒ[\˜[Ù[Xİ
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÛØÚÈÛ\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆÙ[Xİˆ˜[YO^ÜİØÚĞYÙ[ËœØÚY[H	××ÙY˜][×ÉßBˆÛ•˜[YPÚ[™ÙO^İ˜[OˆYÙ[X[ÙÔİØÚÈ	‰ˆ\]TİØÚĞYÙ[ØÚY[JYÙ[X[ÙÔİØÚËYÙ[›˜[YK˜[OOH	××ÙY˜][×ÉÈÈ	ÉÈˆ˜[
-_Bˆ‚ˆÙ[XİšYÙÙ\ˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HËX]]ÈZ[‹]ËVÌMHL‹H™ËXXØÙ[ÍL›Ü™\‹X›Ü™\‹ÍL‚ˆÙ[Xİ˜[YHXÙZÛ\H¹¢iú(c:eí:f¥ˆÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×ÙY˜][×Èº-çúf£ùaj9l`ÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌHKLMH
-ˆ
-ˆKMH¹«ãÈH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌÈKLMH
-ˆ
-ˆKMH¹«ãÈÈ9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÍHKLMH
-ˆ
-ˆKMH¹«ãÈH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌLKLMH
-ˆ
-ˆKMH¹«ãÈL9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌMHKLMH
-ˆ
-ˆKMH¹«ãÈMH9b!ºd§ÏÔÙ[Xİ][O‚ˆÙ[Xİ][H˜[YOHŠ‹ÌÌKLMH
-ˆ
-ˆKMH¹«ãÈÌ9b!ºd§ÏÔÙ[Xİ][O‚ˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™¹.©9¦$ù¥í¹«­OÜÜ[‚ˆÙ]‚‚ˆËÊˆØÚY[H™]šY]È
-‹ßBˆÊ
+  const [agentDialogStock, setAgentDialogStock] = useState<Stock | null>(null)
 
-HOˆÂˆÛÛœİY™ˆHY™™Xİ]™TØÚY[JYÙ[İØÚĞYÙ[
-BˆÛÛœİ\Ñ›ÛİÚ[™ÑÛØ˜[HJİØÚĞYÙ[ËœØÚY[H	ÉÊKš[J
-H	‰ˆHJYÙ[œØÚY[H	ÉÊKš[J
-BˆÛÛœİ™]šY]ÈHY™ˆÈØÚY[T™]šY]ĞØXÚVÙY™—Hˆ[ˆÛÛœİ\ÓØY[™ÈHY™ˆÈH\ØÚY[T™]šY]ÓØY[™ÖÙY™—Hˆ˜[ÙBˆYˆ
-YY™ŠH™]\›ˆ[ˆ™]\›ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH›[VÌŒœH›İ[™Y[È›Ü™\ˆ›Ü™\‹X›Ü™\‹Í™ËX˜XÚÙÜ›İ[™ÌÌL‹HKLˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ9§*¹§iz)é¹cäy¥íºeí:h¡:)âÚ\Ñ›ÛİÚ[™ÑÛØ˜[ÈÜ[ˆÛ\ÜÓ˜[YOH›[LHÜXÚ]KMÌŠ:-çúf£ùaj9l`
-OÜÜ[ˆˆ[BˆÙ]‚ˆÚ\ÓØY[™È	‰ˆ
-ˆÜ[ˆÛ\ÜÓ˜[YOHËLÈLÈ›Ü™\‹Lˆ›Ü™\‹\š[X\KÌÌ›Ü™\‹]\š[X\H›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆ
-_BˆÙ]‚ˆÉÙ\œ›Ü‰È[ˆ
-™]šY]ÈßJHÈ
-ˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌL\H^[]]YY›Ü™YÜ›İ[™Ê™]šY]È\È[JK™\œ›ÜŸOÙ]‚ˆ
-Hˆ
-™]šY]È\ÈØÚY[T™]šY]È[™Yš[™Y
-OË›™^Ü[œÏË›[™İÈ
-ˆ]ˆÛ\ÜÓ˜[YOH›]LH›^›^]Ü˜\][\ËXÙ[\ˆØ\LKH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆÊ™]šY]È\ÈØÚY[T™]šY]ÊK›™^Ü[œË›X\
+  // æ·±åº¦åˆ†æ(TradingAgents)å¼¹çª—
+  const [deepAnalysisTarget, setDeepAnalysisTarget] = useState<{
+    stockId: number
+    symbol: string
+    name: string
+  } | null>(null)
+  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string) => {
+    setDeepAnalysisTarget({ stockId, symbol, name })
+  }, [])
+  const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
+  const [schedulePreviewCache, setSchedulePreviewCache] = useState<Record<string, SchedulePreview | { error: string }>>({})
+  const [schedulePreviewLoading, setSchedulePreviewLoading] = useState<Record<string, boolean>>({})
+  // è¿è¡Œä¸­çš„å•åªè‚¡ç¥¨ Agentï¼ˆæŒ‰è‚¡ç¥¨æ ‡è®°å…·ä½“ Agent åç§°ï¼‰
+  const [runningAgents, setRunningAgents] = useState<Record<number, string | null>>({})
+  const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
 
-JHOˆ
-ˆÜ[ˆÙ^O^Ú_HÛ\ÜÓ˜[YOHœLKHKLH›İ[™Y›Ü™\ˆ›Ü™\‹X›Ü™\‹ÍŒ™ËXXØÙ[ÌŒ›Û[[Û›Èˆ]O^İO‚ˆÙ›Ü›X]™]šY]Õ[YJ
-™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™J_BˆÜÜ[‚ˆ
-J_BˆÊ™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™HÈ
-ˆÜ[ˆÛ\ÜÓ˜[YOH›ÜXÚ]KMŒŠÊ™]šY]È\ÈØÚY[T™]šY]ÊK[Y^›Û™_JOÜÜ[‚ˆ
-Hˆ[BˆÙ]‚ˆ
-Hˆ
-ˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌL\H^[]]YY›Ü™YÜ›İ[™¸ %Ù]‚ˆ
-_Bˆ]ˆÛ\ÜÓ˜[YOH›]LH^VÌLH^[]]YY›Ü™YÜ›İ[™ÍÌ›Û[[Û›ÈœØÚY[NˆÙY™ŸOÙ]‚ˆÙ]‚ˆ
-BˆJJ
-_B‚ˆËÊˆRH[Ù[Ù[Xİ
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆÜHÛ\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆÙ[Xİˆ˜[YO^ÜİØÚĞYÙ[Ë˜ZWÛ[Ù[ÚYËÔİš[™Ê
-HÏÈ	××ÙY˜][×ÉßBˆÛ•˜[YPÚ[™ÙO^İ˜[OˆYÙ[X[ÙÔİØÚÈ	‰ˆ\]TİØÚĞYÙ[[Ù[
-YÙ[X[ÙÔİØÚËYÙ[›˜[YK˜[OOH	××ÙY˜][×ÉÈÈ[ˆ\œÙR[
-˜[
-J_Bˆ‚ˆÙ[XİšYÙÙ\ˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HËX]]ÈZ[‹]ËVÌMHL‹H™ËXXØÙ[ÍL›Ü™\‹X›Ü™\‹ÍL‚ˆÙ[Xİ˜[YHÏ‚ˆÔÙ[XİšYÙÙ\‚ˆÙ[XİÛÛ[‚ˆÙ[Xİ][H˜[YOH—×ÙY˜][×È¹ìîùîçúnæ:+©ÔÙ[Xİ][O‚ˆÜÙ\šXÙ\Ë›X\
-İ˜ÈOˆ
-ˆÙ[XİÜ›İ\Ù^O^Üİ˜ËšYO‚ˆÙ[XİX™[Üİ˜Ë›˜[Y_OÔÙ[XİX™[‚ˆÜİ˜Ë›[Ù[Ë›X\
-HOˆ
-ˆÙ[Xİ][HÙ^O^ÛKšYH˜[YO^ÛKšYÔİš[™Ê
-_O‚ˆÛK›˜[Y_^ÛK›˜[YHOOHK›[Ù[È
-	ÛK›[Ù[JXˆ	ÉßBˆÔÙ[Xİ][O‚ˆ
-J_BˆÔÙ[XİÜ›İ\‚ˆ
-J_BˆÔÙ[XİÛÛ[‚ˆÔÙ[Xİ‚ˆÙ]‚ˆËÊˆ›İYšXØ][ÛˆÚ[›™[È
-‹ßBˆØÚ[›™[Ë›[™İˆ	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›^]Ü˜\‚ˆ™[Û\ÜÓ˜[YOHËLËHLËH^[]]YY›Ü™YÜ›İ[™›^\Úš[šËLˆÏ‚ˆØÚ[›™[Ë›X\
-ÚOˆÂˆÛÛœİ\ÔÙ[XİYH
-İØÚĞYÙ[Ë››İYWØÚ[›™[ÚYÈ×JKš[˜ÛY\ÊÚšY
-Bˆ™]\›ˆ
-ˆ]Û‚ˆÙ^O^ØÚšYBˆÛÛXÚÏ^Ê
-HOˆYÙ[X[ÙÔİØÚÈ	‰ˆÙÙÛTİØÚĞYÙ[Ú[›™[
-YÙ[X[ÙÔİØÚËYÙ[›˜[YKÚšY
-_BˆÛ\ÜÓ˜[YO^Ø^VÌLHLˆKLH›İ[™Y[Y›Ü™\ˆ˜[œÚ][Û‹XÛÛÜœÈ	Âˆ\ÔÙ[XİYˆÈ	Ø™Ë\š[X\KÌL›Ü™\‹\š[X\KÌÌ^\š[X\H›Û[YY][IÂˆˆ	Ø™ËXXØÙ[ÌÌ›Ü™\‹X›Ü™\‹ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜›Ü™\‹\š[X\KÌÌ	ÂˆXBˆ‚ˆØÚ›˜[Y_BˆØ]Û‚ˆ
-BˆJ_BˆÊİØÚĞYÙ[Ë››İYWØÚ[›™[ÚYÈ×JK›[™İOOH	‰ˆ
-ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™¹ìîùîçúnæ:+©ÜÜ[‚ˆ
-_BˆÙ]‚ˆ
-_BˆËÊˆšYÙÙ\ˆ]Ûˆ
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆLH‚ˆ]Û‚ˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆÛ\ÜÓ˜[YOHšMÈ^VÌL\HL‹H‚ˆ\ØX›Y^İšYÙÙ\š[™ĞYÙ[OOHYÙ[›˜[Y_BˆÛÛXÚÏ^Ê
-HOˆYÙ[X[ÙÔİØÚÈ	‰ˆšYÙÙ\”İØÚĞYÙ[
-YÙ[X[ÙÔİØÚËšYYÙ[›˜[YJ_Bˆ‚ˆİšYÙÙ\š[™ĞYÙ[OOHYÙ[›˜[YHÈ
-ˆÜ[ˆÛ\ÜÓ˜[YOHËLÈLÈ›Ü™\‹Lˆ›Ü™\‹Xİ\œ™[ÌÌ›Ü™\‹]Xİ\œ™[›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆ
-Hˆ
-ˆ^HÛ\ÜÓ˜[YOHËLÈLÈˆÏ‚ˆ
-_Bˆ9êâùclùb!¹§¤ˆĞ]Û‚ˆÙ]‚ˆÙ]‚ˆ
-_BˆÙ]‚ˆ
-BˆJBˆ
-_BˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆYÙ[9b!¹§¤9îäù§§9o.yê¥È
-‹ßBˆX[ÙÈÜ[^ÈHXYÙ[™\İ[X[ÙßHÛ“Ü[Ú[™ÙO^ÛÜ[ˆOˆ[Ü[ˆ	‰ˆÙ]YÙ[™\İ[X[ÙÊ[
-_O‚ˆX[ÙĞÛÛ[Û\ÜÓ˜[YOH›X^]Ë[Y‚ˆX[ÙÒXY\‚ˆX[ÙÕ]HÛ\ÜÓ˜[YOH^X˜\ÙHØYÙ[™\İ[X[ÙÏË]_OÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[ÛˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆLH‚ˆØYÙ[™\İ[X[ÙÏËœÚİ[Ø[\È
-ˆ˜YÙH˜\šX[H™Y˜][ˆÛ\ÜÓ˜[YOH^VÌLH¹nîº+«¹alù¬êĞ˜YÙO‚ˆ
-Hˆ
-ˆ˜YÙH˜\šX[HœÙXÛÛ™\HˆÛ\ÜÓ˜[YOH^VÌLH¹¥è:g 9alù¬êĞ˜YÙO‚ˆ
-_BˆØYÙ[™\İ[X[ÙÏË››İYšYY	‰ˆ
-ˆ˜YÙH˜\šX[H›İ][™HˆÛ\ÜÓ˜[YOH^VÌLH¹mì¹cäz` z`&¹çéOĞ˜YÙO‚ˆ
-_BˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚ˆ]ˆÛ\ÜÓ˜[YOH›]LˆLÈ™ËXXØÙ[ÌÌ›İ[™Y[È‚ˆ™HÛ\ÜÓ˜[YOH^VÌLÜHÚ]\ÜXÙK\™K]Ü˜\›Û\Ø[œÈXY[™Ë\™[^Y‚ˆØYÙ[™\İ[X[ÙÏË˜ÛÛ[BˆÜ™O‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^\İYKY[™]Lˆ‚ˆ]Ûˆ˜\šX[H›İ][™HˆÚ^™OHœÛHˆÛÛXÚÏ^Ê
-HOˆÙ]YÙ[™\İ[X[ÙÊ[
-_O‚ˆ9alúeëBˆĞ]Û‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚‚ˆËÊˆ9æî9alú-a:+«ùo.yê¥È
-‹ßBˆX[ÙÈÜ[^Û™]ÜÑX[ÙÓÜ[ŸHÛ“Ü[Ú[™ÙO^ÜÙ]™]ÜÑX[ÙÓÜ[ŸO‚ˆX[ÙĞÛÛ[Û\ÜÓ˜[YOH›X^]ËLX^ZVÎ]šH›^›^XÛÛ‚ˆX[ÙÒXY\‚ˆX[ÙÕ]HÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ‚ˆ™]ÜÜ\\ˆÛ\ÜÓ˜[YOHËMHMH^X›YKMLˆÏ‚ˆ9æî9alú-a:+«ÂˆÑX[ÙÕ]O‚ˆX[ÙÑ\ØÜš\[Û‚ˆÛ™]ÜÑX[ÙÔŞ[X›ÛˆÈ	Û™]ÜÑX[ÙÔŞ[X›ÛH9æ¡9æî9alù¥¬:eîùd£9ak9db˜ˆˆ	ú!êº`"z ¨yæî9alù¥¬:eîùd£9ak9db»ï":/äHÌˆ9l#ù¥í»ï"IÂˆBˆÑX[ÙÑ\ØÜš\[Û‚ˆÑX[ÙÒXY\‚‚ˆËÊˆ: ¨yéj9ëfú`"yfj
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\Lˆ›^]Ü˜\KLˆ›Ü™\‹Xˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLœH^[]]YY›Ü™YÜ›İ[™¹ëfú`"NÜÜ[‚ˆ]Û‚ˆÛÛXÚÏ^Ê
-HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
-	ÉÊNÈØY™]ÜÊ
-H_BˆÛ\ÜÓ˜[YO^Ø^VÌL\HL‹HKLH›İ[™Y[Y˜[œÚ][Û‹XÛÛÜœÈ	Âˆ[™]ÜÑX[ÙÔŞ[X›ÛˆÈ	Ø™Ë\š[X\H^\š[X\KY›Ü™YÜ›İ[™	Âˆˆ	Ø™ËXXØÙ[ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜™ËXXØÙ[	ÂˆXBˆ‚ˆ9aj:`êˆØ]Û‚ˆÜİØÚÜËœÛXÙJL
-K›X\
-İØÚÈOˆ
-ˆ]Û‚ˆÙ^O^ÜİØÚËœŞ[X›ÛBˆÛÛXÚÏ^Ê
-HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
-İØÚË›˜[YJNÈØY™]ÜÊİØÚË›˜[YJH_BˆÛ\ÜÓ˜[YO^Ø^VÌL\HL‹HKLH›İ[™Y[Y˜[œÚ][Û‹XÛÛÜœÈ	Âˆ™]ÜÑX[ÙÔŞ[X›ÛOOHİØÚË›˜[YBˆÈ	Ø™Ë\š[X\H^\š[X\KY›Ü™YÜ›İ[™	Âˆˆ	Ø™ËXXØÙ[ÍL^[]]YY›Ü™YÜ›İ[™İ™\˜™ËXXØÙ[	ÂˆXBˆ‚ˆÜİØÚË›˜[Y_BˆØ]Û‚ˆ
-J_BˆÜİØÚÜË›[™İˆL	‰ˆ
-ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™ŠŞÜİØÚÜË›[™İHLOÜÜ[‚ˆ
-_BˆÙ]‚‚ˆËÊˆ9¥¬:eîùb%ú(j
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^LHİ™\™›İË^KX]]ÈZ[‹ZLKLˆ‚ˆÛ™]ÜÓØY[™ÈÈ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKXÙ[\ˆKLLˆ‚ˆÜ[ˆÛ\ÜÓ˜[YOHËMHMH›Ü™\‹Lˆ›Ü™\‹\š[X\KÌÌ›Ü™\‹]\š[X\H›İ[™YY[[š[X]K\Ü[ˆˆÏ‚ˆÜ[ˆÛ\ÜÓ˜[YOH›[Lˆ^VÌLÜH^[]]YY›Ü™YÜ›İ[™¹b¨:/oy.+K‹‹ÜÜ[‚ˆÙ]‚ˆ
-Hˆ™]ÜË›[™İOOHÈ
-ˆ]ˆÛ\ÜÓ˜[YOH^XÙ[\ˆKLLˆ^[]]YY›Ü™YÜ›İ[™^VÌLÜH‚ˆ9¦ ¹¥è9æî9alú-a:+«ÂˆÙ]‚ˆ
-Hˆ
-ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KLˆ‚ˆÛ™]ÜË›X\
+  // Stock list filter
+  const [stockListFilter, setStockListFilter] = useState('')  // '' = å…¨éƒ¨, 'CN' = Aè‚¡, 'HK' = æ¸¯è‚¡, 'US' = ç¾è‚¡
+  const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
-][KY
-HOˆ
-ˆ]‚ˆÙ^O^Ø	Ú][KœÛİ\˜Ù_KIÚ][K™^\›˜[ÚYKIÚYXBˆÛ\ÜÓ˜[YOHœLÈ›İ[™Y[È™ËXXØÙ[ÌÌİ™\˜™ËXXØÙ[ÍL˜[œÚ][Û‹XÛÛÜœÈ‚ˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\Ë\İ\\İYKX™]ÙY[ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^LHZ[‹]ËL‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LˆX‹LKH‚ˆÜ[ˆÛ\ÜÓ˜[YO^Ø^VÌLHLKHKLH›İ[™Y	Âˆ][KœÛİ\˜ÙHOOH	ÙX\İ[Û™^IÈÈ	Ø™ËX[X™\‹MLÌL^X[X™\‹MŒ\šÎ^X[X™\‹M	È‚ˆ][KœÛİ\˜ÙHOOH	ÙX\İ[Û™^WÛ™]ÜÉÈÈ	Ø™ËX›YKMLÌL^X›YKML	È‚ˆ	Ø™ËY[Y\˜[MLÌL^Y[Y\˜[MŒ\šÎ^Y[Y\˜[M	ÂˆXO‚ˆÚ][KœÛİ\˜ÙWÛX™[BˆÜÜ[‚ˆÚ][Kš[\Ü[˜ÙHHˆ	‰ˆ
-ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLHLKHKLH›İ[™Y™Ë\›ÜÙKMLÌL^\›ÜÙKML‚ˆ:aãz) BˆÜÜ[‚ˆ
-_BˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™‚ˆÚ][KœX›\Úİ[Y_BˆÜÜ[‚ˆÙ]‚ˆBˆ™Y^Ú][K\›Bˆ\™Ù]H—Ø›[šÈ‚ˆ™[H››ÛÜ[™\ˆ›Ü™Y™\œ™\ˆ‚ˆÛ\ÜÓ˜[YOH^VÌLÜH›Û[YY][H^Y›Ü™YÜ›İ[™İ™\^\š[X\H˜[œÚ][Û‹XÛÛÜœÈ›ØÚÈ‚ˆ‚ˆÚ][K]_BˆØO‚ˆÚ][KœŞ[X›ÛË›[™İˆ	‰ˆ
-ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LKH]Lˆ‚ˆÚ][KœŞ[X›ÛËœÛXÙJJK›X\
-Ş[HOˆÂˆÛÛœİİØÚÒ[™›ÈHİØÚÜË™š[™
-ÈOˆËœŞ[X›ÛOOHŞ[JBˆÛÛœİİØÚÓ˜[YHHİØÚÒ[™›ÏË›˜[YHŞ[Bˆ™]\›ˆ
-ˆ]Û‚ˆÙ^O^ÜŞ[_BˆÛÛXÚÏ^Ê
-HOˆÈÙ]™]ÜÑX[ÙÔŞ[X›Û
-İØÚÓ˜[YJNÈØY™]ÜÊİØÚÓ˜[YJH_BˆÛ\ÜÓ˜[YOH^VÌLHLKHKLH›İ[™Y™Ë\š[X\KÌL^\š[X\H›Û[[Û›Èİ™\˜™Ë\š[X\KÌŒ˜[œÚ][Û‹XÛÛÜœÈ‚ˆ‚ˆÜİØÚÓ˜[Y_BˆØ]Û‚ˆ
-BˆJ_BˆÚ][KœŞ[X›ÛË›[™İˆH	‰ˆ
-ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌLH^[]]YY›Ü™YÜ›İ[™ŠŞÚ][KœŞ[X›ÛË›[™İH_OÜÜ[‚ˆ
-_BˆÙ]‚ˆ
-_BˆÙ]‚ˆBˆ™Y^Ú][K\›Bˆ\™Ù]H—Ø›[šÈ‚ˆ™[H››ÛÜ[™\ˆ›Ü™Y™\œ™\ˆ‚ˆÛ\ÜÓ˜[YOH™›^\Úš[šËLLKH›İ[™Y[Yİ™\˜™ËXXØÙ[˜[œÚ][Û‹XÛÛÜœÈ‚ˆ]OH¹§éyç"ùc§ù¥¡È‚ˆ‚ˆ^\›˜[[šÈÛ\ÜÓ˜[YOHËMM^[]]YY›Ü™YÜ›İ[™ˆÏ‚ˆØO‚ˆÙ]‚ˆÙ]‚ˆ
-J_BˆÙ]‚ˆ
-_BˆÙ]‚‚ˆËÊˆ9n¥z`ê9b-ù¥¬9£"zd«ˆ
-‹ßBˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆ\İYKX™]ÙY[ˆLˆ›Ü™\‹]‚ˆÜ[ˆÛ\ÜÓ˜[YOH^VÌL\H^[]]YY›Ü™YÜ›İ[™‚ˆ9alHÛ™]ÜË›[™İH9§hz-a:+«ÂˆÜÜ[‚ˆ]Ûˆ˜\šX[HœÙXÛÛ™\HˆÚ^™OHœÛHˆÛÛXÚÏ^Ê
-HOˆØY™]ÜÊ™]ÜÑX[ÙÔŞ[X›Û[™Yš[™Y
-_H\ØX›Y^Û™]ÜÓØY[™ßO‚ˆ™Yœ™\ÚİÈÛ\ÜÓ˜[YO^ØËLÈLÈ	Û™]ÜÓØY[™ÈÈ	Ø[š[X]K\Ü[‰Èˆ	ÉßXHÏ‚ˆ9b-ù¥¬ˆĞ]Û‚ˆÙ]‚ˆÑX[ÙĞÛÛ[‚ˆÑX[ÙÏ‚ˆÙ]‚ˆ
-BŸB
+  // Remove watchlist modal
+  const [removeWatchStock, setRemoveWatchStock] = useState<Stock | null>(null)
+  const [removingWatchStock, setRemovingWatchStock] = useState(false)
+  const [draggingWatchStockId, setDraggingWatchStockId] = useState<number | null>(null)
+  const [draggingPositionId, setDraggingPositionId] = useState<number | null>(null)
+  const [draggingPositionAccountId, setDraggingPositionAccountId] = useState<number | null>(null)
+  const watchDragSnapshotRef = useRef<Stock[] | null>(null)
+  const positionDragSnapshotRef = useRef<PortfolioSummary | null>(null)
+
+  const { toast } = useToast()
+
+  const moveById = <T extends { id: number }>(list: T[], fromId: number, toId: number): T[] => {
+    const fromIdx = list.findIndex(x => x.id === fromId)
+    const toIdx = list.findIndex(x => x.id === toId)
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return list
+    const next = [...list]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    return next
+  }
+
+  const persistWatchlistOrder = useCallback(async (ordered: Stock[]) => {
+    const payload = ordered.map((s, idx) => ({ id: s.id, sort_order: idx + 1 }))
+    await fetchAPI('/stocks/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ items: payload }),
+    })
+  }, [])
+
+  const previewWatchlistReorder = useCallback((fromId: number, toId: number) => {
+    if (fromId === toId) return
+    setStocks(prev => {
+      const ordered = [...prev].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+      const moved = moveById(ordered, fromId, toId)
+      return moved.map((s, idx) => ({ ...s, sort_order: idx + 1 }))
+    })
+  }, [])
+
+  const commitWatchlistReorder = useCallback(async () => {
+    const current = stocks
+    if (!current || current.length === 0) return
+    try {
+      await persistWatchlistOrder(current)
+    } catch (e) {
+      if (watchDragSnapshotRef.current) setStocks(watchDragSnapshotRef.current)
+      toast(e instanceof Error ? e.message : 'ä¿å­˜å…³æ³¨æ’åºå¤±è´¥', 'error')
+    }
+  }, [persistWatchlistOrder, stocks, toast])
+
+  const persistPositionOrder = useCallback(async (ordered: Position[]) => {
+    const payload = ordered.map((p, idx) => ({ id: p.id, sort_order: idx + 1 }))
+    await fetchAPI('/positions/reorder/batch', {
+      method: 'PUT',
+      body: JSON.stringify({ items: payload }),
+    })
+  }, [])
+
+  const previewPositionReorder = useCallback((accountId: number, fromId: number, toId: number) => {
+    if (fromId === toId) return
+    setPortfolioRaw(prev => {
+      if (!prev) return prev
+      const accountsNext = prev.accounts.map(acc => {
+        if (acc.id !== accountId) return acc
+        const moved = moveById(acc.positions || [], fromId, toId).map((p, idx) => ({ ...p, sort_order: idx + 1 }))
+        return { ...acc, positions: moved }
+      })
+      return { ...prev, accounts: accountsNext }
+    })
+  }, [])
+
+  const commitPositionReorder = useCallback(async (accountId: number) => {
+    const acc = portfolioRaw?.accounts?.find(a => a.id === accountId)
+    const ordered = acc?.positions || []
+    if (!ordered.length) return
+    try {
+      await persistPositionOrder(ordered)
+    } catch (e) {
+      if (positionDragSnapshotRef.current) setPortfolioRaw(positionDragSnapshotRef.current)
+      toast(e instanceof Error ? e.message : 'ä¿å­˜æŒä»“æ’åºå¤±è´¥', 'error')
+    }
+  }, [persistPositionOrder, portfolioRaw, toast])
+
+  const isSuppressCardClick = () => {
+    try {
+      const until = (window as any).__panwatch_suppress_card_click_until
+      return typeof until === 'number' && Date.now() < until
+    } catch {
+      return false
+    }
+  }
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // éæ ¸å¿ƒæ•°æ®åå°åŠ è½½ï¼ˆä¸é˜»å¡ UIï¼‰
+  const loadConfigAsync = async () => {
+    try {
+      const [agentData, servicesData, channelsData] = await Promise.all([
+        fetchAPI<AgentConfig[]>('/agents'),
+        fetchAPI<AIService[]>('/providers/services'),
+        fetchAPI<NotifyChannel[]>('/channels'),
+      ])
+      setAgents(agentData)
+      setServices(servicesData)
+      setChannels(channelsData)
+    } catch (e) {
+      console.warn('åŠ è½½é…ç½®æ•°æ®å¤±è´¥:', e)
+    }
+  }
+
+  const load = async () => {
+    try {
+      // æ ¸å¿ƒæ•°æ®ï¼ˆç«‹å³éœ€è¦ï¼‰
+      const [stockData, accountData] = await Promise.all([
+        fetchAPI<Stock[]>('/stocks'),
+        fetchAPI<Account[]>('/accounts'),
+      ])
+      setStocks(stockData)
+      setAccounts(accountData)
+      // é»˜è®¤å±•å¼€æ‰€æœ‰è´¦æˆ·
+      setExpandedAccounts(new Set(accountData.map((a: Account) => a.id)))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)  // æå‰è§£é™¤é˜»å¡
+    }
+
+    // éæ ¸å¿ƒæ•°æ®ï¼ˆåå°åŠ è½½ï¼Œä¸é˜»å¡ UIï¼‰
+    loadConfigAsync()
+
+    // å¸‚åœºçŠ¶æ€ï¼ˆéæ ¸å¿ƒï¼Œå¤±è´¥ä¸å½±å“é¡µé¢ï¼‰
+    try {
+      const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
+      setMarketStatus(marketStatusData)
+    } catch (e) {
+      console.warn('è·å–å¸‚åœºçŠ¶æ€å¤±è´¥:', e)
+    }
+  }
+
+  const loadPortfolio = async () => {
+    setPortfolioLoading(true)
+    try {
+      // æ ¸å¿ƒæ•°æ®ï¼šä»…æœ¬åœ°è´¦æˆ·/æŒä»“
+      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false')
+      setPortfolioRaw(portfolioData)
+      setPortfolio(mergePortfolioQuotes(portfolioData, quotes))
+
+      // å¸‚åœºçŠ¶æ€ï¼ˆéæ ¸å¿ƒï¼Œå¤±è´¥ä¸å½±å“é¡µé¢ï¼‰
+      try {
+        const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
+        setMarketStatus(marketStatusData)
+      } catch (e) {
+        console.warn('è·å–å¸‚åœºçŠ¶æ€å¤±è´¥:', e)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setPortfolioLoading(false)
+    }
+  }
+
+  const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
+    const items: QuoteRequestItem[] = []
+    const seen = new Set<string>()
+
+    for (const stock of stocks) {
+      const key = `${stock.market}:${stock.symbol}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push({ symbol: stock.symbol, market: stock.market })
+    }
+
+    for (const account of portfolioRaw?.accounts || []) {
+      for (const pos of account.positions) {
+        const key = `${pos.market}:${pos.symbol}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({ symbol: pos.symbol, market: pos.market })
+      }
+    }
+
+    return items
+  }, [stocks, portfolioRaw])
+
+  const refreshQuotes = useCallback(async () => {
+    const items = buildQuoteItems()
+    if (items.length === 0) return
+
+    setQuotesLoading(true)
+    try {
+      const data = await fetchAPI<QuoteResponse[]>('/quotes/batch', {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      })
+      const map: Record<string, { current_price: number | null; change_pct: number | null }> = {}
+      for (const item of data) {
+        map[`${item.market}:${item.symbol}`] = {
+          current_price: item.current_price ?? null,
+          change_pct: item.change_pct ?? null,
+        }
+      }
+      setQuotes(map)
+      setLastRefreshTime(new Date())
+    } catch (e) {
+      console.warn('åˆ·æ–°è¡Œæƒ…å¤±è´¥:', e)
+    } finally {
+      setQuotesLoading(false)
+    }
+  }, [buildQuoteItems])
+
+  useEffect(() => {
+    if (!portfolioRaw) return
+    setPortfolio(mergePortfolioQuotes(portfolioRaw, quotes))
+  }, [portfolioRaw, quotes])
+
+  useEffect(() => {
+    if (stocks.length === 0 && (!portfolioRaw || portfolioRaw.accounts.length === 0)) return
+    refreshQuotes()
+    // åˆ·æ–° K çº¿æ‘˜è¦ï¼ˆç”¨äºå¸¸é©»è¯„åˆ†å¾½ç« ï¼‰
+    ;(async () => {
+      try { await refreshKlines() } catch {}
+    })()
+  }, [stocks, portfolioRaw, refreshQuotes])
+
+  // åˆ·æ–° K çº¿æ‘˜è¦ï¼ˆå¹¶å‘å—é™çš„å•ä¸ªè¯·æ±‚ï¼Œé¿å…æ‰¹é‡æ¥å£æ…¢ï¼‰ï¼›å¹¶é˜²æ­¢é‡å…¥
+  const refreshKlines = useCallback(async () => {
+    if (klineRefreshInFlight.current) return klineRefreshInFlight.current
+    const run = (async () => {
+      const items = buildQuoteItems()
+      if (items.length === 0) return
+      const limit = 5
+      const map: Record<string, KlineSummary> = {}
+      let idx = 0
+      const worker = async () => {
+        while (idx < items.length) {
+          const i = idx++
+          const it = items[i]
+          try {
+            const res = await fetchAPI<{ symbol: string; market: string; summary: KlineSummary }>(`/klines/${encodeURIComponent(it.symbol)}/summary?market=${encodeURIComponent(it.market)}`)
+            if (res && (res as any).summary) {
+              map[`${it.market}:${it.symbol}`] = (res as any).summary as KlineSummary
+            }
+          } catch {
+            // ignore single failure
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+      // å¢é‡åˆå¹¶ï¼šæœ¬è½®å•åªå¤±è´¥æ—¶ä¿ç•™æ—§å€¼ï¼Œé¿å…æŠ€æœ¯å¾½ç« é—ªæ–­/æ¶ˆå¤±
+      setKlineSummaries(prev => ({ ...prev, ...map }))
+    })()
+    klineRefreshInFlight.current = run
+    try { await run } finally { klineRefreshInFlight.current = null }
+  }, [buildQuoteItems])
+
+  // ä»å»ºè®®æ± åŠ è½½å»ºè®®ï¼ˆåŒ…å«å†å²å»ºè®®å’Œå¤šæ¥æºå»ºè®®ï¼‰
+  const loadPoolSuggestions = useCallback(async () => {
+    setPoolSuggestionsLoading(true)
+    try {
+      const data = await fetchAPI<Record<string, PoolSuggestion>>('/suggestions?include_expired=true')
+      setPoolSuggestions(data)
+    } catch (e) {
+      console.warn('åŠ è½½å»ºè®®æ± å¤±è´¥:', e)
+    } finally {
+      setPoolSuggestionsLoading(false)
+    }
+  }, [])
+
+  const loadPriceAlertSummaries = useCallback(async () => {
+    try {
+      const rows = await fetchAPI<PriceAlertRuleSummary[]>('/price-alerts')
+      const map: Record<string, { total: number; enabled: number }> = {}
+      for (const r of rows || []) {
+        const key = `${String(r.market || 'CN').toUpperCase()}:${String(r.stock_symbol || '').toUpperCase()}`
+        if (!map[key]) map[key] = { total: 0, enabled: 0 }
+        map[key].total += 1
+        if (r.enabled) map[key].enabled += 1
+      }
+      setPriceAlertSummaryMap(map)
+    } catch (e) {
+      console.warn('åŠ è½½æé†’æ‘˜è¦å¤±è´¥:', e)
+    }
+  }, [])
+
+  // Load news for specific stock or all watchlist
+  const loadNews = useCallback(async (stockName?: string) => {
+    setNewsLoading(true)
+    try {
+      const params = new URLSearchParams({ hours: '168', limit: '50' })  // 7å¤©
+      if (stockName) {
+        // ç›´æ¥ä¼ é€’è‚¡ç¥¨åç§°ï¼Œæ¯”ä»£ç æ›´ç¨³å®š
+        params.set('names', stockName)
+      }
+      const newsData = await fetchAPI<NewsItem[]>(`/news?${params}`)
+      setNews(newsData)
+    } catch (e) {
+      console.error('åŠ è½½æ–°é—»å¤±è´¥:', e)
+    } finally {
+      setNewsLoading(false)
+    }
+  }, [])
+
+  const openKlineDialog = useCallback((symbol: string, market: string, name?: string, hasPosition?: boolean) => {
+    setKlineDialogSymbol(symbol)
+    setKlineDialogMarket(market || 'CN')
+    setKlineDialogName(name)
+    setKlineDialogHasPosition(!!hasPosition)
+    const m = market || 'CN'
+    setKlineDialogInitialSummary(klineSummaries[`${m}:${symbol}`] || null)
+    setKlineDialogOpen(true)
+  }, [klineSummaries])
+
+  // Open news dialog - pass stock name for more stable search
+  const openNewsDialog = useCallback((stockName?: string) => {
+    setNewsDialogSymbol(stockName || '')  // å­˜å‚¨åç§°ç”¨äº UI æ˜¾ç¤º
+    setNewsDialogOpen(true)
+    loadNews(stockName)
+  }, [loadNews])
+
+  const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+    setInsightSymbol(stockSymbol)
+    setInsightMarket(stockMarket || 'CN')
+    setInsightName(stockName)
+    setInsightHasPosition(!!hasPosition)
+    setInsightOpen(true)
+  }, [])
+
+  const formatPreviewTime = (iso: string, tz?: string): string => {
+    try {
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return iso
+      return d.toLocaleString('zh-CN', {
+        timeZone: tz || undefined,
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    } catch {
+      return iso
+    }
+  }
+
+  const effectiveSchedule = (agent: AgentConfig, stockAgent?: StockAgentInfo | null): string => {
+    const local = (stockAgent?.schedule || '').trim()
+    if (local) return local
+    return (agent.schedule || '').trim()
+  }
+
+  // Refresh quotes only (decoupled from portfolio and scans)
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([
+      refreshQuotes(),
+      loadPoolSuggestions(),
+      refreshKlines(),
+    ])
+  }, [refreshQuotes, loadPoolSuggestions, refreshKlines])
+
+  useEffect(() => { load(); loadPortfolio(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
+
+  // ä»…å…³æ³¨åˆ—è¡¨åœºæ™¯ï¼ˆæ— æŒä»“ï¼‰ä¹Ÿè¦åœ¨åˆ—è¡¨åŠ è½½åé¢„å– K çº¿æ‘˜è¦ï¼Œä¿è¯æŠ€æœ¯æŒ‡æ ‡å¾½ç« å¯è§
+  const watchlistKlineInitDone = useRef(false)
+  const klineMissingRetryRef = useRef<Record<string, number>>({})
+  useEffect(() => {
+    if (watchlistKlineInitDone.current) return
+    if (!stocks || stocks.length === 0) return
+    watchlistKlineInitDone.current = true
+    refreshKlines()
+  }, [stocks, refreshKlines])
+
+  // å…³æ³¨åˆ—è¡¨å˜æ›´åï¼Œè‡ªåŠ¨è¡¥é½ç¼ºå¤±çš„ K çº¿æ‘˜è¦ï¼ˆé¿å…æœªé…ç½® agent æ—¶æ²¡æœ‰æŠ€æœ¯æŒ‡æ ‡å¾½ç« ï¼‰
+  useEffect(() => {
+    if (!stocks || stocks.length === 0) return
+    const now = Date.now()
+    const retryGapMs = 2 * 60 * 1000
+    const missing = stocks.filter(s => {
+      const key = `${s.market || 'CN'}:${s.symbol}`
+      if (klineSummaries[key]) return false
+      const lastTry = klineMissingRetryRef.current[key] || 0
+      return (now - lastTry) > retryGapMs
+    })
+    if (missing.length === 0) return
+    for (const s of missing) {
+      const key = `${s.market || 'CN'}:${s.symbol}`
+      klineMissingRetryRef.current[key] = now
+    }
+    refreshKlines()
+  }, [stocks, klineSummaries, refreshKlines])
+
+  // Agent é…ç½®å¼¹çª—ï¼šé¢„è§ˆæœªæ¥è§¦å‘æ—¶é—´ï¼ˆç”¨äºè‡ªæ£€å·¥ä½œæ—¥/å‘¨æœ«è¯­ä¹‰ï¼‰
+  useEffect(() => {
+    if (!agentDialogStock) return
+    if (!agents || agents.length === 0) return
+
+    const stockAgentMap = new Map((agentDialogStock.agents || []).map(a => [a.agent_name, a]))
+    const schedules = new Set<string>()
+    for (const agent of agents) {
+      if (agent.execution_mode === 'batch') continue
+      const sa = stockAgentMap.get(agent.name)
+      if (!sa) continue
+      const eff = effectiveSchedule(agent, sa)
+      if (eff) schedules.add(eff)
+    }
+
+    const toFetch = Array.from(schedules).filter(s => !schedulePreviewCache[s] && !schedulePreviewLoading[s])
+    if (toFetch.length === 0) return
+
+    let cancelled = false
+    ;(async () => {
+      // Mark loading
+      setSchedulePreviewLoading(prev => {
+        const next = { ...prev }
+        for (const s of toFetch) next[s] = true
+        return next
+      })
+      try {
+        const pairs = await Promise.all(toFetch.map(async s => {
+          try {
+            const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(s)}&count=5`)
+            return [s, p] as const
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'é¢„è§ˆå¤±è´¥'
+            return [s, { error: msg }] as const
+          }
+        }))
+        if (cancelled) return
+        setSchedulePreviewCache(prev => ({ ...prev, ...Object.fromEntries(pairs) }))
+      } finally {
+        if (cancelled) return
+        setSchedulePreviewLoading(prev => {
+          const next = { ...prev }
+          for (const s of toFetch) next[s] = false
+          return next
+        })
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [agentDialogStock, agents, schedulePreviewCache, schedulePreviewLoading])
+
+  // è§¦å‘æ‰«æï¼šè°ƒç”¨ç›˜ä¸­ç›‘æ§æ‰«æï¼Œå¹¶åˆ·æ–°å»ºè®®æ± 
+  const scanAndReload = useCallback(async () => {
+    setScanning(true)
+    try {
+      const url = '/agents/intraday/scan?analyze=true'
+      await fetchAPI(url, { method: 'POST' })
+      await loadPoolSuggestions()
+      await refreshKlines()
+      setLastRefreshTime(new Date())
+    } catch (e) {
+      console.error('æ‰«æå¤±è´¥:', e)
+      toast(e instanceof Error ? e.message : 'æ‰«æå¤±è´¥', 'error')
+    } finally {
+      setScanning(false)
+    }
+  }, [loadPoolSuggestions, refreshKlines, toast])
+
+  // é¦–æ¬¡åŠ è½½åï¼ŒæŒ‰éœ€åˆ·æ–° K çº¿æ‘˜è¦ä¸å»ºè®®æ± 
+  const initialKlineDone = useRef(false)
+  useEffect(() => {
+    if (portfolio && portfolio.accounts.length > 0 && !initialKlineDone.current) {
+      initialKlineDone.current = true
+      refreshKlines()
+      loadPoolSuggestions()
+    }
+  }, [portfolio, refreshKlines, loadPoolSuggestions])
+
+  // Auto-refresh timer
+  useEffect(() => {
+    if (autoRefresh) {
+      refreshQuotes()
+      refreshKlines()
+      loadPoolSuggestions()
+      refreshTimerRef.current = setInterval(() => {
+        refreshQuotes()
+        refreshKlines()
+        loadPoolSuggestions()
+      }, refreshInterval * 1000)
+    } else {
+      // Clear interval when disabled
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current)
+        refreshTimerRef.current = undefined
+      }
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current)
+      }
+    }
+  }, [autoRefresh, refreshInterval, refreshQuotes, refreshKlines])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+      if (positionDropdownRef.current && !positionDropdownRef.current.contains(e.target as Node)) {
+        setShowPositionDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // ========== Stock handlers ==========
+  const doSearch = async (q: string, market: string = searchMarket) => {
+    if (q.length < 1) { setSearchResults([]); setShowDropdown(false); return }
+    setSearching(true)
+    try {
+      const marketParam = market ? `&market=${market}` : ''
+      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
+      setSearchResults(results)
+      setShowDropdown(results.length > 0)
+    } catch { setSearchResults([]) }
+    finally { setSearching(false) }
+  }
+
+  const handleSearchInput = (value: string) => {
+    setSearchQuery(value)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => doSearch(value), 500)
+  }
+
+  const handleSearchMarketChange = (market: string) => {
+    setSearchMarket(market)
+    if (searchQuery) {
+      doSearch(searchQuery, market)
+    }
+  }
+
+  const refreshStockListCache = async () => {
+    setRefreshingStockList(true)
+    try {
+      const result = await fetchAPI<{ count: number }>('/stocks/refresh-list', { method: 'POST' })
+      toast(`å·²åˆ·æ–°è‚¡ç¥¨åˆ—è¡¨ï¼Œå…± ${result.count} åª`, 'success')
+      if (searchQuery) {
+        doSearch(searchQuery)
+      }
+    } catch (e) {
+      toast('åˆ·æ–°å¤±è´¥', 'error')
+    } finally {
+      setRefreshingStockList(false)
+    }
+  }
+
+  const selectStock = (item: SearchResult) => {
+    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
+    setSearchQuery(`${item.symbol} ${item.name}`)
+    setShowDropdown(false)
+  }
+
+  const handleStockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await stocksApi.create(stockForm)
+      setStockForm(emptyStockForm)
+      setSearchQuery('')
+      setShowStockForm(false)
+      load()
+      toast('è‚¡ç¥¨å·²æ·»åŠ ', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'æ·»åŠ è‚¡ç¥¨å¤±è´¥', 'error')
+    }
+  }
+
+  const hasAnyPositionForStockId = (id: number): boolean => {
+    return (portfolio?.accounts || []).some(acc => (acc.positions || []).some(p => p.stock_id === id))
+  }
+
+  const removeFromWatchlist = async (stock: Stock) => {
+    if (hasAnyPositionForStockId(stock.id)) {
+      toast('è¯¥è‚¡ç¥¨å­˜åœ¨æŒä»“ï¼Œè¯·å…ˆåˆ é™¤æŒä»“åå†åˆ é™¤è‚¡ç¥¨', 'error')
+      return
+    }
+
+    setRemovingWatchStock(true)
+    try {
+      await stocksApi.remove(stock.id)
+      toast('è‚¡ç¥¨å·²åˆ é™¤', 'success')
+      setRemoveWatchStock(null)
+      load()
+      // ä»·æ ¼æé†’/å…³è”é…ç½®ä¼šéšè‚¡ç¥¨åˆ é™¤ï¼Œåˆ·æ–°ä¸€æ¬¡é¿å… UI æ®‹ç•™ã€‚
+      loadPortfolio()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'åˆ é™¤å¤±è´¥', 'error')
+    } finally {
+      setRemovingWatchStock(false)
+    }
+  }
+
+  // ========== Account handlers ==========
+  const openAccountDialog = (account?: Account) => {
+    if (account) {
+      setAccountForm({ name: account.name, available_funds: account.available_funds.toString() })
+      setEditAccountId(account.id)
+    } else {
+      setAccountForm(emptyAccountForm)
+      setEditAccountId(null)
+    }
+    setAccountDialogOpen(true)
+  }
+
+  const handleAccountSubmit = async () => {
+    try {
+      const payload = {
+        name: accountForm.name,
+        available_funds: parseFloat(accountForm.available_funds) || 0,
+      }
+      if (editAccountId) {
+        await fetchAPI(`/accounts/${editAccountId}`, { method: 'PUT', body: JSON.stringify(payload) })
+      } else {
+        await fetchAPI('/accounts', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      setAccountDialogOpen(false)
+      load()
+      loadPortfolio()
+      toast(editAccountId ? 'è´¦æˆ·å·²æ›´æ–°' : 'è´¦æˆ·å·²åˆ›å»º', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'ä¿å­˜è´¦æˆ·å¤±è´¥', 'error')
+    }
+  }
+
+  const handleDeleteAccount = async (id: number) => {
+    if (!confirm('ç¡®å®šåˆ é™¤è¯¥è´¦æˆ·ï¼Ÿè¿™å°†åŒæ—¶åˆ é™¤è¯¥è´¦æˆ·çš„æ‰€æœ‰æŒä»“è®°å½•')) return
+    try {
+      await fetchAPI(`/accounts/${id}`, { method: 'DELETE' })
+      load()
+      loadPortfolio()
+      toast('è´¦æˆ·å·²åˆ é™¤', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'åˆ é™¤è´¦æˆ·å¤±è´¥', 'error')
+    }
+  }
+
+  // ========== Position handlers ==========
+  const openPositionDialog = (accountId: number, position?: Position) => {
+    setPositionDialogAccountId(accountId)
+    setPositionSearchQuery('')
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    if (position) {
+      setPositionForm({
+        account_id: accountId,
+        stock_id: position.stock_id,
+        cost_price: position.cost_price.toString(),
+        quantity: position.quantity.toString(),
+        invested_amount: position.invested_amount?.toString() || '',
+        trading_style: position.trading_style || '',
+        stock_symbol: position.symbol,
+        stock_name: position.name,
+        stock_market: position.market,
+      })
+      setEditPositionId(position.id)
+    } else {
+      setPositionForm({
+        account_id: accountId,
+        stock_id: 0,
+        cost_price: '',
+        quantity: '',
+        invested_amount: '',
+        trading_style: '',
+        stock_symbol: '',
+        stock_name: '',
+        stock_market: 'CN',
+      })
+      setEditPositionId(null)
+    }
+    setPositionDialogOpen(true)
+  }
+
+  const doPositionSearch = async (q: string, market: string = positionSearchMarket) => {
+    if (q.length < 1) { setPositionSearchResults([]); setShowPositionDropdown(false); return }
+    setPositionSearching(true)
+    try {
+      const marketParam = market ? `&market=${market}` : ''
+      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
+      setPositionSearchResults(results)
+      setShowPositionDropdown(results.length > 0)
+    } catch { setPositionSearchResults([]) }
+    finally { setPositionSearching(false) }
+  }
+
+  const handlePositionSearchInput = (value: string) => {
+    setPositionSearchQuery(value)
+    clearTimeout(positionSearchTimer.current)
+    positionSearchTimer.current = setTimeout(() => doPositionSearch(value), 500)
+  }
+
+  const handlePositionSearchMarketChange = (market: string) => {
+    setPositionSearchMarket(market)
+    if (positionSearchQuery) {
+      doPositionSearch(positionSearchQuery, market)
+    }
+  }
+
+  const selectPositionStock = (item: SearchResult) => {
+    // æ£€æŸ¥æ˜¯å¦å·²æœ‰æ­¤è‚¡ç¥¨
+    const existing = stocks.find(s => s.symbol === item.symbol && s.market === item.market)
+    setPositionForm({
+      ...positionForm,
+      stock_id: existing?.id || 0,
+      stock_symbol: item.symbol,
+      stock_name: item.name,
+      stock_market: item.market,
+    })
+    setPositionSearchQuery(`${item.symbol} ${item.name}`)
+    setShowPositionDropdown(false)
+  }
+
+  const handlePositionSubmit = async () => {
+    try {
+      let stockId = positionForm.stock_id
+
+      // å¦‚æœæ˜¯æ–°å¢ä¸”è‚¡ç¥¨ä¸åœ¨è‡ªé€‰ä¸­ï¼Œå…ˆæ·»åŠ åˆ°è‡ªé€‰
+      if (!editPositionId && !stockId && positionForm.stock_symbol) {
+        try {
+          const newStock = await fetchAPI<Stock>('/stocks', {
+            method: 'POST',
+            body: JSON.stringify({
+              symbol: positionForm.stock_symbol,
+              name: positionForm.stock_name,
+              market: positionForm.stock_market,
+            })
+          })
+          stockId = newStock.id
+          load() // åˆ·æ–°è‚¡ç¥¨åˆ—è¡¨
+        } catch {
+          // è‚¡ç¥¨å¯èƒ½å·²å­˜åœ¨ï¼Œå°è¯•è·å–ï¼ˆå…¼å®¹å¹¶å‘åˆ›å»º/å†å²æ•°æ®ï¼‰ã€‚
+          try {
+            const existingStocks = await fetchAPI<Stock[]>('/stocks')
+            const existing = existingStocks.find(s => s.symbol === positionForm.stock_symbol && s.market === positionForm.stock_market)
+            if (existing) {
+              stockId = existing.id
+            } else {
+              toast('æ·»åŠ è‚¡ç¥¨å¤±è´¥', 'error')
+              return
+            }
+          } catch (e) {
+            toast(e instanceof Error ? e.message : 'æ·»åŠ è‚¡ç¥¨å¤±è´¥', 'error')
+            return
+          }
+        }
+      }
+
+      const payload = {
+        account_id: positionForm.account_id,
+        stock_id: stockId,
+        cost_price: parseFloat(positionForm.cost_price),
+        quantity: parseInt(positionForm.quantity),
+        invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
+        trading_style: positionForm.trading_style,  // ç©ºå­—ç¬¦ä¸²è¡¨ç¤ºæ¸…ç©º
+      }
+      if (editPositionId) {
+        await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
+      } else {
+        await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      setPositionDialogOpen(false)
+      loadPortfolio()
+      toast(editPositionId ? 'æŒä»“å·²æ›´æ–°' : 'æŒä»“å·²æ·»åŠ ', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'ä¿å­˜æŒä»“å¤±è´¥', 'error')
+    }
+  }
+
+  const handleDeletePosition = async (id: number) => {
+    if (!confirm('ç¡®å®šåˆ é™¤è¯¥æŒä»“ï¼Ÿ')) return
+    try {
+      await fetchAPI(`/positions/${id}`, { method: 'DELETE' })
+      loadPortfolio()
+      toast('æŒä»“å·²åˆ é™¤', 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'åˆ é™¤æŒä»“å¤±è´¥', 'error')
+    }
+  }
+
+  const openSellDialog = (pos: Position) => {
+    setSellTarget(pos)
+    setSellForm({
+      sell_price: pos.current_price?.toString() || '',
+      sell_quantity: pos.quantity.toString(),
+      fee: '0',
+      note: '',
+    })
+    setSellDialogOpen(true)
+  }
+
+  const handleSellSubmit = async () => {
+    if (!sellTarget) return
+    const price = parseFloat(sellForm.sell_price)
+    const qty = parseInt(sellForm.sell_quantity)
+    if (!price || !qty || qty <= 0) { toast('è¯·è¾“å…¥æœ‰æ•ˆçš„ä»·æ ¼å’Œæ•°é‡', 'error'); return }
+    if (qty > sellTarget.quantity) { toast('å–å‡ºæ•°é‡ä¸èƒ½è¶…è¿‡æŒä»“æ•°é‡', 'error'); return }
+    try {
+      await fetchAPI(`/positions/${sellTarget.id}/sell`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sell_price: price,
+          sell_quantity: qty,
+          fee: parseFloat(sellForm.fee) || 0,
+          note: sellForm.note || null,
+        }),
+      })
+      setSellDialogOpen(false)
+      loadPortfolio()
+      toast(`å–å‡ºæˆåŠŸï¼š${sellTarget.name} ${qty}è‚¡ @ ${price}`, 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'å–å‡ºå¤±è´¥', 'error')
+    }
+  }
+
+  // ========== Agent handlers ==========
+  const toggleAgent = async (stock: Stock, agentName: string) => {
+    try {
+      const current = stock.agents || []
+      const isAssigned = current.some(a => a.agent_name === agentName)
+      const newAgents = isAssigned
+        ? current.filter(a => a.agent_name !== agentName)
+        : [...current, { agent_name: agentName, schedule: '', ai_model_id: null, notify_channel_ids: [] }]
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'æ›´æ–° Agent ç»‘å®šå¤±è´¥', 'error')
+    }
+  }
+
+  const triggerStockAgent = async (stockId: number, agentName: string) => {
+    setTriggeringAgent(agentName)
+    setRunningAgents(prev => ({ ...prev, [stockId]: agentName }))
+    // è§¦å‘åç«‹å³å…³é—­é…ç½®å¼¹çª—ï¼Œé¿å…å¤šå±‚å¼¹çª—å¹²æ‰°
+    setAgentDialogStock(null)
+    try {
+      // æ‰‹åŠ¨è§¦å‘æ—¶è·³è¿‡èŠ‚æµï¼Œæ–¹ä¾¿æµ‹è¯•
+      const resp = await fetchAPI<{ result: AgentResult; success?: boolean; message?: string }>(
+        `/stocks/${stockId}/agents/${agentName}/trigger?bypass_throttle=true`,
+        { method: 'POST' }
+      )
+      const result = resp?.result
+      if (result) {
+        // ä»…æç¤ºï¼Œä¸å†å¼¹å‡ºç»“æœå¼¹çª—ï¼Œé¿å…å¹²æ‰°
+        if (result.success === false) {
+          toast(result.message || result.content || 'æ‰§è¡Œæœªé€šè¿‡', 'info')
+          return
+        }
+        const isSkipped = !!result.skipped || /å·²è·³è¿‡æ‰§è¡Œ|éäº¤æ˜“æ—¶æ®µ/.test(result.content || '')
+        if (isSkipped) {
+          toast(result.content || 'å½“å‰éäº¤æ˜“æ—¶æ®µï¼Œå·²è·³è¿‡æ‰§è¡Œ', 'info')
+        } else {
+          toast(result.should_alert ? 'AI å»ºè®®å…³æ³¨' : 'AI åˆ¤æ–­æ— éœ€å…³æ³¨', result.should_alert ? 'success' : 'info')
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'è§¦å‘å¤±è´¥'
+      if (/éäº¤æ˜“æ—¶æ®µ|è·³è¿‡æ‰§è¡Œ/.test(msg)) {
+        toast(msg, 'info')
+      } else {
+        toast(msg, 'error')
+      }
+    } finally {
+      setTriggeringAgent(null)
+      setRunningAgents(prev => ({ ...prev, [stockId]: null }))
+    }
+  }
+
+  const updateStockAgentModel = async (stock: Stock, agentName: string, modelId: number | null) => {
+    try {
+      const newAgents = (stock.agents || []).map(a =>
+        a.agent_name === agentName ? { ...a, ai_model_id: modelId } : a
+      )
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'æ›´æ–° Agent æ¨¡å‹å¤±è´¥', 'error')
+    }
+  }
+
+  const toggleStockAgentChannel = async (stock: Stock, agentName: string, channelId: number) => {
+    try {
+      const newAgents = (stock.agents || []).map(a => {
+        if (a.agent_name !== agentName) return a
+        const current = a.notify_channel_ids || []
+        const newIds = current.includes(channelId)
+          ? current.filter(id => id !== channelId)
+          : [...current, channelId]
+        return { ...a, notify_channel_ids: newIds }
+      })
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'æ›´æ–° Agent é€šçŸ¥é…ç½®å¤±è´¥', 'error')
+    }
+  }
+
+  const updateStockAgentSchedule = async (stock: Stock, agentName: string, schedule: string) => {
+    try {
+      const newAgents = (stock.agents || []).map(a =>
+        a.agent_name === agentName ? { ...a, schedule } : a
+      )
+      await fetchAPI(`/stocks/${stock.id}/agents`, { method: 'PUT', body: JSON.stringify({ agents: newAgents }) })
+      load()
+      setAgentDialogStock(prev => prev ? { ...prev, agents: newAgents } : null)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'æ›´æ–° Agent è°ƒåº¦å¤±è´¥', 'error')
+    }
+  }
+
+  // ========== Helpers ==========
+  const formatMoney = (value: number) => {
+    if (Math.abs(value) >= 10000) {
+      return `${(value / 10000).toFixed(2)}ä¸‡`
+    }
+    return value.toFixed(2)
+  }
+
+  const marketLabel = (m: string) => m === 'CN' ? 'Aè‚¡' : m === 'HK' ? 'æ¸¯è‚¡' : m === 'US' ? 'ç¾è‚¡' : m
+
+  // å¸‚åœºå¾½ç« æ ·å¼å’ŒçŸ­æ ‡ç­¾
+  const marketBadge = (m: string) => {
+    if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: 'æ¸¯' }
+    if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: 'ç¾' }
+    return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
+  }
+
+  // ä¿ç•™åŸå§‹ç²¾åº¦æ˜¾ç¤ºä»·æ ¼ï¼ˆä¸å¼ºåˆ¶æˆªæ–­å°æ•°ä½ï¼‰
+  const formatPrice = (value: number) => {
+    // æœ€å¤šæ˜¾ç¤º4ä½å°æ•°ï¼Œå»é™¤æœ«å°¾çš„0
+    const formatted = value.toFixed(4).replace(/\.?0+$/, '')
+    return formatted
+  }
+
+  // è·å–è‚¡ç¥¨çš„è¡Œæƒ…ä¿¡æ¯
+  const getStockQuote = (quoteKey: string) => {
+    return quotes[quoteKey] || null
+  }
+
+  const getPriceAlertSummary = (symbol: string, market: string) => {
+    const key = `${String(market || 'CN').toUpperCase()}:${String(symbol || '').toUpperCase()}`
+    return priceAlertSummaryMap[key] || { total: 0, enabled: 0 }
+  }
+
+  // è·å–è‚¡ç¥¨çš„å»ºè®®ä¿¡æ¯ï¼ˆä¼˜å…ˆä½¿ç”¨å»ºè®®æ± ï¼ŒåŒ…å«æ¥æºå’Œæ—¶é—´ä¿¡æ¯ï¼‰
+  const getSuggestionForStock = (symbol: string, market: string, hasPosition?: boolean): { suggestion: SuggestionInfo | null; kline: KlineSummary | null } => {
+    const key = `${market || 'CN'}:${symbol}`
+    // ä¼˜å…ˆä½¿ç”¨å»ºè®®æ± çš„å»ºè®®ï¼ˆåŒ…å«æ¥æºå’Œæ—¶é—´ä¿¡æ¯ï¼‰
+    const poolSug =
+      poolSuggestions[key] ||
+      (() => {
+        const fallback = poolSuggestions[symbol]
+        if (!fallback) return null
+        const fm = String(fallback.stock_market || '').toUpperCase()
+        return fm && fm !== String(market || 'CN').toUpperCase() ? null : fallback
+      })()
+    if (poolSug) {
+      const preloadedKline = klineSummaries[key] || (suggestions[symbol]?.kline as any) || null
+      return {
+        suggestion: {
+          id: poolSug.id,
+          action: poolSug.action,
+          action_label: poolSug.action_label,
+          signal: poolSug.signal,
+          reason: poolSug.reason,
+          should_alert: poolSug.should_alert ?? (['alert', 'avoid', 'sell', 'reduce'].includes(poolSug.action)),
+          agent_name: poolSug.agent_name,
+          agent_label: poolSug.agent_label,
+          created_at: poolSug.created_at,
+          is_expired: poolSug.is_expired,
+          prompt_context: poolSug.prompt_context,
+          ai_response: poolSug.ai_response,
+          meta: poolSug.meta,
+        },
+        // ä¼˜å…ˆä½¿ç”¨æœ¬é¡µå¹¶å‘é¢„å–çš„ kline æ‘˜è¦ï¼Œç¡®ä¿å¾½ç« ä¸å¼¹çª—ä¸€è‡´ä¸”å…åŠ è½½
+        kline: preloadedKline,
+      }
+    }
+
+    // æ— æ± å»ºè®®æ—¶ï¼Œä½¿ç”¨ K çº¿è¯„åˆ†æ„å»ºè½»é‡å»ºè®®ï¼ˆä»…ç”¨äºå¾½ç« å±•ç¤ºï¼‰
+    const ks = klineSummaries[key]
+    if (ks) {
+      const scored = buildKlineSuggestion(ks as any, hasPosition)
+      return {
+        suggestion: {
+          action: scored.action,
+          action_label: scored.action_label,
+          signal: scored.signal,
+          reason: '',
+          should_alert: false,
+          agent_label: 'æŠ€æœ¯æŒ‡æ ‡',
+        },
+        kline: ks,
+      }
+    }
+
+    return { suggestion: null, kline: null }
+  }
+
+  const positionRatio = useMemo(() => {
+    if (!portfolio) return null
+    const mv = portfolio.total.total_market_value || 0
+    const assets = portfolio.total.total_assets || 0
+    const pct = assets > 0 ? (mv / assets * 100) : 0
+    return { mv, assets, pct }
+  }, [portfolio])
+
+  const positionsCount = useMemo(() => {
+    return (portfolio?.accounts || []).reduce((acc, a) => acc + (a.positions?.length || 0), 0)
+  }, [portfolio])
+
+  const watchlistCount = useMemo(() => {
+    return stocks.length
+  }, [stocks])
+
+  const toggleAccountExpanded = (id: number) => {
+    setExpandedAccounts(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // éª¨æ¶å±ï¼šåˆå§‹åŠ è½½æ—¶æ˜¾ç¤º
+  if (loading) {
+    return (
+      <div>
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <Skeleton className="h-6 w-16 mb-2" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+        {/* Summary Cards Skeleton */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-4">
+              <Skeleton className="h-4 w-16 mb-2" />
+              <Skeleton className="h-6 w-24" />
+            </div>
+          ))}
+        </div>
+        {/* Account List Skeleton */}
+        <div className="space-y-4">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="card">
+              <div className="px-4 py-3 border-b border-border/50">
+                <Skeleton className="h-5 w-32" />
+              </div>
+              <div className="divide-y divide-border/50">
+                {[...Array(3)].map((_, j) => (
+                  <div key={j} className="px-4 py-3 flex items-center gap-4">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16 ml-auto" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">æŒä»“</h1>
+          {/* Desktop buttons + controls */}
+          <div className="hidden md:flex items-center gap-3">
+            {/* Controls */}
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/30">
+              <div className="flex items-center gap-1.5">
+                <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-90" />
+                <span className="text-[11px] text-muted-foreground">è‡ªåŠ¨åˆ·æ–°</span>
+                {autoRefresh && (
+                  <Select value={refreshInterval.toString()} onValueChange={v => setRefreshInterval(parseInt(v))}>
+                    <SelectTrigger className="h-6 w-14 text-[10px] px-1.5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10s</SelectItem>
+                      <SelectItem value="30">30s</SelectItem>
+                      <SelectItem value="60">1åˆ†é’Ÿ</SelectItem>
+                      <SelectItem value="120">2åˆ†é’Ÿ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              {(poolSuggestionsLoading || Object.keys(poolSuggestions).length > 0) && (
+                <>
+                  <div className="w-px h-4 bg-border" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {poolSuggestionsLoading && (
+                      <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                    )}
+                    {!poolSuggestionsLoading && Object.keys(poolSuggestions).length > 0 && (
+                      <span className="text-[10px] text-primary">
+                        {Object.keys(poolSuggestions).length}
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+              {lastRefreshTime && (
+                <>
+                  <div className="w-px h-4 bg-border" />
+                  <span className="text-[10px] text-muted-foreground/60">
+                    {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </>
+              )}
+            </div>
+            {/* Buttons */}
+            <Button variant="secondary" onClick={handleRefresh} disabled={quotesLoading}>
+              <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
+              åˆ·æ–°
+            </Button>
+            <Button variant="secondary" onClick={scanAndReload} disabled={scanning}>
+              <Bot className="w-4 h-4" /> æ‰«æ
+            </Button>
+            <Button variant="secondary" onClick={() => openAccountDialog()}>
+              <Building2 className="w-4 h-4" /> æ·»åŠ è´¦æˆ·
+            </Button>
+            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+              <Plus className="w-4 h-4" /> æ·»åŠ è‚¡ç¥¨
+            </Button>
+          </div>
+          {/* Mobile buttons */}
+          <div className="flex md:hidden items-center gap-1.5">
+            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading}>
+              <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={scanAndReload} disabled={scanning}>
+              <Bot className="w-4 h-4" />
+            </Button>
+            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
+              <Building2 className="w-4 h-4" />
+            </Button>
+            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* ç§»åŠ¨ç«¯ row 2ï¼šå¸‚åœºçŠ¶æ€ + è‡ªåŠ¨åˆ·æ–° + æ—¶é—´æˆ³åˆå¹¶åˆ°åŒä¸€è¡Œ,æ¨ªå‘æ»šåŠ¨é¿å…æ¢è¡Œï¼›æ¡Œé¢ç«¯åªå±•ç¤ºå¸‚åœº pills (auto-refresh åœ¨æ¡Œé¢é¡¶éƒ¨å·²å±•ç¤º) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:flex-wrap md:overflow-visible">
+          {marketStatus.map(m => {
+            const statusColors: Record<string, string> = {
+              trading: 'bg-emerald-500',
+              pre_market: 'bg-amber-500',
+              break: 'bg-amber-500',
+              after_hours: 'bg-slate-400',
+              closed: 'bg-slate-400',
+            }
+            return (
+              <div
+                key={m.code}
+                className="shrink-0 flex items-center gap-1 md:gap-1.5"
+                title={`${m.sessions.join(', ')} (${m.local_time}) Â· ${m.status_text}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${statusColors[m.status] || 'bg-slate-400'}`} />
+                <span className="text-[11px] text-muted-foreground">{m.name}</span>
+                <span className={`text-[10px] ${m.is_trading ? 'text-emerald-600' : 'text-muted-foreground/60'} hidden sm:inline`}>
+                  {m.status_text}
+                </span>
+              </div>
+            )
+          })}
+          {/* ç§»åŠ¨ç«¯ç´§å‡‘å‹è‡ªåŠ¨åˆ·æ–°æ§ä»¶ */}
+          <div className="flex md:hidden shrink-0 items-center gap-1 px-2 py-0.5 rounded-full bg-accent/30 ml-1">
+            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75" />
+            {autoRefresh ? (
+              <Select value={refreshInterval.toString()} onValueChange={v => setRefreshInterval(parseInt(v))}>
+                <SelectTrigger className="h-5 w-12 text-[10px] px-1 border-0 bg-transparent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10s</SelectItem>
+                  <SelectItem value="30">30s</SelectItem>
+                  <SelectItem value="60">1åˆ†é’Ÿ</SelectItem>
+                  <SelectItem value="120">2åˆ†é’Ÿ</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">è‡ªåŠ¨åˆ·æ–°</span>
+            )}
+            {poolSuggestionsLoading && (
+              <span className="w-2.5 h-2.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            )}
+          </div>
+          {lastRefreshTime && (
+            <span className="md:hidden shrink-0 text-[10px] text-muted-foreground/60 font-mono ml-1">
+              {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Portfolio Total Summary */}
+      {portfolioLoading && !portfolio ? (
+        // é¦–æ¬¡åŠ è½½æ—¶æ˜¾ç¤ºéª¨æ¶å±
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-3 w-12" />
+              </div>
+              <Skeleton className="h-6 w-20" />
+            </div>
+          ))}
+        </div>
+      ) : portfolio ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-[12px]">æ€»å¸‚å€¼</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {formatMoney(portfolio.total.total_market_value)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              {portfolio.total.total_pnl >= 0 ? (
+                <ArrowUpRight className="w-4 h-4 text-rose-500" />
+              ) : (
+                <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+              )}
+              <span className="text-[12px]">æ€»ç›ˆäº</span>
+            </div>
+            <div className={`text-[20px] font-bold font-mono ${portfolio.total.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+              {portfolio.total.total_pnl >= 0 ? '+' : ''}{formatMoney(portfolio.total.total_pnl)}
+              <span className="text-[13px] ml-1.5">
+                ({portfolio.total.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total.total_pnl_pct.toFixed(2)}%)
+              </span>
+            </div>
+          </div>
+
+          {(() => {
+            const dayPnl = portfolio.total.total_daily_pnl
+            const totalMv = portfolio.total.total_market_value
+            const prevMv = totalMv - dayPnl
+            const pct = prevMv > 0 ? (dayPnl / prevMv * 100) : 0
+            const isUp = dayPnl >= 0
+            return (
+              <div className="card p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  {isUp ? (
+                    <ArrowUpRight className="w-4 h-4 text-rose-500" />
+                  ) : (
+                    <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                  )}
+                  <span className="text-[12px]">ä»Šæ—¥ç›ˆäº</span>
+                </div>
+                <div className={`text-[20px] font-bold font-mono ${isUp ? 'text-rose-500' : 'text-emerald-500'}`}>
+                  {isUp ? '+' : ''}{formatMoney(dayPnl)}
+                  <span className="text-[13px] ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
+                </div>
+              </div>
+            )
+          })()}
+
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Wallet className="w-4 h-4" />
+              <span className="text-[12px]">å¯ç”¨èµ„é‡‘</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {formatMoney(portfolio.total.available_funds)}
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <PiggyBank className="w-4 h-4" />
+              <span className="text-[12px]">æ€»èµ„äº§</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {formatMoney(portfolio.total.total_assets)}
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Bell className="w-4 h-4" />
+              <span className="text-[12px]">ä»“ä½å æ¯”</span>
+            </div>
+            <div className="text-[20px] font-bold text-foreground font-mono">
+              {positionRatio ? `${positionRatio.pct.toFixed(1)}%` : '--'}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
+              {positionRatio ? `æŒä»“å¸‚å€¼ ${formatMoney(positionRatio.mv)} / æ€»èµ„äº§ ${formatMoney(positionRatio.assets)}` : 'â€”'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Tabs: Positions / Watchlist */}
+      <div className="mb-4">
+        <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-accent/30">
+          <button
+            onClick={() => setViewTab('positions')}
+            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
+              viewTab === 'positions'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            æŒä»“ <span className="ml-1 font-mono text-[11px] opacity-70">{positionsCount}</span>
+          </button>
+          <button
+            onClick={() => setViewTab('watchlist')}
+            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
+              viewTab === 'watchlist'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            å…³æ³¨ <span className="ml-1 font-mono text-[11px] opacity-70">{watchlistCount}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Add Stock Dialog */}
+      <Dialog open={showStockForm} onOpenChange={(open) => { setShowStockForm(open); if (!open) { setSearchQuery(''); setSearchMarket('') } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>æ·»åŠ è‚¡ç¥¨åˆ°è‡ªé€‰</DialogTitle>
+            <DialogDescription>æœç´¢å¹¶æ·»åŠ åˆ°è‡ªé€‰è‚¡åˆ—è¡¨</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleStockSubmit}>
+            <div className="relative" ref={dropdownRef}>
+              <div className="flex items-center gap-2 mb-2">
+                <Label className="mb-0">æœç´¢è‚¡ç¥¨</Label>
+                <div className="flex items-center gap-1">
+                  {[
+                    { value: '', label: 'å…¨éƒ¨' },
+                    { value: 'CN', label: 'Aè‚¡' },
+                    { value: 'HK', label: 'æ¸¯è‚¡' },
+                    { value: 'US', label: 'ç¾è‚¡' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => handleSearchMarketChange(opt.value)}
+                      className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                        searchMarket === opt.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={refreshStockListCache}
+                  disabled={refreshingStockList}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-2"
+                  title="æœç´¢ä¸åˆ°ï¼Ÿç‚¹å‡»åˆ·æ–°è‚¡ç¥¨åˆ—è¡¨"
+                >
+                  {refreshingStockList ? (
+                    <span className="flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> åˆ·æ–°ä¸­...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <RefreshCw className="w-3 h-3" /> åˆ·æ–°åˆ—è¡¨
+                    </span>
+                  )}
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => handleSearchInput(e.target.value)}
+                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
+                  placeholder={searchMarket === 'HK' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 00700 æˆ– è…¾è®¯' : searchMarket === 'US' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ AAPL æˆ– è‹¹æœ' : 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 600519 æˆ– èŒ…å°'}
+                  className="pl-10"
+                  autoComplete="off"
+                />
+                {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+              </div>
+              {showDropdown && (
+                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto scrollbar card shadow-lg">
+                  {searchResults.map(item => (
+                    <button
+                      key={`${item.market}-${item.symbol}`}
+                      type="button"
+                      onClick={() => selectStock(item)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-[13px] hover:bg-accent/50 text-left transition-colors"
+                    >
+                      <span className="font-mono text-muted-foreground text-[12px] w-14">{item.symbol}</span>
+                      <span className="flex-1 font-medium text-foreground">{item.name}</span>
+                      <Badge variant="secondary">{marketLabel(item.market)}</Badge>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {stockForm.symbol && (
+                <div className="mt-2.5 flex items-center gap-2">
+                  <Badge><span className="font-mono">{stockForm.symbol}</span> {stockForm.name}</Badge>
+                  <Badge variant="secondary">{marketLabel(stockForm.market)}</Badge>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex items-center gap-3 justify-end">
+              <Button type="button" variant="ghost" onClick={() => { setShowStockForm(false); setSearchQuery('') }}>å–æ¶ˆ</Button>
+              <Button type="submit" disabled={!stockForm.symbol}>ç¡®è®¤æ·»åŠ </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Accounts & Positions */}
+      {viewTab === 'positions' && (
+        portfolio && portfolio.accounts.length === 0 ? (
+          <div className="card flex flex-col items-center justify-center py-20">
+            <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+              <Building2 className="w-6 h-6 text-primary" />
+            </div>
+            <p className="text-[15px] font-semibold text-foreground">è¿˜æ²¡æœ‰è´¦æˆ·</p>
+            <p className="text-[13px] text-muted-foreground mt-1.5">ç‚¹å‡»"æ·»åŠ è´¦æˆ·"åˆ›å»ºä½ çš„ç¬¬ä¸€ä¸ªäº¤æ˜“è´¦æˆ·</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {portfolio?.accounts.map(account => (
+              <div key={account.id} className="card overflow-hidden">
+              {/* Account Header */}
+              <div
+                className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 cursor-pointer hover:bg-accent/30 transition-colors gap-2"
+                onClick={() => toggleAccountExpanded(account.id)}
+              >
+                <div className="flex items-center gap-2 md:gap-3">
+                  {expandedAccounts.has(account.id) ? (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  )}
+                  <Building2 className="w-4 h-4 text-primary" />
+                  <span className="text-[14px] md:text-[15px] font-semibold text-foreground">{account.name}</span>
+                  <span className="text-[11px] md:text-[12px] text-muted-foreground">
+                    {account.positions.length} åª
+                  </span>
+                </div>
+                <div className="flex items-center justify-between md:justify-end gap-2 md:gap-6 pl-6 md:pl-0">
+                  <div className="flex items-center gap-2.5 md:gap-6 min-w-0">
+                    <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">å¸‚å€¼</div>
+                      <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_market_value)}</div>
+                    </div>
+                    <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">ç›ˆäº</div>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                        {account.total_pnl >= 0 ? '+' : ''}{formatMoney(account.total_pnl)}
+                        <span className="text-[10px] md:text-[11px] ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
+                      </div>
+                    </div>
+                    <div className="text-left md:text-right">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">ä»Šæ—¥</div>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                        {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
+                      </div>
+                    </div>
+                    <div className="text-left md:text-right hidden sm:block">
+                      <div className="text-[10px] md:text-[11px] text-muted-foreground">å¯ç”¨</div>
+                      <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">{formatMoney(account.available_funds)}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0 md:gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)}>
+                      <Plus className="w-3 md:w-3.5 h-3 md:h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openAccountDialog(accounts.find(a => a.id === account.id))}>
+                      <Pencil className="w-3 md:w-3.5 h-3 md:h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 hover:text-destructive" onClick={() => handleDeleteAccount(account.id)}>
+                      <Trash2 className="w-3 md:w-3.5 h-3 md:h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Positions */}
+              {expandedAccounts.has(account.id) && (
+                <div className="border-t border-border/30">
+                  {account.positions.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground text-center py-8">æš‚æ— æŒä»“ï¼Œç‚¹å‡» + æ·»åŠ </p>
+                  ) : (
+                    <>
+                      {/* Desktop Table */}
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-border/30 bg-accent/20">
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">è‚¡ç¥¨</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">ç°ä»·</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">æ¶¨è·Œ</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">æˆæœ¬</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">æŒä»“</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">å¸‚å€¼</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">ç›ˆäº</th>
+                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">ä»Šæ—¥</th>
+                              <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">é£æ ¼</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">Agent</th>
+                              <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">æ“ä½œ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {account.positions.map((pos, i) => {
+                              const stock = stocks.find(s => s.id === pos.stock_id)
+                              const badge = marketBadge(pos.market)
+                              const isForeign = pos.market === 'HK' || pos.market === 'US'
+                              const changeColor = pos.change_pct != null
+                                ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                                : 'text-muted-foreground'
+                              const pnlColor = pos.pnl != null
+                                ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                                : 'text-muted-foreground'
+                              return (
+                                <tr
+                                  key={pos.id}
+                                  draggable
+                                  onDragStart={(e) => {
+                                    positionDragSnapshotRef.current = portfolioRaw ? JSON.parse(JSON.stringify(portfolioRaw)) : null
+                                    setDraggingPositionId(pos.id)
+                                    setDraggingPositionAccountId(account.id)
+                                    e.dataTransfer.effectAllowed = 'move'
+                                  }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault()
+                                    e.dataTransfer.dropEffect = 'move'
+                                    if (draggingPositionId != null && draggingPositionAccountId === account.id) {
+                                      previewPositionReorder(account.id, draggingPositionId, pos.id)
+                                    }
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    if (draggingPositionId != null && draggingPositionAccountId === account.id) {
+                                      commitPositionReorder(account.id)
+                                    }
+                                    setDraggingPositionId(null)
+                                    setDraggingPositionAccountId(null)
+                                    positionDragSnapshotRef.current = null
+                                  }}
+                                  onDragEnd={() => {
+                                    setDraggingPositionId(null)
+                                    setDraggingPositionAccountId(null)
+                                    positionDragSnapshotRef.current = null
+                                  }}
+                                  className={`group hover:bg-accent/30 transition-colors ${i > 0 ? 'border-t border-border/20' : ''} ${draggingPositionId === pos.id ? 'opacity-60' : ''}`}
+                                >
+                                  <td className="px-4 py-2.5">
+                                    <span className={`text-[9px] px-1 py-0.5 rounded mr-1.5 ${badge.style}`}>{badge.label}</span>
+                                    <span className="font-mono text-[12px] font-semibold text-foreground">
+                                      {pos.symbol}
+                                    </span>
+                                    <button
+                                      className="ml-1.5 text-[12px] text-muted-foreground hover:text-primary"
+                                      onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                    >
+                                      {pos.name}
+                                    </button>
+                                    {(() => {
+                                      const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                                      return (suggestion || kline) ? (
+                                        <span className="ml-2">
+                                          <SuggestionBadge
+                                            suggestion={suggestion}
+                                            stockName={pos.name}
+                                            stockSymbol={pos.symbol}
+                                            kline={kline}
+                                            market={pos.market}
+                                            hasPosition={true}
+                                          />
+                                        </span>
+                                      ) : null
+                                    })()}
+                                  </td>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : 'â€”'}
+                                  </td>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                    {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : 'â€”'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatPrice(pos.cost_price)}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
+                                    {pos.market_value != null ? (
+                                      <div className="flex flex-col items-end">
+                                        {isForeign ? (
+                                          <>
+                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
+                                            {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">â‰ˆ{formatMoney(pos.market_value_cny)}</span>}
+                                          </>
+                                        ) : <span>{formatMoney(pos.market_value)}</span>}
+                                      </div>
+                                    ) : 'â€”'}
+                                  </td>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pnlColor}`}>
+                                    {pos.pnl != null ? (
+                                      <div className="flex flex-col items-end">
+                                        <span>{pos.pnl >= 0 ? '+' : ''}{formatMoney(pos.pnl)}</span>
+                                        <span className="text-[10px] opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' CNY'}</span>
+                                      </div>
+                                    ) : 'â€”'}
+                                  </td>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : ''}`}>
+                                    {pos.daily_pnl != null ? (
+                                      <div className="flex flex-col items-end">
+                                        <span>{pos.daily_pnl >= 0 ? '+' : ''}{formatMoney(pos.daily_pnl)}</span>
+                                        <span className="text-[10px] opacity-70">{pos.daily_pnl_pct != null ? `${pos.daily_pnl_pct >= 0 ? '+' : ''}${pos.daily_pnl_pct.toFixed(2)}%` : ''}</span>
+                                      </div>
+                                    ) : 'â€”'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center">
+                                    {pos.trading_style ? (
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                        {pos.trading_style === 'short' ? 'çŸ­çº¿' : pos.trading_style === 'long' ? 'é•¿çº¿' : 'æ³¢æ®µ'}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-muted-foreground/50">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    {stock && (
+                                      <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
+                                        {stock.agents && stock.agents.length > 0 ? (
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            {stock.agents.map(sa => {
+                                              const agent = agents.find(a => a.name === sa.agent_name)
+                                              const isRunning = runningAgents[stock.id] === sa.agent_name
+                                              return (
+                                                <span key={sa.agent_name} className="inline-flex items-center gap-1">
+                                                  <Badge variant="default" className="text-[10px]">{agent?.display_name || sa.agent_name}</Badge>
+                                                  {isRunning && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                                      <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                                                      æ‰§è¡Œä¸­
+                                                    </span>
+                                                  )}
+                                                </span>
+                                              )
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1"><Bot className="w-3 h-3" /> æœªé…ç½®</span>
+                                        )}
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center">
+                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="Kçº¿æŒ‡æ ‡"><BarChart3 className="w-3 h-3" /></Button>
+                                      ) : null })()}
+                                      <StockPriceAlertPanel
+                                        mode="icon"
+                                        stockId={pos.stock_id}
+                                        symbol={pos.symbol}
+                                        market={pos.market}
+                                        stockName={pos.name}
+                                        initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
+                                        initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
+                                        onChanged={loadPriceAlertSummaries}
+                                      />
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="ç›¸å…³èµ„è®¯"><Newspaper className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="æ·±åº¦åˆ†æ(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSellDialog(pos)} title="å–å‡º"><Banknote className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile Cards */}
+                      <div className="md:hidden divide-y divide-border/30">
+                        {account.positions.map(pos => {
+                          const stock = stocks.find(s => s.id === pos.stock_id)
+                          const badge = marketBadge(pos.market)
+                          const changeColor = pos.change_pct != null
+                            ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                            : 'text-muted-foreground'
+                          const pnlColor = pos.pnl != null
+                            ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                            : 'text-muted-foreground'
+                          return (
+                            <div
+                              key={pos.id}
+                              draggable
+                              onDragStart={(e) => {
+                                positionDragSnapshotRef.current = portfolioRaw ? JSON.parse(JSON.stringify(portfolioRaw)) : null
+                                setDraggingPositionId(pos.id)
+                                setDraggingPositionAccountId(account.id)
+                                e.dataTransfer.effectAllowed = 'move'
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                e.dataTransfer.dropEffect = 'move'
+                                if (draggingPositionId != null && draggingPositionAccountId === account.id) {
+                                  previewPositionReorder(account.id, draggingPositionId, pos.id)
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                if (draggingPositionId != null && draggingPositionAccountId === account.id) {
+                                  commitPositionReorder(account.id)
+                                }
+                                setDraggingPositionId(null)
+                                setDraggingPositionAccountId(null)
+                                positionDragSnapshotRef.current = null
+                              }}
+                              onDragEnd={() => {
+                                setDraggingPositionId(null)
+                                setDraggingPositionAccountId(null)
+                                positionDragSnapshotRef.current = null
+                              }}
+                              className={`p-3 hover:bg-accent/30 transition-colors ${draggingPositionId === pos.id ? 'opacity-60' : ''}`}
+                            >
+                              {/* Row 1: Stock info + Current price */}
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                                  <span className="shrink-0 font-mono text-[12px] font-semibold text-foreground">
+                                    {pos.symbol}
+                                  </span>
+                                  <button
+                                    className="text-[12px] text-muted-foreground hover:text-primary truncate"
+                                    onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
+                                  >
+                                    {pos.name}
+                                  </button>
+                                  {pos.trading_style && (
+                                    <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                      {pos.trading_style === 'short' ? 'çŸ­' : pos.trading_style === 'long' ? 'é•¿' : 'æ³¢'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
+                                  {pos.current_price?.toFixed(2) || 'â€”'}
+                                  {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                </div>
+                              </div>
+                              {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
+                              {(() => {
+                                const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                                return (suggestion || kline) ? (
+                                  <div className="mb-2">
+                                    <SuggestionBadge
+                                      suggestion={suggestion}
+                                      stockName={pos.name}
+                                      stockSymbol={pos.symbol}
+                                      kline={kline}
+                                      market={pos.market}
+                                      hasPosition={true}
+                                    />
+                                  </div>
+                                ) : null
+                              })()}
+                              {/* Row 3: Stats grid (4 cols, whitespace-nowrap to prevent "ä¸‡" wrapping) */}
+                              <div className="grid grid-cols-4 gap-2 text-[11px]">
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">æˆæœ¬</div>
+                                  <div className="font-mono text-foreground truncate" title={String(pos.cost_price)}>{formatPrice(pos.cost_price)}</div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">æ•°é‡</div>
+                                  <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">ç›ˆäº</div>
+                                  <div className={`font-mono whitespace-nowrap ${pnlColor}`}>
+                                    {pos.pnl != null ? `${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}` : 'â€”'}
+                                  </div>
+                                  {pos.pnl_pct != null && (
+                                    <div className={`text-[10px] font-mono ${pnlColor} opacity-80`}>
+                                      {pos.pnl_pct >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[10px] text-muted-foreground">ä»Šæ—¥</div>
+                                  <div className={`font-mono whitespace-nowrap ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : 'text-muted-foreground'}`}>
+                                    {pos.daily_pnl != null ? `${pos.daily_pnl >= 0 ? '+' : ''}${formatMoney(pos.daily_pnl)}` : 'â€”'}
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Row 4: Actions */}
+                              <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/20">
+                                <div>
+                                  {stock && stock.agents && stock.agents.length > 0 ? (
+                                    <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1">
+                                      {stock.agents.slice(0, 2).map(sa => {
+                                        const agent = agents.find(a => a.name === sa.agent_name)
+                                        const isRunning = runningAgents[stock.id] === sa.agent_name
+                                        return (
+                                          <span key={sa.agent_name} className="inline-flex items-center gap-1">
+                                            <Badge variant="secondary" className="text-[9px]">{agent?.display_name || sa.agent_name}</Badge>
+                                            {isRunning && (
+                                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                                                æ‰§è¡Œä¸­
+                                              </span>
+                                            )}
+                                          </span>
+                                        )
+                                      })}
+                                    </button>
+                                  ) : (
+                                    <button onClick={() => stock && setAgentDialogStock(stock)} className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                                      <Bot className="w-3 h-3" /> Agent
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="Kçº¿æŒ‡æ ‡"><BarChart3 className="w-3 h-3" /></Button>
+                                  ) : null })()}
+                                  <StockPriceAlertPanel
+                                    mode="icon"
+                                    stockId={pos.stock_id}
+                                    symbol={pos.symbol}
+                                    market={pos.market}
+                                    stockName={pos.name}
+                                    initialTotal={getPriceAlertSummary(pos.symbol, pos.market).total}
+                                    initialEnabled={getPriceAlertSummary(pos.symbol, pos.market).enabled}
+                                    onChanged={loadPriceAlertSummaries}
+                                  />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="æ·±åº¦åˆ†æ(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSellDialog(pos)} title="å–å‡º"><Banknote className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)} title="ç¼–è¾‘"><Pencil className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        )
+      )}
+
+      {/* Watchlist */}
+      {viewTab === 'watchlist' && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[13px] font-semibold text-foreground">å…³æ³¨åˆ—è¡¨</h3>
+            <div className="flex items-center gap-1">
+              {[
+                { value: '', label: 'å…¨éƒ¨', count: stocks.length },
+                { value: 'CN', label: 'Aè‚¡', count: stocks.filter(s => s.market === 'CN').length },
+                { value: 'HK', label: 'æ¸¯è‚¡', count: stocks.filter(s => s.market === 'HK').length },
+                { value: 'US', label: 'ç¾è‚¡', count: stocks.filter(s => s.market === 'US').length },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setStockListFilter(opt.value)}
+                  className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                    stockListFilter === opt.value
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  {opt.label} ({opt.count})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[11px] text-muted-foreground">ç­›é€‰</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setWatchlistOnlyAlerts(!watchlistOnlyAlerts)}
+                className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                  watchlistOnlyAlerts
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-600'
+                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-rose-500/30'
+                }`}
+                title="åªæ˜¾ç¤ºéœ€è¦å…³æ³¨/é¢„è­¦çš„è‚¡ç¥¨"
+              >
+                ä»…é¢„è­¦
+              </button>
+            </div>
+          </div>
+          {stocks.length === 0 ? (
+            <div className="py-12 text-center">
+              <div className="text-[13px] text-muted-foreground">è¿˜æ²¡æœ‰æ·»åŠ å…³æ³¨è‚¡ç¥¨</div>
+              <div className="mt-2 text-[11px] text-muted-foreground/70">ç‚¹å‡»å³ä¸Šè§’â€œæ·»åŠ è‚¡ç¥¨â€å¼€å§‹</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {stocks
+                .filter(s => !stockListFilter || s.market === stockListFilter)
+                .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
+                .filter(stock => {
+                  if (!watchlistOnlyAlerts) return true
+                  const { suggestion } = getSuggestionForStock(stock.symbol, stock.market, false)
+                  return !!suggestion?.should_alert
+                })
+                .map((stock) => {
+                const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
+                const changeColor = quote?.change_pct != null
+                  ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                  : 'text-muted-foreground'
+                const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, false)
+                return (
+                  <div
+                    key={stock.id}
+                    draggable={stockListFilter === '' && !watchlistOnlyAlerts}
+                    onDragStart={(e) => {
+                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      watchDragSnapshotRef.current = stocks
+                      setDraggingWatchStockId(stock.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragOver={(e) => {
+                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (draggingWatchStockId != null) {
+                        previewWatchlistReorder(draggingWatchStockId, stock.id)
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (stockListFilter !== '' || watchlistOnlyAlerts) return
+                      e.preventDefault()
+                      if (draggingWatchStockId != null) commitWatchlistReorder()
+                      setDraggingWatchStockId(null)
+                      watchDragSnapshotRef.current = null
+                    }}
+                    onDragEnd={() => {
+                      setDraggingWatchStockId(null)
+                      watchDragSnapshotRef.current = null
+                    }}
+                    className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
+                    onClick={() => {
+                      if (isSuppressCardClick()) return
+                      setAgentDialogStock(stock)
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
+                            {marketBadge(stock.market).label}
+                          </span>
+                          <button
+                            className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
+                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                          >
+                            {stock.symbol}
+                          </button>
+                          <button
+                            className="text-[12px] text-muted-foreground truncate hover:text-primary"
+                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                          >
+                            {stock.name}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
+                          {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
+                        </div>
+                        <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
+                          {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      {(suggestion || kline) ? (
+                        <SuggestionBadge
+                          suggestion={suggestion}
+                          stockName={stock.name}
+                          stockSymbol={stock.symbol}
+                          kline={kline}
+                          market={stock.market}
+                          hasPosition={false}
+                        />
+                      ) : (
+                        <div className="text-[11px] text-muted-foreground/70 py-2">æš‚æ— æŠ€æœ¯é¢/AI åˆ†æ</div>
+                      )}
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {stock.agents && stock.agents.length > 0 ? (
+                          <Badge variant="secondary" className="text-[10px]">{stock.agents.length} Agent</Badge>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/60">æœªé…ç½® Agent</span>
+                        )}
+                        {runningAgents[stock.id] && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                            <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            {agents.find(a => a.name === runningAgents[stock.id])?.display_name || runningAgents[stock.id]}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, false)}
+                          title="Kçº¿æŒ‡æ ‡"
+                        >
+                          <BarChart3 className="w-3.5 h-3.5" />
+                        </Button>
+                        <StockPriceAlertPanel
+                          mode="icon"
+                          stockId={stock.id}
+                          symbol={stock.symbol}
+                          market={stock.market}
+                          stockName={stock.name}
+                          initialTotal={getPriceAlertSummary(stock.symbol, stock.market).total}
+                          initialEnabled={getPriceAlertSummary(stock.symbol, stock.market).enabled}
+                          onChanged={loadPriceAlertSummaries}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openNewsDialog(stock.name)}
+                          title="ç›¸å…³èµ„è®¯"
+                        >
+                          <Newspaper className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:text-primary"
+                          title="æ·±åº¦åˆ†æ(TradingAgents)"
+                          onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name)}
+                        >
+                          <Brain className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => openStockDetail(stock.symbol, stock.market, stock.name, false)}
+                          title="è¯¦æƒ…"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:text-destructive"
+                          onClick={() => setRemoveWatchStock(stock)}
+                          title="åˆ é™¤è‚¡ç¥¨"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kline Dialog */}
+      <KlineSummaryDialog
+        open={klineDialogOpen}
+        onOpenChange={setKlineDialogOpen}
+        symbol={klineDialogSymbol}
+        market={klineDialogMarket}
+        stockName={klineDialogName}
+        hasPosition={klineDialogHasPosition}
+        initialSummary={klineDialogInitialSummary as any}
+      />
+
+      <StockInsightModal
+        open={insightOpen}
+        onOpenChange={setInsightOpen}
+        symbol={insightSymbol}
+        market={insightMarket}
+        stockName={insightName}
+        hasPosition={insightHasPosition}
+      />
+
+      {/* TradingAgents æ·±åº¦åˆ†æå¼¹çª— */}
+      {deepAnalysisTarget && (
+        <DeepAnalysisModal
+          open={!!deepAnalysisTarget}
+          onOpenChange={(open) => { if (!open) setDeepAnalysisTarget(null) }}
+          stockId={deepAnalysisTarget.stockId}
+          stockSymbol={deepAnalysisTarget.symbol}
+          stockName={deepAnalysisTarget.name}
+        />
+      )}
+
+      {/* Remove Watchlist Dialog */}
+      <Dialog open={!!removeWatchStock} onOpenChange={(open) => { if (!open) setRemoveWatchStock(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>åˆ é™¤è‚¡ç¥¨</DialogTitle>
+            <DialogDescription>åˆ é™¤åå°†ä»ç³»ç»Ÿä¸­ç§»é™¤è¯¥è‚¡ç¥¨åŠå…¶å…³æ³¨é…ç½®</DialogDescription>
+          </DialogHeader>
+          {removeWatchStock && (
+            <div className="space-y-4 mt-2">
+              <div className="rounded-lg border border-border/40 bg-accent/20 p-3">
+                <div className="text-[13px] font-semibold text-foreground">
+                  {removeWatchStock.name}
+                  <span className="ml-2 font-mono text-[12px] text-muted-foreground">{removeWatchStock.symbol}</span>
+                </div>
+                <div className="mt-1 text-[12px] text-muted-foreground">
+                  {hasAnyPositionForStockId(removeWatchStock.id)
+                    ? 'è¯¥è‚¡ç¥¨å­˜åœ¨æŒä»“ï¼Œä¸èƒ½ç›´æ¥åˆ é™¤ã€‚è¯·å…ˆåœ¨â€œæŒä»“â€Tab åˆ é™¤æŒä»“è®°å½•ã€‚'
+                    : 'åˆ é™¤åå°†ä¸å†å‡ºç°åœ¨å…³æ³¨åˆ—è¡¨ï¼ŒåŒæ—¶ä¼šæ¸…ç†è¯¥è‚¡ç¥¨å…³è”çš„ä»·æ ¼æé†’ã€‚'}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setRemoveWatchStock(null)} disabled={removingWatchStock}>å–æ¶ˆ</Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => removeFromWatchlist(removeWatchStock)}
+                  disabled={removingWatchStock || hasAnyPositionForStockId(removeWatchStock.id)}
+                >
+                  {hasAnyPositionForStockId(removeWatchStock.id) ? 'è¯·å…ˆåˆ é™¤æŒä»“' : (removingWatchStock ? 'å¤„ç†ä¸­â€¦' : 'åˆ é™¤è‚¡ç¥¨')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Account Dialog */}
+      <Dialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editAccountId ? 'ç¼–è¾‘è´¦æˆ·' : 'æ·»åŠ è´¦æˆ·'}</DialogTitle>
+            <DialogDescription>è®¾ç½®äº¤æ˜“è´¦æˆ·ä¿¡æ¯</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div>
+              <Label>è´¦æˆ·åç§°</Label>
+              <Input
+                value={accountForm.name}
+                onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
+                placeholder="å¦‚ï¼šæ‹›å•†è¯åˆ¸ã€åæ³°è¯åˆ¸"
+              />
+            </div>
+            <div>
+              <Label>å¯ç”¨èµ„é‡‘ï¼ˆå…ƒï¼‰</Label>
+              <Input
+                value={accountForm.available_funds}
+                onChange={e => setAccountForm({ ...accountForm, available_funds: e.target.value })}
+                placeholder="0"
+                className="font-mono"
+                inputMode="decimal"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setAccountDialogOpen(false)}>å–æ¶ˆ</Button>
+              <Button onClick={handleAccountSubmit} disabled={!accountForm.name}>
+                {editAccountId ? 'ä¿å­˜' : 'åˆ›å»º'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sell Dialog */}
+      <Dialog open={sellDialogOpen} onOpenChange={setSellDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>å–å‡ºæŒä»“</DialogTitle>
+            <DialogDescription>
+              {sellTarget?.name}ï¼ˆ{sellTarget?.symbol}ï¼‰Â· å½“å‰æŒä»“ {sellTarget?.quantity} è‚¡
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div>
+              <Label>å–å‡ºä»·æ ¼</Label>
+              <Input value={sellForm.sell_price} onChange={e => setSellForm({...sellForm, sell_price: e.target.value})}
+                placeholder="0.00" className="font-mono" inputMode="decimal" />
+            </div>
+            <div>
+              <Label>å–å‡ºæ•°é‡ <span className="text-muted-foreground text-[11px]">(å½“å‰ {sellTarget?.quantity} è‚¡)</span></Label>
+              <Input value={sellForm.sell_quantity} onChange={e => setSellForm({...sellForm, sell_quantity: e.target.value})}
+                placeholder="0" className="font-mono" inputMode="numeric" />
+              <button className="text-[11px] text-primary mt-1" onClick={() => sellTarget && setSellForm({...sellForm, sell_quantity: sellTarget.quantity.toString()})}>
+                å…¨éƒ¨å–å‡º
+              </button>
+            </div>
+            <div>
+              <Label>äº¤æ˜“è´¹ç”¨ <span className="text-muted-foreground text-[11px]">(é€‰å¡«)</span></Label>
+              <Input value={sellForm.fee} onChange={e => setSellForm({...sellForm, fee: e.target.value})}
+                placeholder="0" className="font-mono" inputMode="decimal" />
+            </div>
+            {sellForm.sell_price && sellForm.sell_quantity && sellTarget && (
+              <div className="p-3 rounded-lg bg-accent/30 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">é¢„ä¼°ç›ˆäº</span>
+                  <span className={`font-medium ${(parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0) >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)) >= 0 ? '+' : ''}
+                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)).toFixed(2)} å…ƒ
+                  </span>
+                </div>
+              </div>
+            )}
+            <div>
+              <Label>å¤‡æ³¨ <span className="text-muted-foreground text-[11px]">(é€‰å¡«)</span></Label>
+              <Input value={sellForm.note} onChange={e => setSellForm({...sellForm, note: e.target.value})} placeholder="å–å‡ºåŸå› ..." />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setSellDialogOpen(false)}>å–æ¶ˆ</Button>
+              <Button variant="destructive" onClick={handleSellSubmit}
+                disabled={!sellForm.sell_price || !sellForm.sell_quantity || parseInt(sellForm.sell_quantity) <= 0}>
+                ç¡®è®¤å–å‡º
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Position Dialog */}
+      <Dialog
+        open={positionDialogOpen}
+        onOpenChange={(open) => {
+          setPositionDialogOpen(open)
+          if (!open) {
+            setPositionSearchQuery('')
+            setPositionSearchResults([])
+            setShowPositionDropdown(false)
+            setPositionSearchMarket('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editPositionId ? 'ç¼–è¾‘æŒä»“' : 'æ·»åŠ æŒä»“'}</DialogTitle>
+            <DialogDescription>
+              {accounts.find(a => a.id === positionDialogAccountId)?.name} è´¦æˆ·æŒä»“
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {editPositionId ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
+                  {marketBadge(positionForm.stock_market).label}
+                </span>
+                <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
+                <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Label className="mb-0">æœç´¢è‚¡ç¥¨</Label>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { value: '', label: 'å…¨éƒ¨' },
+                      { value: 'CN', label: 'Aè‚¡' },
+                      { value: 'HK', label: 'æ¸¯è‚¡' },
+                      { value: 'US', label: 'ç¾è‚¡' },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => handlePositionSearchMarketChange(opt.value)}
+                        className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                          positionSearchMarket === opt.value
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="relative" ref={positionDropdownRef}>
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                  <Input
+                    value={positionSearchQuery}
+                    onChange={e => handlePositionSearchInput(e.target.value)}
+                    onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
+                    placeholder={positionSearchMarket === 'HK' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 00700 æˆ– è…¾è®¯' : positionSearchMarket === 'US' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ LI æˆ– ç†æƒ³æ±½è½¦' : positionSearchMarket === 'CN' ? 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 600519 æˆ– èŒ…å°' : 'ä»£ç æˆ–åç§°ï¼Œå¦‚ 600519 / 00700 / AAPL'}
+                    className="pl-9"
+                    autoComplete="off"
+                  />
+                  {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+                  {showPositionDropdown && positionSearchResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 max-h-48 overflow-auto scrollbar card shadow-lg">
+                      {positionSearchResults.map(item => (
+                        <button
+                          key={`${item.market}-${item.symbol}`}
+                          type="button"
+                          onClick={() => selectPositionStock(item)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] hover:bg-accent/50 text-left transition-colors"
+                        >
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(item.market).style}`}>
+                            {marketBadge(item.market).label}
+                          </span>
+                          <span className="font-mono text-muted-foreground text-[12px]">{item.symbol}</span>
+                          <span className="flex-1 text-foreground">{item.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {positionForm.stock_symbol && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
+                      {marketBadge(positionForm.stock_market).label}
+                    </span>
+                    <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
+                    <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPositionForm({ ...positionForm, stock_id: 0, stock_symbol: '', stock_name: '', stock_market: '' })
+                        setPositionSearchQuery('')
+                      }}
+                      className="ml-1 text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>æˆæœ¬ä»·</Label>
+                <Input
+                  value={positionForm.cost_price}
+                  onChange={e => setPositionForm({ ...positionForm, cost_price: e.target.value })}
+                  placeholder="0.00"
+                  className="font-mono"
+                  inputMode="decimal"
+                />
+              </div>
+              <div>
+                <Label>æŒä»“æ•°é‡</Label>
+                <Input
+                  value={positionForm.quantity}
+                  onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
+                  placeholder="0"
+                  className="font-mono"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>æŠ•å…¥èµ„é‡‘ <span className="text-muted-foreground/60 text-[11px]">(é€‰å¡«)</span></Label>
+                <Input
+                  value={positionForm.invested_amount}
+                  onChange={e => setPositionForm({ ...positionForm, invested_amount: e.target.value })}
+                  placeholder="é€‰å¡«"
+                  className="font-mono"
+                  inputMode="decimal"
+                />
+              </div>
+              <div>
+                <Label>äº¤æ˜“é£æ ¼ <span className="text-muted-foreground font-normal">(é€‰å¡«)</span></Label>
+                <Select
+                  value={positionForm.trading_style}
+                  onValueChange={val => setPositionForm({ ...positionForm, trading_style: val === '__none__' ? '' : val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="ä¸è®¾ç½®" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">ä¸è®¾ç½®</SelectItem>
+                    <SelectItem value="short">çŸ­çº¿ (1-5å¤©)</SelectItem>
+                    <SelectItem value="swing">æ³¢æ®µ (1-4å‘¨)</SelectItem>
+                    <SelectItem value="long">é•¿çº¿ (æ•°æœˆ)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setPositionDialogOpen(false)}>å–æ¶ˆ</Button>
+              <Button
+                onClick={handlePositionSubmit}
+                disabled={!positionForm.cost_price || !positionForm.quantity || (!editPositionId && !positionForm.stock_id && !positionForm.stock_symbol)}
+              >
+                {editPositionId ? 'ä¿å­˜' : 'æ·»åŠ '}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agent Assignment Dialog */}
+      <Dialog open={!!agentDialogStock} onOpenChange={open => !open && setAgentDialogStock(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>é…ç½®ç›‘æ§ Agent</DialogTitle>
+            <DialogDescription>
+              ä¸º {agentDialogStock?.name}ï¼ˆ{agentDialogStock?.symbol}ï¼‰é€‰æ‹©è¦ç›‘æ§çš„ Agent
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            {agents.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground py-4 text-center">æš‚æ— å¯ç”¨ Agent</p>
+            ) : (
+              agents.map(agent => {
+                const stockAgent = agentDialogStock?.agents?.find(a => a.agent_name === agent.name)
+                const isAssigned = !!stockAgent
+                const isBatchMode = agent.execution_mode === 'batch'
+                return (
+                  <div key={agent.name} className="rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors overflow-hidden">
+                    <div className="flex items-center justify-between p-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-border'}`} />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium text-foreground">{agent.display_name}</span>
+                            <Badge variant="secondary" className="text-[9px]">
+                              {isBatchMode ? 'æ‰¹é‡' : 'é€åª'}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{agent.description}</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={isAssigned}
+                        onCheckedChange={() => agentDialogStock && toggleAgent(agentDialogStock, agent.name)}
+                        disabled={!agent.enabled}
+                      />
+                    </div>
+                    {isAssigned && isBatchMode && (
+                      <div className="px-3.5 pb-3.5 pt-0">
+                        <p className="text-[11px] text-muted-foreground">
+                          è°ƒåº¦ã€AIæ¨¡å‹ã€é€šçŸ¥æ¸ é“è¯·åœ¨ <a href="/agents" className="text-primary hover:underline">Agent é…ç½®</a> é¡µé¢ç»Ÿä¸€è®¾ç½®
+                        </p>
+                      </div>
+                    )}
+                    {isAssigned && !isBatchMode && (
+                      <div className="px-3.5 pb-3.5 pt-0 space-y-2.5">
+                        {/* Schedule/Interval Select */}
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <Select
+                            value={stockAgent?.schedule || '__default__'}
+                            onValueChange={val => agentDialogStock && updateStockAgentSchedule(agentDialogStock, agent.name, val === '__default__' ? '' : val)}
+                          >
+                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
+                              <SelectValue placeholder="æ‰§è¡Œé—´éš”" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__default__">è·Ÿéšå…¨å±€</SelectItem>
+                              <SelectItem value="*/1 9-15 * * 1-5">æ¯ 1 åˆ†é’Ÿ</SelectItem>
+                              <SelectItem value="*/3 9-15 * * 1-5">æ¯ 3 åˆ†é’Ÿ</SelectItem>
+                              <SelectItem value="*/5 9-15 * * 1-5">æ¯ 5 åˆ†é’Ÿ</SelectItem>
+                              <SelectItem value="*/10 9-15 * * 1-5">æ¯ 10 åˆ†é’Ÿ</SelectItem>
+                              <SelectItem value="*/15 9-15 * * 1-5">æ¯ 15 åˆ†é’Ÿ</SelectItem>
+                              <SelectItem value="*/30 9-15 * * 1-5">æ¯ 30 åˆ†é’Ÿ</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <span className="text-[10px] text-muted-foreground">äº¤æ˜“æ—¶æ®µ</span>
+                        </div>
+
+                        {/* Schedule Preview */}
+                        {(() => {
+                          const eff = effectiveSchedule(agent, stockAgent)
+                          const isFollowingGlobal = !(stockAgent?.schedule || '').trim() && !!(agent.schedule || '').trim()
+                          const preview = eff ? schedulePreviewCache[eff] : null
+                          const isLoading = eff ? !!schedulePreviewLoading[eff] : false
+                          if (!eff) return null
+                          return (
+                            <div className="ml-[22px] rounded-lg border border-border/40 bg-background/30 px-2.5 py-2">
+                              <div className="flex items-center justify-between">
+                                <div className="text-[11px] text-muted-foreground">
+                                  æœªæ¥è§¦å‘æ—¶é—´é¢„è§ˆ{isFollowingGlobal ? <span className="ml-1 opacity-70">(è·Ÿéšå…¨å±€)</span> : null}
+                                </div>
+                                {isLoading && (
+                                  <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                )}
+                              </div>
+                              {'error' in (preview || {}) ? (
+                                <div className="mt-1 text-[11px] text-muted-foreground">{(preview as any).error}</div>
+                              ) : (preview as SchedulePreview | undefined)?.next_runs?.length ? (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  {(preview as SchedulePreview).next_runs.map((t, i) => (
+                                    <span key={i} className="px-1.5 py-0.5 rounded border border-border/60 bg-accent/20 font-mono" title={t}>
+                                      {formatPreviewTime(t, (preview as SchedulePreview).timezone)}
+                                    </span>
+                                  ))}
+                                  {(preview as SchedulePreview).timezone ? (
+                                    <span className="opacity-60">({(preview as SchedulePreview).timezone})</span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="mt-1 text-[11px] text-muted-foreground">â€”</div>
+                              )}
+                              <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">schedule: {eff}</div>
+                            </div>
+                          )
+                        })()}
+
+                        {/* AI Model Select */}
+                        <div className="flex items-center gap-2">
+                          <Cpu className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <Select
+                            value={stockAgent?.ai_model_id?.toString() ?? '__default__'}
+                            onValueChange={val => agentDialogStock && updateStockAgentModel(agentDialogStock, agent.name, val === '__default__' ? null : parseInt(val))}
+                          >
+                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__default__">ç³»ç»Ÿé»˜è®¤</SelectItem>
+                              {services.map(svc => (
+                                <SelectGroup key={svc.id}>
+                                  <SelectLabel>{svc.name}</SelectLabel>
+                                  {svc.models.map(m => (
+                                    <SelectItem key={m.id} value={m.id.toString()}>
+                                      {m.name}{m.name !== m.model ? ` (${m.model})` : ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {/* Notification Channels */}
+                        {channels.length > 0 && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Bell className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            {channels.map(ch => {
+                              const isSelected = (stockAgent?.notify_channel_ids || []).includes(ch.id)
+                              return (
+                                <button
+                                  key={ch.id}
+                                  onClick={() => agentDialogStock && toggleStockAgentChannel(agentDialogStock, agent.name, ch.id)}
+                                  className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
+                                    isSelected
+                                      ? 'bg-primary/10 border-primary/30 text-primary font-medium'
+                                      : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-primary/30'
+                                  }`}
+                                >
+                                  {ch.name}
+                                </button>
+                              )
+                            })}
+                            {(stockAgent?.notify_channel_ids || []).length === 0 && (
+                              <span className="text-[10px] text-muted-foreground">ç³»ç»Ÿé»˜è®¤</span>
+                            )}
+                          </div>
+                        )}
+                        {/* Trigger Button */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            variant="secondary" size="sm" className="h-7 text-[11px] px-2.5"
+                            disabled={triggeringAgent === agent.name}
+                            onClick={() => agentDialogStock && triggerStockAgent(agentDialogStock.id, agent.name)}
+                          >
+                            {triggeringAgent === agent.name ? (
+                              <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                            ) : (
+                              <Play className="w-3 h-3" />
+                            )}
+                            ç«‹å³åˆ†æ
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agent åˆ†æç»“æœå¼¹çª— */}
+      <Dialog open={!!agentResultDialog} onOpenChange={open => !open && setAgentResultDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">{agentResultDialog?.title}</DialogTitle>
+            <DialogDescription className="flex items-center gap-2 pt-1">
+              {agentResultDialog?.should_alert ? (
+                <Badge variant="default" className="text-[10px]">å»ºè®®å…³æ³¨</Badge>
+              ) : (
+                <Badge variant="secondary" className="text-[10px]">æ— éœ€å…³æ³¨</Badge>
+              )}
+              {agentResultDialog?.notified && (
+                <Badge variant="outline" className="text-[10px]">å·²å‘é€é€šçŸ¥</Badge>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 p-3 bg-accent/30 rounded-lg">
+            <pre className="text-[13px] whitespace-pre-wrap font-sans leading-relaxed">
+              {agentResultDialog?.content}
+            </pre>
+          </div>
+          <div className="flex justify-end mt-2">
+            <Button variant="outline" size="sm" onClick={() => setAgentResultDialog(null)}>
+              å…³é—­
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ç›¸å…³èµ„è®¯å¼¹çª— */}
+      <Dialog open={newsDialogOpen} onOpenChange={setNewsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Newspaper className="w-5 h-5 text-blue-500" />
+              ç›¸å…³èµ„è®¯
+            </DialogTitle>
+            <DialogDescription>
+              {newsDialogSymbol
+                ? `${newsDialogSymbol} çš„ç›¸å…³æ–°é—»å’Œå…¬å‘Š`
+                : 'è‡ªé€‰è‚¡ç›¸å…³æ–°é—»å’Œå…¬å‘Šï¼ˆè¿‘ 72 å°æ—¶ï¼‰'
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* è‚¡ç¥¨ç­›é€‰å™¨ */}
+          <div className="flex items-center gap-2 flex-wrap py-2 border-b">
+            <span className="text-[12px] text-muted-foreground">ç­›é€‰:</span>
+            <button
+              onClick={() => { setNewsDialogSymbol(''); loadNews() }}
+              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
+                !newsDialogSymbol
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+              }`}
+            >
+              å…¨éƒ¨
+            </button>
+            {stocks.slice(0, 10).map(stock => (
+              <button
+                key={stock.symbol}
+                onClick={() => { setNewsDialogSymbol(stock.name); loadNews(stock.name) }}
+                className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
+                  newsDialogSymbol === stock.name
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                {stock.name}
+              </button>
+            ))}
+            {stocks.length > 10 && (
+              <span className="text-[10px] text-muted-foreground">+{stocks.length - 10}</span>
+            )}
+          </div>
+
+          {/* æ–°é—»åˆ—è¡¨ */}
+          <div className="flex-1 overflow-y-auto min-h-0 py-2">
+            {newsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <span className="ml-2 text-[13px] text-muted-foreground">åŠ è½½ä¸­...</span>
+              </div>
+            ) : news.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-[13px]">
+                æš‚æ— ç›¸å…³èµ„è®¯
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {news.map((item, idx) => (
+                  <div
+                    key={`${item.source}-${item.external_id}-${idx}`}
+                    className="p-3 rounded-lg bg-accent/30 hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            item.source === 'eastmoney' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                            item.source === 'eastmoney_news' ? 'bg-blue-500/10 text-blue-500' :
+                            'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {item.source_label}
+                          </span>
+                          {item.importance >= 2 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500">
+                              é‡è¦
+                            </span>
+                          )}
+                          <span className="text-[10px] text-muted-foreground">
+                            {item.publish_time}
+                          </span>
+                        </div>
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[13px] font-medium text-foreground hover:text-primary transition-colors block"
+                        >
+                          {item.title}
+                        </a>
+                        {item.symbols.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-2">
+                            {item.symbols.slice(0, 5).map(sym => {
+                              const stockInfo = stocks.find(s => s.symbol === sym)
+                              const stockName = stockInfo?.name || sym
+                              return (
+                                <button
+                                  key={sym}
+                                  onClick={() => { setNewsDialogSymbol(stockName); loadNews(stockName) }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono hover:bg-primary/20 transition-colors"
+                                >
+                                  {stockName}
+                                </button>
+                              )
+                            })}
+                            {item.symbols.length > 5 && (
+                              <span className="text-[10px] text-muted-foreground">+{item.symbols.length - 5}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 p-1.5 rounded-md hover:bg-accent transition-colors"
+                        title="æŸ¥çœ‹åŸæ–‡"
+                      >
+                        <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* åº•éƒ¨åˆ·æ–°æŒ‰é’® */}
+          <div className="flex items-center justify-between pt-2 border-t">
+            <span className="text-[11px] text-muted-foreground">
+              å…± {news.length} æ¡èµ„è®¯
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => loadNews(newsDialogSymbol || undefined)} disabled={newsLoading}>
+              <RefreshCw className={`w-3 h-3 ${newsLoading ? 'animate-spin' : ''}`} />
+              åˆ·æ–°
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
