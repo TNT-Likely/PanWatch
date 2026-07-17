@@ -2,10 +2,15 @@
 import logging
 from fastapi import APIRouter
 
-from src.collectors.akshare_collector import _fetch_tencent_quotes
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def get_market_data():
+    """惰性 import,避免包未装/循环 import 影响本模块加载。"""
+    from src.core.marketdata_client import get_market_data as _g
+
+    return _g()
 
 # 主要市场指数配置
 # response_symbol: 腾讯 API 返回的 symbol（用于匹配）
@@ -28,7 +33,7 @@ async def get_market_indices():
     tencent_symbols = [idx["tencent_symbol"] for idx in MARKET_INDICES]
 
     try:
-        quotes = _fetch_tencent_quotes(tencent_symbols)
+        quotes = get_market_data().index_quotes(tencent_symbols)
     except Exception as e:
         logger.error(f"获取市场指数失败: {e}")
         return []

@@ -1,10 +1,13 @@
 """统一数据源管理器"""
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
+
+from marketdata import PACKAGE_VENDORS_BY_TYPE
 
 from src.web.database import SessionLocal
 from src.web.models import DataSource
@@ -65,7 +68,6 @@ class DataCollectorManager:
         )
         from src.collectors.kline_collector import KlineCollector
         from src.collectors.capital_flow_collector import CapitalFlowCollector
-        from src.collectors.akshare_collector import AkshareCollector
         from src.collectors.events_collector import EastMoneyEventsCollector
 
         self.COLLECTOR_FACTORIES = {
@@ -81,9 +83,6 @@ class DataCollectorManager:
             },
             "capital_flow": {
                 "eastmoney": lambda cfg: CapitalFlowCollector(MarketCode.CN),
-            },
-            "quote": {
-                "tencent": lambda cfg: AkshareCollector(MarketCode.CN),
             },
             "chart": {
                 "xueqiu": lambda cfg: ("xueqiu", cfg),
@@ -323,14 +322,13 @@ class DataCollectorManager:
 
     async def collect_quote(self, symbols: list[str]) -> CollectorResult:
         """采集实时行情"""
-        from src.collectors.akshare_collector import AkshareCollector
+        from src.core.marketdata_client import md_stock_data
 
         start_time = datetime.now()
         self._log("实时行情", "quote", "start", f"获取 {len(symbols)} 只股票的行情")
 
         try:
-            collector = AkshareCollector(MarketCode.CN)
-            stocks = await collector.get_stock_data(symbols)
+            stocks = await asyncio.to_thread(md_stock_data, symbols, MarketCode.CN.value)
 
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
             self._log(
@@ -567,69 +565,52 @@ class DataCollectorManager:
             success=False, error=f"不支持的数据源类型: {source.type}"
         )
 
+    # 包内 kline/quote Engine 各自只注册了这些 vendor(权威来源见 marketdata.PACKAGE_VENDORS_BY_TYPE)。
+    # provider 不在这个集合里 = 包内没实现该源,测试应给出明确 error,不能构造 Engine 硬跑。
+    _KLINE_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["kline"]
+    _QUOTE_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["quote"]
+
     async def _test_kline_source(
         self, source: DataSource, test_symbols: list[str]
     ) -> CollectorResult:
-        """按 provider 测试 K 线源:tencent/tushare/yfinance 各走自己实现,不串备份链。
+        """按 provider 测试 K 线源:走 marketdata 包的单源 Engine(仅该 vendor,不串备份链)。
 
         测试需要的是"这个 provider 自己工作正常",不是"整条主备链有 fallback 能跑通",
-        所以不走 Orchestrator(它会自动切到下一条)。
+        所以用只含这一个 vendor 的 StaticConfigProvider 隔离测试指定源。
         """
-        from src.core.providers.base import ProviderRequest
-        from src.core.providers.kline.tencent import TencentKlineProvider
-        from src.core.providers.kline.tushare import TushareKlineProvider
-        from src.core.providers.kline.yfinance import YFinanceKlineProvider
+        from marketdata import MarketData, SourceConfig, StaticConfigProvider, Symbol
+
+        if source.provider not in self._KLINE_PACKAGE_VENDORS:
+            return CollectorResult(
+                success=False,
+                error=f"provider {source.provider} 无对应 vendor，包内未实现该 K 线源",
+            )
 
         cfg = source.config or {}
-        if source.provider == "tencent":
-            provider = TencentKlineProvider(config=cfg)
-            market = "CN"
-        elif source.provider == "tushare":
-            provider = TushareKlineProvider(config=cfg)
-            market = "CN"
-            if provider._init_error:
-                return CollectorResult(
-                    success=False, error=provider._init_error
-                )
-        elif source.provider == "yfinance":
-            provider = YFinanceKlineProvider(config=cfg)
-            market = "US"  # yfinance 默认用 US 测,A 股不支持
-            if provider._init_error:
-                return CollectorResult(
-                    success=False, error=provider._init_error
-                )
-        else:
-            return CollectorResult(
-                success=False, error=f"未知的 kline provider: {source.provider}"
+        md = MarketData(
+            config=StaticConfigProvider(
+                {"kline": [SourceConfig(vendor=source.provider, config=cfg, enabled=True)]}
             )
+        )
 
         results = []
         first_error = ""
         for symbol in test_symbols[:3]:
+            market = Symbol.parse(symbol).market.value
             try:
-                resp = await provider.fetch(
-                    ProviderRequest(
-                        symbols=(symbol,), market=market, extra=(("days", 30),)
-                    )
-                )
-                if resp.success and resp.data:
-                    last = resp.data[-1]
-                    last_close = getattr(last, "close", None) or (
-                        last.get("close") if isinstance(last, dict) else None
-                    )
-                    last_date = getattr(last, "date", None) or (
-                        last.get("date") if isinstance(last, dict) else None
-                    )
+                bars = md.klines(symbol, market=market, days=30)
+                if bars:
+                    last = bars[-1]
                     results.append(
                         {
                             "symbol": symbol,
-                            "last_close": last_close,
-                            "last_date": last_date,
-                            "count": len(resp.data),
+                            "last_close": last.close,
+                            "last_date": last.date,
+                            "count": len(bars),
                         }
                     )
                 elif not first_error:
-                    first_error = resp.error or "无数据"
+                    first_error = "无数据"
             except Exception as e:
                 if not first_error:
                     first_error = str(e)
@@ -644,50 +625,43 @@ class DataCollectorManager:
     async def _test_quote_source(
         self, source: DataSource, test_symbols: list[str]
     ) -> CollectorResult:
-        """按 provider 测试行情源。"""
-        from src.core.providers.base import ProviderRequest
-        from src.core.providers.quote.tencent import TencentQuoteProvider
-        from src.core.providers.quote.yfinance import YFinanceQuoteProvider
+        """按 provider 测试行情源:走 marketdata 包的单源 Engine(仅该 vendor,不串备份链)。"""
+        from marketdata import MarketData, SourceConfig, StaticConfigProvider
+
+        from src.core.marketdata_client import _quote_to_row
+
+        if source.provider not in self._QUOTE_PACKAGE_VENDORS:
+            return CollectorResult(
+                success=False,
+                error=f"provider {source.provider} 无对应 vendor，包内未实现该行情源",
+            )
 
         cfg = source.config or {}
-        if source.provider == "tencent":
-            provider = TencentQuoteProvider(config=cfg)
-            market = "CN"
-        elif source.provider == "yfinance":
-            provider = YFinanceQuoteProvider(config=cfg)
-            market = "US"
-            if provider._init_error:
-                return CollectorResult(
-                    success=False, error=provider._init_error
-                )
-        else:
-            return CollectorResult(
-                success=False, error=f"未知的 quote provider: {source.provider}"
+        md = MarketData(
+            config=StaticConfigProvider(
+                {"quote": [SourceConfig(vendor=source.provider, config=cfg, enabled=True)]}
             )
+        )
 
         try:
-            resp = await provider.fetch(
-                ProviderRequest(symbols=tuple(test_symbols[:5]), market=market)
-            )
+            quotes = md.quotes(list(test_symbols[:5]))
         except Exception as e:
             return CollectorResult(success=False, error=str(e))
 
-        if not resp.success:
-            return CollectorResult(success=False, error=resp.error or "获取行情失败")
-
+        rows = [_quote_to_row(q) for q in quotes]
         return CollectorResult(
-            success=len(resp.data) > 0,
+            success=len(rows) > 0,
             data=[
                 {
-                    "symbol": item.get("symbol"),
-                    "name": item.get("name"),
-                    "price": item.get("current_price"),
-                    "change_pct": item.get("change_pct"),
+                    "symbol": row["symbol"],
+                    "name": row["name"],
+                    "price": row["current_price"],
+                    "change_pct": row["change_pct"],
                 }
-                for item in (resp.data or [])
+                for row in rows
             ],
-            count=len(resp.data or []),
-            error="" if resp.data else "获取行情失败",
+            count=len(rows),
+            error="" if rows else "获取行情失败",
         )
 
 

@@ -43,4 +43,6 @@ export interface DataSource {
   test_symbols: string[]
   engine_attached?: boolean
   health?: SourceHealth | null
+  /** 孤儿源:该 (type, provider) 在包内无对应 vendor 且不在种子里,抓取/测试必失败。 */
+  is_orphan?: boolean
 }

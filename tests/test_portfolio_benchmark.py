@@ -44,6 +44,28 @@ def test_metrics_invalid_returns_none():
     assert pb.compute_benchmark_metrics(["d1", "d2"], [0, 101], [100, 101]) is None
 
 
+def test_parse_tencent_kline_matches_collector_format():
+    """本地 _parse_tencent_kline 解析腾讯 kline JSON 文本,字段与旧版一致。"""
+    text = (
+        'kline_dayqfq={"data":{"sh000300":{"day":['
+        '["2026-01-02","3900.1","3910.5","3915.0","3895.2","123456"],'
+        '["2026-01-03","3910.5","3920.0","3925.0","3905.0","234567"]'
+        "]}}}"
+    )
+    bars = pb._parse_tencent_kline(text, "sh000300")
+    assert len(bars) == 2
+    b0 = bars[0]
+    assert b0.date == "2026-01-02"
+    assert b0.open == 3900.1
+    assert b0.close == 3910.5
+    assert b0.high == 3915.0
+    assert b0.low == 3895.2
+    assert b0.volume == 123456.0
+    b1 = bars[1]
+    assert b1.date == "2026-01-03"
+    assert b1.close == 3920.0
+
+
 def test_build_portfolio_benchmark_with_mocked_fetch(monkeypatch):
     """组合走平、基准上行 → 超额为负;基准元信息回填。"""
     dates = ["2026-01-02", "2026-01-03", "2026-01-04"]

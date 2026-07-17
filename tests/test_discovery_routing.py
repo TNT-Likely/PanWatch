@@ -1,14 +1,12 @@
-"""发现(东财热门榜)取数 flag 门控路由测试"""
+"""发现(东财热门榜)取数路由测试:统一走 marketdata 包"""
 import asyncio
 
 import src.collectors.discovery_collector as dc
 
 
-def test_fetch_hot_stocks_flag_on_uses_marketdata(monkeypatch):
-    """flag 开:fetch_hot_stocks 走 marketdata 包的 hot_stocks,转换为本模块 HotStock,且透传 proxy。"""
+def test_fetch_hot_stocks_uses_marketdata(monkeypatch):
+    """fetch_hot_stocks 走 marketdata 包的 hot_stocks,转换为本模块 HotStock,且透传 proxy。"""
     from marketdata.types import HotStock as MdHotStock
-
-    monkeypatch.setattr(dc, "_use_marketdata_discovery", lambda: True)
 
     captured: dict = {}
 
@@ -52,11 +50,9 @@ def test_fetch_hot_stocks_flag_on_uses_marketdata(monkeypatch):
     assert item.volume == 1000.0
 
 
-def test_fetch_hot_boards_flag_on_uses_marketdata(monkeypatch):
-    """flag 开:fetch_hot_boards 走 marketdata 包的 hot_boards,转换为本模块 HotBoard,且透传 proxy。"""
+def test_fetch_hot_boards_uses_marketdata(monkeypatch):
+    """fetch_hot_boards 走 marketdata 包的 hot_boards,转换为本模块 HotBoard,且透传 proxy。"""
     from marketdata.types import HotBoard as MdHotBoard
-
-    monkeypatch.setattr(dc, "_use_marketdata_discovery", lambda: True)
 
     captured: dict = {}
 
@@ -96,11 +92,9 @@ def test_fetch_hot_boards_flag_on_uses_marketdata(monkeypatch):
     assert item.turnover == 88888.0
 
 
-def test_fetch_board_stocks_flag_on_uses_marketdata(monkeypatch):
-    """flag 开:fetch_board_stocks 走 marketdata 包的 board_stocks,转换为本模块 HotStock,且透传 proxy。"""
+def test_fetch_board_stocks_uses_marketdata(monkeypatch):
+    """fetch_board_stocks 走 marketdata 包的 board_stocks,转换为本模块 HotStock,且透传 proxy。"""
     from marketdata.types import HotStock as MdHotStock
-
-    monkeypatch.setattr(dc, "_use_marketdata_discovery", lambda: True)
 
     captured: dict = {}
 
@@ -142,45 +136,3 @@ def test_fetch_board_stocks_flag_on_uses_marketdata(monkeypatch):
     assert item.change_pct == 3.3
     assert item.turnover == 55555.0
     assert item.volume == 200.0
-
-
-def test_fetch_hot_stocks_flag_off_unchanged(monkeypatch):
-    """flag 关:fetch_hot_stocks 走原路径(_get_json + f-code 字段映射),不触达 marketdata。"""
-    monkeypatch.setattr(dc, "_use_marketdata_discovery", lambda: False)
-
-    def _boom():
-        raise AssertionError("flag 关不应调用 get_market_data")
-
-    monkeypatch.setattr(dc, "get_market_data", _boom)
-
-    async def _fake_get_json(self, url, *, params):
-        return {
-            "data": {
-                "diff": [
-                    {
-                        "f12": "600519",
-                        "f14": "贵州茅台",
-                        "f2": 1700.0,
-                        "f3": 1.23,
-                        "f6": 999999.0,
-                        "f5": 1000.0,
-                    }
-                ]
-            }
-        }
-
-    monkeypatch.setattr(dc.EastMoneyDiscoveryCollector, "_get_json", _fake_get_json)
-
-    collector = dc.EastMoneyDiscoveryCollector(proxy="http://market-scan-proxy:1080")
-    out = asyncio.run(collector.fetch_hot_stocks(market="CN", mode="turnover", limit=20))
-
-    assert len(out) == 1
-    item = out[0]
-    assert isinstance(item, dc.HotStock)
-    assert item.symbol == "600519"
-    assert item.market == "CN"
-    assert item.name == "贵州茅台"
-    assert item.price == 1700.0
-    assert item.change_pct == 1.23
-    assert item.turnover == 999999.0
-    assert item.volume == 1000.0

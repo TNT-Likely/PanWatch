@@ -835,7 +835,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         load_portfolio_for_agent,
         build_context,
     )
-    from src.collectors.akshare_collector import AkshareCollector
+    from src.core.marketdata_client import md_stock_data
     from src.collectors.kline_collector import KlineCollector
     from src.models.market import MarketCode, MARKETS
     from src.agents.intraday_monitor import IntradayMonitorAgent
@@ -891,8 +891,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
 
     async def _fetch_market_quotes(market_code: MarketCode, symbols: list[str]):
         try:
-            collector = AkshareCollector(market_code)
-            return await collector.get_stock_data(symbols)
+            return await asyncio.to_thread(md_stock_data, symbols, market_code.value)
         except Exception as e:
             logger.error(f"采集 {market_code.value} 行情失败: {e}")
             return []

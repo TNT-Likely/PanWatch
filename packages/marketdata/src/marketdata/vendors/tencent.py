@@ -77,6 +77,49 @@ def _parse_line(line: str, market: str) -> Quote | None:
         return None
 
 
+def _fetch_lines(tencent_symbols: list[str]) -> list[str]:
+    """按原始腾讯符号批量拉取响应,GBK 解码后按 ';' 切分为行。tencent quote / index 共用取数核。"""
+    if not tencent_symbols:
+        return []
+    codes = ",".join(tencent_symbols)
+    content = market_get(
+        _URL + codes,
+        host_key=_HOST,
+        min_interval_s=_MIN_INTERVAL_S,
+        timeout=10,
+        retries=2,
+        parse="content",
+        log_label="腾讯报价",
+    )
+    if not content:
+        return []
+    text = content.decode("gbk", errors="ignore") if isinstance(content, (bytes, bytearray)) else str(content)
+    return text.strip().split(";")
+
+
+def fetch_raw(tencent_symbols: list[str]) -> list[dict]:
+    """按原始腾讯符号(sh000001/hkHSI/usDJI…)取行情,不经 Symbol.parse。
+
+    供指数等显式符号场景复用(指数代码与个股代码可能撞号,如 000001 既是平安银行又是上证指数)。
+    返回 dict 列表:symbol/name/current_price/change_pct/change_amount/prev_close/volume/turnover。
+    """
+    out: list[dict] = []
+    for line in _fetch_lines(tencent_symbols):
+        q = _parse_line(line, "")
+        if q and q.current_price > 0:
+            out.append({
+                "symbol": q.symbol,
+                "name": q.name,
+                "current_price": q.current_price,
+                "change_pct": q.change_pct,
+                "change_amount": q.change_amount,
+                "prev_close": q.prev_close,
+                "volume": q.volume,
+                "turnover": q.turnover,
+            })
+    return out
+
+
 class TencentQuoteVendor(QuoteVendor):
     name = "tencent"
     supports_markets = {"CN", "HK", "US"}
@@ -85,21 +128,9 @@ class TencentQuoteVendor(QuoteVendor):
         if not symbols:
             return []
         market = symbols[0].market.value
-        codes = ",".join(s.to_tencent() for s in symbols)
-        content = market_get(
-            _URL + codes,
-            host_key=_HOST,
-            min_interval_s=_MIN_INTERVAL_S,
-            timeout=10,
-            retries=2,
-            parse="content",
-            log_label="腾讯报价",
-        )
-        if not content:
-            return []
-        text = content.decode("gbk", errors="ignore") if isinstance(content, (bytes, bytearray)) else str(content)
+        codes = [s.to_tencent() for s in symbols]
         out: list[Quote] = []
-        for line in text.strip().split(";"):
+        for line in _fetch_lines(codes):
             q = _parse_line(line, market)
             if q and q.current_price > 0:
                 out.append(q)

@@ -6,12 +6,20 @@ from marketdata.cache import TTLCache
 from marketdata.defaults import InMemoryMetricsSink
 from marketdata.engine import Engine
 from marketdata.ports import ConfigProvider, MetricsSink
+from marketdata.registry import build_vendors
 from marketdata.symbol import Symbol
 from marketdata.types import CapitalFlow, EventItem, HotBoard, HotStock, Quote, Request
 from marketdata.vendors.discovery import DiscoveryVendor
-from marketdata.vendors.sina import SinaQuoteVendor
-from marketdata.vendors.tencent import TencentQuoteVendor
-from marketdata.vendors.yfinance import YFinanceQuoteVendor
+
+# 指数 secid(东财):指数与个股 secid 前缀规则不同,必须显式映射,否则按个股规则会取错标的。
+# 美股指数东财K线不支持,未列入 → index_klines 返回空,fail-soft。
+INDEX_SECID: dict[str, str] = {
+    "000300": "1.000300",   # 沪深300
+    "000001": "1.000001",   # 上证指数
+    "399001": "0.399001",   # 深证成指
+    "399006": "0.399006",   # 创业板指
+    "HSI": "100.HSI",       # 恒生指数
+}
 
 
 class MarketData:
@@ -20,35 +28,27 @@ class MarketData:
         self.metrics = metrics or InMemoryMetricsSink()
         self._quote_engine = Engine(
             datatype="quote",
-            vendors={
-                "tencent": TencentQuoteVendor(),
-                "sina": SinaQuoteVendor(),
-                "yfinance": YFinanceQuoteVendor(),
-            },
+            vendors=build_vendors("quote"),
             config=config,
             metrics=self.metrics,
             cache=TTLCache(default_ttl_sec=5.0),
             default_ttl=5.0,
         )
-        from marketdata.vendors.kline import TencentKlineVendor, StooqKlineVendor, EastmoneyKlineVendor
         self._kline_engine = Engine(
             datatype="kline",
-            vendors={"tencent": TencentKlineVendor(), "stooq": StooqKlineVendor(),
-                     "eastmoney": EastmoneyKlineVendor()},
+            vendors=build_vendors("kline"),
             config=config, metrics=self.metrics,
             cache=TTLCache(default_ttl_sec=0.0), default_ttl=0.0,
         )
-        from marketdata.vendors.capital_flow import EastmoneyCapitalFlowVendor
         self._capital_flow_engine = Engine(
             datatype="capital_flow",
-            vendors={"eastmoney": EastmoneyCapitalFlowVendor()},
+            vendors=build_vendors("capital_flow"),
             config=config, metrics=self.metrics,
             cache=TTLCache(default_ttl_sec=0.0), default_ttl=0.0,
         )
-        from marketdata.vendors.events import EventsVendor
         self._events_engine = Engine(
             datatype="events",
-            vendors={"eastmoney": EventsVendor()},
+            vendors=build_vendors("events"),
             config=config, metrics=self.metrics,
             cache=TTLCache(default_ttl_sec=0.0), default_ttl=0.0,
         )
@@ -78,6 +78,23 @@ class MarketData:
             if resp.ok and resp.data:
                 out.extend(resp.data)
         return out
+
+    def index_quotes(self, tencent_symbols: list[str]) -> list[dict]:
+        """按原始腾讯指数符号(sh000001/hkHSI/usDJI…)取行情,不经 Symbol.parse。
+
+        指数代码可能与个股代码撞号(如 000001 既是平安银行又是上证指数),故走显式符号路径。
+        返回 list[dict]。
+        """
+        from marketdata.vendors.tencent import fetch_raw
+        return fetch_raw(list(tencent_symbols)) if tencent_symbols else []
+
+    def index_klines(self, code: str, *, market: str, days: int = 120) -> list:
+        """指数日K:INDEX_SECID 显式映射走东财;未映射(如美股指数)→ [](fail-soft)。返回 list[Bar]。"""
+        secid = INDEX_SECID.get(str(code).strip()) or INDEX_SECID.get(str(code).strip().upper())
+        if not secid:
+            return []
+        from marketdata.vendors.kline import fetch_eastmoney_kline
+        return fetch_eastmoney_kline(secid, days)
 
     def capital_flow(self, symbol: str, *, market: str = "CN") -> CapitalFlow | None:
         """单只股票资金流向。不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""

@@ -1,8 +1,7 @@
 import unittest
 
-from src.collectors.akshare_collector import _tencent_symbol as ak_tencent_symbol
-from src.collectors.capital_flow_collector import _get_eastmoney_secid
-from src.collectors.kline_collector import _tencent_symbol as kline_tencent_symbol
+from marketdata.symbol import Symbol
+
 from src.collectors.news_collector import XueqiuNewsCollector
 from src.collectors.screenshot_collector import ScreenshotCollector
 from src.core.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
@@ -28,22 +27,10 @@ class TestCnSymbolMapping(unittest.TestCase):
         self.assertTrue(is_cn_sh("600519"))
         self.assertFalse(is_cn_sh("000738"))
 
-    def test_akshare_tencent_symbol_uses_unified_mapping(self):
-        """akshare 腾讯代码 — 使用统一映射"""
-        self.assertEqual(ak_tencent_symbol("000738", MarketCode.CN), "sz000738")
-        self.assertEqual(ak_tencent_symbol("600519", MarketCode.CN), "sh600519")
-        self.assertEqual(ak_tencent_symbol("920001", MarketCode.CN), "bj920001")
-
-    def test_kline_tencent_symbol_uses_unified_mapping(self):
-        """K线腾讯代码 — 使用统一映射"""
-        self.assertEqual(kline_tencent_symbol("000738", MarketCode.CN), "sz000738")
-        self.assertEqual(kline_tencent_symbol("600519", MarketCode.CN), "sh600519")
-        self.assertEqual(kline_tencent_symbol("920001", MarketCode.CN), "bj920001")
-
     def test_capital_flow_secid(self):
-        """东方财富 secid — SZ 用 0 前缀，SH 用 1 前缀"""
-        self.assertEqual(_get_eastmoney_secid("000738", MarketCode.CN), "0.000738")
-        self.assertEqual(_get_eastmoney_secid("600519", MarketCode.CN), "1.600519")
+        """东方财富 secid — SZ 用 0 前缀，SH 用 1 前缀（marketdata 包 Symbol）"""
+        self.assertEqual(Symbol.parse("000738", market="CN").to_eastmoney_secid(), "0.000738")
+        self.assertEqual(Symbol.parse("600519", market="CN").to_eastmoney_secid(), "1.600519")
 
     def test_xueqiu_news_symbol_id(self):
         """雪球新闻 symbol — 大写前缀"""

@@ -1,10 +1,11 @@
-"""marketdata 包接入(USE_MARKETDATA=1)下,外层缓存/冷却机制仍应生效。
+"""marketdata 包接入下,外层缓存/冷却机制仍应生效。
 
 kline_collector._fetch_all_sources 与 capital_flow_collector.get_capital_flow
-在 flag 开时,内层取数改走 marketdata 包(get_market_data().klines()/.capital_flow()),
-但外层的 _KLINE_CACHE/_get_fetch_lock/_FAIL_UNTIL(kline)与 _FLOW_CACHE(capital_flow)
-是 flag 无关的——包一层皮不管里面换了哪条取数路径,都不应重复联网。
-这里强制 flag 开、mock 包层,验证外层机制在新路径下依然成立。
+(均已去 flag,恒定走包)内层取数都走 marketdata 包
+(get_market_data().klines()/.capital_flow()),但外层的
+_KLINE_CACHE/_get_fetch_lock/_FAIL_UNTIL(kline)与 _FLOW_CACHE(capital_flow)
+是取数路径无关的——包一层皮不管里面换了哪条取数路径,都不应重复联网。
+这里 mock 包层,验证外层机制在新路径下依然成立。
 """
 
 from __future__ import annotations
@@ -38,8 +39,7 @@ class _FakeMarketData:
 
 
 def test_flagon_kline_cache_within_ttl(monkeypatch):
-    """flag 开(走 marketdata 包)下,TTL 内第二次取数仍应命中 _KLINE_CACHE,不重复调用包。"""
-    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: True)
+    """走 marketdata 包下,TTL 内第二次取数仍应命中 _KLINE_CACHE,不重复调用包。"""
     fake = _FakeMarketData(_mk_bars(30))
     monkeypatch.setattr(kc, "get_market_data", lambda: fake)
 
@@ -53,8 +53,7 @@ def test_flagon_kline_cache_within_ttl(monkeypatch):
 
 
 def test_flagon_kline_insufficient_bars_triggers_cooldown(monkeypatch):
-    """flag 开下,包返回条数不足 need 时应固化失败冷却,冷却窗口内不再调用包。"""
-    monkeypatch.setattr(kc, "_use_marketdata_kline", lambda: True)
+    """包返回条数不足 need 时应固化失败冷却,冷却窗口内不再调用包。"""
     fake = _FakeMarketData(_mk_bars(5))
     monkeypatch.setattr(kc, "get_market_data", lambda: fake)
 
@@ -80,8 +79,7 @@ class _FakeMarketDataCF:
 
 
 def test_flagon_capital_flow_cache_within_ttl(monkeypatch):
-    """flag 开(走 marketdata 包)下,TTL 内第二次取数仍应命中 _FLOW_CACHE,不重复调用包。"""
-    monkeypatch.setattr(cfc, "_use_marketdata_cf", lambda: True)
+    """走 marketdata 包下,TTL 内第二次取数仍应命中 _FLOW_CACHE,不重复调用包。"""
     fixed = MDCapitalFlow(
         symbol="600519",
         name="贵州茅台",

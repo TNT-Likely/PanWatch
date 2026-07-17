@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from datetime import datetime
 
 from src.agents.tradingagents.agent import TradingAgentsAgent, TradingAgentsUnavailable
@@ -508,13 +508,15 @@ class TestPortfolioContext(unittest.TestCase):
 
 
 class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
-    async def test_collect_from_providers(self):
-        """collect() — 并发拉 4 个 orchestrator 的数据"""
-        from src.core.providers.base import ProviderResponse
+    async def test_collect_from_marketdata_package(self):
+        """collect() — 走 marketdata 包(quote→dict / capital_flow→list)"""
+        from datetime import datetime as _dt
+
+        from src.agents.tradingagents import agent as agent_module
+        from marketdata import Bar, CapitalFlow, EventItem, Quote
 
         agent = TradingAgentsAgent()
 
-        # mock stock
         stock = MagicMock()
         stock.symbol = "600519"
         stock.name = "贵州茅台"
@@ -524,31 +526,33 @@ class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
         context = MagicMock()
         context.watchlist = [stock]
 
-        # patch 4 个 orchestrator,各返回 fake 数据
-        quote_resp = ProviderResponse(success=True, data=[{"symbol": "600519", "current_price": 1332.95}])
-        kline_resp = ProviderResponse(success=True, data=[{"date": "2026-05-15", "close": 1332.95}])
-        flow_resp = ProviderResponse(success=True, data=[{"main_net_inflow": 1000000}])
-        events_resp = ProviderResponse(success=True, data=[])
+        fake_quote = Quote(symbol="600519", market="CN", current_price=1332.95, name="贵州茅台")
+        fake_bar = Bar(date="2026-05-15", open=1300.0, close=1332.95, high=1340.0, low=1290.0, volume=1000.0)
+        fake_flow = CapitalFlow(symbol="600519", name="贵州茅台", main_net_inflow=1000000.0)
+        fake_event = EventItem(
+            source="em", external_id="1", event_type="announcement", title="测试公告",
+            publish_time=_dt.now(), symbols=["600519"], importance=1, url="",
+        )
 
-        with patch(
-            "src.core.providers.get_quote_orchestrator"
-        ) as mock_quote, patch(
-            "src.core.providers.get_kline_orchestrator"
-        ) as mock_kline, patch(
-            "src.core.providers.get_capital_flow_orchestrator"
-        ) as mock_flow, patch(
-            "src.core.providers.get_events_orchestrator"
-        ) as mock_events:
-            mock_quote.return_value.fetch = AsyncMock(return_value=quote_resp)
-            mock_kline.return_value.fetch = AsyncMock(return_value=kline_resp)
-            mock_flow.return_value.fetch = AsyncMock(return_value=flow_resp)
-            mock_events.return_value.fetch = AsyncMock(return_value=events_resp)
+        fake_md = MagicMock()
+        fake_md.quotes = MagicMock(return_value=[fake_quote])
+        fake_md.klines = MagicMock(return_value=[fake_bar])
+        fake_md.capital_flow = MagicMock(return_value=fake_flow)
+        fake_md.events = MagicMock(return_value=[fake_event])
 
+        with patch.object(agent_module, "get_market_data", lambda: fake_md):
             data = await agent.collect(context)
 
         self.assertEqual(data["stock"], stock)
-        self.assertEqual(data["quote"]["symbol"], "600519")
-        self.assertEqual(len(data["klines"]), 1)
+        self.assertIsInstance(data["quote"], dict)
+        self.assertEqual(data["quote"]["current_price"], 1332.95)
+        self.assertIsInstance(data["capital_flow"], list)
+        self.assertEqual(len(data["capital_flow"]), 1)
+        self.assertEqual(data["capital_flow"][0], fake_flow)
+        self.assertIsInstance(data["klines"], list)
+        self.assertEqual(data["klines"], [fake_bar])
+        self.assertIsInstance(data["events"], list)
+        self.assertEqual(data["events"], [fake_event])
         self.assertIn("fetched_at", data)
 
 

@@ -7,18 +7,55 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
-from src.collectors.kline_collector import (
-    TENCENT_KLINE_URL,
-    KlineCollector,
-    KlineData,
-    _parse_tencent_kline_text,
-)
+from src.collectors.kline_collector import KlineCollector, KlineData
 from src.collectors.market_http import market_get
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
+
+# 腾讯日K接口(与 kline_collector.TENCENT_KLINE_URL 同源,本地化以解除对其内部符号的依赖)
+_TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+
+def _parse_tencent_kline(text: str, tencent_sym: str) -> list[KlineData]:
+    """解析腾讯 K 线 JS 变量响应(kline_dayqfq={...})为 KlineData;空/异常返回 []。"""
+    if not text or "=" not in text:
+        return []
+    json_str = text.split("=", 1)[1].strip()
+    if json_str.endswith(";"):
+        json_str = json_str[:-1]
+    try:
+        data = json.loads(json_str)
+    except Exception:
+        return []
+    raw_data = data.get("data", {}) if isinstance(data, dict) else {}
+    day_data = []
+    if isinstance(raw_data, dict):
+        stock_data = raw_data.get(tencent_sym, {})
+        if isinstance(stock_data, dict):
+            day_data = stock_data.get("day") or stock_data.get("qfqday") or []
+    elif isinstance(raw_data, list):
+        day_data = raw_data
+    out: list[KlineData] = []
+    for item in day_data or []:
+        if len(item) >= 5:
+            try:
+                out.append(
+                    KlineData(
+                        date=item[0],
+                        open=float(item[1]),
+                        close=float(item[2]),
+                        high=float(item[3]),
+                        low=float(item[4]),
+                        volume=float(item[5]) if len(item) > 5 else 0,
+                    )
+                )
+            except Exception:
+                continue
+    return out
 
 # 常见指数 → (腾讯行情符号, 中文名);指数前缀特殊,不能走 cn_symbol 自动判断
 INDEX_TENCENT: dict[str, tuple[str, str]] = {
@@ -95,7 +132,7 @@ def _fetch_benchmark_series(code: str, days: int) -> tuple[list[str], list[float
         code, (code if code.startswith(("sh", "sz")) else f"sh{code}", code)
     )[0]
     text = market_get(
-        TENCENT_KLINE_URL,
+        _TENCENT_KLINE_URL,
         host_key="web.ifzq.gtimg.cn",
         params={"param": f"{tsym},day,,,{int(days)},qfq", "_var": "kline_dayqfq"},
         min_interval_s=0.15,
@@ -106,7 +143,7 @@ def _fetch_benchmark_series(code: str, days: int) -> tuple[list[str], list[float
     )
     if not text:
         return [], []
-    bars = _parse_tencent_kline_text(text, tsym)
+    bars = _parse_tencent_kline(text, tsym)
     return [b.date for b in bars], [b.close for b in bars]
 
 

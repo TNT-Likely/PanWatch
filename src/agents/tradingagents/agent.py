@@ -42,6 +42,13 @@ from src.core.analysis_history import get_analysis, save_analysis
 logger = logging.getLogger(__name__)
 
 
+def get_market_data():
+    """lazy import,便于测试 monkeypatch(module 级)。"""
+    from src.core.marketdata_client import get_market_data as _g
+
+    return _g()
+
+
 class TradingAgentsUnavailable(RuntimeError):
     """tradingagents 库未安装或上游 API 变更导致不可用。"""
 
@@ -90,50 +97,28 @@ class TradingAgentsAgent(BaseAgent):
     # ---- BaseAgent 抽象方法 ----
 
     async def collect(self, context: AgentContext) -> dict:
-        """从 PanWatch Provider 体系收集数据,并发拉 4 类。"""
-        from src.core.providers import (
-            ProviderRequest,
-            get_capital_flow_orchestrator,
-            get_events_orchestrator,
-            get_kline_orchestrator,
-            get_quote_orchestrator,
-        )
-
+        """从 PanWatch 数据体系收集数据,并发拉 4 类(走 marketdata 包)。"""
         if not context.watchlist:
             raise ValueError("TradingAgents 需要至少 1 只股票")
         # 单只标的为粒度;若 watchlist 多只,取第一只
         stock = context.watchlist[0]
-        req = ProviderRequest(symbols=(stock.symbol,), market=stock.market.value)
 
-        kline_req = ProviderRequest(
-            symbols=(stock.symbol,),
-            market=stock.market.value,
-            extra=(("days", 120),),
-        )
+        from src.core.marketdata_client import _quote_to_row
 
-        # 事件/公告:深度分析需要更宽窗口(默认 since_hours=12 太短,只有当天才有)。
-        # 拉 30 天给 TradingAgents 的新闻分析师当个股新闻使用。
-        events_req = ProviderRequest(
-            symbols=(stock.symbol,),
-            market=stock.market.value,
-            since_hours=24 * 30,
-        )
-
-        quotes_t = get_quote_orchestrator().fetch(req)
-        klines_t = get_kline_orchestrator().fetch(kline_req)
-        capital_t = get_capital_flow_orchestrator().fetch(req)
-        events_t = get_events_orchestrator().fetch(events_req)
-
+        md = get_market_data()
+        sym, mkt = stock.symbol, stock.market.value
         try:
-            quotes, klines, capital, events = await asyncio.gather(
-                quotes_t, klines_t, capital_t, events_t
+            quotes, klines_list, cf, events_list = await asyncio.gather(
+                asyncio.to_thread(md.quotes, [sym], market=mkt),
+                asyncio.to_thread(md.klines, sym, market=mkt, days=120),
+                asyncio.to_thread(md.capital_flow, sym, market=mkt),
+                asyncio.to_thread(md.events, [sym], market=mkt, since_days=30),
             )
         except Exception as e:
             logger.warning(f"[TA] 数据收集部分失败: {e}")
-            quotes = klines = capital = events = None
-
-        def _data(resp, default):
-            return resp.data if resp and resp.success else default
+            quotes, klines_list, cf, events_list = [], [], None, []
+        quote_dict = _quote_to_row(quotes[0]) if quotes else {}
+        capital_list = [cf] if cf else []
 
         # A 股 fetch 真实财报(akshare),非 A 股留空
         financial: dict | None = None
@@ -157,10 +142,10 @@ class TradingAgentsAgent(BaseAgent):
 
         return {
             "stock": stock,
-            "quote": (_data(quotes, []) or [{}])[0] if _data(quotes, []) else {},
-            "klines": _data(klines, []) or [],
-            "capital_flow": _data(capital, []) or [],
-            "events": _data(events, []) or [],
+            "quote": quote_dict,
+            "klines": klines_list,
+            "capital_flow": capital_list,
+            "events": events_list,
             "financial": financial,
             "technical": technical,
             "fetched_at": datetime.now(timezone.utc).isoformat(),

@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 
 from src.agents.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.akshare_collector import AkshareCollector
 from src.core.analysis_history import save_analysis
 from src.core.cn_symbol import get_cn_prefix
 from src.core.suggestion_pool import save_suggestion
@@ -35,6 +34,16 @@ DAILY_ACTION_MAP = {
 
 PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "daily_report.txt"
 
+# A 股大盘指数的显式腾讯符号（与 akshare_collector.CN_INDICES 口径一致）
+_CN_INDEX_TENCENT_SYMBOLS = ["sh000001", "sz399001", "sz399006"]
+
+
+def get_market_data():
+    """惰性 import,避免包未装/循环 import 影响本模块加载。"""
+    from src.core.marketdata_client import get_market_data as _g
+
+    return _g()
+
 
 class DailyReportAgent(BaseAgent):
     """盘后日报 Agent"""
@@ -42,6 +51,30 @@ class DailyReportAgent(BaseAgent):
     name = "daily_report"
     display_name = "收盘复盘"
     description = "每日收盘后生成自选股日报，包含大盘概览、个股分析和明日关注"
+
+    async def _fetch_index_for_market(self, market_code: MarketCode) -> list[IndexData]:
+        """按 market 取大盘指数。
+
+        直接走 marketdata 新包(index_quotes)。
+        与旧 _get_cn_index 口径一致：仅 CN 出数，其余市场返回空 list。
+        """
+        if market_code != MarketCode.CN:
+            return []
+        items = get_market_data().index_quotes(_CN_INDEX_TENCENT_SYMBOLS)
+        return [
+            IndexData(
+                symbol=item["symbol"],
+                name=item["name"],
+                market=MarketCode.CN,
+                current_price=item["current_price"],
+                change_pct=item["change_pct"],
+                change_amount=item["change_amount"],
+                volume=item["volume"],
+                turnover=item["turnover"],
+                timestamp=datetime.now(),
+            )
+            for item in items
+        ]
 
     async def collect(self, context: AgentContext) -> dict:
         """采集大盘指数 + 自选股结构化数据包（行情/技术/资金/新闻/持仓）"""
@@ -56,8 +89,7 @@ class DailyReportAgent(BaseAgent):
 
         for market_code in markets:
             try:
-                collector = AkshareCollector(market_code)
-                indices = await collector.get_index_data()
+                indices = await self._fetch_index_for_market(market_code)
                 all_indices.extend(indices)
             except Exception as e:
                 logger.warning(f"获取 {market_code.value} 指数失败: {e}")

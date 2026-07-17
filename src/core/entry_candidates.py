@@ -7,10 +7,10 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import and_, case, func, or_
 
 from src.config import Settings
-from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.collectors.kline_collector import KlineCollector
 from src.core.json_safe import to_jsonable
+from src.core.marketdata_client import md_stock_data
 from src.core.notifier import get_global_proxy
 from src.core.timezone import to_iso_with_tz, utc_now
 from src.models.market import MarketCode
@@ -894,9 +894,8 @@ def _load_market_scan_seed_inputs(*, market: str, limit: int) -> dict[str, dict]
     )
     if not symbols:
         return {}
-    collector = AkshareCollector(_to_market(mkt))
     try:
-        rows = _run_async(collector.get_stock_data(symbols))
+        rows = md_stock_data(symbols, _to_market(mkt).value)
     except Exception as e:
         logger.warning(f"市场扫描种子池拉取失败({mkt}): {e}")
         rows = []
@@ -977,8 +976,6 @@ def _merge_market_scan_seed(
 
 def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
     collector = EastMoneyDiscoveryCollector(
-        timeout_s=12.0,
-        retries=1,
         proxy=_resolve_market_scan_proxy(),
     )
     result: dict[str, dict] = {}
@@ -1324,7 +1321,7 @@ def refresh_entry_candidates(
         if not uniq:
             continue
         try:
-            rows = _run_async(AkshareCollector(market).get_stock_data(uniq))
+            rows = md_stock_data(uniq, market.value)
         except Exception as e:
             logger.warning(f"入场候选行情采集失败({market.value}): {e}")
             rows = []

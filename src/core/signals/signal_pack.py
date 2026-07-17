@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.collectors.news_collector import NewsCollector, NewsItem
+from src.core.marketdata_client import md_stock_data
 from src.models.market import MarketCode
 from src.models.market import StockData
 
@@ -172,15 +173,15 @@ class SignalPackBuilder:
                         if not remaining:
                             break
                         try:
-                            if provider == "tencent":
-                                collector = AkshareCollector(market)
-                            else:
+                            if provider != "tencent":
                                 logger.info(
                                     f"SignalPack quote 未支持 provider={provider}，跳过"
                                 )
                                 continue
 
-                            stocks = await collector.get_stock_data(sorted(remaining))
+                            stocks = await asyncio.to_thread(
+                                md_stock_data, sorted(remaining), market.value
+                            )
                             got = {s.symbol: s for s in stocks}
                             for sym in list(remaining):
                                 sd = got.get(sym)

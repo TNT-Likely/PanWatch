@@ -77,10 +77,9 @@ class PremarketOutlookAgent(BaseAgent):
         # 2. 获取美股指数（隔夜表现）
         us_indices = []
         try:
-            # 复用腾讯行情解析（避免手写解析导致 symbol 格式不一致）
-            from src.collectors.akshare_collector import _fetch_tencent_quotes
+            from src.core.marketdata_client import get_market_data
 
-            items = _fetch_tencent_quotes(["usDJI", "usIXIC", "usINX"])
+            items = get_market_data().index_quotes(["usDJI", "usIXIC", "usINX"])
             for item in items:
                 us_indices.append(
                     {

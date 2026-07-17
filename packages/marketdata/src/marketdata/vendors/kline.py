@@ -108,6 +108,34 @@ def _em_secid(sym: Symbol) -> str:
     return f"{'1' if _cn_exchange(sym.code) == 'sh' else '0'}.{sym.code}"
 
 
+def fetch_eastmoney_kline(secid: str, days: int) -> list[Bar]:
+    """按显式 secid 取东财日K,不经个股 secid 推导规则(_em_secid)。
+
+    供指数等显式符号场景复用(指数与个股 secid 前缀规则不同,必须显式映射)。
+    """
+    payload = market_get(
+        _EASTMONEY_URL, host_key="push2his.eastmoney.com", min_interval_s=0.2,
+        params={"secid": secid, "klt": "101", "fqt": "1",
+                "lmt": str(min(max(int(days or 1), 1200), 20000)), "end": "20500101",
+                "fields1": "f1,f2,f3,f4,f5,f6", "fields2": "f51,f52,f53,f54,f55,f56",
+                "ut": "fa5fd1943c7b386f172d6893dbfba10b"},
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+        timeout=12, retries=1, parse="json", log_label="东财K线", symbol=secid,
+    )
+    raw = (payload or {}).get("data", {}).get("klines", []) if isinstance(payload, dict) else []
+    out: list[Bar] = []
+    for row in raw or []:
+        p = str(row).split(",")
+        if len(p) < 6:
+            continue
+        try:
+            out.append(Bar(date=p[0], open=float(p[1]), close=float(p[2]),
+                           high=float(p[3]), low=float(p[4]), volume=float(p[5])))
+        except Exception:
+            continue
+    return out
+
+
 class EastmoneyKlineVendor(KlineVendor):
     name = "eastmoney"
     supports_markets = {"CN", "HK"}
@@ -119,24 +147,4 @@ class EastmoneyKlineVendor(KlineVendor):
         if sym.market not in (Market.CN, Market.HK):
             return []
         days = _days(config)
-        payload = market_get(
-            _EASTMONEY_URL, host_key="push2his.eastmoney.com", min_interval_s=0.2,
-            params={"secid": _em_secid(sym), "klt": "101", "fqt": "1",
-                    "lmt": str(min(max(days, 1200), 20000)), "end": "20500101",
-                    "fields1": "f1,f2,f3,f4,f5,f6", "fields2": "f51,f52,f53,f54,f55,f56",
-                    "ut": "fa5fd1943c7b386f172d6893dbfba10b"},
-            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
-            timeout=12, retries=1, parse="json", log_label="东财K线", symbol=sym.code,
-        )
-        raw = (payload or {}).get("data", {}).get("klines", []) if isinstance(payload, dict) else []
-        out: list[Bar] = []
-        for row in raw or []:
-            p = str(row).split(",")
-            if len(p) < 6:
-                continue
-            try:
-                out.append(Bar(date=p[0], open=float(p[1]), close=float(p[2]),
-                               high=float(p[3]), low=float(p[4]), volume=float(p[5])))
-            except Exception:
-                continue
-        return out
+        return fetch_eastmoney_kline(_em_secid(sym), days)

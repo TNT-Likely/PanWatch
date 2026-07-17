@@ -5,7 +5,7 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from src.models.market import MarketCode
-from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
+from src.core.marketdata_client import md_quote_rows
 from src.collectors.kline_collector import KlineCollector
 from src.core.suggestion_pool import get_latest_suggestions
 from src.web.api.chat import (
@@ -59,9 +59,8 @@ def insights_batch(payload: InsightsBatchRequest):
 
     quotes_by_market: dict[MarketCode, dict[str, dict]] = {}
     for market_code, symbols in market_items.items():
-        tencent_symbols = [_tencent_symbol(s, market_code) for s in symbols]
         try:
-            items = _fetch_tencent_quotes(tencent_symbols)
+            items = md_quote_rows(symbols, market_code.value)
         except Exception:
             items = []
         quotes_by_market[market_code] = {item["symbol"]: item for item in items}
@@ -147,9 +146,7 @@ async def _fetch_fundamental_context(symbol: str, market: str) -> str:
     """基本面摘要:PE / 换手率 / 市值 / 今日振幅(取自实时行情,失败返回空)。"""
     try:
         mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
-        rows = await asyncio.to_thread(
-            _fetch_tencent_quotes, [_tencent_symbol(symbol, mc)]
-        )
+        rows = await asyncio.to_thread(md_quote_rows, [symbol], mc.value)
         if not rows:
             return ""
         q = rows[0]

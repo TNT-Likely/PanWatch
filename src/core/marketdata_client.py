@@ -2,8 +2,7 @@
 
 - DbConfigProvider:把 DataSource 表映射成 marketdata 的 SourceConfig(实现 ConfigProvider 端口)。
 - get_market_data():进程级单例(无状态 vendor + 现查 DB 的配置端口)。
-- md_quote_rows():flag 门控。开→新包 MarketData.quotes 转 dict;关→旧 QuoteOrchestrator。
-  两条路径都返回 list[dict],键与旧 orchestrator 输出一致,消费方零感知切换。
+- md_quote_rows():新包 MarketData.quotes 转 dict,返回 list[dict](与旧 orchestrator 输出同形)。
 """
 
 from __future__ import annotations
@@ -63,13 +62,6 @@ def reset_market_data() -> None:
     _md = None
 
 
-def _use_marketdata() -> bool:
-    """读灰度开关(独立函数便于测试 monkeypatch)。"""
-    from src.config import Settings
-
-    return bool(Settings().use_marketdata)
-
-
 def _quote_to_row(q: Quote) -> dict:
     """marketdata.Quote → 旧 orchestrator 同形 dict。"""
     return {
@@ -94,21 +86,29 @@ def _quote_to_row(q: Quote) -> dict:
 
 
 def md_quote_rows(symbols: list[str], market: str) -> list[dict]:
-    """Flag 门控的批量报价,返回 list[dict](与旧 orchestrator 输出同形)。
+    """批量报价,返回 list[dict](与旧 orchestrator 输出同形)。
 
     同步函数;async 调用方用 `await asyncio.to_thread(md_quote_rows, ...)`。
     """
     syms = list(symbols)
     if not syms:
         return []
-    if _use_marketdata():
-        quotes = get_market_data().quotes(syms, market=market)
-        return [_quote_to_row(q) for q in quotes]
-    # 旧路径:保持与迁移前完全一致
-    from src.core.providers import ProviderRequest, get_quote_orchestrator
+    quotes = get_market_data().quotes(syms, market=market)
+    return [_quote_to_row(q) for q in quotes]
 
-    resp = get_quote_orchestrator().fetch_sync(ProviderRequest(symbols=tuple(syms), market=market))
-    if not resp.success:
-        logger.error(f"[md_quote_rows] 拉行情失败 market={market}: {resp.error}")
+
+def md_stock_data(symbols: list[str], market: str) -> list:
+    """返回 list[StockData](旧 AkshareCollector.get_stock_data 同形)。同步。"""
+    from src.models.market import MarketCode, StockData
+
+    syms = list(symbols)
+    if not syms:
         return []
-    return resp.data or []
+    quotes = get_market_data().quotes(syms, market=market)
+    return [StockData(
+        symbol=q.symbol, name=q.name or "", market=MarketCode(q.market),
+        current_price=q.current_price or 0.0, change_pct=q.change_pct or 0.0,
+        change_amount=q.change_amount or 0.0, volume=q.volume or 0.0,
+        turnover=q.turnover or 0.0, open_price=q.open_price or 0.0,
+        high_price=q.high_price or 0.0, low_price=q.low_price or 0.0,
+        prev_close=q.prev_close or 0.0) for q in quotes]

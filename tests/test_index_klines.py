@@ -2,21 +2,25 @@
 from src.models.market import MarketCode
 
 
-def test_get_index_klines_uses_correct_index_secid(monkeypatch):
-    """沪深300/恒生 指数应走指数专用 secid(1.000300 / 100.HSI),而非个股 secid 规则。"""
+def test_get_index_klines_passes_correct_code_and_market(monkeypatch):
+    """沪深300/恒生等指数应把对应 index_code/market/days 原样透传给 marketdata 包的
+    index_klines(secid 映射规则已内聚进 marketdata 包,见
+    packages/marketdata/src/marketdata/client.py + packages/marketdata/tests/test_index_methods.py)。
+    """
     from src.collectors import kline_collector
 
-    captured: dict[str, str | None] = {}
+    captured: dict[str, tuple] = {}
 
-    def fake_fetch(symbol, market, days, *, secid_override=None):
-        captured[symbol] = secid_override
-        return []
+    class _MD:
+        def index_klines(self, code, *, market, days):
+            captured[code] = (market, days)
+            return []
 
-    monkeypatch.setattr(kline_collector, "_fetch_eastmoney_klines", fake_fetch)
+    monkeypatch.setattr(kline_collector, "get_market_data", lambda: _MD())
     kline_collector.get_index_klines("000300", MarketCode.CN, days=120)
     kline_collector.get_index_klines("HSI", MarketCode.HK, days=120)
-    assert captured["000300"] == "1.000300"
-    assert captured["HSI"] == "100.HSI"
+    assert captured["000300"] == ("CN", 120)
+    assert captured["HSI"] == ("HK", 120)
 
 
 def test_get_index_klines_unknown_returns_empty():

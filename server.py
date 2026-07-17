@@ -349,10 +349,9 @@ def seed_agents():
     db.close()
 
 
-def seed_data_sources():
-    """初始化预置数据源"""
-    db = SessionLocal()
-    sources = [
+# 预置数据源种子(供 seed_data_sources / reconcile_data_sources 复用)。
+# 只增不删的 upsert 目标;删孤儿的对账逻辑见 reconcile_data_sources。
+DATA_SOURCE_SEEDS: list[dict] = [
         # 新闻类数据源
         {
             "name": "雪球资讯",
@@ -415,31 +414,6 @@ def seed_data_sources():
             "config": {"description": "Stooq 美股日线兜底(免 key)。"},
             "enabled": True,
             "priority": 15,  # US 兜底(腾讯 0 之后)
-            "supports_batch": False,
-            "test_symbols": ["AAPL"],
-        },
-        {
-            "name": "Tushare K线",
-            "type": "kline",
-            "provider": "tushare",
-            "config": {
-                "token": "",
-                "description": "Tushare Pro 日线数据,需 pip install tushare 并配 token。仅 A 股。",
-            },
-            "enabled": False,
-            "priority": 10,  # 作为腾讯失败后的备份
-            "supports_batch": False,
-            "test_symbols": ["600519"],
-        },
-        {
-            "name": "YFinance K线",
-            "type": "kline",
-            "provider": "yfinance",
-            "config": {
-                "description": "Yahoo Finance,需 pip install yfinance。适用 HK/US,A 股不可用。",
-            },
-            "enabled": False,
-            "priority": 20,
             "supports_batch": False,
             "test_symbols": ["AAPL"],
         },
@@ -525,9 +499,24 @@ def seed_data_sources():
             "supports_batch": False,
             "test_symbols": ["601127"],
         },
-    ]
+]
 
-    for source_data in sources:
+
+def seed_data_sources(db=None) -> list[dict]:
+    """初始化预置数据源(按 name+provider 只增不删的 upsert)。
+
+    db 为 None 时自建独立 session 并自行 commit/close(兼容旧调用方式);
+    传入 db 时复用调用方 session,不 commit/close,交由调用方统一处理
+    (供 reconcile_data_sources 在同一事务里接着做删孤儿)。
+
+    返回本次新增(缺失被补齐)的种子记录摘要列表 [{"name","type","provider"}, ...]。
+    """
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
+
+    seeded_missing: list[dict] = []
+    for source_data in DATA_SOURCE_SEEDS:
         existing = (
             db.query(DataSource)
             .filter(
@@ -544,9 +533,58 @@ def seed_data_sources():
                 existing.test_symbols = source_data.get("test_symbols", [])
         else:
             db.add(DataSource(**source_data))
+            seeded_missing.append(
+                {
+                    "name": source_data["name"],
+                    "type": source_data["type"],
+                    "provider": source_data["provider"],
+                }
+            )
+
+    if owns_session:
+        db.commit()
+        db.close()
+
+    return seeded_missing
+
+
+def _seed_providers_by_type() -> dict[str, set[str]]:
+    """从 DATA_SOURCE_SEEDS 推导每个 type 当前合法的 provider 集合。"""
+    result: dict[str, set[str]] = {}
+    for source_data in DATA_SOURCE_SEEDS:
+        result.setdefault(source_data["type"], set()).add(source_data["provider"])
+    return result
+
+
+def reconcile_data_sources(db) -> dict:
+    """数据源表温和对账:补缺失默认 + 删孤儿,保留用户有效自定义/凭证。
+
+    孤儿判定: legal(type) = PACKAGE_VENDORS_BY_TYPE.get(type, frozenset()) | seed 内该 type 的 provider 集合;
+    DB 行 (type, provider) 不在 legal(type) 内即孤儿。news/chart 等非引擎类型(包内集合为空)的合法性完全由 seed 决定。
+
+    只删孤儿行,其余行(含用户改过 config/priority/enabled 的自定义行)原样保留。
+    """
+    from marketdata import PACKAGE_VENDORS_BY_TYPE
+
+    seeded_missing = seed_data_sources(db)
+    seed_providers_by_type = _seed_providers_by_type()
+
+    deleted: list[dict] = []
+    for row in db.query(DataSource).all():
+        legal = PACKAGE_VENDORS_BY_TYPE.get(row.type, frozenset()) | seed_providers_by_type.get(row.type, set())
+        if row.provider not in legal:
+            deleted.append(
+                {"id": row.id, "type": row.type, "provider": row.provider, "name": row.name}
+            )
+            db.delete(row)
+
+    if seeded_missing:
+        logger.info(f"数据源对账: 补齐缺失默认 {len(seeded_missing)} 条: {seeded_missing}")
+    if deleted:
+        logger.info(f"数据源对账: 删除孤儿数据源 {len(deleted)} 条: {deleted}")
 
     db.commit()
-    db.close()
+    return {"deleted": deleted, "seeded_missing": seeded_missing}
 
 
 def seed_strategies():
@@ -1265,7 +1303,14 @@ async def lifespan(app):
         db.close()
 
     seed_agents()
-    seed_data_sources()
+    try:
+        db = SessionLocal()
+        try:
+            reconcile_data_sources(db)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"数据源对账失败,跳过(不阻断启动): {e}")
     seed_strategies()
     seed_sample_stocks()
 

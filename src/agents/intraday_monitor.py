@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
 from src.agents.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.akshare_collector import AkshareCollector
 from src.collectors.kline_collector import KlineCollector
 from src.core.analysis_history import get_latest_analysis, get_analysis
 from src.core.context_builder import ContextBuilder

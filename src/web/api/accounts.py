@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from src.web.database import get_db
 from src.web.models import Account, PriceAlertRule, Position, Stock
-from src.collectors.akshare_collector import _tencent_symbol, _fetch_tencent_quotes
+from src.core.marketdata_client import md_quote_rows
 from src.collectors.market_http import TTLCache
 from src.models.market import MarketCode
 
@@ -591,9 +591,9 @@ def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict:
         except ValueError:
             continue
 
-        symbols = [_tencent_symbol(s.symbol, market_code) for s in stock_list]
+        symbols = [s.symbol for s in stock_list]
         try:
-            items = _fetch_tencent_quotes(symbols)
+            items = md_quote_rows(symbols, market_code.value)
             for item in items:
                 quotes[item["symbol"]] = item
         except Exception as e:

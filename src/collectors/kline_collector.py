@@ -6,27 +6,13 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-import httpx
-import json
-import random
 import threading
 import time
 
-from src.collectors.market_http import fetch_source, source_suffix
-from src.core.cn_symbol import get_cn_prefix, is_cn_sh
+from src.collectors.market_http import fetch_source
 from src.models.market import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
-
-# 腾讯日K线 API
-TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
-EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-
-
-def _use_marketdata_kline() -> bool:
-    """kline 单独一个 flag,便于与 quote 分别灰度。"""
-    from src.config import Settings
-    return bool(Settings().use_marketdata)
 
 
 def get_market_data():
@@ -35,16 +21,9 @@ def get_market_data():
     return _g()
 
 
-_STOOQ_CACHE: dict[str, tuple[float, list["KlineData"]]] = {}
-_STOOQ_CACHE_TTL_SECONDS = 300
-_EASTMONEY_CACHE: dict[str, tuple[float, int, list["KlineData"]]] = {}
-_EASTMONEY_CACHE_TTL_SECONDS = 300
-
-
 # 调用来源标记统一在 market_http(全项目共享一个 contextvar)。
-# 保留 kline_source / _source_suffix 名称,兼容已有调用方(schedulers 等)。
+# 保留 kline_source 名称,兼容已有调用方(schedulers 等)。
 kline_source = fetch_source
-_source_suffix = source_suffix
 
 
 # ── K线按市场状态缓存 ──────────────────────────────────────────────────────
@@ -104,216 +83,19 @@ def clear_kline_cache() -> None:
     _FAIL_UNTIL.clear()
 
 
-def _fetch_stooq_us_klines(symbol: str) -> list[KlineData]:
-    """Fetch daily US kline from Stooq (CSV, free, no key).
-
-    Endpoint: https://stooq.com/q/d/l/?s=aapl.us&i=d
-    """
-
-    sym = (symbol or "").strip().lower()
-    if not sym:
-        return []
-
-    now = time.time()
-    cached = _STOOQ_CACHE.get(sym)
-    stale = cached[1] if cached else []
-    if cached and (now - cached[0]) < _STOOQ_CACHE_TTL_SECONDS:
-        return cached[1]
-
-    # Stooq uses dot for class shares (e.g., brk.b). Keep as-is.
-    stooq_sym = f"{sym}.us"
-    url = "https://stooq.com/q/d/l/"
-    params = {"s": stooq_sym, "i": "d"}
-    headers = {"User-Agent": "PanWatch/1.0 (+https://github.com/)"}
-    last_err = None
-    text = ""
-    for attempt in range(3):
-        try:
-            timeout = 12 + attempt * 6
-            with httpx.Client(
-                follow_redirects=True,
-                timeout=timeout,
-                headers=headers,
-                trust_env=False,  # 行情直连,绕过 env 代理(生产代理会拦行情接口)
-            ) as client:
-                resp = client.get(url, params=params)
-                resp.raise_for_status()
-                text = resp.text
-            last_err = None
-            break
-        except Exception as e:
-            last_err = e
-            # Backoff a bit
-            time.sleep(0.4 * (attempt + 1))
-
-    if last_err is not None:
-        logger.warning(f"Stooq 获取 {symbol} K线失败: {last_err}")
-        # Return stale cache if we have any.
-        return stale
-
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if len(lines) <= 1:
-        return []
-
-    # Header: Date,Open,High,Low,Close,Volume
-    out: list[KlineData] = []
-    for ln in lines[1:]:
-        parts = ln.split(",")
-        if len(parts) < 6:
-            continue
-        date_s, o, h, l, c, v = parts[:6]
-        if not date_s or date_s == "Date":
-            continue
-        try:
-            out.append(
-                KlineData(
-                    date=date_s,
-                    open=float(o),
-                    close=float(c),
-                    high=float(h),
-                    low=float(l),
-                    volume=float(v) if v else 0,
-                )
-            )
-        except Exception:
-            continue
-    _STOOQ_CACHE[sym] = (now, out)
-    return out
-
-
-def _eastmoney_secid(symbol: str, market: MarketCode) -> str:
-    if market == MarketCode.HK:
-        return f"116.{symbol}"
-    if market == MarketCode.US:
-        return f"105.{symbol}"
-    prefix = "1" if is_cn_sh(symbol) else "0"
-    return f"{prefix}.{symbol}"
-
-
-# 指数 secid(东财):指数与个股 secid 前缀规则不同,必须显式映射,否则按个股规则会取错标的。
-# 美股指数东财K线不支持(_fetch_eastmoney_klines 仅 CN/HK),未列入 → get_index_klines 返回空,fail-soft。
-INDEX_SECID: dict[str, str] = {
-    "000300": "1.000300",   # 沪深300
-    "000001": "1.000001",   # 上证指数
-    "399001": "0.399001",   # 深证成指
-    "399006": "0.399006",   # 创业板指
-    "HSI": "100.HSI",       # 恒生指数
-}
-
-
 def get_index_klines(index_code: str, market: MarketCode, days: int = 120) -> list[KlineData]:
-    """取大盘/指数日K(东财)。指数 secid 需显式映射;未映射(如美股指数)→ 空列表(fail-soft)。"""
-    code = str(index_code or "").strip()
-    secid = INDEX_SECID.get(code) or INDEX_SECID.get(code.upper())
-    if not secid:
-        return []
+    """取大盘/指数日K:走 marketdata 包 index_klines(INDEX_SECID 显式映射,未映射如美股指数
+    → 空列表,fail-soft;见 packages/marketdata/src/marketdata/client.py)。
+    """
     try:
-        return _fetch_eastmoney_klines(code, market, days, secid_override=secid)
+        bars = get_market_data().index_klines(index_code, market=market.value, days=days)
     except Exception as e:
         logger.debug(f"指数K线获取失败 {index_code}: {e}")
         return []
-
-
-def _fetch_eastmoney_klines(
-    symbol: str, market: MarketCode, days: int, *, secid_override: str | None = None
-) -> list[KlineData]:
-    """Fetch daily kline from Eastmoney as CN/HK long-history fallback."""
-
-    sym = (symbol or "").strip()
-    if not sym:
-        return []
-    if market not in (MarketCode.CN, MarketCode.HK):
-        return []
-
-    need_days = max(1, int(days or 1))
-    # secid 唯一标识标的(指数与个股前缀规则不同);以 secid 作缓存键,
-    # 避免指数与同号个股(如 000001 既是平安银行又是上证指数)缓存串味。
-    secid = secid_override or _eastmoney_secid(sym, market)
-    cache_key = f"{market.value}:{secid}"
-    now = time.time()
-    cached = _EASTMONEY_CACHE.get(cache_key)
-    if (
-        cached
-        and (now - cached[0]) < _EASTMONEY_CACHE_TTL_SECONDS
-        and cached[1] >= need_days
-    ):
-        bars = cached[2]
-        return bars[-need_days:] if len(bars) > need_days else bars
-
-    params = {
-        "secid": secid,
-        "klt": "101",  # 1日K
-        "fqt": "1",  # 前复权
-        "lmt": str(min(max(need_days, 1200), 20000)),
-        "end": "20500101",
-        "fields1": "f1,f2,f3,f4,f5,f6",
-        "fields2": "f51,f52,f53,f54,f55,f56",
-        "ut": "fa5fd1943c7b386f172d6893dbfba10b",
-    }
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://quote.eastmoney.com/",
-    }
-
-    last_err = None
-    best: list[KlineData] = []
-    for attempt in range(2):
-        _throttle_eastmoney()
-        try:
-            with httpx.Client(
-                follow_redirects=True,
-                timeout=12 + attempt * 6,
-                headers=headers,
-                trust_env=False,  # 行情直连,绕过 env 代理(生产代理会拦 push2his.eastmoney)
-            ) as client:
-                resp = client.get(EASTMONEY_KLINE_URL, params=params)
-                resp.raise_for_status()
-                payload = resp.json()
-
-            raw = (
-                (payload or {}).get("data", {}).get("klines", [])
-                if isinstance(payload, dict)
-                else []
-            )
-            out: list[KlineData] = []
-            for row in raw or []:
-                # row format: "YYYY-MM-DD,open,close,high,low,volume,..."
-                parts = str(row).split(",")
-                if len(parts) < 6:
-                    continue
-                try:
-                    out.append(
-                        KlineData(
-                            date=parts[0],
-                            open=float(parts[1]),
-                            close=float(parts[2]),
-                            high=float(parts[3]),
-                            low=float(parts[4]),
-                            volume=float(parts[5]),
-                        )
-                    )
-                except Exception:
-                    continue
-            if len(out) > len(best):
-                best = out
-            if best:
-                break
-        except Exception as e:
-            last_err = e
-            time.sleep(0.35 * (attempt + 1))
-
-    if not best and last_err is not None:
-        logger.warning(
-            f"Eastmoney 获取 {symbol} K线失败: {last_err}{_source_suffix()}"
-        )
-        stale = _EASTMONEY_CACHE.get(cache_key)
-        if stale:
-            bars = stale[2]
-            return bars[-need_days:] if len(bars) > need_days else bars
-        return []
-
-    _EASTMONEY_CACHE[cache_key] = (now, len(best), best)
-    return best[-need_days:] if len(best) > need_days else best
+    return [
+        KlineData(date=b.date, open=b.open, close=b.close, high=b.high, low=b.low, volume=b.volume)
+        for b in bars
+    ]
 
 
 @dataclass
@@ -383,15 +165,6 @@ class TechnicalIndicators:
     resistance: float | None = None
     # K线形态
     kline_pattern: str | None = None  # 十字星/锤子线/吞没等
-
-
-def _tencent_symbol(symbol: str, market: MarketCode) -> str:
-    """转换为腾讯 API 格式"""
-    if market == MarketCode.HK:
-        return f"hk{symbol}"
-    if market == MarketCode.US:
-        return f"us{symbol}"
-    return get_cn_prefix(symbol) + symbol
 
 
 def _calculate_ma(closes: list[float], period: int) -> float | None:
@@ -621,109 +394,6 @@ def _find_cross_days(
     return None
 
 
-# 腾讯 gtimg 在批量/并发突发下会限流回空 body —— 进程级最小间隔节流 + 重试退避兜底。
-_TENCENT_MIN_INTERVAL_S = 0.15
-_TENCENT_THROTTLE_LOCK = threading.Lock()
-_tencent_last_call = [0.0]
-
-
-def _throttle_tencent() -> None:
-    """进程级限速:保证腾讯行情请求间隔 ≥ _TENCENT_MIN_INTERVAL_S,平滑顺序/并发突发。"""
-    with _TENCENT_THROTTLE_LOCK:
-        wait = _TENCENT_MIN_INTERVAL_S - (time.time() - _tencent_last_call[0])
-        if wait > 0:
-            time.sleep(wait)
-        _tencent_last_call[0] = time.time()
-
-
-# 东方财富 push2his 在批量突发下会连接级丢弃(Server disconnected) —— 同样做进程级节流。
-_EASTMONEY_MIN_INTERVAL_S = 0.2
-_EASTMONEY_THROTTLE_LOCK = threading.Lock()
-_eastmoney_last_call = [0.0]
-
-
-def _throttle_eastmoney() -> None:
-    """进程级限速:东方财富兜底请求间隔 ≥ _EASTMONEY_MIN_INTERVAL_S,缓解批量突发被连接级拒绝。"""
-    with _EASTMONEY_THROTTLE_LOCK:
-        wait = _EASTMONEY_MIN_INTERVAL_S - (time.time() - _eastmoney_last_call[0])
-        if wait > 0:
-            time.sleep(wait)
-        _eastmoney_last_call[0] = time.time()
-
-
-def _fetch_tencent_klines(
-    symbol: str, market: MarketCode, days: int
-) -> list[KlineData]:
-    """腾讯主路径取日K:进程级节流 + 空响应/异常退避重试(gtimg 批量突发常限流回空 body,重试可自愈)。"""
-    tencent_sym = _tencent_symbol(symbol, market)
-    params = {
-        "param": f"{tencent_sym},day,,,{days},qfq",
-        "_var": "kline_dayqfq",
-    }
-    klines: list[KlineData] = []
-    last_err = None
-    for attempt in range(3):
-        _throttle_tencent()
-        try:
-            with httpx.Client(
-                follow_redirects=True, timeout=10 + attempt * 4, trust_env=False
-            ) as client:  # 行情直连,绕过 env 代理(生产代理会拦行情接口)
-                resp = client.get(TENCENT_KLINE_URL, params=params)
-                text = resp.text
-            klines = _parse_tencent_kline_text(text, tencent_sym)
-            if klines:
-                break
-            last_err = "空响应"  # gtimg 突发限流常回空 body,退避后重试
-        except Exception as e:
-            last_err = e
-        if attempt < 2:
-            time.sleep(0.4 * (attempt + 1) + random.uniform(0, 0.25))
-
-    if not klines and last_err is not None:
-        logger.warning(
-            f"腾讯 K线获取失败(已重试)symbol={symbol}: {last_err}{_source_suffix()}"
-        )
-    return klines
-
-
-def _parse_tencent_kline_text(text: str, tencent_sym: str) -> list[KlineData]:
-    """解析腾讯 K 线 JS 变量响应(kline_dayqfq={...})为 KlineData;空/异常返回 []。"""
-    if not text or "=" not in text:
-        return []
-    json_str = text.split("=", 1)[1].strip()
-    if json_str.endswith(";"):
-        json_str = json_str[:-1]
-    try:
-        data = json.loads(json_str)
-    except Exception:
-        return []
-    raw_data = data.get("data", {}) if isinstance(data, dict) else {}
-    day_data = []
-    if isinstance(raw_data, dict):
-        stock_data = raw_data.get(tencent_sym, {})
-        if isinstance(stock_data, dict):
-            day_data = stock_data.get("day") or stock_data.get("qfqday") or []
-    elif isinstance(raw_data, list):
-        day_data = raw_data
-    out: list[KlineData] = []
-    for item in day_data or []:
-        if len(item) >= 5:
-            try:
-                out.append(
-                    KlineData(
-                        date=item[0],
-                        open=float(item[1]),
-                        close=float(item[2]),
-                        high=float(item[3]),
-                        low=float(item[4]),
-                        volume=float(item[5]) if len(item) > 5 else 0,
-                    )
-                )
-            except Exception:
-                continue
-    return out
-
-
 class KlineCollector:
     """K线数据采集器（腾讯 API）"""
 
@@ -784,38 +454,15 @@ class KlineCollector:
         return None
 
     def _fetch_all_sources(self, symbol: str, days: int) -> list[KlineData]:
-        """tencent → stooq(US) / eastmoney(CN/HK) 链路取数(不含缓存/合并逻辑)。
-
-        flag 开:走 marketdata 新包(Engine 按 DataSource 优先级 + min_count 取数);
-        flag 关:原逻辑一字不动。
+        """走 marketdata 包取数(不含缓存/合并逻辑):Engine 按 DataSource 优先级 +
+        min_count 取数(条数不足则换源/取最长,tencent → stooq(US) / eastmoney(CN/HK))。
         """
-        if _use_marketdata_kline():
-            # 新包:Engine 按 DataSource 优先级 + min_count(条数不足则换源/取最长)
-            need = (max(10, min(days, 30)) if self.market == MarketCode.US
-                    else (max(120, int(days * 0.6)) if self.market in (MarketCode.CN, MarketCode.HK) else 1))
-            want = min(max(days, 3000), 20000) if self.market in (MarketCode.CN, MarketCode.HK) else days
-            bars = get_market_data().klines(symbol, market=self.market.value, days=want, min_count=need)
-            return [KlineData(date=b.date, open=b.open, close=b.close, high=b.high,
-                              low=b.low, volume=b.volume) for b in bars]
-        # ↓↓↓ flag 关:原逻辑一字不动 ↓↓↓
-        klines = _fetch_tencent_klines(symbol, self.market, days)
-
-        # Tencent 对部分美股返回的 day 数据异常偏少（仅 1-2 条），使用 Stooq 回退。
-        if self.market == MarketCode.US and len(klines) < max(10, min(days, 30)):
-            fallback = _fetch_stooq_us_klines(symbol)
-            if fallback:
-                klines = fallback
-
-        # CN/HK: Tencent 不足时用 Eastmoney 补全更长历史(仅当确实不足)
-        if self.market in (MarketCode.CN, MarketCode.HK):
-            if len(klines) < max(120, int(days * 0.6)):
-                em = _fetch_eastmoney_klines(
-                    symbol, self.market, min(max(days, 3000), 20000)
-                )
-                if len(em) > len(klines):
-                    klines = em
-
-        return klines
+        need = (max(10, min(days, 30)) if self.market == MarketCode.US
+                else (max(120, int(days * 0.6)) if self.market in (MarketCode.CN, MarketCode.HK) else 1))
+        want = min(max(days, 3000), 20000) if self.market in (MarketCode.CN, MarketCode.HK) else days
+        bars = get_market_data().klines(symbol, market=self.market.value, days=want, min_count=need)
+        return [KlineData(date=b.date, open=b.open, close=b.close, high=b.high,
+                          low=b.low, volume=b.volume) for b in bars]
 
     def get_technical_indicators(
         self, symbol: str = "", klines: list[KlineData] | None = None

@@ -247,7 +247,7 @@ async def get_hot_stocks(
         return cached
 
     proxy = _resolve_proxy() or None
-    collector = EastMoneyDiscoveryCollector(timeout_s=15.0, proxy=proxy, retries=1)
+    collector = EastMoneyDiscoveryCollector(proxy=proxy)
     data = await _hot_stocks_live_or_snapshot(
         collector=collector,
         db=db,
@@ -286,7 +286,7 @@ async def get_hot_boards(
         return cached
 
     proxy = _resolve_proxy() or None
-    collector = EastMoneyDiscoveryCollector(timeout_s=15.0, proxy=proxy, retries=1)
+    collector = EastMoneyDiscoveryCollector(proxy=proxy)
     data: list[dict] = []
     # CN: prefer real industry boards; HK/US: synthetic themed buckets from market hot pool.
     if market == "CN":
@@ -354,7 +354,7 @@ async def get_board_stocks(
 
     if code.startswith(("CN_", "HK_", "US_")):
         proxy = _resolve_proxy() or None
-        collector = EastMoneyDiscoveryCollector(timeout_s=15.0, proxy=proxy, retries=1)
+        collector = EastMoneyDiscoveryCollector(proxy=proxy)
         market_from_code = code.split("_", 1)[0]
         stocks = await _hot_stocks_live_or_snapshot(
             collector=collector,
@@ -375,7 +375,7 @@ async def get_board_stocks(
         return data
 
     proxy = _resolve_proxy() or None
-    collector = EastMoneyDiscoveryCollector(timeout_s=15.0, proxy=proxy, retries=1)
+    collector = EastMoneyDiscoveryCollector(proxy=proxy)
     try:
         items = await collector.fetch_board_stocks(
             board_code=code, mode=mode, limit=limit

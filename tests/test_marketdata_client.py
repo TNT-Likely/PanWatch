@@ -19,28 +19,7 @@ def test_quote_to_row_keys():
         assert k in row
 
 
-def test_md_quote_rows_flag_off_uses_orchestrator(monkeypatch):
-    monkeypatch.setattr(mc, "_use_marketdata", lambda: False)
-    captured = {}
-
-    class _Resp:
-        success = True
-        data = [{"symbol": "600519", "current_price": 1.0}]
-
-    class _Orch:
-        def fetch_sync(self, req):
-            captured["req"] = req
-            return _Resp()
-
-    monkeypatch.setattr("src.core.providers.get_quote_orchestrator", lambda: _Orch())
-    rows = mc.md_quote_rows(["600519"], "CN")
-    assert rows == [{"symbol": "600519", "current_price": 1.0}]
-    assert tuple(captured["req"].symbols) == ("600519",) and captured["req"].market == "CN"
-
-
-def test_md_quote_rows_flag_on_uses_marketdata(monkeypatch):
-    monkeypatch.setattr(mc, "_use_marketdata", lambda: True)
-
+def test_md_quote_rows_uses_marketdata(monkeypatch):
     class _MD:
         def quotes(self, symbols, *, market):
             return [Quote(symbol=s, market=market, current_price=9.0) for s in symbols]

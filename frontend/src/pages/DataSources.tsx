@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react'
-import { fetchAPI, type DataSource } from '@panwatch/api'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, AlertTriangle } from 'lucide-react'
+import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
@@ -86,6 +87,7 @@ export default function DataSourcesPage() {
   const [testResultOpen, setTestResultOpen] = useState(false)
   const [testSymbolsInput, setTestSymbolsInput] = useState('')
   const [secretVisible, setSecretVisible] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const { toast } = useToast()
 
@@ -190,6 +192,20 @@ export default function DataSourcesPage() {
     } catch { toast('调整顺序失败', 'error') }
   }
 
+  const resetToSeed = async () => {
+    if (!window.confirm('将删除无对应数据源的孤儿行、补齐缺失的默认源,并保留你的自定义配置与凭证。是否继续?')) return
+    setResetting(true)
+    try {
+      const result = await resetDataSourcesToSeed()
+      load()
+      toast(`已清理 ${result.deleted.length} 个孤儿源,补齐 ${result.seeded_missing.length} 个默认源`, 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '恢复默认失败', 'error')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   const deleteSource = async () => {
     if (!editId) return
     if (!window.confirm(`确定删除数据源「${form.name}」?`)) return
@@ -209,9 +225,19 @@ export default function DataSourcesPage() {
 
   return (
     <div>
-      <div className="mb-4 md:mb-8">
-        <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">数据源</h1>
-        <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">管理新闻、K线、资金流向和行情数据来源</p>
+      <div className="mb-4 md:mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">数据源</h1>
+          <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">管理新闻、K线、资金流向和行情数据来源</p>
+        </div>
+        <Button variant="outline" size="sm" className="h-8 text-[12px] flex-shrink-0" onClick={resetToSeed} disabled={resetting}>
+          {resetting ? (
+            <span className="w-3.5 h-3.5 mr-1.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+          ) : (
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+          )}
+          恢复默认
+        </Button>
       </div>
 
       <div className="space-y-6">
@@ -257,6 +283,12 @@ export default function DataSourcesPage() {
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">已接入新引擎</span>
                             ) : (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">旧路·待迁移</span>
+                            )}
+                            {source.is_orphan && (
+                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0.5">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                无对应源·待清理
+                              </Badge>
                             )}
                             {source.engine_attached && source.health && source.health.success_rate != null && (
                               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
