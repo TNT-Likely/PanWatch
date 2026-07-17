@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, Banknote } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
@@ -420,6 +420,11 @@ export default function StocksPage() {
   const [showPositionDropdown, setShowPositionDropdown] = useState(false)
   const positionSearchTimer = useRef<ReturnType<typeof setTimeout>>()
   const positionDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Sell dialog
+  const [sellDialogOpen, setSellDialogOpen] = useState(false)
+  const [sellTarget, setSellTarget] = useState<Position | null>(null)
+  const [sellForm, setSellForm] = useState({ sell_price: '', sell_quantity: '', fee: '0', note: '' })
 
   // Agent dialog
   const [agentDialogStock, setAgentDialogStock] = useState<Stock | null>(null)
@@ -1219,6 +1224,41 @@ export default function StocksPage() {
       toast('持仓已删除', 'success')
     } catch (e) {
       toast(e instanceof Error ? e.message : '删除持仓失败', 'error')
+    }
+  }
+
+  const openSellDialog = (pos: Position) => {
+    setSellTarget(pos)
+    setSellForm({
+      sell_price: pos.current_price?.toString() || '',
+      sell_quantity: pos.quantity.toString(),
+      fee: '0',
+      note: '',
+    })
+    setSellDialogOpen(true)
+  }
+
+  const handleSellSubmit = async () => {
+    if (!sellTarget) return
+    const price = parseFloat(sellForm.sell_price)
+    const qty = parseInt(sellForm.sell_quantity)
+    if (!price || !qty || qty <= 0) { toast('请输入有效的价格和数量', 'error'); return }
+    if (qty > sellTarget.quantity) { toast('卖出数量不能超过持仓数量', 'error'); return }
+    try {
+      await fetchAPI(`/positions/${sellTarget.id}/sell`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sell_price: price,
+          sell_quantity: qty,
+          fee: parseFloat(sellForm.fee) || 0,
+          note: sellForm.note || null,
+        }),
+      })
+      setSellDialogOpen(false)
+      loadPortfolio()
+      toast(`卖出成功：${sellTarget.name} ${qty}股 @ ${price}`, 'success')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : '卖出失败', 'error')
     }
   }
 
@@ -2092,6 +2132,7 @@ export default function StocksPage() {
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSellDialog(pos)} title="卖出"><Banknote className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2258,7 +2299,8 @@ export default function StocksPage() {
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openSellDialog(pos)} title="卖出"><Banknote className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)} title="编辑"><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
                               </div>
@@ -2600,6 +2642,60 @@ export default function StocksPage() {
               <Button variant="ghost" onClick={() => setAccountDialogOpen(false)}>取消</Button>
               <Button onClick={handleAccountSubmit} disabled={!accountForm.name}>
                 {editAccountId ? '保存' : '创建'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sell Dialog */}
+      <Dialog open={sellDialogOpen} onOpenChange={setSellDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>卖出持仓</DialogTitle>
+            <DialogDescription>
+              {sellTarget?.name}（{sellTarget?.symbol}）· 当前持仓 {sellTarget?.quantity} 股
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div>
+              <Label>卖出价格</Label>
+              <Input value={sellForm.sell_price} onChange={e => setSellForm({...sellForm, sell_price: e.target.value})}
+                placeholder="0.00" className="font-mono" inputMode="decimal" />
+            </div>
+            <div>
+              <Label>卖出数量 <span className="text-muted-foreground text-[11px]">(当前 {sellTarget?.quantity} 股)</span></Label>
+              <Input value={sellForm.sell_quantity} onChange={e => setSellForm({...sellForm, sell_quantity: e.target.value})}
+                placeholder="0" className="font-mono" inputMode="numeric" />
+              <button className="text-[11px] text-primary mt-1" onClick={() => sellTarget && setSellForm({...sellForm, sell_quantity: sellTarget.quantity.toString()})}>
+                全部卖出
+              </button>
+            </div>
+            <div>
+              <Label>交易费用 <span className="text-muted-foreground text-[11px]">(选填)</span></Label>
+              <Input value={sellForm.fee} onChange={e => setSellForm({...sellForm, fee: e.target.value})}
+                placeholder="0" className="font-mono" inputMode="decimal" />
+            </div>
+            {sellForm.sell_price && sellForm.sell_quantity && sellTarget && (
+              <div className="p-3 rounded-lg bg-accent/30 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">预估盈亏</span>
+                  <span className={`font-medium ${(parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0) >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)) >= 0 ? '+' : ''}
+                    {((parseFloat(sellForm.sell_price) - sellTarget.cost_price) * parseInt(sellForm.sell_quantity) - (parseFloat(sellForm.fee)||0)).toFixed(2)} 元
+                  </span>
+                </div>
+              </div>
+            )}
+            <div>
+              <Label>备注 <span className="text-muted-foreground text-[11px]">(选填)</span></Label>
+              <Input value={sellForm.note} onChange={e => setSellForm({...sellForm, note: e.target.value})} placeholder="卖出原因..." />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setSellDialogOpen(false)}>取消</Button>
+              <Button variant="destructive" onClick={handleSellSubmit}
+                disabled={!sellForm.sell_price || !sellForm.sell_quantity || parseInt(sellForm.sell_quantity) <= 0}>
+                确认卖出
               </Button>
             </div>
           </div>

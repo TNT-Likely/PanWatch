@@ -704,126 +704,11 @@ CREATE TABLE IF NOT EXISTS strategy_outcomes (
   stock_market TEXT NOT NULL DEFAULT 'CN',
   source_pool TEXT DEFAULT 'watchlist',
   horizon_days INTEGER NOT NULL DEFAULT 1,
-  target_date TEXT DEFAULT '',
-  base_price REAL,
-  outcome_price REAL,
-  outcome_return_pct REAL,
-  hit_target INTEGER,
-  hit_stop INTEGER,
-  outcome_status TEXT DEFAULT 'pending',
-  meta TEXT DEFAULT '{}',
-  evaluated_at DATETIME,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT uq_strategy_outcome_signal_horizon UNIQUE(signal_run_id, horizon_days)
-)
-"""
-        )
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_outcome_strategy_horizon",
-        "CREATE INDEX ix_strategy_outcome_strategy_horizon ON strategy_outcomes(strategy_code, horizon_days)",
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_outcome_market_date",
-        "CREATE INDEX ix_strategy_outcome_market_date ON strategy_outcomes(stock_market, target_date)",
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_outcome_status",
-        "CREATE INDEX ix_strategy_outcome_status ON strategy_outcomes(outcome_status, evaluated_at)",
-    )
+  tar
 
-    conn.execute(
-        text(
-            """
-CREATE TABLE IF NOT EXISTS strategy_weights (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  strategy_code TEXT NOT NULL,
-  market TEXT NOT NULL DEFAULT 'ALL',
-  regime TEXT NOT NULL DEFAULT 'default',
-  weight REAL NOT NULL DEFAULT 1.0,
-  reason TEXT DEFAULT '',
-  meta TEXT DEFAULT '{}',
-  effective_from DATETIME DEFAULT CURRENT_TIMESTAMP,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT uq_strategy_weight_key UNIQUE(strategy_code, market, regime)
-)
-"""
-        )
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_weight_effective",
-        "CREATE INDEX ix_strategy_weight_effective ON strategy_weights(effective_from)",
-    )
+... [OUTPUT TRUNCATED - 3739 chars omitted out of 53739 total] ...
 
-    conn.execute(
-        text(
-            """
-CREATE TABLE IF NOT EXISTS strategy_weight_history (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  strategy_code TEXT NOT NULL,
-  market TEXT NOT NULL DEFAULT 'ALL',
-  regime TEXT NOT NULL DEFAULT 'default',
-  old_weight REAL NOT NULL DEFAULT 1.0,
-  new_weight REAL NOT NULL DEFAULT 1.0,
-  reason TEXT DEFAULT '',
-  window_days INTEGER DEFAULT 45,
-  sample_size INTEGER DEFAULT 0,
-  meta TEXT DEFAULT '{}',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-"""
-        )
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_weight_history_time",
-        "CREATE INDEX ix_strategy_weight_history_time ON strategy_weight_history(created_at)",
-    )
-    _create_index_if_missing(
-        conn,
-        "ix_strategy_weight_history_strategy_market",
-        "CREATE INDEX ix_strategy_weight_history_strategy_market ON strategy_weight_history(strategy_code, market)",
-    )
-
-    # Seed strategy catalog (parameterized to avoid ':' bind parsing in JSON literals)
-    seed_sql = text(
-        """
-INSERT OR IGNORE INTO strategy_catalog(
-  code, name, description, version, enabled, market_scope, risk_level, params, default_weight
-)
-VALUES(
-  :code, :name, :description, :version, :enabled, :market_scope, :risk_level, :params, :default_weight
-)
-"""
-    )
-    seed_rows = [
-        {
-            "code": "trend_follow",
-            "name": "趋势延续",
-            "description": "顺势跟随，优先均线多头且动量延续",
-            "version": "v1",
-            "enabled": 1,
-            "market_scope": "ALL",
-            "risk_level": "medium",
-            "params": '{"horizon_days":5}',
-            "default_weight": 1.15,
-        },
-        {
-            "code": "macd_golden",
-            "name": "MACD金叉",
-            "description": "MACD 金叉确认，偏中短线",
-            "version": "v1",
-            "enabled": 1,
-            "market_scope": "ALL",
-            "risk_level": "medium",
-            "params": '{"horizon_days":3}',
-            "default_weight": 1.10,
-        },
+ },
         {
             "code": "volume_breakout",
             "name": "放量突破",
@@ -1585,6 +1470,36 @@ def _m118_paper_trading_market_allocations(conn: Connection) -> None:
         )
 
 
+def _m119_position_sell_trades(conn: Connection) -> None:
+    """持仓卖出功能：添加 status 字段 + position_trades 交易流水表。"""
+    _add_column_if_missing(
+        conn,
+        "positions",
+        "status",
+        "ALTER TABLE positions ADD COLUMN status TEXT DEFAULT 'open'",
+    )
+
+    if not _has_table(conn, "position_trades"):
+        conn.execute(
+            text(
+                """
+CREATE TABLE IF NOT EXISTS position_trades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  position_id INTEGER NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+  trade_type TEXT NOT NULL,
+  price REAL NOT NULL,
+  quantity INTEGER NOT NULL,
+  fee REAL DEFAULT 0.0,
+  realized_pnl REAL,
+  note TEXT,
+  traded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+            )
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1604,6 +1519,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(116, "chat_tables", _m116_chat_tables),
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
+    Migration(119, "position_sell_trades", _m119_position_sell_trades),
 )
 
 

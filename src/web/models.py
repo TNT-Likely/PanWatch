@@ -124,12 +124,31 @@ class Position(Base):
     trading_style = Column(
         String, default="swing"
     )  # short: 短线, swing: 波段, long: 长线
+    status = Column(String, default="open")  # open: 持仓中, closed: 已清仓
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     account = relationship("Account", back_populates="positions")
     stock = relationship("Stock", back_populates="positions")
+    trades = relationship("PositionTrade", back_populates="position", cascade="all, delete-orphan")
 
+
+class PositionTrade(Base):
+    """持仓交易记录（买入/卖出流水）"""
+    __tablename__ = "position_trades"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    position_id = Column(Integer, ForeignKey("positions.id", ondelete="CASCADE"), nullable=False)
+    trade_type = Column(String, nullable=False)  # "buy" or "sell"
+    price = Column(Float, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    fee = Column(Float, default=0.0)  # optional trading fee
+    realized_pnl = Column(Float, nullable=True)  # only for sell trades
+    note = Column(String, nullable=True)
+    traded_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    position = relationship("Position", back_populates="trades")
 
 class StockAgent(Base):
     """多对多: 每只股票可被多个 Agent 监控"""
