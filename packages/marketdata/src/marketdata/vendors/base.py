@@ -41,3 +41,45 @@ class EventsVendor(Vendor):
     """事件 vendor:fetch 返回 list[EventItem]。批量(多 symbol)。"""
 
     pass
+
+
+class FlashNewsVendor(Vendor):
+    """快讯 vendor:fetch 返回 list[FlashNews]。市场级,symbols 可空。"""
+
+    pass
+
+
+class FundamentalsVendor(Vendor):
+    """基本面/财务 vendor:fetch 返回 list[Fundamentals]。按 symbol(批量)。"""
+
+    pass
+
+
+class DragonTigerVendor(Vendor):
+    """龙虎榜 vendor:fetch 返回 list[DragonTigerItem]。市场级(symbols 恒空),按 date 过滤。"""
+
+    pass
+
+
+class MarginVendor(Vendor):
+    """融资融券 vendor:fetch 返回 list[MarginItem]。按 symbol(逐只取最新快照)。"""
+
+    pass
+
+
+class ShareholdersVendor(Vendor):
+    """股东户数 vendor:fetch 返回 list[ShareholderItem]。按 symbol(逐只取最新一期)。"""
+
+    pass
+
+
+class DividendVendor(Vendor):
+    """分红 vendor:fetch 返回 list[DividendItem]。按 symbol(逐只返回全部历史)。"""
+
+    pass
+
+
+class NorthboundVendor(Vendor):
+    """北向资金 vendor:fetch 返回 list[NorthboundItem]。市场级(symbols 可空)。"""
+
+    pass

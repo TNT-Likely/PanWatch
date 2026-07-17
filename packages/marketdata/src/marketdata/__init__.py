@@ -6,12 +6,30 @@ from marketdata.errors import MarketDataError, VendorError
 from marketdata.ports import ConfigProvider, MetricsSink, SourceConfig
 from marketdata.registry import PACKAGE_VENDORS_BY_TYPE
 from marketdata.symbol import Market, Symbol
-from marketdata.types import Bar, CapitalFlow, EventItem, HotBoard, HotStock, Quote, Request, Response
+from marketdata.types import (
+    Bar,
+    CapitalFlow,
+    DividendItem,
+    DragonTigerItem,
+    EventItem,
+    FlashNews,
+    Fundamentals,
+    HotBoard,
+    HotStock,
+    MarginItem,
+    NorthboundItem,
+    Quote,
+    Request,
+    Response,
+    ShareholderItem,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "MarketData", "Symbol", "Market", "Bar", "CapitalFlow", "EventItem", "HotStock", "HotBoard",
+    "MarketData", "Symbol", "Market", "Bar", "CapitalFlow", "EventItem", "FlashNews", "Fundamentals",
+    "HotStock", "HotBoard",
+    "DragonTigerItem", "MarginItem", "ShareholderItem", "DividendItem", "NorthboundItem",
     "Quote", "Request", "Response",
     "SourceConfig", "ConfigProvider", "MetricsSink",
     "StaticConfigProvider", "InMemoryMetricsSink",

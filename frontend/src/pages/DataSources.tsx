@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
 import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -52,6 +52,13 @@ const DATASOURCE_TYPES = {
   quote: { label: '实时行情', icon: TrendingUp, color: 'text-emerald-500' },
   events: { label: '事件日历', icon: Layers, color: 'text-violet-500' },
   chart: { label: 'K线截图', icon: Image, color: 'text-purple-500' },
+  flash_news: { label: '快讯', icon: Zap, color: 'text-amber-500' },
+  fundamentals: { label: '基本面', icon: BarChart3, color: 'text-indigo-500' },
+  dragon_tiger: { label: '龙虎榜', icon: Trophy, color: 'text-red-500' },
+  margin: { label: '融资融券', icon: Landmark, color: 'text-cyan-500' },
+  shareholders: { label: '股东户数', icon: Users, color: 'text-teal-500' },
+  dividend: { label: '分红', icon: Gift, color: 'text-pink-500' },
+  northbound: { label: '北向资金', icon: ArrowLeftRight, color: 'text-sky-500' },
 }
 
 interface CredentialFieldDef { key: string; label: string; placeholder: string; secret?: boolean; help?: string }
@@ -609,6 +616,37 @@ export default function DataSourcesPage() {
                     )
                   })}
 
+                  {/* Flash news type */}
+                  {testResult.source_type === 'flash_news' && testResult.items.map((item, i) => {
+                    const flashItem = item as { title?: string; time?: string; symbols?: string[] }
+                    return (
+                      <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] text-foreground flex-1">
+                          {flashItem.title}
+                          {flashItem.symbols && flashItem.symbols.length > 0 && (
+                            <span className="ml-2 text-[11px] text-muted-foreground">{flashItem.symbols.join(', ')}</span>
+                          )}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground flex-shrink-0">{flashItem.time}</span>
+                      </div>
+                    )
+                  })}
+
+                  {/* Fundamentals type */}
+                  {testResult.source_type === 'fundamentals' && testResult.items.map((item, i) => {
+                    const fundItem = item as { symbol?: string; name?: string; pe_ttm?: number; pb?: number; roe?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{fundItem.name || fundItem.symbol}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-muted-foreground">PE {fundItem.pe_ttm?.toFixed(2) ?? '-'}</span>
+                          <span className="text-[11px] text-muted-foreground">PB {fundItem.pb?.toFixed(2) ?? '-'}</span>
+                          <span className="text-[11px] text-muted-foreground">ROE {fundItem.roe?.toFixed(2) ?? '-'}%</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
                   {/* Capital flow type */}
                   {testResult.source_type === 'capital_flow' && testResult.items.map((item, i) => {
                     const flowItem = item as { symbol?: string; name?: string; main_net?: number; main_pct?: number }
@@ -623,6 +661,83 @@ export default function DataSourcesPage() {
                           </span>
                           <span className="text-[11px] text-muted-foreground">
                             {flowItem.main_pct?.toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Dragon tiger type */}
+                  {testResult.source_type === 'dragon_tiger' && testResult.items.map((item, i) => {
+                    const dtItem = item as { symbol?: string; name?: string; net_buy?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{dtItem.name || dtItem.symbol}</span>
+                        <span className={`text-[12px] font-mono ${
+                          (dtItem.net_buy ?? 0) > 0 ? 'text-red-500' : 'text-green-500'
+                        }`}>
+                          {(dtItem.net_buy ?? 0) > 0 ? '+' : ''}{((dtItem.net_buy ?? 0) / 10000).toFixed(2)}万
+                        </span>
+                      </div>
+                    )
+                  })}
+
+                  {/* Margin type */}
+                  {testResult.source_type === 'margin' && testResult.items.map((item, i) => {
+                    const marginItem = item as { symbol?: string; date?: string; total_balance?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{marginItem.symbol}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[12px] font-mono">{((marginItem.total_balance ?? 0) / 10000).toFixed(2)}万</span>
+                          <span className="text-[11px] text-muted-foreground">{marginItem.date}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Shareholders type */}
+                  {testResult.source_type === 'shareholders' && testResult.items.map((item, i) => {
+                    const shItem = item as { symbol?: string; report_date?: string; holder_num?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{shItem.symbol}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[12px] font-mono">{shItem.holder_num?.toLocaleString() ?? '-'}</span>
+                          <span className="text-[11px] text-muted-foreground">{shItem.report_date}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Dividend type */}
+                  {testResult.source_type === 'dividend' && testResult.items.map((item, i) => {
+                    const divItem = item as { symbol?: string; ex_date?: string; dividend_per_share?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{divItem.symbol}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[12px] font-mono">{divItem.dividend_per_share?.toFixed(4) ?? '-'} 元/股</span>
+                          <span className="text-[11px] text-muted-foreground">{divItem.ex_date}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Northbound type */}
+                  {testResult.source_type === 'northbound' && testResult.items.map((item, i) => {
+                    const nbItem = item as { date?: string; hgt_net?: number; total_net?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{nbItem.date}</span>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-[12px] font-mono ${
+                            (nbItem.total_net ?? 0) > 0 ? 'text-red-500' : 'text-green-500'
+                          }`}>
+                            {(nbItem.total_net ?? 0) > 0 ? '+' : ''}{((nbItem.total_net ?? 0) / 10000).toFixed(2)}万
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            沪股通 {((nbItem.hgt_net ?? 0) / 10000).toFixed(2)}万
                           </span>
                         </div>
                       </div>

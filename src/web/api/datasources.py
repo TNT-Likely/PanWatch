@@ -21,12 +21,19 @@ TYPE_LABELS = {
     "quote": "实时行情",
     "events": "事件日历",
     "chart": "K线截图",
+    "flash_news": "快讯",
+    "fundamentals": "基本面",
+    "dragon_tiger": "龙虎榜",
+    "margin": "融资融券",
+    "shareholders": "股东户数",
+    "dividend": "分红",
+    "northbound": "北向资金",
 }
 
 
 class DataSourceCreate(BaseModel):
     name: str
-    type: str  # news / kline / capital_flow / quote / events / chart
+    type: str  # news / kline / capital_flow / quote / events / chart / flash_news
     provider: str
     config: dict = {}
     enabled: bool = True
@@ -63,7 +70,19 @@ class DataSourceResponse(BaseModel):
 
 
 # 已接入 marketdata 新引擎的数据类型(随各类型逐步迁移扩充)
-_ENGINE_ATTACHED_TYPES = {"quote", "kline", "capital_flow", "events"}
+_ENGINE_ATTACHED_TYPES = {
+    "quote",
+    "kline",
+    "capital_flow",
+    "events",
+    "flash_news",
+    "fundamentals",
+    "dragon_tiger",
+    "margin",
+    "shareholders",
+    "dividend",
+    "northbound",
+}
 
 
 def _is_orphan(type_: str, provider: str) -> bool:

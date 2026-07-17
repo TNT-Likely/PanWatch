@@ -30,3 +30,48 @@ def test_capital_flow_parses(monkeypatch):
 def test_capital_flow_empty(monkeypatch):
     monkeypatch.setattr(cfv, "market_get", lambda *a, **k: {"data": {"klines": []}})
     assert cfv.EastmoneyCapitalFlowVendor().fetch([Symbol.parse("600519")], {}) == []
+
+
+def test_sina_capital_flow_parses(monkeypatch):
+    # 真实抓包样例(MoneyFlow.ssl_qsfx_zjlrqs,daima=sh600519,num=3),按 opendate 降序:
+    # 该端点只提供「主力」netamount/ratioamount + 「超大单」r0_net,无大/中/小单细分。
+    payload = (
+        '[{"opendate":"2026-07-16","trade":"1258.9000","changeratio":"0.00626669",'
+        '"turnover":"37.7872","netamount":"676276059.3300","ratioamount":"0.113842",'
+        '"r0_net":"481207077.7000","r0_ratio":"0.08100468","r0x_ratio":"85.5763",'
+        '"cnt_r0x_ratio":"2","cate_ra":"0.0633939","cate_na":"1416477159.5500"},'
+        '{"opendate":"2026-07-15","trade":"1251.0000","changeratio":"0.0297313",'
+        '"turnover":"57.2674","netamount":"1954209782.6700","ratioamount":"0.220106",'
+        '"r0_net":"1907783618.5100","r0_ratio":"0.21487734","r0x_ratio":"82.1223",'
+        '"cnt_r0x_ratio":"1","cate_ra":"0.163156","cate_na":"4627883391.8000"},'
+        '{"opendate":"2026-07-14","trade":"1215.6100","changeratio":"0.00381506",'
+        '"turnover":"34.4355","netamount":"-21918498.1300","ratioamount":"-0.00418575",'
+        '"r0_net":"-10211324.2100","r0_ratio":"-0.00195004","r0x_ratio":"-27.0736",'
+        '"cnt_r0x_ratio":"-1","cate_ra":"0.0115617","cate_na":"176699853.6300"}]'
+    )
+    monkeypatch.setattr(cfv, "market_get", lambda *a, **k: payload)
+    out = cfv.SinaCapitalFlowVendor().fetch([Symbol.parse("600519")], {"days": 3})
+    assert len(out) == 1 and isinstance(out[0], CapitalFlow)
+    cf = out[0]
+    assert cf.symbol == "600519" and cf.name == ""
+    # 取最新一条(数组首条,opendate 降序):主力净额/占比 + 超大单净额
+    assert cf.main_net_inflow == 676276059.33
+    assert cf.main_net_inflow_pct == 0.113842
+    assert cf.super_net_inflow == 481207077.70
+    # 该端点无大/中/小单细分,与东财同形填 0.0
+    assert cf.big_net_inflow == 0.0
+    assert cf.mid_net_inflow == 0.0
+    assert cf.small_net_inflow == 0.0
+    # 5日主力净流入 = 最近5条(此处仅3条)主力净额之和
+    assert cf.main_net_5d == 676276059.33 + 1954209782.67 + (-21918498.13)
+
+
+def test_sina_capital_flow_empty(monkeypatch):
+    monkeypatch.setattr(cfv, "market_get", lambda *a, **k: "")
+    assert cfv.SinaCapitalFlowVendor().fetch([Symbol.parse("600519")], {}) == []
+
+
+def test_sina_capital_flow_non_cn_market_returns_empty(monkeypatch):
+    monkeypatch.setattr(cfv, "market_get", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("HK/US 不该发起新浪 CN 资金流请求")))
+    assert cfv.SinaCapitalFlowVendor().fetch([Symbol.parse("00700", market="HK")], {}) == []

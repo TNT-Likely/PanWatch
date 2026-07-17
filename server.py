@@ -417,6 +417,20 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": False,
             "test_symbols": ["AAPL"],
         },
+        {
+            "name": "Yahoo K线",
+            "type": "kline",
+            "provider": "yahoo",
+            "config": {
+                "description": "Yahoo chart v8 日线(US/HK,免 key 免 crumb)。国内访问通常需代理,"
+                "在 config.proxy 填写代理地址后启用,作港股 K线第二源/美股更稳兜底。",
+                "proxy": "",
+            },
+            "enabled": False,  # 需代理,默认关(同 YFinance 口径),用户配好 proxy 再开
+            "priority": 20,  # US/HK 最后兜底
+            "supports_batch": False,
+            "test_symbols": ["AAPL", "00700"],
+        },
         # 资金流向数据源
         {
             "name": "东方财富资金流",
@@ -425,6 +439,19 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "config": {},
             "enabled": True,
             "priority": 0,
+            "supports_batch": False,
+            "test_symbols": ["601127", "600519"],
+        },
+        {
+            "name": "新浪资金流",
+            "type": "capital_flow",
+            "provider": "sina",
+            "config": {
+                "description": "新浪资金流入趋势(CN,免 key)。作东财之后的第二源,"
+                "仅含主力/超大单净额(无大/中/小单细分)。",
+            },
+            "enabled": True,
+            "priority": 5,  # 东财(0)之后的 CN 第二源
             "supports_batch": False,
             "test_symbols": ["601127", "600519"],
         },
@@ -437,6 +464,16 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": True,
             "priority": 0,
             "supports_batch": True,
+            "test_symbols": ["601127", "600519", "300750"],
+        },
+        {
+            "name": "东方财富行情",
+            "type": "quote",
+            "provider": "eastmoney",
+            "config": {"description": "东方财富 push2 实时行情(CN,免 key)。作腾讯之后的 A 股第二源。"},
+            "enabled": True,
+            "priority": 3,  # 腾讯(0)之后的 CN 第二源(sina/yfinance 不支持 CN)
+            "supports_batch": False,  # push2 stock/get 单只查询,逐只
             "test_symbols": ["601127", "600519", "300750"],
         },
         {
@@ -471,6 +508,116 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "priority": 0,
             "supports_batch": True,
             "test_symbols": ["601127", "600519"],
+        },
+        # 快讯数据源（7×24 电报，市场级，不按 symbols 过滤）
+        {
+            "name": "财联社快讯",
+            "type": "flash_news",
+            "provider": "cls",
+            "config": {"description": "财联社 7×24 电报(免 key,本地签名)。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "新浪7x24快讯",
+            "type": "flash_news",
+            "provider": "sina",
+            "config": {"description": "新浪财经 7×24 直播,带关联个股。"},
+            "enabled": True,
+            "priority": 5,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "东方财富7x24快讯",
+            "type": "flash_news",
+            "provider": "eastmoney",
+            "config": {"description": "东财 np-weblist 7×24 资讯,与财联社互备。"},
+            "enabled": True,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        # 基本面数据源（按 symbol，估值/股本/财报指标）
+        {
+            "name": "腾讯基本面",
+            "type": "fundamentals",
+            "provider": "tencent",
+            "config": {"description": "腾讯 qt.gtimg 估值快照(CN,免 key):PE/PB/市值。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": True,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "东方财富基本面",
+            "type": "fundamentals",
+            "provider": "eastmoney",
+            "config": {
+                "description": "东财基本面:CN 股本/市值(push2),US/HK 财报指标(GMAININDICATOR)。"
+            },
+            "enabled": True,
+            "priority": 5,
+            "supports_batch": True,
+            "test_symbols": ["600519", "AAPL"],
+        },
+        # 市场资金面数据源（龙虎榜/融资融券/股东户数/分红/北向资金）
+        {
+            "name": "东财龙虎榜",
+            "type": "dragon_tiger",
+            "provider": "eastmoney",
+            "config": {
+                "description": "东财每日龙虎榜(市场级,需配 test_date 测试)。",
+                "test_date": "",
+            },
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "东财融资融券",
+            "type": "margin",
+            "provider": "eastmoney",
+            "config": {"description": "东财个股融资融券明细(按 symbol)。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": True,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "东财股东户数",
+            "type": "shareholders",
+            "provider": "eastmoney",
+            "config": {"description": "东财股东户数变化(按 symbol,季度)。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": True,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "东财分红",
+            "type": "dividend",
+            "provider": "eastmoney",
+            "config": {"description": "东财分红送转历史(按 symbol)。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": True,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "同花顺北向资金",
+            "type": "northbound",
+            "provider": "ths",
+            "config": {
+                "description": "同花顺北向资金实时(东财已断供;深股通近期不可靠)。"
+            },
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
         },
         # K线截图数据源
         {

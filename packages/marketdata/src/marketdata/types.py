@@ -114,6 +114,119 @@ class EventItem:
 
 
 @dataclass
+class Fundamentals:
+    """标准化基本面/财务数据(按 symbol)。估值类字段/财报类字段来源不同、可能分批到位,
+    拿不到的字段一律 None,不伪造。"""
+
+    symbol: str
+    market: str
+    name: str = ""
+    # —— 估值类 ——
+    pe_ttm: float | None = None                    # 市盈率(TTM)
+    pe_static: float | None = None                  # 市盈率(静态)
+    pb: float | None = None                         # 市净率
+    ps_ttm: float | None = None                     # 市销率(TTM)
+    total_market_value: float | None = None         # 总市值(亿)
+    circulating_market_value: float | None = None   # 流通市值(亿)
+    dividend_yield: float | None = None             # 股息率(%)
+    total_shares: float | None = None               # 总股本(股)
+    float_shares: float | None = None                # 流通股本(股)
+    # —— 财报类 ——
+    eps: float | None = None                        # 每股收益
+    bps: float | None = None                        # 每股净资产
+    roe: float | None = None                        # 净资产收益率(%)
+    revenue: float | None = None                    # 营业收入
+    net_profit: float | None = None                 # 归母净利润
+    gross_margin: float | None = None               # 毛利率(%)
+    net_margin: float | None = None                 # 净利率(%)
+    revenue_yoy: float | None = None                # 营收同比增长(%)
+    net_profit_yoy: float | None = None             # 净利润同比增长(%)
+    report_date: str = ""                           # 报告期(原样字符串,不做日期解析)
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class DragonTigerItem:
+    """龙虎榜(东财每日龙虎榜明细,市场级,按 date 过滤)。字段待实抓校准。"""
+
+    trade_date: str
+    symbol: str
+    name: str = ""
+    reason: str | None = None          # 上榜原因
+    close: float | None = None         # 收盘价
+    change_pct: float | None = None    # 涨跌幅(%)
+    net_buy: float | None = None       # 龙虎榜净买额(元)
+    buy_amt: float | None = None       # 龙虎榜买入额(元)
+    sell_amt: float | None = None      # 龙虎榜卖出额(元)
+    turnover_pct: float | None = None  # 换手率(%)
+
+
+@dataclass
+class MarginItem:
+    """融资融券(东财 datacenter,按 symbol,取最新一条快照)。字段待实抓校准。"""
+
+    date: str
+    symbol: str
+    rz_balance: float | None = None     # 融资余额(元)
+    rz_buy: float | None = None         # 融资买入额(元)
+    rz_repay: float | None = None       # 融资偿还额(元)
+    rq_balance: float | None = None     # 融券余额(元)
+    rq_sell_vol: float | None = None    # 融券卖出量(股)
+    rq_repay_vol: float | None = None   # 融券偿还量(股)
+    total_balance: float | None = None  # 两融余额(元)
+
+
+@dataclass
+class ShareholderItem:
+    """股东户数(东财 datacenter,按 symbol,取最新一期)。字段待实抓校准。"""
+
+    report_date: str
+    symbol: str
+    holder_num: int | None = None      # 股东户数
+    change_num: int | None = None      # 户数变化(较上期)
+    change_ratio: float | None = None  # 户数环比变化(%)
+    avg_shares: float | None = None    # 户均持股(股)
+
+
+@dataclass
+class DividendItem:
+    """分红(东财 datacenter,按 symbol,返回该只全部历史)。字段待实抓校准。"""
+
+    ex_date: str
+    symbol: str
+    dividend_per_share: float | None = None  # 每股派息(税前,元)
+    transfer_ratio: float | None = None      # 每10股转增(股)
+    bonus_ratio: float | None = None         # 每10股送股(股)
+    progress: str = ""                       # 方案进度
+
+
+@dataclass
+class NorthboundItem:
+    """北向资金(同花顺 hexin 当日分钟累计净买入,市场级,取当日末值快照)。
+    字段待实抓校准(沙箱代理拦截,无法验证真实响应结构)。"""
+
+    date: str
+    hgt_net: float | None = None   # 沪股通净买入(亿元)
+    sgt_net: float | None = None   # 深股通净买入(亿元)⚠️ 近期不可靠(可能 NaN/量级异常),需容错
+    total_net: float | None = None  # 北向合计=hgt_net+sgt_net;任一为 None 则 None(不臆造)
+    time: str = ""                  # 末值对应的分钟时间点(可选)
+
+
+@dataclass
+class FlashNews:
+    """快讯(7×24,对齐 cls/sina/eastmoney 快讯流)。市场级,symbols 可空。"""
+
+    source: str
+    external_id: str
+    title: str
+    content: str
+    publish_time: datetime
+    symbols: list[str] = field(default_factory=list)
+    importance: int = 0
+    url: str = ""
+
+
+@dataclass
 class Response:
     """Engine 返回:承载 payload + 命中的 vendor/延迟。"""
 
