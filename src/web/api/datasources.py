@@ -71,6 +71,7 @@ class DataSourceResponse(BaseModel):
 
 # 已接入 marketdata 新引擎的数据类型(随各类型逐步迁移扩充)
 _ENGINE_ATTACHED_TYPES = {
+    "news",
     "quote",
     "kline",
     "capital_flow",

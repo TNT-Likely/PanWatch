@@ -101,11 +101,11 @@ def test_keyword_news_formats():
     """行业/主题词搜中文新闻:格式化含关键词 + 标题"""
     from unittest.mock import patch
     from datetime import datetime
-    from src.collectors.news_collector import EastMoneyStockNewsCollector, NewsItem
+    from src.collectors.news_collector import NewsItem
 
-    async def fake(self, kw):
+    def fake(kw):
         return [NewsItem(source="em", external_id="1", title=f"{kw}动态", content="", publish_time=datetime(2026, 5, 30))]
-    with patch.object(EastMoneyStockNewsCollector, "fetch_by_keyword", fake):
+    with patch("src.core.marketdata_client.md_news_by_keyword", fake):
         r = ta._serve_keyword_news("汽车行业")
     assert "汽车行业" in r and "动态" in r
 
@@ -113,11 +113,10 @@ def test_keyword_news_formats():
 def test_keyword_news_empty_warns_no_fabrication():
     """搜不到行业新闻时返回防编造提示(避免 LLM 凭空编)"""
     from unittest.mock import patch
-    from src.collectors.news_collector import EastMoneyStockNewsCollector
 
-    async def fake_empty(self, kw):
+    def fake_empty(kw):
         return []
-    with patch.object(EastMoneyStockNewsCollector, "fetch_by_keyword", fake_empty):
+    with patch("src.core.marketdata_client.md_news_by_keyword", fake_empty):
         r = ta._serve_keyword_news("某冷门主题")
     assert "未搜到" in r and "不要编造" in r
 

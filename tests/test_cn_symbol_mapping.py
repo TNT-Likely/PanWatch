@@ -2,7 +2,6 @@ import unittest
 
 from marketdata.symbol import Symbol
 
-from src.collectors.news_collector import XueqiuNewsCollector
 from src.collectors.screenshot_collector import ScreenshotCollector
 from src.core.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
 from src.models.market import MarketCode
@@ -32,12 +31,8 @@ class TestCnSymbolMapping(unittest.TestCase):
         self.assertEqual(Symbol.parse("000738", market="CN").to_eastmoney_secid(), "0.000738")
         self.assertEqual(Symbol.parse("600519", market="CN").to_eastmoney_secid(), "1.600519")
 
-    def test_xueqiu_news_symbol_id(self):
-        """雪球新闻 symbol — 大写前缀"""
-        collector = XueqiuNewsCollector()
-        self.assertEqual(collector._get_symbol_id("000738"), "SZ000738")
-        self.assertEqual(collector._get_symbol_id("600519"), "SH600519")
-        self.assertEqual(collector._get_symbol_id("510300"), "SH510300")
+    # 雪球新闻 symbol 前缀映射测试已随 XueqiuNewsCollector 收口进 marketdata 包，
+    # 对应用例见 packages/marketdata/tests/test_news.py::test_xueqiu_symbol_id_prefix_rules。
 
     def test_screenshot_urls(self):
         """截图 URL — 新浪/雪球/东方财富"""

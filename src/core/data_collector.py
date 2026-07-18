@@ -61,23 +61,11 @@ class DataCollectorManager:
 
     def _register_collectors(self):
         """注册所有采集器"""
-        from src.collectors.news_collector import (
-            XueqiuNewsCollector,
-            EastMoneyStockNewsCollector,
-            EastMoneyNewsCollector,
-        )
         from src.collectors.kline_collector import KlineCollector
         from src.collectors.capital_flow_collector import CapitalFlowCollector
         from src.collectors.events_collector import EastMoneyEventsCollector
 
         self.COLLECTOR_FACTORIES = {
-            "news": {
-                "xueqiu": lambda cfg: XueqiuNewsCollector(
-                    cookies=cfg.get("cookies", "")
-                ),
-                "eastmoney_news": lambda cfg: EastMoneyStockNewsCollector(),
-                "eastmoney": lambda cfg: EastMoneyNewsCollector(),
-            },
             "kline": {
                 "tencent": lambda cfg: ("tencent", KlineCollector),
             },
@@ -423,51 +411,8 @@ class DataCollectorManager:
         self, source: DataSource, test_symbols: list[str]
     ) -> CollectorResult:
         """测试数据源的具体实现"""
-        from datetime import timedelta
-
         if source.type == "news":
-            from src.collectors.news_collector import (
-                XueqiuNewsCollector,
-                EastMoneyStockNewsCollector,
-                EastMoneyNewsCollector,
-            )
-
-            since = datetime.now() - timedelta(hours=24)
-            collector = None
-
-            # 获取测试股票的名称映射（用于搜索 API）
-            symbol_names = self._get_stock_names(test_symbols)
-
-            if source.provider == "xueqiu":
-                cookies = (source.config or {}).get("cookies", "")
-                collector = XueqiuNewsCollector(cookies=cookies)
-            elif source.provider == "eastmoney_news":
-                collector = EastMoneyStockNewsCollector(symbol_names=symbol_names)
-            elif source.provider == "eastmoney":
-                collector = EastMoneyNewsCollector()
-
-            if collector:
-                news = await collector.fetch_news(symbols=test_symbols, since=since)
-                error_msg = ""
-                if len(news) == 0:
-                    if source.provider == "xueqiu":
-                        error_msg = "无数据，请检查 cookie 是否有效"
-                    elif source.provider == "eastmoney_news" and not symbol_names:
-                        error_msg = "未找到测试股票的名称，请先添加自选股"
-                    else:
-                        error_msg = "未获取到新闻数据"
-                return CollectorResult(
-                    success=len(news) > 0,
-                    data=[
-                        {
-                            "title": n.title[:60],
-                            "time": n.publish_time.strftime("%m-%d %H:%M"),
-                        }
-                        for n in news[:10]
-                    ],
-                    count=len(news),
-                    error=error_msg,
-                )
+            return await self._test_news_source(source, test_symbols)
 
         elif source.type == "kline":
             # 按 provider 路由到对应 Provider,而不是写死走 tencent (KlineCollector)。
@@ -601,6 +546,7 @@ class DataCollectorManager:
 
     # 包内 kline/quote/flash_news/fundamentals Engine 各自只注册了这些 vendor(权威来源见 marketdata.PACKAGE_VENDORS_BY_TYPE)。
     # provider 不在这个集合里 = 包内没实现该源,测试应给出明确 error,不能构造 Engine 硬跑。
+    _NEWS_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["news"]
     _KLINE_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["kline"]
     _QUOTE_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["quote"]
     _FLASH_NEWS_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["flash_news"]
@@ -703,6 +649,52 @@ class DataCollectorManager:
             ],
             count=len(rows),
             error="" if rows else "获取行情失败",
+        )
+
+    async def _test_news_source(
+        self, source: DataSource, test_symbols: list[str]
+    ) -> CollectorResult:
+        """按 provider 测试新闻源:走 marketdata 包的单源 Engine(仅该 vendor,不聚合其它源)。
+
+        新闻是按 symbol 的数据;eastmoney_news 用股票名称搜索(效果远好于代码搜索),
+        所以这里取测试股票的名称映射一并传入。capture_errors 已在 test_source 外层
+        包着,失败时会自动透真因（含雪球 WAF 拦截）。
+        """
+        from marketdata import MarketData, SourceConfig, StaticConfigProvider
+
+        if source.provider not in self._NEWS_PACKAGE_VENDORS:
+            return CollectorResult(
+                success=False,
+                error=f"provider {source.provider} 无对应 vendor，包内未实现该新闻源",
+            )
+
+        cfg = source.config or {}
+        md = MarketData(
+            config=StaticConfigProvider(
+                {"news": [SourceConfig(vendor=source.provider, config=cfg, enabled=True)]}
+            )
+        )
+
+        names = self._get_stock_names(test_symbols)
+
+        try:
+            # 包内 news publish_time 是 aware(UTC),now 也须 aware,否则 since 过滤崩
+            from datetime import timezone
+            news = md.news(test_symbols, names=names, now=datetime.now(timezone.utc))
+        except Exception as e:
+            return CollectorResult(success=False, error=str(e))
+
+        return CollectorResult(
+            success=len(news) > 0,
+            data=[
+                {
+                    "title": n.title[:60],
+                    "time": n.publish_time.strftime("%m-%d %H:%M"),
+                }
+                for n in news[:10]
+            ],
+            count=len(news),
+            error="" if news else "未获取到新闻数据",
         )
 
     async def _test_flash_news_source(self, source: DataSource) -> CollectorResult:

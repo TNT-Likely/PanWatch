@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import time
+from datetime import datetime, timedelta
+
 from marketdata.cache import TTLCache
 from marketdata.defaults import InMemoryMetricsSink
 from marketdata.engine import Engine
+from marketdata.http import record_error
 from marketdata.ports import ConfigProvider, MetricsSink
 from marketdata.registry import build_vendors
 from marketdata.symbol import Symbol
@@ -18,12 +22,14 @@ from marketdata.types import (
     HotBoard,
     HotStock,
     MarginItem,
+    NewsArticle,
     NorthboundItem,
     Quote,
     Request,
     ShareholderItem,
 )
 from marketdata.vendors.discovery import DiscoveryVendor
+from marketdata.vendors.news import EastmoneyStockNewsVendor
 
 # 指数 secid(东财):指数与个股 secid 前缀规则不同,必须显式映射,否则按个股规则会取错标的。
 # 美股指数东财K线不支持,未列入 → index_klines 返回空,fail-soft。
@@ -77,6 +83,10 @@ class MarketData:
         # discovery(东财热门榜)是市场级、单源、非 symbol 模型,不进 Engine/不进 DataSource
         # taxonomy —— md 直接委托给 DiscoveryVendor。
         self._discovery = DiscoveryVendor()
+        # news(新闻资讯)是聚合语义(并发查所有已启用源、结果合并去重),非失败转移
+        # (找到一个就停),硬套 Engine 的主备模型是设计错配,故不进 Engine —— 只借 registry
+        # 的 build_vendors 复用 vendor 实例,合并/去重/排序/since 过滤逻辑在 news() 里自己做。
+        self._news_vendors = build_vendors("news")
         self._fundamentals_engine = Engine(
             datatype="fundamentals",
             vendors=build_vendors("fundamentals"),
@@ -180,6 +190,88 @@ class MarketData:
         if keyword:
             data = [x for x in data if keyword in (x.title or "") or keyword in (x.content or "")]
         return data
+
+    def news(
+        self,
+        symbols: list[str],
+        *,
+        market: str = "CN",
+        since_hours: int = 2,
+        names: dict[str, str] | None = None,
+        now: datetime | None = None,
+    ) -> list[NewsArticle]:
+        """新闻资讯(个股新闻 + 公告)—— 聚合语义,非失败转移:查询所有已启用源、结果合并去重,
+        而非"找到一个就停"(这与 quotes()/klines() 的主备语义不同),故不经 Engine。
+
+        对齐 PanWatch NewsCollector.fetch_all 的聚合语义:
+        - 公告源(vendor="eastmoney")用 max(since_hours, 72) 更宽窗口(公告发布频率低,
+          窗口太窄容易一条都捞不到);其余源用 since_hours。窗口值会透传进 vendor 的
+          config(当前 3 个 vendor 均未读取——真正的 since 过滤在本方法做,vendor 内
+          不允许调用无参 datetime.now())。
+        - 合并后按 external_id 去重,保留先出现的(即优先级更高的源优先保留)。
+        - 按 publish_time 倒序排列。
+        - since 过滤需要"当下"锚点:传 now 才过滤(每条按其来源选窗口,规则同上);
+          不传 now 则不过滤,原样返回全部合并结果(包内绝不偷偷调 datetime.now())。
+        """
+        syms = [Symbol.parse(s, market) for s in symbols]
+        srcs = sorted(self.config.sources_for("news", market), key=lambda s: s.priority)
+
+        all_articles: list[NewsArticle] = []
+        for src in srcs:
+            if not src.enabled:
+                continue
+            vendor = self._news_vendors.get(src.vendor)
+            if vendor is None:
+                continue
+            if vendor.supports_markets and market not in vendor.supports_markets:
+                continue
+
+            window = max(since_hours, 72) if src.vendor == "eastmoney" else since_hours
+            call_config = {**(src.config or {}), "symbol_names": names or {}, "since_hours": window}
+
+            t0 = time.monotonic()
+            try:
+                articles = vendor.fetch(syms, call_config) or []
+            except Exception as e:
+                latency = int((time.monotonic() - t0) * 1000)
+                self.metrics.record(vendor=src.vendor, datatype="news", market=market,
+                                    ok=False, count=0, latency_ms=latency, error=str(e))
+                record_error(f"{src.vendor}: {type(e).__name__}: {e}")
+                continue
+
+            latency = int((time.monotonic() - t0) * 1000)
+            if articles:
+                self.metrics.record(vendor=src.vendor, datatype="news", market=market,
+                                    ok=True, count=len(articles), latency_ms=latency)
+            else:
+                self.metrics.record(vendor=src.vendor, datatype="news", market=market,
+                                    ok=False, count=0, latency_ms=latency, error="empty")
+            all_articles.extend(articles)
+
+        seen: set[str] = set()
+        deduped: list[NewsArticle] = []
+        for a in all_articles:
+            if a.external_id in seen:
+                continue
+            seen.add(a.external_id)
+            deduped.append(a)
+
+        deduped.sort(key=lambda a: a.publish_time, reverse=True)
+
+        if now is not None:
+            def _keep(a: NewsArticle) -> bool:
+                w = max(since_hours, 72) if a.source == "eastmoney" else since_hours
+                return a.publish_time >= now - timedelta(hours=w)
+            deduped = [a for a in deduped if _keep(a)]
+
+        return deduped
+
+    def news_by_keyword(self, keyword: str, *, market: str = "CN") -> list[NewsArticle]:
+        """按任意关键词(行业/主题词,如"新能源汽车")搜中文新闻,不限股票代码。
+        直接复用东财搜索 vendor 的 fetch_by_keyword,单一源、不经聚合/去重。
+        market 目前未使用(该 vendor 只支持中文搜索),保留参数位供未来扩展。
+        """
+        return EastmoneyStockNewsVendor.fetch_by_keyword(keyword)
 
     def fundamentals(self, symbols: list[str | Symbol], *, market: str | None = None) -> list[Fundamentals]:
         """批量基本面/财务(按 symbol)。symbols 可跨市场:未显式给 market 时按代码自动识别并分组。

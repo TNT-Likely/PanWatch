@@ -49,6 +49,12 @@ class FlashNewsVendor(Vendor):
     pass
 
 
+class NewsVendor(Vendor):
+    """新闻 vendor:返回 list[NewsArticle],按 symbol。"""
+
+    pass
+
+
 class FundamentalsVendor(Vendor):
     """基本面/财务 vendor:fetch 返回 list[Fundamentals]。按 symbol(批量)。"""
 

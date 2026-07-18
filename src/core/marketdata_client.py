@@ -3,6 +3,7 @@
 - DbConfigProvider:把 DataSource 表映射成 marketdata 的 SourceConfig(实现 ConfigProvider 端口)。
 - get_market_data():进程级单例(无状态 vendor + 现查 DB 的配置端口)。
 - md_quote_rows():新包 MarketData.quotes 转 dict,返回 list[dict](与旧 orchestrator 输出同形)。
+- md_news()/md_news_by_keyword():新包 MarketData.news/news_by_keyword 转 host NewsItem。
 """
 
 from __future__ import annotations
@@ -95,6 +96,53 @@ def md_quote_rows(symbols: list[str], market: str) -> list[dict]:
         return []
     quotes = get_market_data().quotes(syms, market=market)
     return [_quote_to_row(q) for q in quotes]
+
+
+def _article_to_newsitem(a):
+    """marketdata.NewsArticle → host NewsItem(同名字段直拷)。
+
+    lazy import 避免与 news_collector 的模块级循环引用(news_collector 会
+    在模块级 import 本模块的 md_news)。
+    """
+    from src.collectors.news_collector import NewsItem
+
+    return NewsItem(
+        source=a.source,
+        external_id=a.external_id,
+        title=a.title,
+        content=a.content,
+        publish_time=a.publish_time,
+        symbols=a.symbols,
+        importance=a.importance,
+        url=a.url,
+    )
+
+
+def md_news(
+    symbols: list[str], since_hours: int = 2, names: dict[str, str] | None = None
+) -> list:
+    """聚合新闻(个股新闻 + 公告),返回 list[NewsItem](与旧 NewsCollector.fetch_all 同形)。
+
+    host 侧可以用 datetime.now() 做 since 过滤(包内不允许偷偷调 datetime.now(),
+    必须由调用方显式传 now)。
+
+    同步函数;async 调用方用 `await asyncio.to_thread(md_news, ...)`。
+    """
+    from datetime import datetime, timezone
+
+    # 包内 news vendor 的 publish_time 是 aware(UTC);这里的 now 也必须 aware,
+    # 否则 since 过滤会 "can't compare offset-naive and offset-aware datetimes"。
+    arts = get_market_data().news(
+        list(symbols or []), since_hours=since_hours, names=names,
+        now=datetime.now(timezone.utc),
+    )
+    return [_article_to_newsitem(a) for a in arts]
+
+
+def md_news_by_keyword(keyword: str) -> list:
+    """按关键词(行业/主题词)搜中文新闻,返回 list[NewsItem]。同步。"""
+    arts = get_market_data().news_by_keyword(keyword)
+    return [_article_to_newsitem(a) for a in arts]
 
 
 def md_stock_data(symbols: list[str], market: str) -> list:

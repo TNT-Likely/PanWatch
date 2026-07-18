@@ -32,6 +32,11 @@ from marketdata.vendors.market_flow import (
     EastmoneyMarginVendor,
     EastmoneyShareholdersVendor,
 )
+from marketdata.vendors.news import (
+    EastmoneyAnnNewsVendor,
+    EastmoneyStockNewsVendor,
+    XueqiuNewsVendor,
+)
 from marketdata.vendors.northbound import HexinNorthboundVendor
 from marketdata.vendors.sina import SinaQuoteVendor
 from marketdata.vendors.tencent import TencentQuoteVendor
@@ -67,6 +72,11 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "cls": ClsFlashNewsVendor,
         "sina": SinaFlashNewsVendor,
         "eastmoney": EastmoneyFlashNewsVendor,
+    },
+    "news": {
+        "xueqiu": XueqiuNewsVendor,
+        "eastmoney_news": EastmoneyStockNewsVendor,
+        "eastmoney": EastmoneyAnnNewsVendor,
     },
     "dragon_tiger": {
         "eastmoney": EastmoneyDragonTigerVendor,

@@ -630,13 +630,11 @@ def _serve_keyword_news(keyword: str) -> str:
     """实时按行业/主题关键词搜中文新闻(东方财富搜索),格式化返回。
 
     用于 get_news 的 query 是行业/主题词(非 ticker,如"汽车行业""新能源汽车")时,
-    替代拉不到中文数据的上游 vendor。在 worker 线程内同步执行(asyncio.run)。
+    替代拉不到中文数据的上游 vendor。md_news_by_keyword 本身同步,直接调用即可。
     """
-    import asyncio
+    from src.core.marketdata_client import md_news_by_keyword
 
-    from src.collectors.news_collector import EastMoneyStockNewsCollector
-
-    items = asyncio.run(EastMoneyStockNewsCollector().fetch_by_keyword(keyword))
+    items = md_news_by_keyword(keyword)
     if not items:
         return (
             f"[未搜到「{keyword}」相关行业/主题新闻。请基于个股新闻 + 元信息分析,"

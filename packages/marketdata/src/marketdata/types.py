@@ -227,6 +227,21 @@ class FlashNews:
 
 
 @dataclass
+class NewsArticle:
+    """新闻资讯(个股新闻+公告,对齐 PanWatch src/collectors/news_collector.NewsItem)。
+    来源可为 xueqiu(雪球个股新闻)/ eastmoney_news(东财个股新闻搜索)/ eastmoney(东财公告)。"""
+
+    source: str
+    external_id: str
+    title: str
+    content: str
+    publish_time: datetime
+    symbols: list[str] = field(default_factory=list)
+    importance: int = 0
+    url: str = ""
+
+
+@dataclass
 class Response:
     """Engine 返回:承载 payload + 命中的 vendor/延迟。"""
 
