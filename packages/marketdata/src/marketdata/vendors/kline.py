@@ -29,11 +29,16 @@ class TencentKlineVendor(KlineVendor):
     name = "tencent"
     supports_markets = {"CN", "HK", "US"}
 
+    # 腾讯 fqkline 对 count 有上限:实测 ≤800 正常返(800→801根),1000-2000 退化到 ~641,
+    # ≥3000 直接返空(0根)。上层 want 常放大到 3000(为长历史/回测),若原样透传腾讯会返 0
+    # → 每个标的都白白落到东财补全 → 东财一挂就没数据。故这里把请求 count 截到 800(取回最多)。
+    _MAX_COUNT = 800
+
     def fetch(self, symbols: list[Symbol], config: dict) -> list[Bar]:
         if not symbols:
             return []
         sym = symbols[0]
-        days = _days(config)
+        days = min(_days(config), self._MAX_COUNT)
         tsym = sym.to_tencent()
         text = market_get(
             _TENCENT_URL, host_key="web.ifzq.gtimg.cn", min_interval_s=0.15,
