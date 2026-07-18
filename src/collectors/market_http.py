@@ -1,7 +1,7 @@
 """行情/数据采集的统一 HTTP 工具。
 
 把散落在各 collector 的样板收敛到一处,避免每个文件各写一套且各有缺漏:
-- **直连**:默认 trust_env=False,绕过 env 代理(生产 LAN 代理会拦国内行情/数据接口)。
+- **走系统代理**:默认 trust_env=True,遵循进程 env 的 HTTP_PROXY/NO_PROXY(由 apply_proxy_env 按 UI 的 http_proxy 设置)。没配代理时即直连。
 - **按 host 节流**:同一域名请求最小间隔,平滑顺序/并发突发(第三方批量突发会限流)。
 - **退避重试**:空响应/异常退避 + 抖动重试。
 - **调用来源标记**:全项目共享一个 contextvar,失败日志带 [src=xxx],定位是哪个任务触发。
@@ -80,11 +80,11 @@ def market_get(
     symbol: str = "",
     log_label: str = "",
     raise_for_status: bool = True,
-    trust_env: bool = False,  # 默认直连,绕过 env 代理
+    trust_env: bool = True,  # 遵循进程 env 代理(HTTP_PROXY/NO_PROXY),由 apply_proxy_env 统一设
     follow_redirects: bool = True,
     verify: bool = True,
 ) -> Any | None:
-    """直连 + 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源的日志。"""
+    """按系统代理(env)+ host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源的日志。"""
     last_err: Any = None
     for attempt in range(max(1, retries + 1)):
         throttle(host_key, min_interval_s)

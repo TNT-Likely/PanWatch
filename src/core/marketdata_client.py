@@ -9,51 +9,9 @@ from __future__ import annotations
 
 import logging
 
-from marketdata import MarketData, Quote, SourceConfig, set_default_proxy
+from marketdata import MarketData, Quote, SourceConfig
 
 logger = logging.getLogger(__name__)
-
-
-def _truthy(v: str | None) -> bool:
-    return str(v or "").strip().lower() in ("1", "true", "yes", "on")
-
-
-def apply_marketdata_proxy() -> None:
-    """按设置决定行情抓取是否走代理。
-
-    开关 `marketdata_use_proxy` 打开时,让 marketdata 全部 vendor 的抓取走 `http_proxy`
-    (复用同一代理地址);关闭(默认)则直连(不影响"代理会拦国内接口"的部署)。
-    在启动 + 代理相关设置变更后调用。
-    """
-    from src.config import Settings
-
-    use_proxy = False
-    proxy = ""
-    try:
-        from src.web.database import SessionLocal
-        from src.web.models import AppSettings
-
-        db = SessionLocal()
-        try:
-            rows = {
-                s.key: s.value
-                for s in db.query(AppSettings).filter(
-                    AppSettings.key.in_(["marketdata_use_proxy", "http_proxy"])
-                )
-            }
-        finally:
-            db.close()
-        use_proxy = _truthy(rows.get("marketdata_use_proxy"))
-        proxy = (rows.get("http_proxy") or "").strip()
-    except Exception as e:  # DB 不可用时不阻断
-        logger.debug(f"[apply_marketdata_proxy] 读设置失败: {e}")
-
-    if not proxy:
-        proxy = (Settings().http_proxy or "").strip()
-
-    effective = proxy if (use_proxy and proxy) else None
-    set_default_proxy(effective)
-    logger.info(f"[marketdata] 行情抓取代理: {'走 ' + effective if effective else '直连(未启用/未配置)'}")
 
 
 class DbConfigProvider:

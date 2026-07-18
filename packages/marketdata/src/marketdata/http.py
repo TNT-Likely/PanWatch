@@ -1,6 +1,7 @@
-"""统一 HTTP 工具:直连(trust_env=False)+ 按 host 节流 + 退避重试 + 来源标记。
+"""统一 HTTP 工具:走系统代理(trust_env=True)+ 按 host 节流 + 退避重试 + 来源标记。
 
-默认 trust_env=False —— 生产 LAN 代理会拦国内行情/数据接口,必须直连。
+默认 trust_env=True —— 遵循进程 env 的 HTTP_PROXY/NO_PROXY(宿主按 UI 的 http_proxy 设置统一注入);
+没配代理时即直连。个别调用可用 proxy= 显式覆盖。
 """
 
 from __future__ import annotations
@@ -62,21 +63,6 @@ def record_error(msg: str) -> None:
 _THROTTLE_LOCK = threading.Lock()
 _last_call: dict[str, float] = {}
 
-# 全局默认代理:vendor 未显式传 proxy 时的回退。默认 None = 直连(trust_env=False)。
-# 宿主可调 set_default_proxy() 让全部行情抓取走某个代理(如本机被企业 MITM 代理拦截、
-# 需统一走一个不做 MITM 的 NAS 代理的场景)。空/None 恢复直连(不影响那些"代理会拦国内接口"的部署)。
-_DEFAULT_PROXY: str | None = None
-
-
-def set_default_proxy(proxy: str | None) -> None:
-    """设置全局默认代理(vendor 未显式传 proxy 时回退用它);传空/None 恢复直连。"""
-    global _DEFAULT_PROXY
-    _DEFAULT_PROXY = (proxy or "").strip() or None
-
-
-def get_default_proxy() -> str | None:
-    return _DEFAULT_PROXY
-
 
 def throttle(host_key: str, min_interval_s: float) -> None:
     """保证对同一 host 的请求间隔 ≥ min_interval_s。"""
@@ -105,18 +91,16 @@ def market_get(
     symbol: str = "",
     log_label: str = "",
     raise_for_status: bool = True,
-    trust_env: bool = False,
+    trust_env: bool = True,
     follow_redirects: bool = True,
     verify: bool = True,
     proxy: str | None = None,
 ) -> Any | None:
-    """直连 + 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源日志。
+    """走系统代理(env)+ 按 host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源日志。
 
-    proxy: 显式代理(如市场扫描场景需要走代理);仅在给了值时传给 httpx.Client,
-    避免与 trust_env 冲突。未显式传 proxy 时回退到全局默认代理(set_default_proxy);
-    两者都无则直连(与此前行为一致)。
+    proxy: 显式代理,仅在给了值时传给 httpx.Client 覆盖 env 代理;不传则遵循 trust_env(env)。
     """
-    effective_proxy = proxy if proxy is not None else _DEFAULT_PROXY
+    effective_proxy = proxy
     last_err: Any = None
     for attempt in range(max(1, retries + 1)):
         throttle(host_key, min_interval_s)

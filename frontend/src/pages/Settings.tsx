@@ -915,17 +915,7 @@ export default function SettingsPage() {
                   <div key={setting.key}>
                     <Label>{setting.description || setting.key}</Label>
                     <div className="flex items-center gap-2.5">
-                      {setting.key === 'marketdata_use_proxy' ? (
-                        <div className="flex items-center gap-2 flex-1 h-10">
-                          <Switch
-                            checked={String(currentValue).toLowerCase() === 'true'}
-                            onCheckedChange={v => setEdited({ ...edited, [setting.key]: v ? 'true' : 'false' })}
-                          />
-                          <span className="text-[12px] text-muted-foreground">
-                            {String(currentValue).toLowerCase() === 'true' ? '行情抓取走 HTTP 代理' : '行情抓取直连(默认)'}
-                          </span>
-                        </div>
-                      ) : setting.key === 'stock_link_platform' ? (
+                      {setting.key === 'stock_link_platform' ? (
                         <Select
                           value={currentValue || 'xueqiu'}
                           onValueChange={v => setEdited({ ...edited, [setting.key]: v })}

@@ -30,7 +30,7 @@ def classify_hint(category: str, error: str | None) -> str:
             "server disconnected", "timeout", "timed out", "connect", "proxy",
             "ssl", "remote end closed", "read timed out", "connection reset",
         )):
-            return "疑似代理拦截国内行情/新闻接口:CN 采集器需直连(trust_env=False),或检查 HTTP_PROXY / NO_PROXY 设置。"
+            return "行情/新闻接口连接失败:所有请求走 http_proxy 设置的系统代理,检查该代理能否代出目标域名(国内接口需 CN 出口、Yahoo 需境外),或本机被 MITM 代理拦截需换可信出口。"
         return "数据源不通:打开数据源配置页看详细日志,确认 provider 与接口可达。"
     if category == "ai":
         if any(k in e for k in ("401", "unauthorized", "invalid_api_key", "api key", "incorrect api key", "authentication")):

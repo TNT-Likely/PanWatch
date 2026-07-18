@@ -1435,14 +1435,8 @@ async def lifespan(app):
     """应用生命周期: 初始化 + 启动调度器"""
     init_db()
     setup_logging()
-    setup_proxy()  # 必须在 setup_ssl 之前:代理决定走哪条出口,SSL 证书才匹配
+    setup_proxy()  # 设置进程 env 代理(HTTP_PROXY/NO_PROXY);所有 httpx(trust_env=True)据此走代理
     setup_ssl()
-    # 行情抓取默认直连(trust_env=False);若开了 marketdata_use_proxy 则让全部 vendor 走 http_proxy
-    try:
-        from src.core.marketdata_client import apply_marketdata_proxy
-        apply_marketdata_proxy()
-    except Exception as e:
-        logger.warning(f"应用行情抓取代理失败,跳过: {e}")
     setup_playwright()
 
     # 从环境变量初始化认证（Docker 部署用）

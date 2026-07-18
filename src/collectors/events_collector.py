@@ -20,7 +20,7 @@ class EventItem:
 
 
 # 东财公告全文(纯文本)content API:art_code -> data.notice_content。
-# 直连需 trust_env=False + verify=False(同 CN 采集器,绕 LAN 代理)。
+# 走系统代理(trust_env=True,env HTTP_PROXY);东财证书链偶发问题,verify=False。
 ANN_CONTENT_API_URL = "https://np-cnotice-stock.eastmoney.com/api/content/ann"
 
 
@@ -61,7 +61,7 @@ def fetch_announcement_fulltext(
             verify=False,
             headers=headers,
             follow_redirects=True,
-            trust_env=False,  # 绕 LAN 代理(Telegram/AI 用),仅显式 proxy
+            trust_env=True,  # 走系统代理(env HTTP_PROXY,由 apply_proxy_env 统一设)
             proxy=proxy,
         ) as client:
             resp = client.get(ANN_CONTENT_API_URL, params=params)
