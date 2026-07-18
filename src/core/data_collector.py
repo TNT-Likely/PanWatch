@@ -15,6 +15,11 @@ from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
 
+# 数据源"测试"最多测多少个配置的 test_symbols(上限,防用户贴一大串把源打爆)。
+# 取 10 覆盖常见配置(此前 kline/capital_flow 写死 [:3]、quote/events [:5],会把用户
+# 配的第 4/6 个悄悄切掉,造成"配了 N 个只返回前几个"的意外)。
+_TEST_SYMBOL_LIMIT = 10
+
 
 @dataclass
 class CollectorResult:
@@ -424,7 +429,7 @@ class DataCollectorManager:
 
             collector = CapitalFlowCollector(MarketCode.CN)
             results = []
-            for symbol in test_symbols[:3]:
+            for symbol in test_symbols[:_TEST_SYMBOL_LIMIT]:
                 data = collector.get_capital_flow(symbol)
                 if data:
                     results.append(
@@ -492,7 +497,7 @@ class DataCollectorManager:
                     backoff_s=cfg.get("backoff_s", 0.6),
                 )
                 items = await collector.fetch_events(
-                    symbols=test_symbols[:5],
+                    symbols=test_symbols[:_TEST_SYMBOL_LIMIT],
                     since=since,
                     page_size=100,
                 )
@@ -582,7 +587,7 @@ class DataCollectorManager:
 
         results = []
         first_error = ""
-        for symbol in test_symbols[:3]:
+        for symbol in test_symbols[:_TEST_SYMBOL_LIMIT]:
             market = Symbol.parse(symbol).market.value
             try:
                 bars = md.klines(symbol, market=market, days=30)
@@ -631,7 +636,7 @@ class DataCollectorManager:
         )
 
         try:
-            quotes = md.quotes(list(test_symbols[:5]))
+            quotes = md.quotes(list(test_symbols[:_TEST_SYMBOL_LIMIT]))
         except Exception as e:
             return CollectorResult(success=False, error=str(e))
 
