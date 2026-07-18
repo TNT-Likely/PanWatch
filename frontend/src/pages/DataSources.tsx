@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Plus, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
 import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -7,7 +7,6 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 interface TestLogItem {
@@ -251,13 +250,9 @@ export default function DataSourcesPage() {
         <div className="flex items-center gap-2 mb-4">
           <Icon className={`w-4 h-4 ${color}`} />
           <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
-          <span className="text-[11px] text-muted-foreground ml-auto mr-2">
+          <span className="text-[11px] text-muted-foreground ml-auto">
             {groupedSources[type]?.length || 0} 个
           </span>
-          <Button variant="ghost" size="sm" className="h-7 text-[11px]"
-            onClick={() => openDialog(undefined, type)}>
-            <Plus className="w-3.5 h-3.5 mr-1" />新增源
-          </Button>
         </div>
 
         {(!groupedSources[type] || groupedSources[type].length === 0) ? (
@@ -399,45 +394,10 @@ export default function DataSourcesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editId ? `数据源设置 - ${form.name}` : '新增数据源'}</DialogTitle>
-            <DialogDescription>{editId ? form.provider : '选择类型与 Provider,并按需填写凭证'}</DialogDescription>
+            <DialogTitle>数据源设置 - {form.name}</DialogTitle>
+            <DialogDescription>{form.provider}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            {!editId && (
-              <>
-                <div>
-                  <Label>名称</Label>
-                  <Input
-                    value={form.name}
-                    onChange={e => setForm({ ...form, name: e.target.value })}
-                    placeholder="如 Tushare K线"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>类型</Label>
-                    <Select value={form.type} onValueChange={val => setForm({ ...form, type: val })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择类型" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(DATASOURCE_TYPES).map(([key, { label }]) => (
-                          <SelectItem key={key} value={key}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Provider</Label>
-                    <Input
-                      value={form.provider}
-                      onChange={e => setForm({ ...form, provider: e.target.value })}
-                      placeholder="如 tushare"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>优先级 <span className="text-muted-foreground font-normal">(越小越高)</span></Label>
@@ -563,7 +523,7 @@ export default function DataSourcesPage() {
             {testResult?.error && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
                 <div className="text-[11px] text-red-500 font-medium mb-1">错误信息</div>
-                <div className="text-[12px] text-red-600 dark:text-red-400">{testResult.error}</div>
+                <div className="text-[12px] text-red-600 dark:text-red-400 break-words whitespace-pre-wrap">{testResult.error}</div>
               </div>
             )}
 

@@ -11,6 +11,7 @@ import logging
 import time
 
 from marketdata.cache import TTLCache
+from marketdata.http import record_error
 from marketdata.ports import ConfigProvider, MetricsSink
 from marketdata.symbol import Market, Symbol
 from marketdata.types import Request, Response
@@ -61,6 +62,7 @@ class Engine:
                                     ok=False, count=0, latency_ms=latency, error=str(e))
                 last_err = str(e)
                 logger.warning(f"[marketdata/{self.datatype}] vendor={src.vendor} raised: {e}")
+                record_error(f"{src.vendor}: {type(e).__name__}: {e}")
                 continue
 
             latency = int((time.monotonic() - t0) * 1000)

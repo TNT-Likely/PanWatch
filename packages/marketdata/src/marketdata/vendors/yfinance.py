@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from marketdata.errors import VendorError
+from marketdata.http import record_error
 from marketdata.symbol import Market, Symbol
 from marketdata.types import Quote
 from marketdata.vendors.base import QuoteVendor
@@ -36,6 +37,7 @@ class YFinanceQuoteVendor(QuoteVendor):
                 info = yf.Ticker(_yf_ticker(s)).fast_info
                 last = float(info["last_price"]) if info.get("last_price") else None
                 if last is None:
+                    record_error(f"yfinance {_yf_ticker(s)}: 返回空(last_price 缺失,可能 Yahoo 不可达/被限流/需要代理)")
                     continue
                 prev = float(info["previous_close"]) if info.get("previous_close") else None
                 chg = last - prev if prev else 0.0
@@ -51,4 +53,5 @@ class YFinanceQuoteVendor(QuoteVendor):
                 ))
             except Exception as e:
                 logger.debug(f"yfinance 拉取 {s.code} 失败: {e}")
+                record_error(f"yfinance {_yf_ticker(s)}: {type(e).__name__}: {e}")
         return out

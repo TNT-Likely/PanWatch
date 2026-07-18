@@ -49,6 +49,26 @@ def test_market_get_returns_none_on_failure(monkeypatch):
     assert mh.market_get("http://x", host_key="t4b", retries=1) is None
 
 
+def test_capture_errors_collects_failure_reason(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _FailClient)
+    monkeypatch.setattr(mh.time, "sleep", lambda *_: None)
+    with mh.capture_errors() as errs:
+        mh.market_get("http://x", host_key="t4i", retries=0, log_label="测试源", symbol="600519")
+    assert len(errs) == 1
+    assert "测试源" in errs[0] and "600519" in errs[0] and "ConnectError" in errs[0]
+
+
+def test_capture_errors_empty_on_success(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _OkClient)
+    with mh.capture_errors() as errs:
+        mh.market_get("http://x", host_key="t4j", retries=0)
+    assert errs == []
+
+
+def test_record_error_no_sink_is_noop():
+    mh.record_error("孤立调用不应抛错")  # 无 capture_errors 上下文
+
+
 def test_market_get_passes_proxy_when_set(monkeypatch):
     monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
     mh.market_get("http://x", host_key="t4d", retries=0, proxy="http://p:1")

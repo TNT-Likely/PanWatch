@@ -35,6 +35,30 @@ def source_suffix() -> str:
     return f" [src={src}]" if src else ""
 
 
+# 失败原因收集:默认 None = 不收集(生产热路径零开销)。数据源"测试"按钮用 capture_errors()
+# 包住取数调用,把 market_get / vendor 的真实失败原因收上来透到 UI,而不是只显示"无数据"。
+_ERROR_SINK: contextvars.ContextVar[list | None] = contextvars.ContextVar("md_error_sink", default=None)
+
+
+@contextmanager
+def capture_errors():
+    """进入后,market_get / record_error 的失败原因会被收集到 yield 出的 list。"""
+    errs: list[str] = []
+    token = _ERROR_SINK.set(errs)
+    try:
+        yield errs
+    finally:
+        _ERROR_SINK.reset(token)
+
+
+def record_error(msg: str) -> None:
+    """把一条失败原因写入当前 capture_errors 上下文(无上下文则忽略)。
+    供 vendor 自己 catch 异常(如 yfinance 走库、不经 market_get)时也能上报真因。"""
+    sink = _ERROR_SINK.get()
+    if sink is not None and msg:
+        sink.append(msg)
+
+
 _THROTTLE_LOCK = threading.Lock()
 _last_call: dict[str, float] = {}
 
@@ -124,4 +148,5 @@ def market_get(
         label = log_label or host_key
         sym = f" symbol={symbol}" if symbol else ""
         logger.warning(f"{label} 获取失败{sym}: {last_err}{source_suffix()}")
+        record_error(f"{label}{sym}: {type(last_err).__name__}: {last_err}")
     return None

@@ -3,7 +3,7 @@
 from marketdata.client import MarketData
 from marketdata.defaults import InMemoryMetricsSink, StaticConfigProvider
 from marketdata.errors import MarketDataError, VendorError
-from marketdata.http import get_default_proxy, set_default_proxy
+from marketdata.http import capture_errors, get_default_proxy, record_error, set_default_proxy
 from marketdata.ports import ConfigProvider, MetricsSink, SourceConfig
 from marketdata.registry import PACKAGE_VENDORS_BY_TYPE
 from marketdata.symbol import Market, Symbol
@@ -35,6 +35,6 @@ __all__ = [
     "SourceConfig", "ConfigProvider", "MetricsSink",
     "StaticConfigProvider", "InMemoryMetricsSink",
     "PACKAGE_VENDORS_BY_TYPE",
-    "set_default_proxy", "get_default_proxy",
+    "set_default_proxy", "get_default_proxy", "capture_errors", "record_error",
     "MarketDataError", "VendorError", "__version__",
 ]

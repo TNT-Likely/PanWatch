@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
 
-from marketdata import PACKAGE_VENDORS_BY_TYPE
+from marketdata import PACKAGE_VENDORS_BY_TYPE, capture_errors
 
 from src.web.database import SessionLocal
 from src.web.models import DataSource
@@ -367,7 +367,20 @@ class DataCollectorManager:
         )
 
         try:
-            result = await self._test_source_impl(source, test_symbols)
+            # 收集 vendor/market_get 的真实失败原因,失败时透到 UI(而不是笼统的"无数据")
+            with capture_errors() as errs:
+                result = await self._test_source_impl(source, test_symbols)
+            if not result.success and errs:
+                # 去重保序 + 截断,拼成真因;若原本已有更具体的 error(如"provider 无对应 vendor")保留在前
+                seen: dict[str, None] = {}
+                for m in errs:
+                    seen.setdefault(m, None)
+                detail = "; ".join(list(seen)[:8])
+                generic = {"", "无数据", "获取行情失败", "获取 K 线数据失败", "获取资金流向失败",
+                           "未获取到新闻数据", "未获取到快讯数据", "未获取到基本面数据",
+                           "未获取到龙虎榜数据", "未获取到融资融券数据", "未获取到股东数据",
+                           "未获取到分红数据", "未获取到北向资金数据"}
+                result.error = detail if (result.error or "") in generic else f"{result.error};真因: {detail}"
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
             if result.success:
