@@ -62,13 +62,25 @@ def test_load_ohlcv_passthrough_for_us(monkeypatch):
     assert out is sentinel
 
 
-def test_load_ohlcv_falls_back_when_no_klines(monkeypatch):
-    """A股但取不到 K线时,兜底回落原生路径(不抛错)。"""
+def test_load_ohlcv_a_share_no_klines_raises_not_fallback(monkeypatch):
+    """A股取不到 K线时,直接抛 NoMarketDataError 报清晰错,**不回退 yfinance**。
+
+    A股/港股在 Yahoo 无数据 + 限流,回退只会把"K线获取失败"变成误导的"Yahoo no rows"。
+    """
+    import pytest
+    from tradingagents.dataflows.errors import NoMarketDataError
+
     monkeypatch.setattr(KlineCollector, "get_klines", lambda self, symbol, days=60: [])
-    sentinel = pd.DataFrame({"Date": [pd.to_datetime("2026-01-01")], "Close": [1.0]})
-    monkeypatch.setattr(ta, "_real_load_ohlcv", lambda symbol, curr_date, *a, **k: sentinel)
-    out = ta._panwatch_load_ohlcv("601238", "2026-06-18")
-    assert out is sentinel
+    real_calls = {"n": 0}
+
+    def fake_real(*a, **k):
+        real_calls["n"] += 1
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ta, "_real_load_ohlcv", fake_real)
+    with pytest.raises(NoMarketDataError):
+        ta._panwatch_load_ohlcv("601238", "2026-06-18")
+    assert real_calls["n"] == 0, "A股拉空不应回退 yfinance"
 
 
 def test_route_to_vendor_degrades_on_upstream_error(monkeypatch):
