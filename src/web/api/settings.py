@@ -49,6 +49,7 @@ class SettingResponse(BaseModel):
 # 配置项描述
 SETTING_DESCRIPTIONS = {
     "http_proxy": "HTTP 代理地址",
+    "marketdata_use_proxy": "行情数据也走代理(true/false;开启后行情/K线等抓取走上面的 HTTP 代理,适合本机被企业 MITM 代理拦截时统一走 NAS 代理)",
     "notify_quiet_hours": "通知静默时间段（HH:MM-HH:MM，空为关闭）",
     "notify_retry_attempts": "通知失败重试次数（不含首次）",
     "notify_retry_backoff_seconds": "通知重试退避秒数（基数）",
@@ -65,6 +66,7 @@ def _get_env_defaults() -> dict[str, str]:
     s = Settings()
     return {
         "http_proxy": s.http_proxy,
+        "marketdata_use_proxy": "false",
         "notify_quiet_hours": s.notify_quiet_hours,
         "notify_retry_attempts": str(s.notify_retry_attempts),
         "notify_retry_backoff_seconds": str(s.notify_retry_backoff_seconds),
@@ -196,6 +198,14 @@ def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db
         try:
             from server import apply_proxy_env
             apply_proxy_env(update.value)
+        except Exception:
+            pass
+
+    # 行情抓取代理开关或代理地址变更后,立刻重算 marketdata 的默认代理(免重启)
+    if key in ("http_proxy", "marketdata_use_proxy"):
+        try:
+            from src.core.marketdata_client import apply_marketdata_proxy
+            apply_marketdata_proxy()
         except Exception:
             pass
 

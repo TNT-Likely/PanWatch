@@ -61,6 +61,36 @@ def test_market_get_omits_proxy_when_not_set(monkeypatch):
     assert "proxy" not in _CapturingClient.captured_kwargs
 
 
+def test_market_get_uses_default_proxy_as_fallback(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
+    mh.set_default_proxy("http://nas:8888")
+    try:
+        mh.market_get("http://x", host_key="t4f", retries=0)
+        assert _CapturingClient.captured_kwargs.get("proxy") == "http://nas:8888"
+    finally:
+        mh.set_default_proxy(None)
+
+
+def test_explicit_proxy_overrides_default(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
+    mh.set_default_proxy("http://nas:8888")
+    try:
+        mh.market_get("http://x", host_key="t4g", retries=0, proxy="http://explicit:1")
+        assert _CapturingClient.captured_kwargs.get("proxy") == "http://explicit:1"
+    finally:
+        mh.set_default_proxy(None)
+
+
+def test_set_default_proxy_empty_means_direct(monkeypatch):
+    monkeypatch.setattr(mh.httpx, "Client", _CapturingClient)
+    mh.set_default_proxy("")  # 空 → 直连
+    try:
+        mh.market_get("http://x", host_key="t4h", retries=0)
+        assert "proxy" not in _CapturingClient.captured_kwargs
+    finally:
+        mh.set_default_proxy(None)
+
+
 def test_throttle_sleeps_on_second_call(monkeypatch):
     slept = []
     monkeypatch.setattr(mh.time, "sleep", lambda s: slept.append(s))
