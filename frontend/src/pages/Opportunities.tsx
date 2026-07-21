@@ -32,6 +32,7 @@ type GroupedSignal = {
 const marketLabel = (m?: string) => {
   if (m === 'HK') return '港股'
   if (m === 'US') return '美股'
+  if (m === 'FUND') return '基金'
   return 'A股'
 }
 

@@ -137,6 +137,18 @@ def parse_cron(cron: str, timezone: str = "UTC") -> CronTrigger:
     if len(parts) != 5:
         raise ValueError(f"无效的 cron 表达式: {cron}")
 
+    # 防御 */60 等无效 step（分钟字段 range 0-59，step 不能超过 rang）
+    minute_expr = parts[0]
+    if minute_expr.startswith("*/"):
+        try:
+            step = int(minute_expr[2:])
+            if step >= 60 and parts[1] == "*" and parts[2] == "*" and parts[3] == "*":
+                from apscheduler.triggers.interval import IntervalTrigger
+
+                return IntervalTrigger(minutes=step, timezone=timezone)
+        except (ValueError, IndexError):
+            pass
+
     dow = normalize_cron_day_of_week_field(parts[4])
     return CronTrigger(
         minute=parts[0],

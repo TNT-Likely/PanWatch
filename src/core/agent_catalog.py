@@ -16,6 +16,12 @@ WORKFLOW_AGENT_NAMES: tuple[str, ...] = (
     "premarket_outlook",
     "intraday_monitor",
     "daily_report",
+    "fund_holding_analyst",
+)
+
+# 仅限基金使用的 Agent
+FUND_ONLY_AGENT_NAMES: tuple[str, ...] = (
+    "fund_holding_analyst",
 )
 
 CAPABILITY_AGENT_NAMES: tuple[str, ...] = (
@@ -37,6 +43,18 @@ def is_workflow_agent(agent_name: str | None) -> bool:
 
 def is_capability_agent(agent_name: str | None) -> bool:
     return infer_agent_kind(agent_name) == AGENT_KIND_CAPABILITY
+
+
+def is_fund_only_agent(agent_name: str | None) -> bool:
+    """判断 Agent 是否仅限基金标的使用"""
+    name = (agent_name or "").strip()
+    return name in FUND_ONLY_AGENT_NAMES
+
+
+def is_stock_only_agent(agent_name: str | None) -> bool:
+    """判断 Agent 是否仅限股票标的使用（排除基金专属 Agent）"""
+    name = (agent_name or "").strip()
+    return name not in FUND_ONLY_AGENT_NAMES
 
 
 @dataclass(frozen=True)
@@ -150,6 +168,20 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "timeout_minutes": 15,
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
+        },
+    ),
+    AgentSeedSpec(
+        name="fund_holding_analyst",
+        display_name="基金分析",
+        description="分析基金重仓股与持仓重叠度，跟踪基金业绩表现（仅基金可用）",
+        enabled=True,
+        schedule="0 20 * * 5",  # 每周五晚8点
+        execution_mode="batch",
+        kind=AGENT_KIND_WORKFLOW,
+        visible=True,
+        display_order=45,
+        config={
+            "market_filter": ["FUND"],
         },
     ),
 )

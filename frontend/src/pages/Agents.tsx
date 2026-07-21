@@ -20,6 +20,7 @@ interface AgentConfig {
   ai_model_id: number | null
   notify_channel_ids: number[]
   config: Record<string, unknown>
+  market_filter?: string[]
 }
 
 interface StockAgentInfo {

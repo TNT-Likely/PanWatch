@@ -18,6 +18,15 @@ from src.models.market import MarketCode
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+SUPPORTED_ACCOUNT_MARKETS = {"CN", "HK", "US", "FUND"}
+SUPPORTED_CURRENCIES = {"CNY", "HKD", "USD"}
+MARKET_CURRENCY_MAP = {
+    "CN": "CNY",
+    "HK": "HKD",
+    "US": "USD",
+    "FUND": "CNY",
+}
+
 # 汇率缓存
 _hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港币默认汇率 0.92
 _usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元默认汇率 7.25
