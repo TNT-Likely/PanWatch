@@ -41,6 +41,7 @@ from src.agents.chart_analyst import ChartAnalystAgent
 from src.agents.intraday_monitor import IntradayMonitorAgent
 from src.agents.premarket_outlook import PremarketOutlookAgent
 from src.agents.tradingagents import TradingAgentsAgent
+from src.agents.fund_holding_analyst import FundHoldingAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -1111,6 +1112,7 @@ AGENT_REGISTRY: dict[str, type] = {
     "chart_analyst": ChartAnalystAgent,
     "intraday_monitor": IntradayMonitorAgent,
     "tradingagents": TradingAgentsAgent,
+    "fund_holding_analyst": FundHoldingAnalystAgent,
 }
 
 
@@ -1148,11 +1150,17 @@ def build_scheduler() -> AgentScheduler:
                 )
             except TypeError:
                 agent_instance = agent_cls()
-            sched.register(
-                agent_instance,
-                schedule=cfg.schedule,
-                execution_mode=cfg.execution_mode or "batch",
-            )
+            try:
+                sched.register(
+                    agent_instance,
+                    schedule=cfg.schedule,
+                    execution_mode=cfg.execution_mode or "batch",
+                )
+            except Exception as e:
+                logger.error(
+                    f"Agent {cfg.name} 调度注册失败 (schedule={cfg.schedule!r}): {e}"
+                )
+                cfg.enabled = False
     finally:
         db.close()
 

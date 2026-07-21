@@ -32,9 +32,10 @@ const AGENT_LABELS: Record<string, string> = {
   news_digest: '新闻速递',
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
+  fund_holding_analyst: '基金分析',
 }
 
-const WORKFLOW_AGENT_KEYS = ['daily_report', 'premarket_outlook', 'intraday_monitor', 'tradingagents']
+const WORKFLOW_AGENT_KEYS = ['daily_report', 'premarket_outlook', 'intraday_monitor', 'tradingagents', 'fund_holding_analyst']
 const CAPABILITY_AGENT_KEYS = ['news_digest', 'chart_analyst']
 
 export default function HistoryPage() {

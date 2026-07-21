@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -194,6 +195,8 @@ def get_quotes(db: Session = Depends(get_db)):
     for s in stocks:
         market_stocks.setdefault(s.market, []).append(s)
 
+    from src.collectors.fund_quotes import _fetch_fund_quotes
+
     quotes = {}
     for market, stock_list in market_stocks.items():
         try:
@@ -201,9 +204,12 @@ def get_quotes(db: Session = Depends(get_db)):
         except ValueError:
             continue
 
-        symbols = [s.symbol for s in stock_list]   # 原始代码,md 内部按市场格式化
+        symbols = [s.symbol for s in stock_list]
         try:
-            items = md_quote_rows(symbols, market)
+            if market == "FUND":
+                items = _fetch_fund_quotes(symbols)
+            else:
+                items = md_quote_rows(symbols, market)
             for item in items:
                 quotes[item["symbol"]] = {
                     "current_price": item["current_price"],
@@ -503,3 +509,37 @@ async def trigger_stock_agent(
     except Exception as e:
         logger.error(f"Agent {agent_name} 执行失败 - {trigger_stock.symbol}: {e}")
         raise HTTPException(500, f"Agent 执行失败: {e}")
+
+
+# 基金概览缓存
+_FUND_OVERVIEW_CACHE: dict[str, tuple[dict, float]] = {}
+FUND_OVERVIEW_TTL = 900  # 15 分钟
+
+
+@router.get("/funds/{fund_code}/overview")
+def get_fund_overview(fund_code: str):
+    """获取基金概览（重仓股 + 业绩走势），15分钟缓存"""
+    import time
+
+    now = time.time()
+    cached = _FUND_OVERVIEW_CACHE.get(fund_code)
+    if cached and now - cached[1] < FUND_OVERVIEW_TTL:
+        return cached[0]
+
+    from src.collectors.fund_collector import fetch_fund_top_holdings, fetch_fund_performance
+
+    try:
+        holdings = fetch_fund_top_holdings(fund_code, topline=10)
+        perf = fetch_fund_performance(fund_code)
+    except Exception as e:
+        raise HTTPException(500, f"获取基金数据失败: {e}")
+
+    result = {
+        "fund_code": fund_code,
+        "top_holdings": holdings,
+        "performance": perf,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    _FUND_OVERVIEW_CACHE[fund_code] = (result, now)
+    return result

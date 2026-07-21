@@ -47,6 +47,9 @@ EASTMONEY_US_PARAMS = {
     "fields": "f12,f14",
 }
 
+# 东方财富基金代码 URL
+EASTMONEY_FUND_CODE_URL = "http://fund.eastmoney.com/js/fundcode_search.js"
+
 # 东方财富北交所参数（北证A股）
 EASTMONEY_BJ_PARAMS = {
     "po": "1",
@@ -253,6 +256,41 @@ def _fetch_from_akshare() -> list[dict]:
     return stocks
 
 
+def _fetch_funds_from_eastmoney() -> list[dict]:
+    """东方财富基金代码列表。"""
+    with httpx.Client(follow_redirects=True, headers=HEADERS, timeout=30) as client:
+        resp = client.get(EASTMONEY_FUND_CODE_URL)
+        text = (resp.text or "").strip()
+
+    # 格式: var r = [["000001", "...", "华夏成长混合", "混合型-灵活", "..."] ...];
+    if "=" not in text:
+        return []
+    payload = text.split("=", 1)[1].strip().rstrip(";")
+
+    try:
+        rows = json.loads(payload)
+    except Exception as e:
+        logger.warning(f"解析基金代码列表失败: {e}")
+        return []
+
+    funds: list[dict] = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 3:
+            continue
+        symbol = str(row[0] or "").strip()
+        name = str(row[2] or "").strip()
+        fund_type = str(row[3] or "").strip() if len(row) > 3 else ""
+        if not symbol or not name:
+            continue
+        funds.append({
+            "symbol": symbol,
+            "name": name,
+            "market": "FUND",
+            "fund_type": fund_type,
+        })
+    return funds
+
+
 def refresh_stock_list() -> list[dict]:
     """拉取 A 股和港股列表并缓存"""
     stocks = []
@@ -299,6 +337,14 @@ def refresh_stock_list() -> list[dict]:
     except Exception as e:
         logger.warning(f"东方财富获取北交所失败: {e}")
 
+    # 基金: 东方财富基金代码列表
+    try:
+        funds = _fetch_funds_from_eastmoney()
+        stocks.extend(funds)
+        logger.info(f"东方财富获取基金列表成功: {len(funds)} 只")
+    except Exception as e:
+        logger.warning(f"东方财富获取基金列表失败: {e}")
+
     if stocks:
         _save_cache(stocks)
     return stocks
@@ -343,6 +389,9 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
         if mkt == "HK":
             # 保证为 5 位代码
             c = c.zfill(5)
+        if mkt == "FUND":
+            # 基金代码统一为 6 位
+            c = c.zfill(6)
         return c
 
     results = []
@@ -363,6 +412,8 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
             stock_market = "HK"
         elif classify == "UsStock" or "美" in security_type:
             stock_market = "US"
+        elif "基金" in security_type or classify in ("Fund", "ETF"):
+            stock_market = "FUND"
         else:
             continue  # 跳过其他类型（债券、基金等）
 

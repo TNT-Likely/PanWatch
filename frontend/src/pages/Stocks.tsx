@@ -17,6 +17,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
+import FundOverviewModal from '@/components/FundOverviewModal'
 
 interface AgentResult {
   success?: boolean
@@ -112,6 +113,7 @@ interface AgentConfig {
   enabled: boolean
   schedule: string
   execution_mode: string  // batch: 批量分析, single: 逐只分析
+  market_filter?: string[]  // FUND 专属 agent 标记
 }
 
 interface SchedulePreview {
@@ -387,6 +389,9 @@ export default function StocksPage() {
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
+  const [fundOverviewOpen, setFundOverviewOpen] = useState(false)
+  const [fundOverviewSymbol, setFundOverviewSymbol] = useState('')
+  const [fundOverviewName, setFundOverviewName] = useState<string | undefined>(undefined)
 
   // Market status
   const [marketStatus, setMarketStatus] = useState<MarketStatus[]>([])
@@ -671,7 +676,7 @@ export default function StocksPage() {
   const refreshKlines = useCallback(async () => {
     if (klineRefreshInFlight.current) return klineRefreshInFlight.current
     const run = (async () => {
-      const items = buildQuoteItems()
+      const items = buildQuoteItems().filter(it => (it.market || '').toUpperCase() !== 'FUND')
       if (items.length === 0) return
       const limit = 5
       const map: Record<string, KlineSummary> = {}
@@ -763,6 +768,12 @@ export default function StocksPage() {
   }, [loadNews])
 
   const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+    if ((stockMarket || '').toUpperCase() === 'FUND') {
+      setFundOverviewSymbol(stockSymbol)
+      setFundOverviewName(stockName)
+      setFundOverviewOpen(true)
+      return
+    }
     setInsightSymbol(stockSymbol)
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
@@ -1328,12 +1339,13 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m
+  const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m === 'FUND' ? '基金' : m
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: '港' }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: '美' }
+    if (m === 'FUND') return { style: 'bg-cyan-500/10 text-cyan-700', label: '基' }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1750,7 +1762,7 @@ export default function StocksPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>添加股票到自选</DialogTitle>
-            <DialogDescription>搜索并添加到自选股列表</DialogDescription>
+            <DialogDescription>搜索并添加到自选股列表，支持股票和基金</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
@@ -1762,6 +1774,7 @@ export default function StocksPage() {
                     { value: 'CN', label: 'A股' },
                     { value: 'HK', label: '港股' },
                     { value: 'US', label: '美股' },
+                    { value: 'FUND', label: '基金' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -1801,7 +1814,7 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={searchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : searchMarket === 'US' ? '代码或名称，如 AAPL 或 苹果' : '代码或名称，如 600519 或 茅台'}
+                  placeholder={searchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : searchMarket === 'US' ? '代码或名称，如 AAPL 或 苹果' : searchMarket === 'FUND' ? '基金代码或名称，如 510300 或 沪深300ETF' : '代码或名称，如 600519 或 茅台'}
                   className="pl-10"
                   autoComplete="off"
                 />
@@ -2438,15 +2451,17 @@ export default function StocksPage() {
                         className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, false)}
-                          title="K线指标"
-                        >
-                          <BarChart3 className="w-3.5 h-3.5" />
-                        </Button>
+                        {stock.market !== 'FUND' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => openKlineDialog(stock.symbol, stock.market, stock.name, false)}
+                            title="K线指标"
+                          >
+                            <BarChart3 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                         <StockPriceAlertPanel
                           mode="icon"
                           stockId={stock.id}
@@ -2521,6 +2536,13 @@ export default function StocksPage() {
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
+      />
+
+      <FundOverviewModal
+        open={fundOverviewOpen}
+        onOpenChange={setFundOverviewOpen}
+        fundCode={fundOverviewSymbol}
+        fundName={fundOverviewName}
       />
 
       {/* TradingAgents 深度分析弹窗 */}
@@ -2789,10 +2811,18 @@ export default function StocksPage() {
             {agents.length === 0 ? (
               <p className="text-[13px] text-muted-foreground py-4 text-center">暂无可用 Agent</p>
             ) : (
-              agents.map(agent => {
+              agents.filter(agent => {
+                // 基金标的只显示基金专属 Agent（market_filter 包含 FUND）
+                // 股票标的只显示非基金专属 Agent（market_filter 为空或不含 FUND）
+                const isFundStock = (agentDialogStock?.market || '').toUpperCase() === 'FUND'
+                const isFundAgent = (agent.market_filter || []).includes('FUND')
+                if (isFundStock) return isFundAgent
+                return !isFundAgent
+              }).map(agent => {
                 const stockAgent = agentDialogStock?.agents?.find(a => a.agent_name === agent.name)
                 const isAssigned = !!stockAgent
                 const isBatchMode = agent.execution_mode === 'batch'
+                const isFundAgent = (agent.market_filter || []).includes('FUND')
                 return (
                   <div key={agent.name} className="rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors overflow-hidden">
                     <div className="flex items-center justify-between p-3.5">
@@ -2804,6 +2834,11 @@ export default function StocksPage() {
                             <Badge variant="secondary" className="text-[9px]">
                               {isBatchMode ? '批量' : '逐只'}
                             </Badge>
+                            {isFundAgent && (
+                              <Badge className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/20">
+                                基金专属
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-[11px] text-muted-foreground mt-0.5">{agent.description}</p>
                         </div>

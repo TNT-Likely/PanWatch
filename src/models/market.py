@@ -8,6 +8,7 @@ class MarketCode(str, Enum):
     CN = "CN"  # A股
     HK = "HK"  # 港股
     US = "US"  # 美股
+    FUND = "FUND"  # 基金
 
 
 @dataclass
@@ -77,6 +78,16 @@ MARKETS: dict[MarketCode, MarketDef] = {
             TradingSession(time(9, 30), time(16, 0)),
         ],
         symbol_pattern=r"^[A-Z]{1,5}$",
+    ),
+    MarketCode.FUND: MarketDef(
+        code=MarketCode.FUND,
+        name="基金",
+        timezone="Asia/Shanghai",
+        sessions=[
+            TradingSession(time(9, 30), time(11, 30)),
+            TradingSession(time(13, 0), time(15, 0)),
+        ],
+        symbol_pattern=r"^\d{6}$",
     ),
 }
 
