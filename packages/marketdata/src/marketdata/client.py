@@ -41,6 +41,19 @@ INDEX_SECID: dict[str, str] = {
     "HSI": "100.HSI",       # 恒生指数
 }
 
+# 指数的原始腾讯符号(index_klines 的腾讯兜底路径;美股指数东财无 secid,只能走这里,
+# 腾讯对美股指数只返最近几根,短但可用)。
+INDEX_TENCENT: dict[str, str] = {
+    "000001": "sh000001",   # 上证指数
+    "399001": "sz399001",   # 深证成指
+    "399006": "sz399006",   # 创业板指
+    "000300": "sh000300",   # 沪深300
+    "HSI": "hkHSI",         # 恒生指数
+    "IXIC": "usIXIC",       # 纳斯达克
+    "DJI": "usDJI",         # 道琼斯
+    "INX": "usINX",         # 标普500
+}
+
 
 class MarketData:
     def __init__(self, config: ConfigProvider, metrics: MetricsSink | None = None):
@@ -161,12 +174,23 @@ class MarketData:
         return fetch_raw(list(tencent_symbols)) if tencent_symbols else []
 
     def index_klines(self, code: str, *, market: str, days: int = 120) -> list:
-        """指数日K:INDEX_SECID 显式映射走东财;未映射(如美股指数)→ [](fail-soft)。返回 list[Bar]。"""
-        secid = INDEX_SECID.get(str(code).strip()) or INDEX_SECID.get(str(code).strip().upper())
-        if not secid:
-            return []
-        from marketdata.vendors.kline import fetch_eastmoney_kline
-        return fetch_eastmoney_kline(secid, days)
+        """指数日K:东财 secid 主源;失败/未映射(如美股指数)走腾讯原始符号兜底;都无 → []。
+
+        腾讯兜底修两类缺口:①东财 push2his 被代理/风控掐时 CN/HK 指数仍有数;
+        ②美股指数(IXIC/DJI/INX)东财无 secid,腾讯可出(仅最近几根,短但可用)。返回 list[Bar]。
+        """
+        c = str(code).strip()
+        secid = INDEX_SECID.get(c) or INDEX_SECID.get(c.upper())
+        if secid:
+            from marketdata.vendors.kline import fetch_eastmoney_kline
+            bars = fetch_eastmoney_kline(secid, days)
+            if bars:
+                return bars
+        tsym = INDEX_TENCENT.get(c) or INDEX_TENCENT.get(c.upper())
+        if tsym:
+            from marketdata.vendors.kline import fetch_tencent_kline_raw
+            return fetch_tencent_kline_raw(tsym, days)
+        return []
 
     def capital_flow(self, symbol: str, *, market: str = "CN") -> CapitalFlow | None:
         """单只股票资金流向。不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""

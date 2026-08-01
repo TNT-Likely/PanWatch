@@ -12,7 +12,7 @@ from marketdata.vendors.base import KlineVendor
 
 logger = logging.getLogger(__name__)
 
-_TENCENT_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+_TENCENT_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 _EASTMONEY_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 _STOOQ_URL = "https://stooq.com/q/d/l/"
 _YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{sym}"
@@ -25,51 +25,62 @@ def _days(config: dict, default: int = 60) -> int:
         return default
 
 
+# 腾讯 fqkline 对 count 有上限:实测 ≤800 正常返(800→801根),1000-2000 退化到 ~641,
+# ≥3000 直接返空(0根)。上层 want 常放大到 3000(为长历史/回测),若原样透传腾讯会返 0
+# → 每个标的都白白落到东财补全 → 东财一挂就没数据。故把请求 count 截到 800(取回最多)。
+_TENCENT_MAX_COUNT = 800
+
+
+def fetch_tencent_kline_raw(tsym: str, days: int) -> list[Bar]:
+    """按**原始腾讯符号**取日K(不经 Symbol 转换)。
+
+    供指数等显式符号场景复用(sh000001/hkHSI/usDJI…;指数与个股的符号规则不同,
+    必须显式传入)。个股路径请走 TencentKlineVendor。
+    """
+    days = min(max(int(days or 1), 1), _TENCENT_MAX_COUNT)
+    text = market_get(
+        _TENCENT_URL, host_key="web.ifzq.gtimg.cn", min_interval_s=0.15,
+        params={"param": f"{tsym},day,,,{days},qfq", "_var": "kline_dayqfq"},
+        timeout=10, retries=2, parse="text", log_label="腾讯K线", symbol=tsym,
+    )
+    if not text or "=" not in text:
+        return []
+    js = text.split("=", 1)[1].strip().rstrip(";")
+    try:
+        data = json.loads(js)
+    except Exception:
+        return []
+    raw = data.get("data", {}) if isinstance(data, dict) else {}
+    day = []
+    if isinstance(raw, dict):
+        sd = raw.get(tsym, {})
+        if isinstance(sd, dict):
+            day = sd.get("day") or sd.get("qfqday") or []
+    elif isinstance(raw, list):
+        day = raw
+    out: list[Bar] = []
+    for it in day or []:
+        if len(it) >= 5:
+            try:
+                out.append(Bar(date=it[0], open=float(it[1]), close=float(it[2]),
+                               high=float(it[3]), low=float(it[4]),
+                               volume=float(it[5]) if len(it) > 5 else 0.0))
+            except Exception:
+                continue
+    return out
+
+
 class TencentKlineVendor(KlineVendor):
     name = "tencent"
     supports_markets = {"CN", "HK", "US"}
 
-    # 腾讯 fqkline 对 count 有上限:实测 ≤800 正常返(800→801根),1000-2000 退化到 ~641,
-    # ≥3000 直接返空(0根)。上层 want 常放大到 3000(为长历史/回测),若原样透传腾讯会返 0
-    # → 每个标的都白白落到东财补全 → 东财一挂就没数据。故这里把请求 count 截到 800(取回最多)。
-    _MAX_COUNT = 800
+    _MAX_COUNT = _TENCENT_MAX_COUNT  # 兼容旧引用(测试/外部按类属性取)
 
     def fetch(self, symbols: list[Symbol], config: dict) -> list[Bar]:
         if not symbols:
             return []
         sym = symbols[0]
-        days = min(_days(config), self._MAX_COUNT)
-        tsym = sym.to_tencent()
-        text = market_get(
-            _TENCENT_URL, host_key="web.ifzq.gtimg.cn", min_interval_s=0.15,
-            params={"param": f"{tsym},day,,,{days},qfq", "_var": "kline_dayqfq"},
-            timeout=10, retries=2, parse="text", log_label="腾讯K线", symbol=sym.code,
-        )
-        if not text or "=" not in text:
-            return []
-        js = text.split("=", 1)[1].strip().rstrip(";")
-        try:
-            data = json.loads(js)
-        except Exception:
-            return []
-        raw = data.get("data", {}) if isinstance(data, dict) else {}
-        day = []
-        if isinstance(raw, dict):
-            sd = raw.get(tsym, {})
-            if isinstance(sd, dict):
-                day = sd.get("day") or sd.get("qfqday") or []
-        elif isinstance(raw, list):
-            day = raw
-        out: list[Bar] = []
-        for it in day or []:
-            if len(it) >= 5:
-                try:
-                    out.append(Bar(date=it[0], open=float(it[1]), close=float(it[2]),
-                                   high=float(it[3]), low=float(it[4]),
-                                   volume=float(it[5]) if len(it) > 5 else 0.0))
-                except Exception:
-                    continue
-        return out
+        return fetch_tencent_kline_raw(sym.to_tencent(), _days(config))
 
 
 class StooqKlineVendor(KlineVendor):

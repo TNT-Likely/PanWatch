@@ -39,6 +39,53 @@ def test_index_klines(monkeypatch):
     assert out and out[0].close == 3200.0 and out[0].high == 3210.0
 
 
-def test_index_klines_unmapped_returns_empty():
-    """美股指数(如 IXIC)未在 INDEX_SECID 映射中 → 空列表,fail-soft。"""
-    assert _md().index_klines("IXIC", market="US", days=120) == []
+def test_index_klines_unmapped_returns_empty(monkeypatch):
+    """两套映射(东财 secid / 腾讯符号)都没有的指数 → 空列表,fail-soft,且不发请求。"""
+    calls = {"n": 0}
+    def _boom(*a, **k):
+        calls["n"] += 1
+        return None
+    monkeypatch.setattr(kv, "market_get", _boom)
+    assert _md().index_klines("FTSE", market="EU", days=120) == []
+    assert calls["n"] == 0
+
+
+def _tencent_kline_text(tsym: str) -> str:
+    return ('kline_dayqfq={"data":{"' + tsym + '":{"day":['
+            '["2026-07-24","17800.0","17862.4","17900.0","17750.0","1000"],'
+            '["2026-07-25","17862.4","17910.2","17950.0","17800.0","1100"]]}}}')
+
+
+def test_index_klines_us_via_tencent_fallback(monkeypatch):
+    """美股指数(IXIC)东财无 secid → 走腾讯原始符号兜底出数(修旧缺口)。"""
+    def _fake(url, **k):
+        assert "usIXIC" in k["params"]["param"]
+        return _tencent_kline_text("usIXIC")
+    monkeypatch.setattr(kv, "market_get", _fake)
+    out = _md().index_klines("IXIC", market="US", days=120)
+    assert len(out) == 2 and out[-1].close == 17910.2
+
+
+def test_index_klines_eastmoney_empty_falls_back_to_tencent(monkeypatch):
+    """CN 指数东财空(如被代理/风控掐)→ 腾讯兜底出数。"""
+    def _fake(url, **k):
+        if "push2his" in url:
+            return {"data": {"klines": []}}
+        return _tencent_kline_text("sh000001")
+    monkeypatch.setattr(kv, "market_get", _fake)
+    out = _md().index_klines("000001", market="CN", days=120)
+    assert len(out) == 2 and out[0].date == "2026-07-24"
+
+
+def test_index_klines_eastmoney_ok_skips_tencent(monkeypatch):
+    """东财主源有数 → 不再调腾讯兜底(主备语义,不是聚合)。"""
+    calls = {"tencent": 0}
+    def _fake(url, **k):
+        if "push2his" in url:
+            return {"data": {"klines": ["2026-07-01,3180,3200,3210,3170,100000"]}}
+        calls["tencent"] += 1
+        return _tencent_kline_text("sh000001")
+    monkeypatch.setattr(kv, "market_get", _fake)
+    out = _md().index_klines("000001", market="CN", days=120)
+    assert out and out[0].close == 3200.0
+    assert calls["tencent"] == 0

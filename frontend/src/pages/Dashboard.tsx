@@ -106,6 +106,7 @@ export default function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverviewResponse | null>(null)
   const [diag, setDiag] = useState<PortfolioDiagnostics | null>(null)
   const [bench, setBench] = useState<PortfolioBenchmark | null>(null)
+  const [benchState, setBenchState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const [oppFallback, setOppFallback] = useState<StrategySignalItem[]>([])
   const [alertHits, setAlertHits] = useState<AlertHitToday[]>([])
   const [todos, setTodos] = useState<PortfolioTodo[]>([])
@@ -130,6 +131,20 @@ export default function DashboardPage() {
     name: '',
     hasPosition: false,
   })
+
+  // 慢车道:基准/归因(拉全持仓 K 线,分钟级);独立可重试,失败/为空各有明确状态
+  const loadBench = useCallback(() => {
+    setBenchState('loading')
+    Promise.allSettled([portfolioApi.benchmark({ days: 60 }), portfolioApi.attribution(60)]).then(([bn, at]) => {
+      if (bn.status === 'fulfilled') {
+        setBench(bn.value)
+        setBenchState(!bn.value?.empty && (bn.value?.curve?.length ?? 0) >= 2 ? 'ready' : 'empty')
+      } else {
+        setBenchState('error')
+      }
+      if (at.status === 'fulfilled') setAttribution(at.value.items || [])
+    })
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -163,11 +178,8 @@ export default function DashboardPage() {
         .catch(() => {})
     }
 
-    // 慢车道:基准/归因需拉全持仓 K 线(40s 级),独立加载,就绪后回填超额/归因
-    Promise.allSettled([portfolioApi.benchmark({ days: 60 }), portfolioApi.attribution(60)]).then(([bn, at]) => {
-      if (bn.status === 'fulfilled') setBench(bn.value)
-      if (at.status === 'fulfilled') setAttribution(at.value.items || [])
-    })
+    // 慢车道:基准/归因需拉全持仓 K 线(分钟级),独立加载,就绪后回填超额/归因
+    loadBench()
 
     // 盘前/盘后简报:独立加载,取较新一条
     Promise.allSettled([dashboardApi.brief('premarket'), dashboardApi.brief('eod')]).then((res) => {
@@ -177,7 +189,7 @@ export default function DashboardPage() {
       briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
       setBrief(briefs[0] || null)
     })
-  }, [])
+  }, [loadBench])
 
   useEffect(() => {
     load()
@@ -529,12 +541,25 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              {/* 净值 vs 基准双线图 */}
-              {benchReady && bench?.curve && bench.curve.length >= 2 ? (
+              {/* 净值 vs 基准双线图:loading/ready/empty/error 四态,不再永远"计算中" */}
+              {benchState === 'ready' && bench?.curve && bench.curve.length >= 2 ? (
                 <BenchChart curve={bench.curve} />
               ) : (
-                <div className="flex h-[150px] items-center justify-center rounded-lg bg-accent/10 text-[11px] text-muted-foreground">
-                  基准对比计算中…
+                <div className="flex h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-accent/10 text-[11px] text-muted-foreground">
+                  {benchState === 'loading' && <span>基准对比计算中…(需拉全部持仓 K 线,约 1 分钟)</span>}
+                  {benchState === 'empty' && <span>{bench?.reason || '数据不足,暂无法计算基准对比'}</span>}
+                  {benchState === 'error' && (
+                    <>
+                      <span>基准对比加载失败(超时或网络异常)</span>
+                      <button
+                        type="button"
+                        onClick={loadBench}
+                        className="rounded border border-border/60 px-2.5 py-1 text-[11px] text-primary hover:bg-accent/30"
+                      >
+                        重试
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 

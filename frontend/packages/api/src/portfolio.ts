@@ -39,12 +39,12 @@ export const portfolioApi = {
   benchmark: (params?: { days?: number; benchmark?: string }) =>
     fetchAPI<PortfolioBenchmark>(
       `/portfolio/benchmark?days=${params?.days ?? 60}&benchmark=${encodeURIComponent(params?.benchmark ?? '000300')}`,
-      { timeoutMs: 40000 },
+      { timeoutMs: 60000 },
     ),
 
   /** 个股对组合收益的贡献(谁拖累/贡献)。 */
   attribution: (days = 60) =>
-    fetchAPI<{ items: AttributionItem[] }>(`/portfolio/attribution?days=${days}`, { timeoutMs: 40000 }),
+    fetchAPI<{ items: AttributionItem[] }>(`/portfolio/attribution?days=${days}`, { timeoutMs: 60000 }),
 
   /** 组合 AI 体检(叙述结论 + 调仓建议)。 */
   aiReview: () => fetchAPI<PortfolioAiReview>('/portfolio/ai-review', { method: 'POST', timeoutMs: 60000 }),

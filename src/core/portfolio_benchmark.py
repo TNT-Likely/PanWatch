@@ -17,7 +17,7 @@ from src.models.market import MarketCode
 logger = logging.getLogger(__name__)
 
 # 腾讯日K接口(与 kline_collector.TENCENT_KLINE_URL 同源,本地化以解除对其内部符号的依赖)
-_TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+_TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 
 
 def _parse_tencent_kline(text: str, tencent_sym: str) -> list[KlineData]:
