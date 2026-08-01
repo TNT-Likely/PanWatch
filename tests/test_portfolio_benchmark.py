@@ -89,3 +89,28 @@ def test_build_portfolio_benchmark_with_mocked_fetch(monkeypatch):
     assert res["benchmark_return"] == 21.0
     assert res["excess_return"] == -21.0
     assert res["relative_drawdown"] < 0
+
+
+def test_build_benchmark_excludes_poor_coverage_holding(monkeypatch):
+    """单只覆盖极差的持仓(坏源只回最近1根)被剔除并记入 excluded,不再一票否决基准对比。"""
+    dates = [f"2026-01-{d:02d}" for d in range(2, 14)]  # 12 个交易日
+    monkeypatch.setattr(
+        pb, "_fetch_benchmark_series",
+        lambda code, days: (dates, [100.0 + i for i in range(len(dates))]),
+    )
+
+    def fake_fetch(symbol, market):
+        if symbol == "BABA":
+            return _bars([(dates[-1], 200.0)])  # 只有最近 1 根 → 覆盖不足
+        return _bars([(d, 10.0 + i * 0.1) for i, d in enumerate(dates)])
+
+    res = pb.build_portfolio_benchmark(
+        [
+            {"symbol": "600519", "market": "CN", "quantity": 100, "fx": 1.0},
+            {"symbol": "BABA", "market": "US", "quantity": 10, "fx": 7.0},
+        ],
+        days=60,
+        kline_fetch=fake_fetch,
+    )
+    assert res is not None and len(res.get("curve") or []) >= 2
+    assert res.get("excluded") == ["BABA"]

@@ -46,6 +46,8 @@ def test_get_market_indices_uses_marketdata(monkeypatch):
             ]
 
     monkeypatch.setattr(mkt, "get_market_data", lambda: _MD())
+    # spark 取数不是本用例关注点,桩掉避免真实联网(见 test_market_indices_spark.py 专测 spark)。
+    monkeypatch.setattr(mkt, "get_index_klines", lambda *a, **k: [])
 
     out = asyncio.run(mkt.get_market_indices())
 

@@ -17,7 +17,7 @@ from src.models.market import MarketCode
 logger = logging.getLogger(__name__)
 
 # 腾讯日K接口(与 kline_collector.TENCENT_KLINE_URL 同源,本地化以解除对其内部符号的依赖)
-_TENCENT_KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+_TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 
 
 def _parse_tencent_kline(text: str, tencent_sym: str) -> list[KlineData]:
@@ -192,14 +192,23 @@ def build_portfolio_benchmark(
     if not holding_series:
         return None
 
-    # 所有持仓都有数据的起点,避免早期持仓缺数导致 NAV 失真
-    start_date = max(hs[2] for hs in holding_series)
+    # 所有持仓都有数据的起点,避免早期持仓缺数导致 NAV 失真;
+    # 但覆盖极差的单只持仓(坏源/新股,只有最近 1-2 根)不许一票否决整个窗口:
+    # 保底窗口 = max(10, 基准天数一半),覆盖不到保底窗口起点的持仓剔除出 NAV(记入 excluded)。
+    min_window = max(10, len(bench_dates) // 2)
+    floor_date = bench_dates[-min_window] if len(bench_dates) >= min_window else bench_dates[0]
+    kept = [hs for hs in holding_series if hs[2] <= floor_date]
+    excluded = [hs[0]["symbol"] for hs in holding_series if hs[2] > floor_date]
+    if not kept:
+        return None
+
+    start_date = max(hs[2] for hs in kept)
     dates = [d for d in bench_dates if d >= start_date]
     if len(dates) < 2:
         return None
 
     nav = [0.0] * len(dates)
-    for h, bars, _ in holding_series:
+    for h, bars, _ in kept:
         closes = _ffill_closes(bars, dates)
         qfx = float(h.get("quantity", 0)) * float(h.get("fx", 1.0))
         for k in range(len(dates)):
@@ -211,6 +220,9 @@ def build_portfolio_benchmark(
     if metrics:
         metrics["benchmark_code"] = benchmark_code
         metrics["benchmark_label"] = benchmark_label(benchmark_code)
+        if excluded:
+            # 覆盖不足被剔除的持仓(如坏源/新股),供上层展示"基于 N-x 只计算"
+            metrics["excluded"] = excluded
     return metrics
 
 
