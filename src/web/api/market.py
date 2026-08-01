@@ -1,6 +1,10 @@
 """市场指数 API - 公共数据，无需认证"""
 import logging
+import time
 from fastapi import APIRouter
+
+from src.collectors.kline_collector import get_index_klines
+from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,10 +30,39 @@ MARKET_INDICES = [
     {"symbol": "DJI", "name": "道琼斯", "market": "US", "tencent_symbol": "usDJI", "response_symbol": ".DJI"},
 ]
 
+# 指数响应内存缓存:附加 spark 每次都要多拉 5 组指数K线,60s 缓存避免首页每次加载都联网。
+_INDICES_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_INDICES_CACHE_TTL_S = 60
+
+
+def clear_indices_cache() -> None:
+    """清空指数响应缓存(测试隔离用)。"""
+    _INDICES_CACHE.clear()
+
+
+def _spark_for(idx: dict) -> list[float]:
+    """近 20 日收盘价,供首页指数走势 sparkline 用。
+
+    fail-soft:市场码非法/取数异常/无 INDEX_SECID 映射(如美股指数)一律吞掉异常,
+    返回空列表,绝不影响 quote 主体。
+    """
+    try:
+        market_code = MarketCode(idx["market"])
+        klines = get_index_klines(idx["symbol"], market_code, days=20)
+        return [k.close for k in klines] if klines else []
+    except Exception as e:
+        logger.debug(f"指数 spark 获取失败 {idx['symbol']}: {e}")
+        return []
+
 
 @router.get("/indices")
 async def get_market_indices():
     """获取主要市场指数（公共数据，无需认证）"""
+    now = time.time()
+    cached = _INDICES_CACHE.get("indices")
+    if cached and now - cached[0] < _INDICES_CACHE_TTL_S:
+        return cached[1]
+
     tencent_symbols = [idx["tencent_symbol"] for idx in MARKET_INDICES]
 
     try:
@@ -47,6 +80,7 @@ async def get_market_indices():
     for idx in MARKET_INDICES:
         # 使用 response_symbol 匹配
         quote = quote_map.get(idx["response_symbol"])
+        spark = _spark_for(idx)
 
         if quote:
             result.append({
@@ -57,6 +91,7 @@ async def get_market_indices():
                 "change_pct": quote["change_pct"],
                 "change_amount": quote["change_amount"],
                 "prev_close": quote["prev_close"],
+                "spark": spark,
             })
         else:
             # 即使没有行情也返回基本信息
@@ -68,6 +103,8 @@ async def get_market_indices():
                 "change_pct": None,
                 "change_amount": None,
                 "prev_close": None,
+                "spark": spark,
             })
 
+    _INDICES_CACHE["indices"] = (now, result)
     return result
