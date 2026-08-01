@@ -148,9 +148,10 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    // 快车道:DB/轻量查询,先让首屏(要紧事/指数/体检分布/组合速览)尽快出来
-    const [idx, sc, ov, dg, ht, td, ps, ms] = await Promise.allSettled([
-      dashboardApi.indices(),
+    // 指数 pills:独立加载不阻塞首屏(spark 冷启动可能 ~1s,数据到了自然浮现)
+    dashboardApi.indices().then(setIndices).catch(() => {})
+    // 快车道:DB/轻量查询,先让首屏(要紧事/体检分布/组合速览)尽快出来
+    const [sc, ov, dg, ht, td, ps, ms] = await Promise.allSettled([
       dashboardApi.intradayScan(),
       dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 }),
       portfolioApi.diagnostics(),
@@ -159,7 +160,6 @@ export default function DashboardPage() {
       dashboardApi.portfolioSummary(),
       dashboardApi.marketStatus(),
     ])
-    if (idx.status === 'fulfilled') setIndices(idx.value)
     if (sc.status === 'fulfilled') setScan(sc.value.stocks || [])
     if (ov.status === 'fulfilled') setOverview(ov.value)
     if (dg.status === 'fulfilled') setDiag(dg.value)
