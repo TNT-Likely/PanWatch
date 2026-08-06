@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2 } from 'lucide-react'
+import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, Plus } from 'lucide-react'
 import {
   dashboardApi,
   portfolioApi,
   recommendationsApi,
   homeApi,
+  stocksApi,
   type DashboardMarketIndex,
   type DashboardMarketStatus,
   type DashboardMonitorStock,
@@ -116,6 +117,8 @@ export default function DashboardPage() {
   const [aiReviewLoading, setAiReviewLoading] = useState(false)
   const [brief, setBrief] = useState<DashboardBrief | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
+  // 自选股集合(用于判断盘前标的是否已在自选)
+  const [watchSymbols, setWatchSymbols] = useState<Set<string>>(new Set())
   const [portfolioSummary, setPortfolioSummary] = useState<DashboardPortfolioSummary | null>(null)
   const [marketStatus, setMarketStatus] = useState<DashboardMarketStatus[]>([])
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null)
@@ -189,7 +192,24 @@ export default function DashboardPage() {
       briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
       setBrief(briefs[0] || null)
     })
+
+    // 自选股列表(判断盘前标的是否已加自选)
+    stocksApi.list().then((rows) => {
+      setWatchSymbols(new Set((rows || []).map((s) => `${s.market}:${s.symbol}`)))
+    }).catch(() => {})
   }, [loadBench])
+
+  // 盘前标的快捷加入自选
+  const addToWatchlist = useCallback(async (symbol: string, name: string, market: string) => {
+    try {
+      const row = await stocksApi.create({ symbol, name, market })
+      if (row?.id) {
+        setWatchSymbols((prev) => new Set(prev).add(`${market}:${symbol}`))
+      }
+    } catch {
+      // 已存在等错误静默
+    }
+  }, [])
 
   useEffect(() => {
     load()
@@ -722,6 +742,34 @@ export default function DashboardPage() {
               </div>
             </div>
             {brief.title && <div className="text-[14.5px] font-semibold text-foreground">{brief.title}</div>}
+            {brief.stocks && brief.stocks.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {brief.stocks.map((s) => {
+                  const inWatch = watchSymbols.has(`${s.market}:${s.symbol}`)
+                  return (
+                    <span
+                      key={s.symbol}
+                      className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-accent/40 px-2 py-0.5 text-[11px]"
+                    >
+                      <span className="text-foreground">{s.name}</span>
+                      <span className="font-mono text-muted-foreground">{s.symbol}</span>
+                      {inWatch ? (
+                        <span className="text-[10px] text-emerald-500">已自选</span>
+                      ) : (
+                        <button
+                          type="button"
+                          title="加入自选股"
+                          onClick={() => addToWatchlist(s.symbol, s.name, s.market)}
+                          className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-primary transition-colors hover:bg-primary/30"
+                        >
+                          <Plus className="h-2.5 w-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
             {!briefOpen && briefSummary && <div className="mt-1 text-[12px] text-muted-foreground">{briefSummary}</div>}
             {briefOpen && brief.content && (
               <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-[12px] [&_p]:my-1 [&_ul]:my-1">

@@ -59,6 +59,7 @@ FILES=(
   "src/web/api/recommendations.py"
   "src/web/api/discovery.py"
   "src/web/api/settings.py"
+  "src/web/api/dashboard.py"
   "src/collectors/discovery_collector.py"
   "src/collectors/wudao_mcp_client.py"
   "src/core/strategy_engine.py"

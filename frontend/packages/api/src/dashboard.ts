@@ -294,6 +294,7 @@ export interface DashboardBrief {
   content?: string
   date?: string
   updated_at?: string
+  stocks?: { name: string; symbol: string; market: string }[]
 }
 
 export interface CurateCandidate {

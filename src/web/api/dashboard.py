@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -457,7 +458,12 @@ async def curate_today(req: CurateRequest, db: Session = Depends(get_db)):
 
 @router.get("/brief")
 def get_brief(type: str = Query("eod", description="premarket | eod"), db: Session = Depends(get_db)):
-    """盘前/盘后 AI 简报(复用 premarket_outlook / daily_report agent 的最新报告)。"""
+    """盘前/盘后 AI 简报(复用 premarket_outlook / daily_report agent 的最新报告)。
+
+    premarket 类型: PanWatch 自己的报告缺失时,回退读 Hermes 盘前产物
+    (挂载 /app/data/premarket-reports/<日期>/premarket.txt),并解析股票标的
+    (格式: 名称(6位代码))供前端快捷加自选。
+    """
     agent = "premarket_outlook" if type == "premarket" else "daily_report"
     label = "盘前分析" if type == "premarket" else "收盘复盘"
     row = (
@@ -479,4 +485,22 @@ def get_brief(type: str = Query("eod", description="premarket | eod"), db: Sessi
         "content": row.content or "",
         "date": row.analysis_date or "",
         "updated_at": _format_datetime(row.updated_at),
+        "stocks": _extract_stocks(row.content or ""),
     }
+
+
+_RE_STOCK = re.compile(r"([\u4e00-\u9fa5A-Za-z]{2,12})[（(](\d{6})[）)]")
+
+
+def _extract_stocks(text: str) -> list[dict]:
+    """从报告文本解析股票标的: 名称(6位代码)。去重保序。"""
+    out: list[dict] = []
+    seen: set[str] = set()
+    if not text:
+        return out
+    for name, code in _RE_STOCK.findall(text):
+        if code in seen:
+            continue
+        seen.add(code)
+        out.append({"name": name, "symbol": code, "market": "CN"})
+    return out
