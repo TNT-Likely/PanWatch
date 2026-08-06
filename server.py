@@ -43,6 +43,7 @@ from src.agents.premarket_outlook import PremarketOutlookAgent
 from src.agents.tradingagents import TradingAgentsAgent
 from src.agents.theme_launch_detector import ThemeLaunchDetectorAgent
 from src.agents.stock_attribution import StockAttributionAgent
+from src.agents.auction_review import AuctionReviewAgent
 
 logger = logging.getLogger(__name__)
 
@@ -1115,6 +1116,7 @@ AGENT_REGISTRY: dict[str, type] = {
     "tradingagents": TradingAgentsAgent,
     "theme_launch_detector": ThemeLaunchDetectorAgent,
     "stock_attribution": StockAttributionAgent,
+    "auction_review": AuctionReviewAgent,
 }
 
 
