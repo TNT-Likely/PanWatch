@@ -1,0 +1,25 @@
+[Unit]
+Description=PanWatch A-Share Forecast Engine (Kronos + XGBoost + Lag-Llama)
+Documentation=https://github.com/xiaoze-hub/PanWatch
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+# 读 panwatch.env 里的 WUDAO_MCP_TOKEN 等配置
+EnvironmentFile=/home/ubuntu/.hermes/scripts/panwatch.env
+ExecStart=/home/ubuntu/.hermes/hermes-agent/venv/bin/python3 /home/ubuntu/forecast_server.py
+Restart=always
+RestartSec=5
+# 预测引擎内存占用大(Kronos ~1GB),给足限制
+MemoryMax=4G
+# 慢启动(模型加载),给足时间
+TimeoutStartSec=300
+# 日志
+StandardOutput=append:/var/log/panwatch-forecast.log
+StandardError=append:/var/log/panwatch-forecast.log
+
+[Install]
+WantedBy=multi-user.target
