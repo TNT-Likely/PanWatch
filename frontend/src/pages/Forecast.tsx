@@ -343,9 +343,6 @@ export default function ForecastPage() {
               onChange={e => { setTargetDate(e.target.value); setDays(0) }}
               className="w-36"
             />
-            <div className="text-xs text-muted-foreground">
-              {days > 0 ? `≈${days} 个交易日` : '选择目标日期'}
-            </div>
           </div>
           <Button onClick={runPredict} disabled={loading}>
             <Activity className="mr-2 h-4 w-4" /> {loading ? '预测中(约30-60s)...' : '开始预测'}
