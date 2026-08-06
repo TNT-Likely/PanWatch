@@ -15,6 +15,7 @@ interface KronosResult {
 
 interface PredictResult {
   symbol: string
+  stock_name?: string
   last_close: number
   last_date: string
   pred_days: number
@@ -48,6 +49,7 @@ interface PredictResult {
 interface ForecastHistoryItem {
   id: number
   symbol: string
+  stock_name?: string
   last_close: number
   last_date: string
   pred_days: number
@@ -305,7 +307,7 @@ export default function ForecastPage() {
         <div className="card p-4">
           <div className="mb-3">
             <div className="flex items-center justify-between">
-              <span>预测结果：{result.symbol}</span>
+              <span>预测结果：{result.symbol}{result.stock_name ? ` ${result.stock_name}` : ''}</span>
               <span className={`text-lg font-bold ${dirColor(result.direction)}`}>
                 {result.direction === 'up' ? '↑ 看多' : result.direction === 'down' ? '↓ 看空' : '→ 横盘'}
                 {' '}({result.expected_pct > 0 ? '+' : ''}{result.expected_pct}%)
@@ -503,7 +505,7 @@ export default function ForecastPage() {
               <tbody>
                 {history.map(h => (
                   <tr key={h.id} className="border-b hover:bg-muted/30">
-                    <td className="py-2 font-mono">{h.symbol}</td>
+                    <td className="py-2 font-mono">{h.symbol}{h.stock_name ? ` ${h.stock_name}` : ''}</td>
                     <td>{h.last_date}</td>
                     <td className={`text-right font-bold ${h.direction === 'up' ? 'text-red-500' : h.direction === 'down' ? 'text-green-500' : ''}`}>
                       {h.direction === 'up' ? '↑' : h.direction === 'down' ? '↓' : '→'}

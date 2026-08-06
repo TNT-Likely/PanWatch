@@ -44,6 +44,7 @@ def _init_history_db():
         CREATE TABLE IF NOT EXISTS forecasts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol TEXT NOT NULL,
+            stock_name TEXT DEFAULT '',
             last_close REAL,
             last_date TEXT,
             pred_days INTEGER,
@@ -61,11 +62,39 @@ def _init_history_db():
             created_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
     """)
-    conn.commit()
+    # 迁移: 旧表无 stock_name 列则补(ALTER TABLE ADD COLUMN)
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(forecasts)").fetchall()]
+        if "stock_name" not in cols:
+            conn.execute("ALTER TABLE forecasts ADD COLUMN stock_name TEXT DEFAULT ''")
+            conn.commit()
+    except Exception:
+        pass
     conn.close()
 
 
 _init_history_db()
+
+
+def get_stock_name(symbol: str) -> str:
+    """查股票名称(baostock query_stock_basic,需带市场前缀,失败返回空)。"""
+    try:
+        import baostock as bs
+        code = f"sh.{symbol}" if symbol.startswith(("6", "9")) else f"sz.{symbol}"
+        lg = bs.login()
+        if lg.error_code != "0":
+            return ""
+        rs = bs.query_stock_basic(code=code)
+        name = ""
+        while rs.error_code == "0" and rs.next():
+            row = rs.get_row_data()
+            # query_stock_basic(code) 返回 [code, code_name, ipoDate, outDate, type, status]
+            if len(row) >= 2:
+                name = row[1]
+        bs.logout()
+        return name or ""
+    except Exception:
+        return ""
 
 
 def save_forecast(rec: dict):
@@ -74,12 +103,13 @@ def save_forecast(rec: dict):
         conn = _sqlite3.connect(_HISTORY_DB)
         conn.execute(
             """INSERT INTO forecasts
-               (symbol, last_close, last_date, pred_days, direction, expected_pct,
+               (symbol, stock_name, last_close, last_date, pred_days, direction, expected_pct,
                 prediction, action, tone, confidence, target_price, stop_loss,
                 summary, sentiment_adj, models)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                rec.get("symbol", ""), rec.get("last_close"), rec.get("last_date"),
+                rec.get("symbol", ""), rec.get("stock_name", ""),
+                rec.get("last_close"), rec.get("last_date"),
                 rec.get("pred_days"), rec.get("direction"), rec.get("expected_pct"),
                 json.dumps(rec.get("prediction", []), ensure_ascii=False),
                 rec.get("action", ""), rec.get("tone", ""), rec.get("confidence", ""),
@@ -664,6 +694,9 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
         _log(tid, f"开始预测 {symbol}, {days} 天")
         df = load_kline(symbol, days=250)
         _log(tid, f"数据加载完成: {len(df)} 根K线 (baostock 不复权)")
+        stock_name = get_stock_name(symbol)
+        if stock_name:
+            _log(tid, f"股票: {symbol} {stock_name}")
     except HTTPException as e:
         _set_status(tid, "error")
         _log(tid, f"数据加载失败: {e.detail}")
@@ -738,6 +771,7 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
 
     result = {
         "symbol": symbol,
+        "stock_name": stock_name,
         "last_close": last_close,
         "last_date": last_date,
         "pred_days": days,
@@ -762,6 +796,7 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
     # 保存历史(供回查列表)
     rec["sentiment_adj"] = adjust_pct
     rec["symbol"] = symbol
+    rec["stock_name"] = stock_name
     rec["last_close"] = last_close
     rec["last_date"] = last_date
     rec["pred_days"] = days
@@ -875,6 +910,7 @@ def forecast_card(symbol: str, task_id: str = ""):
     # 从历史行构造渲染数据
     render = {
         "symbol": data["symbol"],
+        "stock_name": data.get("stock_name", ""),
         "last_close": data["last_close"],
         "last_date": data["last_date"],
         "prediction": data["prediction"],
@@ -928,8 +964,10 @@ def _render_card(data: dict) -> io.BytesIO:
     color = "#f85149" if direction == "up" else "#3fb950" if direction == "down" else "#8b949e"
     dir_cn = {"up": "看多", "down": "看空", "flat": "横盘"}.get(direction, direction)
 
-    # 标题
-    ax.text(0.5, 0.96, f"A股预测 · {symbol}", ha="center", color="#e6edf3",
+    # 标题(带股票名称)
+    name = data.get("stock_name", "") or ""
+    title = f"A股预测 · {symbol}" + (f" · {name}" if name else "")
+    ax.text(0.5, 0.96, title, ha="center", color="#e6edf3",
             fontsize=18, fontweight="bold", transform=ax.transAxes)
     ax.text(0.5, 0.92, f"基准 {last:.2f} ({data.get('last_date', '')}) → {dir_cn} {exp:+.1f}%",
             ha="center", color=color, fontsize=13, transform=ax.transAxes)
