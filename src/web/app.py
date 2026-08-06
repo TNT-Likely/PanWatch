@@ -26,6 +26,7 @@ from src.web.api import (
     dashboard,
     paper_trading,
     chat,
+    forecast,
 )
 from src.web.api import factors
 from src.web.api import health
@@ -157,6 +158,12 @@ app.include_router(
     health.router,
     prefix="/api/health",
     tags=["health"],
+    dependencies=protected,
+)
+app.include_router(
+    forecast.router,
+    prefix="/api",
+    tags=["forecast"],
     dependencies=protected,
 )
 app.include_router(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, LineChart } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -14,6 +14,7 @@ import AnalysisDetailPage from '@/pages/AnalysisDetail'
 import PriceAlertsPage from '@/pages/PriceAlerts'
 import PaperTradingPage from '@/pages/PaperTrading'
 import LoginPage from '@/pages/Login'
+import ForecastPage from '@/pages/Forecast'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import ChatWidget from '@/components/ChatWidget'
@@ -26,6 +27,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: '首页' },
   { to: '/portfolio', icon: List, label: '持仓' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
+  { to: '/forecast', icon: LineChart, label: '预测' },
   { to: '/paper-trading', icon: Activity, label: '模拟盘' },
   { to: '/alerts', icon: BellRing, label: '提醒' },
   { to: '/agents', icon: Bot, label: 'Agent' },
@@ -257,6 +259,7 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
+          <Route path="/forecast" element={<ForecastPage />} />
           <Route path="/portfolio" element={<StocksPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/history" element={<HistoryPage />} />
