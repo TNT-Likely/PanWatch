@@ -62,6 +62,8 @@ FILES=(
   "src/web/api/dashboard.py"
   "src/collectors/discovery_collector.py"
   "src/collectors/wudao_mcp_client.py"
+  "src/collectors/market_sentiment_collector.py"
+  "src/agents/premarket_outlook.py"
   "src/core/strategy_engine.py"
   "src/core/entry_candidates.py"
   "src/core/sector_filter.py"

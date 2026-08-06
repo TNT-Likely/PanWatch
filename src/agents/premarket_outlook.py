@@ -225,6 +225,54 @@ class PremarketOutlookAgent(BaseAgent):
             logger.warning("[%s] 市场情绪采集失败: %s", trace_id, e)
             market_sentiment = {}
 
+        # 6. 事件驱动扫描(核心:提前发现题材,不追涨停)
+        #    全网事件流: 涨价/停产/限产/事故/灾害/战争/政策 关键词
+        #    未来催化日历: 未来 3 天事件
+        event_stream = []
+        catalyst = {}
+        try:
+            from src.collectors.wudao_mcp_client import WudaoMCPClient
+
+            wclient = WudaoMCPClient()
+            ev_resp = wclient.call_tool(
+                "cls_news",
+                {
+                    "keyword": "涨价,停产,限产,事故,灾害,战争,地震,台风,减产,提价,涨价函",
+                    "hoursAgo": 48,
+                    "limit": 40,
+                    "format": "json",
+                },
+            )
+            rows = (ev_resp or {}).get("rows") or []
+            for it in rows[:30]:
+                if not isinstance(it, dict):
+                    continue
+                event_stream.append(
+                    {
+                        "time": it.get("fullTime") or it.get("time") or "",
+                        "level": it.get("level") or "",
+                        "content": (it.get("content") or "")[:200],
+                        "subjects": it.get("subjects") or [],
+                        "ref": it.get("ref") or "",
+                    }
+                )
+            cat_resp = wclient.call_tool(
+                "market_catalyst_calendar",
+                {"startDate": datetime.now().strftime("%Y-%m-%d"), "endDate": (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")},
+            )
+            if isinstance(cat_resp, dict):
+                catalyst = cat_resp
+            logger.info(
+                "[%s] 事件驱动扫描完成: events=%s catalyst=%s",
+                trace_id,
+                len(event_stream),
+                bool(catalyst),
+            )
+        except Exception as e:
+            logger.warning("[%s] 事件驱动扫描失败: %s", trace_id, e)
+            event_stream = []
+            catalyst = {}
+
         return {
             "yesterday_analysis": yesterday_analysis.content
             if yesterday_analysis
@@ -235,6 +283,8 @@ class PremarketOutlookAgent(BaseAgent):
             "quality_overview": quality_overview,
             "news": news_items,
             "market_sentiment": market_sentiment,
+            "event_stream": event_stream,
+            "catalyst": catalyst,
             "timestamp": datetime.now().isoformat(),
             "run_trace_id": trace_id,
         }
@@ -325,7 +375,7 @@ class PremarketOutlookAgent(BaseAgent):
                 )
             lines.append("")
 
-        # 涨停板块分布(主线题材反推)
+        # 涨停板块分布(主线题材反推,仅用于情绪判断,不用于选股推荐)
         sectors = ms.get("sectors", {}) or {}
         senti = (ms.get("sentiment") or {})
         top_sectors = senti.get("top_sectors", [])
@@ -333,6 +383,34 @@ class PremarketOutlookAgent(BaseAgent):
             lines.append("## 涨停板块分布")
             parts = [f"{s.get('name')}×{s.get('count')}" for s in top_sectors]
             lines.append(f"- {'，'.join(parts)}")
+            lines.append("")
+
+        # 事件驱动扫描(核心:提前发现题材,不追涨停)
+        # 近48h全网事件(涨价/停产/灾害/战争/政策) → 受益题材推理的输入
+        ev = data.get("event_stream", []) or []
+        if ev:
+            lines.append("## 近48小时事件流(事件驱动扫描)")
+            for e in ev[:15]:
+                level_tag = {"A": "🔴", "B": "🟠"}.get(e.get("level") or "", "")
+                lines.append(f"- [{e.get('time')}] {level_tag}{e.get('content')}")
+                subs = e.get("subjects") or []
+                if subs:
+                    lines.append(f"  - 主题: {'、'.join(str(s) for s in subs[:4])}")
+            lines.append("")
+            lines.append("> 以上事件是'提前发现题材'的核心输入: 每个事件 → 受益板块 → 潜伏标的(未涨停)。不要用涨停池选股(那是追高)。")
+            lines.append("")
+
+        # 未来催化日历(未来 3 天)
+        cat = data.get("catalyst", {}) or {}
+        cat_items = (cat.get("rows") or cat.get("items") or []) if isinstance(cat, dict) else []
+        if cat_items:
+            lines.append("## 未来催化日历(未来3天)")
+            for c in cat_items[:10]:
+                if not isinstance(c, dict):
+                    continue
+                lines.append(
+                    f"- {c.get('date') or c.get('time') or ''}: {c.get('title') or c.get('event') or c.get('name') or ''}"
+                )
             lines.append("")
 
         # 相关新闻
