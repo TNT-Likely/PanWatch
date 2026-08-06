@@ -38,6 +38,7 @@ export const LOGGER_MAPPING: Record<string, string> = {
   // Web/API
   'src.web.api': 'API',
   'src.web.app': 'Web应用',
+  'src.web.api.forecast': '预测回测',
   'src.web.database': '数据库',
   'src.web.stock_list': '股票列表',
   'api': 'API',

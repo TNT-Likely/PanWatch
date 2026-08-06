@@ -32,6 +32,7 @@ const AGENT_LABELS: Record<string, string> = {
   news_digest: '新闻速递',
   chart_analyst: '技术分析',
   tradingagents: 'TradingAgents 深度',
+  forecast: '预测回测',
 }
 
 const WORKFLOW_AGENT_KEYS = ['daily_report', 'premarket_outlook', 'intraday_monitor', 'tradingagents']
