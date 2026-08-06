@@ -15,6 +15,7 @@ import PriceAlertsPage from '@/pages/PriceAlerts'
 import PaperTradingPage from '@/pages/PaperTrading'
 import LoginPage from '@/pages/Login'
 import ForecastPage from '@/pages/Forecast'
+import IndexDetailPage from '@/pages/IndexDetail'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import ChatWidget from '@/components/ChatWidget'
@@ -260,6 +261,7 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
           <Route path="/forecast" element={<ForecastPage />} />
+          <Route path="/index/:symbol" element={<IndexDetailPage />} />
           <Route path="/portfolio" element={<StocksPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/history" element={<HistoryPage />} />

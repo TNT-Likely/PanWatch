@@ -398,7 +398,11 @@ export default function DashboardPage() {
       {/* 指数走势 pills */}
       <div className="mb-3 grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-5">
         {indices.slice(0, 5).map((ix) => (
-          <div key={`${ix.market}:${ix.symbol}`} className="card-subtle relative p-2.5">
+          <button
+            key={`${ix.market}:${ix.symbol}`}
+            onClick={() => navigate(`/index/${ix.symbol}`)}
+            className="card-subtle relative p-2.5 text-left hover:border-primary/40 transition-colors cursor-pointer"
+          >
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
                 <div className="truncate text-[11px] text-muted-foreground">{ix.name}</div>
@@ -415,7 +419,7 @@ export default function DashboardPage() {
                 <Sparkline data={ix.spark} height={26} className={moveColor(ix.change_pct)} />
               </div>
             )}
-          </div>
+          </button>
         ))}
       </div>
 

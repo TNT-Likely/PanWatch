@@ -131,3 +131,94 @@ async def get_market_indices():
 
     _INDICES_CACHE["indices"] = (now, result)
     return result
+
+
+@router.get("/indices/{symbol}")
+async def get_index_detail(symbol: str):
+    """大盘指数详情: K线 + 实时行情 + 成交额(腾讯源,云服务器可用)。
+
+    大盘资金流: 东财 fflow 在云服务器被断(502),用成交额/成交量趋势替代展示。
+    """
+    idx = next((i for i in MARKET_INDICES if i["symbol"] == symbol), None)
+    if not idx:
+        return {"error": f"未知指数 {symbol}", "symbol": symbol}
+
+    # 1. 实时行情(腾讯) — to_thread 避免阻塞
+    quote_data = None
+    try:
+        def _fetch_quote():
+            quotes = get_market_data().index_quotes([idx["tencent_symbol"]])
+            for q in quotes:
+                if q["symbol"] == idx["response_symbol"]:
+                    return {
+                        "current_price": q["current_price"],
+                        "change_pct": q["change_pct"],
+                        "change_amount": q["change_amount"],
+                        "prev_close": q["prev_close"],
+                        "open": q.get("open"),
+                        "high": q.get("high"),
+                        "low": q.get("low"),
+                        "volume": q.get("volume"),
+                        "amount": q.get("amount"),
+                    }
+            return None
+
+        quote_data = await asyncio.to_thread(_fetch_quote)
+    except Exception as e:
+        logger.warning(f"指数详情行情失败 {symbol}: {e}")
+
+    # 2. 日K线(腾讯,120天) — 同步 requests 用 to_thread 避免阻塞事件循环
+    klines = []
+    try:
+        import requests as _req
+
+        if idx["market"] == "CN":
+            tencent_code = idx["tencent_symbol"]
+        elif idx["market"] == "HK":
+            tencent_code = "hkHSI"
+        else:
+            tencent_code = {"IXIC": "usIXIC", "DJI": "usDJI"}.get(symbol, "")
+
+        def _fetch_tencent_kline(code: str) -> list:
+            r = _req.get(
+                f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={code},day,,,120,qfq",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            if r.status_code != 200:
+                return []
+            d = r.json()
+            data = (d.get("data") or {}).get(code) or {}
+            bars = data.get("day") or data.get("qfqday") or []
+            return [
+                {
+                    "date": b[0],
+                    "open": float(b[1]),
+                    "close": float(b[2]),
+                    "high": float(b[3]),
+                    "low": float(b[4]),
+                    "volume": float(b[5]) if len(b) > 5 else 0,
+                }
+                for b in bars
+            ]
+
+        if tencent_code:
+            klines = await asyncio.to_thread(_fetch_tencent_kline, tencent_code)
+    except Exception as e:
+        logger.warning(f"指数详情K线失败 {symbol}: {e}")
+
+    # 3. 成交额趋势(资金流替代: 近20日成交额)
+    amount_trend = [
+        {"date": k["date"], "amount": k["volume"] * (k["close"] + k["open"]) / 2 / 1e8}
+        for k in klines[-20:]
+    ]
+
+    return {
+        "symbol": idx["symbol"],
+        "name": idx["name"],
+        "market": idx["market"],
+        "quote": quote_data,
+        "klines": klines,
+        "amount_trend": amount_trend,
+        "note": "大盘资金流:东财源在云服务器不可用(502),以成交额趋势替代",
+    }
