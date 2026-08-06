@@ -581,6 +581,18 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "test_symbols": [],
         },
         {
+            "name": "FTShare龙虎榜",
+            "type": "dragon_tiger",
+            "provider": "ftshare",
+            "config": {
+                "description": "FTShare MCP 龙虎榜备源(免 key,云服务器可直连)。东财断供时自动降级。",
+            },
+            "enabled": True,
+            "priority": 5,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
             "name": "东财融资融券",
             "type": "margin",
             "provider": "eastmoney",
@@ -588,6 +600,18 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": True,
             "priority": 0,
             "supports_batch": True,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "FTShare融资融券",
+            "type": "margin",
+            "provider": "ftshare",
+            "config": {
+                "description": "FTShare MCP 两融备源(免 key,云服务器可直连)。东财断供时自动降级。",
+            },
+            "enabled": True,
+            "priority": 5,
+            "supports_batch": False,
             "test_symbols": ["600519", "000001"],
         },
         {

@@ -57,6 +57,8 @@ FILES=(
   "src/web/api/forecast.py"
   "src/web/api/market.py"
   "src/agents/stock_attribution.py"
+  "packages/marketdata/src/marketdata/vendors/ftshare.py"
+  "packages/marketdata/src/marketdata/registry.py"
 )
 
 echo "=============================================="
