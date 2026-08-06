@@ -58,6 +58,7 @@ FILES=(
   "src/web/api/market.py"
   "src/agents/stock_attribution.py"
   "packages/marketdata/src/marketdata/vendors/ftshare.py"
+  "packages/marketdata/src/marketdata/vendors/zhitu.py"
   "packages/marketdata/src/marketdata/registry.py"
 )
 

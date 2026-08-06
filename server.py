@@ -635,6 +635,18 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "test_symbols": ["600519", "000001"],
         },
         {
+            "name": "智兔分红",
+            "type": "dividend",
+            "provider": "zhitu",
+            "config": {
+                "description": "智兔数服分红送配备源(HTTP 直连免 key,200次/天)。东财断供时自动降级。",
+            },
+            "enabled": True,
+            "priority": 5,
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
             "name": "同花顺北向资金",
             "type": "northbound",
             "provider": "ths",

@@ -33,6 +33,7 @@ from marketdata.vendors.market_flow import (
     EastmoneyShareholdersVendor,
 )
 from marketdata.vendors.ftshare import FtshareDragonTigerVendor, FtshareMarginVendor
+from marketdata.vendors.zhitu import ZhituDividendVendor
 from marketdata.vendors.news import (
     EastmoneyAnnNewsVendor,
     EastmoneyStockNewsVendor,
@@ -92,6 +93,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
     },
     "dividend": {
         "eastmoney": EastmoneyDividendVendor,
+        "zhitu": ZhituDividendVendor,
     },
     "northbound": {
         "ths": HexinNorthboundVendor,
