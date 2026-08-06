@@ -26,6 +26,12 @@ interface PredictResult {
     xgboost: number[] | null
     linreg: number[] | null
   }
+  sentiment?: {
+    events: { source: string; title?: string; text?: string; date?: string }[]
+    market_sentiment?: { limit_up_count: number; top_sectors: { name: string; count: number }[] } | null
+    adjustment_pct: number
+    notes: string[]
+  }
   elapsed_ms: number
 }
 
@@ -228,7 +234,7 @@ export default function ForecastPage() {
               <div className="text-sm font-medium mb-2">三模型对比</div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between bg-muted/50 rounded px-3 py-2">
-                  <span>Kronos（MC{n.result.models.kronos.n_samples}采样）</span>
+                  <span>Kronos（MC{result.models.kronos.n_samples}采样）</span>
                   <span className="font-mono">
                     {result.models.kronos.median[0].toFixed(2)} → {result.models.kronos.median[result.models.kronos.median.length - 1].toFixed(2)}
                     <span className="text-muted-foreground ml-2">
@@ -250,6 +256,37 @@ export default function ForecastPage() {
                 </div>
               </div>
             </div>
+
+            {/* 消息情绪面 */}
+            {result.sentiment && (
+              <div>
+                <div className="text-sm font-medium mb-2">消息情绪面</div>
+                <div className={`rounded px-3 py-2 text-sm mb-2 ${result.sentiment.adjustment_pct >= 0 ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                  情绪修正系数：{result.sentiment.adjustment_pct > 0 ? '+' : ''}{result.sentiment.adjustment_pct}%
+                  {result.sentiment.notes?.length > 0 && (
+                    <span className="text-muted-foreground ml-2 text-xs">
+                      ({result.sentiment.notes.join('；')})
+                    </span>
+                  )}
+                </div>
+                {result.sentiment.market_sentiment && (
+                  <div className="text-xs text-muted-foreground mb-2">
+                    今日涨停 {result.sentiment.market_sentiment.limit_up_count} 家，
+                    板块分布：{result.sentiment.market_sentiment.top_sectors?.map(s => `${s.name}×${s.count}`).join('、') || '无'}
+                  </div>
+                )}
+                {result.sentiment.events?.length > 0 && (
+                  <div className="text-xs space-y-1">
+                    {result.sentiment.events.slice(0, 5).map((e, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-muted-foreground shrink-0">[{e.source}]</span>
+                        <span className="truncate">{e.title || String(e.text || '').slice(0, 60)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
