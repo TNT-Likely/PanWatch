@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -34,8 +35,38 @@ from marketdata.vendors.base import DividendVendor
 logger = logging.getLogger(__name__)
 
 _ZHITU_BASE = "https://api.zhituapi.com/hs"
-# token 优先级: env > server.py 默认值。PanWatch 容器用 -e ZHITU_TOKEN 注入。
-_ZHITU_TOKEN = os.environ.get("ZHITU_TOKEN", "E0E16C43-9272-4DAB-800C-178694F2D4B1")
+_ZHITU_TOKEN_DEFAULT = "E0E16C43-9272-4DAB-800C-178694F2D4B1"
+# 数据库路径(容器内 /app/data/panwatch.db;本地开发用 env 覆盖)
+_DB_PATH = os.environ.get("PANWATCH_DB", "/app/data/panwatch.db")
+_ZHITU_TOKEN: str | None = None  # 惰性加载,支持设置页改 key 后立即生效
+
+
+def _load_token() -> str:
+    """token 优先级: 设置页 DB(app_settings.zhitu_token) > env ZHITU_TOKEN > 默认值。
+
+    DB 优先让设置页"维护接口 key"直接生效,无需重启容器/改代码。
+    """
+    global _ZHITU_TOKEN
+    if _ZHITU_TOKEN is not None:
+        return _ZHITU_TOKEN
+    token = ""
+    try:
+        if os.path.exists(_DB_PATH):
+            conn = sqlite3.connect(_DB_PATH, timeout=3)
+            try:
+                row = conn.execute(
+                    "SELECT value FROM app_settings WHERE key='zhitu_token'"
+                ).fetchone()
+                if row and row[0]:
+                    token = row[0]
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.debug(f"读设置页 zhitu_token 失败: {e}")
+    if not token:
+        token = os.environ.get("ZHITU_TOKEN", _ZHITU_TOKEN_DEFAULT)
+    _ZHITU_TOKEN = token
+    return token
 
 
 def _to_float(value) -> float | None:
@@ -49,7 +80,7 @@ def _to_float(value) -> float | None:
 
 def _zhitu_get(path: str, params: dict | None = None, timeout: float = 15.0) -> list | None:
     """GET 智兔接口,返回 list;失败/结构异常返回 None。"""
-    q = {"token": _ZHITU_TOKEN, **(params or {})}
+    q = {"token": _load_token(), **(params or {})}
     url = f"{_ZHITU_BASE}{path}?{urllib.parse.urlencode(q)}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:

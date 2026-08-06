@@ -138,6 +138,10 @@ const emptyServiceForm: ServiceForm = { name: '', base_url: '', api_key: '' }
 const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
+// 敏感设置 key:值不回显(后端已掩码为 ********),输入框用密码态,掩码值不参与编辑
+const SECRET_SETTING_KEYS = new Set(['wudao_mcp_token', 'zhitu_token'])
+const SECRET_MASK = '********'
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
   const [services, setServices] = useState<AIService[]>([])
@@ -370,9 +374,20 @@ export default function SettingsPage() {
   const handleSave = async (key: string) => {
     setSaving(key)
     try {
+      const existing = settings.find(s => s.key === key)?.value
+      const next = edited[key] ?? existing
+      // 敏感 key:留空 = 不修改(防止覆盖已配置的 token)
+      if (SECRET_SETTING_KEYS.has(key) && !next) {
+        const newEdited = { ...edited }
+        delete newEdited[key]
+        setEdited(newEdited)
+        setSaved(key)
+        setTimeout(() => setSaved(null), 2000)
+        return
+      }
       await fetchAPI(`/settings/${key}`, {
         method: 'PUT',
-        body: JSON.stringify({ value: edited[key] ?? settings.find(s => s.key === key)?.value }),
+        body: JSON.stringify({ value: next }),
       })
       const newEdited = { ...edited }
       delete newEdited[key]
@@ -658,6 +673,8 @@ export default function SettingsPage() {
   const enabledChannels = channels.filter(c => c.enabled)
 
   const filteredSettings = settings.filter(s => {
+    // 敏感接口 key 由独立"接口 Key"区块管理,系统区块不重复展示
+    if (SECRET_SETTING_KEYS.has(s.key)) return false
     const q = systemQuery.trim().toLowerCase()
     if (!q) return true
     return (s.description || '').toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
@@ -667,6 +684,7 @@ export default function SettingsPage() {
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
+    { id: 'sec-keys', label: '接口Key', hint: `${settings.filter(s => SECRET_SETTING_KEYS.has(s.key) && s.value === SECRET_MASK).length}/${SECRET_SETTING_KEYS.size} 已配` },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
     { id: 'sec-pack', label: '配置包' },
     { id: 'sec-feedback', label: '反馈' },
@@ -935,6 +953,62 @@ export default function SettingsPage() {
 
         {/* General Settings */}
         {settings.length > 0 && (
+          <>
+          {/* 接口 Key 区块(数据源凭证维护) */}
+          <section id="sec-keys" className="card p-4 md:p-6 lg:col-span-12">
+            <div className="flex items-start justify-between mb-4 gap-3">
+              <div>
+                <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">接口 Key</h3>
+                <p className="text-[11px] text-muted-foreground mt-1">数据源接口凭证，保存在本机数据库，修改后立即生效（无需重启）。</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {settings.filter(s => SECRET_SETTING_KEYS.has(s.key)).map(setting => {
+                const isChanged = setting.key in edited
+                return (
+                  <div key={setting.key} className="rounded-xl bg-accent/30 p-3.5">
+                    <Label className="text-[12px]">{setting.description || setting.key}</Label>
+                    <div className="flex items-center gap-2.5 mt-2">
+                      <div className="flex-1 relative">
+                        <Input
+                          type="password"
+                          value={isChanged ? (edited[setting.key] ?? '') : ''}
+                          onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
+                          className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
+                          placeholder={setting.value === SECRET_MASK ? '已配置（输入新 Key 可替换，留空不变）' : '未配置，输入接口 Key'}
+                        />
+                        {!isChanged && setting.value === SECRET_MASK && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-emerald-500">已配置</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleSave(setting.key)}
+                        disabled={!isChanged || saving === setting.key}
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                          saved === setting.key
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : isChanged
+                              ? 'bg-primary text-white'
+                              : 'text-muted-foreground/30'
+                        }`}
+                      >
+                        {saving === setting.key ? (
+                          <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {setting.key === 'wudao_mcp_token'
+                        ? '悟道 MCP Token（竞价/题材数据）'
+                        : '智兔数据接口 Token（分红/股东数据，200次/天）'}。读取优先级：设置页 &gt; 环境变量 &gt; 内置默认。
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
           <section id="sec-system" className="card p-4 md:p-6 lg:col-span-12">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 md:mb-5">
               <div>
@@ -980,12 +1054,20 @@ export default function SettingsPage() {
                           </SelectContent>
                         </Select>
                       ) : (
-                      <Input
-                        value={currentValue}
-                        onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
-                        className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
-                        placeholder={setting.key}
-                      />
+                      <div className="flex-1 relative">
+                        <Input
+                          type={SECRET_SETTING_KEYS.has(setting.key) ? 'password' : 'text'}
+                          value={SECRET_SETTING_KEYS.has(setting.key) && !isChanged ? (setting.value === SECRET_MASK ? '' : currentValue) : currentValue}
+                          onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
+                          className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
+                          placeholder={SECRET_SETTING_KEYS.has(setting.key)
+                            ? (setting.value === SECRET_MASK ? '已配置(留空保存则不变)' : setting.key)
+                            : setting.key}
+                        />
+                        {SECRET_SETTING_KEYS.has(setting.key) && setting.value === SECRET_MASK && !isChanged && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-emerald-500">已配置</span>
+                        )}
+                      </div>
                       )}
                       <button
                         onClick={() => handleSave(setting.key)}
@@ -1010,6 +1092,7 @@ export default function SettingsPage() {
               })}
             </div>
           </section>
+          </>
         )}
 
         {/* Config Pack (Templates) */}

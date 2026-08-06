@@ -28,9 +28,10 @@ class WudaoMCPClient:
 
     def __init__(self, url: str | None = None, token: str | None = None):
         import os
+        import sqlite3
 
         self.url = url or os.getenv("WUDAO_MCP_URL") or _DEFAULT_URL
-        self.token = token or os.getenv("WUDAO_MCP_TOKEN") or ""
+        self.token = token or self._db_token() or os.getenv("WUDAO_MCP_TOKEN") or ""
         self._headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
@@ -38,6 +39,28 @@ class WudaoMCPClient:
         if self.token:
             self._headers["Authorization"] = f"Bearer {self.token}"
         self._initialized = False
+
+    @staticmethod
+    def _db_token() -> str:
+        """设置页 DB(app_settings.wudao_mcp_token) > env。改 key 立即生效,无需重建容器。"""
+        import os
+        import sqlite3
+
+        db_path = os.getenv("PANWATCH_DB", "/app/data/panwatch.db")
+        try:
+            if not os.path.exists(db_path):
+                return ""
+            conn = sqlite3.connect(db_path, timeout=3)
+            try:
+                row = conn.execute(
+                    "SELECT value FROM app_settings WHERE key='wudao_mcp_token'"
+                ).fetchone()
+                return row[0] if row and row[0] else ""
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.debug(f"读设置页 wudao_mcp_token 失败: {e}")
+            return ""
 
     def _initialize(self):
         if self._initialized:
