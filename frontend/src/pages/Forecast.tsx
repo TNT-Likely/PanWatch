@@ -24,6 +24,7 @@ interface PredictResult {
   expected_pct: number
   models: {
     kronos: KronosResult
+    lag_llama?: { median: number[]; p10: number[]; p90: number[]; n_samples: number } | null
     xgboost: number[] | null
     linreg: number[] | null
   }
@@ -277,7 +278,7 @@ export default function ForecastPage() {
             <TrendingUp className="h-6 w-6" /> 预测回测
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Kronos + XGBoost + 线性回归 多模型投票预测（数据源：baostock 不复权）
+            Kronos + Lag-Llama + XGBoost + 线性回归 四模型投票预测（数据源：baostock 不复权）
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm">
@@ -433,9 +434,9 @@ export default function ForecastPage() {
               </div>
             </div>
 
-            {/* 三模型对比 */}
+            {/* 四模型对比 */}
             <div>
-              <div className="text-sm font-medium mb-2">三模型对比</div>
+              <div className="text-sm font-medium mb-2">四模型对比</div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between bg-muted/50 rounded px-3 py-2">
                   <span>Kronos（MC{result.models.kronos.n_samples}采样）</span>
@@ -444,6 +445,12 @@ export default function ForecastPage() {
                     <span className="text-muted-foreground ml-2">
                       P5 {result.models.kronos.p5[0].toFixed(2)} ~ P95 {result.models.kronos.p95[0].toFixed(2)}
                     </span>
+                  </span>
+                </div>
+                <div className="flex justify-between bg-muted/50 rounded px-3 py-2">
+                  <span>Lag-Llama<span className="text-muted-foreground text-xs ml-1">(短周期可靠)</span></span>
+                  <span className="font-mono">
+                    {result.models.lag_llama ? `${result.models.lag_llama.median[0].toFixed(2)} → ${result.models.lag_llama.median[result.models.lag_llama.median.length - 1].toFixed(2)}` : '不可用'}
                   </span>
                 </div>
                 <div className="flex justify-between bg-muted/50 rounded px-3 py-2">

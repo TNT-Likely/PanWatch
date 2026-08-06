@@ -390,7 +390,11 @@ def get_lag_predictor():
 
 
 def lag_llama_predict(df: pd.DataFrame, pred_len: int = 5):
-    """Lag-Llama 预测(第4模型,多变量时序基础模型)。"""
+    """Lag-Llama 预测(第4模型,多变量时序基础模型)。
+
+    关键: 模型预训练在标准化数据上,输入必须 mean-std 标准化,
+    输出再反缩放回真实价格。否则(原始价格直接喂)外推崩坏(负价格)。
+    """
     try:
         from gluonts.dataset.pandas import PandasDataset
 
@@ -403,10 +407,20 @@ def lag_llama_predict(df: pd.DataFrame, pred_len: int = 5):
         df_long = df_long.asfreq("B").ffill()
         # 模型权重是 float32,输入必须转 float32 否则 matmul dtype 不匹配
         df_long["target"] = df_long["target"].astype("float32")
+
+        # ⚠️ 标准化: 减均值/除标准差(模型预训练分布),预测后反缩放
+        mean = float(df_long["target"].mean())
+        std = float(df_long["target"].std())
+        if std < 1e-9:
+            std = 1.0
+        df_long["target"] = (df_long["target"] - mean) / std
+
         ds = PandasDataset(dataframes=[df_long], target="target", freq="B")
 
         forecasts = list(predictor.predict(ds, num_samples=100))
         samples = forecasts[0].samples  # (100, pred_len)
+        # 反缩放回真实价格
+        samples = samples * std + mean
         median = np.median(samples, axis=0)
         p10 = np.percentile(samples, 10, axis=0)
         p90 = np.percentile(samples, 90, axis=0)
@@ -888,8 +902,16 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     votes = []
     if kronos:
         votes.append(np.array(kronos["median"]))
-    # ⚠️ Lag-Llama 暂不参与投票(baostock 不复权数据未标准化,输出异常值会污染投票)
-    # 仅在结果中展示作参考
+    # Lag-Llama 参与投票但只取前 2 天(实测 3 天以上外推区间爆炸,仅短周期可靠)
+    if lag:
+        lag_med = np.array(lag["median"])
+        lag_vote = lag_med.copy()
+        if len(lag_vote) > 2 and kronos:
+            # 3 天以上用 Kronos 中位数补位(避免 Lag-Llama 长周期异常值污染)
+            kronos_med = np.array(kronos["median"])
+            for i in range(2, len(lag_vote)):
+                lag_vote[i] = kronos_med[i] if i < len(kronos_med) else lag_med[i]
+        votes.append(lag_vote)
     if xgb_preds:
         votes.append(np.array(xgb_preds))
     if reg_preds:
