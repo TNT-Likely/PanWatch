@@ -199,6 +199,30 @@ class PremarketOutlookAgent(BaseAgent):
             int((time.monotonic() - start_ts) * 1000),
         )
 
+        # 5. 市场情绪(涨停池 + 连板梯队 + 指数快照)
+        market_sentiment = {}
+        try:
+            from src.collectors.market_sentiment_collector import (
+                MarketSentimentCollector,
+            )
+
+            senti = MarketSentimentCollector()
+            summary = senti.get_sentiment_summary()
+            indices = senti.get_index_snapshot()
+            market_sentiment = {
+                "sentiment": summary,
+                "indices": indices,
+            }
+            logger.info(
+                "[%s] 市场情绪采集完成: limit_up=%s max_streak=%s",
+                trace_id,
+                (summary or {}).get("limit_up_count", "-"),
+                (summary or {}).get("max_streak", "-"),
+            )
+        except Exception as e:
+            logger.warning("[%s] 市场情绪采集失败: %s", trace_id, e)
+            market_sentiment = {}
+
         return {
             "yesterday_analysis": yesterday_analysis.content
             if yesterday_analysis
@@ -208,6 +232,7 @@ class PremarketOutlookAgent(BaseAgent):
             "symbol_contexts": symbol_contexts,
             "quality_overview": quality_overview,
             "news": news_items,
+            "market_sentiment": market_sentiment,
             "timestamp": datetime.now().isoformat(),
             "run_trace_id": trace_id,
         }
@@ -268,6 +293,33 @@ class PremarketOutlookAgent(BaseAgent):
                 )
                 lines.append(
                     f"- {idx.get('name')}: {current:.2f} {direction} {chg:+.2f}%"
+                )
+            lines.append("")
+
+        # 市场情绪(涨停池 + 连板梯队 + 指数)
+        ms = data.get("market_sentiment", {}) or {}
+        if ms.get("sentiment") and not (ms["sentiment"] or {}).get("error"):
+            senti = ms["sentiment"]
+            lines.append("## 市场情绪")
+            lines.append(
+                f"- 涨停家数：{senti.get('limit_up_count', '-')}，最高连板：{senti.get('max_streak', '-')} 板"
+            )
+            ladder = senti.get("ladder", {})
+            if ladder:
+                ladder_str = "，".join(
+                    f"{k}板×{v}家" for k, v in list(ladder.items())[:5]
+                )
+                lines.append(f"- 连板梯队：{ladder_str}")
+            top_stocks = senti.get("top_stocks", [])
+            if top_stocks:
+                lines.append(f"- 最高板：{'、'.join(top_stocks)}")
+            lines.append("")
+        if ms.get("indices"):
+            lines.append("## 主要指数")
+            for idx in ms["indices"]:
+                direction = "↑" if idx.get("pct", 0) > 0 else "↓" if idx.get("pct", 0) < 0 else "→"
+                lines.append(
+                    f"- {idx.get('name')}: {idx.get('price', 0):.2f} {direction} {idx.get('pct', 0):+.2f}%"
                 )
             lines.append("")
 
