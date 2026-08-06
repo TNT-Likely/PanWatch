@@ -72,7 +72,7 @@ class MarketSentimentCollector:
                 {
                     "code": item.get("c", ""),
                     "name": item.get("n", ""),
-                    "price": _safe_float(item.get("p")) / 100 if item.get("p") else 0,
+                    "price": _safe_float(item.get("p")) / 1000 if item.get("p") else 0,
                     "pct": _safe_float(item.get("zdp")),
                     "amount": _safe_float(item.get("amount")),
                     "ltsz": _safe_float(item.get("ltsz")),
