@@ -482,6 +482,65 @@ def build_recommendation(symbol: str, last_close: float, final: np.ndarray,
     }
 
 
+def _load_llm_config() -> dict:
+    """加载 LLM 情绪打分配置。
+
+    优先级: 本地配置(~/.panwatch_forecast.env) > PanWatch 默认 AI 模型(动态) > 硬编码兜底。
+    这样在 PanWatch 设置页改 AI 模型后,预测引擎自动跟随。
+    """
+    import os as _os
+    import json as _json
+
+    cfg = {"base_url": "https://api.agnes-ai.cn/v1", "model": "agnes-2.5-flash", "api_key": ""}
+
+    # 1. 本地配置覆盖
+    env_path = _os.path.expanduser("~/.panwatch_forecast.env")
+    if _os.path.exists(env_path):
+        try:
+            for line in open(env_path):
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k == "LLM_BASE_URL":
+                    cfg["base_url"] = v
+                elif k == "LLM_MODEL":
+                    cfg["model"] = v
+                elif k == "LLM_API_KEY":
+                    cfg["api_key"] = v
+        except Exception:
+            pass
+
+    # 2. 从 PanWatch 拉默认 AI 模型(设置页配置,动态跟随)
+    if not cfg["api_key"]:
+        try:
+            import requests as _req
+            r = _req.get("http://172.17.0.1:8000/api/providers/services", timeout=8)
+            if r.status_code == 200:
+                services = r.json()
+                # providers API 无鉴权返回? 若 401 需带 token,则跳过
+                if isinstance(services, list):
+                    for svc in services:
+                        for m in svc.get("models", []):
+                            if m.get("is_default"):
+                                cfg["base_url"] = svc.get("base_url", cfg["base_url"])
+                                cfg["model"] = m.get("model", cfg["model"])
+                                cfg["api_key"] = svc.get("api_key", cfg["api_key"])
+                                return cfg
+        except Exception:
+            pass
+
+    # 3. 兜底: agnes key 文件
+    if not cfg["api_key"]:
+        key_path = _os.path.expanduser("~/.agnes_key")
+        if _os.path.exists(key_path):
+            cfg["api_key"] = open(key_path).read().strip()
+        if not cfg["api_key"]:
+            cfg["api_key"] = _os.getenv("AGNES_API_KEY", "")
+    return cfg
+
+
 def llm_sentiment_score(events_text: str) -> dict:
     """LLM 语义情绪打分(替代关键词规则)。
 
@@ -496,12 +555,11 @@ def llm_sentiment_score(events_text: str) -> dict:
         import requests as _req
         import os as _os
 
-        key_path = _os.path.expanduser("~/.agnes_key")
-        api_key = ""
-        if _os.path.exists(key_path):
-            api_key = open(key_path).read().strip()
-        if not api_key:
-            api_key = _os.getenv("AGNES_API_KEY", "")
+        # 动态加载配置(设置页改模型 → 引擎自动跟随)
+        cfg = _load_llm_config()
+        api_key = cfg.get("api_key", "")
+        base_url = cfg.get("base_url", "https://api.agnes-ai.cn/v1").rstrip("/")
+        model = cfg.get("model", "agnes-2.5-flash")
 
         prompt = f"""你是A股短线情绪分析专家。以下是一只股票最近7天的公告/新闻标题:
 {events_text[:800]}
@@ -512,13 +570,13 @@ def llm_sentiment_score(events_text: str) -> dict:
 0=中性/无关, +1=利好(中标/回购/预增), +2=重大利好(重组/大额订单/政策利好)"""
 
         r = _req.post(
-            "https://api.agnes-ai.cn/v1/chat/completions",
+            f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "agnes-2.5-flash",
+                "model": model,
                 "messages": [
                     {"role": "system", "content": "你只输出JSON,不输出其他文字。"},
                     {"role": "user", "content": prompt},
@@ -925,6 +983,69 @@ def backtest(symbol: str):
 def history(symbol: str = "", limit: int = 50):
     """历史预测列表(供回查)。"""
     return {"items": list_forecasts(limit=min(limit, 200), symbol=symbol)}
+
+
+@app.get("/forecast/models")
+def forecast_models():
+    """预测引擎模型清单(设置页展示,避免"不知道什么模块用什么模型")。
+
+    返回每个模型: 名称/用途/当前配置/可配置方式。
+    """
+    import os as _os
+
+    cfg = _load_llm_config()
+
+    # Kronos/Lag-Llama checkpoint 路径
+    kronos_root = _os.path.expanduser("~/Kronos")
+    lag_ckpt = _os.path.expanduser(
+        "~/.cache/huggingface/models--time-series-foundation-models--Lag-Llama/"
+        "snapshots/72dcfc29da106acfe38250a60f4ae29d1e56a3d9/lag-llama.ckpt"
+    )
+    env_path = _os.path.expanduser("~/.panwatch_forecast.env")
+
+    return {
+        "models": [
+            {
+                "name": "Kronos",
+                "module": "预测主模型",
+                "model_id": "NeoQuasar/Kronos-small",
+                "location": kronos_root,
+                "configurable": "本地源码路径(~/Kronos)",
+            },
+            {
+                "name": "Lag-Llama",
+                "module": "参考模型(暂不参与投票)",
+                "model_id": "time-series-foundation-models/Lag-Llama",
+                "location": lag_ckpt,
+                "configurable": "checkpoint 路径(代码内)",
+            },
+            {
+                "name": "XGBoost",
+                "module": "投票模型",
+                "model_id": "XGBRegressor(n_estimators=100, depth=3)",
+                "location": "pip 包",
+                "configurable": "参数在代码内",
+            },
+            {
+                "name": "LLM情绪打分",
+                "module": "公告/新闻语义判断",
+                "model_id": cfg.get("model", "agnes-2.5-flash"),
+                "location": cfg.get("base_url", ""),
+                "configurable": "PanWatch 设置→AI 模型(默认模型),或 ~/.panwatch_forecast.env 的 LLM_MODEL",
+                "api_key_set": bool(cfg.get("api_key")),
+            },
+            {
+                "name": "PanWatch AI",
+                "module": "AI对话/Agent 分析",
+                "model_id": "AIModel 表默认",
+                "location": "PanWatch 设置→AI 服务商",
+                "configurable": "PanWatch 设置页(已有)",
+            },
+        ],
+        "config_file": env_path,
+        "config_file_exists": _os.path.exists(env_path),
+        "note": "修改 LLM 情绪打分模型: ① PanWatch 设置→AI 模型 改默认模型 ② 或编辑配置文件",
+    }
 
 
 @app.get("/stocks/search")

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar, RefreshCw } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -141,6 +141,8 @@ const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
   const [services, setServices] = useState<AIService[]>([])
+  const [forecastModels, setForecastModels] = useState<any[]>([])
+  const [forecastModelsLoading, setForecastModelsLoading] = useState(false)
   const [channels, setChannels] = useState<NotifyChannel[]>([])
   const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -263,10 +265,24 @@ export default function SettingsPage() {
       setChannels(channelsData)
       setVersion(versionData.version)
       setHealth(healthData)
+      loadForecastModels()
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 加载预测引擎模型清单
+  const loadForecastModels = async () => {
+    setForecastModelsLoading(true)
+    try {
+      const d = await fetchAPI<{ models: any[] }>('/forecast/models')
+      setForecastModels(d?.models || [])
+    } catch {
+      setForecastModels([])
+    } finally {
+      setForecastModelsLoading(false)
     }
   }
 
@@ -824,6 +840,40 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+
+          {/* 预测引擎模型清单(全部模型一览,防止"不知道哪个模块用什么模型") */}
+          <div className="mt-5 pt-4 border-t">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h4 className="text-[12px] font-semibold text-foreground">预测引擎模型清单</h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">系统所有模型使用点一览，改配置在对应位置</p>
+              </div>
+              <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={loadForecastModels}>
+                <RefreshCw className={`w-3 h-3 mr-1 ${forecastModelsLoading ? 'animate-spin' : ''}`} /> 刷新
+              </Button>
+            </div>
+            {forecastModels.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground text-center py-3">
+                {forecastModelsLoading ? '加载中...' : '预测引擎未运行，无法获取模型清单'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {forecastModels.map((m, i) => (
+                  <div key={i} className="rounded-lg bg-accent/30 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-medium">{m.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{m.module}</span>
+                    </div>
+                    <div className="text-[11px] font-mono text-foreground/80 mt-0.5 truncate">{m.model_id}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      📍 {m.location} · ⚙️ {m.configurable}
+                      {m.api_key_set === false && m.name === 'LLM情绪打分' && ' · ⚠️ 未配置key'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Notify Channel Section */}
