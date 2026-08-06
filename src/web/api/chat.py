@@ -107,6 +107,21 @@ CHAT_TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_capital_flow",
+            "description": "获取某只 A 股的主力资金流向（主力净流入、超大单/大单/中单/小单净流入、5日主力净流入趋势）。用于回答资金面问题（主力在吸筹还是出货、资金流向如何等）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string", "description": "股票代码，如 002361"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
 ]
 
 
@@ -142,6 +157,11 @@ async def _execute_tool(db: Session, name: str, args: dict) -> str:
             return result or f"暂无 {market}:{symbol} 的 AI 建议。"
         elif name == "get_watchlist":
             return _build_watchlist_context(db)
+        elif name == "get_capital_flow":
+            symbol = args.get("symbol", "")
+            market = args.get("market", "CN")
+            result = await _fetch_capital_flow_context(symbol, market)
+            return result or f"未能获取 {market}:{symbol} 的资金流向数据。"
         else:
             return f"未知工具: {name}"
     except Exception as e:
@@ -315,6 +335,31 @@ async def _fetch_technical_context(symbol: str, market: str) -> str:
         return f"技术面：趋势 {trend}，MACD {macd}，RSI {rsi}，支撑位 {support}，压力位 {resistance}"
     except Exception as e:
         logger.debug(f"获取技术面失败: {e}")
+        return ""
+
+
+async def _fetch_capital_flow_context(symbol: str, market: str) -> str:
+    """获取主力资金流向摘要（A股）。"""
+    try:
+        from src.collectors.capital_flow_collector import CapitalFlowCollector
+        from src.models.market import MarketCode
+
+        mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
+        collector = CapitalFlowCollector(mc)
+        summary = await asyncio.to_thread(
+            collector.get_capital_flow_summary, symbol
+        )
+        if not summary or summary.get("error"):
+            return ""
+        # summary 结构: 主力净流入/占比/超大单/大单/中单/小单/5日趋势 等
+        parts = []
+        for k, v in summary.items():
+            if k == "error":
+                continue
+            parts.append(f"{k}:{v}")
+        return f"资金流向：{'，'.join(parts)}"
+    except Exception as e:
+        logger.debug(f"获取资金流失败: {e}")
         return ""
 
 
