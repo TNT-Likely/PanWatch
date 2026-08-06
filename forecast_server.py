@@ -201,6 +201,74 @@ def linreg_predict(df: pd.DataFrame, pred_len: int = 5):
     return preds
 
 
+def llm_sentiment_score(events_text: str) -> dict:
+    """LLM 语义情绪打分(替代关键词规则)。
+
+    调 agnes-ai chat completions,让 LLM 判断公告/新闻情绪:
+    - score: -2(重大利空) ~ +2(重大利好), 0=中性
+    - reason: 一句话理由
+    失败时返回 None(调用方降级到关键词规则)。
+    """
+    if not events_text.strip():
+        return None
+    try:
+        import requests as _req
+        import os as _os
+
+        key_path = _os.path.expanduser("~/.agnes_key")
+        api_key = ""
+        if _os.path.exists(key_path):
+            api_key = open(key_path).read().strip()
+        if not api_key:
+            api_key = _os.getenv("AGNES_API_KEY", "")
+
+        prompt = f"""你是A股短线情绪分析专家。以下是一只股票最近7天的公告/新闻标题:
+{events_text[:800]}
+
+请判断这些消息对股价的短期(1-5天)影响,只输出JSON:
+{{"score": -2到+2的整数, "reason": "一句话理由"}}
+规则: -2=重大利空(立案/退市/清仓减持/业绩暴雷), -1=利空(小幅减持/问询),
+0=中性/无关, +1=利好(中标/回购/预增), +2=重大利好(重组/大额订单/政策利好)"""
+
+        r = _req.post(
+            "https://api.agnes-ai.cn/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "agnes-2.5-flash",
+                "messages": [
+                    {"role": "system", "content": "你只输出JSON,不输出其他文字。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.1,
+                "max_tokens": 2000,
+            },
+            timeout=30,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            msg = data["choices"][0]["message"]
+            content = msg.get("content") or ""
+            # 推理模型可能把思考放 reasoning_content,content 为空
+            if not content.strip():
+                content = msg.get("reasoning_content") or ""
+            # 提取 JSON(容错:可能包在 ```json 里)
+            import re as _re
+            m = _re.search(r"\{[^}]*\"score\"[^}]*\}", content)
+            if m:
+                data2 = json.loads(m.group(0))
+                score = int(data2.get("score", 0))
+                score = max(-2, min(2, score))
+                return {"score": score, "reason": data2.get("reason", ""), "source": "llm"}
+            return {"score": 0, "reason": f"LLM返回无法解析: {content[:80]}", "source": "llm-fallback"}
+        return None
+    except Exception as e:
+        print(f"LLM情绪打分失败: {e}")
+        return None
+
+
 def fetch_sentiment(symbol: str) -> dict:
     """消息情绪面: 个股公告/新闻 + 板块共振 + 市场情绪。
 
@@ -287,23 +355,34 @@ def fetch_sentiment(symbol: str) -> dict:
     except Exception:
         pass
 
-    # 4. 事件修正系数(方法论: 重大事件±0.5~1.5%,板块宽度≥4加分)
+    # 4. 情绪打分: 优先 LLM 语义判断,失败降级关键词规则
     events_text = " ".join(e.get("title", "") or str(e.get("text", ""))[:100] for e in result["events"])
     adjust = 0.0
-    # 利空关键词
-    bearish_kw = ["减持", "亏损", "立案", "处罚", "警示", "问询", "终止", "退市", "风险提示", "诉讼", "冻结"]
-    # 利好关键词
-    bullish_kw = ["中标", "签约", "增持", "回购", "业绩预增", "扭亏", "获批", "订单", "涨停", "合同", "战略合作", "产能", "涨价"]
 
-    hit_bearish = [k for k in bearish_kw if k in events_text]
-    hit_bullish = [k for k in bullish_kw if k in events_text]
+    # 4a. LLM 语义打分
+    llm_res = llm_sentiment_score(events_text)
+    if llm_res:
+        llm_score = llm_res.get("score", 0)
+        # score -2~+2 → 修正 -1.5%~+1.5% (每档 0.75%)
+        adjust += llm_score * 0.75
+        result["notes"].append(
+            f"LLM情绪判断: {llm_score:+d} ({llm_res.get('reason', '')}) → {adjust:+.2f}%"
+        )
+    else:
+        # 4b. 关键词规则(降级)
+        bearish_kw = ["减持", "亏损", "立案", "处罚", "警示", "问询", "终止", "退市", "风险提示", "诉讼", "冻结"]
+        bullish_kw = ["中标", "签约", "增持", "回购", "业绩预增", "扭亏", "获批", "订单", "涨停", "合同", "战略合作", "产能", "涨价"]
 
-    if hit_bullish:
-        adjust += min(1.5, 0.5 + 0.5 * len(hit_bullish))
-        result["notes"].append(f"利好事件: {', '.join(hit_bullish)} → +{adjust:.1f}%")
-    if hit_bearish:
-        adjust -= min(1.5, 0.5 + 0.5 * len(hit_bearish))
-        result["notes"].append(f"利空事件: {', '.join(hit_bearish)} → {adjust:+.1f}%")
+        hit_bearish = [k for k in bearish_kw if k in events_text]
+        hit_bullish = [k for k in bullish_kw if k in events_text]
+
+        if hit_bullish:
+            adjust += min(1.5, 0.5 + 0.5 * len(hit_bullish))
+            result["notes"].append(f"利好事件: {', '.join(hit_bullish)} → +{adjust:.1f}%")
+        if hit_bearish:
+            adjust -= min(1.5, 0.5 + 0.5 * len(hit_bearish))
+            result["notes"].append(f"利空事件: {', '.join(hit_bearish)} → {adjust:+.1f}%")
+        result["notes"].append("(关键词规则,LLM不可用)")
 
     # 板块宽度(涨停池 top_sectors 中是否含该股所属板块)
     ms = result.get("market_sentiment") or {}
