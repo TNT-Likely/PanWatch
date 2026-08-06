@@ -55,6 +55,7 @@ FILES=(
   "prompts/premarket_outlook.txt"
   "prompts/daily_report.txt"
   "src/web/api/forecast.py"
+  "src/web/api/market.py"
   "src/agents/stock_attribution.py"
 )
 
