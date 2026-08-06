@@ -52,6 +52,7 @@ interface ForecastHistoryItem {
   stock_name?: string
   last_close: number
   last_date: string
+  target_date?: string
   pred_days: number
   direction: string
   expected_pct: number
@@ -76,6 +77,11 @@ interface BacktestResult {
 export default function ForecastPage() {
   const [symbol, setSymbol] = useState('002361')
   const [days, setDays] = useState(5)
+  const [searchText, setSearchText] = useState('神剑股份')
+  const [searchResults, setSearchResults] = useState<{ symbol: string; name: string }[]>([])
+  const [stockName, setStockName] = useState('')
+  const [targetDate, setTargetDate] = useState('')
+  const [lastKlineDate, setLastKlineDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<PredictResult | null>(null)
   const [backtest, setBacktest] = useState<BacktestResult | null>(null)
@@ -84,7 +90,53 @@ export default function ForecastPage() {
   const [taskLogs, setTaskLogs] = useState<string[]>([])
   const [history, setHistory] = useState<ForecastHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [detail, setDetail] = useState<ForecastHistoryItem | null>(null)
   const { toast } = useToast()
+
+  // 股票搜索(输入名称/代码) — 用 PanWatch 自带 /stocks/search(返回 list)
+  const doSearch = async (q: string) => {
+    if (!q.trim()) return
+    try {
+      const d = await fetchAPI<{ symbol: string; name: string }[] | { items: { symbol: string; name: string }[] }>(
+        `/stocks/search?q=${encodeURIComponent(q)}`
+      )
+      // PanWatch 返回 list;兼容 {items} 结构;过滤 A 股主板(6/0 开头,排除 300/688/8xx/港股)
+      const list = (Array.isArray(d) ? d : (d as any)?.items || []).filter((s: any) => {
+        const sym = s.symbol || ''
+        if (!/^\d{6}$/.test(sym)) return false
+        return sym.startsWith('60') || sym.startsWith('000') || sym.startsWith('002')
+      })
+      setSearchResults(list)
+    } catch {
+      setSearchResults([])
+    }
+  }
+
+  // 输入防抖搜索
+  const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    setSearchText(v)
+    setStockName('')
+    // 纯数字6位 = 直接当代码
+    if (/^\d{6}$/.test(v)) {
+      setSymbol(v)
+      setSearchResults([])
+      return
+    }
+    if (v.length >= 2) {
+      setTimeout(() => doSearch(v), 300)
+    } else {
+      setSearchResults([])
+    }
+  }
+
+  // 选中搜索结果
+  const selectStock = (s: { symbol: string; name: string }) => {
+    setSymbol(s.symbol)
+    setStockName(s.name)
+    setSearchText(`${s.name} ${s.symbol}`)
+    setSearchResults([])
+  }
 
   // 加载历史预测列表
   const loadHistory = async () => {
@@ -160,8 +212,9 @@ export default function ForecastPage() {
     try {
       // 并行: 启动预测 + 轮询进度
       // ⚠️ predict 需要长超时(Kronos MC30 推理 20-30s,默认 20s 会 abort)
+      const targetParam = targetDate ? `&target_date=${targetDate}` : ''
       const predictPromise = fetchAPI<PredictResult>(
-        `/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`,
+        `/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}${targetParam}`,
         { timeoutMs: 300000 }
       )
       let pollDone = false
@@ -252,24 +305,47 @@ export default function ForecastPage() {
         </div>
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
-            <Label>股票代码</Label>
-            <Input
-              value={symbol}
-              onChange={e => setSymbol(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="如 002361"
-              className="w-32"
-            />
+            <Label>股票</Label>
+            <div className="relative">
+              <Input
+                value={searchText}
+                onChange={handleSearchInput}
+                onFocus={() => searchText && doSearch(searchText)}
+                placeholder="输入名称或代码,如 神剑/002361"
+                className="w-48"
+              />
+              {searchResults.length > 0 && (
+                <div className="absolute z-20 mt-1 w-56 max-h-56 overflow-y-auto bg-popover border rounded-lg shadow-lg">
+                  {searchResults.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-muted/50 text-sm flex justify-between"
+                      onClick={() => selectStock(s)}
+                    >
+                      <span>{s.name}</span>
+                      <span className="font-mono text-muted-foreground">{s.symbol}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {stockName && (
+              <div className="text-xs text-muted-foreground mt-1">已选：{symbol} {stockName}</div>
+            )}
           </div>
           <div className="space-y-1.5">
-            <Label>预测天数</Label>
+            <Label>预测至</Label>
             <Input
-              type="number"
-              min={1}
-              max={20}
-              value={days}
-              onChange={e => setDays(Number(e.target.value) || 5)}
-              className="w-24"
+              type="date"
+              value={targetDate}
+              min={lastKlineDate ? lastKlineDate : undefined}
+              onChange={e => { setTargetDate(e.target.value); setDays(0) }}
+              className="w-36"
             />
+            <div className="text-xs text-muted-foreground">
+              {days > 0 ? `≈${days} 个交易日` : '选择目标日期'}
+            </div>
           </div>
           <Button onClick={runPredict} disabled={loading}>
             <Activity className="mr-2 h-4 w-4" /> {loading ? '预测中(约30-60s)...' : '开始预测'}
@@ -493,7 +569,8 @@ export default function ForecastPage() {
               <thead>
                 <tr className="border-b text-muted-foreground">
                   <th className="text-left py-2">代码</th>
-                  <th className="text-left">日期</th>
+                  <th className="text-left">基准日</th>
+                  <th className="text-left">目标日</th>
                   <th className="text-right">方向</th>
                   <th className="text-right">预期</th>
                   <th className="text-right">目标价</th>
@@ -504,9 +581,10 @@ export default function ForecastPage() {
               </thead>
               <tbody>
                 {history.map(h => (
-                  <tr key={h.id} className="border-b hover:bg-muted/30">
+                  <tr key={h.id} className="border-b hover:bg-muted/30 cursor-pointer" onClick={() => setDetail(h)}>
                     <td className="py-2 font-mono">{h.symbol}{h.stock_name ? ` ${h.stock_name}` : ''}</td>
                     <td>{h.last_date}</td>
+                    <td className="font-mono">{h.target_date || '-'}</td>
                     <td className={`text-right font-bold ${h.direction === 'up' ? 'text-red-500' : h.direction === 'down' ? 'text-green-500' : ''}`}>
                       {h.direction === 'up' ? '↑' : h.direction === 'down' ? '↓' : '→'}
                     </td>
@@ -528,6 +606,85 @@ export default function ForecastPage() {
       <div className="text-xs text-muted-foreground">
         免责声明：预测结果基于历史数据统计模型，不构成投资建议。模型存在偏差，请结合基本面/情绪面综合判断。
       </div>
+
+      {/* 历史预测详情弹窗 */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDetail(null)}>
+          <div className="bg-background border rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-lg font-bold">
+                {detail.symbol} {detail.stock_name || ''}
+              </div>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setDetail(null)}>✕</button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className={`rounded-lg border px-3 py-2 ${detail.direction === 'up' ? 'border-red-500/30 bg-red-500/5' : detail.direction === 'down' ? 'border-green-500/30 bg-green-500/5' : ''}`}>
+                <div className="font-bold">
+                  {detail.direction === 'up' ? '↑ 看多' : detail.direction === 'down' ? '↓ 看空' : '→ 横盘'}
+                  {' '}{detail.expected_pct > 0 ? '+' : ''}{detail.expected_pct}%
+                </div>
+                <div className="text-muted-foreground text-xs mt-1">
+                  操作建议：{detail.action || '-'} | 置信度：{detail.confidence || '-'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">基准日</div>
+                  <div className="font-mono font-bold">{detail.last_date}</div>
+                </div>
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">目标日</div>
+                  <div className="font-mono font-bold">{detail.target_date || '-'}</div>
+                </div>
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">基准价</div>
+                  <div className="font-mono font-bold">{detail.last_close}</div>
+                </div>
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">目标价</div>
+                  <div className="font-mono font-bold">{detail.target_price ?? '-'}</div>
+                </div>
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">止损参考</div>
+                  <div className="font-mono font-bold">{detail.stop_loss ?? '-'}</div>
+                </div>
+                <div className="bg-muted/40 rounded px-2 py-1.5">
+                  <div className="text-muted-foreground">情绪修正</div>
+                  <div className={`font-mono font-bold ${(detail.sentiment_adj || 0) >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {(detail.sentiment_adj || 0) > 0 ? '+' : ''}{detail.sentiment_adj || 0}%
+                  </div>
+                </div>
+              </div>
+
+              {detail.prediction && detail.prediction.length > 0 && (
+                <div>
+                  <div className="text-muted-foreground text-xs mb-1">预测序列（T+1 起）</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detail.prediction.map((p, i) => (
+                      <div key={i} className="bg-muted/40 rounded px-2 py-1 text-center">
+                        <div className="text-[10px] text-muted-foreground">T+{i + 1}</div>
+                        <div className={`font-mono font-bold text-xs ${p >= detail.last_close ? 'text-red-500' : 'text-green-500'}`}>{p}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.summary && (
+                <div className="text-xs text-muted-foreground border-t pt-2">
+                  {detail.summary}
+                </div>
+              )}
+
+              <div className="text-[10px] text-muted-foreground">
+                预测时间：{detail.created_at}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

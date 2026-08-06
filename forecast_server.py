@@ -47,6 +47,7 @@ def _init_history_db():
             stock_name TEXT DEFAULT '',
             last_close REAL,
             last_date TEXT,
+            target_date TEXT DEFAULT '',
             pred_days INTEGER,
             direction TEXT,
             expected_pct REAL,
@@ -62,12 +63,14 @@ def _init_history_db():
             created_at TEXT DEFAULT (datetime('now', 'localtime'))
         )
     """)
-    # 迁移: 旧表无 stock_name 列则补(ALTER TABLE ADD COLUMN)
+    # 迁移: 旧表无 stock_name/target_date 列则补(ALTER TABLE ADD COLUMN)
     try:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(forecasts)").fetchall()]
         if "stock_name" not in cols:
             conn.execute("ALTER TABLE forecasts ADD COLUMN stock_name TEXT DEFAULT ''")
-            conn.commit()
+        if "target_date" not in cols:
+            conn.execute("ALTER TABLE forecasts ADD COLUMN target_date TEXT DEFAULT ''")
+        conn.commit()
     except Exception:
         pass
     conn.close()
@@ -103,13 +106,14 @@ def save_forecast(rec: dict):
         conn = _sqlite3.connect(_HISTORY_DB)
         conn.execute(
             """INSERT INTO forecasts
-               (symbol, stock_name, last_close, last_date, pred_days, direction, expected_pct,
+               (symbol, stock_name, last_close, last_date, target_date, pred_days, direction, expected_pct,
                 prediction, action, tone, confidence, target_price, stop_loss,
                 summary, sentiment_adj, models)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 rec.get("symbol", ""), rec.get("stock_name", ""),
                 rec.get("last_close"), rec.get("last_date"),
+                rec.get("target_date", ""),
                 rec.get("pred_days"), rec.get("direction"), rec.get("expected_pct"),
                 json.dumps(rec.get("prediction", []), ensure_ascii=False),
                 rec.get("action", ""), rec.get("tone", ""), rec.get("confidence", ""),
@@ -678,8 +682,11 @@ def health():
 
 
 @app.get("/predict")
-def predict(symbol: str, days: int = 5, task_id: str = ""):
-    """多模型预测: Kronos + XGBoost + 线性回归 投票。task_id 可选(用于进度日志)。"""
+def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""):
+    """多模型预测: Kronos + XGBoost + 线性回归 投票。
+
+    target_date 可选: 预测到该日期为止(自动换算交易日数)。task_id 可选(进度日志)。
+    """
     if not symbol.isdigit() or len(symbol) != 6:
         raise HTTPException(400, "symbol 需为 6 位 A 股代码")
 
@@ -691,7 +698,7 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
     _set_status(tid, "running")
     t0 = time.monotonic()
     try:
-        _log(tid, f"开始预测 {symbol}, {days} 天")
+        _log(tid, f"开始预测 {symbol}")
         df = load_kline(symbol, days=250)
         _log(tid, f"数据加载完成: {len(df)} 根K线 (baostock 不复权)")
         stock_name = get_stock_name(symbol)
@@ -708,6 +715,26 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
 
     last_close = float(df["close"].iloc[-1])
     last_date = str(df["timestamp"].iloc[-1].date())
+
+    # 目标日期: 传入 target_date 则计算天数,否则用 days
+    target_dt = None
+    if target_date:
+        try:
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        except Exception:
+            raise HTTPException(400, "target_date 格式应为 YYYY-MM-DD")
+    if target_dt:
+        # 从 last_date 到 target_date 的交易日数(跳过周末)
+        n = 0
+        cur = df["timestamp"].iloc[-1]
+        while cur.date() < target_dt.date() and n < 20:
+            cur += timedelta(days=1)
+            if cur.weekday() < 5:
+                n += 1
+        days = max(1, n)
+        _log(tid, f"目标日期 {target_date} → 预测 {days} 个交易日")
+    else:
+        _log(tid, f"预测未来 {days} 个交易日")
 
     # Kronos MC
     _log(tid, "Kronos 模型推理中(MC 30 采样,约 20-30s)...")
@@ -769,11 +796,22 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
         kronos, lag, sentiment,
     )
 
+    # 计算预测目标日期(last_date 往后 days 个交易日)
+    pred_dates = []
+    cur_d = df["timestamp"].iloc[-1]
+    while len(pred_dates) < days:
+        cur_d += timedelta(days=1)
+        if cur_d.weekday() < 5:
+            pred_dates.append(str(cur_d.date()))
+    target_date_str = pred_dates[-1] if pred_dates else last_date
+
     result = {
         "symbol": symbol,
         "stock_name": stock_name,
         "last_close": last_close,
         "last_date": last_date,
+        "target_date": target_date_str,
+        "pred_dates": pred_dates,
         "pred_days": days,
         "prediction": [round(float(x), 2) for x in final],
         "direction": direction,
@@ -799,6 +837,7 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
     rec["stock_name"] = stock_name
     rec["last_close"] = last_close
     rec["last_date"] = last_date
+    rec["target_date"] = target_date_str
     rec["pred_days"] = days
     rec["direction"] = direction
     rec["expected_pct"] = result["expected_pct"]
@@ -886,6 +925,41 @@ def backtest(symbol: str):
 def history(symbol: str = "", limit: int = 50):
     """历史预测列表(供回查)。"""
     return {"items": list_forecasts(limit=min(limit, 200), symbol=symbol)}
+
+
+@app.get("/stocks/search")
+def stocks_search(q: str = "", limit: int = 10):
+    """股票名称/代码搜索(baostock 全市场,支持中文名/代码前缀)。"""
+    if not q.strip():
+        return {"items": []}
+    try:
+        import baostock as bs
+        lg = bs.login()
+        if lg.error_code != "0":
+            return {"items": []}
+        rs = bs.query_all_stock(day=datetime.now().strftime("%Y-%m-%d"))
+        results = []
+        q_lower = q.strip().lower()
+        while rs.error_code == "0" and rs.next():
+            row = rs.get_row_data()
+            # [code(sh.600000), tradeStatus, code_name]
+            if len(row) < 3:
+                continue
+            code_full, status, name = row[0], row[1], row[2]
+            if status != "1":
+                continue  # 只取正常交易
+            code6 = code_full.split(".")[-1]
+            # 主板过滤: 60/00/002(与用户铁律一致,排除 300/688/8xx)
+            if not (code6.startswith(("60", "00", "002"))):
+                continue
+            if q_lower in name.lower() or q_lower in code6 or q_lower in code_full:
+                results.append({"symbol": code6, "name": name, "market": "sh" if code_full.startswith("sh") else "sz"})
+                if len(results) >= limit:
+                    break
+        bs.logout()
+        return {"items": results}
+    except Exception as e:
+        return {"items": [], "error": str(e)}
 
 
 @app.get("/forecast/card")

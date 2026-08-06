@@ -65,6 +65,7 @@ async def forecast_predict(
     symbol: str = Query(..., description="6位A股代码"),
     days: int = Query(5, ge=1, le=20, description="预测天数"),
     task_id: str = Query("", description="预测任务ID"),
+    target_date: str = Query("", description="预测目标日期 YYYY-MM-DD"),
 ):
     """多模型预测(Kronos+XGBoost+回归)。"""
     _log_forecast("info", f"预测开始: {symbol} {days}天", task_id=task_id)
@@ -72,7 +73,7 @@ async def forecast_predict(
         async with httpx.AsyncClient(timeout=300) as client:
             r = await client.get(
                 f"{FORECAST_ENGINE_URL}/predict",
-                params={"symbol": symbol, "days": days, "task_id": task_id},
+                params={"symbol": symbol, "days": days, "task_id": task_id, "target_date": target_date},
             )
             r.raise_for_status()
             data = r.json()
@@ -203,3 +204,24 @@ async def forecast_health():
             return r.json()
     except Exception:
         return {"status": "unreachable", "engine_url": FORECAST_ENGINE_URL}
+
+
+@router.get("/stocks/search")
+async def stocks_search(
+    q: str = Query(..., description="股票名称或代码"),
+    limit: int = Query(10, ge=1, le=20),
+):
+    """股票名称/代码搜索。"""
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/stocks/search",
+                params={"q": q, "limit": limit},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("股票搜索失败")
+        raise HTTPException(500, f"搜索失败: {e}")
