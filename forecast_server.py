@@ -482,6 +482,68 @@ def build_recommendation(symbol: str, last_close: float, final: np.ndarray,
     }
 
 
+def _detect_panwatch_url() -> str:
+    """自动探测 PanWatch 地址(容器网关 IP)。
+
+    引擎跑在主机,PanWatch 在 Docker 容器内,需通过主机→容器网关访问。
+    网关 IP 可能随 Docker 网络变化,不能写死。自动从 /proc/net/route 探测,
+    多候选尝试连通性。
+    """
+    import socket as _socket
+
+    candidates = []
+
+    # 1. 环境变量优先
+    import os as _os
+    env = _os.getenv("PANWATCH_URL", "")
+    if env:
+        candidates.append(env.rstrip("/"))
+
+    # 2. 默认网关(主机→Docker 网桥)
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "00000000":
+                    ip_int = int(parts[2], 16)
+                    gw = f"{(ip_int & 0xFF)}.{(ip_int >> 8 & 0xFF)}.{(ip_int >> 16 & 0xFF)}.{(ip_int >> 24 & 0xFF)}"
+                    candidates.append(f"http://{gw}:8000")
+                    break
+    except Exception:
+        pass
+
+    # 3. 常见 Docker 网桥(兜底)
+    for ip in ("172.17.0.1", "172.18.0.1", "10.8.0.1"):
+        candidates.append(f"http://{ip}:8000")
+
+    # 4. 去重 + 探测连通性
+    seen, checked = set(), []
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        checked.append(c)
+        try:
+            r = _req_get(f"{c}/api/health", timeout=3)
+            if r and r.status_code < 500:
+                return c
+        except Exception:
+            continue
+
+    # 全部失败: 用第一个候选(可能是环境变量)
+    return candidates[0] if candidates else "http://172.17.0.1:8000"
+
+
+def _req_get(url: str, timeout: float = 8):
+    """轻量 GET(避免顶层 import requests 的副作用)。"""
+    import requests as _r
+    return _r.get(url, timeout=timeout)
+
+
+PANWATCH_URL = _detect_panwatch_url()
+print(f"[forecast] PanWatch 地址: {PANWATCH_URL}")
+
+
 def _load_llm_config() -> dict:
     """加载 LLM 情绪打分配置。
 
@@ -516,7 +578,7 @@ def _load_llm_config() -> dict:
     if not cfg["api_key"]:
         try:
             import requests as _req
-            r = _req.get("http://172.17.0.1:8000/api/providers/services", timeout=8)
+            r = _req.get(f"{PANWATCH_URL}/api/providers/services", timeout=8)
             if r.status_code == 200:
                 services = r.json()
                 # providers API 无鉴权返回? 若 401 需带 token,则跳过
