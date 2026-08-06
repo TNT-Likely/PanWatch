@@ -43,10 +43,106 @@ logger = logging.getLogger(__name__)
 
 
 def get_market_data():
-    """lazy import,便于测试 monkeypatch(module 级)。"""
+    """惰性导入,避免模块加载时的循环依赖。"""
     from src.core.marketdata_client import get_market_data as _g
 
     return _g()
+
+
+def _eastmoney_secid(symbol: str) -> str:
+    """股票代码 → 东财 secid(6开头=沪市1.,否则0.)。"""
+    return f"1.{symbol}" if symbol.startswith(("6", "9")) else f"0.{symbol}"
+
+
+def _collect_a_share_sentiment(symbol: str) -> dict | None:
+    """A股题材/情绪面采集:涨停历史/题材归属/市场情绪/游资活跃度。
+
+    数据源:
+    - market_sentiment_collector(东财涨停池):今日涨停家数/连板梯队/板块分布
+    - wudao MCP(HTTP 直连):个股题材归属/涨停历史/催化事件(若可用)
+    返回 None 表示非 A 股或采集失败。
+    """
+    from datetime import datetime, timedelta
+
+    result: dict = {}
+
+    # 1. 市场情绪(涨停家数/连板/板块分布)
+    try:
+        from src.collectors.market_sentiment_collector import MarketSentimentCollector
+
+        senti = MarketSentimentCollector()
+        summary = senti.get_sentiment_summary()
+        if summary and not summary.get("error"):
+            result["market_sentiment"] = {
+                "limit_up_count": summary.get("limit_up_count"),
+                "max_streak": summary.get("max_streak"),
+                "top_sectors": summary.get("top_sectors", []),
+                "top_stocks": summary.get("top_stocks", []),
+            }
+    except Exception as e:
+        logger.debug(f"[TA] 市场情绪采集失败: {e}")
+
+    # 2. 题材归属(东财板块接口,免 key,稳定)
+    try:
+        import requests as _req
+
+        url = "https://push2.eastmoney.com/api/qt/slist/get"
+        params = {
+            "spt": "3", "secid": _eastmoney_secid(symbol),
+            "pn": "1", "pz": "20", "po": "1", "np": "1",
+            "fltt": "2", "invt": "2", "fid": "f3",
+            "fs": "b:MK0021",
+            "fields": "f12,f14,f3,f62",
+        }
+        r = _req.get(
+            url, params=params,
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+            timeout=8,
+        )
+        d = r.json()
+        diff = (d.get("data") or {}).get("diff") or []
+        boards = [
+            {"name": item.get("f14", ""), "pct": item.get("f3")}
+            for item in diff[:15]
+            if item.get("f14")
+        ]
+        if boards:
+            result["themes"] = boards
+    except Exception as e:
+        logger.debug(f"[TA] 题材归属采集失败: {e}")
+
+    # 3. wudao 题材归属/涨停历史(HTTP 直连,免 Hermes)
+    try:
+        from src.collectors.wudao_mcp_client import WudaoMCPClient
+
+        client = WudaoMCPClient()
+        # 个股研究数据包(题材/涨停历史/催化)
+        research = client.call_tool("stock_research_workflow", {"code": symbol})
+        if research:
+            result["stock_research"] = research
+    except Exception as e:
+        logger.debug(f"[TA] wudao 题材采集失败: {e}")
+
+    # 4. 近30天涨停次数(从涨停池历史反查——东财仅当日,尽力而为)
+    try:
+        from src.collectors.market_sentiment_collector import MarketSentimentCollector
+
+        senti = MarketSentimentCollector()
+        # 近 5 个交易日逐日查涨停池,统计该股涨停次数
+        limit_days = 0
+        for i in range(1, 6):
+            d = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+            try:
+                pool = senti.get_limit_up_pool(date=d)
+                if any(p.get("code") == symbol for p in pool):
+                    limit_days += 1
+            except Exception:
+                pass
+        result["recent_limit_up_days_5"] = limit_days
+    except Exception as e:
+        logger.debug(f"[TA] 涨停历史采集失败: {e}")
+
+    return result if result else None
 
 
 class TradingAgentsUnavailable(RuntimeError):
@@ -140,6 +236,17 @@ class TradingAgentsAgent(BaseAgent):
         except Exception as e:
             logger.debug(f"[TA] 技术指标预算失败,LLM 仍可从 K线 CSV 自行计算: {e}")
 
+        # A股题材/情绪面(涨停历史/题材归属/游资活跃度/市场情绪)
+        a_share_sentiment = None
+        if stock.market.value == "CN":
+            try:
+                a_share_sentiment = await asyncio.to_thread(
+                    _collect_a_share_sentiment, stock.symbol
+                )
+            except Exception as e:
+                logger.warning(f"[TA] A股题材情绪采集失败: {e}")
+                a_share_sentiment = None
+
         return {
             "stock": stock,
             "quote": quote_dict,
@@ -148,6 +255,7 @@ class TradingAgentsAgent(BaseAgent):
             "events": events_list,
             "financial": financial,
             "technical": technical,
+            "a_share_sentiment": a_share_sentiment,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
 

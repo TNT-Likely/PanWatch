@@ -555,6 +555,51 @@ def _stock_meta_header(symbol: str) -> str:
     return "\n".join(lines)
 
 
+def _a_share_sentiment_to_text(senti: dict, symbol: str) -> str:
+    """把 A 股题材情绪数据格式化为分析师可读文本。
+
+    输入: _collect_a_share_sentiment 返回的 dict
+    输出: 含市场情绪/题材归属/涨停历史/游资活跃度的中文摘要。
+    这是 A 股题材炒作分析的关键输入——让 TradingAgents 不只会看基本面/技术面。
+    """
+    lines = ["【A股题材情绪面】(重要:该股是题材股还是价值股,必须参考此数据)"]
+
+    ms = senti.get("market_sentiment") or {}
+    if ms:
+        lines.append(
+            f"- 今日市场情绪:涨停{ms.get('limit_up_count', '-')}家,"
+            f"最高连板{ms.get('max_streak', '-')}板"
+        )
+        top_sectors = ms.get("top_sectors") or []
+        if top_sectors:
+            sec_str = "、".join(
+                f"{s.get('name')}×{s.get('count')}" for s in top_sectors
+            )
+            lines.append(f"- 涨停板块分布:{sec_str}")
+
+    themes = senti.get("themes") or []
+    if themes:
+        theme_str = "、".join(
+            f"{t.get('name')}({t.get('pct')}%)" for t in themes[:10]
+        )
+        lines.append(f"- 所属题材/板块:{theme_str}")
+
+    research = senti.get("stock_research") or {}
+    if research:
+        # wudao 个股研究数据(题材/涨停历史/催化)
+        text = str(research)[:600]
+        lines.append(f"- 个股题材研究:{text}")
+
+    limit_days = senti.get("recent_limit_up_days_5")
+    if limit_days is not None:
+        lines.append(
+            f"- 近5日涨停天数:{limit_days}次"
+            + ("(活跃题材股,游资常玩,注意题材情绪波动)" if limit_days >= 2 else "")
+        )
+
+    return "\n".join(lines)
+
+
 def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tuple = ()) -> str:
     """从 _cache()(当前 context 的数据)构造 TradingAgents 期望的数据格式(CSV / JSON 字符串)。
 
@@ -589,10 +634,21 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         return f"{header}\n\n[No kline data available from PanWatch for {symbol}]"
 
     # 2) 公告/事件/新闻:get_finnhub_news / get_news / get_events / get_global_news / get_insider_*
+    # A股增强:在事件/公告基础上,附加题材情绪数据(涨停历史/题材归属/市场情绪/游资活跃度),
+    # 让 sentiment/social 分析师能读懂 A 股题材炒作逻辑(这是 A 股分析最关键的维度)。
     if any(k in method for k in ("news", "event", "announce", "insider")):
+        parts = []
         events = _cache().get("events") or []
         if events:
-            return f"{header}\n\n{_events_to_text(events, limit=20)}"
+            parts.append(_events_to_text(events, limit=20))
+        # 附加 A 股题材情绪
+        senti = _cache().get("a_share_sentiment")
+        if senti:
+            senti_text = _a_share_sentiment_to_text(senti, symbol)
+            if senti_text:
+                parts.append(senti_text)
+        if parts:
+            return f"{header}\n\n" + "\n\n".join(parts)
         return (
             f"{header}\n\n[No company-specific news/events available for {symbol}. "
             "DO NOT pull unrelated global news as a substitute — focus the analysis "
