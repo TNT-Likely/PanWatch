@@ -71,16 +71,66 @@ print(f'[forecast] PanWatch 地址: {PANWATCH_URL}')
 
 
 
+def _db_llm_config() -> dict | None:
+    """从 PanWatch 设置页 DB(app_settings.forecast_llm_*)读 LLM 配置。
+
+    设置页"接口 Key"区块维护,DB 优先于本地 env 文件。主机侧通过
+    docker 数据卷路径直读容器 DB(sudo);非 root 环境返回 None 走 env。
+    返回 {base_url, model, api_key} 或 None(未配置/不可读)。
+    """
+    import os as _os
+    import sqlite3 as _sqlite
+
+    db_paths = [
+        _os.getenv("PANWATCH_DB", ""),
+        "/var/lib/docker/volumes/panwatch_data/_data/panwatch.db",
+        "/app/data/panwatch.db",
+    ]
+    for p in db_paths:
+        if not p or not _os.path.exists(p):
+            continue
+        try:
+            conn = _sqlite.connect(p, timeout=3)
+            try:
+                rows = dict(
+                    conn.execute(
+                        "SELECT key, value FROM app_settings WHERE key IN "
+                        "('forecast_llm_base_url','forecast_llm_model','forecast_llm_api_key')"
+                    ).fetchall()
+                )
+            finally:
+                conn.close()
+            if not rows:
+                return None
+            cfg: dict = {}
+            if rows.get("forecast_llm_base_url"):
+                cfg["base_url"] = rows["forecast_llm_base_url"]
+            if rows.get("forecast_llm_model"):
+                cfg["model"] = rows["forecast_llm_model"]
+            if rows.get("forecast_llm_api_key"):
+                cfg["api_key"] = rows["forecast_llm_api_key"]
+            return cfg or None
+        except Exception:
+            continue
+    return None
+
+
 def _load_llm_config() -> dict:
     """加载 LLM 情绪打分配置。
 
-    优先级: 本地配置(~/.panwatch_forecast.env) > PanWatch 默认 AI 模型(动态) > 硬编码兜底。
-    这样在 PanWatch 设置页改 AI 模型后,预测引擎自动跟随。
+    优先级: 设置页 DB(app_settings.forecast_llm_*) > 本地配置(~/.panwatch_forecast.env)
+    > PanWatch 默认 AI 模型(动态) > 硬编码兜底。
     """
     import os as _os
     import json as _json
 
     cfg = {"base_url": "https://api.agnes-ai.cn/v1", "model": "agnes-2.5-flash", "api_key": ""}
+
+    # 0. 设置页 DB 优先(接口 Key 区块维护,免重启)
+    db_cfg = _db_llm_config()
+    if db_cfg:
+        cfg.update({k: v for k, v in db_cfg.items() if v})
+        return cfg
 
     # 1. 本地配置覆盖
     env_path = _os.path.expanduser("~/.panwatch_forecast.env")

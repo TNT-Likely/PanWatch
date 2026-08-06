@@ -139,8 +139,10 @@ const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
 // 敏感设置 key:值不回显(后端已掩码为 ********),输入框用密码态,掩码值不参与编辑
-const SECRET_SETTING_KEYS = new Set(['wudao_mcp_token', 'zhitu_token'])
+const SECRET_SETTING_KEYS = new Set(['wudao_mcp_token', 'zhitu_token', 'forecast_llm_api_key'])
 const SECRET_MASK = '********'
+// 预测引擎 LLM 配置 key(接口 Key 区块展示,base_url/model 非敏感可回显)
+const FORECAST_LLM_KEYS = new Set(['forecast_llm_base_url', 'forecast_llm_model', 'forecast_llm_api_key'])
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
@@ -401,6 +403,18 @@ export default function SettingsPage() {
       setSaving(null)
     }
   }
+
+  // 同步预测引擎 LLM 配置: 提示用户在服务器执行 sync 脚本(容器内无法直接调主机命令)
+  const syncForecastLlm = async () => {
+    try {
+      const res = await fetchAPI<{ command: string }>('/settings/forecast-llm-sync-guide')
+      const cmd = res?.command || 'bash ~/.hermes/scripts/sync_forecast_llm.sh && sudo systemctl restart panwatch-forecast'
+      toast(`请在服务器执行: ${cmd}`, 'info')
+    } catch {
+      toast('请在服务器执行: bash ~/.hermes/scripts/sync_forecast_llm.sh && sudo systemctl restart panwatch-forecast', 'info')
+    }
+  }
+
 
   // Service CRUD
   const openServiceDialog = (svc?: AIService) => {
@@ -963,7 +977,9 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="space-y-4">
-              {settings.filter(s => SECRET_SETTING_KEYS.has(s.key)).map(setting => {
+              {/* 数据源 Token 组 */}
+              <div className="text-[11px] font-medium text-muted-foreground mt-1">数据源 Token</div>
+              {settings.filter(s => s.key === 'wudao_mcp_token' || s.key === 'zhitu_token').map(setting => {
                 const isChanged = setting.key in edited
                 return (
                   <div key={setting.key} className="rounded-xl bg-accent/30 p-3.5">
@@ -1007,6 +1023,59 @@ export default function SettingsPage() {
                   </div>
                 )
               })}
+
+              {/* 预测引擎 LLM 配置组 */}
+              <div className="text-[11px] font-medium text-muted-foreground pt-2">预测引擎 LLM（情绪打分）</div>
+              <p className="text-[10px] text-muted-foreground -mt-1">保存后点击下方「同步到预测引擎」生效（写入主机 env 并重启引擎）。</p>
+              {settings.filter(s => FORECAST_LLM_KEYS.has(s.key)).map(setting => {
+                const isChanged = setting.key in edited
+                const isSecret = setting.key === 'forecast_llm_api_key'
+                return (
+                  <div key={setting.key} className="rounded-xl bg-accent/30 p-3.5">
+                    <Label className="text-[12px]">{setting.description || setting.key}</Label>
+                    <div className="flex items-center gap-2.5 mt-2">
+                      <div className="flex-1 relative">
+                        <Input
+                          type={isSecret ? 'password' : 'text'}
+                          value={isSecret && !isChanged ? '' : (isChanged ? (edited[setting.key] ?? '') : setting.value)}
+                          onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
+                          className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
+                          placeholder={isSecret
+                            ? (setting.value === SECRET_MASK ? '已配置（输入新 Key 可替换，留空不变）' : '未配置，输入 API Key')
+                            : (setting.value || setting.key)}
+                        />
+                        {isSecret && !isChanged && setting.value === SECRET_MASK && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-emerald-500">已配置</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleSave(setting.key)}
+                        disabled={!isChanged || saving === setting.key}
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
+                          saved === setting.key
+                            ? 'bg-emerald-500/10 text-emerald-600'
+                            : isChanged
+                              ? 'bg-primary text-white'
+                              : 'text-muted-foreground/30'
+                        }`}
+                      >
+                        {saving === setting.key ? (
+                          <span className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="pt-1">
+                <Button size="sm" variant="secondary" className="h-8 text-[12px]" onClick={syncForecastLlm}>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                  同步到预测引擎
+                </Button>
+                <span className="ml-2 text-[10px] text-muted-foreground">调用主机 sync_forecast_llm.sh 写入 env 并重启引擎</span>
+              </div>
             </div>
           </section>
           <section id="sec-system" className="card p-4 md:p-6 lg:col-span-12">

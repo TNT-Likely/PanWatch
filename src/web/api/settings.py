@@ -58,10 +58,17 @@ SETTING_DESCRIPTIONS = {
     # ---- 接口 Key(数据源凭证,设置页维护,DB 优先于环境变量) ----
     "wudao_mcp_token": "悟道(wudao) MCP 接口 Token(竞价/题材数据源)",
     "zhitu_token": "智兔(zhitu) 数据接口 Token(分红/股东数据源,200次/天)",
+    # ---- 预测引擎 LLM 配置(设置页维护 → sync 脚本同步到主机 env) ----
+    "forecast_llm_base_url": "预测引擎 LLM 接口地址(Base URL)",
+    "forecast_llm_model": "预测引擎 LLM 模型名(情绪打分)",
+    "forecast_llm_api_key": "预测引擎 LLM API Key(情绪打分)",
 }
 
 # 敏感 key:列表接口不回显完整值,只返回是否已配置
-SECRET_SETTING_KEYS = {"wudao_mcp_token", "zhitu_token"}
+SECRET_SETTING_KEYS = {"wudao_mcp_token", "zhitu_token", "forecast_llm_api_key"}
+
+# 预测引擎 LLM 配置 key(设置页维护 → sync_forecast_llm.sh 同步到主机 env)
+FORECAST_LLM_KEYS = ("forecast_llm_base_url", "forecast_llm_model", "forecast_llm_api_key")
 
 SETTING_KEYS = list(SETTING_DESCRIPTIONS.keys())
 
@@ -219,6 +226,26 @@ def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db
 def get_version():
     """获取应用版本号"""
     return {"version": get_app_version()}
+
+
+@router.get("/forecast-llm-config")
+def get_forecast_llm_config(db: Session = Depends(get_db)):
+    """预测引擎 LLM 配置(供主机 sync_forecast_llm.sh 拉取 → 写 env)。
+
+    返回设置页维护的 forecast_llm_* key;未配置返回空 dict。
+    主机侧通过此接口读取(带 token),写入 ~/.panwatch_forecast.env。
+    """
+    rows = db.query(AppSettings).filter(AppSettings.key.in_(FORECAST_LLM_KEYS)).all()
+    return {r.key: r.value for r in rows if r.value}
+
+
+@router.get("/forecast-llm-sync-guide")
+def get_forecast_llm_sync_guide():
+    """返回同步命令指引(容器内无法直接执行主机脚本,提示用户在服务器执行)。"""
+    return {
+        "command": "bash ~/.hermes/scripts/sync_forecast_llm.sh && sudo systemctl restart panwatch-forecast",
+        "note": "同步设置页 LLM 配置到主机 env 并重启预测引擎",
+    }
 
 
 @router.get("/update-check")

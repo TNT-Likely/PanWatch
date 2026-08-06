@@ -64,6 +64,8 @@ FILES=(
   "src/core/strategy_engine.py"
   "src/core/entry_candidates.py"
   "src/core/sector_filter.py"
+  "forecast_lib/forecast_sentiment.py"
+  "deploy/sync_forecast_llm.sh"
   "src/agents/stock_attribution.py"
   "packages/marketdata/src/marketdata/vendors/ftshare.py"
   "packages/marketdata/src/marketdata/vendors/zhitu.py"
