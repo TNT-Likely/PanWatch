@@ -44,6 +44,9 @@ export default function ForecastPage() {
   const [result, setResult] = useState<PredictResult | null>(null)
   const [backtest, setBacktest] = useState<BacktestResult | null>(null)
   const [engineStatus, setEngineStatus] = useState<'checking' | 'ok' | 'down'>('checking')
+  const [taskId, setTaskId] = useState('')
+  const [taskStatus, setTaskStatus] = useState('')
+  const [taskLogs, setTaskLogs] = useState<string[]>([])
   const { toast } = useToast()
 
   useEffect(() => {
@@ -59,11 +62,32 @@ export default function ForecastPage() {
     }
     setLoading(true)
     setResult(null)
+    setTaskLogs([])
+    setTaskStatus('running')
+    const tid = `task_${Date.now()}`
+    setTaskId(tid)
     try {
-      const d = await fetchAPI<PredictResult>(`/api/forecast/predict?symbol=${symbol}&days=${days}`)
+      // 并行: 启动预测 + 轮询进度
+      const predictPromise = fetchAPI<PredictResult>(`/api/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`)
+      const pollPromise = (async () => {
+        while (true) {
+          await new Promise(res => setTimeout(res, 1500))
+          try {
+            const s = await fetchAPI<any>(`/api/forecast/predict/status?task_id=${tid}`)
+            if (s?.logs) setTaskLogs([...s.logs])
+            if (s?.status === 'done' || s?.status === 'error' || s?.status === 'not_found') {
+              setTaskStatus(s.status)
+              break
+            }
+          } catch { /* 忽略轮询错误 */ }
+        }
+      })()
+      const d = await predictPromise
       setResult(d)
+      setTaskStatus('done')
     } catch (e: any) {
-      toast(e?.message || '预测失败', 'error')
+      toast(e?.message || '预测失败(请检查股票代码是否正确)', 'error')
+      setTaskStatus('error')
     } finally {
       setLoading(false)
     }
@@ -141,6 +165,28 @@ export default function ForecastPage() {
           </Button>
         </div>
       </div>
+
+      {/* 预测进度日志 */}
+      {(loading || taskLogs.length > 0) && (
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`h-2.5 w-2.5 rounded-full ${taskStatus === 'done' ? 'bg-green-500' : taskStatus === 'error' ? 'bg-red-500' : 'bg-blue-500 animate-pulse'}`} />
+            <span className="font-medium">
+              {taskStatus === 'done' ? '预测完成' : taskStatus === 'error' ? '预测失败' : '预测进行中...'}
+            </span>
+            {loading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+          <div className="bg-muted/50 rounded p-3 font-mono text-xs space-y-1 max-h-48 overflow-y-auto">
+            {taskLogs.length === 0 ? (
+              <div className="text-muted-foreground">正在连接预测引擎...</div>
+            ) : (
+              taskLogs.map((log, i) => (
+                <div key={i} className="text-muted-foreground">{log}</div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 预测结果 */}
       {result && (

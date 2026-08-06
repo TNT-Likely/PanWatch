@@ -62,6 +62,26 @@ async def forecast_predict(
         raise HTTPException(500, f"预测失败: {e}")
 
 
+@router.get("/forecast/predict/status")
+async def forecast_predict_status(
+    task_id: str = Query(..., description="预测任务ID"),
+):
+    """查询预测任务进度与日志。"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/predict/status",
+                params={"task_id": task_id},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("预测状态查询失败")
+        raise HTTPException(500, f"查询失败: {e}")
+
+
 @router.get("/forecast/backtest")
 async def forecast_backtest(
     symbol: str = Query(..., description="6位A股代码"),
