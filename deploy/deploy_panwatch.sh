@@ -153,11 +153,21 @@ echo "▶ 预测引擎检查:"
 if curl -s -o /dev/null -w "%{http_code}" http://localhost:8010/health 2>/dev/null | grep -q 200; then
   echo "  ✅ 预测引擎运行中 (:8010)"
 else
-  echo "  ⚠️ 预测引擎未运行,启动: cd /home/ubuntu && nohup python3 forecast_server.py > /tmp/forecast_server.log 2>&1 &"
+  echo "  ⚠️ 预测引擎未运行,启动: sudo systemctl start panwatch-forecast"
+  sudo systemctl start panwatch-forecast 2>/dev/null || true
+fi
 echo "▶ 同步 LLM 模型配置(设置页默认模型→引擎):"
 bash ~/.hermes/scripts/sync_forecast_llm.sh 2>/dev/null | tail -1
-fi
 echo ""
+echo "▶ 主机预测引擎代码部署(从 git 拉最新):"
+if [ -f "$REPO_DIR/forecast_server.py" ]; then
+  cp "$REPO_DIR/forecast_server.py" /home/ubuntu/forecast_server.py
+  mkdir -p /home/ubuntu/forecast_lib
+  cp "$REPO_DIR"/forecast_lib/*.py /home/ubuntu/forecast_lib/ 2>/dev/null
+  echo "  ✅ 引擎代码已同步,重启服务:"
+  sudo systemctl restart panwatch-forecast 2>/dev/null || echo "  ⚠️ systemd 服务不存在,用 nohup 手动启动"
+  echo ""
+fi
 echo "=============================================="
 echo " ✅ 完成。数据卷保留账号: admin/admin123"
 echo "    wudao token: $([ -n "$TOKEN" ] && echo '已配置(环境变量)' || echo '未配置,用 --full 时加 WUDAO_MCP_TOKEN=<token>')"
