@@ -288,8 +288,24 @@ async def get_hot_boards(
     proxy = _resolve_proxy() or None
     collector = EastMoneyDiscoveryCollector(proxy=proxy)
     data: list[dict] = []
-    # CN: prefer real industry boards; HK/US: synthetic themed buckets from market hot pool.
+    # CN: ftshare 全板块行情优先(云服务器东财 clist 板块榜已确认必断,别白等);
+    #     东财作 fallback(恢复时自然用上);HK/US: synthetic themed buckets from market hot pool.
     if market == "CN":
+        try:
+            items = await collector.fetch_hot_boards_ftshare(mode=mode, limit=limit)
+            data = [
+                {
+                    "code": it.code,
+                    "name": it.name,
+                    "change_pct": it.change_pct,
+                    "change_amount": it.change_amount,
+                    "turnover": it.turnover,
+                }
+                for it in items
+            ]
+        except Exception as e:
+            logger.warning(f"discovery boards ftshare failed: {type(e).__name__}: {e!r}")
+    if not data:
         try:
             items = await collector.fetch_hot_boards(market=market, mode=mode, limit=limit)
             data = [

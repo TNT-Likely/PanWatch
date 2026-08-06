@@ -37,6 +37,59 @@ class EastMoneyDiscoveryCollector:
     def __init__(self, *, proxy: str | None = None):
         self.proxy = proxy
 
+    async def fetch_hot_boards_ftshare(
+        self,
+        *,
+        mode: str = "gainers",
+        limit: int = 12,
+    ) -> list[HotBoard]:
+        """热门板块 ftshare 源(云服务器东财 clist 被断,ftshare 全板块行情兜底)。
+
+        ft_eastmoney_board_latest_kline: 全部东财概念/行业板块最新一根 K 线
+        (change_rate=涨跌幅 %, turnover=成交额 元, turnover_rate=换手率 %)。
+        返回 508 个板块,这里取一页 100 个排序取 top,避免全量分页。
+        """
+        import asyncio as _aio
+
+        from marketdata.vendors.ftshare import _get_client
+
+        def _fetch() -> list[HotBoard]:
+            client = _get_client({})
+            rows = client.call_tool("ft_eastmoney_board_latest_kline", {"page": 1, "page_size": 100}) or []
+            boards: list[HotBoard] = []
+            # 过滤指数/非板块类(热门板块只显示行业/概念)
+            _INDEX_KEYWORDS = ("成", "沪深", "上证", "深证", "HS", "融资融券", "机构重仓", "基金重仓", "QFII", "举牌", "百元股", "高价股")
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                name = str(r.get("board_name") or "").strip()
+                if not name:
+                    continue
+                if any(k in name for k in _INDEX_KEYWORDS):
+                    continue
+                try:
+                    change_pct = float(r.get("change_rate") or 0)
+                except (TypeError, ValueError):
+                    change_pct = None
+                try:
+                    turnover = float(r.get("turnover") or 0)
+                except (TypeError, ValueError):
+                    turnover = None
+                boards.append(
+                    HotBoard(
+                        code=str(r.get("board_code") or "").strip(),
+                        name=name,
+                        change_pct=change_pct,
+                        change_amount=None,
+                        turnover=turnover,
+                    )
+                )
+            key = "turnover" if mode == "turnover" else "change_pct"
+            boards.sort(key=lambda b: (b.turnover if key == "turnover" else b.change_pct) or 0, reverse=True)
+            return boards[: max(1, min(int(limit), 100))]
+
+        return await _aio.to_thread(_fetch)
+
     async def fetch_hot_stocks(
         self,
         *,

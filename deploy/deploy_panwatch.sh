@@ -57,6 +57,8 @@ FILES=(
   "src/web/api/forecast.py"
   "src/web/api/market.py"
   "src/web/api/recommendations.py"
+  "src/web/api/discovery.py"
+  "src/collectors/discovery_collector.py"
   "src/core/strategy_engine.py"
   "src/core/entry_candidates.py"
   "src/core/sector_filter.py"
