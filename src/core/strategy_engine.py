@@ -1466,6 +1466,7 @@ def list_strategy_signals(
     change_pct_max: float | None = None,
     regime: str = "",
     strategy_tag: str = "",
+    sector: str = "",
 ) -> dict:
     ensure_strategy_catalog()
     db = SessionLocal()
@@ -1543,6 +1544,17 @@ def list_strategy_signals(
         stg = (strategy_tag or "").strip()
         if stg and stg != "all":
             q = q.filter(func.json_extract(StrategySignalRun.payload, "$.strategy_tags").as_string().like(f'%"{stg}"%'))
+
+        # ---- 题材/板块过滤(ftshare 板块成分股 → SQL IN) ----
+        sc_name = (sector or "").strip()
+        if sc_name and sc_name != "all":
+            from src.core.sector_filter import resolve_sector_codes
+            sector_codes = resolve_sector_codes(sc_name)
+            if sector_codes:
+                q = q.filter(StrategySignalRun.stock_symbol.in_(sector_codes))
+            else:
+                # 题材匹配失败/无成分股 → 直接返回空(避免误展示全部)
+                q = q.filter(StrategySignalRun.id < 0)
 
         q = q.filter(StrategySignalRun.rank_score >= float(min_score or 0))
         rows = (

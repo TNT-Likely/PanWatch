@@ -9,6 +9,7 @@ import {
   type StrategyStatsResponse,
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useLocalStorage } from '@/lib/utils'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
@@ -257,6 +258,10 @@ export default function OpportunitiesPage() {
   const [changePct, setChangePct] = useLocalStorage('panwatch_opportunities_chg_v3', DEFAULT_FILTERS.changePct)
   const [regime, setRegime] = useLocalStorage<RegimeFilter>('panwatch_opportunities_regime_v3', DEFAULT_FILTERS.regime)
   const [strategyTag, setStrategyTag] = useLocalStorage('panwatch_opportunities_tag_v3', DEFAULT_FILTERS.strategyTag)
+  const [sector, setSector] = useLocalStorage('panwatch_opportunities_sector_v3', '')
+  const [sectorOpen, setSectorOpen] = useState(false)
+  const [sectorQuery, setSectorQuery] = useState('')
+  const [sectorResults, setSectorResults] = useState<{ code: string; name: string }[]>([])
   const [snapshotDate, setSnapshotDate] = useState('')
 
   const [insightOpen, setInsightOpen] = useState(false)
@@ -304,6 +309,23 @@ export default function OpportunitiesPage() {
     }
   }, [])
 
+  // 题材搜索(防抖 250ms)— 486 个概念板块,输入即搜
+  const searchSector = useCallback(async (q: string) => {
+    try {
+      const res = await recommendationsApi.searchOpportunitySectors(q, 20)
+      setSectorResults(res.items || [])
+    } catch {
+      setSectorResults([])
+    }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void searchSector(sectorQuery)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [sectorQuery, searchSector])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -325,6 +347,7 @@ export default function OpportunitiesPage() {
         change_pct_max: changePct === 'all' ? undefined : changePct.includes('-') ? Number(changePct.split('-')[1]) || undefined : undefined,
         regime: regime === 'all' ? '' : regime,
         strategy_tag: strategyTag === 'all' ? '' : strategyTag,
+        sector: sector || '',
         limit: 120,
         include_payload: false,
       }
@@ -393,7 +416,7 @@ export default function OpportunitiesPage() {
     } finally {
       setLoading(false)
     }
-  }, [holding, kdj, macd, market, minScore, regime, risk, rsi, source, strategy, strategyTag, trend, volumeRatio, changePct])
+  }, [holding, kdj, macd, market, minScore, regime, risk, rsi, sector, source, strategy, strategyTag, trend, volumeRatio, changePct])
 
   useEffect(() => {
     load()
@@ -471,7 +494,9 @@ export default function OpportunitiesPage() {
     setChangePct(DEFAULT_FILTERS.changePct)
     setRegime(DEFAULT_FILTERS.regime)
     setStrategyTag(DEFAULT_FILTERS.strategyTag)
-  }, [setChangePct, setHolding, setKdj, setMacd, setMarket, setMinScore, setRegime, setRisk, setRsi, setSource, setStrategy, setStrategyTag, setTrend, setVolumeRatio])
+    setSector('')
+    setSectorQuery('')
+  }, [setChangePct, setHolding, setKdj, setMacd, setMarket, setMinScore, setRegime, setRisk, setRsi, setSector, setSource, setStrategy, setStrategyTag, setTrend, setVolumeRatio])
 
   const strategyOptions = useMemo(() => {
     return strategyCatalog.map((row) => ({ value: row.code, label: row.name || row.code }))
@@ -808,6 +833,34 @@ export default function OpportunitiesPage() {
               <SelectItem value="rebound">反弹</SelectItem>
             </SelectContent>
           </Select>
+          <div className="relative">
+            <Input
+              value={sector}
+              placeholder="题材:输入搜索"
+              className="h-8 text-[12px]"
+              onFocus={() => { setSectorOpen(true); if (sectorResults.length === 0) void searchSector('') }}
+              onBlur={() => window.setTimeout(() => setSectorOpen(false), 200)}
+              onChange={(e) => { setSector(e.target.value); setSectorQuery(e.target.value) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setSectorOpen(false); void load() } }}
+            />
+            {sectorOpen && (
+              <div className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-md border border-border/60 bg-popover p-1 shadow-lg">
+                {sectorResults.length === 0 && (
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground">无匹配题材</div>
+                )}
+                {sectorResults.map((b) => (
+                  <button
+                    key={b.code}
+                    type="button"
+                    className="w-full text-left px-2 py-1.5 rounded text-[12px] hover:bg-accent"
+                    onMouseDown={(e) => { e.preventDefault(); setSector(b.name); setSectorQuery(b.name); setSectorOpen(false) }}
+                  >
+                    {b.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

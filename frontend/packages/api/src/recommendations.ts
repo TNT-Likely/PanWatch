@@ -452,6 +452,11 @@ export const recommendationsApi = {
       `/recommendations/strategy-catalog?enabled_only=${enabledOnly ? 'true' : 'false'}`
     ),
 
+  searchOpportunitySectors: (query = '', limit = 20) =>
+    fetchAPI<{ items: { code: string; name: string }[] }>(
+      `/recommendations/opportunity-sectors?query=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}`
+    ),
+
   listStrategySignals: (params?: {
     market?: string
     status?: 'active' | 'inactive' | 'all'
@@ -472,6 +477,7 @@ export const recommendationsApi = {
     change_pct_max?: number
     regime?: string
     strategy_tag?: string
+    sector?: string
     timeoutMs?: number
   }) => {
     const q = new URLSearchParams()
@@ -494,6 +500,7 @@ export const recommendationsApi = {
     appendQuery(q, 'change_pct_max', params?.change_pct_max)
     appendQuery(q, 'regime', params?.regime)
     appendQuery(q, 'strategy_tag', params?.strategy_tag)
+    appendQuery(q, 'sector', params?.sector)
     const qs = q.toString()
     return fetchAPI<StrategySignalsResponse>(
       `/recommendations/strategy-signals${qs ? `?${qs}` : ''}`,

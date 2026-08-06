@@ -59,6 +59,7 @@ FILES=(
   "src/web/api/recommendations.py"
   "src/core/strategy_engine.py"
   "src/core/entry_candidates.py"
+  "src/core/sector_filter.py"
   "src/agents/stock_attribution.py"
   "packages/marketdata/src/marketdata/vendors/ftshare.py"
   "packages/marketdata/src/marketdata/vendors/zhitu.py"

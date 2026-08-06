@@ -233,6 +233,16 @@ def get_strategy_catalog(enabled_only: bool = Query(True, description="仅返回
     return {"items": list_strategy_catalog(enabled_only=enabled_only)}
 
 
+@router.get("/opportunity-sectors")
+def get_opportunity_sectors(
+    query: str = Query("", description="板块名模糊搜索,空返回前 20 个"),
+    limit: int = Query(20, ge=1, le=50),
+):
+    """题材/板块搜索(供机会页筛选下拉)。数据来自 ftshare 概念板块(486 个,1h 缓存)。"""
+    from src.core.sector_filter import search_boards
+    return {"items": search_boards(query, limit)}
+
+
 @router.get("/strategy-signals")
 def get_strategy_signal_list(
     market: str = Query("", description="市场代码: CN/HK/US"),
@@ -254,6 +264,7 @@ def get_strategy_signal_list(
     change_pct_max: float | None = Query(None, description="涨跌幅上限(%)"),
     regime: str = Query("", description="市场情绪: bullish/bearish/neutral/all"),
     strategy_tag: str = Query("", description="策略标签: macd_golden/momentum/trend_follow 等"),
+    sector: str = Query("", description="题材/板块名: 商业航天/低空经济/军工 等"),
 ):
     result = list_strategy_signals(
         market=market,
@@ -275,6 +286,7 @@ def get_strategy_signal_list(
         change_pct_max=change_pct_max,
         regime=regime,
         strategy_tag=strategy_tag,
+        sector=sector,
     )
     # Phase 3: 注入 1-10 可解释评分 + 正负因子拆解
     for _it in result.get("items", []):
