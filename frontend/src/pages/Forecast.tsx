@@ -57,8 +57,11 @@ export default function ForecastPage() {
   // 检测引擎状态(可手动刷新调用)
   const checkEngine = () => {
     setEngineStatus('checking')
-    fetchAPI<{ status: string }>('/api/forecast/health')
-      .then(d => setEngineStatus(d.status === 'ok' ? 'ok' : 'down'))
+    fetchAPI<{ status: string }>('/forecast/health')
+      .then(d => {
+        // 引擎可能返回 {status: "unreachable"} (代理活着但引擎没起)
+        setEngineStatus(d?.status === 'ok' ? 'ok' : 'down')
+      })
       .catch(() => setEngineStatus('down'))
   }
 
@@ -91,7 +94,7 @@ export default function ForecastPage() {
       // 并行: 启动预测 + 轮询进度
       // ⚠️ predict 需要长超时(Kronos MC30 推理 20-30s,默认 20s 会 abort)
       const predictPromise = fetchAPI<PredictResult>(
-        `/api/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`,
+        `/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`,
         { timeoutMs: 300000 }
       )
       let pollDone = false
@@ -99,7 +102,7 @@ export default function ForecastPage() {
         while (!pollDone) {
           await new Promise(res => setTimeout(res, 1500))
           try {
-            const s = await fetchAPI<any>(`/api/forecast/predict/status?task_id=${tid}`)
+            const s = await fetchAPI<any>(`/forecast/predict/status?task_id=${tid}`)
             if (s?.logs) setTaskLogs([...s.logs])
             if (s?.status === 'done') {
               setTaskStatus('done')
@@ -133,7 +136,7 @@ export default function ForecastPage() {
     }
     setLoading(true)
     try {
-      const d = await fetchAPI<BacktestResult>(`/api/forecast/backtest?symbol=${symbol}`)
+      const d = await fetchAPI<BacktestResult>(`/forecast/backtest?symbol=${symbol}`)
       setBacktest(d)
     } catch (e: any) {
       toast(e?.message || '回测失败', 'error')
