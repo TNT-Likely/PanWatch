@@ -50,15 +50,28 @@ export default function ForecastPage() {
   const [result, setResult] = useState<PredictResult | null>(null)
   const [backtest, setBacktest] = useState<BacktestResult | null>(null)
   const [engineStatus, setEngineStatus] = useState<'checking' | 'ok' | 'down'>('checking')
-  const [taskId, setTaskId] = useState('')
   const [taskStatus, setTaskStatus] = useState('')
   const [taskLogs, setTaskLogs] = useState<string[]>([])
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchAPI<{ status: string }>('/api/forecast/health')
-      .then(d => setEngineStatus(d.status === 'ok' ? 'ok' : 'down'))
-      .catch(() => setEngineStatus('down'))
+    // 每 30 秒轮询引擎状态(引擎可能在页面打开后启动)
+    let cancelled = false
+    const check = () => {
+      fetchAPI<{ status: string }>('/api/forecast/health')
+        .then(d => {
+          if (!cancelled) setEngineStatus(d.status === 'ok' ? 'ok' : 'down')
+        })
+        .catch(() => {
+          if (!cancelled) setEngineStatus('down')
+        })
+    }
+    check()
+    const timer = setInterval(check, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
   }, [])
 
   const runPredict = async () => {
@@ -71,12 +84,12 @@ export default function ForecastPage() {
     setTaskLogs([])
     setTaskStatus('running')
     const tid = `task_${Date.now()}`
-    setTaskId(tid)
     try {
       // 并行: 启动预测 + 轮询进度
       const predictPromise = fetchAPI<PredictResult>(`/api/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`)
+      let pollDone = false
       const pollPromise = (async () => {
-        while (true) {
+        while (!pollDone) {
           await new Promise(res => setTimeout(res, 1500))
           try {
             const s = await fetchAPI<any>(`/api/forecast/predict/status?task_id=${tid}`)
@@ -89,6 +102,7 @@ export default function ForecastPage() {
         }
       })()
       const d = await predictPromise
+      pollDone = true
       setResult(d)
       setTaskStatus('done')
     } catch (e: any) {
