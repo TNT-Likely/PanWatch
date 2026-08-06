@@ -101,8 +101,54 @@ def _aggregate_klines(klines, interval: str) -> list:
 
 @router.get("/{symbol}")
 def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = "1d"):
-    """获取单只股票K线数据"""
+    """获取单只股票/指数K线数据(指数代码自动识别,走指数K线源)"""
     market_code = _parse_market(market)
+    # 指数识别: 已知指数代码 → 走指数K线(支持大盘详情页复用 InteractiveKline)
+    from src.web.api.market import MARKET_INDICES
+
+    is_index = any(idx["symbol"] == symbol for idx in MARKET_INDICES)
+    if is_index:
+        # 云服务器东财必失败(502) → 直接腾讯K线,避免每次白等 10s 超时
+        import requests as _req
+
+        idx_conf = next((i for i in MARKET_INDICES if i["symbol"] == symbol), None)
+        tencent_code = idx_conf.get("tencent_symbol", "") if idx_conf else ""
+        try:
+            r = _req.get(
+                f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={tencent_code},day,,,{days},qfq",
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=8,
+            )
+            if r.status_code == 200:
+                d = r.json()
+                data = (d.get("data") or {}).get(tencent_code) or {}
+                bars = data.get("day") or data.get("qfqday") or []
+                from src.collectors.kline_collector import KlineData
+
+                raw = [
+                    KlineData(
+                        date=b[0],
+                        open=float(b[1]),
+                        close=float(b[2]),
+                        high=float(b[3]),
+                        low=float(b[4]),
+                        volume=float(b[5]) if len(b) > 5 else 0,
+                    )
+                    for b in bars
+                ]
+                klines = _aggregate_klines(raw, interval)
+                return {
+                    "symbol": symbol,
+                    "market": market_code.value,
+                    "days": days,
+                    "interval": interval,
+                    "klines": _serialize_klines(klines),
+                    "is_index": True,
+                }
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"指数K线(腾讯)获取失败 {symbol}: {e}")
+
     collector = KlineCollector(market_code)
     klines = collector.get_klines(symbol, days=days)
     klines = _aggregate_klines(klines, interval)

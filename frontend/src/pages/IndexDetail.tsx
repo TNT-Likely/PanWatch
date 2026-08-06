@@ -3,15 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, RefreshCw, Activity, BarChart3 } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
-
-interface Kline {
-  date: string
-  open: number
-  close: number
-  high: number
-  low: number
-  volume: number
-}
+import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
 
 interface IndexDetail {
   symbol: string
@@ -28,69 +20,12 @@ interface IndexDetail {
     volume?: number | null
     amount?: number | null
   } | null
-  klines: Kline[]
+  klines: { date: string; open: number; close: number; high: number; low: number; volume: number }[]
   amount_trend: { date: string; amount: number }[]
   note?: string
 }
 
-// 简易 K 线图(SVG,无重依赖)
-function KlineChart({ klines }: { klines: Kline[] }) {
-  const [range, setRange] = useState(60) // 显示最近 N 根
-  const data = klines.slice(-range)
-  if (data.length === 0) return <div className="text-sm text-muted-foreground py-8 text-center">暂无K线数据</div>
-
-  const W = 720, H = 260, PAD = 12
-  const maxP = Math.max(...data.map(k => k.high)) * 1.02
-  const minP = Math.min(...data.map(k => k.low)) * 0.98
-  const maxV = Math.max(...data.map(k => k.volume))
-  const bw = (W - PAD * 2) / data.length
-  const y = (p: number) => PAD + (maxP - p) / (maxP - minP) * (H * 0.72)
-  const vy = (v: number) => H * 0.78 + (1 - v / maxV) * (H * 0.2)
-
-  return (
-    <div>
-      <div className="flex items-center gap-1 mb-2">
-        {[30, 60, 120].map(n => (
-          <button
-            key={n}
-            onClick={() => setRange(n)}
-            className={`px-2 py-0.5 text-[11px] rounded ${range === n ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-          >
-            {n}日
-          </button>
-        ))}
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {data[0].date} ~ {data[data.length - 1].date}
-        </span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 300 }}>
-        {data.map((k, i) => {
-          const x = PAD + i * bw + bw / 2
-          const up = k.close >= k.open
-          const color = up ? '#f85149' : '#3fb950'
-          return (
-            <g key={k.date}>
-              {/* 影线 */}
-              <line x1={x} y1={y(k.high)} x2={x} y2={y(k.low)} stroke={color} strokeWidth={1} />
-              {/* 实体 */}
-              <rect
-                x={x - bw * 0.32}
-                y={Math.min(y(k.open), y(k.close))}
-                width={bw * 0.64}
-                height={Math.max(2, Math.abs(y(k.open) - y(k.close)))}
-                fill={color}
-              />
-              {/* 成交量 */}
-              <rect x={x - bw * 0.3} y={vy(k.volume)} width={bw * 0.6} height={H * 0.2 - (vy(k.volume) - H * 0.78)} fill={color} opacity={0.25} />
-            </g>
-          )
-        })}
-      </svg>
-    </div>
-  )
-}
-
-// 成交额柱状图
+// 成交额柱状图(大盘资金流替代: 近20日成交额)
 function AmountChart({ trend }: { trend: { date: string; amount: number }[] }) {
   if (trend.length === 0) return null
   const maxA = Math.max(...trend.map(t => t.amount))
@@ -166,7 +101,7 @@ export default function IndexDetailPage() {
         <div className="text-center text-red-500 py-12">{error}</div>
       ) : data ? (
         <>
-          {/* 实时行情卡片 */}
+          {/* 实时行情卡片(同个股详情风格) */}
           <div className="card p-4">
             <div className="flex items-end gap-4 flex-wrap">
               <div>
@@ -185,13 +120,14 @@ export default function IndexDetailPage() {
             </div>
           </div>
 
-          {/* K线图 */}
+          {/* K线走势(复用个股同款 InteractiveKline: MA/成交量/MACD/RSI + 日周月) */}
           <div className="card p-4">
             <div className="flex items-center gap-2 mb-2">
               <Activity className="h-4 w-4" />
               <span className="font-bold">K线走势</span>
+              <span className="text-[10px] text-muted-foreground">MA/成交量/MACD/RSI · 日K/周K/月K 切换</span>
             </div>
-            <KlineChart klines={data.klines} />
+            <InteractiveKline symbol={symbol || ''} market={data.market || 'CN'} initialInterval="1d" initialDays="120" />
           </div>
 
           {/* 成交额趋势(大盘资金流替代) */}
