@@ -95,7 +95,6 @@ const DEFAULT_FILTERS = {
   volumeRatio: '0',
   changePct: 'all',
   regime: 'all' as const,
-  strategyTag: 'all',
 }
 
 const toneClass = (item: StrategySignalItem) => {
@@ -257,7 +256,6 @@ export default function OpportunitiesPage() {
   const [volumeRatio, setVolumeRatio] = useLocalStorage('panwatch_opportunities_vol_v3', DEFAULT_FILTERS.volumeRatio)
   const [changePct, setChangePct] = useLocalStorage('panwatch_opportunities_chg_v3', DEFAULT_FILTERS.changePct)
   const [regime, setRegime] = useLocalStorage<RegimeFilter>('panwatch_opportunities_regime_v3', DEFAULT_FILTERS.regime)
-  const [strategyTag, setStrategyTag] = useLocalStorage('panwatch_opportunities_tag_v3', DEFAULT_FILTERS.strategyTag)
   const [sector, setSector] = useLocalStorage('panwatch_opportunities_sector_v3', '')
   const [sectorOpen, setSectorOpen] = useState(false)
   const [sectorQuery, setSectorQuery] = useState('')
@@ -346,7 +344,6 @@ export default function OpportunitiesPage() {
         change_pct_min: changePct === 'all' ? undefined : changePct.startsWith('n') ? undefined : Number(changePct.split('-')[0]) || undefined,
         change_pct_max: changePct === 'all' ? undefined : changePct.includes('-') ? Number(changePct.split('-')[1]) || undefined : undefined,
         regime: regime === 'all' ? '' : regime,
-        strategy_tag: strategyTag === 'all' ? '' : strategyTag,
         sector: sector || '',
         limit: 120,
         include_payload: false,
@@ -416,7 +413,7 @@ export default function OpportunitiesPage() {
     } finally {
       setLoading(false)
     }
-  }, [holding, kdj, macd, market, minScore, regime, risk, rsi, sector, source, strategy, strategyTag, trend, volumeRatio, changePct])
+  }, [holding, kdj, macd, market, minScore, regime, risk, rsi, sector, source, strategy, trend, volumeRatio, changePct])
 
   useEffect(() => {
     load()
@@ -493,10 +490,9 @@ export default function OpportunitiesPage() {
     setVolumeRatio(DEFAULT_FILTERS.volumeRatio)
     setChangePct(DEFAULT_FILTERS.changePct)
     setRegime(DEFAULT_FILTERS.regime)
-    setStrategyTag(DEFAULT_FILTERS.strategyTag)
     setSector('')
     setSectorQuery('')
-  }, [setChangePct, setHolding, setKdj, setMacd, setMarket, setMinScore, setRegime, setRisk, setRsi, setSector, setSource, setStrategy, setStrategyTag, setTrend, setVolumeRatio])
+  }, [setChangePct, setHolding, setKdj, setMacd, setMarket, setMinScore, setRegime, setRisk, setRsi, setSector, setSource, setStrategy, setTrend, setVolumeRatio])
 
   const strategyOptions = useMemo(() => {
     return strategyCatalog.map((row) => ({ value: row.code, label: row.name || row.code }))
@@ -819,18 +815,6 @@ export default function OpportunitiesPage() {
               <SelectItem value="bullish">多头</SelectItem>
               <SelectItem value="bearish">空头</SelectItem>
               <SelectItem value="neutral">震荡</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={strategyTag} onValueChange={setStrategyTag}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">标签:全部</SelectItem>
-              <SelectItem value="macd_golden">MACD金叉</SelectItem>
-              <SelectItem value="trend_follow">趋势跟随</SelectItem>
-              <SelectItem value="momentum">动量</SelectItem>
-              <SelectItem value="volume_breakout">放量突破</SelectItem>
-              <SelectItem value="pullback">回调</SelectItem>
-              <SelectItem value="rebound">反弹</SelectItem>
             </SelectContent>
           </Select>
           <div className="relative">
