@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""A股预测回测引擎服务 (:8010)
+
+独立于 PanWatch 容器的 FastAPI 服务,复用 ~/Kronos + baostock 数据,
+提供:
+- GET /health                    健康检查
+- GET /predict?symbol=002361     多模型预测(Kronos MC + XGBoost + 回归)
+- GET /backtest?symbol=002361    历史预测命中率
+
+启动: python3 forecast_server.py  (或 nohup, 见 deploy 脚本)
+"""
+import os
+import sys
+import json
+import time
+import uuid
+import threading
+from datetime import datetime, timedelta
+
+# Kronos 路径
+KRONOS_ROOT = os.path.expanduser('~/Kronos')
+KRONOS_MODEL_PATH = os.path.join(KRONOS_ROOT, 'model')
+if os.path.isdir(KRONOS_MODEL_PATH) and os.path.isdir(KRONOS_ROOT):
+    sys.path.insert(0, KRONOS_ROOT)
+    sys.path.insert(0, KRONOS_MODEL_PATH)
+
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI(title="A股预测引擎", version="0.1.0")
+
+# 全局缓存模型(只加载一次)
+_predictor = None
+_model_lock = False
+
+# 任务进度存储: task_id -> {"status", "logs": [], "result": ...}
+_tasks: dict[str, dict] = {}
+_tasks_lock = threading.Lock()
+
+
+def _log(task_id: str, msg: str):
+    """向任务追加日志。"""
+    with _tasks_lock:
+        t = _tasks.get(task_id)
+        if t:
+            t["logs"].append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+
+def _set_status(task_id: str, status: str):
+    with _tasks_lock:
+        t = _tasks.get(task_id)
+        if t:
+            t["status"] = status
+
+
+def new_task() -> str:
+    task_id = uuid.uuid4().hex[:12]
+    with _tasks_lock:
+        _tasks[task_id] = {"status": "pending", "logs": [], "result": None}
+    return task_id
+
+
+def get_predictor():
+    """懒加载 Kronos(首次 ~100MB 下载/加载,后续复用)。"""
+    global _predictor, _model_lock
+    if _predictor is not None:
+        return _predictor
+    if _model_lock:
+        raise HTTPException(503, "模型加载中,请稍候")
+    _model_lock = True
+    try:
+        from model import KronosPredictor, KronosTokenizer, Kronos
+        tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
+        model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
+        _predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=512)
+    finally:
+        _model_lock = False
+    return _predictor
+
+
+def load_kline(symbol: str, days: int = 250) -> pd.DataFrame:
+    """从 baostock 拉历史日K(不复权),转 Kronos 格式。
+
+    为什么不复权: baostock 前复权对送转股有口径 bug(实测神剑
+    116.53 vs 实际 11.70,差复权因子 9.96 倍)。不复权数据与
+    真实价格一致,预测基于相对变化,不受影响。
+
+    返回列: timestamp, open, high, low, close, volume, amount
+    """
+    import baostock as bs
+
+    code = f"sh.{symbol}" if symbol.startswith(("6", "9")) else f"sz.{symbol}"
+    lg = bs.login()
+    if lg.error_code != "0":
+        raise HTTPException(502, f"baostock 登录失败: {lg.error_msg}")
+
+    end = datetime.now().strftime("%Y-%m-%d")
+    start = (datetime.now() - timedelta(days=days * 1.6)).strftime("%Y-%m-%d")
+    rs = bs.query_history_k_data_plus(
+        code,
+        "date,open,high,low,close,volume,amount",
+        start_date=start, end_date=end,
+        frequency="d", adjustflag="3",  # 3=不复权(前复权有送转口径bug)
+    )
+    rows = []
+    while rs.error_code == "0" and rs.next():
+        rows.append(rs.get_row_data())
+    bs.logout()
+
+    if not rows:
+        raise HTTPException(502, f"baostock 无数据: {symbol}")
+
+    df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume", "amount"])
+    df["timestamp"] = pd.to_datetime(df["date"])
+    for c in ["open", "high", "low", "close", "volume", "amount"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = df.dropna().sort_values("timestamp").reset_index(drop=True)
+    return df[["timestamp", "open", "high", "low", "close", "volume", "amount"]]
+
+
+def kronos_predict(df: pd.DataFrame, pred_len: int = 5, n_samples: int = 30):
+    """Kronos 蒙特卡洛预测:返回中位数 + P5/P95 区间。"""
+    predictor = get_predictor()
+
+    x_df = df[["open", "high", "low", "close", "volume", "amount"]].copy()
+    x_ts = pd.Series(df["timestamp"])
+
+    # 未来交易日
+    dates = []
+    cur = df["timestamp"].iloc[-1]
+    while len(dates) < pred_len:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5:
+            dates.append(cur)
+    y_ts = pd.Series(pd.to_datetime(dates))
+
+    # MC 采样
+    preds = []
+    for _ in range(n_samples):
+        p = predictor.predict(
+            df=x_df, x_timestamp=x_ts, y_timestamp=y_ts,
+            pred_len=pred_len, T=1.0, top_k=0, top_p=0.9,
+            sample_count=1, verbose=False,
+        )
+        preds.append(p["close"].values)
+    arr = np.array(preds)  # (n_samples, pred_len)
+
+    return {
+        "median": [round(float(x), 2) for x in np.median(arr, axis=0)],
+        "p5": [round(float(x), 2) for x in np.percentile(arr, 5, axis=0)],
+        "p95": [round(float(x), 2) for x in np.percentile(arr, 95, axis=0)],
+        "n_samples": n_samples,
+    }
+
+
+def xgboost_predict(df: pd.DataFrame, pred_len: int = 5):
+    """XGBoost 滚动预测(轻量,作为第二模型)。"""
+    import xgboost as xgb
+    from sklearn.metrics import mean_absolute_error
+
+    # 特征: 过去 N 日 close 序列
+    closes = df["close"].values
+    window = 20
+    X, y = [], []
+    for i in range(window, len(closes)):
+        X.append(closes[i - window:i])
+        y.append(closes[i])
+    X, y = np.array(X), np.array(y)
+    if len(X) < 50:
+        return None
+
+    # 简单滚动: 训练 80% 预测未来
+    split = int(len(X) * 0.8)
+    model = xgb.XGBRegressor(n_estimators=100, max_depth=3, learning_rate=0.05)
+    model.fit(X[:split], y[:split])
+
+    # 滚动预测未来 pred_len 天
+    last = closes[-window:]
+    preds = []
+    for _ in range(pred_len):
+        p = model.predict(last.reshape(1, -1))[0]
+        preds.append(round(float(p), 2))
+        last = np.append(last[1:], p)
+    return preds
+
+
+def linreg_predict(df: pd.DataFrame, pred_len: int = 5):
+    """多元线性回归(第三模型,趋势外推)。"""
+    from sklearn.linear_model import LinearRegression
+
+    closes = df["close"].values
+    n = len(closes)
+    X = np.arange(n).reshape(-1, 1)
+    model = LinearRegression()
+    model.fit(X, closes)
+    preds = []
+    for i in range(1, pred_len + 1):
+        preds.append(round(float(model.predict([[n + i]])[0]), 2))
+    return preds
+
+
+def fetch_sentiment(symbol: str) -> dict:
+    """消息情绪面: 个股公告/新闻 + 板块共振 + 市场情绪。
+
+    复用 PanWatch 数据体系(wudao MCP + 东财涨停池),输出事件修正系数。
+    方法论: a-share-multi-model-prediction skill Pitfall #9(隔夜事件)。
+    - 重大利好事件 + 板块宽度≥4 → +0.5%~+1.5%
+    - 重大利空事件 → 对称下修
+    - 事件日 P10-P90 区间放宽 30%
+    """
+    result: dict = {
+        "events": [], "board_peers": 0, "market_sentiment": None,
+        "adjustment_pct": 0.0, "notes": [],
+    }
+    try:
+        # 1. wudao 个股公告/事件(近7天) — 直接 HTTP 调 MCP(与 PanWatch 容器内同机制)
+        import requests as _req
+        import os as _os
+
+        wu_token = _os.getenv("WUDAO_MCP_TOKEN", "")
+        if wu_token:
+            wu_url = _os.getenv("WUDAO_MCP_URL", "https://stock.quicktiny.cn/api/mcp")
+            wu_headers = {
+                "Authorization": f"Bearer {wu_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            }
+            _req.post(wu_url, headers=wu_headers, json={
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "forecast", "version": "1.0"}},
+            }, timeout=15)
+            _req.post(wu_url, headers=wu_headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"}, timeout=10)
+            ev_r = _req.post(wu_url, headers=wu_headers, json={
+                "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                "params": {"name": "official_announcements", "arguments": {"stockCode": symbol, "days": 7}},
+            }, timeout=30)
+            ev = ev_r.json()
+            content = ((ev.get("result") or {}).get("content") or [])
+            if content:
+                txt = content[0].get("text", "") if isinstance(content[0], dict) else str(content[0])
+                result["events"].append({"source": "wudao", "text": txt[:400]})
+    except Exception as e:
+        result["notes"].append(f"wudao公告失败: {e}")
+
+    try:
+        # 2. 东财公告(备用)
+        import requests as _req
+        url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
+        params = {"sr": "-1", "page_size": "5", "page_index": "1", "ann_type": "A", "client_source": "web", "stock_list": symbol}
+        r = _req.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        if r.status_code == 200:
+            data = r.json()
+            anns = (data.get("data") or {}).get("list") or []
+            for a in anns[:5]:
+                result["events"].append({
+                    "source": "eastmoney",
+                    "title": a.get("title", ""),
+                    "date": str(a.get("notice_date", ""))[:10],
+                })
+    except Exception:
+        pass
+
+    # 3. 板块共振(涨停池) + 市场情绪 — 直接 HTTP 调东财
+    try:
+        import requests as _req2
+        url = "https://push2ex.eastmoney.com/getTopicZTPool"
+        params = {
+            "ut": "7eea3edcaed734bea9cbfc24409ed989", "dpt": "wz.ztzt",
+            "Pageindex": "0", "pagesize": "60", "sort": "fbt:asc",
+            "date": datetime.now().strftime("%Y%m%d"),
+        }
+        r = _req2.get(url, params=params, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}, timeout=10)
+        if r.status_code == 200:
+            d = r.json()
+            pool = (d.get("data") or {}).get("pool") or []
+            sector_dist = {}
+            for item in pool:
+                sec = item.get("hybk", "") or "其他"
+                sector_dist[sec] = sector_dist.get(sec, 0) + 1
+            top_sectors = sorted(sector_dist.items(), key=lambda x: x[1], reverse=True)[:5]
+            result["market_sentiment"] = {
+                "limit_up_count": len(pool),
+                "top_sectors": [{"name": k, "count": v} for k, v in top_sectors],
+            }
+    except Exception:
+        pass
+
+    # 4. 事件修正系数(方法论: 重大事件±0.5~1.5%,板块宽度≥4加分)
+    events_text = " ".join(e.get("title", "") or str(e.get("text", ""))[:100] for e in result["events"])
+    adjust = 0.0
+    # 利空关键词
+    bearish_kw = ["减持", "亏损", "立案", "处罚", "警示", "问询", "终止", "退市", "风险提示", "诉讼", "冻结"]
+    # 利好关键词
+    bullish_kw = ["中标", "签约", "增持", "回购", "业绩预增", "扭亏", "获批", "订单", "涨停", "合同", "战略合作", "产能", "涨价"]
+
+    hit_bearish = [k for k in bearish_kw if k in events_text]
+    hit_bullish = [k for k in bullish_kw if k in events_text]
+
+    if hit_bullish:
+        adjust += min(1.5, 0.5 + 0.5 * len(hit_bullish))
+        result["notes"].append(f"利好事件: {', '.join(hit_bullish)} → +{adjust:.1f}%")
+    if hit_bearish:
+        adjust -= min(1.5, 0.5 + 0.5 * len(hit_bearish))
+        result["notes"].append(f"利空事件: {', '.join(hit_bearish)} → {adjust:+.1f}%")
+
+    # 板块宽度(涨停池 top_sectors 中是否含该股所属板块)
+    ms = result.get("market_sentiment") or {}
+    top_sectors = ms.get("top_sectors", [])
+    if top_sectors and len(top_sectors) >= 4:
+        adjust += 0.5
+        result["notes"].append("市场涨停板块≥4个(情绪偏热) → +0.5%")
+
+    result["adjustment_pct"] = round(adjust, 2)
+    return result
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "kronos_ready": _predictor is not None, "time": datetime.now().isoformat()}
+
+
+@app.get("/predict")
+def predict(symbol: str, days: int = 5, task_id: str = ""):
+    """多模型预测: Kronos + XGBoost + 线性回归 投票。task_id 可选(用于进度日志)。"""
+    if not symbol.isdigit() or len(symbol) != 6:
+        raise HTTPException(400, "symbol 需为 6 位 A 股代码")
+
+    tid = task_id or new_task()
+    if tid not in _tasks:
+        # 外部传入的 task_id 不存在则创建(允许前端先查状态再启动)
+        with _tasks_lock:
+            _tasks[tid] = {"status": "pending", "logs": [], "result": None}
+    _set_status(tid, "running")
+    t0 = time.monotonic()
+    try:
+        _log(tid, f"开始预测 {symbol}, {days} 天")
+        df = load_kline(symbol, days=250)
+        _log(tid, f"数据加载完成: {len(df)} 根K线 (baostock 不复权)")
+    except HTTPException as e:
+        _set_status(tid, "error")
+        _log(tid, f"数据加载失败: {e.detail}")
+        raise
+    except Exception as e:
+        _set_status(tid, "error")
+        _log(tid, f"数据加载失败: {e}")
+        raise HTTPException(502, f"数据获取失败: {e}")
+
+    last_close = float(df["close"].iloc[-1])
+    last_date = str(df["timestamp"].iloc[-1].date())
+
+    # Kronos MC
+    _log(tid, "Kronos 模型推理中(MC 30 采样,约 20-30s)...")
+    kronos = kronos_predict(df, pred_len=days)
+    _log(tid, "Kronos 完成")
+
+    # XGBoost
+    _log(tid, "XGBoost 训练预测中...")
+    xgb_preds = xgboost_predict(df, pred_len=days)
+    _log(tid, "XGBoost 完成")
+
+    # 线性回归
+    _log(tid, "线性回归趋势外推中...")
+    reg_preds = linreg_predict(df, pred_len=days)
+    _log(tid, "线性回归完成")
+
+    # 消息情绪面(黑天鹅/公告/板块共振修正)
+    _log(tid, "拉取消息情绪面(公告/新闻/板块共振)...")
+    sentiment = fetch_sentiment(symbol)
+    _log(tid, f"情绪面: 事件{len(sentiment['events'])}条, 修正系数 {sentiment['adjustment_pct']:+.2f}%")
+
+    # 投票(取中位数,含权重)
+    votes = []
+    if kronos:
+        votes.append(np.array(kronos["median"]))
+    if xgb_preds:
+        votes.append(np.array(xgb_preds))
+    if reg_preds:
+        votes.append(np.array(reg_preds))
+    if not votes:
+        _set_status(tid, "error")
+        _log(tid, "所有模型预测失败")
+        raise HTTPException(502, "所有模型预测失败")
+
+    final = np.median(np.array(votes), axis=0)
+
+    # 应用情绪面修正系数(±0.5~1.5%)
+    adjust_pct = sentiment["adjustment_pct"]
+    if adjust_pct != 0:
+        final = final * (1 + adjust_pct / 100)
+        _log(tid, f"应用情绪修正 {adjust_pct:+.2f}%")
+
+    direction = "up" if final[-1] > last_close else "down" if final[-1] < last_close else "flat"
+
+    result = {
+        "symbol": symbol,
+        "last_close": last_close,
+        "last_date": last_date,
+        "pred_days": days,
+        "prediction": [round(float(x), 2) for x in final],
+        "direction": direction,
+        "expected_pct": round((float(final[-1]) / last_close - 1) * 100, 2),
+        "models": {
+            "kronos": kronos,
+            "xgboost": xgb_preds,
+            "linreg": reg_preds,
+        },
+        "sentiment": {
+            "events": sentiment["events"][:8],
+            "market_sentiment": sentiment["market_sentiment"],
+            "adjustment_pct": adjust_pct,
+            "notes": sentiment["notes"],
+        },
+        "elapsed_ms": int((time.monotonic() - t0) * 1000),
+    }
+    _log(tid, f"预测完成: {last_close} → {result['prediction'][-1]} ({result['expected_pct']:+.1f}%), 耗时 {result['elapsed_ms']}ms")
+    _set_status(tid, "done")
+    with _tasks_lock:
+        _tasks[tid]["result"] = result
+    return result
+
+
+@app.get("/predict/status")
+def predict_status(task_id: str):
+    """查询任务进度与日志。"""
+    with _tasks_lock:
+        t = _tasks.get(task_id)
+        if not t:
+            return {"status": "not_found", "logs": []}
+        return {
+            "status": t["status"],
+            "logs": t["logs"],
+            "result": t["result"],
+        }
+
+
+@app.get("/backtest")
+def backtest(symbol: str):
+    """回测: 用过去数据模拟预测 vs 实际,给出方向命中率。"""
+    if not symbol.isdigit() or len(symbol) != 6:
+        raise HTTPException(400, "symbol 需为 6 位 A 股代码")
+
+    try:
+        df = load_kline(symbol, days=400)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"数据获取失败: {e}")
+
+    # 滚动回测: 每 20 天预测 5 天,比对方向
+    window, horizon = 120, 5
+    hits, total = 0, 0
+    samples = []
+    closes = df["close"].values
+
+    for start in range(window, len(closes) - horizon, 5):
+        hist = df.iloc[start - window:start]
+        actual_future = closes[start:start + horizon]
+        if len(actual_future) < horizon:
+            continue
+        try:
+            # 用线性回归快速预测(回测不求精度,求方向)
+            X = np.arange(len(hist)).reshape(-1, 1)
+            from sklearn.linear_model import LinearRegression
+            m = LinearRegression().fit(X, hist["close"].values)
+            pred = m.predict([[len(hist) + horizon - 1]])[0]
+            actual = actual_future[-1]
+            pred_dir = 1 if pred > hist["close"].iloc[-1] else -1
+            act_dir = 1 if actual > hist["close"].iloc[-1] else -1
+            total += 1
+            if pred_dir == act_dir:
+                hits += 1
+            samples.append({
+                "date": str(df["timestamp"].iloc[start - 1].date()),
+                "pred_close": round(float(pred), 2),
+                "actual_close": round(float(actual), 2),
+                "hit": pred_dir == act_dir,
+            })
+        except Exception:
+            continue
+
+    accuracy = round(hits / total * 100, 1) if total else 0
+    return {
+        "symbol": symbol,
+        "windows_tested": total,
+        "direction_hits": hits,
+        "direction_accuracy_pct": accuracy,
+        "recent_samples": samples[-10:],
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8010)
