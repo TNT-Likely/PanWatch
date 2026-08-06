@@ -387,6 +387,13 @@ export const recommendationsApi = {
     source?: 'market_scan' | 'watchlist' | 'mixed' | 'all'
     holding?: 'held' | 'unheld' | 'all'
     strategy?: string
+    trend?: string
+    macd?: string
+    rsi?: string
+    kdj?: string
+    volume_ratio_min?: number
+    change_pct_min?: number
+    change_pct_max?: number
     timeoutMs?: number
   }) => {
     const q = new URLSearchParams()
@@ -399,6 +406,13 @@ export const recommendationsApi = {
     if (params?.source) q.set('source', params.source)
     if (params?.holding) q.set('holding', params.holding)
     if (params?.strategy) q.set('strategy', params.strategy)
+    if (params?.trend) q.set('trend', params.trend)
+    if (params?.macd) q.set('macd', params.macd)
+    if (params?.rsi) q.set('rsi', params.rsi)
+    if (params?.kdj) q.set('kdj', params.kdj)
+    if (typeof params?.volume_ratio_min === 'number') q.set('volume_ratio_min', String(params.volume_ratio_min))
+    if (typeof params?.change_pct_min === 'number') q.set('change_pct_min', String(params.change_pct_min))
+    if (typeof params?.change_pct_max === 'number') q.set('change_pct_max', String(params.change_pct_max))
     const qs = q.toString()
     return fetchAPI<EntryCandidatesResponse>(
       `/recommendations/entry-candidates${qs ? `?${qs}` : ''}`,
@@ -449,6 +463,15 @@ export const recommendationsApi = {
     strategy_code?: string
     risk_level?: 'low' | 'medium' | 'high' | 'all'
     include_payload?: boolean
+    trend?: string
+    macd?: string
+    rsi?: string
+    kdj?: string
+    volume_ratio_min?: number
+    change_pct_min?: number
+    change_pct_max?: number
+    regime?: string
+    strategy_tag?: string
     timeoutMs?: number
   }) => {
     const q = new URLSearchParams()
@@ -462,6 +485,15 @@ export const recommendationsApi = {
     appendQuery(q, 'strategy_code', params?.strategy_code)
     appendQuery(q, 'risk_level', params?.risk_level)
     appendQuery(q, 'include_payload', params?.include_payload)
+    appendQuery(q, 'trend', params?.trend)
+    appendQuery(q, 'macd', params?.macd)
+    appendQuery(q, 'rsi', params?.rsi)
+    appendQuery(q, 'kdj', params?.kdj)
+    appendQuery(q, 'volume_ratio_min', params?.volume_ratio_min)
+    appendQuery(q, 'change_pct_min', params?.change_pct_min)
+    appendQuery(q, 'change_pct_max', params?.change_pct_max)
+    appendQuery(q, 'regime', params?.regime)
+    appendQuery(q, 'strategy_tag', params?.strategy_tag)
     const qs = q.toString()
     return fetchAPI<StrategySignalsResponse>(
       `/recommendations/strategy-signals${qs ? `?${qs}` : ''}`,

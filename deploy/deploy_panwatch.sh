@@ -56,6 +56,9 @@ FILES=(
   "prompts/daily_report.txt"
   "src/web/api/forecast.py"
   "src/web/api/market.py"
+  "src/web/api/recommendations.py"
+  "src/core/strategy_engine.py"
+  "src/core/entry_candidates.py"
   "src/agents/stock_attribution.py"
   "packages/marketdata/src/marketdata/vendors/ftshare.py"
   "packages/marketdata/src/marketdata/vendors/zhitu.py"
@@ -86,13 +89,21 @@ deploy_files() {
   # 容器内语法校验
   $DOCKER exec "$CONTAINER" python3 -c "
 import ast, sys
-for f in ['src/agents/auction_review.py','src/agents/theme_launch_detector.py','src/agents/stock_attribution.py','src/collectors/wudao_mcp_client.py','src/collectors/market_sentiment_collector.py','server.py','src/web/api/chat.py']:
+for f in ['src/agents/auction_review.py','src/agents/theme_launch_detector.py','src/agents/stock_attribution.py','src/collectors/wudao_mcp_client.py','src/collectors/market_sentiment_collector.py','server.py','src/web/api/chat.py','src/web/api/recommendations.py','src/core/strategy_engine.py','src/core/entry_candidates.py']:
     try:
         ast.parse(open('/app/'+f).read())
     except Exception as e:
         print(f'语法错误 {f}: {e}'); sys.exit(1)
 print('✅ 容器内语法校验通过')
 " || { echo "❌ 语法校验失败"; exit 1; }
+  # 前端构建 + 部署(改过 React 时必须,构建产物在 /app/static/)
+  if [ -d "$REPO_DIR/frontend/node_modules/.bin" ] && [ -n "$(find "$REPO_DIR/frontend/src" "$REPO_DIR/frontend/packages" -name '*.tsx' -o -name '*.ts' -newer "$REPO_DIR/frontend/dist/index.html" 2>/dev/null | head -1)" ]; then
+    echo "▶ 检测到前端源码更新,重新构建..."
+    (cd "$REPO_DIR/frontend" && ./node_modules/.bin/vite build 2>&1 | tail -3) || { echo "❌ 前端构建失败"; exit 1; }
+    $DOCKER cp "$REPO_DIR/frontend/dist/." "$CONTAINER":/app/static/ && echo "  ✅ 前端已部署到 /app/static/"
+  else
+    echo "  ⏭️ 前端无更新,跳过构建"
+  fi
 }
 
 rebuild_container() {

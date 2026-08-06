@@ -1457,6 +1457,15 @@ def list_strategy_signals(
     strategy_code: str = "",
     risk_level: str = "",
     include_payload: bool = False,
+    trend: str = "",
+    macd: str = "",
+    rsi: str = "",
+    kdj: str = "",
+    volume_ratio_min: float = 0,
+    change_pct_min: float | None = None,
+    change_pct_max: float | None = None,
+    regime: str = "",
+    strategy_tag: str = "",
 ) -> dict:
     ensure_strategy_catalog()
     db = SessionLocal()
@@ -1498,6 +1507,42 @@ def list_strategy_signals(
         r = (risk_level or "").strip().lower()
         if r and r != "all":
             q = q.filter(StrategySignalRun.risk_level == r)
+
+        # ---- 技术形态/行情过滤 ----
+        # 技术形态/量比/涨跌幅在 source 候选的 meta(join entry_candidates);
+        # regime/strategy_tag 在本表 payload JSON 内。
+        tt = (trend or "").strip()
+        mm = (macd or "").strip()
+        rr = (rsi or "").strip()
+        kk = (kdj or "").strip()
+        has_meta_filter = any(
+            x and x != "all" for x in (tt, mm, rr, kk)
+        ) or float(volume_ratio_min or 0) > 0 or change_pct_min is not None or change_pct_max is not None
+        if has_meta_filter:
+            q = q.outerjoin(
+                EntryCandidate,
+                EntryCandidate.id == StrategySignalRun.source_candidate_id,
+            )
+            if tt and tt != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["trend"].as_string() == tt)
+            if mm and mm != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["macd_cross"].as_string() == mm)
+            if rr and rr != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["rsi_status"].as_string() == rr)
+            if kk and kk != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["kdj_status"].as_string() == kk)
+            if float(volume_ratio_min or 0) > 0:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.kline.volume_ratio") >= float(volume_ratio_min))
+            if change_pct_min is not None:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.quote.change_pct") >= float(change_pct_min))
+            if change_pct_max is not None:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.quote.change_pct") <= float(change_pct_max))
+        rg = (regime or "").strip().lower()
+        if rg and rg != "all":
+            q = q.filter(func.json_extract(StrategySignalRun.payload, "$.market_regime.regime") == rg)
+        stg = (strategy_tag or "").strip()
+        if stg and stg != "all":
+            q = q.filter(func.json_extract(StrategySignalRun.payload, "$.strategy_tags").as_string().like(f'%"{stg}"%'))
 
         q = q.filter(StrategySignalRun.rank_score >= float(min_score or 0))
         rows = (

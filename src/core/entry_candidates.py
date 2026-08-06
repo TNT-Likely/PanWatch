@@ -1560,6 +1560,13 @@ def list_entry_candidates(
     source: str = "",
     holding: str = "",
     strategy: str = "",
+    trend: str = "",
+    macd: str = "",
+    rsi: str = "",
+    kdj: str = "",
+    volume_ratio_min: float = 0,
+    change_pct_min: float | None = None,
+    change_pct_max: float | None = None,
 ) -> dict:
     def _query_rows():
         db = SessionLocal()
@@ -1596,6 +1603,28 @@ def list_entry_candidates(
             elif h == "unheld":
                 q = q.filter(EntryCandidate.is_holding_snapshot.is_(False))
             q = q.filter(EntryCandidate.score >= float(min_score or 0))
+
+            # ---- 技术形态/行情过滤(meta JSON 内嵌字段) ----
+            # meta 存于 EntryCandidate.meta(JSON 列): kline.trend/macd_cross/rsi_status/kdj_status/volume_ratio, quote.change_pct
+            t = (trend or "").strip()
+            if t and t != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["trend"].as_string() == t)
+            m = (macd or "").strip()
+            if m and m != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["macd_cross"].as_string() == m)
+            r = (rsi or "").strip()
+            if r and r != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["rsi_status"].as_string() == r)
+            k = (kdj or "").strip()
+            if k and k != "all":
+                q = q.filter(EntryCandidate.meta["kline"]["kdj_status"].as_string() == k)
+            if float(volume_ratio_min or 0) > 0:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.kline.volume_ratio") >= float(volume_ratio_min))
+            if change_pct_min is not None:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.quote.change_pct") >= float(change_pct_min))
+            if change_pct_max is not None:
+                q = q.filter(func.json_extract(EntryCandidate.meta, "$.quote.change_pct") <= float(change_pct_max))
+
             rows = (
                 q.order_by(
                     case(

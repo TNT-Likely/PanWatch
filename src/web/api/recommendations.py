@@ -151,6 +151,13 @@ def get_entry_candidates(
     source: str = Query("", description="来源: market_scan/watchlist/mixed/all"),
     holding: str = Query("", description="持仓过滤: held/unheld/all"),
     strategy: str = Query("", description="策略标签过滤"),
+    trend: str = Query("", description="技术形态: 多头排列/均线交织/空头排列"),
+    macd: str = Query("", description="MACD: 金叉/死叉"),
+    rsi: str = Query("", description="RSI: 超买/偏强/中性"),
+    kdj: str = Query("", description="KDJ: 金叉/死叉"),
+    volume_ratio_min: float = Query(0, ge=0, description="量比下限"),
+    change_pct_min: float | None = Query(None, description="涨跌幅下限(%)"),
+    change_pct_max: float | None = Query(None, description="涨跌幅上限(%)"),
 ):
     if refresh:
         refresh_entry_candidates()
@@ -163,6 +170,13 @@ def get_entry_candidates(
         source=source,
         holding=holding,
         strategy=strategy,
+        trend=trend,
+        macd=macd,
+        rsi=rsi,
+        kdj=kdj,
+        volume_ratio_min=volume_ratio_min,
+        change_pct_min=change_pct_min,
+        change_pct_max=change_pct_max,
     )
 
 
@@ -231,6 +245,15 @@ def get_strategy_signal_list(
     strategy_code: str = Query("", description="策略代码"),
     risk_level: str = Query("", description="风险等级: low/medium/high/all"),
     include_payload: bool = Query(False, description="是否返回完整 payload（默认否，提升性能）"),
+    trend: str = Query("", description="技术形态: 多头排列/均线交织/空头排列"),
+    macd: str = Query("", description="MACD: 金叉/死叉"),
+    rsi: str = Query("", description="RSI: 超买/偏强/中性"),
+    kdj: str = Query("", description="KDJ: 金叉/死叉"),
+    volume_ratio_min: float = Query(0, ge=0, description="量比下限"),
+    change_pct_min: float | None = Query(None, description="涨跌幅下限(%)"),
+    change_pct_max: float | None = Query(None, description="涨跌幅上限(%)"),
+    regime: str = Query("", description="市场情绪: bullish/bearish/neutral/all"),
+    strategy_tag: str = Query("", description="策略标签: macd_golden/momentum/trend_follow 等"),
 ):
     result = list_strategy_signals(
         market=market,
@@ -243,6 +266,15 @@ def get_strategy_signal_list(
         strategy_code=strategy_code,
         risk_level=risk_level,
         include_payload=include_payload,
+        trend=trend,
+        macd=macd,
+        rsi=rsi,
+        kdj=kdj,
+        volume_ratio_min=volume_ratio_min,
+        change_pct_min=change_pct_min,
+        change_pct_max=change_pct_max,
+        regime=regime,
+        strategy_tag=strategy_tag,
     )
     # Phase 3: 注入 1-10 可解释评分 + 正负因子拆解
     for _it in result.get("items", []):

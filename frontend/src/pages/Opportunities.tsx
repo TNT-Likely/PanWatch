@@ -18,6 +18,11 @@ import SignalScoreShareCard from '@/components/SignalScoreShareCard'
 type SourceFilter = 'all' | 'market_scan' | 'watchlist' | 'mixed'
 type HoldingFilter = 'all' | 'held' | 'unheld'
 type RiskFilter = 'all' | 'low' | 'medium' | 'high'
+type TrendFilter = 'all' | '多头排列' | '均线交织' | '空头排列'
+type MacdFilter = 'all' | '金叉' | '死叉'
+type RsiFilter = 'all' | '超买' | '偏强' | '中性'
+type KdjFilter = 'all' | '金叉' | '死叉'
+type RegimeFilter = 'all' | 'bullish' | 'bearish' | 'neutral'
 
 type GroupedSignal = {
   key: string
@@ -82,6 +87,14 @@ const DEFAULT_FILTERS = {
   strategy: 'all',
   risk: 'all' as const,
   minScore: '70',
+  trend: 'all' as const,
+  macd: 'all' as const,
+  rsi: 'all' as const,
+  kdj: 'all' as const,
+  volumeRatio: '0',
+  changePct: 'all',
+  regime: 'all' as const,
+  strategyTag: 'all',
 }
 
 const toneClass = (item: StrategySignalItem) => {
@@ -236,6 +249,14 @@ export default function OpportunitiesPage() {
   const [strategy, setStrategy] = useLocalStorage('panwatch_opportunities_strategy_v3', DEFAULT_FILTERS.strategy)
   const [risk, setRisk] = useLocalStorage<RiskFilter>('panwatch_opportunities_risk_v3', DEFAULT_FILTERS.risk)
   const [minScore, setMinScore] = useLocalStorage('panwatch_opportunities_min_score_v3', DEFAULT_FILTERS.minScore)
+  const [trend, setTrend] = useLocalStorage<TrendFilter>('panwatch_opportunities_trend_v3', DEFAULT_FILTERS.trend)
+  const [macd, setMacd] = useLocalStorage<MacdFilter>('panwatch_opportunities_macd_v3', DEFAULT_FILTERS.macd)
+  const [rsi, setRsi] = useLocalStorage<RsiFilter>('panwatch_opportunities_rsi_v3', DEFAULT_FILTERS.rsi)
+  const [kdj, setKdj] = useLocalStorage<KdjFilter>('panwatch_opportunities_kdj_v3', DEFAULT_FILTERS.kdj)
+  const [volumeRatio, setVolumeRatio] = useLocalStorage('panwatch_opportunities_vol_v3', DEFAULT_FILTERS.volumeRatio)
+  const [changePct, setChangePct] = useLocalStorage('panwatch_opportunities_chg_v3', DEFAULT_FILTERS.changePct)
+  const [regime, setRegime] = useLocalStorage<RegimeFilter>('panwatch_opportunities_regime_v3', DEFAULT_FILTERS.regime)
+  const [strategyTag, setStrategyTag] = useLocalStorage('panwatch_opportunities_tag_v3', DEFAULT_FILTERS.strategyTag)
   const [snapshotDate, setSnapshotDate] = useState('')
 
   const [insightOpen, setInsightOpen] = useState(false)
@@ -295,6 +316,15 @@ export default function OpportunitiesPage() {
         strategy_code: strategy === 'all' ? '' : strategy,
         risk_level: risk,
         min_score: Number(minScore) || 0,
+        trend: trend === 'all' ? '' : trend,
+        macd: macd === 'all' ? '' : macd,
+        rsi: rsi === 'all' ? '' : rsi,
+        kdj: kdj === 'all' ? '' : kdj,
+        volume_ratio_min: Number(volumeRatio) || 0,
+        change_pct_min: changePct === 'all' ? undefined : changePct.startsWith('n') ? undefined : Number(changePct.split('-')[0]) || undefined,
+        change_pct_max: changePct === 'all' ? undefined : changePct.includes('-') ? Number(changePct.split('-')[1]) || undefined : undefined,
+        regime: regime === 'all' ? '' : regime,
+        strategy_tag: strategyTag === 'all' ? '' : strategyTag,
         limit: 120,
         include_payload: false,
       }
@@ -324,6 +354,13 @@ export default function OpportunitiesPage() {
             snapshot_date: '',
             source: source === 'all' ? 'all' : source,
             holding: req.holding,
+            trend: req.trend,
+            macd: req.macd,
+            rsi: req.rsi,
+            kdj: req.kdj,
+            volume_ratio_min: req.volume_ratio_min,
+            change_pct_min: req.change_pct_min,
+            change_pct_max: req.change_pct_max,
             timeoutMs: 90000,
           })
           data = {
@@ -356,7 +393,7 @@ export default function OpportunitiesPage() {
     } finally {
       setLoading(false)
     }
-  }, [holding, market, minScore, risk, source, strategy])
+  }, [holding, kdj, macd, market, minScore, regime, risk, rsi, source, strategy, strategyTag, trend, volumeRatio, changePct])
 
   useEffect(() => {
     load()
@@ -426,7 +463,15 @@ export default function OpportunitiesPage() {
     setStrategy(DEFAULT_FILTERS.strategy)
     setRisk(DEFAULT_FILTERS.risk)
     setMinScore(DEFAULT_FILTERS.minScore)
-  }, [setHolding, setMarket, setMinScore, setRisk, setSource, setStrategy])
+    setTrend(DEFAULT_FILTERS.trend)
+    setMacd(DEFAULT_FILTERS.macd)
+    setRsi(DEFAULT_FILTERS.rsi)
+    setKdj(DEFAULT_FILTERS.kdj)
+    setVolumeRatio(DEFAULT_FILTERS.volumeRatio)
+    setChangePct(DEFAULT_FILTERS.changePct)
+    setRegime(DEFAULT_FILTERS.regime)
+    setStrategyTag(DEFAULT_FILTERS.strategyTag)
+  }, [setChangePct, setHolding, setKdj, setMacd, setMarket, setMinScore, setRegime, setRisk, setRsi, setSource, setStrategy, setStrategyTag, setTrend, setVolumeRatio])
 
   const strategyOptions = useMemo(() => {
     return strategyCatalog.map((row) => ({ value: row.code, label: row.name || row.code }))
@@ -687,6 +732,82 @@ export default function OpportunitiesPage() {
           <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={resetFilters}>
             清空筛选
           </Button>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-8 gap-2 mt-2">
+          <Select value={trend} onValueChange={(v) => setTrend(v as TrendFilter)}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">均线形态:全部</SelectItem>
+              <SelectItem value="多头排列">多头排列</SelectItem>
+              <SelectItem value="均线交织">均线交织</SelectItem>
+              <SelectItem value="空头排列">空头排列</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={macd} onValueChange={(v) => setMacd(v as MacdFilter)}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">MACD:全部</SelectItem>
+              <SelectItem value="金叉">金叉</SelectItem>
+              <SelectItem value="死叉">死叉</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={rsi} onValueChange={(v) => setRsi(v as RsiFilter)}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">RSI:全部</SelectItem>
+              <SelectItem value="超买">超买</SelectItem>
+              <SelectItem value="偏强">偏强</SelectItem>
+              <SelectItem value="中性">中性</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={kdj} onValueChange={(v) => setKdj(v as KdjFilter)}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">KDJ:全部</SelectItem>
+              <SelectItem value="金叉">金叉</SelectItem>
+              <SelectItem value="死叉">死叉</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={volumeRatio} onValueChange={setVolumeRatio}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">量比:不限</SelectItem>
+              <SelectItem value="1.0">量比≥1.0</SelectItem>
+              <SelectItem value="1.5">量比≥1.5</SelectItem>
+              <SelectItem value="2.0">量比≥2.0</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={changePct} onValueChange={setChangePct}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">涨跌幅:不限</SelectItem>
+              <SelectItem value="0-999">上涨</SelectItem>
+              <SelectItem value="3-999">涨幅≥3%</SelectItem>
+              <SelectItem value="5-999">涨幅≥5%</SelectItem>
+              <SelectItem value="n--999">下跌</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={regime} onValueChange={(v) => setRegime(v as RegimeFilter)}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">市场情绪:全部</SelectItem>
+              <SelectItem value="bullish">多头</SelectItem>
+              <SelectItem value="bearish">空头</SelectItem>
+              <SelectItem value="neutral">震荡</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={strategyTag} onValueChange={setStrategyTag}>
+            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">标签:全部</SelectItem>
+              <SelectItem value="macd_golden">MACD金叉</SelectItem>
+              <SelectItem value="trend_follow">趋势跟随</SelectItem>
+              <SelectItem value="momentum">动量</SelectItem>
+              <SelectItem value="volume_breakout">放量突破</SelectItem>
+              <SelectItem value="pullback">回调</SelectItem>
+              <SelectItem value="rebound">反弹</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
