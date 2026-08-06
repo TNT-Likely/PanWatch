@@ -122,11 +122,35 @@ class DailyReportAgent(BaseAgent):
         if not all_indices and not any(p.quote for p in packs.values()):
             raise RuntimeError("数据采集失败：未获取到任何行情数据，请检查网络连接")
 
+        # 涨停复盘(涨停池 + 连板梯队 + 指数)
+        limit_up_review = {}
+        try:
+            from src.collectors.market_sentiment_collector import (
+                MarketSentimentCollector,
+            )
+
+            senti = MarketSentimentCollector()
+            summary = senti.get_sentiment_summary()
+            indices = senti.get_index_snapshot()
+            limit_up_review = {
+                "sentiment": summary,
+                "indices": indices,
+            }
+            logger.info(
+                "涨停复盘采集完成: limit_up=%s max_streak=%s",
+                (summary or {}).get("limit_up_count", "-"),
+                (summary or {}).get("max_streak", "-"),
+            )
+        except Exception as e:
+            logger.warning(f"涨停复盘采集失败: {e}")
+            limit_up_review = {}
+
         return {
             "indices": all_indices,
             "signal_packs": packs,
             "symbol_contexts": context_pack.get("symbols", {}),
             "quality_overview": context_pack.get("quality_overview", {}),
+            "limit_up_review": limit_up_review,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -164,6 +188,30 @@ class DailyReportAgent(BaseAgent):
                 f"{direction} {change_pct:+.2f}% "
                 f"成交额:{safe_num(idx.turnover) / 1e8:.0f}亿"
             )
+
+        # 涨停复盘(涨停池 + 连板梯队)
+        lr = data.get("limit_up_review", {}) or {}
+        if lr.get("sentiment") and not (lr["sentiment"] or {}).get("error"):
+            senti = lr["sentiment"]
+            lines.append("\n## 涨停复盘")
+            lines.append(
+                f"- 涨停家数：{senti.get('limit_up_count', '-')}，最高连板：{senti.get('max_streak', '-')} 板"
+            )
+            ladder = senti.get("ladder", {})
+            if ladder:
+                ladder_str = "，".join(
+                    f"{k}板×{v}家" for k, v in list(ladder.items())[:6]
+                )
+                lines.append(f"- 连板梯队：{ladder_str}")
+            top_stocks = senti.get("top_stocks", [])
+            if top_stocks:
+                lines.append(f"- 最高板：{'、'.join(top_stocks)}")
+            top_sectors = senti.get("top_sectors", [])
+            if top_sectors:
+                sector_str = "，".join(
+                    f"{s.get('name')}×{s.get('count')}" for s in top_sectors
+                )
+                lines.append(f"- 涨停板块分布：{sector_str}")
 
         # 自选股详情
         lines.append("\n## 自选股详情")

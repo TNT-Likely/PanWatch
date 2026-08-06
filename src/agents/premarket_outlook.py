@@ -209,9 +209,11 @@ class PremarketOutlookAgent(BaseAgent):
             senti = MarketSentimentCollector()
             summary = senti.get_sentiment_summary()
             indices = senti.get_index_snapshot()
+            sectors = senti.get_sector_rotation()
             market_sentiment = {
                 "sentiment": summary,
                 "indices": indices,
+                "sectors": sectors,
             }
             logger.info(
                 "[%s] 市场情绪采集完成: limit_up=%s max_streak=%s",
@@ -321,6 +323,16 @@ class PremarketOutlookAgent(BaseAgent):
                 lines.append(
                     f"- {idx.get('name')}: {idx.get('price', 0):.2f} {direction} {idx.get('pct', 0):+.2f}%"
                 )
+            lines.append("")
+
+        # 涨停板块分布(主线题材反推)
+        sectors = ms.get("sectors", {}) or {}
+        senti = (ms.get("sentiment") or {})
+        top_sectors = senti.get("top_sectors", [])
+        if top_sectors:
+            lines.append("## 涨停板块分布")
+            parts = [f"{s.get('name')}×{s.get('count')}" for s in top_sectors]
+            lines.append(f"- {'，'.join(parts)}")
             lines.append("")
 
         # 相关新闻

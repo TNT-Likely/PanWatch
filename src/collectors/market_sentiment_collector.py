@@ -79,12 +79,13 @@ class MarketSentimentCollector:
                     "first_time": item.get("fbt", ""),
                     "last_time": item.get("lbt", ""),
                     "days": int(item.get("days", 1) or 1),  # 连板天数
+                    "sector": item.get("hybk", "") or "",  # 所属行业板块
                 }
             )
         return result
 
     def get_sentiment_summary(self) -> dict:
-        """市场情绪摘要:涨停家数/连板梯队/最高板。"""
+        """市场情绪摘要:涨停家数/连板梯队/最高板/涨停板块分布。"""
         pool = self.get_limit_up_pool()
         if not pool:
             return {"error": "无涨停池数据"}
@@ -100,12 +101,73 @@ class MarketSentimentCollector:
         # 最高板股票
         top_stocks = [p for p in pool if p["days"] == max_days][:5]
 
+        # 涨停板块分布(从涨停股所属行业反推主线题材)
+        sector_dist = {}
+        for p in pool:
+            sector = p.get("sector", "") or "其他"
+            sector_dist[sector] = sector_dist.get(sector, 0) + 1
+        top_sectors = sorted(
+            sector_dist.items(), key=lambda x: x[1], reverse=True
+        )[:6]
+
         return {
             "limit_up_count": total,
             "max_streak": max_days,
             "ladder": dict(sorted(ladder.items(), reverse=True)),
             "top_stocks": [f"{p['name']}({p['code']}){p['days']}板" for p in top_stocks],
+            "top_sectors": [
+                {"name": k, "count": v} for k, v in top_sectors
+            ],
         }
+
+    def get_sector_rotation(self, top_n: int = 10) -> dict:
+        """板块轮动:行业板块涨幅榜 + 概念板块涨幅榜(含主力净额)。
+
+        返回: {"industries": [...], "concepts": [...]}
+        每项: {name, pct(涨幅%), main_net(主力净额)}
+        """
+        url = "https://push2.eastmoney.com/api/qt/clist/get"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://quote.eastmoney.com/",
+        }
+        base_params = {
+            "pn": "1", "pz": str(top_n), "po": "1", "np": "1",
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": "2", "invt": "2",
+            "fid": "f3",
+            "fields": "f3,f12,f14,f62",
+        }
+        result = {}
+
+        for key, fs in (("industries", "m:90+t:2+f:!50"), ("concepts", "m:90+t:3+f:!50")):
+            params = {**base_params, "fs": fs}
+            data = market_get(
+                url,
+                host_key="push2.eastmoney.com",
+                params=params,
+                headers=headers,
+                timeout=10,
+                retries=2,
+                parse="json",
+                log_label=f"板块轮动-{key}",
+            )
+            if not data:
+                result[key] = []
+                continue
+            diff = (data.get("data") or {}).get("diff") or []
+            items = []
+            for item in diff:
+                items.append(
+                    {
+                        "name": item.get("f14", ""),
+                        "pct": _safe_float(item.get("f3")),
+                        "main_net": _safe_float(item.get("f62")),
+                    }
+                )
+            result[key] = items
+
+        return result
 
     def get_index_snapshot(self) -> list[dict]:
         """主要指数快照(上证/深成/创业板)。优先腾讯接口(更稳),失败退回东财。"""
