@@ -54,25 +54,28 @@ export default function ForecastPage() {
   const [taskLogs, setTaskLogs] = useState<string[]>([])
   const { toast } = useToast()
 
+  // 检测引擎状态(可手动刷新调用)
+  const checkEngine = () => {
+    setEngineStatus('checking')
+    fetchAPI<{ status: string }>('/api/forecast/health')
+      .then(d => setEngineStatus(d.status === 'ok' ? 'ok' : 'down'))
+      .catch(() => setEngineStatus('down'))
+  }
+
   useEffect(() => {
     // 每 30 秒轮询引擎状态(引擎可能在页面打开后启动)
     let cancelled = false
-    const check = () => {
-      fetchAPI<{ status: string }>('/api/forecast/health')
-        .then(d => {
-          if (!cancelled) setEngineStatus(d.status === 'ok' ? 'ok' : 'down')
-        })
-        .catch(() => {
-          if (!cancelled) setEngineStatus('down')
-        })
-    }
-    check()
-    const timer = setInterval(check, 30000)
+    const timer = setInterval(() => {
+      if (!cancelled) checkEngine()
+    }, 30000)
+    checkEngine()
     return () => {
       cancelled = true
       clearInterval(timer)
     }
   }, [])
+
+  const refreshEngine = () => checkEngine()
 
   const runPredict = async () => {
     if (!/^\d{6}$/.test(symbol)) {
@@ -148,6 +151,16 @@ export default function ForecastPage() {
           <span className="text-muted-foreground">
             预测引擎 {engineStatus === 'ok' ? '运行中' : engineStatus === 'down' ? '未启动' : '检测中'}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2"
+            onClick={refreshEngine}
+            disabled={engineStatus === 'checking'}
+            title="重新检测引擎状态"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${engineStatus === 'checking' ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
