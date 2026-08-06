@@ -89,7 +89,11 @@ export default function ForecastPage() {
     const tid = `task_${Date.now()}`
     try {
       // 并行: 启动预测 + 轮询进度
-      const predictPromise = fetchAPI<PredictResult>(`/api/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`)
+      // ⚠️ predict 需要长超时(Kronos MC30 推理 20-30s,默认 20s 会 abort)
+      const predictPromise = fetchAPI<PredictResult>(
+        `/api/forecast/predict?symbol=${symbol}&days=${days}&task_id=${tid}`,
+        { timeoutMs: 300000 }
+      )
       let pollDone = false
       const pollPromise = (async () => {
         while (!pollDone) {
@@ -97,7 +101,13 @@ export default function ForecastPage() {
           try {
             const s = await fetchAPI<any>(`/api/forecast/predict/status?task_id=${tid}`)
             if (s?.logs) setTaskLogs([...s.logs])
-            if (s?.status === 'done' || s?.status === 'error' || s?.status === 'not_found') {
+            if (s?.status === 'done') {
+              setTaskStatus('done')
+              setResult(s.result)
+              pollDone = true
+              break
+            }
+            if (s?.status === 'error' || s?.status === 'not_found') {
               setTaskStatus(s.status)
               break
             }
