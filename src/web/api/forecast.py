@@ -39,26 +39,60 @@ def _detect_engine_url() -> str:
 FORECAST_ENGINE_URL = _detect_engine_url()
 
 
+def _log_forecast(level: str, msg: str, task_id: str = "", **extra):
+    """把预测日志写入 PanWatch 统一日志表(带 agent_name=forecast)。
+
+    用 log_context 绑定 agent_name + trace_id,前端日志中心可筛选"预测"链路。
+    """
+    try:
+        from src.core.log_context import log_context
+
+        with log_context(
+            trace_id=task_id or f"forecast-{msg[:20]}",
+            agent_name="forecast",
+        ):
+            getattr(logger, level)(msg, extra=extra)
+    except Exception:
+        # 日志写入失败不影响主流程
+        try:
+            getattr(logger, level)(msg)
+        except Exception:
+            pass
+
+
 @router.get("/forecast/predict")
 async def forecast_predict(
     symbol: str = Query(..., description="6位A股代码"),
     days: int = Query(5, ge=1, le=20, description="预测天数"),
+    task_id: str = Query("", description="预测任务ID"),
 ):
     """多模型预测(Kronos+XGBoost+回归)。"""
+    _log_forecast("info", f"预测开始: {symbol} {days}天", task_id=task_id)
     try:
         async with httpx.AsyncClient(timeout=300) as client:
             r = await client.get(
                 f"{FORECAST_ENGINE_URL}/predict",
-                params={"symbol": symbol, "days": days},
+                params={"symbol": symbol, "days": days, "task_id": task_id},
             )
             r.raise_for_status()
-            return r.json()
+            data = r.json()
+            direction = data.get("direction", "?")
+            expected = data.get("expected_pct", 0)
+            _log_forecast(
+                "info",
+                f"预测完成: {symbol} → {data.get('prediction', [])} ({direction} {expected:+.1f}%)",
+                task_id=task_id,
+            )
+            return data
     except httpx.HTTPStatusError as e:
+        _log_forecast("error", f"预测失败: {symbol} HTTP {e.response.status_code}", task_id=task_id)
         raise HTTPException(e.response.status_code, "预测引擎错误")
     except httpx.ConnectError:
+        _log_forecast("error", f"预测失败: {symbol} 引擎未启动", task_id=task_id)
         raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
     except Exception as e:
         logger.exception("预测请求失败")
+        _log_forecast("error", f"预测异常: {symbol} {e}", task_id=task_id)
         raise HTTPException(500, f"预测失败: {e}")
 
 
@@ -87,6 +121,7 @@ async def forecast_backtest(
     symbol: str = Query(..., description="6位A股代码"),
 ):
     """历史预测回测(方向命中率)。"""
+    _log_forecast("info", f"回测开始: {symbol}")
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             r = await client.get(
@@ -94,13 +129,21 @@ async def forecast_backtest(
                 params={"symbol": symbol},
             )
             r.raise_for_status()
-            return r.json()
+            data = r.json()
+            _log_forecast(
+                "info",
+                f"回测完成: {symbol} 命中率 {data.get('direction_accuracy_pct', 0)}% ({data.get('direction_hits', 0)}/{data.get('windows_tested', 0)})",
+            )
+            return data
     except httpx.HTTPStatusError as e:
+        _log_forecast("error", f"回测失败: {symbol} HTTP {e.response.status_code}")
         raise HTTPException(e.response.status_code, "预测引擎错误")
     except httpx.ConnectError:
+        _log_forecast("error", f"回测失败: {symbol} 引擎未启动")
         raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
     except Exception as e:
         logger.exception("回测请求失败")
+        _log_forecast("error", f"回测异常: {symbol} {e}")
         raise HTTPException(500, f"回测失败: {e}")
 
 
