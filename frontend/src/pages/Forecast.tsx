@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { TrendingUp, LineChart, RefreshCw, Activity } from 'lucide-react'
+import { TrendingUp, LineChart, RefreshCw, Activity, Download, History } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -32,7 +32,35 @@ interface PredictResult {
     adjustment_pct: number
     notes: string[]
   }
+  recommendation?: {
+    action: string
+    tone: string
+    confidence: string
+    risk_note?: string
+    target_price: number
+    expected_pct: number
+    stop_loss: number
+    summary: string
+  }
   elapsed_ms: number
+}
+
+interface ForecastHistoryItem {
+  id: number
+  symbol: string
+  last_close: number
+  last_date: string
+  pred_days: number
+  direction: string
+  expected_pct: number
+  prediction: number[]
+  action: string
+  confidence: string
+  target_price: number
+  stop_loss: number
+  summary: string
+  sentiment_adj: number
+  created_at: string
 }
 
 interface BacktestResult {
@@ -52,7 +80,24 @@ export default function ForecastPage() {
   const [engineStatus, setEngineStatus] = useState<'checking' | 'ok' | 'down'>('checking')
   const [taskStatus, setTaskStatus] = useState('')
   const [taskLogs, setTaskLogs] = useState<string[]>([])
+  const [history, setHistory] = useState<ForecastHistoryItem[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const { toast } = useToast()
+
+  // 加载历史预测列表
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const d = await fetchAPI<{ items: ForecastHistoryItem[] }>(`/forecast/history?limit=30`)
+      setHistory(d?.items || [])
+    } catch {
+      setHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => { loadHistory() }, [])
 
   // 检测引擎状态(可手动刷新调用)
   const checkEngine = () => {
@@ -79,6 +124,26 @@ export default function ForecastPage() {
   }, [])
 
   const refreshEngine = () => checkEngine()
+
+  // 下载预测卡片图片
+  const downloadCard = async () => {
+    try {
+      const res = await fetch(`/api/forecast/card?symbol=${symbol}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+      })
+      if (!res.ok) throw new Error('卡片生成失败')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `forecast_${symbol}_${new Date().toISOString().slice(0, 10)}.png`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('卡片已下载', 'success')
+    } catch (e: any) {
+      toast(e?.message || '卡片下载失败', 'error')
+    }
+  }
 
   const runPredict = async () => {
     if (!/^\d{6}$/.test(symbol)) {
@@ -121,6 +186,7 @@ export default function ForecastPage() {
       pollDone = true
       setResult(d)
       setTaskStatus('done')
+      loadHistory()
     } catch (e: any) {
       toast(e?.message || '预测失败(请检查股票代码是否正确)', 'error')
       setTaskStatus('error')
@@ -244,12 +310,35 @@ export default function ForecastPage() {
                 {result.direction === 'up' ? '↑ 看多' : result.direction === 'down' ? '↓ 看空' : '→ 横盘'}
                 {' '}({result.expected_pct > 0 ? '+' : ''}{result.expected_pct}%)
               </span>
+              <span className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-8" onClick={downloadCard}>
+                  <Download className="mr-1 h-3.5 w-3.5" /> 下载卡片
+                </Button>
+              </span>
             </div>
           </div>
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               基准价 {result.last_close}（{result.last_date}）→ 预测 {result.pred_days} 天，耗时 {result.elapsed_ms}ms
             </div>
+
+            {/* 操作建议 */}
+            {result.recommendation && (
+              <div className={`rounded-lg border px-4 py-3 ${result.direction === 'up' ? 'border-red-500/30 bg-red-500/5' : result.direction === 'down' ? 'border-green-500/30 bg-green-500/5' : 'border-gray-500/30 bg-gray-500/5'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-bold text-lg">操作建议：{result.recommendation.action}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${result.recommendation.confidence === '高' ? 'bg-green-500/20 text-green-500' : result.recommendation.confidence === '中' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-red-500/20 text-red-500'}`}>
+                    置信度{result.recommendation.confidence}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                  <span>目标价：<span className="font-mono font-bold text-foreground">{result.recommendation.target_price}</span></span>
+                  <span>止损参考：<span className="font-mono font-bold text-foreground">{result.recommendation.stop_loss}</span></span>
+                  <span>预期：<span className={`font-mono font-bold ${result.expected_pct >= 0 ? 'text-red-500' : 'text-green-500'}`}>{result.expected_pct > 0 ? '+' : ''}{result.expected_pct}%</span></span>
+                  {result.recommendation.risk_note && <span className="text-amber-500">{result.recommendation.risk_note}</span>}
+                </div>
+              </div>
+            )}
 
             {/* 预测价格序列 */}
             <div>
@@ -380,6 +469,59 @@ export default function ForecastPage() {
           </div>
         </div>
       )}
+
+      {/* 历史预测列表 */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4" />
+            <span className="text-lg font-bold">历史预测</span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-8" onClick={loadHistory} disabled={historyLoading}>
+            <RefreshCw className={`h-3.5 w-3.5 ${historyLoading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+        {history.length === 0 ? (
+          <div className="text-sm text-muted-foreground py-4 text-center">
+            暂无预测记录，先发起一次预测
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="text-left py-2">代码</th>
+                  <th className="text-left">日期</th>
+                  <th className="text-right">方向</th>
+                  <th className="text-right">预期</th>
+                  <th className="text-right">目标价</th>
+                  <th className="text-right">止损</th>
+                  <th className="text-left">操作建议</th>
+                  <th className="text-left">置信</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(h => (
+                  <tr key={h.id} className="border-b hover:bg-muted/30">
+                    <td className="py-2 font-mono">{h.symbol}</td>
+                    <td>{h.last_date}</td>
+                    <td className={`text-right font-bold ${h.direction === 'up' ? 'text-red-500' : h.direction === 'down' ? 'text-green-500' : ''}`}>
+                      {h.direction === 'up' ? '↑' : h.direction === 'down' ? '↓' : '→'}
+                    </td>
+                    <td className={`text-right font-mono ${h.expected_pct >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      {h.expected_pct > 0 ? '+' : ''}{h.expected_pct}%
+                    </td>
+                    <td className="text-right font-mono">{h.target_price ?? '-'}</td>
+                    <td className="text-right font-mono">{h.stop_loss ?? '-'}</td>
+                    <td>{h.action || '-'}</td>
+                    <td>{h.confidence || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       <div className="text-xs text-muted-foreground">
         免责声明：预测结果基于历史数据统计模型，不构成投资建议。模型存在偏差，请结合基本面/情绪面综合判断。

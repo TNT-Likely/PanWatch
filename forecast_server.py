@@ -14,6 +14,7 @@ import sys
 import json
 import time
 import uuid
+import io
 import threading
 from datetime import datetime, timedelta
 
@@ -29,7 +30,89 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-app = FastAPI(title="A股预测引擎", version="0.1.0")
+app = FastAPI(title="A股预测引擎", version="0.2.0")
+
+# ════ 历史预测存储(SQLite,引擎本地) ════
+import sqlite3 as _sqlite3
+
+_HISTORY_DB = os.path.expanduser("~/.panwatch_forecast.db")
+
+
+def _init_history_db():
+    conn = _sqlite3.connect(_HISTORY_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS forecasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            last_close REAL,
+            last_date TEXT,
+            pred_days INTEGER,
+            direction TEXT,
+            expected_pct REAL,
+            prediction TEXT,
+            action TEXT,
+            tone TEXT,
+            confidence TEXT,
+            target_price REAL,
+            stop_loss REAL,
+            summary TEXT,
+            sentiment_adj REAL,
+            models TEXT,
+            created_at TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+_init_history_db()
+
+
+def save_forecast(rec: dict):
+    """保存一次预测到历史库。"""
+    try:
+        conn = _sqlite3.connect(_HISTORY_DB)
+        conn.execute(
+            """INSERT INTO forecasts
+               (symbol, last_close, last_date, pred_days, direction, expected_pct,
+                prediction, action, tone, confidence, target_price, stop_loss,
+                summary, sentiment_adj, models)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                rec.get("symbol", ""), rec.get("last_close"), rec.get("last_date"),
+                rec.get("pred_days"), rec.get("direction"), rec.get("expected_pct"),
+                json.dumps(rec.get("prediction", []), ensure_ascii=False),
+                rec.get("action", ""), rec.get("tone", ""), rec.get("confidence", ""),
+                rec.get("target_price"), rec.get("stop_loss"),
+                rec.get("summary", ""), rec.get("sentiment_adj"),
+                json.dumps(rec.get("models", {}), ensure_ascii=False, default=str),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"保存历史失败: {e}")
+
+
+def list_forecasts(limit: int = 50, symbol: str = ""):
+    """查询历史预测列表。"""
+    conn = _sqlite3.connect(_HISTORY_DB)
+    conn.row_factory = _sqlite3.Row
+    q = "SELECT * FROM forecasts"
+    params: list = []
+    if symbol:
+        q += " WHERE symbol = ?"
+        params.append(symbol)
+    q += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    conn.close()
+    for r in rows:
+        try:
+            r["prediction"] = json.loads(r["prediction"])
+        except Exception:
+            pass
+    return rows
 
 # 全局缓存模型(只加载一次)
 _predictor = None
@@ -199,6 +282,170 @@ def linreg_predict(df: pd.DataFrame, pred_len: int = 5):
     for i in range(1, pred_len + 1):
         preds.append(round(float(model.predict([[n + i]])[0]), 2))
     return preds
+
+
+# ════ Lag-Llama 全局缓存 ════
+_lag_predictor = None
+_lag_lock = False
+
+# Lag-Llama 需要的补丁(在 import 时一次性应用)
+import os as _os_ll
+_os_ll.environ["HF_HOME"] = "/home/ubuntu/.cache/huggingface"
+try:
+    import torch as _torch
+    import gluonts.torch.distributions.studentT as _studentT
+    import gluonts.torch.modules.loss as _loss_mod
+
+    _torch.serialization.add_safe_globals([
+        _studentT.StudentTOutput,
+        _loss_mod.NegativeLogLikelihood,
+        _loss_mod.DistributionLoss,
+    ])
+except Exception:
+    pass
+try:
+    import lightning.fabric.utilities.cloud_io as _cloud_io
+
+    _orig_pl_load = _cloud_io._load
+
+    def _patched_pl_load(*args, **kwargs):
+        kwargs["weights_only"] = False
+        return _orig_pl_load(*args, **kwargs)
+
+    _cloud_io._load = _patched_pl_load
+except Exception:
+    pass
+
+
+def get_lag_predictor():
+    """懒加载 Lag-Llama predictor(首次加载慢,后续复用)。"""
+    global _lag_predictor, _lag_lock
+    if _lag_predictor is not None:
+        return _lag_predictor
+    if _lag_lock:
+        raise HTTPException(503, "Lag-Llama 加载中,请稍候")
+    _lag_lock = True
+    try:
+        import sys as _sys
+        if "/tmp/lag-llama" not in _sys.path:
+            _sys.path.insert(0, "/tmp/lag-llama")
+        from lag_llama.gluon.estimator import LagLlamaEstimator
+
+        ckpt = "/home/ubuntu/.cache/huggingface/models--time-series-foundation-models--Lag-Llama/snapshots/72dcfc29da106acfe38250a60f4ae29d1e56a3d9/lag-llama.ckpt"
+        estimator = LagLlamaEstimator(
+            ckpt_path=ckpt,
+            prediction_length=5,
+            context_length=32,
+            input_size=1,
+            n_layer=2,
+            n_embd_per_head=16,
+            n_head=9,
+            lags_seq=["Q", "M", "W", "D", "H", "T", "S"],
+            time_feat=True,  # 必须=True,feature_size 才 =15 匹配 checkpoint(92=144×? 维度)
+            scaling="mean",
+            batch_size=32,
+            num_parallel_samples=100,
+        )
+        _lag_predictor = estimator.create_predictor(
+            transformation=estimator.create_transformation(),
+            module=estimator.create_lightning_module(use_kv_cache=True),
+        )
+    finally:
+        _lag_lock = False
+    return _lag_predictor
+
+
+def lag_llama_predict(df: pd.DataFrame, pred_len: int = 5):
+    """Lag-Llama 预测(第4模型,多变量时序基础模型)。"""
+    try:
+        from gluonts.dataset.pandas import PandasDataset
+
+        predictor = get_lag_predictor()
+
+        df_long = df[["timestamp", "close"]].copy()
+        df_long.columns = ["timestamp", "target"]
+        df_long = df_long.set_index("timestamp")
+        # 处理停牌缺口:重采样为连续工作日索引并前向填充(PandasDataset 要求均匀间隔)
+        df_long = df_long.asfreq("B").ffill()
+        # 模型权重是 float32,输入必须转 float32 否则 matmul dtype 不匹配
+        df_long["target"] = df_long["target"].astype("float32")
+        ds = PandasDataset(dataframes=[df_long], target="target", freq="B")
+
+        forecasts = list(predictor.predict(ds, num_samples=100))
+        samples = forecasts[0].samples  # (100, pred_len)
+        median = np.median(samples, axis=0)
+        p10 = np.percentile(samples, 10, axis=0)
+        p90 = np.percentile(samples, 90, axis=0)
+        return {
+            "median": [round(float(x), 2) for x in median[:pred_len]],
+            "p10": [round(float(x), 2) for x in p10[:pred_len]],
+            "p90": [round(float(x), 2) for x in p90[:pred_len]],
+            "n_samples": 100,
+        }
+    except Exception as e:
+        print(f"Lag-Llama 预测失败: {e}")
+        return None
+
+
+def direction_label(direction: str) -> str:
+    return {"up": "看多", "down": "看空", "flat": "横盘"}.get(direction, direction)
+
+
+def build_recommendation(symbol: str, last_close: float, final: np.ndarray,
+                         direction: str, expected_pct: float,
+                         kronos: dict, lag: dict | None, sentiment: dict) -> dict:
+    """生成操作建议: 基于方向+幅度+置信区间+情绪面。"""
+    spread_pct = 0
+    if kronos:
+        p5 = kronos.get("p5", [])
+        p95 = kronos.get("p95", [])
+        if p5 and p95:
+            spread_pct = (p95[0] - p5[0]) / last_close * 100
+
+    sentiment_adj = (sentiment or {}).get("adjustment_pct", 0) or 0
+
+    if direction == "up":
+        if expected_pct >= 8:
+            action, tone = "积极关注", "strong_buy"
+        elif expected_pct >= 3:
+            action, tone = "可关注", "buy"
+        else:
+            action, tone = "持有观察", "hold"
+    elif direction == "down":
+        if expected_pct <= -8:
+            action, tone = "规避", "strong_sell"
+        elif expected_pct <= -3:
+            action, tone = "谨慎/减仓", "sell"
+        else:
+            action, tone = "观望", "hold"
+    else:
+        action, tone = "观望", "hold"
+
+    if sentiment_adj < -0.5 and direction == "up":
+        action = f"{action}(情绪面偏空,谨慎)"
+        tone = "hold"
+    elif sentiment_adj > 0.5 and direction == "down":
+        action = f"{action}(情绪面偏多,勿恐慌)"
+        tone = "hold"
+
+    risk_note = ""
+    if spread_pct > 15:
+        risk_note = f"置信区间宽({spread_pct:.0f}%),不确定性高"
+
+    return {
+        "action": action,
+        "tone": tone,
+        "confidence": "高" if spread_pct < 8 else "中" if spread_pct < 15 else "低",
+        "risk_note": risk_note,
+        "target_price": round(float(final[-1]), 2),
+        "expected_pct": round(expected_pct, 2),
+        "stop_loss": round(last_close * 0.95, 2),
+        "summary": (
+            f"{direction_label(direction)} {abs(expected_pct):.1f}%,目标{round(float(final[-1]), 2)},"
+            f"止损参考{round(last_close * 0.95, 2)}"
+            + (f";{risk_note}" if risk_note else "")
+        ),
+    }
 
 
 def llm_sentiment_score(events_text: str) -> dict:
@@ -444,6 +691,14 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
     reg_preds = linreg_predict(df, pred_len=days)
     _log(tid, "线性回归完成")
 
+    # Lag-Llama(第4模型,时序基础模型)
+    _log(tid, "Lag-Llama 推理中(首次加载约30-60s)...")
+    lag = lag_llama_predict(df, pred_len=days)
+    if lag:
+        _log(tid, "Lag-Llama 完成")
+    else:
+        _log(tid, "Lag-Llama 不可用(跳过,用3模型投票)")
+
     # 消息情绪面(黑天鹅/公告/板块共振修正)
     _log(tid, "拉取消息情绪面(公告/新闻/板块共振)...")
     sentiment = fetch_sentiment(symbol)
@@ -453,6 +708,8 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
     votes = []
     if kronos:
         votes.append(np.array(kronos["median"]))
+    # ⚠️ Lag-Llama 暂不参与投票(baostock 不复权数据未标准化,输出异常值会污染投票)
+    # 仅在结果中展示作参考
     if xgb_preds:
         votes.append(np.array(xgb_preds))
     if reg_preds:
@@ -472,6 +729,13 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
 
     direction = "up" if final[-1] > last_close else "down" if final[-1] < last_close else "flat"
 
+    # 生成操作建议
+    rec = build_recommendation(
+        symbol, last_close, final, direction, 
+        round((float(final[-1]) / last_close - 1) * 100, 2),
+        kronos, lag, sentiment,
+    )
+
     result = {
         "symbol": symbol,
         "last_close": last_close,
@@ -480,8 +744,10 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
         "prediction": [round(float(x), 2) for x in final],
         "direction": direction,
         "expected_pct": round((float(final[-1]) / last_close - 1) * 100, 2),
+        "recommendation": rec,
         "models": {
             "kronos": kronos,
+            "lag_llama": lag,
             "xgboost": xgb_preds,
             "linreg": reg_preds,
         },
@@ -493,6 +759,18 @@ def predict(symbol: str, days: int = 5, task_id: str = ""):
         },
         "elapsed_ms": int((time.monotonic() - t0) * 1000),
     }
+    # 保存历史(供回查列表)
+    rec["sentiment_adj"] = adjust_pct
+    rec["symbol"] = symbol
+    rec["last_close"] = last_close
+    rec["last_date"] = last_date
+    rec["pred_days"] = days
+    rec["direction"] = direction
+    rec["expected_pct"] = result["expected_pct"]
+    rec["prediction"] = result["prediction"]
+    rec["models"] = result["models"]
+    save_forecast(rec)
+
     _log(tid, f"预测完成: {last_close} → {result['prediction'][-1]} ({result['expected_pct']:+.1f}%), 耗时 {result['elapsed_ms']}ms")
     _set_status(tid, "done")
     with _tasks_lock:
@@ -567,6 +845,123 @@ def backtest(symbol: str):
         "direction_accuracy_pct": accuracy,
         "recent_samples": samples[-10:],
     }
+
+
+@app.get("/forecast/history")
+def history(symbol: str = "", limit: int = 50):
+    """历史预测列表(供回查)。"""
+    return {"items": list_forecasts(limit=min(limit, 200), symbol=symbol)}
+
+
+@app.get("/forecast/card")
+def forecast_card(symbol: str, task_id: str = ""):
+    """生成预测结果图片卡片(PNG,可下载)。
+
+    用最近一次预测结果渲染卡片。返回 PNG 二进制。
+    """
+    import io
+
+    # 取该股最近一次预测(优先 task_id,否则最新)
+    rows = list_forecasts(limit=1, symbol=symbol)
+    if task_id:
+        with _tasks_lock:
+            t = _tasks.get(task_id)
+            if t and t.get("result"):
+                data = t["result"]
+                return _render_card(data)
+    if not rows:
+        raise HTTPException(404, f"无 {symbol} 的预测记录,先执行预测")
+    data = rows[0]
+    # 从历史行构造渲染数据
+    render = {
+        "symbol": data["symbol"],
+        "last_close": data["last_close"],
+        "last_date": data["last_date"],
+        "prediction": data["prediction"],
+        "direction": data["direction"],
+        "expected_pct": data["expected_pct"],
+        "recommendation": {
+            "action": data.get("action", ""),
+            "confidence": data.get("confidence", ""),
+            "summary": data.get("summary", ""),
+            "target_price": data.get("target_price"),
+            "stop_loss": data.get("stop_loss"),
+        },
+    }
+    buf = _render_card(render)
+    from fastapi.responses import Response
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="forecast_{symbol}.png"'},
+    )
+
+
+def _render_card(data: dict) -> io.BytesIO:
+    """用 matplotlib 渲染预测卡片。"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.font_manager import FontProperties
+    import matplotlib.font_manager as fm
+
+    # 中文字体
+    for fp in ["/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+               "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+               "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"]:
+        if os.path.exists(fp):
+            fm.fontManager.addfont(fp)
+            plt.rcParams["font.family"] = fm.FontProperties(fname=fp).get_name()
+            break
+    plt.rcParams["axes.unicode_minus"] = False
+
+    fig, ax = plt.subplots(figsize=(7, 9), dpi=130)
+    fig.patch.set_facecolor("#0d1117")
+    ax.set_facecolor("#0d1117")
+
+    symbol = data["symbol"]
+    last = data["last_close"]
+    preds = data["prediction"]
+    direction = data.get("direction", "up")
+    exp = data.get("expected_pct", 0)
+    rec = data.get("recommendation", {})
+    color = "#f85149" if direction == "up" else "#3fb950" if direction == "down" else "#8b949e"
+    dir_cn = {"up": "看多", "down": "看空", "flat": "横盘"}.get(direction, direction)
+
+    # 标题
+    ax.text(0.5, 0.96, f"A股预测 · {symbol}", ha="center", color="#e6edf3",
+            fontsize=18, fontweight="bold", transform=ax.transAxes)
+    ax.text(0.5, 0.92, f"基准 {last:.2f} ({data.get('last_date', '')}) → {dir_cn} {exp:+.1f}%",
+            ha="center", color=color, fontsize=13, transform=ax.transAxes)
+
+    # 预测序列
+    xs = list(range(len(preds)))
+    ax.plot(xs, preds, color=color, linewidth=2.5, marker="o", markersize=6)
+    ax.axhline(last, color="#8b949e", linestyle="--", linewidth=1, alpha=0.6)
+    ax.text(len(preds) - 1, last, f" 基准 {last:.2f}", color="#8b949e", fontsize=10, va="center")
+    ax.set_xlabel("T+N 日", color="#8b949e")
+    ax.set_ylabel("预测价格", color="#8b949e")
+    ax.tick_params(colors="#8b949e")
+    for spine in ax.spines.values():
+        spine.set_color("#30363d")
+    ax.grid(True, alpha=0.2, color="#30363d")
+
+    # 操作建议
+    action = rec.get("action", "")
+    conf = rec.get("confidence", "")
+    summary = rec.get("summary", "")
+    target = rec.get("target_price")
+    stop = rec.get("stop_loss")
+    ax.text(0.02, 0.05, f"操作建议: {action}", color="#e6edf3", fontsize=14,
+            fontweight="bold", transform=ax.transAxes)
+    ax.text(0.02, 0.015, f"置信度: {conf}  目标: {target}  止损参考: {stop}",
+            color="#8b949e", fontsize=11, transform=ax.transAxes)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,52 @@ async def forecast_predict_status(
     except Exception as e:
         logger.exception("预测状态查询失败")
         raise HTTPException(500, f"查询失败: {e}")
+
+
+@router.get("/forecast/history")
+async def forecast_history(
+    symbol: str = Query("", description="股票代码过滤"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """历史预测列表(供回查)。"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/forecast/history",
+                params={"symbol": symbol, "limit": limit},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("历史查询失败")
+        raise HTTPException(500, f"查询失败: {e}")
+
+
+@router.get("/forecast/card")
+async def forecast_card(
+    symbol: str = Query(..., description="6位A股代码"),
+    task_id: str = Query("", description="预测任务ID"),
+):
+    """预测结果图片卡片(PNG)。"""
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/forecast/card",
+                params={"symbol": symbol, "task_id": task_id},
+            )
+            r.raise_for_status()
+            return Response(
+                content=r.content,
+                media_type="image/png",
+                headers={"Content-Disposition": f'inline; filename="forecast_{symbol}.png"'},
+            )
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("卡片生成失败")
+        raise HTTPException(500, f"卡片生成失败: {e}")
 
 
 @router.get("/forecast/backtest")
