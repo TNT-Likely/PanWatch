@@ -110,17 +110,31 @@ async def get_quotes_batch(payload: QuoteBatchRequest):
     return results
 
 
+# 公司简介内存缓存(避免每次详情页都调 zhitu 耗时 1.8s)
+_COMPANY_CACHE: dict = {}  # {(symbol, market): (ts, payload)}
+_COMPANY_CACHE_TTL = 3600  # 1 小时
+
+
 @router.get("/{symbol}/company")
 async def get_company_info(symbol: str, market: str = "CN"):
     """获取公司基本信息(主营/简介/上市日期/行业等)。
 
     数据源: zhitu /gs/gsjj/{code}(公司简介,含 bscope主营/desc简介/ldate上市日期/idea概念)。
+    缓存: 模块级内存缓存 1 小时,避免每次点详情页都调 zhitu(单次 1.8s)。
     注意: 必须定义在 /{symbol} 之后(FastAPI 按定义顺序匹配,先定义会被通配吞掉)。
     """
     market_code = _parse_market(market)
     if market_code != MarketCode.CN:
         return {"symbol": symbol, "market": market, "name": None, "industry": None,
                 "area": None, "market_board": None, "list_status": None, "note": "仅A股支持公司简介"}
+
+    # 命中缓存直接返回
+    import time as _time
+    cache_key = (symbol, market_code.value)
+    cached = _COMPANY_CACHE.get(cache_key)
+    if cached and (_time.time() - cached[0]) < _COMPANY_CACHE_TTL:
+        return cached[1]
+
     try:
         import urllib.parse
         import urllib.request
@@ -144,28 +158,32 @@ async def get_company_info(symbol: str, market: str = "CN"):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         raw = json.loads(urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "ignore"))
         if not isinstance(raw, dict) or not raw.get("name"):
-            return {"symbol": symbol, "market": market, "name": None, "note": "未查到公司信息"}
-        return {
-            "symbol": symbol,
-            "market": market,
-            "name": raw.get("name"),
-            "ename": raw.get("ename"),
-            "industry": raw.get("instype"),
-            "area": raw.get("addr", "").split(" ")[0][:30] if raw.get("addr") else None,
-            "market_board": raw.get("market"),
-            "list_status": raw.get("organ"),
-            "list_date": raw.get("ldate"),
-            "reg_capital": raw.get("rprice"),
-            "issuer": raw.get("principal"),
-            "secretary": raw.get("secre"),
-            "phone": raw.get("phone"),
-            "website": raw.get("site"),
-            "address": raw.get("addr"),
-            "bscope": raw.get("bscope"),
-            "desc": raw.get("desc"),
-            "concepts": raw.get("idea"),
-            "note": None,
-        }
+            payload = {"symbol": symbol, "market": market, "name": None, "note": "未查到公司信息"}
+        else:
+            payload = {
+                "symbol": symbol,
+                "market": market,
+                "name": raw.get("name"),
+                "ename": raw.get("ename"),
+                "industry": raw.get("instype"),
+                "area": raw.get("addr", "").split(" ")[0][:30] if raw.get("addr") else None,
+                "market_board": raw.get("market"),
+                "list_status": raw.get("organ"),
+                "list_date": raw.get("ldate"),
+                "reg_capital": raw.get("rprice"),
+                "issuer": raw.get("principal"),
+                "secretary": raw.get("secre"),
+                "phone": raw.get("phone"),
+                "website": raw.get("site"),
+                "address": raw.get("addr"),
+                "bscope": raw.get("bscope"),
+                "desc": raw.get("desc"),
+                "concepts": raw.get("idea"),
+                "note": None,
+            }
+        # 写缓存
+        _COMPANY_CACHE[cache_key] = (_time.time(), payload)
+        return payload
     except Exception as e:
         logger.error(f"公司信息获取失败 {symbol}: {e}")
         return {"symbol": symbol, "market": market, "name": None, "note": "公司信息获取失败"}
