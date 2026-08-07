@@ -278,7 +278,7 @@ export default function ReportsPage() {
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> 加载中...
               </div>
             ) : (
-              <div className="prose prose-sm dark:prose-invert max-w-none">
+              <div className="report-content prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-h2:text-base prose-h3:text-sm prose-h3:mt-4 prose-h3:mb-2 prose-table:text-xs prose-th:bg-accent/30 prose-th:p-1.5 prose-td:p-1.5 prose-td:border-border prose-th:border-border prose-code:bg-accent/30 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected?.content || ''}</ReactMarkdown>
               </div>
             )}
