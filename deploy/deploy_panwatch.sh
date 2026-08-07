@@ -50,6 +50,7 @@ FILES=(
   "server.py"
   "src/web/app.py"
   "src/web/api/chat.py"
+  "src/web/api/calendar.py"
   "src/agents/auction_review.py"
   "src/agents/theme_launch_detector.py"
   "src/agents/stock_attribution.py"

@@ -264,3 +264,71 @@ class FtshareMarginVendor(MarginVendor):
                 logger.debug(f"FTShare 两融取数异常 symbol={sym.code}: {e}")
                 continue
         return out
+
+
+# ============================== 百度财经日历(市场级) ==============================
+
+
+def fetch_financial_calendar(
+    start_date: str,
+    end_date: str,
+    *,
+    category: str | None = None,
+    config: dict | None = None,
+) -> list[dict]:
+    """百度财经日历(ft_baidu_financial_calendar)。
+
+    市场级,按日期范围查询,不绑定个股。返回统一结构的事件列表。
+
+    Args:
+        start_date / end_date: YYYY-MM-DD(跨度 ≤3 天,ftshare 限制)
+        category: 可选 economic / ipo / report_time / trade_reminder;None 返回全部
+        config: 透传 datasource config(url 等)
+    Returns:
+        [
+          {
+            "title": str, "stat_date": "YYYY-MM-DD", "time": "HH:MM",
+            "region": str, "category": str, "star": int(重要性 1-3),
+            "former_val": str, "indicate_val": str, "market_value": str,
+            "pub_val": str, "positive": str, "negative": str,
+          }, ...
+        ]
+        失败返回 []
+    """
+    if not start_date or not end_date:
+        return []
+    args: dict = {"start_date": start_date, "end_date": end_date}
+    if category:
+        args["category"] = category
+    client = _get_client(config)
+    rows = client.call_tool("ft_baidu_financial_calendar", args)
+    if not rows:
+        return []
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "title": str(row.get("title") or ""),
+                "stat_date": str(row.get("stat_date") or ""),
+                "time": str(row.get("time") or ""),
+                "region": str(row.get("region") or ""),
+                "category": str(row.get("category") or ""),
+                "star": _to_int_star(row.get("star")),
+                "former_val": str(row.get("former_val") or ""),
+                "indicate_val": str(row.get("indicate_val") or ""),
+                "market_value": str(row.get("market_value") or ""),
+                "pub_val": str(row.get("pub_val") or ""),
+                "positive": str(row.get("positive") or ""),
+                "negative": str(row.get("negative") or ""),
+            }
+        )
+    return out
+
+
+def _to_int_star(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0

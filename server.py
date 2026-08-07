@@ -685,6 +685,18 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": False,
             "test_symbols": ["601127"],
         },
+        {
+            "name": "百度财经日历",
+            "type": "macro_calendar",
+            "provider": "ftshare",
+            "config": {
+                "description": "FTShare MCP 百度财经日历(免 key,云服务器可直连):经济数据/IPO/财报披露时间/交易提醒。市场级,按日期范围查询,不绑定个股。",
+            },
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
 ]
 
 
