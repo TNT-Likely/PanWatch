@@ -46,6 +46,7 @@ AUTH_PASSWORD="${AUTH_PASSWORD:-admin123}"
 # 部署清单: 所有被改动的文件 (相对 REPO_DIR)
 FILES=(
   "server.py"
+  "src/web/app.py"
   "src/web/api/chat.py"
   "src/agents/auction_review.py"
   "src/agents/theme_launch_detector.py"
