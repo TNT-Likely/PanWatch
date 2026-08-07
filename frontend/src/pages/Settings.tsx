@@ -139,7 +139,7 @@ const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
 // 敏感设置 key:值不回显(后端已掩码为 ********),输入框用密码态,掩码值不参与编辑
-const SECRET_SETTING_KEYS = new Set(['wudao_mcp_token', 'zhitu_token', 'forecast_llm_api_key'])
+const SECRET_SETTING_KEYS = new Set(['wudao_mcp_token', 'zhitu_token', 'forecast_llm_api_key', 'tdx_api_key'])
 const SECRET_MASK = '********'
 // 预测引擎 LLM 配置 key(接口 Key 区块展示,base_url/model 非敏感可回显)
 const FORECAST_LLM_KEYS = new Set(['forecast_llm_base_url', 'forecast_llm_model', 'forecast_llm_api_key'])
@@ -979,7 +979,7 @@ export default function SettingsPage() {
             <div className="space-y-4">
               {/* 数据源 Token 组 */}
               <div className="text-[11px] font-medium text-muted-foreground mt-1">数据源 Token</div>
-              {settings.filter(s => s.key === 'wudao_mcp_token' || s.key === 'zhitu_token').map(setting => {
+              {settings.filter(s => s.key === 'wudao_mcp_token' || s.key === 'zhitu_token' || s.key === 'tdx_api_key').map(setting => {
                 const isChanged = setting.key in edited
                 return (
                   <div key={setting.key} className="rounded-xl bg-accent/30 p-3.5">
@@ -1018,6 +1018,8 @@ export default function SettingsPage() {
                     <p className="text-[10px] text-muted-foreground mt-2">
                       {setting.key === 'wudao_mcp_token'
                         ? '悟道 MCP Token（竞价/题材数据）'
+                        : setting.key === 'tdx_api_key'
+                        ? '通达信问小达 MCP Token（自然语言投研/选股数据源）'
                         : '智兔数据接口 Token（分红/股东数据，200次/天）'}。读取优先级：设置页 &gt; 环境变量 &gt; 内置默认。
                     </p>
                   </div>

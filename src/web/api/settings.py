@@ -58,6 +58,7 @@ SETTING_DESCRIPTIONS = {
     # ---- 接口 Key(数据源凭证,设置页维护,DB 优先于环境变量) ----
     "wudao_mcp_token": "悟道(wudao) MCP 接口 Token(竞价/题材数据源)",
     "zhitu_token": "智兔(zhitu) 数据接口 Token(分红/股东数据源,200次/天)",
+    "tdx_api_key": "通达信问小达 MCP 接口 Token(TDX 自然语言投研/选股数据源)",
     # ---- 预测引擎 LLM 配置(设置页维护 → sync 脚本同步到主机 env) ----
     "forecast_llm_base_url": "预测引擎 LLM 接口地址(Base URL)",
     "forecast_llm_model": "预测引擎 LLM 模型名(情绪打分)",
@@ -65,7 +66,7 @@ SETTING_DESCRIPTIONS = {
 }
 
 # 敏感 key:列表接口不回显完整值,只返回是否已配置
-SECRET_SETTING_KEYS = {"wudao_mcp_token", "zhitu_token", "forecast_llm_api_key"}
+SECRET_SETTING_KEYS = {"wudao_mcp_token", "zhitu_token", "forecast_llm_api_key", "tdx_api_key"}
 
 # 预测引擎 LLM 配置 key(设置页维护 → sync_forecast_llm.sh 同步到主机 env)
 FORECAST_LLM_KEYS = ("forecast_llm_base_url", "forecast_llm_model", "forecast_llm_api_key")
@@ -84,9 +85,10 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
-        # 接口 key:初始迁移自环境变量(容器 -e 注入的 wudao token 等)
+        # 接口 key:初始迁移自环境变量(容器 -e 注入的 wudao/zhitu/tdx token 等)
         "wudao_mcp_token": os.getenv("WUDAO_MCP_TOKEN", ""),
         "zhitu_token": os.getenv("ZHITU_TOKEN", ""),
+        "tdx_api_key": os.getenv("TDX_API_KEY", ""),
     }
 
 

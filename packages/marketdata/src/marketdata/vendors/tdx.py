@@ -1,16 +1,17 @@
 """通达信问小达 MCP 客户端(HTTP 直连,免 Hermes)。
 
-通过 MCP JSON-RPC 协议调用 tdx 问小达工具(tdx_wenda_quotes 等),
-为 PanWatch 提供通达信独家数据:个股行情/智能选股/板块排行/财务/技术/资金流向。
+通过 MCP JSON-RPC 协议调用 tdx 问小达工具(实际工具名 tdx_screener, 参数 message),
+为 PanWatch 提供通达信独家数据: 个股行情/智能选股/板块排行/财务/技术/资金流向。
 
-配置:环境变量 TDX_MCP_URL + TDX_API_KEY,或 PanWatch 设置页数据源。
+配置优先级: 显式参数 > DB(AppSettings.tdx_api_key) > 环境变量 TDX_API_KEY。
 MCP endpoint: https://txmcp.tdx.com.cn:3001/txmcp
-鉴权: Authorization: Bearer <TDX-xxxx>
+鉴权: Authorization: Bearer <key>, Accept: application/json, text/event-stream
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import urllib.request
 
@@ -29,12 +30,11 @@ def _parse_sse(raw: str) -> dict | None:
     if not raw:
         return None
     raw = raw.strip()
-    # SSE: 取最后一个 data: 行
     if "data:" in raw:
         for line in reversed(raw.splitlines()):
             line = line.strip()
             if line.startswith("data:"):
-                payload = line[len("data:") :].strip()
+                payload = line[len("data:"):].strip()
                 try:
                     return json.loads(payload)
                 except json.JSONDecodeError:
@@ -46,20 +46,44 @@ def _parse_sse(raw: str) -> dict | None:
         return None
 
 
-class TdxMCPClient:
-    """tdx 问小达 MCP 客户端:initialize + tools/call。
+def _load_token() -> str:
+    """从 PanWatch AppSettings 表读取 tdx_api_key(DB 优先于环境变量)。
 
-    配置优先级:显式参数 > 环境变量 TDX_MCP_URL / TDX_API_KEY。
+    用 lazy import 避免与 src.web 循环依赖; 读取失败(非 web 环境)返回空,
+    由调用方回退到环境变量。
+    """
+    try:
+        from src.web.database import SessionLocal
+        from src.web.models import AppSettings
+
+        db = SessionLocal()
+        try:
+            row = (
+                db.query(AppSettings)
+                .filter(AppSettings.key == "tdx_api_key")
+                .first()
+            )
+            return (row.value or "").strip() if row else ""
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug(f"从 DB 读取 tdx_api_key 失败, 回退环境变量: {e}")
+        return ""
+
+
+class TdxMCPClient:
+    """tdx 问小达 MCP 客户端: initialize + tools/call。
+
+    配置优先级: 显式参数 > DB(AppSettings.tdx_api_key) > 环境变量 TDX_API_KEY。
     """
 
     _lock = threading.Lock()
     _session_id: str | None = None
 
     def __init__(self, url: str | None = None, token: str | None = None):
-        import os
-
         self.url = url or os.getenv("TDX_MCP_URL") or _DEFAULT_URL
-        self.token = token or os.getenv("TDX_API_KEY") or ""
+        # token 优先级: 显式参数 > DB(AppSettings.tdx_api_key) > 环境变量 TDX_API_KEY
+        self.token = token or _load_token() or os.getenv("TDX_API_KEY") or ""
         self._headers = dict(_HEADERS)
         if self.token:
             self._headers["Authorization"] = f"Bearer {self.token}"
@@ -116,10 +140,10 @@ class TdxMCPClient:
         return bool(resp and resp.get("result"))
 
     def call_tool(self, name: str, args: dict) -> dict | None:
-        """调工具,返回完整 result(dict);失败返回 None。
+        """调工具, 返回完整 result(dict); 失败返回 None。
 
         tdx 的 tdx_screener 等工具直接返回 {meta, headers, data} 表格(dict),
-        无 structuredContent/content 包裹,故优先直接返回 result。
+        无 structuredContent/content 包裹, 故优先直接返回 result。
         """
         if not self._session_id:
             if not self.initialize():
@@ -137,7 +161,7 @@ class TdxMCPClient:
         sc = result.get("structuredContent")
         if sc is not None:
             return sc
-        # 兜底:部分实现把 JSON 放在 content[0].text
+        # 兜底: 部分实现把 JSON 放在 content[0].text
         content = result.get("content") or []
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
@@ -152,7 +176,7 @@ class TdxMCPClient:
 _client = TdxMCPClient()
 
 
-def _get_client(config: dict | None) -> TdxMCPClient:
+def _get_client(config: dict | None = None) -> TdxMCPClient:
     global _client
     url = (config or {}).get("url")
     token = (config or {}).get("token") or (config or {}).get("api_key")
@@ -167,13 +191,13 @@ def ask_wenda(question: str, *, config: dict | None = None) -> dict | None:
     """通达信问小达自然语言问答(实际工具: tdx_screener, 参数 message)。
 
     Args:
-        question: 自然语言查询,如 "近5日主力净流入前10的半导体"
+        question: 自然语言查询, 如 "近5日主力净流入前10的半导体"
         config: 透传 datasource config(url/token)
     Returns:
         {
           "meta": {"code": 0, "total": N, ...},
           "headers": [...],          # 列名
-          "data": [[...], ...],      # 每行一个 list,与 headers 对齐
+          "data": [[...], ...],      # 每行一个 list, 与 headers 对齐
         }
         失败返回 None
     """
@@ -182,4 +206,3 @@ def ask_wenda(question: str, *, config: dict | None = None) -> dict | None:
     client = _get_client(config)
     # 真实工具名为 tdx_screener, 参数为 message(非 tdx_wenda_quotes/question)
     return client.call_tool("tdx_screener", {"message": question})
-
