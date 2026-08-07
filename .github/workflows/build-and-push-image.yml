@@ -73,3 +73,15 @@ jobs:
             org.opencontainers.image.description=数智分析 · 自托管 AI 盯盘助手
             org.opencontainers.image.source=https://github.com/xiaoze-hub/PanWatch
             org.opencontainers.image.licenses=MIT
+        continue-on-error: true
+
+      - name: Debug failure
+        if: failure()
+        run: |
+          echo "### ❌ Build failed - 常见原因:"
+          echo "1. GHCR token 权限不足: Settings → Actions → General → Workflow permissions → Read and write permissions"
+          echo "2. 仓库 Packages 权限未开启: Settings → General → Enable 'Packages'"
+          echo "3. 镜像 base image 拉不到(网络限制)"
+          echo "4. Dockerfile 语法错误"
+          echo ""
+          echo "请查看 workflow run 详情获取完整日志"
