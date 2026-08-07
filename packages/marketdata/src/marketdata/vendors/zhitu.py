@@ -95,6 +95,39 @@ def _zhitu_get(path: str, params: dict | None = None, timeout: float = 15.0, *, 
         return None
 
 
+# 智兔多 token 轮换(供 Engine 之外的调用路径复用, 如 quotes.py 公司简介)
+_ZHITU_TOKEN_IDX: int = -1
+
+
+def pick_zhitu_token() -> str:
+    """从 DB(app_settings.zhitu_token) 读逗号分隔多 token, 模块级轮换返回下一个。
+
+    单 token 或空则回退 _load_token()。与 Engine key_pool 同源, 保证全站智兔调用统一池化。
+    """
+    raw = ""
+    try:
+        import sqlite3
+
+        db_path = os.getenv("PANWATCH_DB", "/app/data/panwatch.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path, timeout=3)
+            try:
+                row = conn.execute(
+                    "SELECT value FROM app_settings WHERE key='zhitu_token'"
+                ).fetchone()
+                raw = row[0] if row and row[0] else ""
+            finally:
+                conn.close()
+    except Exception:
+        pass
+    tokens = [t.strip() for t in raw.split(",") if t.strip()] if raw else []
+    if len(tokens) <= 1:
+        return _load_token()
+    global _ZHITU_TOKEN_IDX
+    _ZHITU_TOKEN_IDX = (_ZHITU_TOKEN_IDX + 1) % len(tokens)
+    return tokens[_ZHITU_TOKEN_IDX]
+
+
 class ZhituDividendVendor(DividendVendor):
     """分红送配备源:按 symbol 逐只请求,返回全部分红历史(东财断供时兜底)。
 

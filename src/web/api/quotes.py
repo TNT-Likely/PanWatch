@@ -139,17 +139,23 @@ async def get_company_info(symbol: str, market: str = "CN"):
         import urllib.parse
         import urllib.request
 
-        # token 优先级: 设置页 DB > 环境变量 > 默认(与 zhitu vendor 同源)
+        # token 优先级: 多 key 池化(pick_zhitu_token 轮换) > 单值 DB > env > 默认
         token = ""
         try:
-            from src.web.database import SessionLocal
-            from src.web.models import AppSettings
-            db = SessionLocal()
-            row = db.query(AppSettings).filter(AppSettings.key == "zhitu_token").first()
-            token = (row.value if row and row.value and row.value != "********" else "") or ""
-            db.close()
+            from marketdata.vendors.zhitu import pick_zhitu_token
+            token = pick_zhitu_token()
         except Exception:
             pass
+        if not token:
+            try:
+                from src.web.database import SessionLocal
+                from src.web.models import AppSettings
+                db = SessionLocal()
+                row = db.query(AppSettings).filter(AppSettings.key == "zhitu_token").first()
+                token = (row.value if row and row.value and row.value != "********" else "") or ""
+                db.close()
+            except Exception:
+                pass
         if not token:
             import os
             token = os.environ.get("ZHITU_TOKEN", "E0E16C43-9272-4DAB-800C-178694F2D4B1")
