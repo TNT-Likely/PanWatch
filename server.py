@@ -661,20 +661,8 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "test_symbols": ["600519", "000001"],
         },
         {
-            "name": "智兔资金流",
-            "type": "capital_flow",
-            "provider": "zhitu",
-            "config": {
-                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
-                "description": "智兔数服4维资金流(双 key 池化)。东财资金流在云服务器被断(502),智兔优先。",
-            },
-            "enabled": True,
-            "priority": 0,   # 高于东财/新浪 → 资金流优先源
-            "supports_batch": False,
-            "test_symbols": ["600519", "000001"],
-        },
-        {
             "name": "智兔股东",
+
             "type": "shareholders",
             "provider": "zhitu",
             "config": {

@@ -71,7 +71,6 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "yahoo": YahooKlineVendor,
     },
     "capital_flow": {
-        "zhitu": ZhituCapitalFlowVendor,
         "eastmoney": EastmoneyCapitalFlowVendor,
         "sina": SinaCapitalFlowVendor,
     },
