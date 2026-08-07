@@ -46,3 +46,16 @@ export interface DataSource {
   /** 孤儿源:该 (type, provider) 在包内无对应 vendor 且不在种子里,抓取/测试必失败。 */
   is_orphan?: boolean
 }
+
+// ── 通达信问小达(TDX MCP 自然语言投研) ──
+export interface TdxRow {
+  [key: string]: string | number | null
+}
+
+export interface TdxAskResponse {
+  query: string
+  total: number
+  returned: number
+  headers: string[]
+  rows: TdxRow[]
+}

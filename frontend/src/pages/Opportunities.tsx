@@ -3,10 +3,12 @@ import { AlertTriangle, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
   recommendationsApi,
   stocksApi,
+  tdxApi,
   type EntryCandidateItem,
   type StrategyCatalogItem,
   type StrategySignalItem,
   type StrategyStatsResponse,
+  type TdxAskResponse,
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -270,6 +272,37 @@ export default function OpportunitiesPage() {
     }
   }, [])
 
+  // 通达信问小达投研精选(市场级自然语言选股/排行)
+  const TDX_QUERIES = useMemo(
+    () => [
+      '今日主力净流入前10的A股',
+      '今日涨幅前10的概念板块',
+      '近3日主力净流入前10的半导体',
+    ],
+    [],
+  )
+  const [tdxData, setTdxData] = useState<Record<string, TdxAskResponse | null>>({})
+  const [tdxLoading, setTdxLoading] = useState(false)
+
+  const loadTdx = useCallback(async () => {
+    setTdxLoading(true)
+    try {
+      const entries = await Promise.all(
+        TDX_QUERIES.map(async (q) => {
+          try {
+            const res = await tdxApi.ask(q, 10)
+            return [q, res] as const
+          } catch {
+            return [q, null] as const
+          }
+        }),
+      )
+      setTdxData(Object.fromEntries(entries))
+    } finally {
+      setTdxLoading(false)
+    }
+  }, [TDX_QUERIES])
+
   const loadStats = useCallback(async () => {
     try {
       const s = await recommendationsApi.getStrategyStats(45)
@@ -386,7 +419,8 @@ export default function OpportunitiesPage() {
     loadStats()
     loadCatalog()
     loadWatchlist()
-  }, [load, loadCatalog, loadStats, loadWatchlist])
+    loadTdx()
+  }, [load, loadCatalog, loadStats, loadWatchlist, loadTdx])
 
   const pollRefreshCompletion = useCallback(async () => {
     const maxPolls = 20
@@ -599,6 +633,117 @@ export default function OpportunitiesPage() {
           <div className="text-[10px] text-muted-foreground mt-1">
             自动样本: {outcome3d ? `${outcome3d.total}` : '--'}
           </div>
+        </div>
+      </div>
+
+      {/* 通达信问小达投研精选(市场级自然语言选股/排行) */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[14px] font-semibold text-foreground flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            通达信问小达 · 投研精选
+          </h2>
+          <button
+            type="button"
+            className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+            onClick={() => void loadTdx()}
+            disabled={tdxLoading}
+          >
+            <RefreshCw className={`w-3 h-3 ${tdxLoading ? 'animate-spin' : ''}`} />
+            刷新
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {TDX_QUERIES.map((q) => {
+            const res = tdxData[q]
+            const rows = res?.rows || []
+            return (
+              <div key={q} className="card p-3">
+                <div className="text-[12px] font-medium text-foreground mb-2 line-clamp-1" title={q}>
+                  {q}
+                </div>
+                {tdxLoading && !res ? (
+                  <div className="text-[11px] text-muted-foreground py-3">加载中…</div>
+                ) : rows.length === 0 ? (
+                  <div className="text-[11px] text-muted-foreground py-3">暂无数据</div>
+                ) : (
+                  <div className="flex flex-col gap-1.5 max-h-[260px] overflow-y-auto pr-1">
+                    {rows.slice(0, 8).map((r, i) => {
+                      const code = String(r.sec_code ?? r.code ?? '')
+                      const name = String(r.sec_name ?? r.name ?? '')
+                      const chg = String(r.chg ?? r.change_pct ?? '')
+                      const mainNet = Object.entries(r).find(([k]) => k.includes('主力净额') || k.includes('主力净'))?.[1]
+                      const clickable = !!code
+                      return (
+                        <button
+                          key={`${code}-${i}`}
+                          type="button"
+                          disabled={!clickable}
+                          onClick={() => clickable && openInsight({
+                            stock_symbol: code,
+                            stock_market: 'CN',
+                            stock_name: name,
+                            action: 'watch',
+                            action_label: '观望',
+                            is_holding_snapshot: false,
+                            rank_score: 0,
+                            score: 0,
+                            status: 'inactive',
+                            source_pool: 'watchlist',
+                            source_pool_label: '关注池',
+                            risk_level: 'low',
+                            risk_level_label: '低风险',
+                            source_agent: 'market_scan',
+                            strategy_code: 'tdx_wenda',
+                            strategy_name: '通达信问小达',
+                            strategy_version: 'v1',
+                            confidence: null,
+                            signal: '',
+                            reason: `通达信问小达: ${q}`,
+                            evidence: [],
+                            holding_days: 3,
+                            entry_low: null,
+                            entry_high: null,
+                            stop_loss: null,
+                            target_price: null,
+                            invalidation: '',
+                            plan_quality: 0,
+                            source_suggestion_id: null,
+                            source_candidate_id: null,
+                            trace_id: '',
+                            context_quality_score: null,
+                            score_breakdown: { weighted_score: 0, has_entry_plan: false },
+                            market_regime: {},
+                            cross_feature: {},
+                            news_metric: {},
+                            constrained: false,
+                            constraint_reasons: [],
+                            payload: { source_meta: { plan: {} } },
+                            created_at: '',
+                            updated_at: '',
+                          } as unknown as StrategySignalItem)}
+                          className={`text-left text-[11px] rounded px-2 py-1.5 flex items-center justify-between gap-2 ${
+                            clickable ? 'hover:bg-accent cursor-pointer' : 'cursor-default'
+                          }`}
+                        >
+                          <span className="truncate">
+                            <span className="text-muted-foreground mr-1">{code}</span>
+                            <span className="font-medium text-foreground">{name}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {chg && <span className="text-emerald-400">{chg}%</span>}
+                            {mainNet != null && (
+                              <span className="text-[10px] text-primary">主力{String(mainNet)}</span>
+                            )}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 

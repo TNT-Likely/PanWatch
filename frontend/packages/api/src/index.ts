@@ -17,3 +17,4 @@ export * from './tradingagents'
 export * from './datasources'
 export * from './reports'
 export * from "./strategies"
+export * from './tdx'
