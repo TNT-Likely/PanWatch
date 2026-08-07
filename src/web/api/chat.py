@@ -122,6 +122,20 @@ CHAT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "tdx_wenda",
+            "description": "通达信问小达：自然语言投研查询。用于回答市场级的选股/排行/资金流向问题，如“今日主力净流入前10的A股”“今日涨幅前10的概念板块”“近3日主力净流入前10的半导体”“今日涨停家数最多的概念板块”“今日龙虎榜机构净买入前10”。适合不指定个股、而是看板块/全市场维度的问题。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "自然语言查询，如 “今日主力净流入前10的A股”"},
+                },
+                "required": ["question"],
+            },
+        },
+    },
 ]
 
 
@@ -162,6 +176,40 @@ async def _execute_tool(db: Session, name: str, args: dict) -> str:
             market = args.get("market", "CN")
             result = await _fetch_capital_flow_context(symbol, market)
             return result or f"未能获取 {market}:{symbol} 的资金流向数据。"
+        elif name == "tdx_wenda":
+            question = (args.get("question") or "").strip()
+            if not question:
+                return "请提供查询问题, 如 '今日主力净流入前10的A股'。"
+            try:
+                from marketdata.vendors.tdx import ask_wenda
+
+                res = ask_wenda(question)
+                if not res or not isinstance(res, dict):
+                    return f"通达信问小达未返回数据: {question}"
+                rows = res.get("data") or []
+                if not rows:
+                    return f"通达信问小达无结果: {question}"
+                lines = [f"通达信问小达查询结果「{question}」(共{len(rows)}条):"]
+                for r in rows[:15]:
+                    if not isinstance(r, dict):
+                        continue
+                    name = r.get("sec_name") or r.get("name") or ""
+                    code = r.get("sec_code") or r.get("code") or ""
+                    chg = r.get("chg") or r.get("change_pct") or ""
+                    main_net = next(
+                        (v for k, v in r.items() if "主力净额" in k or "主力净" in k),
+                        "",
+                    )
+                    line = f"- {code} {name}"
+                    if chg:
+                        line += f" 涨{chg}%"
+                    if main_net:
+                        line += f" 主力净额{main_net}"
+                    lines.append(line)
+                return "\n".join(lines)
+            except Exception as e:
+                logger.warning(f"TDX 问小达工具失败: {e}")
+                return f"通达信问小达查询失败: {e}"
         else:
             return f"未知工具: {name}"
     except Exception as e:
