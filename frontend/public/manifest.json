@@ -1,6 +1,6 @@
 {
-  "name": "盯盘侠 PanWatch",
-  "short_name": "盯盘侠",
+  "name": "数智分析 PanWatch",
+  "short_name": "数智分析",
   "description": "AI 驱动的股票监控助手",
   "start_url": "/",
   "display": "standalone",
