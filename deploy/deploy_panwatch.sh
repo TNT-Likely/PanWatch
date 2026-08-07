@@ -144,6 +144,7 @@ rebuild_container() {
   if [ -n "$TDX_API_KEY" ]; then
     env_args+=(-e "TDX_API_KEY=$TDX_API_KEY")
   fi
+  ALPHAVANTAGE_KEYS="${ALPHAVANTAGE_KEYS:-UMUYI8V9RY6G01YK,SWRYBMSODCF79F93,F03QKC81DCPXQQEF}"
   if [ -n "$ALPHAVANTAGE_KEYS" ]; then
     env_args+=(-e "ALPHAVANTAGE_KEYS=$ALPHAVANTAGE_KEYS")
   fi
