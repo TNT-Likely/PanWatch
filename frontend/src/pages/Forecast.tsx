@@ -77,7 +77,7 @@ interface BacktestResult {
 
 export default function ForecastPage() {
   const [symbol, setSymbol] = useState('002361')
-  const [days, setDays] = useState(5)
+  const [days] = useState(5)
   const [searchText, setSearchText] = useState('神剑股份')
   const [searchResults, setSearchResults] = useState<{ symbol: string; name: string }[]>([])
   const [stockName, setStockName] = useState('')
@@ -341,7 +341,7 @@ export default function ForecastPage() {
               type="date"
               value={targetDate}
               min={lastKlineDate ? lastKlineDate : undefined}
-              onChange={e => { setTargetDate(e.target.value); setDays(0) }}
+              onChange={e => setTargetDate(e.target.value)}
               className="w-36"
             />
           </div>
