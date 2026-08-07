@@ -8,13 +8,16 @@ from typing import Protocol, runtime_checkable
 
 @dataclass
 class SourceConfig:
-    """一个数据源的运行配置(由 ConfigProvider 提供)。"""
+    """一个数据源的运行配置（由 ConfigProvider 提供）。"""
 
     vendor: str
     priority: int = 100
     enabled: bool = True
     config: dict = field(default_factory=dict)   # 凭证/参数:token / cookies / proxy ...
     supports_batch: bool = False
+    # 多 key 池(可选): 同源多个凭证, 由 Engine 的 KeyPool 按健康度轮换,
+    # 限流(429)/失效(401)自动冷却并切下一个。与 config 内的单 token 互斥, 优先用池。
+    key_pool: list[str] = field(default_factory=list)
 
 
 @runtime_checkable

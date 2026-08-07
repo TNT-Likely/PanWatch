@@ -144,6 +144,12 @@ rebuild_container() {
   if [ -n "$TDX_API_KEY" ]; then
     env_args+=(-e "TDX_API_KEY=$TDX_API_KEY")
   fi
+  if [ -n "$ALPHAVANTAGE_KEYS" ]; then
+    env_args+=(-e "ALPHAVANTAGE_KEYS=$ALPHAVANTAGE_KEYS")
+  fi
+  if [ -n "$TWELVEDATA_KEYS" ]; then
+    env_args+=(-e "TWELVEDATA_KEYS=$TWELVEDATA_KEYS")
+  fi
   $DOCKER run -d \
     --name "$CONTAINER" \
     -p 8000:8000 \

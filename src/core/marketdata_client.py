@@ -34,16 +34,23 @@ class DbConfigProvider:
             db.close()
 
     def sources_for(self, datatype: str, market: str | None) -> list[SourceConfig]:
-        return [
-            SourceConfig(
+        rows = self._query_rows(datatype)
+        out: list[SourceConfig] = []
+        for r in rows:
+            cfg = r.config or {}
+            # 多 key 池: 从 config["api_keys"] 提取(同源多个凭证, 由 Engine 的 KeyPool 轮换)
+            key_pool = cfg.get("api_keys") or []
+            if isinstance(key_pool, str):
+                key_pool = [key_pool]
+            out.append(SourceConfig(
                 vendor=r.provider,
                 priority=r.priority,
                 enabled=True,
-                config=r.config or {},
+                config=cfg,
                 supports_batch=bool(r.supports_batch),
-            )
-            for r in self._query_rows(datatype)
-        ]
+                key_pool=list(key_pool),
+            ))
+        return out
 
 
 _md: MarketData | None = None

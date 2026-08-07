@@ -709,6 +709,32 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": False,
             "test_symbols": [],
         },
+        {
+            "name": "Alpha Vantage 美股/全球",
+            "type": "quote",
+            "provider": "alphavantage",
+            "config": {
+                "api_keys": [k for k in (os.getenv("ALPHAVANTAGE_KEYS", "") or os.getenv("ALPHAVANTAGE_KEY", "")).split(",") if k],
+                "description": "Alpha Vantage 美股/全球实时报价(免费 25 req/day/key, 多 key 池可放大额度)。",
+            },
+            "enabled": False,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": ["AAPL", "MSFT"],
+        },
+        {
+            "name": "Twelve Data 美股",
+            "type": "quote",
+            "provider": "twelvedata",
+            "config": {
+                "api_keys": [k for k in (os.getenv("TWELVEDATA_KEYS", "") or os.getenv("TWELVEDATA_KEY", "")).split(",") if k],
+                "description": "Twelve Data 美股实时报价(免费 800 req/day/key, 多 key 池可放大额度)。",
+            },
+            "enabled": False,
+            "priority": 11,
+            "supports_batch": False,
+            "test_symbols": ["AAPL", "MSFT"],
+        },
 ]
 
 
