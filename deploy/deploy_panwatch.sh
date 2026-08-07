@@ -60,6 +60,7 @@ FILES=(
   "src/web/api/discovery.py"
   "src/web/api/settings.py"
   "src/web/api/dashboard.py"
+  "src/web/api/quotes.py"
   "src/collectors/discovery_collector.py"
   "src/collectors/wudao_mcp_client.py"
   "src/collectors/market_sentiment_collector.py"

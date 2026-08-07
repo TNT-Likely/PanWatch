@@ -37,9 +37,31 @@ interface QuoteResponse {
   volume: number | null
   turnover: number | null
   turnover_rate?: number | null
+  volume_ratio?: number | null
   pe_ratio?: number | null
   total_market_value?: number | null
   circulating_market_value?: number | null
+}
+
+interface CompanyInfo {
+  symbol?: string
+  name?: string | null
+  ename?: string | null
+  industry?: string | null
+  area?: string | null
+  market_board?: string | null
+  list_status?: string | null
+  list_date?: string | null
+  reg_capital?: string | null
+  issuer?: string | null
+  secretary?: string | null
+  phone?: string | null
+  website?: string | null
+  address?: string | null
+  bscope?: string | null
+  desc?: string | null
+  concepts?: string | null
+  note?: string | null
 }
 
 interface KlineSummaryResponse {
@@ -110,7 +132,7 @@ interface PortfolioSummaryResponse {
   }>
 }
 
-type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep' | 'company'
 
 interface StockAgentInfo {
   agent_name: string
@@ -358,6 +380,8 @@ export default function StockInsightModal(props: {
     20
   )
   const [quote, setQuote] = useState<QuoteResponse | null>(null)
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
+  const [companyLoading, setCompanyLoading] = useState(false)
   const [klineSummary, setKlineSummary] = useState<KlineSummary | null>(null)
   const [miniKlines, setMiniKlines] = useState<MiniKlineResponse['klines']>([])
   const [miniKlineLoading, setMiniKlineLoading] = useState(false)
@@ -398,6 +422,19 @@ export default function StockInsightModal(props: {
     const data = await insightApi.quote<QuoteResponse>(symbol, market)
     setQuote(data || null)
   }, [symbol, market])
+
+  const loadCompany = useCallback(async () => {
+    if (!symbol || companyInfo) return
+    setCompanyLoading(true)
+    try {
+      const data = await insightApi.company<CompanyInfo>(symbol, market)
+      setCompanyInfo(data || null)
+    } catch {
+      setCompanyInfo(null)
+    } finally {
+      setCompanyLoading(false)
+    }
+  }, [symbol, market, companyInfo])
 
   const loadKline = useCallback(async () => {
     if (!symbol) return
@@ -701,8 +738,11 @@ export default function StockInsightModal(props: {
     if (tab === 'overview' || tab === 'reports') {
       tasks.push(loadReports())
     }
+    if (tab === 'company') {
+      tasks.push(loadCompany())
+    }
     await Promise.allSettled(tasks)
-  }, [symbol, tab, loadQuote, loadHoldingAgg, loadKline, loadMiniKline, loadSuggestions, loadNews, loadAnnouncements, loadReports])
+  }, [symbol, tab, loadQuote, loadHoldingAgg, loadKline, loadMiniKline, loadSuggestions, loadNews, loadAnnouncements, loadReports, loadCompany])
 
   const loadDeepResult = useCallback(async () => {
     if (!symbol) return
@@ -1386,6 +1426,7 @@ export default function StockInsightModal(props: {
                 { id: 'kline', label: 'K线' },
                 { id: 'announcements', label: `公告 (${announcements.length})` },
                 { id: 'news', label: `新闻 (${news.length})` },
+                { id: 'company', label: '简介' },
               ].map(item => (
                 <button
                   key={item.id}
@@ -1440,8 +1481,10 @@ export default function StockInsightModal(props: {
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">成交额</div><div className="font-mono">{formatCompactNumber(quote?.turnover)}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">振幅</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">换手率</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">量比</div><div className="font-mono">{quote?.volume_ratio != null ? Number(quote.volume_ratio).toFixed(2) : '--'}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">市盈率</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">流通市值</div><div className="font-mono">{formatMarketCap(quote?.circulating_market_value, market)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
                       <div className="text-[11px] text-muted-foreground mb-2">持仓信息</div>
@@ -1887,6 +1930,112 @@ export default function StockInsightModal(props: {
                       <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
                     </a>
                   ))
+                )}
+              </div>
+            )}
+
+            {tab === 'company' && (
+              <div className="space-y-3">
+                {companyLoading ? (
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center">加载公司信息...</div>
+                ) : !companyInfo || (!companyInfo.name && companyInfo.note) ? (
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center">
+                    {companyInfo?.note || '暂无公司信息'}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* 主营 */}
+                    {companyInfo.bscope && (
+                      <div className="card p-4">
+                        <div className="text-[11px] text-muted-foreground mb-1">主营业务</div>
+                        <div className="text-[13px] text-foreground font-medium">{companyInfo.bscope}</div>
+                      </div>
+                    )}
+                    {/* 公司简介 */}
+                    {companyInfo.desc && (
+                      <div className="card p-4">
+                        <div className="text-[11px] text-muted-foreground mb-1">公司简介</div>
+                        <div className="text-[12px] text-foreground/90 leading-relaxed">{companyInfo.desc}</div>
+                      </div>
+                    )}
+                    {/* 基本信息网格 */}
+                    <div className="card p-4">
+                      <div className="text-[11px] text-muted-foreground mb-2">基本信息</div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                        {companyInfo.name && (
+                          <>
+                            <div className="text-muted-foreground">公司全称</div>
+                            <div className="text-foreground text-right break-words">{companyInfo.name}</div>
+                          </>
+                        )}
+                        {companyInfo.ename && (
+                          <>
+                            <div className="text-muted-foreground">英文名</div>
+                            <div className="text-foreground text-right break-words">{companyInfo.ename}</div>
+                          </>
+                        )}
+                        {companyInfo.market_board && (
+                          <>
+                            <div className="text-muted-foreground">交易所</div>
+                            <div className="text-foreground text-right">{companyInfo.market_board}</div>
+                          </>
+                        )}
+                        {companyInfo.list_date && (
+                          <>
+                            <div className="text-muted-foreground">上市日期</div>
+                            <div className="text-foreground text-right">{companyInfo.list_date}</div>
+                          </>
+                        )}
+                        {companyInfo.reg_capital && (
+                          <>
+                            <div className="text-muted-foreground">注册资本</div>
+                            <div className="text-foreground text-right">{companyInfo.reg_capital}</div>
+                          </>
+                        )}
+                        {companyInfo.list_status && (
+                          <>
+                            <div className="text-muted-foreground">企业性质</div>
+                            <div className="text-foreground text-right">{companyInfo.list_status}</div>
+                          </>
+                        )}
+                        {companyInfo.issuer && (
+                          <>
+                            <div className="text-muted-foreground">主承销商</div>
+                            <div className="text-foreground text-right">{companyInfo.issuer}</div>
+                          </>
+                        )}
+                        {companyInfo.secretary && (
+                          <>
+                            <div className="text-muted-foreground">董秘</div>
+                            <div className="text-foreground text-right">{companyInfo.secretary}</div>
+                          </>
+                        )}
+                        {companyInfo.area && (
+                          <>
+                            <div className="text-muted-foreground">注册地址</div>
+                            <div className="text-foreground text-right break-words">{companyInfo.area}</div>
+                          </>
+                        )}
+                        {companyInfo.website && (
+                          <>
+                            <div className="text-muted-foreground">官网</div>
+                            <a href={companyInfo.website} target="_blank" rel="noreferrer" className="text-right text-primary hover:underline break-words">{companyInfo.website}</a>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {/* 概念板块 */}
+                    {companyInfo.concepts && (
+                      <div className="card p-4">
+                        <div className="text-[11px] text-muted-foreground mb-2">概念板块</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {companyInfo.concepts.split(',').filter(Boolean).map((c) => (
+                            <span key={c} className="rounded-full bg-accent/50 px-2 py-0.5 text-[11px] text-foreground/80">{c.trim()}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
