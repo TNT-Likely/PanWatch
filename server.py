@@ -639,10 +639,63 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "type": "dividend",
             "provider": "zhitu",
             "config": {
-                "description": "智兔数服分红送配备源(HTTP 直连免 key,200次/天)。东财断供时自动降级。",
+                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
+                "description": "智兔数服分红送配备源(双 key 池化 = 400次/天)。东财断供时自动降级。",
             },
             "enabled": True,
             "priority": 5,
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "智兔K线",
+            "type": "kline",
+            "provider": "zhitu",
+            "config": {
+                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
+                "description": "智兔数服日线(双 key 池化)。东财在云服务器不稳定,智兔作优先稳定源。",
+            },
+            "enabled": True,
+            "priority": 1,   # 腾讯(0)之后、东财(5)之前 → CN 优先稳定源
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "智兔资金流",
+            "type": "capital_flow",
+            "provider": "zhitu",
+            "config": {
+                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
+                "description": "智兔数服4维资金流(双 key 池化)。东财资金流在云服务器被断(502),智兔优先。",
+            },
+            "enabled": True,
+            "priority": 0,   # 高于东财/新浪 → 资金流优先源
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "智兔股东",
+            "type": "shareholders",
+            "provider": "zhitu",
+            "config": {
+                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
+                "description": "智兔数服十大股东/股东变化(双 key 池化)。东财股东接口不稳定,智兔优先。",
+            },
+            "enabled": True,
+            "priority": 0,   # 高于东财 → 股东优先源
+            "supports_batch": False,
+            "test_symbols": ["600519", "000001"],
+        },
+        {
+            "name": "智兔基本面",
+            "type": "fundamentals",
+            "provider": "zhitu",
+            "config": {
+                "api_keys": ["E0E16C43-9272-4DAB-800C-178694F2D4B1", "33E70FEB-9966-48D8-A748-C7B8265AB494"],
+                "description": "智兔数服财务主要(PE/PB/市值,双 key 池化)。东财财务接口不稳定,智兔优先。",
+            },
+            "enabled": True,
+            "priority": 0,   # 高于腾讯/东财 → 基本面优先源
             "supports_batch": False,
             "test_symbols": ["600519", "000001"],
         },

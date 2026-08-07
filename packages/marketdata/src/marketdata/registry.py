@@ -34,6 +34,12 @@ from marketdata.vendors.market_flow import (
 )
 from marketdata.vendors.ftshare import FtshareDragonTigerVendor, FtshareMarginVendor
 from marketdata.vendors.zhitu import ZhituDividendVendor
+from marketdata.vendors.zhitu_full import (
+    ZhituKlineVendor,
+    ZhituCapitalFlowVendor,
+    ZhituShareholdersVendor,
+    ZhituFundamentalsVendor,
+)
 from marketdata.vendors.news import (
     EastmoneyAnnNewsVendor,
     EastmoneyStockNewsVendor,
@@ -58,12 +64,14 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "twelvedata": TwelveDataQuoteVendor,
     },
     "kline": {
+        "zhitu": ZhituKlineVendor,
         "tencent": TencentKlineVendor,
         "stooq": StooqKlineVendor,
         "eastmoney": EastmoneyKlineVendor,
         "yahoo": YahooKlineVendor,
     },
     "capital_flow": {
+        "zhitu": ZhituCapitalFlowVendor,
         "eastmoney": EastmoneyCapitalFlowVendor,
         "sina": SinaCapitalFlowVendor,
     },
@@ -71,6 +79,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "eastmoney": EventsVendor,
     },
     "fundamentals": {
+        "zhitu": ZhituFundamentalsVendor,
         "tencent": TencentFundamentalsVendor,
         "eastmoney": EastmoneyFundamentalsVendor,
     },
@@ -93,6 +102,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "ftshare": FtshareMarginVendor,
     },
     "shareholders": {
+        "zhitu": ZhituShareholdersVendor,
         "eastmoney": EastmoneyShareholdersVendor,
     },
     "dividend": {
