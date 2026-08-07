@@ -78,9 +78,12 @@ def _to_float(value) -> float | None:
         return None
 
 
-def _zhitu_get(path: str, params: dict | None = None, timeout: float = 15.0) -> list | None:
-    """GET 智兔接口,返回 list;失败/结构异常返回 None。"""
-    q = {"token": _load_token(), **(params or {})}
+def _zhitu_get(path: str, params: dict | None = None, timeout: float = 15.0, *, token: str | None = None) -> list | None:
+    """GET 智兔接口,返回 list;失败/结构异常返回 None。
+
+    token 优先用调用方传入的(来自 Engine key_pool 选中的 key),不传则回退 _load_token()。
+    """
+    q = {"token": token or _load_token(), **(params or {})}
     url = f"{_ZHITU_BASE}{path}?{urllib.parse.urlencode(q)}"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -105,9 +108,11 @@ class ZhituDividendVendor(DividendVendor):
     def fetch(self, symbols: list, config: dict) -> list[DividendItem]:
         if not symbols:
             return []
+        # config["api_key"] 来自 Engine 的 key_pool 选中值(多 key 池化); 无则回退 _load_token()
+        token = config.get("api_key") if isinstance(config, dict) else None
         out: list[DividendItem] = []
         for sym in symbols:
-            rows = _zhitu_get(f"/gs/jnff/{sym.code}")
+            rows = _zhitu_get(f"/gs/jnff/{sym.code}", token=token)
             if not rows:
                 continue
             for row in rows:

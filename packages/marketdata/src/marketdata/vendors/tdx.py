@@ -203,6 +203,28 @@ def ask_wenda(question: str, *, config: dict | None = None) -> dict | None:
     """
     if not question or not question.strip():
         return None
+    # 多 key 池化: config 带 key_pool 时, 用 KeyPool 按健康度选 key 注入 client
+    key_pool = (config or {}).get("key_pool") if isinstance(config, dict) else None
+    if key_pool:
+        from marketdata.keypool import KeyPool
+        kp = KeyPool(list(key_pool))
+        api_key = kp.pick()
+        config = {**(config or {}), "api_key": api_key}
+        try:
+            result = _get_client(config).call_tool("tdx_screener", {"message": question})
+            kp.mark_success(api_key)
+            return result
+        except Exception as e:
+            rl = any(c in str(e) for c in ("401", "403", "429", "rate", "quota", "incorrect", "unauthorized"))
+            kp.mark_failure(api_key, rate_limited=rl)
+            # 限流/失效: 切下一个 key 重试
+            if rl:
+                nxt = kp.pick()
+                if nxt and nxt != api_key:
+                    config = {**(config or {}), "api_key": nxt}
+                    kp.mark_success(nxt)
+                    return _get_client(config).call_tool("tdx_screener", {"message": question})
+            raise
     client = _get_client(config)
     # 真实工具名为 tdx_screener, 参数为 message(非 tdx_wenda_quotes/question)
     return client.call_tool("tdx_screener", {"message": question})

@@ -42,7 +42,10 @@ class WudaoMCPClient:
 
     @staticmethod
     def _db_token() -> str:
-        """设置页 DB(app_settings.wudao_mcp_token) > env。改 key 立即生效,无需重建容器。"""
+        """设置页 DB(app_settings.wudao_mcp_token) > env。改 key 立即生效,无需重建容器。
+
+        支持多 token 池化: DB 值若为逗号分隔多个 token, 按模块级轮换索引依次返回(多 key 分摊额度)。
+        """
         import os
         import sqlite3
 
@@ -55,12 +58,23 @@ class WudaoMCPClient:
                 row = conn.execute(
                     "SELECT value FROM app_settings WHERE key='wudao_mcp_token'"
                 ).fetchone()
-                return row[0] if row and row[0] else ""
+                raw = row[0] if row and row[0] else ""
             finally:
                 conn.close()
+            if not raw:
+                return ""
+            # 多 token 池化: 逗号分隔, 模块级轮换
+            tokens = [t.strip() for t in raw.split(",") if t.strip()]
+            if len(tokens) <= 1:
+                return tokens[0] if tokens else ""
+            WudaoMCPClient._token_idx = (WudaoMCPClient._token_idx + 1) % len(tokens)
+            return tokens[WudaoMCPClient._token_idx]
+        # 注意: 下面的 except 是外层 try 的延续, 见原始结构
         except Exception as e:
             logger.debug(f"读设置页 wudao_mcp_token 失败: {e}")
             return ""
+
+    _token_idx: int = -1
 
     def _initialize(self):
         if self._initialized:
