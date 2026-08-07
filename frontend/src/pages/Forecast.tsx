@@ -396,6 +396,17 @@ export default function ForecastPage() {
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               基准价 {result.last_close}（{result.last_date}）→ 预测 {result.pred_days} 天，耗时 {result.elapsed_ms}ms
+              {(() => {
+                const today = new Date().toISOString().slice(0, 10);
+                if (result.last_date < today) {
+                  return (
+                    <span className="ml-2 text-yellow-500/80" title={`baostock 收盘后才入库当日数据;${result.last_date} 是最新可用历史,基准价已滞后 1 个交易日`}>
+                      ⚠️ 基准日滞后今日 ({today})
+                    </span>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             {/* 操作建议 */}
