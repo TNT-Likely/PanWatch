@@ -163,11 +163,41 @@ class IntradayMonitorAgent(BaseAgent):
             analysis_date=date.today(),
         )
 
+        # 市场情绪 + 板块面 + 实时大盘指数(盘中情绪判断)
+        market_sentiment = {}
+        try:
+            from src.collectors.market_sentiment_collector import (
+                MarketSentimentCollector,
+            )
+
+            senti_c = MarketSentimentCollector()
+            summary = senti_c.get_sentiment_summary()
+            sector_rotation = senti_c.get_sector_rotation(top_n=12)
+            indices = senti_c.get_index_snapshot()
+            # 实时指数(腾讯接口,盘中实时): 大盘涨跌直接决定情绪强弱
+            index_summary = []
+            for idx in indices:
+                pct = idx.get("pct") or 0
+                tone = "🟢涨" if pct > 0 else ("🔴跌" if pct < 0 else "平")
+                index_summary.append(
+                    f"{idx.get('name')} {idx.get('price')} ({pct:+.2f}%) {tone}"
+                )
+            market_sentiment = {
+                "sentiment": summary,
+                "sectors": sector_rotation,
+                "indices": indices,
+                "index_summary": index_summary,
+            }
+        except Exception as e:
+            logger.warning(f"市场情绪采集失败: {e}")
+            market_sentiment = {}
+
         return {
             "stocks": [stock_data] if stock_data else [],
             "stock_data": stock_data,
             "kline_summary": kline_summary,
             "signal_pack": pack,
+            "market_sentiment": market_sentiment,
             "daily_analysis": daily_analysis.content if daily_analysis else None,
             "premarket_analysis": premarket_analysis.content
             if premarket_analysis
@@ -200,6 +230,16 @@ class IntradayMonitorAgent(BaseAgent):
 
         lines = []
         lines.append(f"## 时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+
+        # 实时大盘指数(最先给出,情绪判断首要依据)
+        idx_summary = (data.get("market_sentiment") or {}).get("index_summary") or []
+        if idx_summary:
+            lines.append("## 实时大盘指数(当前,情绪判断首要依据)")
+            for s in idx_summary:
+                lines.append(f"- {s}")
+            lines.append("")
+            lines.append("> 规则: 指数红盘(涨)=情绪偏暖,指数绿盘(跌)=情绪偏冷。个股建议必须结合大盘方向。")
+            lines.append("")
 
         # 股票行情
         current_price = safe_num(stock.current_price)
@@ -382,6 +422,46 @@ class IntradayMonitorAgent(BaseAgent):
             lines.append(
                 f"- MA5：{format_num(kline.get('ma5'))} | MA10：{format_num(kline.get('ma10'))} | MA20：{format_num(kline.get('ma20'))} | MA60：{format_num(kline.get('ma60'))}"
             )
+
+        # 市场情绪面 + 板块面(涨停池/情绪周期/板块涨跌资金)
+        ms = data.get("market_sentiment", {}) or {}
+        senti = ms.get("sentiment") or {}
+        if senti and not senti.get("error"):
+            lines.append("\n## 涨停池参考(隔日数据,仅参考)")
+            lines.append(
+                f"- 最近交易日涨停家数：{senti.get('limit_up_count', '-')}，最高连板：{senti.get('max_streak', '-')} 板"
+            )
+            ladder = senti.get("ladder", {}) or {}
+            if ladder:
+                ladder_str = "，".join(
+                    f"{k}板×{v}家" for k, v in list(ladder.items())[:5]
+                )
+                lines.append(f"- 连板梯队：{ladder_str}")
+            lines.append("- ⚠️ 这是隔日(最近交易日)数据,不是今日实时。今日情绪强弱以「实时大盘指数」为准,禁止用此数据推断今日情绪周期")
+            lines.append("")
+
+        # 板块面(行业+概念涨幅榜,判断个股所处板块强弱)
+        sectors = ms.get("sectors") or {}
+        indus = (sectors.get("industries") or [])[:5]
+        concepts = (sectors.get("concepts") or [])[:5]
+        if indus or concepts:
+            lines.append("## 板块面(行业/概念涨跌与资金)")
+            if indus:
+                parts = [
+                    f"{s.get('name')}{s.get('pct', 0):+.1f}%"
+                    for s in indus
+                    if s.get("name")
+                ]
+                lines.append(f"- 领涨行业：{'、'.join(parts)}")
+            if concepts:
+                parts = [
+                    f"{s.get('name')}{s.get('pct', 0):+.1f}%"
+                    for s in concepts
+                    if s.get("name")
+                ]
+                lines.append(f"- 领涨概念：{'、'.join(parts)}")
+            lines.append("")
+            lines.append("> 判断个股所属板块是否处于当日强势方向: 板块强+个股强=顺势, 板块弱+个股异动=独立行情(谨慎)")
 
         # 资金流向（仅A股，若可用）
         pack = data.get("signal_pack")

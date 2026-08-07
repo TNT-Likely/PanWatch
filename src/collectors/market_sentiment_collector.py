@@ -286,6 +286,33 @@ class MarketSentimentCollector:
                 )
             result[key] = items
 
+        # 东财板块轮动失败(云服务器常断)时,用 ftshare 全板块最新行情兜底
+        if not result.get("industries") and not result.get("concepts"):
+            try:
+                from marketdata.vendors.ftshare import _get_client
+
+                client = _get_client({})
+                rows = client.call_tool("ft_eastmoney_board_latest_kline", {"page": 1, "page_size": 100}) or []
+                if rows:
+                    # 行业(名字含行业词)与概念混合,统一按涨幅排序,取前 top_n
+                    items = []
+                    for r in rows:
+                        if not isinstance(r, dict):
+                            continue
+                        items.append(
+                            {
+                                "name": r.get("board_name") or r.get("name") or "",
+                                "pct": _safe_float(r.get("change_rate") or r.get("change_pct")),
+                                "main_net": 0,
+                            }
+                        )
+                    items = [x for x in items if x["name"] and not x["name"].startswith(("上证", "深证", "沪深", "融资", "HS", "北证"))]
+                    items.sort(key=lambda x: x["pct"], reverse=True)
+                    result["industries"] = items[: top_n // 2]
+                    result["concepts"] = items[top_n // 2 : top_n]
+            except Exception as e:
+                logger.warning(f"ftshare 板块轮动兜底失败: {e}")
+
         return result
 
     def get_index_snapshot(self) -> list[dict]:
