@@ -118,8 +118,8 @@ class TdxMCPClient:
     def call_tool(self, name: str, args: dict) -> dict | None:
         """调工具,返回完整 result(dict);失败返回 None。
 
-        问小达返回结构是 {meta, headers, data} 表格,整体在 result.structuredContent 或
-        result.content[0].text(JSON 字符串)里,这里统一取 structuredContent,缺失则解析 text。
+        tdx 的 tdx_screener 等工具直接返回 {meta, headers, data} 表格(dict),
+        无 structuredContent/content 包裹,故优先直接返回 result。
         """
         if not self._session_id:
             if not self.initialize():
@@ -131,6 +131,9 @@ class TdxMCPClient:
         if result.get("isError"):
             logger.warning(f"TDX 工具 {name} 返回错误: {json.dumps(result, ensure_ascii=False)[:300]}")
             return None
+        # tdx 工具直接返回结构化 dict(meta/headers/data)
+        if "meta" in result or "headers" in result or "data" in result:
+            return result
         sc = result.get("structuredContent")
         if sc is not None:
             return sc
@@ -161,20 +164,22 @@ def _get_client(config: dict | None) -> TdxMCPClient:
 
 
 def ask_wenda(question: str, *, config: dict | None = None) -> dict | None:
-    """通达信问小达自然语言问答。
+    """通达信问小达自然语言问答(实际工具: tdx_screener, 参数 message)。
 
     Args:
         question: 自然语言查询,如 "近5日主力净流入前10的半导体"
         config: 透传 datasource config(url/token)
     Returns:
         {
-          "meta": {"code": 0, "total": N},
-          "headers": [...],
-          "data": [[...], ...],   # 每行一个 list,与 headers 对齐
+          "meta": {"code": 0, "total": N, ...},
+          "headers": [...],          # 列名
+          "data": [[...], ...],      # 每行一个 list,与 headers 对齐
         }
         失败返回 None
     """
     if not question or not question.strip():
         return None
     client = _get_client(config)
-    return client.call_tool("tdx_wenda_quotes", {"question": question})
+    # 真实工具名为 tdx_screener, 参数为 message(非 tdx_wenda_quotes/question)
+    return client.call_tool("tdx_screener", {"message": question})
+
