@@ -147,6 +147,7 @@ rebuild_container() {
   if [ -n "$ALPHAVANTAGE_KEYS" ]; then
     env_args+=(-e "ALPHAVANTAGE_KEYS=$ALPHAVANTAGE_KEYS")
   fi
+  TWELVEDATA_KEYS="${TWELVEDATA_KEYS:-1fe165e6ff3e482bbc17184e9e71403e,69d5afc65f9d49569648c07d389fcd13}"
   if [ -n "$TWELVEDATA_KEYS" ]; then
     env_args+=(-e "TWELVEDATA_KEYS=$TWELVEDATA_KEYS")
   fi
