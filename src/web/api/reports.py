@@ -19,18 +19,73 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Hermes cron 输出根目录
-# 优先级: HERMES_HOME 环境变量 > /home/ubuntu/.hermes(主机路径, 需挂载)
-#         > /hermes-cron-output(容器挂载点) > /root/.hermes(容器默认)
+# 容器内通过 HERMES_HOME 环境变量指定(挂载主机 ~/.hermes 到 /hermes, HERMES_HOME=/hermes)
+# 则 CRON_OUTPUT_DIR = /hermes/cron/output
 HERMES_HOME = Path(
     os.environ.get("HERMES_HOME")
     or os.environ.get("CRON_OUTPUT_DIR")
-    or "/hermes-cron-output"  # 推荐挂载点
+    or "/hermes"  # 推荐挂载点
 )
 CRON_OUTPUT_DIR = HERMES_HOME / "cron" / "output"
 
 # Obsidian vault 目标目录
 OBSIDIAN_VAULT = Path(os.environ.get("OBSIDIAN_VAULT", "/home/ubuntu/Obsidian/FinanceVault"))
 OB_REPORTS_DIR = OBSIDIAN_VAULT / "03-CronReports"
+
+
+def _strip_meta(content: str) -> str:
+    """剥掉 cron 原始报告的元信息噪音, 只留正文。
+
+    噪音构成(开头):
+      # Cron Job: <任务名>
+      **Job ID:** ...
+      **Run Time:** ...
+      **Schedule:** ...
+      ## Prompt
+      <整段 skill 定义 / Prompt 内容>
+      ...
+      ## Response            <- cron 系统注入的"正文开始"标记
+      # 📈 <真正的报告标题>   <- 正文起点
+
+    正文起点锚定: 找到 '## Response' 之后出现的第一个一级标题 '# x'(非 '## ')。
+    找不到 Response 则退回到 '## Prompt' 之后第一个 '# '; 再找不到则原样返回(不误删)。
+    """
+    lines = content.splitlines()
+
+    def _first_h1_after(start: int) -> int | None:
+        for j in range(start + 1, len(lines)):
+            s = lines[j].strip()
+            if s.startswith("# ") and not s.startswith("## "):
+                return j
+        return None
+
+    # 优先锚点: ## Response
+    anchor = None
+    for i, ln in enumerate(lines):
+        if ln.strip() == "## Response":
+            anchor = i
+            break
+    # 次选锚点: ## Prompt
+    if anchor is None:
+        for i, ln in enumerate(lines):
+            if ln.strip().startswith("## Prompt"):
+                anchor = i
+                break
+
+    if anchor is None:
+        return content
+
+    body_start = _first_h1_after(anchor)
+    if body_start is None:
+        # 没找到一级标题, 退回到 anchor 之后第一行非空
+        for j in range(anchor + 1, len(lines)):
+            if lines[j].strip():
+                body_start = j
+                break
+    if body_start is None:
+        return content
+    return "\n".join(lines[body_start:])
+
 
 
 def _job_name_map() -> dict:
@@ -118,17 +173,41 @@ async def get_report_content(
     job_id: str = Query(...),
     file: str = Query(...),
 ):
-    """读取单个报告完整 markdown。"""
+    """读取单个报告完整 markdown。
+
+    优先读 Obsidian 精修版(03-CronReports/<job_name>/<date>.md, 已去噪);
+    找不到则 fallback 到 cron 原始输出(同样过 _strip_meta 去噪), 保证 Dialog 不展示元信息噪音。
+    """
     # 防止路径穿越
     if ".." in file or "/" in file or "\\" in file:
         raise HTTPException(400, "非法文件名")
+
+    # 1) 优先 Obsidian 精修版: 用文件名日期 YYYY-MM-DD 匹配 <date>.md
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})_", file)
+    vault_content = None
+    if m and OB_REPORTS_DIR.exists():
+        date_str = m.group(1)
+        job_name = _job_name_map().get(job_id, job_id)
+        # 任务名清理规则需与 sync_to_vault 保持一致
+        safe_name = re.sub(r"[^\w\u4e00-\u9fff\-_]", "_", job_name).strip("_")[:60]
+        if not safe_name:
+            safe_name = job_id
+        vault_file = OB_REPORTS_DIR / safe_name / f"{date_str}.md"
+        if vault_file.exists():
+            vault_content = vault_file.read_text(encoding="utf-8", errors="ignore")
+
+    # 2) fallback: cron 原始输出
     f = CRON_OUTPUT_DIR / job_id / file
-    if not f.exists() or not f.is_file():
-        raise HTTPException(404, f"报告不存在: {job_id}/{file}")
-    try:
-        content = f.read_text(encoding="utf-8", errors="ignore")
-    except Exception as e:
-        raise HTTPException(500, f"读取失败: {e}")
+    if vault_content is None:
+        if not f.exists() or not f.is_file():
+            raise HTTPException(404, f"报告不存在: {job_id}/{file}")
+        try:
+            vault_content = f.read_text(encoding="utf-8", errors="ignore")
+        except Exception as e:
+            raise HTTPException(500, f"读取失败: {e}")
+
+    # 统一去噪(cron 原始版必去; Obsidian 版已是去噪后的, 再跑一次无副作用)
+    content = _strip_meta(vault_content)
     return {"job_id": job_id, "file": file, "content": content}
 
 
@@ -195,6 +274,8 @@ async def sync_to_vault(
             except ValueError:
                 rel = target
             content = src.read_text(encoding="utf-8", errors="ignore")
+            # 剥掉 cron 元信息噪音(Job ID / Run Time / Prompt 区块), 只留正文
+            content = _strip_meta(content)
             if not content.startswith("---"):
                 fm = (
                     f"---\n"

@@ -42,6 +42,8 @@ REPO_DIR="${PANWATCH_REPO:-$REPO_DIR}"
 TOKEN="${WUDAO_MCP_TOKEN:-$TOKEN}"
 AUTH_USERNAME="${AUTH_USERNAME:-admin}"
 AUTH_PASSWORD="${AUTH_PASSWORD:-admin123}"
+# Obsidian vault 路径(报告同步目标): 主机真实路径挂载进容器
+OBSIDIAN_VAULT="${OBSIDIAN_VAULT:-/home/ubuntu/Obsidian/FinanceVault}"
 
 # 部署清单: 所有被改动的文件 (相对 REPO_DIR)
 FILES=(
@@ -135,9 +137,10 @@ rebuild_container() {
     --name "$CONTAINER" \
     -p 8000:8000 \
     -v "${CONTAINER}_data:/app/data" \
-    -v /home/ubuntu/.hermes/cron/output:/hermes-cron-output:ro \
-    -e HERMES_HOME=/hermes-cron-output \
-    -e CRON_OUTPUT_DIR=/hermes-cron-output \
+    -v /home/ubuntu/.hermes:/hermes:ro \
+    -v "$OBSIDIAN_VAULT:/obsidian-vault:rw" \
+    -e HERMES_HOME=/hermes \
+    -e OBSIDIAN_VAULT=/obsidian-vault \
     -e AUTH_USERNAME="$AUTH_USERNAME" \
     -e AUTH_PASSWORD="$AUTH_PASSWORD" \
     ${env_args[@]+"${env_args[@]}"} \
