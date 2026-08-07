@@ -13,6 +13,7 @@ from src.web.api import (
     history,
     news,
     market,
+    reports,
     auth,
     suggestions,
     quotes,
@@ -176,6 +177,12 @@ app.include_router(
     chat.router,
     prefix="/api/chat",
     tags=["chat"],
+    dependencies=protected,
+)
+app.include_router(
+    reports.router,
+    prefix="/api/reports",
+    tags=["reports"],
     dependencies=protected,
 )
 

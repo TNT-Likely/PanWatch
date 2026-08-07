@@ -57,6 +57,7 @@ FILES=(
   "prompts/daily_report.txt"
   "src/web/api/forecast.py"
   "src/web/api/market.py"
+  "src/web/api/reports.py"
   "src/web/api/recommendations.py"
   "src/web/api/discovery.py"
   "src/web/api/settings.py"
@@ -131,6 +132,9 @@ rebuild_container() {
     --name "$CONTAINER" \
     -p 8000:8000 \
     -v "${CONTAINER}_data:/app/data" \
+    -v /home/ubuntu/.hermes/cron/output:/hermes-cron-output:ro \
+    -e HERMES_HOME=/hermes-cron-output \
+    -e CRON_OUTPUT_DIR=/hermes-cron-output \
     -e AUTH_USERNAME="$AUTH_USERNAME" \
     -e AUTH_PASSWORD="$AUTH_PASSWORD" \
     ${env_args[@]+"${env_args[@]}"} \
