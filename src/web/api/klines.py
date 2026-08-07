@@ -110,6 +110,8 @@ def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = 
     if is_index:
         # 云服务器东财必失败(502) → 直接腾讯K线,避免每次白等 10s 超时
         import requests as _req
+        import logging
+        _log_k = logging.getLogger(__name__)
 
         idx_conf = next((i for i in MARKET_INDICES if i["symbol"] == symbol), None)
         tencent_code = idx_conf.get("tencent_symbol", "") if idx_conf else ""
@@ -119,35 +121,39 @@ def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = 
                 headers={"User-Agent": "Mozilla/5.0"},
                 timeout=8,
             )
-            if r.status_code == 200:
-                d = r.json()
-                data = (d.get("data") or {}).get(tencent_code) or {}
-                bars = data.get("day") or data.get("qfqday") or []
-                from src.collectors.kline_collector import KlineData
+            r.raise_for_status()
+            d = r.json()
+            data = (d.get("data") or {}).get(tencent_code) or {}
+            bars = data.get("day") or data.get("qfqday") or []
+            if not bars:
+                raise RuntimeError(f"腾讯指数K线返回空 bars({tencent_code},msg={d.get('msg')})")
+            from src.collectors.kline_collector import KlineData
 
-                raw = [
-                    KlineData(
-                        date=b[0],
-                        open=float(b[1]),
-                        close=float(b[2]),
-                        high=float(b[3]),
-                        low=float(b[4]),
-                        volume=float(b[5]) if len(b) > 5 else 0,
-                    )
-                    for b in bars
-                ]
-                klines = _aggregate_klines(raw, interval)
-                return {
-                    "symbol": symbol,
-                    "market": market_code.value,
-                    "days": days,
-                    "interval": interval,
-                    "klines": _serialize_klines(klines),
-                    "is_index": True,
-                }
+            raw = [
+                KlineData(
+                    date=b[0],
+                    open=float(b[1]),
+                    close=float(b[2]),
+                    high=float(b[3]),
+                    low=float(b[4]),
+                    volume=float(b[5]) if len(b) > 5 else 0,
+                )
+                for b in bars
+            ]
+            klines = _aggregate_klines(raw, interval)
+            return {
+                "symbol": symbol,
+                "market": market_code.value,
+                "days": days,
+                "interval": interval,
+                "klines": _serialize_klines(klines),
+                "is_index": True,
+            }
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"指数K线(腾讯)获取失败 {symbol}: {e}")
+            # ⚠️ 指数K线失败必须显式 fail: 否则会回退到股票K线分支,
+            # 导致"上证指数"页面显示平安银行数据(代码 000001 都是它)
+            _log_k.error(f"指数K线获取失败({symbol}/{tencent_code}): {e}")
+            raise HTTPException(503, f"指数K线不可用({symbol}): {e}")
 
     collector = KlineCollector(market_code)
     klines = collector.get_klines(symbol, days=days)
