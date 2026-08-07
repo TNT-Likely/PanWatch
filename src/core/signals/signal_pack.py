@@ -157,6 +157,13 @@ class SignalPackBuilder:
         # 1) Quotes (batch per market)
         by_market: dict[MarketCode, list[tuple[str, str]]] = {}
         for sym, market, name in symbols:
+            # 归一化: 允许调用方传 string('CN')或 MarketCode,统一转成枚举(防止后续 .value 报错)
+            if not isinstance(market, MarketCode):
+                try:
+                    market = MarketCode(market)
+                except ValueError:
+                    logger.warning(f"未知 market={market!r} 跳过 {sym}")
+                    continue
             by_market.setdefault(market, []).append((sym, name))
 
         quote_map: dict[str, StockData | None] = {}

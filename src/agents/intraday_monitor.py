@@ -466,6 +466,7 @@ class IntradayMonitorAgent(BaseAgent):
         # 资金流向（仅A股，若可用）
         pack = data.get("signal_pack")
         flow = getattr(pack, "capital_flow", None) if pack else None
+        lines.append("\n## 资金面")
         if (
             isinstance(flow, dict)
             and flow
@@ -480,14 +481,19 @@ class IntradayMonitorAgent(BaseAgent):
                     if abs(inflow) >= 1e8
                     else f"{inflow / 1e4:+.0f}万"
                 )
-                lines.append("\n## 资金面")
                 lines.append(
                     f"- 资金：{flow.get('status')}，主力净流入{inflow_str}（{inflow_pct:+.1f}%）"
                 )
                 if flow.get("trend_5d") and flow.get("trend_5d") != "无数据":
                     lines.append(f"- 5日资金：{flow.get('trend_5d')}")
             except Exception:
-                pass
+                lines.append("- ⚠️ 资金数据解析失败(数据源返回异常),资金面留空")
+        else:
+            # 显式标"无数据",AI 看到这条不会瞎编;同时给出失败原因(供调试)
+            if isinstance(flow, dict) and flow.get("error"):
+                lines.append(f"- ⚠️ 资金数据源异常({flow.get('error')[:80]}),资金面留空,禁止编造")
+            else:
+                lines.append("- ⚠️ 暂无资金数据(数据源未返回),资金面留空,禁止编造")
 
             # 多级支撑压力
             support_m, resistance_m = kline.get("support_m"), kline.get("resistance_m")

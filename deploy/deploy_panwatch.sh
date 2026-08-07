@@ -66,6 +66,7 @@ FILES=(
   "src/collectors/market_sentiment_collector.py"
   "src/agents/premarket_outlook.py"
   "src/agents/intraday_monitor.py"
+  "src/core/signals/signal_pack.py"
   "src/core/strategy_engine.py"
   "src/core/entry_candidates.py"
   "src/core/sector_filter.py"
