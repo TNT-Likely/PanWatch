@@ -493,14 +493,40 @@ _RE_STOCK = re.compile(r"([\u4e00-\u9fa5A-Za-z]{2,12})[（(](\d{6})[）)]")
 
 
 def _extract_stocks(text: str) -> list[dict]:
-    """从报告文本解析股票标的: 名称(6位代码)。去重保序。"""
+    """从报告文本解析股票标的: 名称(6位代码)。去重保序。
+
+    支持两种格式:
+    1. 连写: 神剑股份（002361）/ 山西焦煤(000983) — 全角/半角括号
+    2. markdown 表格相邻单元格: | 浙江交科 | 002061 |(名称列 + 代码列)
+    """
     out: list[dict] = []
     seen: set[str] = set()
+
+    def _add(name: str, code: str):
+        code = code.strip()
+        if not code.isdigit() or len(code) != 6:
+            return
+        if code in seen:
+            return
+        seen.add(code)
+        out.append({"name": name.strip() or code, "symbol": code, "market": "CN"})
+
     if not text:
         return out
+    # 格式1: 名称(6位代码), 全角/半角括号
     for name, code in _RE_STOCK.findall(text):
-        if code in seen:
+        _add(name, code)
+    # 格式2: markdown 表格相邻单元格 | 名称 | 6位代码 |
+    # 匹配表格行: 提取所有表格单元格,检查相邻对
+    for line in text.splitlines():
+        if not line.strip().startswith("|"):
             continue
-        seen.add(code)
-        out.append({"name": name, "symbol": code, "market": "CN"})
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        for i in range(len(cells) - 1):
+            # 名称列(中文,2-12字) + 代码列(6位数字)
+            if re.fullmatch(r"[\u4e00-\u9fa5A-Za-z]{2,12}", cells[i]) and re.fullmatch(r"\d{6}", cells[i + 1]):
+                _add(cells[i], cells[i + 1])
+            # 代码列 + 名称列(反序)
+            elif re.fullmatch(r"\d{6}", cells[i]) and re.fullmatch(r"[\u4e00-\u9fa5A-Za-z]{2,12}", cells[i + 1]):
+                _add(cells[i + 1], cells[i])
     return out
