@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, Plus } from 'lucide-react'
 import {
   dashboardApi,
@@ -663,7 +664,7 @@ export default function DashboardPage() {
               </button>
               {aiReview?.content && (
                 <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-[12px] [&_p]:my-1 [&_ul]:my-1">
-                  <ReactMarkdown>{aiReview.content}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiReview.content}</ReactMarkdown>
                 </div>
               )}
             </div>
@@ -773,7 +774,7 @@ export default function DashboardPage() {
             {!briefOpen && briefSummary && <div className="mt-1 text-[12px] text-muted-foreground">{briefSummary}</div>}
             {briefOpen && brief.content && (
               <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-[12px] [&_p]:my-1 [&_ul]:my-1">
-                <ReactMarkdown>{brief.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.content}</ReactMarkdown>
               </div>
             )}
           </div>
