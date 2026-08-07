@@ -731,7 +731,17 @@ export default function OpportunitiesPage() {
                             <span className="font-medium text-foreground">{name}</span>
                           </span>
                           <span className="flex items-center gap-1.5 shrink-0">
-                            {chg && <span className="text-emerald-400">{chg}%</span>}
+                            {chg && (
+                              <span
+                                className={
+                                  String(chg).startsWith('-')
+                                    ? 'text-emerald-400' // 跌:绿(A股习惯)
+                                    : 'text-rose-400' // 涨:红(A股习惯)
+                                }
+                              >
+                                {chg}%
+                              </span>
+                            )}
                             {mainNet != null && (
                               <span className="text-[10px] text-primary">主力{String(mainNet)}</span>
                             )}
