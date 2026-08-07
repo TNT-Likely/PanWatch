@@ -30,6 +30,7 @@ from src.web.api import (
     chat,
     forecast,
     calendar,
+    tdx,
 )
 from src.web.api import factors
 from src.web.api import health
@@ -197,6 +198,12 @@ app.include_router(
     calendar.router,
     prefix="/api/calendar",
     tags=["calendar"],
+    dependencies=protected,
+)
+app.include_router(
+    tdx.router,
+    prefix="/api/tdx",
+    tags=["tdx"],
     dependencies=protected,
 )
 

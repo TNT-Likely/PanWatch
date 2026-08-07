@@ -51,6 +51,8 @@ FILES=(
   "src/web/app.py"
   "src/web/api/chat.py"
   "src/web/api/calendar.py"
+  "src/web/api/tdx.py"
+  "packages/marketdata/src/marketdata/vendors/tdx.py"
   "src/agents/auction_review.py"
   "src/agents/theme_launch_detector.py"
   "src/agents/stock_attribution.py"
@@ -137,6 +139,9 @@ rebuild_container() {
   local env_args=()
   if [ -n "$TOKEN" ]; then
     env_args+=(-e "WUDAO_MCP_TOKEN=$TOKEN")
+  fi
+  if [ -n "$TDX_API_KEY" ]; then
+    env_args+=(-e "TDX_API_KEY=$TDX_API_KEY")
   fi
   $DOCKER run -d \
     --name "$CONTAINER" \

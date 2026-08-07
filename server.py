@@ -697,6 +697,18 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": False,
             "test_symbols": [],
         },
+        {
+            "name": "通达信问小达",
+            "type": "wenda",
+            "provider": "tdx",
+            "config": {
+                "description": "通达信问小达 MCP(需 TDX_API_KEY):自然语言投研问答,覆盖个股行情/智能选股/板块排行/财务/技术/资金流向。市场级,不绑定个股 symbol 模型。",
+            },
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
 ]
 
 
