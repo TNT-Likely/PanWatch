@@ -102,6 +102,10 @@ deploy_files() {
     if [ -f "$REPO_DIR/$f" ]; then
       $DOCKER cp "$REPO_DIR/$f" "$CONTAINER:/app/$f"
       echo "  ✅ $f"
+    elif [ -d "$REPO_DIR/$f" ]; then
+      # 目录(如 strategies/): 整体 cp 进容器对应路径
+      $DOCKER cp "$REPO_DIR/$f" "$CONTAINER:/app/$(dirname "$f")/"
+      echo "  ✅ $f/ (目录)"
     else
       echo "  ⚠️ 缺失: $f (跳过)"
     fi
@@ -116,13 +120,13 @@ for f in ['src/agents/auction_review.py','src/agents/theme_launch_detector.py','
         print(f'语法错误 {f}: {e}'); sys.exit(1)
 print('✅ 容器内语法校验通过')
 " || { echo "❌ 语法校验失败"; exit 1; }
-  # 前端构建 + 部署(改过 React 时必须,构建产物在 /app/static/)
-  if [ -d "$REPO_DIR/frontend/node_modules/.bin" ] && [ -n "$(find "$REPO_DIR/frontend/src" "$REPO_DIR/frontend/packages" -name '*.tsx' -o -name '*.ts' -newer "$REPO_DIR/frontend/dist/index.html" 2>/dev/null | head -1)" ]; then
-    echo "▶ 检测到前端源码更新,重新构建..."
+  # 前端构建 + 部署: 始终重新 build(构建快 ~7s, 避免重建容器后镜像旧前端覆盖)
+  if [ -d "$REPO_DIR/frontend/node_modules/.bin" ]; then
+    echo "▶ 重新构建前端..."
     (cd "$REPO_DIR/frontend" && ./node_modules/.bin/vite build 2>&1 | tail -3) || { echo "❌ 前端构建失败"; exit 1; }
     $DOCKER cp "$REPO_DIR/frontend/dist/." "$CONTAINER":/app/static/ && echo "  ✅ 前端已部署到 /app/static/"
   else
-    echo "  ⏭️ 前端无更新,跳过构建"
+    echo "  ⚠️ 前端 node_modules 缺失,跳过构建(需手动 build)"
   fi
 }
 
