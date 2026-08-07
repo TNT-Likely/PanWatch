@@ -145,12 +145,34 @@ class DailyReportAgent(BaseAgent):
             logger.warning(f"涨停复盘采集失败: {e}")
             limit_up_review = {}
 
+        # 通达信问小达投研查询(盘后: 涨停结构/主力净流入/龙虎榜概览)
+        tdx_wenda: dict = {}
+        try:
+            from src.collectors.tdx_collector import collect_wenda
+
+            tdx_wenda = collect_wenda(
+                [
+                    "今日涨停家数最多的概念板块",
+                    "今日主力净流入前10的A股",
+                    "今日龙虎榜机构净买入前10",
+                ]
+            )
+            logger.info(
+                "TDX 问小达采集完成: %s/%s 成功",
+                sum(1 for v in tdx_wenda.values() if v),
+                len(tdx_wenda),
+            )
+        except Exception as e:
+            logger.warning(f"TDX 问小达采集失败: {e}")
+            tdx_wenda = {}
+
         return {
             "indices": all_indices,
             "signal_packs": packs,
             "symbol_contexts": context_pack.get("symbols", {}),
             "quality_overview": context_pack.get("quality_overview", {}),
             "limit_up_review": limit_up_review,
+            "tdx_wenda": tdx_wenda,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -212,6 +234,35 @@ class DailyReportAgent(BaseAgent):
                     f"{s.get('name')}×{s.get('count')}" for s in top_sectors
                 )
                 lines.append(f"- 涨停板块分布：{sector_str}")
+
+        # 通达信问小达投研扫描(盘后: 涨停结构/主力净流入/龙虎榜)
+        tw = data.get("tdx_wenda", {}) or {}
+        if tw:
+            lines.append("\n## 通达信问小达投研扫描(盘后)")
+            for q, res in tw.items():
+                if not res or not isinstance(res, dict):
+                    continue
+                rows = res.get("data") or []
+                if not rows:
+                    continue
+                lines.append(f"### {q}")
+                for r in rows[:10]:
+                    if not isinstance(r, dict):
+                        continue
+                    name = r.get("sec_name") or r.get("name") or ""
+                    code = r.get("sec_code") or r.get("code") or ""
+                    chg = r.get("chg") or r.get("change_pct") or ""
+                    main_net = next(
+                        (v for k, v in r.items() if "主力净额" in k or "主力净" in k),
+                        "",
+                    )
+                    line = f"- {code} {name}"
+                    if chg:
+                        line += f" 涨{chg}%"
+                    if main_net:
+                        line += f" 主力净额{main_net}"
+                    lines.append(line)
+                lines.append("")
 
         # 自选股详情
         lines.append("\n## 自选股详情")

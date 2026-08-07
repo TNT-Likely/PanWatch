@@ -56,6 +56,7 @@ FILES=(
   "src/agents/auction_review.py"
   "src/agents/theme_launch_detector.py"
   "src/agents/stock_attribution.py"
+  "src/collectors/tdx_collector.py"
   "src/collectors/wudao_mcp_client.py"
   "src/collectors/market_sentiment_collector.py"
   "prompts/premarket_outlook.txt"

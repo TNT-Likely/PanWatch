@@ -273,6 +273,28 @@ class PremarketOutlookAgent(BaseAgent):
             event_stream = []
             catalyst = {}
 
+        # 4.5 通达信问小达投研查询(盘前: 主力净流入/题材资金流向/强势板块)
+        tdx_wenda: dict = {}
+        try:
+            from src.collectors.tdx_collector import collect_wenda
+
+            tdx_wenda = collect_wenda(
+                [
+                    "今日主力净流入前10的A股",
+                    "今日涨幅前10的概念板块",
+                    "近3日主力净流入前10的半导体",
+                ]
+            )
+            logger.info(
+                "[%s] TDX 问小达采集完成: %s/%s 成功",
+                trace_id,
+                sum(1 for v in tdx_wenda.values() if v),
+                len(tdx_wenda),
+            )
+        except Exception as e:
+            logger.warning("[%s] TDX 问小达采集失败: %s", trace_id, e)
+            tdx_wenda = {}
+
         return {
             "yesterday_analysis": yesterday_analysis.content
             if yesterday_analysis
@@ -285,6 +307,7 @@ class PremarketOutlookAgent(BaseAgent):
             "market_sentiment": market_sentiment,
             "event_stream": event_stream,
             "catalyst": catalyst,
+            "tdx_wenda": tdx_wenda,
             "timestamp": datetime.now().isoformat(),
             "run_trace_id": trace_id,
         }
@@ -411,6 +434,36 @@ class PremarketOutlookAgent(BaseAgent):
                 lines.append(
                     f"- {c.get('date') or c.get('time') or ''}: {c.get('title') or c.get('event') or c.get('name') or ''}"
                 )
+            lines.append("")
+
+        # 通达信问小达投研扫描(盘前: 主力净流入/题材资金流向/强势板块)
+        tw = data.get("tdx_wenda", {}) or {}
+        if tw:
+            lines.append("## 通达信问小达投研扫描(盘前)")
+            for q, res in tw.items():
+                if not res or not isinstance(res, dict):
+                    continue
+                rows = res.get("data") or []
+                if not rows:
+                    continue
+                lines.append(f"### {q}")
+                for r in rows[:10]:
+                    if isinstance(r, dict):
+                        name = r.get("sec_name") or r.get("name") or ""
+                        code = r.get("sec_code") or r.get("code") or ""
+                        chg = r.get("chg") or r.get("change_pct") or ""
+                        # 主力净额字段名带日期后缀, 模糊匹配
+                        main_net = next(
+                            (v for k, v in r.items() if "主力净额" in k or "主力净" in k),
+                            "",
+                        )
+                        line = f"- {code} {name}"
+                        if chg:
+                            line += f" 涨{chg}%"
+                        if main_net:
+                            line += f" 主力净额{main_net}"
+                        lines.append(line)
+                lines.append("")
             lines.append("")
 
         # 相关新闻
