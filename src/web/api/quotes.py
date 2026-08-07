@@ -192,4 +192,56 @@ async def get_company_info(symbol: str, market: str = "CN"):
         return payload
     except Exception as e:
         logger.error(f"公司信息获取失败 {symbol}: {e}")
-        return {"symbol": symbol, "market": market, "name": None, "note": "公司信息获取失败"}
+
+
+# ── 分时走势(腾讯实时, 盘中) ─────────────────────────────────────────────
+_MINUTE_CACHE: dict = {}  # {symbol_market: (ts, points)}
+_MINUTE_TTL = 15.0  # 分时变动快, 短缓存
+
+
+def _tencent_minute(symbol: str, market: str) -> list[dict] | None:
+    """腾讯分时接口(https://web.ifzq.gtimg.cn)。返回 [{t, price, avg, volume}]。"""
+    prefix = {"CN": "sh" if symbol.startswith(("6", "9")) else "sz",
+              "HK": "hk", "US": ""}.get(market, "sh")
+    code = f"{prefix}{symbol}" if market != "US" else symbol
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={code}"
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            import json as _json
+            d = _json.load(resp)
+        data = (d.get("data") or {}).get(code, {}).get("data", {}).get("data")
+        if not data:
+            return None
+        # 字段: "0930 1308.66 173 22639818.00" = 时间 价格 累计量(手) 累计额(元)
+        points = []
+        cum_vol = 0.0
+        cum_amt = 0.0
+        for row in data:
+            parts = row.split()
+            if len(parts) < 4:
+                continue
+            t, price, vol, amt = parts[0], float(parts[1]), float(parts[2]), float(parts[3])
+            cum_vol += vol
+            cum_amt += amt
+            avg = (cum_amt / cum_vol / 100.0) if cum_vol else price  # 均价(元/股)
+            points.append({"t": t, "price": price, "avg": round(avg, 2), "volume": int(vol)})
+        return points
+    except Exception as e:
+        logger.debug(f"腾讯分时失败 {symbol}: {e}")
+        return None
+
+
+@router.get("/minute")
+async def get_minute(symbol: str, market: str = "CN"):
+    """分时走势(盘中实时)。腾讯优先, 失败返回空。"""
+    cache_key = f"{market}:{symbol}"
+    cached = _MINUTE_CACHE.get(cache_key)
+    if cached and (_time.time() - cached[0]) < _MINUTE_TTL:
+        return {"symbol": symbol, "market": market, "points": cached[1]}
+    points = _tencent_minute(symbol, market)
+    if points is None:
+        points = []
+    _MINUTE_CACHE[cache_key] = (_time.time(), points)
+    return {"symbol": symbol, "market": market, "points": points}

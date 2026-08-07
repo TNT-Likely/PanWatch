@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, Activity } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
+import { MinuteDialog } from '@panwatch/biz-ui/components/minute-dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -382,6 +383,11 @@ export default function StocksPage() {
   const [klineDialogName, setKlineDialogName] = useState<string | undefined>(undefined)
   const [klineDialogHasPosition, setKlineDialogHasPosition] = useState<boolean>(false)
   const [klineDialogInitialSummary, setKlineDialogInitialSummary] = useState<KlineSummary | null>(null)
+  // Minute Dialog (分时候时)
+  const [minuteDialogOpen, setMinuteDialogOpen] = useState(false)
+  const [minuteDialogSymbol, setMinuteDialogSymbol] = useState('')
+  const [minuteDialogMarket, setMinuteDialogMarket] = useState('CN')
+  const [minuteDialogName, setMinuteDialogName] = useState<string | undefined>(undefined)
   const [insightOpen, setInsightOpen] = useState(false)
   const [insightSymbol, setInsightSymbol] = useState('')
   const [insightMarket, setInsightMarket] = useState('CN')
@@ -754,6 +760,13 @@ export default function StocksPage() {
     setKlineDialogInitialSummary(klineSummaries[`${m}:${symbol}`] || null)
     setKlineDialogOpen(true)
   }, [klineSummaries])
+
+  const openMinuteDialog = useCallback((symbol: string, market: string, name?: string) => {
+    setMinuteDialogSymbol(symbol)
+    setMinuteDialogMarket(market || 'CN')
+    setMinuteDialogName(name)
+    setMinuteDialogOpen(true)
+  }, [])
 
   // Open news dialog - pass stock name for more stable search
   const openNewsDialog = useCallback((stockName?: string) => {
@@ -2078,7 +2091,10 @@ export default function StocksPage() {
                                   <td className="px-4 py-2.5 text-center">
                                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                       {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                        <>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openMinuteDialog(pos.symbol, pos.market, pos.name)} title="分时"><Activity className="w-3 h-3" /></Button>
                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
+                                        </>
                                       ) : null })()}
                                       <StockPriceAlertPanel
                                         mode="icon"
@@ -2244,7 +2260,10 @@ export default function StocksPage() {
                                 </div>
                                 <div className="flex items-center gap-1">
                                   {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
+                                    <>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openMinuteDialog(pos.symbol, pos.market, pos.name)} title="分时"><Activity className="w-3 h-3" /></Button>
                                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openKlineDialog(pos.symbol, pos.market, pos.name, true)} title="K线指标"><BarChart3 className="w-3 h-3" /></Button>
+                                    </>
                                   ) : null })()}
                                   <StockPriceAlertPanel
                                     mode="icon"
@@ -2512,6 +2531,14 @@ export default function StocksPage() {
         stockName={klineDialogName}
         hasPosition={klineDialogHasPosition}
         initialSummary={klineDialogInitialSummary as any}
+      />
+
+      <MinuteDialog
+        open={minuteDialogOpen}
+        onOpenChange={setMinuteDialogOpen}
+        symbol={minuteDialogSymbol}
+        market={minuteDialogMarket}
+        stockName={minuteDialogName}
       />
 
       <StockInsightModal
