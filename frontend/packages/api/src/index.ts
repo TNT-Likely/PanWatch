@@ -16,3 +16,4 @@ export * from './chat'
 export * from './tradingagents'
 export * from './datasources'
 export * from './reports'
+export * from "./strategies"

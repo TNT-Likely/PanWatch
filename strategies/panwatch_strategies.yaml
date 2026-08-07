@@ -1,0 +1,155 @@
+# 策略库配置文件 - 借鉴 alphasift YAML
+#
+# 字段分类:
+#   - 实时可拿(腾讯接口 + ftshare): change_pct, volume_ratio, turnover_rate, amount, price, high, low
+#   - 盘后可拿(baostock/zhitu 需时): market_cap, pe_ttm, pb_ratio
+#
+# 当盘后字段缺失时, 策略筛选会跳过该过滤项并在报告里标注"⚠️ 数据缺失"
+
+dual_low:
+  display_name: "双低选股(价值)"
+  description: "低 PE + 低 PB 价值型,叠加活跃度确认避免静态低估值陷阱"
+  category: "value"
+  tags: ["value", "defensive", "low_valuation"]
+  filter:  # 硬过滤: 满足以下所有条件才入选
+    price_min: 3
+    price_max: 80
+    change_pct_min: -4.5
+    change_pct_max: 4.5
+    turnover_rate_min: 0.5  # 避免死水低估值
+  # 东财字段(盘后可拿,缺则跳过)
+  pe_ttm_max: 15
+  pb_max: 2.0
+  market_cap_min: 50  # 亿
+  market_cap_max: 3000  # 亿
+  ranking_factors:  # 排序权重(总和=1)
+    low_pe: 0.4       # PE 越低分越高
+    low_pb: 0.3       # PB 越低分越高
+    stable_amount: 0.2  # 成交额稳定
+    reversal: 0.1
+  ui_badge: "价值"
+  source: "alphasift/dual_low@v1.2"
+
+capital_heat:
+  display_name: "资金热度(短线)"
+  description: "资金活跃、量价同步但未极端过热的短线候选"
+  category: "momentum"
+  tags: ["momentum", "capital_flow", "short_term"]
+  filter:
+    price_min: 3
+    price_max: 220
+    change_pct_min: 1.0    # 当日有资金推动
+    change_pct_max: 9.5    # 但不要追太高的
+    volume_ratio_min: 1.5
+    turnover_rate_min: 2.0
+  ranking_factors:
+    volume_ratio: 0.4      # 量比越高越好
+    change_pct: 0.3
+    turnover_rate: 0.2
+    stable: 0.1
+  ui_badge: "资金"
+  source: "alphasift/capital_heat@v1.1"
+
+volume_breakout:
+  display_name: "放量突破"
+  description: "放量突破近期整理平台(短线催化)"
+  category: "momentum"
+  tags: ["breakout", "volume", "short_term"]
+  filter:
+    price_min: 3
+    price_max: 300
+    change_pct_min: 2.0    # 突破需要涨幅确认
+    change_pct_max: 9.9
+    volume_ratio_min: 2.0  # 放量
+    turnover_rate_min: 1.5
+  ranking_factors:
+    volume_ratio: 0.5      # 放量是核心
+    change_pct: 0.3
+    turnover_rate: 0.2
+  ui_badge: "突破"
+  source: "alphasift/volume_breakout"
+
+oversold_reversal:
+  display_name: "超卖反弹"
+  description: "RSI/KDJ 超卖区金叉,缩量企稳后的小仓试探机会"
+  category: "reversal"
+  tags: ["reversal", "rsi", "oversold"]
+  filter:
+    price_min: 3
+    price_max: 100
+    change_pct_min: -7.0  # 前期大跌
+    change_pct_max: 1.0   # 但当日企稳
+    volume_ratio_max: 1.5  # 缩量
+    turnover_rate_min: 0.3
+  ranking_factors:
+    oversold: 0.5    # 越超卖反弹空间越大
+    stable: 0.3
+    change_pct: 0.2
+  ui_badge: "反弹"
+  source: "alphasift/oversold_reversal"
+
+momentum_quality:
+  display_name: "动量+质量"
+  description: "已有趋势但质量好的候选(估值合理+资金活跃)"
+  category: "framework"
+  tags: ["momentum", "quality", "multi_factor"]
+  filter:
+    price_min: 3
+    price_max: 300
+    change_pct_min: 1.0   # 已有趋势
+    change_pct_max: 7.0
+    volume_ratio_min: 1.0
+    turnover_rate_min: 1.0
+  ranking_factors:
+    change_pct: 0.3
+    volume_ratio: 0.25
+    stable_amount: 0.2
+    turnover_rate: 0.15
+    reversal: 0.1
+  ui_badge: "动量"
+  source: "alphasift/momentum_quality"
+
+low_volatility_quality:
+  display_name: "低波质量(防御)"
+  description: "波动低、回撤浅、估值不过热的防守型候选"
+  category: "quality"
+  tags: ["quality", "defensive", "low_volatility"]
+  filter:
+    price_min: 5
+    price_max: 100
+    # 振幅 = (high-low)/prev_close, 4% 以下算低波
+    change_pct_min: -3.5
+    change_pct_max: 3.5
+    turnover_rate_min: 0.5
+    turnover_rate_max: 5.0  # 不要太活跃(容易是题材炒作)
+  ranking_factors:
+    stable: 0.4
+    turnover_rate: 0.2   # 中等换手
+    volume_ratio: 0.2
+    change_pct: 0.2
+  ui_badge: "防御"
+  source: "alphasift/low_volatility_quality"
+
+# 字段缺失时的处理
+data_completeness:
+  realtime: [change_pct, volume_ratio, turnover_rate, amount, price]
+  eod_only: [pe_ttm, pb_ratio, market_cap, pe_dynamic]
+  strategy_data_status:
+    dual_low:  # 盘后字段是核心,盘中不可用
+      available_in: "eod"
+      realtime_fallback: "跳过该策略, 提示'需盘后跑'"
+    capital_heat:
+      available_in: "realtime"
+      realtime_fallback: "直接可用"
+    volume_breakout:
+      available_in: "realtime"
+      realtime_fallback: "直接可用"
+    oversold_reversal:
+      available_in: "realtime"
+      realtime_fallback: "直接可用"
+    momentum_quality:
+      available_in: "realtime"
+      realtime_fallback: "直接可用"
+    low_volatility_quality:
+      available_in: "realtime"
+      realtime_fallback: "直接可用"

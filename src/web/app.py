@@ -14,6 +14,7 @@ from src.web.api import (
     news,
     market,
     reports,
+    strategies,
     auth,
     suggestions,
     quotes,
@@ -183,6 +184,12 @@ app.include_router(
     reports.router,
     prefix="/api/reports",
     tags=["reports"],
+    dependencies=protected,
+)
+app.include_router(
+    strategies.router,
+    prefix="/api/strategies",
+    tags=["strategies"],
     dependencies=protected,
 )
 
