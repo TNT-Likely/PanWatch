@@ -55,6 +55,7 @@ FILES=(
   "src/collectors/market_sentiment_collector.py"
   "prompts/premarket_outlook.txt"
   "prompts/daily_report.txt"
+  "prompts/report_template.md"
   "src/web/api/forecast.py"
   "src/web/api/market.py"
   "src/web/api/reports.py"
