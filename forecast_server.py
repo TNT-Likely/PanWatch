@@ -722,6 +722,7 @@ def _push_to_wecom_via_hermes(text: str, event_type: str = "forecast_report") ->
 
     容器内访问 172.17.0.1:8644 (localhost 指容器自己)。
     secret 从 /hermes/webhook_subscriptions.json 的 panwatch-notify.secret 读取。
+    wecom adapter 期望 payload 含 title + body 字段。
     返回 {"ok": bool, "message": str}。
     """
     import hmac
@@ -745,9 +746,15 @@ def _push_to_wecom_via_hermes(text: str, event_type: str = "forecast_report") ->
     if not secret:
         return {"ok": False, "message": "未找到 panwatch-notify webhook secret"}
 
+    # 拆 text 为 title(首行) + body(剩余)
+    _lines = (text or "").split("\n", 1)
+    title = _lines[0].strip()
+    body_text = _lines[1].strip() if len(_lines) > 1 else ""
+
     payload = _json.dumps({
         "event_type": event_type,
-        "text": text,
+        "title": title,
+        "body": body_text,
     }, ensure_ascii=False)
     sig = "sha256=" + hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
