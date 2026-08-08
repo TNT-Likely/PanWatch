@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+import time
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -453,8 +454,29 @@ async def trigger_stock_agent(
     if not wait:
         # 异步模式：后台执行，立即返回
         sa_id = sa.id if sa else None
+        _sym = trigger_stock.symbol
+        _nm = getattr(trigger_stock, "name", "") or _sym
+        _mkt = getattr(trigger_stock, "market", "CN")
+
+        def _notify(ok: bool, detail: str, started: float) -> None:
+            try:
+                from src.core.notify_center import notify_task_done
+
+                notify_task_done(
+                    f"{_nm}({_sym}) {agent_name}",
+                    ok=ok,
+                    detail=detail or ("分析已完成，可在个股详情查看。" if ok else ""),
+                    category="agent_run",
+                    source=agent_name,
+                    trace_id=trace_id,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    link=f"/stocks?symbol={_sym}&market={_mkt}",
+                )
+            except Exception:
+                logger.exception("写入站内通知失败: %s %s", agent_name, _sym)
 
         def _runner():
+            _started = time.monotonic()
             try:
                 asyncio.run(trigger_agent_for_stock(
                     agent_name,
@@ -466,9 +488,11 @@ async def trigger_stock_agent(
                     trace_id=trace_id,
                     force_refresh=force_refresh,
                 ))
-                logger.info(f"Agent {agent_name} 后台执行完成 - {trigger_stock.symbol}")
-            except Exception:
-                logger.exception(f"Agent {agent_name} 后台执行失败 - {trigger_stock.symbol}")
+                logger.info(f"Agent {agent_name} 后台执行完成 - {_sym}")
+                _notify(True, "", _started)
+            except Exception as exc:
+                logger.exception(f"Agent {agent_name} 后台执行失败 - {_sym}")
+                _notify(False, str(exc)[:500], _started)
 
         t = threading.Thread(
             target=_runner,

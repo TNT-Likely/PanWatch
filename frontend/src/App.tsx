@@ -20,6 +20,7 @@ import ForecastPage from '@/pages/Forecast'
 import IndexDetailPage from '@/pages/IndexDetail'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
+import NotificationBell from '@panwatch/biz-ui/components/notification-bell'
 import ChatWidget from '@/components/ChatWidget'
 import AccountMenu from '@/components/AccountMenu'
 import SelfCheckModal from '@/components/SelfCheckModal'
@@ -187,6 +188,7 @@ function App() {
               >
                 <ScrollText className="w-4 h-4" />
               </button>
+              <NotificationBell />
               <AccountMenu
                 navItems={desktopMoreNavItems}
                 mode={mode}
@@ -224,6 +226,7 @@ function App() {
               >
                 <ScrollText className="w-4 h-4" />
               </button>
+              <NotificationBell size="sm" />
               <AccountMenu
                 size="sm"
                 navItems={mobileMoreNavItems}

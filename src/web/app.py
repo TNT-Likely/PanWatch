@@ -33,6 +33,7 @@ from src.web.api import (
     tdx,
 )
 from src.web.api import factors
+from src.web.api import notifications
 from src.web.api import health
 from src.web.api import insights
 from src.web.api.auth import get_current_user
@@ -87,6 +88,12 @@ app.include_router(
 )
 app.include_router(
     channels.router, prefix="/api/channels", tags=["channels"], dependencies=protected
+)
+app.include_router(
+    notifications.router,
+    prefix="/api/notifications",
+    tags=["notifications"],
+    dependencies=protected,
 )
 app.include_router(
     datasources.router,

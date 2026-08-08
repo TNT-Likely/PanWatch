@@ -101,6 +101,7 @@ def _refresh_worker(
             last_error="",
             last_snapshot_date=(result.get("snapshot_date") or ""),
         )
+        _notify_refresh_done(True, f"快照日期 {result.get('snapshot_date') or '—'}，可前往「机会」页查看。")
     except Exception as e:
         logger.exception("后台刷新策略信号失败: %s", e)
         _set_refresh_state(
@@ -108,6 +109,22 @@ def _refresh_worker(
             finished_at=_now_iso(),
             last_error=str(e),
         )
+        _notify_refresh_done(False, str(e)[:500])
+
+
+def _notify_refresh_done(ok: bool, detail: str) -> None:
+    try:
+        from src.core.notify_center import notify_task_done
+
+        notify_task_done(
+            "策略信号刷新",
+            ok=ok,
+            detail=detail,
+            category="strategy",
+            source="strategy_signals_refresh",
+        )
+    except Exception:
+        logger.exception("写入站内通知失败: 策略信号刷新")
 
 
 def _start_refresh_job(**kwargs) -> tuple[bool, dict]:

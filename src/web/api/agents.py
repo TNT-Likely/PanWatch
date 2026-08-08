@@ -76,17 +76,43 @@ def _format_datetime(dt, tz: str | None = None) -> str:
     return dt.astimezone(tzinfo).isoformat()
 
 
-def _spawn_async_run(fn, *args, name: str) -> None:
-    """Run an async function in a dedicated thread."""
+def _spawn_async_run(fn, *args, name: str, notify_label: str | None = None) -> None:
+    """Run an async function in a dedicated thread.
+
+    notify_label 非空时, 任务结束(成功/失败)都会写一条站内通知 —— 后台任务
+    fire-and-forget 之后必须有落点, 否则用户关掉页面就彻底失联。
+    """
 
     def _runner():
+        started = time.monotonic()
         try:
             asyncio.run(fn(*args))
-        except Exception:
+            if notify_label:
+                _safe_notify(notify_label, True, "", started, name)
+        except Exception as exc:
             logger.exception(f"后台任务失败: {name}")
+            if notify_label:
+                _safe_notify(notify_label, False, str(exc)[:500], started, name)
 
     t = threading.Thread(target=_runner, name=name, daemon=True)
     t.start()
+
+
+def _safe_notify(label: str, ok: bool, detail: str, started: float, source: str) -> None:
+    """通知失败绝不能影响业务线程。"""
+    try:
+        from src.core.notify_center import notify_task_done
+
+        notify_task_done(
+            label,
+            ok=ok,
+            detail=detail or ("已生成结果，可前往查看。" if ok else ""),
+            category="agent_run",
+            source=source,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+    except Exception:
+        logger.exception("写入站内通知失败: %s", label)
 
 
 router = APIRouter()
@@ -376,7 +402,10 @@ async def trigger_agent_endpoint(
             and not wait
         ):
             _spawn_async_run(
-                trigger_agent, agent_name, name=f"trigger_agent:{agent_name}"
+                trigger_agent,
+                agent_name,
+                name=f"trigger_agent:{agent_name}",
+                notify_label=(agent.display_name or agent_name),
             )
             return {"ok": True, "queued": True, "message": "已提交后台执行"}
 

@@ -1081,3 +1081,35 @@ class ChatMessage(Base):
     role = Column(String, nullable=False, default="user")  # user/assistant/system
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class Notification(Base):
+    """站内消息中心。
+
+    后台任务(报告/Agent/策略刷新)完成或失败时写一条, 前端铃铛轮询未读数。
+    与外发推送(notify_channels)互补: 站内保证"关掉页面也不失联", 外发保证"人不在也能收到"。
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_unread", "read_at", "created_at"),
+        Index("ix_notifications_trace", "trace_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # 分类: agent_run / report / strategy / price_alert / system
+    category = Column(String, nullable=False, default="system")
+    # 级别: info / success / warning / error
+    level = Column(String, nullable=False, default="info")
+    title = Column(String, nullable=False, default="")
+    body = Column(Text, default="")
+    # 点击跳转的前端路由, 如 /agents 或 /reports?name=xxx
+    link = Column(String, default="")
+    # 关联溯源
+    source = Column(String, default="")       # agent_name / job 名
+    trace_id = Column(String, default="")
+    # 外发结果: pending / sent / failed / skipped(无渠道)
+    push_status = Column(String, default="")
+    push_error = Column(String, default="")
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())

@@ -1533,6 +1533,36 @@ def _m117_chat_initial_context(conn: Connection) -> None:
         pass  # column already exists
 
 
+def _m119_notifications_table(conn: Connection) -> None:
+    """站内消息中心表。后台任务完成/失败写一条, 前端铃铛读未读数。"""
+    conn.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL DEFAULT 'system',
+            level TEXT NOT NULL DEFAULT 'info',
+            title TEXT NOT NULL DEFAULT '',
+            body TEXT DEFAULT '',
+            link TEXT DEFAULT '',
+            source TEXT DEFAULT '',
+            trace_id TEXT DEFAULT '',
+            push_status TEXT DEFAULT '',
+            push_error TEXT DEFAULT '',
+            read_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+    )
+    _create_index_if_missing(
+        conn, "ix_notifications_unread",
+        "CREATE INDEX ix_notifications_unread ON notifications(read_at, created_at)",
+    )
+    _create_index_if_missing(
+        conn, "ix_notifications_trace",
+        "CREATE INDEX ix_notifications_trace ON notifications(trace_id)",
+    )
+
+
 def _m118_paper_trading_market_allocations(conn: Connection) -> None:
     """模拟盘账户新增 market_allocations（各市场投资比例），并由 excluded_markets 回填。"""
     _add_column_if_missing(
@@ -1604,6 +1634,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(116, "chat_tables", _m116_chat_tables),
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
+    Migration(119, "notifications_table", _m119_notifications_table),
 )
 
 
