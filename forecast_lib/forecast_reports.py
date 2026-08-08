@@ -248,8 +248,12 @@ def generate_report(
     adj = sentiment.get("adjustment_pct", 0)
     detail_lines.append(f"- 市场情绪: {sentiment.get('market_sentiment', '中性')}")
     detail_lines.append(f"- 情绪修正系数: **{adj:+.2f}%**")
-    if sentiment.get("notes"):
-        detail_lines.append(f"- 备注: {sentiment['notes']}")
+    _notes = sentiment.get("notes") or []
+    if isinstance(_notes, list) and _notes:
+        for _n in _notes[:4]:
+            detail_lines.append(f"- {_n}")
+    elif isinstance(_notes, str) and _notes:
+        detail_lines.append(f"- {_notes}")
 
     if sentiment_evals:
         detail_lines.append("")
@@ -506,6 +510,11 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
     # 一句话核心
     L.append(f"{dir_emoji} **{dir_cn}** · 预期 **{expected_pct:+.1f}%** · {action_emoji} **{action}** · {conf_emoji} {confidence}")
     L.append(f"🎯 {last_date} 收 {last_close:.2f} → {target_date} 看 {pred_end:.2f}（{pred_days}日）")
+    # LLM 总结(自然语言投资结论)
+    summary = rec.get("summary", "")
+    if summary:
+        L.append("")
+        L.append(f"📝 {summary}")
     L.append("")
     L.append("---")
     # 数据面(要点)
@@ -552,8 +561,12 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
     L.append(f"- 市场情绪：{sentiment.get('market_sentiment', '中性')}")
     if adj:
         L.append(f"- 情绪修正：**{adj:+.2f}%**")
-    if sentiment.get("notes"):
-        L.append(f"- 备注：{sentiment['notes']}")
+    notes = sentiment.get("notes") or []
+    if isinstance(notes, list) and notes:
+        for n in notes[:4]:
+            L.append(f"- {n}")
+    elif isinstance(notes, str) and notes:
+        L.append(f"- {notes}")
     L.append("")
     L.append("---")
     # 策略合成

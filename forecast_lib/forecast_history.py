@@ -38,6 +38,8 @@ def _init_history_db():
             conn.execute("ALTER TABLE forecasts ADD COLUMN stock_name TEXT DEFAULT ''")
         if "target_date" not in cols:
             conn.execute("ALTER TABLE forecasts ADD COLUMN target_date TEXT DEFAULT ''")
+        if "sentiment_notes" not in cols:
+            conn.execute("ALTER TABLE forecasts ADD COLUMN sentiment_notes TEXT DEFAULT ''")
         conn.commit()
     except Exception:
         pass
@@ -78,8 +80,8 @@ def save_forecast(rec: dict):
             """INSERT INTO forecasts
                (symbol, stock_name, last_close, last_date, target_date, pred_days, direction, expected_pct,
                 prediction, action, tone, confidence, target_price, stop_loss,
-                summary, sentiment_adj, models)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                summary, sentiment_adj, sentiment_notes, models)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 rec.get("symbol", ""), rec.get("stock_name", ""),
                 rec.get("last_close"), rec.get("last_date"),
@@ -89,6 +91,7 @@ def save_forecast(rec: dict):
                 rec.get("action", ""), rec.get("tone", ""), rec.get("confidence", ""),
                 rec.get("target_price"), rec.get("stop_loss"),
                 rec.get("summary", ""), rec.get("sentiment_adj"),
+                rec.get("sentiment_notes", "[]"),
                 json.dumps(rec.get("models", {}), ensure_ascii=False, default=str),
             ),
         )

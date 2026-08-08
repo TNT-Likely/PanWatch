@@ -231,6 +231,7 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     }
     # 保存历史(供回查列表)
     rec["sentiment_adj"] = adjust_pct
+    rec["sentiment_notes"] = json.dumps(sentiment.get("notes", []), ensure_ascii=False)
     rec["symbol"] = symbol
     rec["stock_name"] = stock_name
     rec["last_close"] = last_close
@@ -607,6 +608,16 @@ def report_generate(symbol: str, task_id: str = ""):
         data = rows[0]
         # 重建类似 /predict 返回的 result dict
         # DB forecasts 表用独立列存 recommendation/sentiment 字段, 需映射回嵌套结构
+        def _coerce_notes(obj):
+            if isinstance(obj, list):
+                return obj
+            if isinstance(obj, str):
+                try:
+                    v = json.loads(obj)
+                    return v if isinstance(v, list) else [str(v)]
+                except Exception:
+                    return [obj] if obj else []
+            return []
         rec = {
             "action": data.get("action", "持有"),
             "confidence": data.get("confidence", "中"),
@@ -617,6 +628,7 @@ def report_generate(symbol: str, task_id: str = ""):
         sentiment = {
             "adjustment_pct": data.get("sentiment_adj", 0),
             "market_sentiment": "中性",
+            "notes": _coerce_notes(data.get("sentiment_notes", "[]")),
         }
         result = {
             "symbol": data["symbol"],
