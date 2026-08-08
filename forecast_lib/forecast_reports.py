@@ -453,3 +453,130 @@ def generate_backtest_report(
     detail_lines.append(f"*PanWatch 预测引擎回测 · {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
 
     return "\n".join(dash_lines), "\n".join(detail_lines)
+
+
+# ── 企微推送专用版（手机友好的精简排版）─────────────────────────────
+def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> str:
+    """生成专为企业微信手机端优化的推送文案。
+
+    与 detail_md 的区别:
+    - 不用表格(| col |) / 斜杠分隔(手机上挤、不可读)
+    - 四模型逐行展示
+    - 去掉原始 JSON 代码块(超长且手机无意义)
+    - 用 emoji 分段 + --- 分隔线
+    - 控制长度(企微单条上限 4096 字节, 中文约 1300 字安全)
+    """
+    symbol = result.get("symbol", "")
+    stock_name = result.get("stock_name", "")
+    last_close = result.get("last_close", 0)
+    last_date = result.get("last_date", "")
+    target_date = result.get("target_date", "")
+    pred_days = result.get("pred_days", 5)
+    prediction = result.get("prediction", [])
+    direction = result.get("direction", "flat")
+    expected_pct = result.get("expected_pct", 0)
+    rec = result.get("recommendation", {}) or {}
+    sentiment = result.get("sentiment", {}) or {}
+    models = result.get("models", {}) or {}
+
+    def _coerce(obj):
+        if isinstance(obj, str):
+            try:
+                return json.loads(obj)
+            except Exception:
+                return {}
+        return obj
+    rec = _coerce(rec) or {}
+    sentiment = _coerce(sentiment) or {}
+    models = _coerce(models) or {}
+
+    dir_cn = {"up": "看多", "down": "看空", "flat": "横盘"}.get(direction, direction)
+    dir_emoji = _dir_emoji(direction)
+    action = rec.get("action", "持有")
+    action_emoji = _action_emoji(action)
+    confidence = rec.get("confidence", "中")
+    conf_emoji = _conf_emoji(confidence)
+    title = f"{symbol} {stock_name}" if stock_name else symbol
+    pred_end = prediction[-1] if prediction else last_close
+
+    L = []
+    # 标题
+    L.append(f"# 📊 {title}")
+    L.append("")
+    # 一句话核心
+    L.append(f"{dir_emoji} **{dir_cn}** · 预期 **{expected_pct:+.1f}%** · {action_emoji} **{action}** · {conf_emoji} {confidence}")
+    L.append(f"🎯 {last_date} 收 {last_close:.2f} → {target_date} 看 {pred_end:.2f}（{pred_days}日）")
+    L.append("")
+    L.append("---")
+    # 数据面(要点)
+    L.append("## 📊 数据面")
+    L.append(f"- 基准收盘：**{last_close:.2f}**")
+    L.append(f"- 预测目标收盘：**{pred_end:.2f}**")
+    L.append(f"- 预期涨跌幅：**{expected_pct:+.1f}%**")
+    if prediction:
+        seq = " → ".join(f"T+{i}:{p:.2f}" for i, p in enumerate(prediction, 1))
+        L.append(f"- 逐日序列：{seq}")
+    L.append("")
+    L.append("---")
+    # 四模型(逐行, 不用表格)
+    L.append("## 🧠 四模型分解")
+    # 优先用 model_outputs 风格字段, 兜底用 models
+    mo = result.get("model_outputs") or []
+    if mo:
+        for m in mo:
+            mc = m.get("model_pred_close")
+            mc_str = f"{mc:.2f}" if mc else "—"
+            md = {"up": "↑看多", "down": "↓看空", "flat": "→横盘"}.get(m.get("model_pred_direction", ""), m.get("model_pred_direction", ""))
+            mc_conf = m.get("model_confidence")
+            conf_str = f"{mc_conf:.1%}" if mc_conf is not None else "—"
+            mw = m.get("model_weight")
+            w_str = f"{mw:.1%}" if mw is not None else "—"
+            L.append(f"· {_model_cn(m.get('model_name', ''))}：{mc_str} · {md} · 置信 {conf_str} · 权重 {w_str}")
+    elif models:
+        for name, v in models.items():
+            if not isinstance(v, dict):
+                continue
+            med = v.get("median")
+            if isinstance(med, list) and med:
+                mc_str = f"{med[-1]:.2f}"
+            elif isinstance(v, list) and v:
+                mc_str = f"{v[-1]:.2f}"
+            else:
+                mc_str = "—"
+            L.append(f"· {_model_cn(name)}：预测 {mc_str}")
+    L.append("")
+    L.append("---")
+    # 情绪面
+    adj = sentiment.get("adjustment_pct", 0)
+    L.append("## 💭 情绪面")
+    L.append(f"- 市场情绪：{sentiment.get('market_sentiment', '中性')}")
+    if adj:
+        L.append(f"- 情绪修正：**{adj:+.2f}%**")
+    if sentiment.get("notes"):
+        L.append(f"- 备注：{sentiment['notes']}")
+    L.append("")
+    L.append("---")
+    # 策略合成
+    L.append("## 🧩 策略合成")
+    L.append(f"{action_emoji} 操作建议：**{action}** · {conf_emoji} 置信度 {confidence}")
+    if rec.get("ideal_buy"):
+        L.append(f"🎯 理想买入价：{rec['ideal_buy']}")
+    if rec.get("target_price"):
+        L.append(f"🎯 目标价：{rec['target_price']}")
+    if rec.get("stop_loss"):
+        L.append(f"🛑 止损价：{rec['stop_loss']}")
+    if rec.get("risk_note"):
+        L.append(f"🚨 风险：{rec['risk_note']}")
+    # 回测命中率
+    if backtest_data and backtest_data.get("direction_accuracy_pct") is not None:
+        L.append("")
+        L.append(f"📈 历史回测命中率：**{backtest_data['direction_accuracy_pct']}%**")
+    L.append("")
+    L.append("---")
+    L.append(f"*PanWatch 自动生成 · {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
+
+    text = "\n".join(L)
+    # 长度保护(企微 4096 字节, 中文 3 字节/字)
+    if len(text.encode("utf-8")) > 3800:
+        text = text[:1200].rstrip() + "\n…(完整版见 PanWatch App)"
+    return text

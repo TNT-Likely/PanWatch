@@ -290,15 +290,17 @@ export default function ForecastPage() {
 
   // 生成预测报告(双格式) — 调用 8000 代理 /forecast/report/generate
   const runGenerateReport = async (tid: string = '') => {
-    if (!/^\d{6}$/.test(symbol)) {
-      toast('请输入 6 位股票代码', 'error')
+    // 优先用预测结果的 6 位代码(输入框可能是中文名)
+    const sym = result?.symbol || symbol
+    if (!/^\d{6}$/.test(sym)) {
+      toast('请先完成一次预测再生成报告', 'error')
       return
     }
     setReportLoading(true)
     try {
       const q = tid ? `&task_id=${tid}` : ''
       const d = await fetchAPI<PredictionReport>(
-        `/forecast/report/generate?symbol=${symbol}${q}`,
+        `/forecast/report/generate?symbol=${sym}${q}`,
         { timeoutMs: 180000 }
       )
       setReport(d)
@@ -313,14 +315,15 @@ export default function ForecastPage() {
 
   // 生成回测报告(双格式)
   const runGenerateBacktestReport = async () => {
-    if (!/^\d{6}$/.test(symbol)) {
-      toast('请输入 6 位股票代码', 'error')
+    const sym = result?.symbol || symbol
+    if (!/^\d{6}$/.test(sym)) {
+      toast('请先完成一次预测再生成回测报告', 'error')
       return
     }
     setReportLoading(true)
     try {
       const d = await fetchAPI<BacktestReport>(
-        `/forecast/report/backtest?symbol=${symbol}`,
+        `/forecast/report/backtest?symbol=${sym}`,
         { timeoutMs: 180000 }
       )
       setBacktestReport(d)

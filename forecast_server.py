@@ -42,7 +42,7 @@ from forecast_traces import (
     save_prediction_report, get_prediction_report, list_reports_for_symbol,
     get_backtest, list_backtests_for_symbol,
 )
-from forecast_reports import generate_report, generate_backtest_report
+from forecast_reports import generate_report, generate_backtest_report, generate_wecom_report
 from forecast_utils import (
     _log, _set_status, new_task, build_recommendation,
 )
@@ -593,6 +593,18 @@ def report_generate(symbol: str, task_id: str = ""):
             raise HTTPException(404, f"无 {symbol} 的预测记录，请先调用 /predict")
         data = rows[0]
         # 重建类似 /predict 返回的 result dict
+        # DB forecasts 表用独立列存 recommendation/sentiment 字段, 需映射回嵌套结构
+        rec = {
+            "action": data.get("action", "持有"),
+            "confidence": data.get("confidence", "中"),
+            "target_price": data.get("target_price"),
+            "stop_loss": data.get("stop_loss"),
+            "summary": data.get("summary", ""),
+        }
+        sentiment = {
+            "adjustment_pct": data.get("sentiment_adj", 0),
+            "market_sentiment": "中性",
+        }
         result = {
             "symbol": data["symbol"],
             "stock_name": data.get("stock_name", ""),
@@ -603,9 +615,9 @@ def report_generate(symbol: str, task_id: str = ""):
             "prediction": data.get("prediction", []),
             "direction": data.get("direction", "flat"),
             "expected_pct": data.get("expected_pct", 0),
-            "recommendation": data.get("recommendation", {}),
+            "recommendation": rec,
             "models": data.get("models", {}),
-            "sentiment": data.get("sentiment", {}),
+            "sentiment": sentiment,
             "elapsed_ms": data.get("elapsed_ms", 0),
         }
 
@@ -614,6 +626,13 @@ def report_generate(symbol: str, task_id: str = ""):
     runs = list_runs_for_symbol(symbol, limit=1)
     if runs:
         run_id = runs[0].get("id", 0)
+
+    # 四模型完整输出(从 run 的 model_outputs 拿, 补进 result 供企微版展示)
+    if run_id and isinstance(result, dict):
+        try:
+            result["model_outputs"] = list_model_outputs(run_id)
+        except Exception:
+            result["model_outputs"] = []
 
     # 取回测数据
     backtest_data = None
@@ -646,6 +665,8 @@ def report_generate(symbol: str, task_id: str = ""):
         "run_id": run_id,
         "dashboard_md": dash,
         "detail_md": detail,
+        "result": result,
+        "backtest_data": backtest_data,
     }
 
 
@@ -820,18 +841,34 @@ def _wecom_friendly_md(md: str, max_len: int = 3500) -> str:
 def report_push(body: dict):
     """推送报告到企微(通过 Hermes webhook 中转)。
 
+    重新生成企微专用版(手机友好排版), 而非复用 detail_md。
+
     body: {kind: "prediction"|"backtest", symbol, dashboard_md, detail_md}
     """
     kind = body.get("kind", "prediction")
     symbol = body.get("symbol", "")
-    detail_md = body.get("detail_md", "")
-    dashboard_md = body.get("dashboard_md", "")
 
-    # 标题用 dashboard 首行
-    title_line = (dashboard_md or "").split("\n", 1)[0].replace("#", "").strip()
-    # 正文用企微友好版(去表格/HTML/折叠, 截断)
-    body_text = _wecom_friendly_md(detail_md) if detail_md else _wecom_friendly_md(dashboard_md)
-    push_text = f"{title_line}\n\n{body_text}" if body_text else (title_line or "")
+    try:
+        if kind == "backtest":
+            # 回测报告: 用 detail_md 兜底转企微友好版
+            detail_md = body.get("detail_md", "")
+            dashboard_md = body.get("dashboard_md", "")
+            title_line = (dashboard_md or "").split("\n", 1)[0].replace("#", "").strip()
+            body_text = _wecom_friendly_md(detail_md) if detail_md else _wecom_friendly_md(dashboard_md)
+            push_text = f"{title_line}\n\n{body_text}" if body_text else (title_line or "")
+        else:
+            # 预测报告: 重新生成企微专用版(逐行四模型 + emoji 分段)
+            gen = report_generate(symbol)
+            wecom_md = generate_wecom_report(gen.get("result", {}), gen.get("backtest_data"))
+            push_text = wecom_md
+    except Exception as e:
+        # 兜底: 用传入的 detail_md 转友好版
+        detail_md = body.get("detail_md", "")
+        dashboard_md = body.get("dashboard_md", "")
+        title_line = (dashboard_md or "").split("\n", 1)[0].replace("#", "").strip()
+        body_text = _wecom_friendly_md(detail_md) if detail_md else _wecom_friendly_md(dashboard_md)
+        push_text = f"{title_line}\n\n{body_text}" if body_text else (title_line or "")
+        _log("report_push fallback: " + str(e))
 
     result = _push_to_wecom_via_hermes(push_text, event_type=f"forecast_{kind}_report")
     return result
