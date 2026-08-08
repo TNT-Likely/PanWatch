@@ -599,6 +599,24 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
             L.append(f"- **对策略影响**：资金面偏空(评分 {cap_score:+.2f})，与价格方向背离需警惕 ⚠️")
         else:
             L.append(f"- **对策略影响**：资金面中性(评分 {cap_score:+.2f})")
+    # 龙虎榜(游资信号, 经 marketdata ftshare)
+    dt = result.get("dragon_tiger") or []
+    if isinstance(dt, list) and dt:
+        L.append("## 🐉 龙虎榜（游资动向）")
+        first = dt[0]
+        if first.get("on_list"):
+            net = first.get("net_buy") or 0
+            arrow = "🟢" if net > 0 else ("🔴" if net < 0 else "⚪")
+            L.append(f"- ✅ **{result.get('symbol','')} 上榜**（{first.get('trade_date','')}）：游资净买入 {arrow} {net/1e4:+.0f}万")
+            L.append(f"- 收盘价 {first.get('close')} · 涨跌幅 {first.get('change_pct'):.2f}% · 买入 {first.get('buy_amt',0)/1e8:.2f}亿 / 卖出 {first.get('sell_amt',0)/1e8:.2f}亿")
+            L.append("- **对策略影响**：获游资介入，短线情绪强，但需甄别席位性质（拉萨/机构/一线游资）⚡")
+        else:
+            mc = first.get("market_count", 0)
+            mnet = first.get("market_net_buy", 0) or 0
+            arrow = "🟢" if mnet > 0 else ("🔴" if mnet < 0 else "⚪")
+            L.append(f"- 该标的未上榜；全市场龙虎榜 {mc} 只，游资净买入合计 {arrow} {mnet/1e8:+.2f}亿")
+            tone = "游资活跃度偏高 🔥" if mc >= 40 else ("游资偏谨慎 😐" if mc <= 20 else "游资活跃度中性")
+            L.append(f"- **市场情绪**：{tone}")
     L.append("")
     L.append("---")
     # 策略合成

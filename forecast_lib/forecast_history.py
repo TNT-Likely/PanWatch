@@ -42,10 +42,13 @@ def _init_history_db():
             conn.execute("ALTER TABLE forecasts ADD COLUMN sentiment_notes TEXT DEFAULT ''")
         if "capital_flow" not in cols:
             conn.execute("ALTER TABLE forecasts ADD COLUMN capital_flow TEXT DEFAULT ''")
+        if "dragon_tiger" not in cols:
+            conn.execute("ALTER TABLE forecasts ADD COLUMN dragon_tiger TEXT DEFAULT ''")
         conn.commit()
     except Exception:
         pass
     conn.close()
+
 
 
 _init_history_db()
@@ -82,8 +85,8 @@ def save_forecast(rec: dict):
             """INSERT INTO forecasts
                (symbol, stock_name, last_close, last_date, target_date, pred_days, direction, expected_pct,
                 prediction, action, tone, confidence, target_price, stop_loss,
-                summary, sentiment_adj, sentiment_notes, models, capital_flow)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                summary, sentiment_adj, sentiment_notes, models, capital_flow, dragon_tiger)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 rec.get("symbol", ""), rec.get("stock_name", ""),
                 rec.get("last_close"), rec.get("last_date"),
@@ -96,6 +99,7 @@ def save_forecast(rec: dict):
                 rec.get("sentiment_notes", "[]"),
                 json.dumps(rec.get("models", {}), ensure_ascii=False, default=str),
                 json.dumps(rec.get("capital_flow", []), ensure_ascii=False),
+                json.dumps(rec.get("dragon_tiger", []), ensure_ascii=False),
             ),
         )
         conn.commit()

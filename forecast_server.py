@@ -156,7 +156,28 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
         _log(tid, f"资金面拉取异常: {e}")
         capital_flow = []
 
-    # 投票(取中位数,含权重)
+    # 龙虎榜(游资信号, 经 marketdata ftshare vendor, 海外可达)
+    dragon_tiger = []
+    try:
+        from marketdata_bridge import get_dragon_tiger
+        # 先取全市场龙虎榜(最近交易日), 再判断标的是否上榜
+        all_dt = get_dragon_tiger()
+        if all_dt:
+            sym_norm = symbol.replace(".SZ", "").replace(".SH", "")
+            hit = [r for r in all_dt if r.get("symbol", "").replace(".SZ", "").replace(".SH", "") == sym_norm]
+            if hit:
+                dragon_tiger = hit
+                _log(tid, f"龙虎榜命中: {symbol} 上榜, 净买入 {hit[0].get('net_buy', 0)/1e4:.0f}万")
+            else:
+                total_net = sum((r.get("net_buy") or 0) for r in all_dt)
+                dragon_tiger = [{"on_list": False, "market_count": len(all_dt),
+                                  "market_net_buy": total_net}]
+                _log(tid, f"龙虎榜: 该标的未上榜, 全市场 {len(all_dt)} 只")
+    except Exception as e:
+        _log(tid, f"龙虎榜拉取异常: {e}")
+        dragon_tiger = []
+
+
     # sanity clip: 单模型预测偏离基准 >±40% 视为异常, 截断(防 Lag-Llama 外推爆炸污染)
     def _clip_arr(arr, base, lo=0.6, hi=1.4):
         a = np.array(arr, dtype=float)
@@ -251,6 +272,7 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     rec["sentiment_adj"] = adjust_pct
     rec["sentiment_notes"] = json.dumps(sentiment.get("notes", []), ensure_ascii=False)
     rec["capital_flow"] = capital_flow
+    rec["dragon_tiger"] = dragon_tiger
     rec["symbol"] = symbol
     rec["stock_name"] = stock_name
     rec["last_close"] = last_close
@@ -666,6 +688,7 @@ def report_generate(symbol: str, task_id: str = "", capital_flow=None):
             "models": data.get("models", {}),
             "sentiment": sentiment,
             "capital_flow": capital_flow if capital_flow else _coerce_notes(data.get("capital_flow", "[]")),
+            "dragon_tiger": _coerce_notes(data.get("dragon_tiger", "[]")),
             "elapsed_ms": data.get("elapsed_ms", 0),
         }
 
