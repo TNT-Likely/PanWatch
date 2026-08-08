@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import logging
 import os
 import re
@@ -88,6 +91,10 @@ CHANNEL_TYPES = {
         "label": "企业微信机器人",
         "fields": ["webhook_key"],
     },
+    "hermes": {
+        "label": "Hermes 中转(企微/TG等)",
+        "fields": ["webhook_url", "secret"],
+    },
     "lark": {
         "label": "飞书机器人",
         "fields": ["webhook_token"],
@@ -114,7 +121,7 @@ CHANNEL_TYPES = {
 _APPRISE_TYPES = {"telegram", "bark", "dingtalk", "lark", "discord", "pushover"}
 
 # 自定义实现的渠道类型（带代理或特殊需求）
-_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus"}
+_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus", "hermes"}
 
 # 支持 Markdown 的渠道（不需要 sanitize）
 _MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "discord"}
@@ -358,6 +365,8 @@ class NotifierManager:
             await self._send_serverchan(config, title, content)
         elif ch_type == "pushplus":
             await self._send_pushplus(config, title, content)
+        elif ch_type == "hermes":
+            await self._send_hermes(config, title, content)
         else:
             logger.warning(f"未知的自定义渠道类型: {ch_type}")
 
@@ -447,8 +456,41 @@ class NotifierManager:
                 raise RuntimeError(f"企业微信发送失败: {data.get('errmsg')}")
             logger.info(f"企业微信通知发送成功: {title}")
 
+    async def _send_hermes(self, config: dict, title: str, content: str):
+        """Hermes 中转 webhook。
+
+        用途: 企微群机器人 webhook 不可用时(管理员未开放/uaKey 过期),
+        借道 Hermes 网关那条活着的企微长连发消息。
+        Hermes 侧用 `--deliver-only` 直转, 零 LLM 开销。
+        """
+        url = (config.get("webhook_url") or "").strip()
+        secret = (config.get("secret") or "").strip()
+        if not url:
+            raise ValueError("Hermes 中转需要 webhook_url")
+
+        payload = {"title": title or "PanWatch 通知", "body": content or ""}
+        raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        headers = {"Content-Type": "application/json"}
+        if secret:
+            sig = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
+            headers["X-Hub-Signature-256"] = f"sha256={sig}"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, content=raw, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                raise RuntimeError(
+                    f"Hermes 中转失败: HTTP {resp.status_code} {resp.text[:200]}"
+                )
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+            if data.get("status") not in (None, "delivered", "ok"):
+                raise RuntimeError(f"Hermes 中转未送达: {data}")
+            logger.info(f"Hermes 中转通知发送成功: {title}")
+
     async def _send_serverchan(self, config: dict, title: str, content: str):
-        """Server酱推送"""
         sendkey = config.get("sendkey", "")
         if not sendkey:
             raise ValueError("Server酱需要 sendkey")
