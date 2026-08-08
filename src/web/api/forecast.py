@@ -326,12 +326,14 @@ async def forecast_report_push(payload: dict):
                 json=payload,
             )
             r.raise_for_status()
-            return r.json()
+            data = r.json()
+            # 包成 ApiResponse 外壳, 符合前端 fetchAPI 约定
+            return {"code": 0, "data": data, "message": ""}
     except httpx.ConnectError:
-        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+        return {"code": 503, "data": None, "message": "预测引擎未启动(需在主机运行 forecast_server.py)"}
     except Exception as e:
         logger.exception("报告推送失败")
-        raise HTTPException(500, f"推送失败: {e}")
+        return {"code": 500, "data": None, "message": f"推送失败: {e}"}
 
 
 @router.get("/stocks/search")
