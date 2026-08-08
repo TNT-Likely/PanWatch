@@ -717,6 +717,80 @@ def report_get(report_id: int):
     return r
 
 
+def _push_to_wecom_via_hermes(text: str, event_type: str = "forecast_report") -> dict:
+    """通过 Hermes webhook 中转推送文本到企微。
+
+    容器内访问 172.17.0.1:8644 (localhost 指容器自己)。
+    secret 从 /hermes/webhook_subscriptions.json 的 panwatch-notify.secret 读取。
+    返回 {"ok": bool, "message": str}。
+    """
+    import hmac
+    import hashlib
+    import json as _json
+
+    # 读取 secret
+    secret = ""
+    for cand in [
+        os.path.expanduser("~/.hermes/webhook_subscriptions.json"),
+        "/hermes/webhook_subscriptions.json",
+    ]:
+        try:
+            with open(cand) as f:
+                subs = _json.load(f)
+            secret = (subs.get("panwatch-notify") or {}).get("secret", "")
+            if secret:
+                break
+        except Exception:
+            continue
+    if not secret:
+        return {"ok": False, "message": "未找到 panwatch-notify webhook secret"}
+
+    payload = _json.dumps({
+        "event_type": event_type,
+        "text": text,
+    }, ensure_ascii=False)
+    sig = "sha256=" + hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+    url = "http://172.17.0.1:8644/webhooks/panwatch-notify"
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            url,
+            data=payload.encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": sig,
+                "X-GitHub-Event": event_type,
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8")
+            ok = resp.status == 200
+            return {"ok": ok, "message": body if not ok else "delivered"}
+    except Exception as e:
+        return {"ok": False, "message": f"推送失败: {e}"}
+
+
+@app.post("/report/push")
+def report_push(body: dict):
+    """推送报告到企微(通过 Hermes webhook 中转)。
+
+    body: {kind: "prediction"|"backtest", symbol, dashboard_md, detail_md}
+    """
+    kind = body.get("kind", "prediction")
+    symbol = body.get("symbol", "")
+    detail_md = body.get("detail_md", "")
+    dashboard_md = body.get("dashboard_md", "")
+
+    # 企微发完整版(detail), 前端标题用 dashboard 首行
+    title_line = (dashboard_md or "").split("\n", 1)[0].replace("#", "").strip()
+    push_text = f"{title_line}\n\n{detail_md}" if detail_md else (dashboard_md or "")
+
+    result = _push_to_wecom_via_hermes(push_text, event_type=f"forecast_{kind}_report")
+    return result
+
+
 @app.get("/forecast/card")
 def forecast_card(symbol: str, task_id: str = ""):
     """生成预测结果图片卡片(PNG,可下载)。"""

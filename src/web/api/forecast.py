@@ -221,6 +221,119 @@ async def forecast_health():
         return {"status": "unreachable", "engine_url": FORECAST_ENGINE_URL}
 
 
+@router.get("/forecast/report/generate")
+async def forecast_report_generate(
+    symbol: str = Query(..., description="6位A股代码"),
+    task_id: str = Query("", description="可选预测任务ID"),
+):
+    """生成预测报告 双格式(dashboard短版 + detail完整版)。"""
+    _log_forecast("info", f"报告生成开始: {symbol}", task_id=task_id)
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/report/generate",
+                params={"symbol": symbol, "task_id": task_id},
+            )
+            r.raise_for_status()
+            data = r.json()
+            _log_forecast("info", f"报告生成完成: {symbol} report_id={data.get('report_id')}", task_id=task_id)
+            return data
+    except httpx.HTTPStatusError as e:
+        _log_forecast("error", f"报告生成失败: {symbol} HTTP {e.response.status_code}", task_id=task_id)
+        raise HTTPException(e.response.status_code, "预测引擎错误")
+    except httpx.ConnectError:
+        _log_forecast("error", f"报告生成失败: {symbol} 引擎未启动", task_id=task_id)
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("报告生成失败")
+        _log_forecast("error", f"报告生成异常: {symbol} {e}", task_id=task_id)
+        raise HTTPException(500, f"报告生成失败: {e}")
+
+
+@router.get("/forecast/report/backtest")
+async def forecast_report_backtest(
+    symbol: str = Query(..., description="6位A股代码"),
+):
+    """生成回测报告 双格式。"""
+    _log_forecast("info", f"回测报告生成开始: {symbol}")
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/report/backtest",
+                params={"symbol": symbol},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.HTTPStatusError as e:
+        _log_forecast("error", f"回测报告失败: {symbol} HTTP {e.response.status_code}")
+        raise HTTPException(e.response.status_code, "预测引擎错误")
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("回测报告生成失败")
+        _log_forecast("error", f"回测报告异常: {symbol} {e}")
+        raise HTTPException(500, f"回测报告失败: {e}")
+
+
+@router.get("/forecast/report/list")
+async def forecast_report_list(
+    symbol: str = Query("", description="股票代码过滤"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """预测报告列表。"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/report/list",
+                params={"symbol": symbol, "limit": limit},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("报告列表查询失败")
+        raise HTTPException(500, f"查询失败: {e}")
+
+
+@router.get("/forecast/report/get")
+async def forecast_report_get(
+    report_id: int = Query(..., description="报告ID"),
+):
+    """获取单条预测报告详情。"""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                f"{FORECAST_ENGINE_URL}/report/get",
+                params={"report_id": report_id},
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("报告查询失败")
+        raise HTTPException(500, f"查询失败: {e}")
+
+
+@router.post("/forecast/report/push")
+async def forecast_report_push(payload: dict):
+    """推送报告到企微(经 Hermes webhook 中转)。"""
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{FORECAST_ENGINE_URL}/report/push",
+                json=payload,
+            )
+            r.raise_for_status()
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "预测引擎未启动(需在主机运行 forecast_server.py)")
+    except Exception as e:
+        logger.exception("报告推送失败")
+        raise HTTPException(500, f"推送失败: {e}")
+
+
 @router.get("/stocks/search")
 async def stocks_search(
     q: str = Query(..., description="股票名称或代码"),

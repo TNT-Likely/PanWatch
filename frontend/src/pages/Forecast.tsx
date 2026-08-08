@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { TrendingUp, LineChart, RefreshCw, Activity, Download, History } from 'lucide-react'
+import { TrendingUp, LineChart, RefreshCw, Activity, Download, History, FileText, Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -75,6 +76,22 @@ interface BacktestResult {
   recent_samples: { date: string; pred_close: number; actual_close: number; hit: boolean }[]
 }
 
+interface PredictionReport {
+  report_id: number
+  run_id: number
+  symbol: string
+  dashboard_md: string
+  detail_md: string
+}
+
+interface BacktestReport {
+  report_id: number
+  backtest_id: number
+  symbol: string
+  dashboard_md: string
+  detail_md: string
+}
+
 export default function ForecastPage() {
   const [symbol, setSymbol] = useState('002361')
   const [days] = useState(5)
@@ -92,6 +109,10 @@ export default function ForecastPage() {
   const [history, setHistory] = useState<ForecastHistoryItem[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [detail, setDetail] = useState<ForecastHistoryItem | null>(null)
+  const [report, setReport] = useState<PredictionReport | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [backtestReport, setBacktestReport] = useState<BacktestReport | null>(null)
+  const [showDetail, setShowDetail] = useState(false)
   const { toast } = useToast()
 
   // 股票搜索(输入名称/代码) — 用 PanWatch 自带 /stocks/search(返回 list)
@@ -267,6 +288,74 @@ export default function ForecastPage() {
     }
   }
 
+  // 生成预测报告(双格式) — 调用 8000 代理 /forecast/report/generate
+  const runGenerateReport = async (tid: string = '') => {
+    if (!/^\d{6}$/.test(symbol)) {
+      toast('请输入 6 位股票代码', 'error')
+      return
+    }
+    setReportLoading(true)
+    try {
+      const q = tid ? `&task_id=${tid}` : ''
+      const d = await fetchAPI<PredictionReport>(
+        `/forecast/report/generate?symbol=${symbol}${q}`,
+        { timeoutMs: 180000 }
+      )
+      setReport(d)
+      setShowDetail(false)
+      toast('报告已生成', 'success')
+    } catch (e: any) {
+      toast(e?.message || '报告生成失败', 'error')
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  // 生成回测报告(双格式)
+  const runGenerateBacktestReport = async () => {
+    if (!/^\d{6}$/.test(symbol)) {
+      toast('请输入 6 位股票代码', 'error')
+      return
+    }
+    setReportLoading(true)
+    try {
+      const d = await fetchAPI<BacktestReport>(
+        `/forecast/report/backtest?symbol=${symbol}`,
+        { timeoutMs: 180000 }
+      )
+      setBacktestReport(d)
+      toast('回测报告已生成', 'success')
+    } catch (e: any) {
+      toast(e?.message || '回测报告生成失败', 'error')
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  // 推送报告到企微(通过 Hermes webhook 中转)
+  const pushReportToWeCom = async (kind: 'prediction' | 'backtest') => {
+    const r = kind === 'prediction' ? report : backtestReport
+    if (!r) return
+    try {
+      const res = await fetchAPI<{ ok: boolean; message?: string }>('/forecast/report/push', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind,
+          symbol: r.symbol,
+          dashboard_md: r.dashboard_md,
+          detail_md: r.detail_md,
+        }),
+      })
+      if (res?.ok) {
+        toast('已推送到企业微信', 'success')
+      } else {
+        toast(res?.message || '推送失败', 'error')
+      }
+    } catch (e: any) {
+      toast(e?.message || '推送失败', 'error')
+    }
+  }
+
   const dirColor = (dir: string) =>
     dir === 'up' ? 'text-red-500' : dir === 'down' ? 'text-green-500' : 'text-gray-500'
 
@@ -389,6 +478,16 @@ export default function ForecastPage() {
               <span className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="h-8" onClick={downloadCard}>
                   <Download className="mr-1 h-3.5 w-3.5" /> 下载卡片
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => runGenerateReport('')}
+                  disabled={reportLoading}
+                >
+                  <FileText className={`mr-1 h-3.5 w-3.5 ${reportLoading ? 'animate-spin' : ''}`} />
+                  {reportLoading ? '生成中...' : '生成报告'}
                 </Button>
               </span>
             </div>
@@ -513,11 +612,65 @@ export default function ForecastPage() {
         </div>
       )}
 
+      {/* 预测报告（双格式） */}
+      {report && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <span className="text-lg font-bold">预测报告</span>
+              <span className="text-xs text-muted-foreground">report_id #{report.report_id}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setShowDetail(v => !v)}>
+                {showDetail ? '收起完整版' : '查看完整版'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => pushReportToWeCom('prediction')}
+              >
+                <Send className="mr-1 h-3.5 w-3.5" /> 推送企微
+              </Button>
+            </div>
+          </div>
+          {/* Dashboard 短版 */}
+          <div className="rounded-lg border border-border/50 bg-accent/20 p-4">
+            <div className="text-xs text-muted-foreground mb-2">精简版（Dashboard）</div>
+            <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-table:my-2 prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:text-[12px] prose-strong:text-foreground">
+              <ReactMarkdown>{report.dashboard_md}</ReactMarkdown>
+            </div>
+          </div>
+          {/* Detail 完整版（可折叠） */}
+          {showDetail && (
+            <div className="rounded-lg border border-border/50 p-4">
+              <div className="text-xs text-muted-foreground mb-2">完整版（Detail）</div>
+              <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-[12px] prose-strong:text-foreground">
+                <ReactMarkdown>{report.detail_md}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 回测结果 */}
       {backtest && (
         <div className="card p-4">
           <div className="mb-3">
-            <div className="text-lg font-bold">回测结果：{backtest.symbol}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-bold">回测结果：{backtest.symbol}</div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={runGenerateBacktestReport}
+                disabled={reportLoading}
+              >
+                <FileText className={`mr-1 h-3.5 w-3.5 ${reportLoading ? 'animate-spin' : ''}`} />
+                生成回测报告
+              </Button>
+            </div>
           </div>
           <div className="space-y-4">
             <div className="flex gap-6">
@@ -559,7 +712,37 @@ export default function ForecastPage() {
                 </table>
               </div>
             )}
+
+          {/* space-y-4 容器关闭 (backtest 结果内部) */}
           </div>
+
+          {/* 回测报告（生成后显示） */}
+          {backtestReport && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">回测报告（双格式）</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => pushReportToWeCom('backtest')}
+                >
+                  <Send className="mr-1 h-3.5 w-3.5" /> 推送企微
+                </Button>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-accent/20 p-4">
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:mt-2 prose-headings:mb-1 prose-p:my-1 prose-table:my-2 prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1 prose-table:text-[12px] prose-strong:text-foreground">
+                  <ReactMarkdown>{backtestReport.dashboard_md}</ReactMarkdown>
+                </div>
+              </div>
+              <details className="rounded-lg border border-border/50 p-4">
+                <summary className="cursor-pointer text-sm text-muted-foreground">查看完整版回测报告</summary>
+                <div className="mt-3 prose prose-sm dark:prose-invert max-w-none prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-[12px] prose-strong:text-foreground">
+                  <ReactMarkdown>{backtestReport.detail_md}</ReactMarkdown>
+                </div>
+              </details>
+            </div>
+          )}
         </div>
       )}
 
