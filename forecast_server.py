@@ -202,10 +202,13 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     direction = "up" if final[-1] > last_close else "down" if final[-1] < last_close else "flat"
 
     # 生成操作建议
+    from forecast_utils import calc_capital_score
+    capital_score = calc_capital_score(capital_flow, last_close)
     rec = build_recommendation(
         symbol, last_close, final, direction,
         round((float(final[-1]) / last_close - 1) * 100, 2),
         kronos, lag, sentiment,
+        capital_score=capital_score,
     )
 
     # 计算预测目标日期(last_date 往后 days 个交易日)
@@ -294,6 +297,7 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
             final_stop_loss=sloss,
             models_summary=models_summary,
             sentiment_adj_total=adjust_pct,
+            capital_score=capital_score,
         )
         # 顺手把 target_date 也补上 (start_run 时还未知)
         import sqlite3 as _sq

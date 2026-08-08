@@ -282,8 +282,12 @@ def finalize_run(
     final_stop_loss: float,
     models_summary: dict,
     sentiment_adj_total: float,
+    capital_score: float = 0.0,
 ) -> None:
-    """预测出最终结论后, 落最终态 + 各模型贡献汇总 + 回算各模型置信度/权重。"""
+    """预测出最终结论后, 落最终态 + 各模型贡献汇总 + 回算各模型置信度/权重。
+
+    capital_score: 资金面评分(-1~+1), 参与权重回算。
+    """
     with _conn() as c:
         c.execute(
             """UPDATE prediction_runs SET
@@ -294,6 +298,9 @@ def finalize_run(
              final_stop_loss, _jsonb(models_summary), sentiment_adj_total, run_id),
         )
         # 回算各模型置信度/权重: 与最终投票方向一致的模型权重高, 否则低
+        # 资金面偏多 → 一致模型权重加成; 偏空 → 降权
+        cap_bonus = 1.0 + max(0.0, capital_score) * 0.3   # 偏多最多+30%
+        cap_penalty = 1.0 - max(0.0, -capital_score) * 0.3  # 偏空最多-30%
         try:
             rows = c.execute(
                 "SELECT id, model_pred_direction FROM prediction_model_outputs WHERE run_id=?",
@@ -310,7 +317,10 @@ def finalize_run(
                     conf = 0.8 if consistent else 0.3
                 # 权重: 方向一致模型均分(至少 0.1), 不一致 0.1
                 if consistent:
-                    weight = round(max(0.1, (1.0 if n_consistent == 0 else 1.0 / n_consistent)), 3)
+                    weight = max(0.1, 1.0 / n_consistent) if n_consistent > 0 else 0.1
+                    # 资金面加成/惩罚
+                    weight = weight * (cap_bonus if capital_score > 0 else cap_penalty)
+                    weight = round(min(1.0, max(0.05, weight)), 3)
                 else:
                     weight = 0.1
                 c.execute(

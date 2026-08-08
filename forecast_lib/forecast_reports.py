@@ -572,6 +572,8 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
     # 资金面(主力净流入, 近5日)
     cf = result.get("capital_flow") or []
     if isinstance(cf, list) and cf:
+        from forecast_utils import calc_capital_score
+        cap_score = calc_capital_score(cf)
         L.append("## 💰 资金面（主力净流入·近5日）")
         for r in cf[-5:]:
             d = (r.get("date") or "")[5:]  # MM-DD
@@ -589,6 +591,13 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
         else:
             trend = f"近 {len(nets)} 日净流合计 {total:+.2f}亿（{cont_in} 日净流入）"
         L.append(f"- **趋势**：{trend}")
+        # 资金面联动策略结论
+        if cap_score > 0.15:
+            L.append(f"- **对策略影响**：资金面偏多(评分 {cap_score:+.2f})，确认看多方向，置信度上调 ✅")
+        elif cap_score < -0.15:
+            L.append(f"- **对策略影响**：资金面偏空(评分 {cap_score:+.2f})，与价格方向背离需警惕 ⚠️")
+        else:
+            L.append(f"- **对策略影响**：资金面中性(评分 {cap_score:+.2f})")
     L.append("")
     L.append("---")
     # 策略合成
