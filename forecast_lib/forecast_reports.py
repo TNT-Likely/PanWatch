@@ -569,28 +569,29 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
         L.append(f"- {notes}")
     L.append("")
     L.append("---")
-    # 资金面(主力净流入, 近5日)
+    # 资金面(东财口径主力净流入, 经 PanWatch tdx)
     cf = result.get("capital_flow") or []
     if isinstance(cf, list) and cf:
         from forecast_utils import calc_capital_score
-        cap_score = calc_capital_score(cf)
-        L.append("## 💰 资金面（主力净流入·近5日）")
-        for r in cf[-5:]:
-            d = (r.get("date") or "")[5:]  # MM-DD
+        cap_score = calc_capital_score(cf, last_close=result.get("last_close", 0))
+        L.append("## 💰 资金面（主力净流入·东财口径）")
+        for r in cf:
+            d = r.get("date", "")
             net = r.get("main_net", 0)
-            arrow = "🟢" if net > 0 else "🔴"
-            L.append(f"- {d} {arrow} {net:+.2f}亿")
-        # 趋势判断
-        nets = [r.get("main_net", 0) for r in cf]
-        cont_in = sum(1 for n in nets if n > 0)
-        total = sum(nets)
-        if cont_in == len(nets) and total > 0:
-            trend = f"连续 {cont_in} 日净流入（合 {total:+.2f}亿），主力持续吸筹 💪"
-        elif cont_in == 0:
-            trend = f"连续 {len(nets)} 日净流出（合 {total:+.2f}亿），主力撤退 ⚠️"
-        else:
-            trend = f"近 {len(nets)} 日净流合计 {total:+.2f}亿（{cont_in} 日净流入）"
-        L.append(f"- **趋势**：{trend}")
+            arrow = "🟢" if net > 0 else ("🔴" if net < 0 else "⚪")
+            unit = f"{net/1e8:+.2f}亿" if abs(net) >= 1e8 else f"{net/1e4:+.0f}万"
+            L.append(f"- {d} {arrow} {unit}")
+        # 趋势判断(近N日合计)
+        period_item = next((r for r in cf if "近" in str(r.get("date","")) and "日" in str(r.get("date",""))), None)
+        if period_item:
+            pnet = period_item.get("main_net", 0)
+            if pnet > 0:
+                trend = f"近5日主力净流入合 {pnet/1e8:+.2f}亿，持续吸筹 💪"
+            elif pnet < 0:
+                trend = f"近5日主力净流出合 {pnet/1e8:+.2f}亿，主力撤退 ⚠️"
+            else:
+                trend = "近5日资金面中性"
+            L.append(f"- **趋势**：{trend}")
         # 资金面联动策略结论
         if cap_score > 0.15:
             L.append(f"- **对策略影响**：资金面偏多(评分 {cap_score:+.2f})，确认看多方向，置信度上调 ✅")

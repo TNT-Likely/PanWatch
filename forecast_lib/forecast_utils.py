@@ -41,25 +41,57 @@ def direction_label(direction: str) -> str:
 def calc_capital_score(capital_flow: list, last_close: float = 0) -> float:
     """量化资金面信号 → 评分(-1~+1)。
 
-    基于近 N 日主力净流入(亿):
-    - 连续净流入天数占比
-    - 合计净流入力度(日均3亿以上封顶)
-    - 近1日方向加权(转弱惩罚)
+    兼容两种结构:
+    - 每日序列: [{date, main_net}, ...]  (旧)
+    - 聚合结构: [{date:"当日", main_net}, {date:"近5日", main_net}]  (panwatch-tdx 新)
+
+    逻辑:
+    - 当日主力净流入 → 当日方向(+)
+    - 近5日合计 → 趋势方向(+)
+    - 两者皆正 → 偏多(接近 +1); 背离 → 打折
     返回: -1(强烈净流出) ~ +1(强烈净流入)
     """
     if not capital_flow:
         return 0.0
-    nets = [r.get("main_net", 0) for r in capital_flow if isinstance(r, dict)]
-    if not nets:
+    items = [r for r in capital_flow if isinstance(r, dict)]
+    if not items:
         return 0.0
-    n = len(nets)
-    pos_ratio = sum(1 for x in nets if x > 0) / n
-    total = sum(nets)
-    magnitude = min(1.0, abs(total) / (n * 3.0))
-    latest = nets[-1]
-    score = (pos_ratio - (1 - pos_ratio)) * magnitude
-    if latest < 0 and pos_ratio > 0.5:
-        score *= 0.7
+
+    # 找"当日"和"近N日"两条
+    today = None
+    period = None
+    for r in items:
+        label = str(r.get("date", ""))
+        if "当日" in label or "近" not in label:
+            # 优先精确"当日", 否则取非"近X日"的那条
+            if today is None or label == "当日":
+                today = r.get("main_net", 0)
+        if "近" in label and "日" in label:
+            period = r.get("main_net", 0)
+
+    # 兜底: 若没有"近X日"标签, 用全部合计
+    if period is None:
+        period = sum(r.get("main_net", 0) for r in items)
+
+    today_dir = 1.0 if (today or 0) > 0 else (-1.0 if (today or 0) < 0 else 0.0)
+    period_dir = 1.0 if (period or 0) > 0 else (-1.0 if (period or 0) < 0 else 0.0)
+
+    # 基础分: 当日方向占 0.4, 期间方向占 0.6
+    score = today_dir * 0.4 + period_dir * 0.6
+
+    # 强度: 期间净流入占流通市值比(无市值时按绝对额温和归一)
+    if last_close and period:
+        # 无法获得流通市值, 用绝对额: 5日合计 >3亿视为强
+        intensity = min(1.0, abs(period) / 3.0e8)
+        score *= (0.5 + 0.5 * intensity)
+    else:
+        # 无价格信息, 仅方向
+        score *= 0.8
+
+    # 背离惩罚: 当日与期间方向相反
+    if today_dir and period_dir and today_dir != period_dir:
+        score *= 0.6
+
     return round(max(-1.0, min(1.0, score)), 3)
 
 

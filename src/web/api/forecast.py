@@ -318,8 +318,32 @@ async def forecast_report_get(
 
 @router.post("/forecast/report/push")
 async def forecast_report_push(payload: dict):
-    """推送报告到企微(经 Hermes webhook 中转)。"""
+    """推送报告到企微(经 Hermes webhook 中转)。
+
+    推送前调 PanWatch 已配置的资金流数据源(marketdata/tdx/wudao)拿准确的
+    东财口径主力净流入, 注入 payload.capital_flow, 供 8010 拼报告使用。
+    """
     try:
+        # 注入准确资金流(东财口径): 优先 CapitalFlowCollector
+        symbol = payload.get("symbol", "")
+        if symbol:
+            try:
+                from src.collectors.capital_flow_collector import CapitalFlowCollector
+                from src.models.market import MarketCode
+                cf = CapitalFlowCollector(MarketCode.CN).get_capital_flow(symbol)
+                if cf is not None:
+                    payload["capital_flow"] = {
+                        "main_net_inflow": cf.main_net_inflow,
+                        "main_net_inflow_pct": cf.main_net_inflow_pct,
+                        "super_net_inflow": cf.super_net_inflow,
+                        "big_net_inflow": cf.big_net_inflow,
+                        "mid_net_inflow": cf.mid_net_inflow,
+                        "small_net_inflow": cf.small_net_inflow,
+                        "main_net_5d": cf.main_net_5d,
+                    }
+                    logger.info(f"注入资金流(东财口径): {symbol} 主力净流入 {cf.main_net_inflow}")
+            except Exception as e:
+                logger.warning(f"资金流注入失败(推送仍继续): {e}")
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.post(
                 f"{FORECAST_ENGINE_URL}/report/push",

@@ -142,13 +142,13 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     sentiment = fetch_sentiment(symbol, _run_id=run_id)
     _log(tid, f"情绪面: 事件{len(sentiment['events'])}条, 修正系数 {sentiment['adjustment_pct']:+.2f}%")
 
-    # 主力资金面(近 5 日净流入, zhitu MCP 桥接)
-    _log(tid, "拉取主力资金流(zhitu)...)")
+    # 主力资金面(东财口径, 经 PanWatch 8000 tdx 接口)
+    _log(tid, "拉取主力资金流(panwatch-tdx)...")
     try:
-        from zhitu_bridge import fetch_capital_flow
+        from panwatch_bridge import fetch_capital_flow
         capital_flow = fetch_capital_flow(symbol, days=5)
         if capital_flow:
-            _log(tid, f"资金面: 近{len(capital_flow)}日主力净流入 {[r['main_net'] for r in capital_flow]}")
+            _log(tid, f"资金面: {[r['date']+':'+str(round(r['main_net']/1e8,2))+'亿' for r in capital_flow]}")
         else:
             _log(tid, "资金面: 拉取失败, 跳过")
             capital_flow = []
@@ -604,11 +604,13 @@ def stocks_search(q: str = "", limit: int = 10):
 
 
 @app.get("/report/generate")
-def report_generate(symbol: str, task_id: str = ""):
+def report_generate(symbol: str, task_id: str = "", capital_flow=None):
     """生成预测报告 双格式(Dashboard + Detail)。
 
     要求 /predict 流程完成且任务存到 _tasks 里；如果传 task_id 取对应 result；
     如不传 task_id 则取该 symbol 最近完的一次预测(forecasts 表)。
+
+    capital_flow: 可选, 来自 8000 注入的准确东财口径资金流(优先于 DB 存储)。
     """
     from forecast_utils import _tasks
 
@@ -663,7 +665,7 @@ def report_generate(symbol: str, task_id: str = ""):
             "recommendation": rec,
             "models": data.get("models", {}),
             "sentiment": sentiment,
-            "capital_flow": _coerce_notes(data.get("capital_flow", "[]")),
+            "capital_flow": capital_flow if capital_flow else _coerce_notes(data.get("capital_flow", "[]")),
             "elapsed_ms": data.get("elapsed_ms", 0),
         }
 
@@ -904,7 +906,8 @@ def report_push(body: dict):
             push_text = f"{title_line}\n\n{body_text}" if body_text else (title_line or "")
         else:
             # 预测报告: 重新生成企微专用版(逐行四模型 + emoji 分段)
-            gen = report_generate(symbol)
+            cf_payload = body.get("capital_flow")
+            gen = report_generate(symbol, capital_flow=cf_payload)
             wecom_md = generate_wecom_report(gen.get("result", {}), gen.get("backtest_data"))
             push_text = wecom_md
     except Exception as e:
