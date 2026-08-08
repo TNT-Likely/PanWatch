@@ -115,14 +115,14 @@ export default function ForecastPage() {
   const [showDetail, setShowDetail] = useState(false)
   const { toast } = useToast()
 
-  // 股票搜索(输入名称/代码) — 用 PanWatch 自带 /stocks/search(返回 list)
+  // 股票搜索(输入名称/代码) — 用 数智分析 自带 /stocks/search(返回 list)
   const doSearch = async (q: string) => {
     if (!q.trim()) return
     try {
       const d = await fetchAPI<{ symbol: string; name: string }[] | { items: { symbol: string; name: string }[] }>(
         `/stocks/search?q=${encodeURIComponent(q)}`
       )
-      // PanWatch 返回 list;兼容 {items} 结构;过滤 A 股主板(6/0 开头,排除 300/688/8xx/港股)
+      // 数智分析 返回 list;兼容 {items} 结构;过滤 A 股主板(6/0 开头,排除 300/688/8xx/港股)
       const list = (Array.isArray(d) ? d : (d as any)?.items || []).filter((s: any) => {
         const sym = s.symbol || ''
         if (!/^\d{6}$/.test(sym)) return false

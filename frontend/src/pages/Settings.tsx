@@ -1552,7 +1552,7 @@ export default function SettingsPage() {
       {/* Version Footer */}
       {version && (
         <div className="mt-8 text-center text-[11px] text-muted-foreground/60">
-          PanWatch v{version}
+          数智分析 v{version}
         </div>
       )}
     </div>

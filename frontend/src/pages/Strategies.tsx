@@ -113,7 +113,7 @@ export default function StrategiesPage() {
             策略库
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            借鉴 <code className="text-xs">alphasift</code> 的 11 个 YAML 策略,翻译为 PanWatch 可用字段子集
+            借鉴 <code className="text-xs">alphasift</code> 的 11 个 YAML 策略,翻译为 数智分析 可用字段子集
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
