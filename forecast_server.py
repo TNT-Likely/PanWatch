@@ -779,6 +779,43 @@ def _push_to_wecom_via_hermes(text: str, event_type: str = "forecast_report") ->
         return {"ok": False, "message": f"推送失败: {e}"}
 
 
+def _wecom_friendly_md(md: str, max_len: int = 3500) -> str:
+    """把完整 markdown 报告转成企微友好的纯文本。
+
+    企微 markdown 不支持表格语法(| col |)、<details> 折叠、HTML 标签,
+    且单条消息上限 4096 字节。这里去掉这些不兼容元素, 保留标题/列表/加粗,
+    并截断到安全长度。
+    """
+    import re
+    lines = (md or "").split("\n")
+    out = []
+    for ln in lines:
+        s = ln.strip()
+        # 跳过表格分隔行 (|---|---|) 和表头/表格数据行 (含 | 列分隔)
+        if re.match(r"^\|[\s:|-]+\|$", s):
+            continue
+        if s.startswith("|") and s.endswith("|") and s.count("|") >= 2:
+            # 把表格行转成可读列表: 去掉首尾 | 和列间 |
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            out.append("· " + " / ".join(cells))
+            continue
+        # 跳过 HTML / 折叠块标签
+        if s.startswith("<") and s.endswith(">"):
+            continue
+        # 折叠摘要块 <details>...<summary> 标题 </summary>内容</details> 已在上行被去,
+        # 这里把 <summary>xxx</summary> 转成小标题
+        m = re.match(r"<summary>(.*?)</summary>", s)
+        if m:
+            out.append(f"**{m.group(1)}**")
+            continue
+        out.append(ln)
+    text = "\n".join(out).strip()
+    # 截断(按字符, 企微限制 4096 字节, 中文 3 字节/字, 留余量)
+    if len(text) > max_len:
+        text = text[:max_len].rstrip() + "\n…(报告较长, 完整版见 PanWatch)"
+    return text
+
+
 @app.post("/report/push")
 def report_push(body: dict):
     """推送报告到企微(通过 Hermes webhook 中转)。
@@ -790,9 +827,11 @@ def report_push(body: dict):
     detail_md = body.get("detail_md", "")
     dashboard_md = body.get("dashboard_md", "")
 
-    # 企微发完整版(detail), 前端标题用 dashboard 首行
+    # 标题用 dashboard 首行
     title_line = (dashboard_md or "").split("\n", 1)[0].replace("#", "").strip()
-    push_text = f"{title_line}\n\n{detail_md}" if detail_md else (dashboard_md or "")
+    # 正文用企微友好版(去表格/HTML/折叠, 截断)
+    body_text = _wecom_friendly_md(detail_md) if detail_md else _wecom_friendly_md(dashboard_md)
+    push_text = f"{title_line}\n\n{body_text}" if body_text else (title_line or "")
 
     result = _push_to_wecom_via_hermes(push_text, event_type=f"forecast_{kind}_report")
     return result
