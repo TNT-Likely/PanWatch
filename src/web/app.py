@@ -30,6 +30,7 @@ from src.web.api import (
     chat,
     forecast,
     calendar,
+    market_data,
     tdx,
 )
 from src.web.api import factors
@@ -205,6 +206,12 @@ app.include_router(
     calendar.router,
     prefix="/api/calendar",
     tags=["calendar"],
+    dependencies=protected,
+)
+app.include_router(
+    market_data.router,
+    prefix="/api/market-data",
+    tags=["market-data"],
     dependencies=protected,
 )
 app.include_router(

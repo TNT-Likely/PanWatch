@@ -608,7 +608,9 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
             net = first.get("net_buy") or 0
             arrow = "🟢" if net > 0 else ("🔴" if net < 0 else "⚪")
             L.append(f"- ✅ **{result.get('symbol','')} 上榜**（{first.get('trade_date','')}）：游资净买入 {arrow} {net/1e4:+.0f}万")
-            L.append(f"- 收盘价 {first.get('close')} · 涨跌幅 {first.get('change_pct'):.2f}% · 买入 {first.get('buy_amt',0)/1e8:.2f}亿 / 卖出 {first.get('sell_amt',0)/1e8:.2f}亿")
+            cp = first.get("change_pct")
+            cp_str = f"{cp:.2f}%" if (cp is not None and abs(cp) <= 20) else "—(数据源异常)"
+            L.append(f"- 收盘价 {first.get('close')} · 涨跌幅 {cp_str} · 买入 {first.get('buy_amt',0)/1e8:.2f}亿 / 卖出 {first.get('sell_amt',0)/1e8:.2f}亿")
             L.append("- **对策略影响**：获游资介入，短线情绪强，但需甄别席位性质（拉萨/机构/一线游资）⚡")
         else:
             mc = first.get("market_count", 0)
