@@ -136,7 +136,7 @@ function App() {
               <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-4 h-4 text-white" />
               </div>
-              <span className="text-[15px] font-bold text-foreground">PanWatch</span>
+              <span className="text-[15px] font-bold text-foreground">数智分析</span>
               {version && <span className="text-[11px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
 
@@ -208,7 +208,7 @@ function App() {
               <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
-              <span className="text-[14px] font-bold text-foreground">PanWatch</span>
+              <span className="text-[14px] font-bold text-foreground">数智分析</span>
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">

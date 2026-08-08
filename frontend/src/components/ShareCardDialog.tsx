@@ -119,7 +119,7 @@ export default function ShareCardDialog({
               >
                 盯
               </span>
-              <span>盯盘侠 PanWatch</span>
+              <span>数智分析</span>
               <span style={{ color: '#cbd5e1', fontWeight: 400 }}>·</span>
               <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12.5 }}>
                 github.com/xiaoze-hub/PanWatch
