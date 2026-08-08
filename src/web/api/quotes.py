@@ -215,18 +215,21 @@ def _tencent_minute(symbol: str, market: str) -> list[dict] | None:
         if not data:
             return None
         # 字段: "0930 1308.66 173 22639818.00" = 时间 价格 累计量(手) 累计额(元)
+        # ⚠️ 第3/4列本身已经是"当日累计"值, 不可再累加(旧版 cum_vol += vol 是 bug,
+        #    会把累计量当增量二次累加, 导致均价分母膨胀、均价线整体失真)
         points = []
-        cum_vol = 0.0
-        cum_amt = 0.0
+        prev_cum_vol = 0.0
         for row in data:
             parts = row.split()
             if len(parts) < 4:
                 continue
-            t, price, vol, amt = parts[0], float(parts[1]), float(parts[2]), float(parts[3])
-            cum_vol += vol
-            cum_amt += amt
-            avg = (cum_amt / cum_vol / 100.0) if cum_vol else price  # 均价(元/股)
-            points.append({"t": t, "price": price, "avg": round(avg, 2), "volume": int(vol)})
+            t, price = parts[0], float(parts[1])
+            cum_vol, cum_amt = float(parts[2]), float(parts[3])  # 累计量(手) / 累计额(元)
+            # 均价 = 累计成交额 / 累计成交股数 (1手=100股)
+            avg = (cum_amt / (cum_vol * 100.0)) if cum_vol > 0 else price
+            bar_vol = max(cum_vol - prev_cum_vol, 0.0)  # 本分钟增量成交量(手)
+            prev_cum_vol = cum_vol
+            points.append({"t": t, "price": price, "avg": round(avg, 2), "volume": int(bar_vol)})
         return points
     except Exception as e:
         logger.debug(f"腾讯分时失败 {symbol}: {e}")
