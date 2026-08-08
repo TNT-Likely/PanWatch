@@ -142,6 +142,20 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     sentiment = fetch_sentiment(symbol, _run_id=run_id)
     _log(tid, f"情绪面: 事件{len(sentiment['events'])}条, 修正系数 {sentiment['adjustment_pct']:+.2f}%")
 
+    # 主力资金面(近 5 日净流入, zhitu MCP 桥接)
+    _log(tid, "拉取主力资金流(zhitu)...)")
+    try:
+        from zhitu_bridge import fetch_capital_flow
+        capital_flow = fetch_capital_flow(symbol, days=5)
+        if capital_flow:
+            _log(tid, f"资金面: 近{len(capital_flow)}日主力净流入 {[r['main_net'] for r in capital_flow]}")
+        else:
+            _log(tid, "资金面: 拉取失败, 跳过")
+            capital_flow = []
+    except Exception as e:
+        _log(tid, f"资金面拉取异常: {e}")
+        capital_flow = []
+
     # 投票(取中位数,含权重)
     # sanity clip: 单模型预测偏离基准 >±40% 视为异常, 截断(防 Lag-Llama 外推爆炸污染)
     def _clip_arr(arr, base, lo=0.6, hi=1.4):
@@ -227,11 +241,13 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
             "adjustment_pct": adjust_pct,
             "notes": sentiment["notes"],
         },
+        "capital_flow": capital_flow,
         "elapsed_ms": int((time.monotonic() - t0) * 1000),
     }
     # 保存历史(供回查列表)
     rec["sentiment_adj"] = adjust_pct
     rec["sentiment_notes"] = json.dumps(sentiment.get("notes", []), ensure_ascii=False)
+    rec["capital_flow"] = capital_flow
     rec["symbol"] = symbol
     rec["stock_name"] = stock_name
     rec["last_close"] = last_close
@@ -634,7 +650,7 @@ def report_generate(symbol: str, task_id: str = ""):
             "symbol": data["symbol"],
             "stock_name": data.get("stock_name", ""),
             "last_close": data["last_close"],
-            "last_date": data["last_date"],
+            "last_date": data.get("last_date", ""),
             "target_date": data.get("target_date", ""),
             "pred_days": data.get("pred_days", 5),
             "prediction": data.get("prediction", []),
@@ -643,6 +659,7 @@ def report_generate(symbol: str, task_id: str = ""):
             "recommendation": rec,
             "models": data.get("models", {}),
             "sentiment": sentiment,
+            "capital_flow": _coerce_notes(data.get("capital_flow", "[]")),
             "elapsed_ms": data.get("elapsed_ms", 0),
         }
 

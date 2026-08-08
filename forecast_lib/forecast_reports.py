@@ -569,6 +569,28 @@ def generate_wecom_report(result: dict, backtest_data: dict | None = None) -> st
         L.append(f"- {notes}")
     L.append("")
     L.append("---")
+    # 资金面(主力净流入, 近5日)
+    cf = result.get("capital_flow") or []
+    if isinstance(cf, list) and cf:
+        L.append("## 💰 资金面（主力净流入·近5日）")
+        for r in cf[-5:]:
+            d = (r.get("date") or "")[5:]  # MM-DD
+            net = r.get("main_net", 0)
+            arrow = "🟢" if net > 0 else "🔴"
+            L.append(f"- {d} {arrow} {net:+.2f}亿")
+        # 趋势判断
+        nets = [r.get("main_net", 0) for r in cf]
+        cont_in = sum(1 for n in nets if n > 0)
+        total = sum(nets)
+        if cont_in == len(nets) and total > 0:
+            trend = f"连续 {cont_in} 日净流入（合 {total:+.2f}亿），主力持续吸筹 💪"
+        elif cont_in == 0:
+            trend = f"连续 {len(nets)} 日净流出（合 {total:+.2f}亿），主力撤退 ⚠️"
+        else:
+            trend = f"近 {len(nets)} 日净流合计 {total:+.2f}亿（{cont_in} 日净流入）"
+        L.append(f"- **趋势**：{trend}")
+    L.append("")
+    L.append("---")
     # 策略合成
     L.append("## 🧩 策略合成")
     L.append(f"{action_emoji} 操作建议：**{action}** · {conf_emoji} 置信度 {confidence}")
