@@ -283,7 +283,7 @@ def finalize_run(
     models_summary: dict,
     sentiment_adj_total: float,
 ) -> None:
-    """预测出最终结论后, 落最终态 + 各模型贡献汇总。"""
+    """预测出最终结论后, 落最终态 + 各模型贡献汇总 + 回算各模型置信度/权重。"""
     with _conn() as c:
         c.execute(
             """UPDATE prediction_runs SET
@@ -293,6 +293,32 @@ def finalize_run(
             (final_direction, final_expected_pct, final_target_price,
              final_stop_loss, _jsonb(models_summary), sentiment_adj_total, run_id),
         )
+        # 回算各模型置信度/权重: 与最终投票方向一致的模型权重高, 否则低
+        try:
+            rows = c.execute(
+                "SELECT id, model_pred_direction FROM prediction_model_outputs WHERE run_id=?",
+                (run_id,),
+            ).fetchall()
+            n_total = len(rows)
+            n_consistent = sum(1 for r in rows if (r[1] or "neutral") == final_direction)
+            for r in rows:
+                consistent = (r[1] or "neutral") == final_direction
+                # 置信度: 方向一致 0.8, 否则 0.3; 全部一致时降至 0.6(避免过度自信)
+                if n_total > 0 and n_consistent == n_total:
+                    conf = 0.6
+                else:
+                    conf = 0.8 if consistent else 0.3
+                # 权重: 方向一致模型均分(至少 0.1), 不一致 0.1
+                if consistent:
+                    weight = round(max(0.1, (1.0 if n_consistent == 0 else 1.0 / n_consistent)), 3)
+                else:
+                    weight = 0.1
+                c.execute(
+                    "UPDATE prediction_model_outputs SET model_confidence=?, model_weight=? WHERE id=?",
+                    (conf, weight, r[0]),
+                )
+        except Exception as e:
+            print(f"[finalize_run] 回算置信度/权重失败: {e}")
 
 
 # ── 读取 ────────────────────────────────────────────────────────────────
@@ -548,6 +574,16 @@ def _pick_pred_close(model_result: Any, last_close: float) -> float | None:
         elif isinstance(last, (int, float)):
             return float(last)
     if isinstance(model_result, dict):
+        # 优先取 median 序列末值(Kronos/Lag-Llama 返回 {"median":[...]})
+        if "median" in model_result and isinstance(model_result["median"], list) and model_result["median"]:
+            m = model_result["median"][-1]
+            if m is not None:
+                try:
+                    return float(m)
+                except Exception:
+                    pass
+        if "mean" in model_result and isinstance(model_result["mean"], (int, float)):
+            return float(model_result["mean"])
         if "pred" in model_result:
             p = model_result["pred"]
             if isinstance(p, list) and p:
@@ -576,6 +612,11 @@ def run_model_with_trace(
             )
             raise
     pred_close = _pick_pred_close(result, last_close)
+    # sanity clip: 预测价偏离基准超过 ±40% 视为模型异常(如 Lag-Llama 外推爆炸), 截断
+    if pred_close is not None and last_close:
+        lo, hi = last_close * 0.6, last_close * 1.4
+        if pred_close < lo or pred_close > hi:
+            pred_close = max(lo, min(hi, pred_close))
     direction = "up" if pred_close is not None and last_close and pred_close > last_close else (
         "down" if pred_close is not None and last_close and pred_close < last_close else "neutral"
     )

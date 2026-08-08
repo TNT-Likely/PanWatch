@@ -143,22 +143,35 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     _log(tid, f"情绪面: 事件{len(sentiment['events'])}条, 修正系数 {sentiment['adjustment_pct']:+.2f}%")
 
     # 投票(取中位数,含权重)
+    # sanity clip: 单模型预测偏离基准 >±40% 视为异常, 截断(防 Lag-Llama 外推爆炸污染)
+    def _clip_arr(arr, base, lo=0.6, hi=1.4):
+        a = np.array(arr, dtype=float)
+        return np.clip(a, base * lo, base * hi)
+
     votes = []
+    # Kronos 仅返回前 2 天(pred_len>2 时被模型截断), 用其均值回填后续天, 保证维度对齐
     if kronos:
-        votes.append(np.array(kronos["median"]))
+        k_med = _clip_arr(kronos["median"], last_close)
+        if len(k_med) < days:
+            fill = k_med.mean() if len(k_med) else last_close
+            k_med = np.concatenate([k_med, np.full(days - len(k_med), fill)])
+        votes.append(k_med)
     # Lag-Llama 参与投票但只取前 2 天(实测 3 天以上外推区间爆炸,仅短周期可靠)
     if lag:
-        lag_med = np.array(lag["median"])
+        lag_med = _clip_arr(lag["median"], last_close)
         lag_vote = lag_med.copy()
         if len(lag_vote) > 2 and kronos:
-            kronos_med = np.array(kronos["median"])
+            kronos_med = _clip_arr(kronos["median"], last_close)
             for i in range(2, len(lag_vote)):
                 lag_vote[i] = kronos_med[i] if i < len(kronos_med) else lag_med[i]
+        if len(lag_vote) < days:
+            fill = lag_vote.mean() if len(lag_vote) else last_close
+            lag_vote = np.concatenate([lag_vote, np.full(days - len(lag_vote), fill)])
         votes.append(lag_vote)
     if xgb_preds:
-        votes.append(np.array(xgb_preds))
+        votes.append(_clip_arr(xgb_preds, last_close))
     if reg_preds:
-        votes.append(np.array(reg_preds))
+        votes.append(_clip_arr(reg_preds, last_close))
     if not votes:
         _set_status(tid, "error")
         _log(tid, "所有模型预测失败")
