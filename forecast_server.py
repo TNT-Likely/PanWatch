@@ -34,6 +34,15 @@ from forecast_history import (
 from forecast_sentiment import (
     fetch_sentiment, _load_llm_config,
 )
+from forecast_traces import (
+    start_run, record_model_output, record_sentiment_eval,
+    finalize_run, run_model_with_trace, _pick_pred_close,
+    list_runs_for_symbol, list_model_outputs, list_sentiment_evals,
+    save_backtest_result,
+    save_prediction_report, get_prediction_report, list_reports_for_symbol,
+    get_backtest, list_backtests_for_symbol,
+)
+from forecast_reports import generate_report, generate_backtest_report
 from forecast_utils import (
     _log, _set_status, new_task, build_recommendation,
 )
@@ -100,24 +109,29 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     else:
         _log(tid, f"预测未来 {days} 个交易日")
 
+    # 开预测 run (拉链串联后续每步记录; target_date_str 算出来时 finalize_run 再填补)
+    run_id = start_run(
+        symbol, stock_name, last_close, last_date, "", days, task_id=tid
+    ) or 0
+
     # Kronos MC
     _log(tid, "Kronos 模型推理中(MC 30 采样,约 20-30s)...")
-    kronos = kronos_predict(df, pred_len=days)
+    kronos = run_model_with_trace(run_id, "kronos", kronos_predict, df, pred_len=days, last_close=last_close) if run_id else kronos_predict(df, pred_len=days)
     _log(tid, "Kronos 完成")
 
     # XGBoost
     _log(tid, "XGBoost 训练预测中...")
-    xgb_preds = xgboost_predict(df, pred_len=days)
+    xgb_preds = run_model_with_trace(run_id, "xgboost", xgboost_predict, df, pred_len=days, last_close=last_close) if run_id else xgboost_predict(df, pred_len=days)
     _log(tid, "XGBoost 完成")
 
     # 线性回归
     _log(tid, "线性回归趋势外推中...")
-    reg_preds = linreg_predict(df, pred_len=days)
+    reg_preds = run_model_with_trace(run_id, "linear_reg", linreg_predict, df, pred_len=days, last_close=last_close) if run_id else linreg_predict(df, pred_len=days)
     _log(tid, "线性回归完成")
 
     # Lag-Llama(第4模型,时序基础模型)
     _log(tid, "Lag-Llama 推理中(首次加载约30-60s)...")
-    lag = lag_llama_predict(df, pred_len=days)
+    lag = run_model_with_trace(run_id, "lag_llama", lag_llama_predict, df, pred_len=days, last_close=last_close) if run_id else lag_llama_predict(df, pred_len=days)
     if lag:
         _log(tid, "Lag-Llama 完成")
     else:
@@ -125,7 +139,7 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
 
     # 消息情绪面(黑天鹅/公告/板块共振修正)
     _log(tid, "拉取消息情绪面(公告/新闻/板块共振)...")
-    sentiment = fetch_sentiment(symbol)
+    sentiment = fetch_sentiment(symbol, _run_id=run_id)
     _log(tid, f"情绪面: 事件{len(sentiment['events'])}条, 修正系数 {sentiment['adjustment_pct']:+.2f}%")
 
     # 投票(取中位数,含权重)
@@ -216,6 +230,54 @@ def predict(symbol: str, days: int = 5, task_id: str = "", target_date: str = ""
     rec["models"] = result["models"]
     save_forecast(rec)
 
+    # ⑥ 7-finalize: 落最终态到 prediction_runs, 包含 target_date + 4 模型贡献汇总
+    if run_id:
+        # 测算每个模型的末个预测点, 作为该模型贡献度
+        from forecast_models import json as _j  # noqa  单纯 import 校验
+        models_summary = {}
+        for _name, _pred in [
+            ("kronos", kronos), ("xgboost", xgb_preds),
+            ("linear_reg", reg_preds), ("lag_llama", lag),
+        ]:
+            try:
+                if _pred is None:
+                    continue
+                if isinstance(_pred, list) and _pred:
+                    last = _pred[-1]
+                    if isinstance(last, dict):
+                        for k in ("close", "mean"):
+                            if k in last and last[k] is not None:
+                                models_summary[_name] = float(last[k])
+                                break
+                    elif isinstance(last, (int, float)):
+                        models_summary[_name] = float(last)
+            except Exception:
+                pass
+        rec_summary = rec.get("recommendation") or {}
+        tprice = float(rec_summary.get("target_price") or 0) or None
+        sloss = float(rec_summary.get("stop_loss") or 0) or None
+        finalize_run(
+            run_id,
+            final_direction=direction,
+            final_expected_pct=result["expected_pct"],
+            final_target_price=tprice,
+            final_stop_loss=sloss,
+            models_summary=models_summary,
+            sentiment_adj_total=adjust_pct,
+        )
+        # 顺手把 target_date 也补上 (start_run 时还未知)
+        import sqlite3 as _sq
+        try:
+            _c = _sq.connect(os.path.expanduser("~/.panwatch_forecast.db"))
+            _c.execute(
+                "UPDATE prediction_runs SET target_date=? WHERE id=? AND target_date=?",
+                (target_date_str, run_id, ""),
+            )
+            _c.commit()
+            _c.close()
+        except Exception:
+            pass
+
     _log(tid, f"预测完成: {last_close} → {result['prediction'][-1]} ({result['expected_pct']:+.1f}%), 耗时 {result['elapsed_ms']}ms")
     _set_status(tid, "done")
     from forecast_utils import _tasks
@@ -250,11 +312,138 @@ def predict_status(task_id: str):
 
 
 @app.get("/backtest")
-def backtest(symbol: str):
-    """回测: 用过去数据模拟预测 vs 实际,给出方向命中率。"""
+def backtest(symbol: str, force_legacy: bool = False):
+    """回测: 用历史预测推算模型 + LLM 修正的准确率, 并与实际行情对照。
+
+    数据源: prediction_runs 表里该 symbol 的所有历史 run + K 线实际数据。
+    算指标: 4 个模型各自命中率 / LLM 修正胜率 / 加权汇总命中率。
+    退路: 若历史 run < 3 个 或 force_legacy=True, 跑旧 LinearRegression 滚动回测。
+    """
     if not symbol.isdigit() or len(symbol) != 6:
         raise HTTPException(400, "symbol 需为 6 位 A 股代码")
 
+    # 1. 先尝试历史 run 回测
+    if not force_legacy:
+        runs = list_runs_for_symbol(symbol, limit=50)
+        # 过滤有完整最终结论的 run
+        valid_runs = [r for r in runs if r.get("final_direction") and r.get("last_close") and r.get("target_date")]
+
+        if len(valid_runs) >= 3:
+            try:
+                df = load_kline(symbol, days=400)
+            except Exception as e:
+                raise HTTPException(502, f"数据获取失败: {e}")
+
+            # 建 date -> close 索引
+            price_idx = {str(df["timestamp"].iloc[i].date()): float(df["close"].iloc[i])
+                         for i in range(len(df))}
+
+            # 算每个 run 的最终结果 (拿每个模型的实际 hit)
+            samples = []
+            model_hits = {}  # model_name -> [hit bool*]
+            llm_correct = []
+            llm_wrong = []
+
+            from datetime import datetime as _dt
+            for r in valid_runs:
+                target_date = r["target_date"]
+                if not target_date or target_date not in price_idx:
+                    continue
+                actual_close = price_idx[target_date]
+                base_close = float(r["last_close"])
+                actual_dir = "up" if actual_close > base_close else "down" if actual_close < base_close else "flat"
+                actual_pct = round((actual_close / base_close - 1) * 100, 2)
+
+                # 4 模型逐个判 hit
+                mos = list_model_outputs(r["id"])
+                run_models_hit = {}
+                for m in mos:
+                    if not m.get("model_pred_close") or not m.get("model_pred_direction"):
+                        continue
+                    pred_close = float(m["model_pred_close"])
+                    pred_dir = m["model_pred_direction"]
+                    pred_pct = (pred_close / base_close - 1) * 100
+                    # hit 定义: 实际方向与预测方向一致
+                    hit = (pred_dir == actual_dir) and actual_dir != "flat"
+                    run_models_hit[m["model_name"]] = {
+                        "pred_close": round(pred_close, 2),
+                        "pred_pct": round(pred_pct, 2),
+                        "pred_dir": pred_dir,
+                        "hit": hit,
+                    }
+                    model_hits.setdefault(m["model_name"], []).append(hit)
+
+                # LLM 修正胜率: 4 模型投票 vs 加上 LLM 修正后 vs 实际
+                evals = list_sentiment_evals(r["id"])
+                llm_adj = sum(float(e["adjustment_pct"]) for e in evals)
+                base_dir = r["final_direction"]
+                # 假设 LLM 修正 0 是 (4 模型投票方向), 修正后是 base_dir
+                # 这里只统计: LLM 正向修正 vs 实际; LLM 负向修正 vs 实际
+                if llm_adj != 0 and base_dir != actual_dir:
+                    # LLM 修正后判错
+                    if llm_adj > 0:
+                        llm_wrong.append(abs(actual_pct))
+                    else:
+                        llm_wrong.append(abs(actual_pct))
+                samples.append({
+                    "run_id": r["id"],
+                    "target_date": target_date,
+                    "pred_close": actual_close,  # 实际成交价
+                    "actual_close": actual_close,
+                    "actual_pct": actual_pct,
+                    "actual_dir": actual_dir,
+                    "final_pred_dir": base_dir,
+                    "final_pred_pct": float(r["final_expected_pct"] or 0),
+                    "models": run_models_hit,
+                    "llm_adj": llm_adj,
+                })
+
+            # 聚合
+            model_summary = {}
+            for name, hits in model_hits.items():
+                if not hits:
+                    continue
+                wins = sum(1 for h in hits if h)
+                model_summary[name] = {
+                    "samples": len(hits),
+                    "hits": wins,
+                    "accuracy_pct": round(wins / len(hits) * 100, 1),
+                }
+
+            total = len(model_summary.get("kronos", {}).get("hits", 0) and [True]) or 0
+            # 聚合整体命中率 (用 4 模型任一命中 OR 加权平均)
+            if "kronos" in model_summary:
+                total = model_summary["kronos"]["samples"]
+                hits = sum(1 for s in samples if any(m.get("hit") for m in s.get("models", {}).values()))
+
+            accuracy = round(hits / total * 100, 1) if total else 0
+            llm_win_pct = None
+            if llm_correct or llm_wrong:
+                llm_win_pct = round(len(llm_correct) / (len(llm_correct) + len(llm_wrong)) * 100, 1)
+
+            # 保存到 backtest_results 表
+            save_backtest_result(
+                symbol=symbol, window_days=400, horizon_days=5,
+                models_tested=len(model_summary),
+                direction_accuracy_pct=accuracy,
+                llm_adjustment_win_pct=llm_win_pct,
+                model_hits=model_summary,
+                samples=samples[-10:],
+                source="runs",
+            )
+
+            return {
+                "symbol": symbol,
+                "source": "historical_runs",
+                "runs_used": len(samples),
+                "models": model_summary,
+                "direction_hits": hits,
+                "direction_accuracy_pct": accuracy,
+                "llm_adjustment_win_pct": llm_win_pct,
+                "recent_samples": samples[-10:],
+            }
+
+    # 2. 退路: 旧 LinearRegression 滚动回测
     try:
         df = load_kline(symbol, days=400)
     except HTTPException:
@@ -293,8 +482,16 @@ def backtest(symbol: str):
             continue
 
     accuracy = round(hits / total * 100, 1) if total else 0
+    save_backtest_result(
+        symbol=symbol, window_days=window, horizon_days=horizon,
+        models_tested=1, direction_accuracy_pct=accuracy,
+        llm_adjustment_win_pct=None,
+        model_hits={"linear_reg": {"samples": total, "hits": hits, "accuracy_pct": accuracy}},
+        samples=samples[-10:], source="legacy",
+    )
     return {
         "symbol": symbol,
+        "source": "legacy",
         "windows_tested": total,
         "direction_hits": hits,
         "direction_accuracy_pct": accuracy,
@@ -370,6 +567,154 @@ def stocks_search(q: str = "", limit: int = 10):
         return {"items": results}
     except Exception as e:
         return {"items": [], "error": str(e)}
+
+
+@app.get("/report/generate")
+def report_generate(symbol: str, task_id: str = ""):
+    """生成预测报告 双格式(Dashboard + Detail)。
+
+    要求 /predict 流程完成且任务存到 _tasks 里；如果传 task_id 取对应 result；
+    如不传 task_id 则取该 symbol 最近完的一次预测(forecasts 表)。
+    """
+    from forecast_utils import _tasks
+
+    result = None
+    # 尝试从 _tasks 拿结果
+    if task_id:
+        with _tasks_lock_placeholder():
+            t = _tasks.get(task_id)
+            if t and t.get("result"):
+                result = t["result"]
+
+    # 如不传 task_id 或 _tasks 无，则取 forecasts 表最新
+    if not result:
+        rows = list_forecasts(limit=1, symbol=symbol)
+        if not rows:
+            raise HTTPException(404, f"无 {symbol} 的预测记录，请先调用 /predict")
+        data = rows[0]
+        # 重建类似 /predict 返回的 result dict
+        result = {
+            "symbol": data["symbol"],
+            "stock_name": data.get("stock_name", ""),
+            "last_close": data["last_close"],
+            "last_date": data["last_date"],
+            "target_date": data.get("target_date", ""),
+            "pred_days": data.get("pred_days", 5),
+            "prediction": data.get("prediction", []),
+            "direction": data.get("direction", "flat"),
+            "expected_pct": data.get("expected_pct", 0),
+            "recommendation": data.get("recommendation", {}),
+            "models": data.get("models", {}),
+            "sentiment": data.get("sentiment", {}),
+            "elapsed_ms": data.get("elapsed_ms", 0),
+        }
+
+    # 查对应 run_id(仅取 prediction_runs 最新的 symbol)
+    run_id = 0
+    runs = list_runs_for_symbol(symbol, limit=1)
+    if runs:
+        run_id = runs[0].get("id", 0)
+
+    # 取回测数据
+    backtest_data = None
+    if run_id:
+        try:
+            backtest_data = _call_backtest_internal(symbol)
+        except Exception:
+            pass
+
+    # 生成
+    if run_id:
+        dash, detail = generate_report(run_id, result, backtest_data=backtest_data)
+    else:
+        # 没有 run 也用 result 兜底
+        dash, detail = generate_report(0, result, backtest_data=backtest_data)
+
+    # 保存到 prediction_reports 表
+    report_id = save_prediction_report(
+        run_id=run_id, symbol=symbol,
+        report_kind="prediction",
+        dashboard_md=dash, detail_md=detail,
+        model_used=result.get("stock_name", ""),
+        tokens_used=0,
+        status="ok",
+    ) or 0
+
+    return {
+        "report_id": report_id,
+        "symbol": symbol,
+        "run_id": run_id,
+        "dashboard_md": dash,
+        "detail_md": detail,
+    }
+
+
+@app.get("/report/backtest")
+def report_backtest(symbol: str):
+    """生成回测报告 双格式(Dashboard + Detail)。
+
+    先调用内部 /backtest 逻辑拿回测数据，再生成报告。
+    """
+    # 调 backtest 主流程
+    try:
+        bt_data = _call_backtest_internal(symbol)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"回测失败: {e}")
+
+    # 取 backtest_id(该 symbol 最新一条)
+    bts = list_backtests_for_symbol(symbol, limit=1)
+    bt_id = bts[0].get("id", 0) if bts else 0
+
+    dash, detail = generate_backtest_report(bt_id, bt_data, symbol)
+
+    return {
+        "report_id": 0,
+        "backtest_id": bt_id,
+        "symbol": symbol,
+        "dashboard_md": dash,
+        "detail_md": detail,
+    }
+
+
+def _call_backtest_internal(symbol: str) -> dict:
+    """复用 /backtest 内部逻辑，返回 dict(不经过 HTTP)。"""
+    # 该函数在 backtest() 内已经返回 dict，这里直接调用 backtest(symbol)
+    # 防止无限递归，我们走 backtest() 函数本身
+    return backtest(symbol)
+
+
+@app.get("/report/list")
+def report_list(symbol: str = "", limit: int = 20):
+    """列出某只股票(或全局)预测报告列表。"""
+    if symbol:
+        rows = list_reports_for_symbol(symbol, limit=limit)
+    else:
+        # 不带 symbol 时暂未实现全列表(需要 forecast_traces 加函数)
+        rows = list_reports_for_symbol(symbol, limit=limit)
+    # 精简输出
+    result = []
+    for r in rows:
+        result.append({
+            "id": r.get("id"),
+            "run_id": r.get("run_id"),
+            "symbol": r.get("symbol"),
+            "report_kind": r.get("report_kind"),
+            "status": r.get("status"),
+            "created_at": r.get("created_at"),
+            "dashboard_preview": (r.get("dashboard_md") or "")[:100],
+        })
+    return {"items": result, "total": len(result)}
+
+
+@app.get("/report/get")
+def report_get(report_id: int):
+    """获取单条预测报告。"""
+    r = get_prediction_report(report_id)
+    if not r:
+        raise HTTPException(404, f"报告 {report_id} 不存在")
+    return r
 
 
 @app.get("/forecast/card")

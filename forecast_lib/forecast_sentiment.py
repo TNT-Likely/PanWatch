@@ -181,16 +181,21 @@ def _load_llm_config() -> dict:
 
 
 
-def llm_sentiment_score(events_text: str) -> dict:
+def llm_sentiment_score(events_text: str, _run_id: int = 0) -> dict:
     """LLM 语义情绪打分(替代关键词规则)。
 
     调 agnes-ai chat completions,让 LLM 判断公告/新闻情绪:
     - score: -2(重大利空) ~ +2(重大利好), 0=中性
     - reason: 一句话理由
     失败时返回 None(调用方降级到关键词规则)。
+    _run_id > 0 时: 全程 prompt/response/latency 写到 prediction_sentiment_evals。
     """
     if not events_text.strip():
         return None
+    import time as _time
+    _t0 = _time.monotonic()
+    _resp_text = ""
+    _err = ""
     try:
         import requests as _req
         import os as _os
@@ -209,27 +214,29 @@ def llm_sentiment_score(events_text: str) -> dict:
 规则: -2=重大利空(立案/退市/清仓减持/业绩暴雷), -1=利空(小幅减持/问询),
 0=中性/无关, +1=利好(中标/回购/预增), +2=重大利好(重组/大额订单/政策利好)"""
 
+        _payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "你只输出JSON,不输出其他文字。"},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.1,
+            "max_tokens": 2000,
+        }
         r = _req.post(
             f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": "你只输出JSON,不输出其他文字。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 2000,
-            },
+            json=_payload,
             timeout=30,
         )
         if r.status_code == 200:
             data = r.json()
             msg = data["choices"][0]["message"]
             content = msg.get("content") or ""
+            _resp_text = content
             # 推理模型可能把思考放 reasoning_content,content 为空
             if not content.strip():
                 content = msg.get("reasoning_content") or ""
@@ -240,16 +247,25 @@ def llm_sentiment_score(events_text: str) -> dict:
                 data2 = json.loads(m.group(0))
                 score = int(data2.get("score", 0))
                 score = max(-2, min(2, score))
+                _latency = int((_time.monotonic() - _t0) * 1000)
+                _record_sentiment(_run_id, events_text, prompt, _resp_text, score, data2.get("reason", ""), 0.0, _latency, "")
                 return {"score": score, "reason": data2.get("reason", ""), "source": "llm"}
+            _latency = int((_time.monotonic() - _t0) * 1000)
+            _record_sentiment(_run_id, events_text, prompt, _resp_text, 0, f"LLM返回无法解析: {content[:80]}", 0.0, _latency, "parse_fail")
             return {"score": 0, "reason": f"LLM返回无法解析: {content[:80]}", "source": "llm-fallback"}
+        _latency = int((_time.monotonic() - _t0) * 1000)
+        _record_sentiment(_run_id, events_text, prompt, _resp_text, score, reason, 0.0, _latency, _err)
         return None
     except Exception as e:
+        _latency = int((_time.monotonic() - _t0) * 1000)
+        _err = str(e)
+        _record_sentiment(_run_id, events_text, "", "", 0, "", 0.0, _latency, _err)
         print(f"LLM情绪打分失败: {e}")
         return None
 
 
 
-def fetch_sentiment(symbol: str) -> dict:
+def fetch_sentiment(symbol: str, _run_id: int = 0) -> dict:
     """消息情绪面: 个股公告/新闻 + 板块共振 + 市场情绪。
 
     复用 PanWatch 数据体系(wudao MCP + 东财涨停池),输出事件修正系数。
@@ -340,7 +356,7 @@ def fetch_sentiment(symbol: str) -> dict:
     adjust = 0.0
 
     # 4a. LLM 语义打分
-    llm_res = llm_sentiment_score(events_text)
+    llm_res = llm_sentiment_score(events_text, _run_id=_run_id)
     if llm_res:
         llm_score = llm_res.get("score", 0)
         # score -2~+2 → 修正 -1.5%~+1.5% (每档 0.75%)
@@ -373,3 +389,23 @@ def fetch_sentiment(symbol: str) -> dict:
 
     result["adjustment_pct"] = round(adjust, 2)
     return result
+
+
+def _record_sentiment(run_id: int, events_text: str, prompt: str, response: str,
+                     score: int, reason: str, adjustment_pct: float,
+                     latency_ms: int, error: str = "") -> None:
+    """把一次 LLM 情绪调用写到 prediction_sentiment_evals (埋点失败不抛)。"""
+    if not run_id:
+        return
+    try:
+        from forecast_traces import record_sentiment_eval
+        record_sentiment_eval(
+            run_id=run_id, source="llm",
+            events_text=events_text[:2000],
+            score=score, reason=reason,
+            adjustment_pct=adjustment_pct,
+            prompt=prompt[:2000], response=response[:2000],
+            latency_ms=latency_ms, error=error,
+        )
+    except Exception:
+        pass
