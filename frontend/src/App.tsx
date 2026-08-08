@@ -86,7 +86,7 @@ function App() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeInfo, setUpgradeInfo] = useState<{ latest: string; url: string } | null>(null)
   const checkedUpdateRef = useRef(false)
-  const repoUrl = 'https://github.com/xiaoze-hub/PanWatch'
+  const repoUrl = 'https://github.com/xiaoze-hub/Stock-Intelligent-Data-Analysis'
 
   useEffect(() => {
     appApi.version()
@@ -108,7 +108,7 @@ function App() {
         if (!shouldOpen) return
         const dismissed = localStorage.getItem('panwatch_upgrade_dismissed_version') || ''
         if (dismissed === latest) return
-        setUpgradeInfo({ latest, url: String(res?.release_url || 'https://github.com/xiaoze-hub/PanWatch/releases') })
+        setUpgradeInfo({ latest, url: String(res?.release_url || 'https://github.com/xiaoze-hub/Stock-Intelligent-Data-Analysis/releases') })
         setUpgradeOpen(true)
       })
       .catch(() => {})
@@ -307,7 +307,7 @@ function App() {
             </Button>
             <Button
               onClick={() => {
-                const url = upgradeInfo?.url || 'https://github.com/xiaoze-hub/PanWatch/releases'
+                const url = upgradeInfo?.url || 'https://github.com/xiaoze-hub/Stock-Intelligent-Data-Analysis/releases'
                 window.open(url, '_blank', 'noopener,noreferrer')
               }}
             >

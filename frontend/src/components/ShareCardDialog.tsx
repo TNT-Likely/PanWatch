@@ -122,7 +122,7 @@ export default function ShareCardDialog({
               <span>数智分析</span>
               <span style={{ color: '#cbd5e1', fontWeight: 400 }}>·</span>
               <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12.5 }}>
-                github.com/xiaoze-hub/PanWatch
+                github.com/xiaoze-hub/Stock-Intelligent-Data-Analysis
               </span>
             </div>
           </div>
