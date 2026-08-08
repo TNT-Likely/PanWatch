@@ -175,7 +175,7 @@ def _human_error(err: str | None) -> str | None:
 
 
 def check_update(current_version: str, proxy: str | None = None) -> dict[str, object]:
-    repo = os.getenv("UPDATE_CHECK_DOCKER_REPO", "xiaoze-hub/panwatch")
+    repo = os.getenv("UPDATE_CHECK_DOCKER_REPO", "xiaoze-hub/stock-intelligent-data-analytics")
     force_disable = os.getenv("UPDATE_CHECK_DISABLE", "").strip() in {"1", "true", "True"}
     if force_disable:
         return {
