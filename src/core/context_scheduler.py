@@ -186,7 +186,12 @@ class ContextMaintenanceScheduler:
         }
 
     async def _refresh_opportunities_job(self):
-        """定时刷新机会池（候选 + 策略信号）。"""
+        """定时刷新机会池（候选 + 策略信号）。全市场休市日跳过。"""
+        from src.core.trading_calendar import any_market_trading_day
+
+        if not any_market_trading_day():
+            logger.debug("[上下文维护] 非交易日，跳过机会刷新")
+            return
         if self._refreshing:
             logger.debug("[上下文维护] 上一轮机会刷新仍在执行，跳过本轮")
             return
@@ -234,6 +239,19 @@ class ContextMaintenanceScheduler:
             outcome_days=self.outcome_retention_days,
         )
 
+    async def _refresh_trading_calendar_job(self):
+        """每日刷新 A 股交易日历。
+
+        日历只覆盖到当年年底,长跑实例跨年后会超出覆盖范围而降级为"只判周末",
+        因此每天凌晨拉一次。安排在各类盘前通知之前,保证当天判断用的是新日历。
+        """
+        from src.core.trading_calendar import refresh
+
+        try:
+            await refresh()
+        except Exception as e:  # refresh 内部已兜异常,这里只防意外
+            logger.exception(f"[上下文维护] 交易日历刷新异常: {e}")
+
     def start(self):
         self.scheduler.add_job(
             self._evaluate_job,
@@ -256,8 +274,21 @@ class ContextMaintenanceScheduler:
             coalesce=True,
             max_instances=1,
         )
-        # 机会自动刷新（北京时间 09:15 / 13:30 / 22:00）
-        for job_hour, job_minute in ((1, 15), (5, 30), (14, 0)):
+        # 交易日历每日刷新 —— 03:00,早于所有盘前通知
+        self.scheduler.add_job(
+            self._refresh_trading_calendar_job,
+            "cron",
+            hour=3,
+            minute=0,
+            jitter=120,
+            id="context_maintenance_trading_calendar",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        # 机会自动刷新 —— 09:15 盘前 / 13:30 午盘 / 22:00 晚间。
+        # 时间点按调度器时区(app_timezone,默认 Asia/Shanghai)解释,与 Agent cron 语义一致。
+        for job_hour, job_minute in ((9, 15), (13, 30), (22, 0)):
             self.scheduler.add_job(
                 self._refresh_opportunities_job,
                 "cron",
@@ -283,7 +314,7 @@ class ContextMaintenanceScheduler:
         from src.core.scheduler_registry import register
         register("context", self.scheduler)
         logger.info(
-            "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 01:15/05:30/14:00 UTC）",
+            "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00）",
             self.eval_interval_hours,
             self.snapshot_retention_days,
             self.outcome_retention_days,

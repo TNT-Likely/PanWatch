@@ -1,5 +1,6 @@
 """PanWatch 统一服务入口 - Web 后台 + Agent 调度"""
 
+import asyncio
 import logging
 import os
 import time
@@ -1481,6 +1482,15 @@ async def lifespan(app):
             refresh_stock_list()
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
+
+    # 交易日历预热(判断周末/法定节假日是否开市)。拉取失败会自动降级为只判周末,
+    # 因此这里不阻塞启动,交给后台任务;之后每日 03:00 由上下文维护调度器刷新。
+    try:
+        from src.core.trading_calendar import refresh as refresh_trading_calendar
+
+        asyncio.create_task(refresh_trading_calendar())
+    except Exception as e:
+        logger.warning(f"交易日历预热调度失败(降级为只判周末): {e}")
 
     global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()
