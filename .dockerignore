@@ -26,7 +26,6 @@ data/
 *.sqlite
 
 # Build
-frontend/dist/
 static/
 
 # Docs

@@ -7,6 +7,61 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 
+class TokenLimitError(Exception):
+    """Token 超出模型限制时抛出的错误"""
+
+    def __init__(self, prompt_tokens: int, max_tokens: int, context_limit: int, message: str = ""):
+        self.prompt_tokens = prompt_tokens
+        self.max_tokens = max_tokens
+        self.context_limit = context_limit
+        base_msg = (
+            f"输入内容过长（约 {prompt_tokens} tokens）+ 请求输出 {max_tokens} tokens "
+            f"超过模型限制 {context_limit} tokens"
+        )
+        if message:
+            base_msg += f"，{message}"
+        super().__init__(base_msg)
+
+
+def _estimate_tokens(text: str) -> int:
+    """保守估算文本的 token 数量（中文/混合文本）"""
+    if not text:
+        return 0
+    # 中文/混合文本：约 1.2 个字符/tokens
+    # 纯英文：约 4 个字符/tokens
+    # 保守起见统一按 1.2 估算
+    return max(1, int(len(text) * 1.2))
+
+
+def _clamp_max_tokens(
+    configured_max_tokens: int | None,
+    prompt_tokens: int,
+    context_limit: int,
+    safety_margin: int = 512,
+    minimum_output: int = 64,
+) -> int:
+    """根据 prompt 长度和上下文限制计算安全的 max_tokens 值
+
+    Args:
+        configured_max_tokens: 配置的输出 token 上限（None 表示不限制）
+        prompt_tokens: prompt 的估算 token 数
+        context_limit: 模型的上下文窗口大小
+        safety_margin: 安全余量，避免 tokenizer 差异导致的溢出
+        minimum_output: 最小保证的输出 token 数
+
+    Returns:
+        安全的 max_tokens 值
+    """
+    if prompt_tokens >= context_limit - minimum_output - safety_margin:
+        raise TokenLimitError(prompt_tokens, 0, context_limit,
+                               "请减少股票数量、新闻数量或历史K线范围后重试")
+
+    available = context_limit - prompt_tokens - safety_margin
+    if configured_max_tokens is not None:
+        return max(minimum_output, min(configured_max_tokens, available))
+    return available
+
+
 class AIClient:
     """OpenAI 协议兼容的 AI 客户端"""
 

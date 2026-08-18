@@ -55,6 +55,7 @@ class PriceAlertScheduler:
             replace_existing=True,
             coalesce=True,
             max_instances=1,
+            misfire_grace_time=60,
         )
         self.scheduler.start()
         from src.core.scheduler_registry import register
