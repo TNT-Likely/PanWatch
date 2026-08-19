@@ -61,6 +61,12 @@ export interface ChatStreamCallbacks {
   onToolCallStart?: (info: { name: string; arguments: Record<string, unknown> }) => void
   /** 工具执行完成 */
   onToolResult?: (info: { name: string; ok: boolean; preview: string }) => void
+  /** 计划驱动(全面诊断持仓):计划生成/步骤推进/完成 */
+  onPlan?: (info: {
+    status: string
+    steps: { id: number; title: string; status: string }[]
+    current?: number
+  }) => void
   /** 最终回答（已落库） */
   onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
   /** AI 服务异常（服务端已把错误文案落库） */
@@ -102,6 +108,9 @@ async function sendMessageStream(
         break
       case 'tool_result':
         callbacks.onToolResult?.({ name: d.name || '', ok: !!d.ok, preview: d.preview || '' })
+        break
+      case 'plan':
+        callbacks.onPlan?.({ status: d.status || '', steps: d.steps || [], current: d.current })
         break
       case 'done':
         finished = true

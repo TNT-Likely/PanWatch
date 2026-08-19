@@ -38,6 +38,12 @@ export default function ChatWidget() {
   // 流式回复的增量状态
   const [streamText, setStreamText] = useState('')
   const [streamTool, setStreamTool] = useState<string | null>(null)
+  // 计划驱动(全面诊断持仓)的计划卡片状态
+  const [plan, setPlan] = useState<{
+    status: string
+    steps: { id: number; title: string; status: string }[]
+    current?: number
+  } | null>(null)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   // 自动滚动：用户上滚即停，回到底部恢复
@@ -64,6 +70,7 @@ export default function ChatWidget() {
     }
     setStreamText('')
     setStreamTool(null)
+    setPlan(null)
   }, [])
 
   const handleScroll = useCallback(() => {
@@ -237,6 +244,11 @@ export default function ChatWidget() {
         },
         onToolResult: () => {
           // 结果已就绪，等待模型基于数据继续回答
+        },
+        onPlan: (p) => {
+          receivedAny = true
+          setStreamTool(null)
+          setPlan(p)
         },
         onDone: (m) => {
           receivedAny = true
@@ -429,6 +441,44 @@ export default function ChatWidget() {
                 </div>
               </div>
             ))}
+            {sending && plan && plan.steps.length > 0 && (
+              // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
+              <div className="flex justify-start">
+                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-[12px] bg-accent/40 border border-border/40">
+                  <div className="font-medium text-foreground mb-1.5">
+                    诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
+                  </div>
+                  <ol className="space-y-1">
+                    {plan.steps.map((s) => (
+                      <li key={s.id} className="flex items-center gap-2">
+                        <span
+                          className={
+                            s.status === 'done'
+                              ? 'text-emerald-600'
+                              : s.status === 'failed'
+                              ? 'text-rose-600'
+                              : s.status === 'running'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }
+                        >
+                          {s.status === 'done'
+                            ? '✓'
+                            : s.status === 'failed'
+                            ? '✕'
+                            : s.status === 'running'
+                            ? '⟳'
+                            : '○'}
+                        </span>
+                        <span className={s.status === 'done' ? 'text-muted-foreground' : 'text-foreground'}>
+                          {s.title}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            )}
             {sending && streamText && (
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">

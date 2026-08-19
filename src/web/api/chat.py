@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.config import Settings
 from src.core.ai_failover import FailoverAIClient, build_failover_client
+from src.core.chat_planner import run_portfolio_diagnosis, should_use_planning
 from src.core.sse import SSEStream, chat_stream_hub
 from src.models.market import MarketCode
 from src.web.database import SessionLocal, get_db
@@ -634,73 +635,88 @@ async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None
         ai_client = _get_ai_client(db, conv.ai_model_id)
         ai_response = ""
 
-        try:
-            final_msg: dict | None = None
-            for _round in range(MAX_TOOL_ROUNDS):
-                final_msg = None
-                try:
-                    async for kind, payload in ai_client.chat_stream(
-                        messages_for_ai, tools=CHAT_TOOLS, temperature=0.5,
-                    ):
-                        if kind == "token":
-                            await stream.publish("token", {"text": payload})
-                        else:
-                            final_msg = payload
-                except Exception:
-                    # 模型不支持 tool use / 流式 → 降级为普通对话（与非流式端点同策略）
-                    logger.info("流式 tool use 不可用，降级为普通对话")
-                    ai_response = await ai_client.chat_multi(messages_for_ai, temperature=0.5)
-                    await stream.publish("token", {"text": ai_response})
-                    break
-
-                tool_calls = (final_msg or {}).get("tool_calls") or []
-                if not tool_calls:
-                    ai_response = (final_msg or {}).get("content") or ""
-                    break
-
-                # 有工具调用：把 assistant 消息 + 工具结果追加进上下文，进入下一轮
-                messages_for_ai.append({
-                    "role": "assistant",
-                    "content": (final_msg or {}).get("content") or None,
-                    "tool_calls": [
-                        {
-                            "id": tc["id"],
-                            "type": "function",
-                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                        }
-                        for tc in tool_calls
-                    ],
-                })
-                for tc in tool_calls:
+        # P2 试点:识别"全面诊断持仓"意图 → 走计划驱动(复用工具执行器,plan 事件推前端)
+        latest_user = next(
+            (m.get("content") or "" for m in reversed(messages_for_ai) if m.get("role") == "user"),
+            "",
+        )
+        if should_use_planning(latest_user):
+            try:
+                ai_response = await run_portfolio_diagnosis(
+                    db, stream, ai_client, _execute_tool
+                )
+            except Exception as e:
+                logger.error(f"计划驱动诊断失败: {e}")
+                ai_response = f"抱歉，持仓诊断失败：{e}"
+                await stream.publish("error", {"message": str(e)})
+        else:
+            try:
+                final_msg: dict | None = None
+                for _round in range(MAX_TOOL_ROUNDS):
+                    final_msg = None
                     try:
-                        tool_args = json.loads(tc["arguments"]) if tc["arguments"] else {}
-                    except json.JSONDecodeError:
-                        tool_args = {}
-                    logger.info(f"Tool call(stream): {tc['name']}({tool_args})")
-                    await stream.publish(
-                        "tool_call_start", {"name": tc["name"], "arguments": tool_args}
-                    )
-                    result = await _execute_tool(db, tc["name"], tool_args)
-                    await stream.publish(
-                        "tool_result",
-                        {
-                            "name": tc["name"],
-                            "ok": not result.startswith("工具执行出错"),
-                            "preview": (result or "")[:TOOL_RESULT_PREVIEW_CHARS],
-                        },
-                    )
-                    messages_for_ai.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": result,
-                    })
-            else:
-                ai_response = (final_msg or {}).get("content") or "抱歉，处理轮次过多，请精简问题再试。"
+                        async for kind, payload in ai_client.chat_stream(
+                            messages_for_ai, tools=CHAT_TOOLS, temperature=0.5,
+                        ):
+                            if kind == "token":
+                                await stream.publish("token", {"text": payload})
+                            else:
+                                final_msg = payload
+                    except Exception:
+                        # 模型不支持 tool use / 流式 → 降级为普通对话（与非流式端点同策略）
+                        logger.info("流式 tool use 不可用，降级为普通对话")
+                        ai_response = await ai_client.chat_multi(messages_for_ai, temperature=0.5)
+                        await stream.publish("token", {"text": ai_response})
+                        break
 
-        except Exception as e:
-            logger.error(f"AI 流式对话失败: {e}")
-            ai_response = f"抱歉，AI 服务暂时不可用：{e}"
-            await stream.publish("error", {"message": str(e)})
+                    tool_calls = (final_msg or {}).get("tool_calls") or []
+                    if not tool_calls:
+                        ai_response = (final_msg or {}).get("content") or ""
+                        break
+
+                    # 有工具调用：把 assistant 消息 + 工具结果追加进上下文，进入下一轮
+                    messages_for_ai.append({
+                        "role": "assistant",
+                        "content": (final_msg or {}).get("content") or None,
+                        "tool_calls": [
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                            }
+                            for tc in tool_calls
+                        ],
+                    })
+                    for tc in tool_calls:
+                        try:
+                            tool_args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                        except json.JSONDecodeError:
+                            tool_args = {}
+                        logger.info(f"Tool call(stream): {tc['name']}({tool_args})")
+                        await stream.publish(
+                            "tool_call_start", {"name": tc["name"], "arguments": tool_args}
+                        )
+                        result = await _execute_tool(db, tc["name"], tool_args)
+                        await stream.publish(
+                            "tool_result",
+                            {
+                                "name": tc["name"],
+                                "ok": not result.startswith("工具执行出错"),
+                                "preview": (result or "")[:TOOL_RESULT_PREVIEW_CHARS],
+                            },
+                        )
+                        messages_for_ai.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        })
+                else:
+                    ai_response = (final_msg or {}).get("content") or "抱歉，处理轮次过多，请精简问题再试。"
+
+            except Exception as e:
+                logger.error(f"AI 流式对话失败: {e}")
+                ai_response = f"抱歉，AI 服务暂时不可用：{e}"
+                await stream.publish("error", {"message": str(e)})
 
         # 落库（无论连接是否还在，结果照常持久化）
         assistant_msg = ChatMessage(
