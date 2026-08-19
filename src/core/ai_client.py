@@ -81,21 +81,21 @@ class AIClient:
     async def chat_multi(
         self,
         messages: list[dict],
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
     ) -> str:
         """
         多轮对话：传入完整 messages 列表。
 
         Args:
             messages: [{"role": "system"/"user"/"assistant", "content": "..."}]
-            temperature: 生成温度
+            temperature: 生成温度；传 None 时不下发该参数
+                （用于 failover 对"参数不兼容"错误的摘参重试）
         """
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-            )
+            create_kwargs: dict = {"model": self.model, "messages": messages}
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
+            response = await self.client.chat.completions.create(**create_kwargs)
             if response.usage:
                 self.total_tokens_used += response.usage.total_tokens
                 logger.debug(
@@ -111,16 +111,21 @@ class AIClient:
         self,
         messages: list[dict],
         tools: list[dict],
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
     ):
-        """带 tool use 的对话调用，返回原始 message 对象。"""
+        """带 tool use 的对话调用，返回原始 message 对象。
+
+        temperature 传 None 时不下发该参数（供 failover 摘参重试）。
+        """
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=tools,
-                temperature=temperature,
-            )
+            create_kwargs: dict = {
+                "model": self.model,
+                "messages": messages,
+                "tools": tools,
+            }
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
+            response = await self.client.chat.completions.create(**create_kwargs)
             if response.usage:
                 self.total_tokens_used += response.usage.total_tokens
             return response.choices[0].message
@@ -132,7 +137,7 @@ class AIClient:
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
     ):
         """流式对话通道（stream=True），支持可选 tool use。
 
@@ -147,9 +152,10 @@ class AIClient:
         create_kwargs: dict = {
             "model": self.model,
             "messages": messages,
-            "temperature": temperature,
             "stream": True,
         }
+        if temperature is not None:
+            create_kwargs["temperature"] = temperature
         if tools:
             create_kwargs["tools"] = tools
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.config import Settings
-from src.core.ai_client import AIClient
+from src.core.ai_failover import FailoverAIClient, build_failover_client
 from src.core.sse import SSEStream, chat_stream_hub
 from src.models.market import MarketCode
 from src.web.database import SessionLocal, get_db
@@ -161,36 +161,24 @@ class SendMessageBody(BaseModel):
     content: str
 
 
-def _get_ai_client(db: Session, model_id: int | None = None) -> AIClient:
-    """获取 AI 客户端实例。"""
+def _get_ai_client(db: Session, model_id: int | None = None) -> FailoverAIClient:
+    """获取带 failover 的 AI 客户端（主模型沿用三级选取，备选从库里补齐）。
+
+    对话工具循环 / 组合体检等直接调用方都经此入口 —— 主模型超时/限流/挂掉时
+    自动降级备选，实际使用的模型记在 used_model_label，可回填到 done 事件供前端
+    透明展示。返回的 FailoverAIClient 与 AIClient 接口兼容，可原地替换。
+    """
     model = None
     service = None
-
     if model_id:
         model = db.query(AIModel).filter(AIModel.id == model_id).first()
-
     if not model:
         model = db.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
-
     if not model:
         model = db.query(AIModel).first()
-
     if model:
         service = db.query(AIService).filter(AIService.id == model.service_id).first()
-
-    if model and service:
-        return AIClient(
-            base_url=service.base_url,
-            api_key=service.api_key,
-            model=model.model,
-        )
-
-    settings = Settings()
-    return AIClient(
-        base_url=settings.ai_base_url,
-        api_key=settings.ai_api_key,
-        model=settings.ai_model,
-    )
+    return build_failover_client(model, service, db=db)
 
 
 def _build_stock_context(db: Session, symbol: str, market: str) -> str:
@@ -544,7 +532,7 @@ async def send_message(
         _save_user_message(db, conv, body.content)
         messages_for_ai = await _build_messages_for_ai(db, conv)
 
-        # 调用 AI（带 tool use，用于按需获取更多数据）
+        # 调用 AI（带 tool use，用于按需获取更多数据；主模型失败自动 failover）
         ai_client = _get_ai_client(db, conv.ai_model_id)
         ai_response = ""
         try:
@@ -729,6 +717,8 @@ async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None
             "message_id": assistant_msg.id,
             "content": ai_response,
             "created_at": str(assistant_msg.created_at or ""),
+            # 实际使用的模型标签(failover 后可能非主模型),供前端透明展示
+            "model_label": getattr(ai_client, "used_model_label", ""),
         })
     except Exception as e:
         logger.error(f"对话流式任务异常: {e}")

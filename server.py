@@ -23,6 +23,7 @@ from src.web.log_handler import DBLogHandler
 from src.config import Settings, AppConfig, StockConfig
 from src.models.market import MarketCode
 from src.core.ai_client import AIClient
+from src.core.ai_failover import build_failover_client
 from src.core.notifier import NotifierManager
 from src.core.scheduler import AgentScheduler
 from src.core.price_alert_scheduler import PriceAlertScheduler
@@ -1059,25 +1060,13 @@ def _build_notifier(channels: list[NotifyChannel]) -> NotifierManager:
     return notifier
 
 
-def _build_ai_client(
-    model: AIModel | None, service: AIService | None, proxy: str
-) -> AIClient:
-    """根据解析后的 model+service 构建 AIClient"""
-    if model and service:
-        return AIClient(
-            base_url=service.base_url,
-            api_key=service.api_key,
-            model=model.model,
-            proxy=proxy,
-        )
-    # 回退到环境变量配置
-    settings = Settings()
-    return AIClient(
-        base_url=settings.ai_base_url,
-        api_key=settings.ai_api_key,
-        model=settings.ai_model,
-        proxy=proxy,
-    )
+def _build_ai_client(model: AIModel | None, service: AIService | None, proxy: str):
+    """根据解析后的 model+service 构建带 failover 的 AI 客户端。
+
+    主候选沿用四级路由选定的 model+service;备选由 build_failover_client 从库里
+    其余模型按优先级补齐。返回的 FailoverAIClient 与 AIClient 接口兼容,可原地替换。
+    """
+    return build_failover_client(model, service, proxy)
 
 
 def build_context(agent_name: str, stock_agent_id: int | None = None) -> AgentContext:
@@ -1400,7 +1389,7 @@ async def trigger_agent_for_stock(
                     or "notify_skipped" in raw
                 ),
                 notify_sent=bool(raw.get("notified", False)),
-                model_label=model_label,
+                model_label=context.model_label,
             )
         except Exception as e:
             record_agent_run(
@@ -1410,7 +1399,7 @@ async def trigger_agent_for_stock(
                 duration_ms=int((time.monotonic() - start) * 1000),
                 trace_id=trace_id,
                 trigger_source="manual",
-                model_label=model_label,
+                model_label=context.model_label,
             )
             raise
 
