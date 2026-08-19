@@ -152,8 +152,12 @@ def test_logs_sse_filters(monkeypatch):
 def test_logs_sse_tail_only_new(monkeypatch):
     """日志 SSE：无 Last-Event-ID 时从当前最新开始，只 tail 增量"""
     factory = _make_log_db(monkeypatch)
-    monkeypatch.setattr(logs_api, "LOGS_SSE_POLL_SEC", 0.01)
-    monkeypatch.setattr(logs_api, "LOGS_SSE_MAX_DURATION_SEC", 0.2)
+    # 时序阈值放宽以抗环境负载:该用例依赖"先建立基线快照、再插入增量"的先后关系,
+    # 原 0.05s 预留在高负载下可能让首轮基线轮询尚未跑完就插入,导致新日志被并入基线
+    # 而不被 tail(基线偶发 flaky,与本次改动无关)。加大 MAX_DURATION 与插入前等待,
+    # 给事件循环足够调度余量。
+    monkeypatch.setattr(logs_api, "LOGS_SSE_POLL_SEC", 0.02)
+    monkeypatch.setattr(logs_api, "LOGS_SSE_MAX_DURATION_SEC", 1.5)
 
     async def run():
         request = SimpleNamespace(headers={})
@@ -168,8 +172,8 @@ def test_logs_sse_tail_only_new(monkeypatch):
                 received.append(chunk)
 
         task = asyncio.create_task(consume())
-        # 等第一轮空查询过去后插入新日志
-        await asyncio.sleep(0.05)
+        # 等首轮基线轮询稳妥跑完后再插入新日志(放宽到 0.3s 抗负载抖动)
+        await asyncio.sleep(0.3)
         db = factory()
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
