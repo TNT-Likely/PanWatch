@@ -1,10 +1,17 @@
 """日志中心 API"""
+import asyncio
+import logging
+import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+# 端点入参里有名为 logger 的 query 参数，模块级 logger 用别名避免遮蔽
+_module_logger = logging.getLogger(__name__)
 
 from src.web.database import get_db
 from src.web.models import LogEntry
@@ -70,26 +77,22 @@ class LogListResponse(BaseModel):
     next_before_id: int | None = None
 
 
-@router.get("", response_model=LogListResponse)
-def list_logs(
-    level: str = Query("", description="日志级别过滤，逗号分隔"),
-    q: str = Query("", description="关键词搜索"),
-    logger: str = Query("", description="Logger 名称过滤"),
-    trace_id: str = Query("", description="链路追踪ID"),
-    run_id: str = Query("", description="运行ID"),
-    agent_name: str = Query("", description="Agent 名称过滤"),
-    event: str = Query("", description="事件过滤"),
-    notify_status: str = Query("", description="通知状态过滤: attempted/skipped/sent/failed"),
-    domain: str = Query("all", description="日志域: all/business/infra"),
-    since: str = Query("", description="起始时间 ISO 格式"),
-    until: str = Query("", description="结束时间 ISO 格式"),
-    limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    before_id: int = Query(0, ge=0, description="cursor 分页: 取该 id 之前的日志"),
-    db: Session = Depends(get_db),
+def _apply_log_filters(
+    query,
+    *,
+    level: str = "",
+    q: str = "",
+    logger: str = "",
+    trace_id: str = "",
+    run_id: str = "",
+    agent_name: str = "",
+    event: str = "",
+    notify_status: str = "",
+    domain: str = "all",
+    since: str = "",
+    until: str = "",
 ):
-    query = db.query(LogEntry)
-
+    """把查询过滤条件应用到 LogEntry query 上（列表与 SSE tail 共用）。"""
     if level:
         levels = [l.strip().upper() for l in level.split(",") if l.strip()]
         if levels:
@@ -153,6 +156,60 @@ def list_logs(
         except ValueError:
             pass
 
+    return query
+
+
+def _to_log_response(item: LogEntry) -> LogEntryResponse:
+    """把 ORM 行转成响应模型（列表与 SSE tail 共用）。"""
+    return LogEntryResponse(
+        id=item.id,
+        timestamp=_format_datetime(item.timestamp),
+        level=item.level,
+        logger_name=item.logger_name or "",
+        message=item.message or "",
+        trace_id=item.trace_id or "",
+        run_id=item.run_id or "",
+        agent_name=item.agent_name or "",
+        event=item.event or "",
+        tags=item.tags or {},
+        notify_status=item.notify_status or "",
+        notify_reason=item.notify_reason or "",
+    )
+
+
+@router.get("", response_model=LogListResponse)
+def list_logs(
+    level: str = Query("", description="日志级别过滤，逗号分隔"),
+    q: str = Query("", description="关键词搜索"),
+    logger: str = Query("", description="Logger 名称过滤"),
+    trace_id: str = Query("", description="链路追踪ID"),
+    run_id: str = Query("", description="运行ID"),
+    agent_name: str = Query("", description="Agent 名称过滤"),
+    event: str = Query("", description="事件过滤"),
+    notify_status: str = Query("", description="通知状态过滤: attempted/skipped/sent/failed"),
+    domain: str = Query("all", description="日志域: all/business/infra"),
+    since: str = Query("", description="起始时间 ISO 格式"),
+    until: str = Query("", description="结束时间 ISO 格式"),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    before_id: int = Query(0, ge=0, description="cursor 分页: 取该 id 之前的日志"),
+    db: Session = Depends(get_db),
+):
+    query = _apply_log_filters(
+        db.query(LogEntry),
+        level=level,
+        q=q,
+        logger=logger,
+        trace_id=trace_id,
+        run_id=run_id,
+        agent_name=agent_name,
+        event=event,
+        notify_status=notify_status,
+        domain=domain,
+        since=since,
+        until=until,
+    )
+
     total = query.count()
     has_more = False
     next_before_id = None
@@ -182,26 +239,108 @@ def list_logs(
             next_before_id = items[-1].id
 
     return LogListResponse(
-        items=[
-            LogEntryResponse(
-                id=item.id,
-                timestamp=_format_datetime(item.timestamp),
-                level=item.level,
-                logger_name=item.logger_name or "",
-                message=item.message or "",
-                trace_id=item.trace_id or "",
-                run_id=item.run_id or "",
-                agent_name=item.agent_name or "",
-                event=item.event or "",
-                tags=item.tags or {},
-                notify_status=item.notify_status or "",
-                notify_reason=item.notify_reason or "",
-            )
-            for item in items
-        ],
+        items=[_to_log_response(item) for item in items],
         total=total,
         has_more=has_more,
         next_before_id=next_before_id,
+    )
+
+
+# 日志 SSE tail 的轮询/推送节奏
+LOGS_SSE_POLL_SEC = 2.0
+LOGS_SSE_MAX_DURATION_SEC = 30 * 60
+LOGS_SSE_BATCH_LIMIT = 200
+
+
+@router.get("/stream")
+async def stream_logs(
+    request: Request,
+    level: str = Query("", description="日志级别过滤，逗号分隔"),
+    q: str = Query("", description="关键词搜索"),
+    logger_name: str = Query("", alias="logger", description="Logger 名称过滤"),
+    domain: str = Query("all", description="日志域: all/business/infra"),
+    since: str = Query("", description="起始时间 ISO 格式"),
+    last_event_id: int = Query(0, ge=0, description="断线前收到的最后日志 id"),
+):
+    """日志 SSE tail：按过滤条件持续推送新增日志（替代前端 3s 轮询）。
+
+    - 事件 id 直接用日志行 id（天然单调递增），断线重连带 Last-Event-ID
+      （header 优先，query 兜底）即可从缺口处续推；
+    - 首次连接（无 Last-Event-ID）从当前最新 id 开始只推增量，
+      存量由既有 GET /api/logs 列表端点负责（保留不动，降级兜底）。
+    """
+    from src.core.sse import format_sse_comment, format_sse_event
+    from src.web.database import SessionLocal
+
+    header_id = request.headers.get("last-event-id", "")
+    resume_id = int(header_id) if header_id.isdigit() else last_event_id
+
+    def _fetch_after(cursor: int) -> list[LogEntryResponse]:
+        """开独立会话查 id > cursor 的新日志（升序，限量防洪峰）。"""
+        db = SessionLocal()
+        try:
+            query = _apply_log_filters(
+                db.query(LogEntry),
+                level=level,
+                q=q,
+                logger=logger_name,
+                domain=domain,
+                since=since,
+            )
+            rows = (
+                query.filter(LogEntry.id > cursor)
+                .order_by(LogEntry.id.asc())
+                .limit(LOGS_SSE_BATCH_LIMIT)
+                .all()
+            )
+            return [_to_log_response(r) for r in rows]
+        finally:
+            db.close()
+
+    def _current_max_id() -> int:
+        db = SessionLocal()
+        try:
+            row = db.query(LogEntry.id).order_by(LogEntry.id.desc()).first()
+            return int(row[0]) if row else 0
+        finally:
+            db.close()
+
+    async def gen():
+        # 有 Last-Event-ID → 从缺口续推；否则从当前最新开始只 tail 增量
+        cursor = resume_id if resume_id > 0 else await asyncio.to_thread(_current_max_id)
+        started = time.monotonic()
+        idle_ticks = 0
+        while time.monotonic() - started < LOGS_SSE_MAX_DURATION_SEC:
+            try:
+                items = await asyncio.to_thread(_fetch_after, cursor)
+            except Exception as e:
+                _module_logger.warning(f"日志 SSE 查询失败: {e}")
+                await asyncio.sleep(LOGS_SSE_POLL_SEC)
+                continue
+
+            if items:
+                cursor = items[-1].id
+                idle_ticks = 0
+                yield format_sse_event(
+                    cursor, "logs", {"items": [i.model_dump() for i in items]}
+                )
+                # 一批打满说明还有积压，立即继续拉
+                if len(items) >= LOGS_SSE_BATCH_LIMIT:
+                    continue
+            else:
+                idle_ticks += 1
+                if idle_ticks >= 8:
+                    idle_ticks = 0
+                    yield format_sse_comment()
+
+            await asyncio.sleep(LOGS_SSE_POLL_SEC)
+
+        yield format_sse_event(cursor + 1, "done", {"status": "timeout"})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
