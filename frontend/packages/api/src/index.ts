@@ -1,4 +1,5 @@
 export * from './client'
+export * from './sse'
 export * from './types'
 export * from './stocks'
 export * from './insight'
