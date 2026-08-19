@@ -103,6 +103,8 @@ export interface SubscribeSSEOptions {
   onRetry?: (attempt: number) => void
   /** 重试次数用尽后触发（调用方降级轮询） */
   onFailed?: (err: unknown) => void
+  /** 服务端正常关流后触发（如流超时；调用方可重新订阅或降级） */
+  onClosed?: () => void
   maxRetries?: number
 }
 
@@ -131,6 +133,7 @@ export function subscribeSSE(path: string, options: SubscribeSSEOptions): () => 
         })
         lastEventId = newId
         // 服务端正常关流（如超时 done）：由调用方决定是否重订阅，这里退出
+        if (!closed) options.onClosed?.()
         return
       } catch (err) {
         if (closed || controller.signal.aborted) return
