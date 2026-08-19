@@ -3,7 +3,7 @@ import { Search, Trash2, RefreshCw, ScrollText, ChevronDown } from 'lucide-react
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Button } from '@panwatch/base-ui/components/ui/button'
-import { fetchAPI } from '@panwatch/api'
+import { fetchAPI, subscribeSSE } from '@panwatch/api'
 import { mapLoggerName, loggerOptions } from '@/lib/logger-map'
 import { useLocalStorage } from '@/lib/utils'
 
@@ -159,13 +159,52 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
     // query 由 handleSearchInput 防抖触发，避免每次键入都立即请求。
   }, [open, selectedLevels, selectedLoggers, selectedFlow, domain, timeRange])
 
-  // 自动刷新（仅刷新最新页）
+  // 自动刷新：优先 SSE tail（服务端推增量，事件 id 即日志 id，断线自动续推），
+  // SSE 不可用/关流时降级为原 3s 轮询（轮询代码保留兜底）
   useEffect(() => {
-    if (open && autoRefresh) {
+    if (!(open && autoRefresh)) {
+      return () => { if (refreshTimer.current) clearInterval(refreshTimer.current) }
+    }
+
+    let degraded = false
+    const startPolling = () => {
+      if (degraded) return
+      degraded = true
       refreshTimer.current = setInterval(() => loadLatest(), 3000)
     }
-    return () => { if (refreshTimer.current) clearInterval(refreshTimer.current) }
-  }, [open, autoRefresh, loadLatest])
+
+    const params = new URLSearchParams()
+    if (selectedLevels.length > 0) params.set('level', selectedLevels.join(','))
+    if (effectiveLoggers.length > 0) params.set('logger', effectiveLoggers.join(','))
+    if (query) params.set('q', query)
+    if (domain !== 'all') params.set('domain', domain)
+    if (timeRange > 0) {
+      params.set('since', new Date(Date.now() - timeRange * 3600 * 1000).toISOString())
+    }
+
+    const close = subscribeSSE(`/logs/stream?${params.toString()}`, {
+      onEvent: (ev) => {
+        if (ev.event === 'logs' && Array.isArray(ev.data?.items)) {
+          const incoming = ev.data.items as LogEntry[]
+          setLogs(prev => {
+            const seen = new Set(prev.map(x => x.id))
+            // 服务端按 id 升序推，列表按最新在前展示 → 反转后插到最前
+            const fresh = incoming.filter(x => !seen.has(x.id)).reverse()
+            return fresh.length > 0 ? [...fresh, ...prev] : prev
+          })
+          setTotal(t => t + incoming.length)
+        }
+      },
+      // 服务端流超时正常关闭 / 连接重试用尽 → 降级轮询
+      onClosed: () => startPolling(),
+      onFailed: () => startPolling(),
+    })
+
+    return () => {
+      close()
+      if (refreshTimer.current) clearInterval(refreshTimer.current)
+    }
+  }, [open, autoRefresh, loadLatest, selectedLevels, effectiveLoggers, query, domain, timeRange])
 
   const handleSearchInput = (value: string) => {
     setQuery(value)

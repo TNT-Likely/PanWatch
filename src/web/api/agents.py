@@ -787,6 +787,91 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
     return progress
 
 
+# 进度 SSE 轮询/推送节奏与终态判定
+PROGRESS_SSE_POLL_SEC = 1.0
+PROGRESS_SSE_MAX_DURATION_SEC = 30 * 60
+PROGRESS_SSE_NOT_FOUND_GRACE_SEC = 60  # trigger 刚发出时日志可能尚未写入
+PROGRESS_TERMINAL_STATUSES = ("success", "failed", "stale")
+
+
+@router.get("/runs/{trace_id}/progress/stream")
+async def stream_run_progress(trace_id: str):
+    """进度 SSE：服务端聚合进度，快照有变化即推送（替代前端 2s 轮询）。
+
+    事件分型：
+    - progress: 完整进度快照（结构同 GET .../progress），带自增 id；
+      快照类事件重连后拿最新一条即可，无需按 Last-Event-ID 严格续推；
+    - done: 运行到达终态（success/failed/stale）或 not_found 超过宽限期，随后关流。
+
+    轮询端点 GET .../progress 保留不动，前端 SSE 失败时降级使用。
+    """
+    import json as _json
+
+    from src.core.sse import format_sse_comment, format_sse_event
+    from src.web.database import SessionLocal
+
+    if not trace_id or len(trace_id) > 64:
+        raise HTTPException(400, "无效的 trace_id")
+
+    def _snapshot() -> dict:
+        """开独立会话取一次进度快照（复用轮询端点的聚合逻辑）。"""
+        db = SessionLocal()
+        try:
+            return get_run_progress(trace_id, db)
+        finally:
+            db.close()
+
+    async def gen():
+        seq = 0
+        last_payload = ""
+        started = time.monotonic()
+        ticks_since_push = 0
+        while time.monotonic() - started < PROGRESS_SSE_MAX_DURATION_SEC:
+            try:
+                progress = await asyncio.to_thread(_snapshot)
+            except Exception as e:
+                logger.warning(f"进度 SSE 快照失败: {e}")
+                await asyncio.sleep(PROGRESS_SSE_POLL_SEC)
+                continue
+
+            payload = _json.dumps(progress, ensure_ascii=False, default=str)
+            if payload != last_payload:
+                last_payload = payload
+                seq += 1
+                ticks_since_push = 0
+                yield format_sse_event(seq, "progress", payload)
+            else:
+                ticks_since_push += 1
+                if ticks_since_push >= 15:
+                    # 无变化时发心跳注释，防止代理断开空闲连接
+                    ticks_since_push = 0
+                    yield format_sse_comment()
+
+            status = progress.get("status", "")
+            not_found_expired = (
+                status == "not_found"
+                and time.monotonic() - started > PROGRESS_SSE_NOT_FOUND_GRACE_SEC
+            )
+            if status in PROGRESS_TERMINAL_STATUSES or not_found_expired:
+                seq += 1
+                yield format_sse_event(seq, "done", {"status": status})
+                return
+
+            await asyncio.sleep(PROGRESS_SSE_POLL_SEC)
+
+        # 超时兜底：关流，前端可重连或降级轮询
+        seq += 1
+        yield format_sse_event(seq, "done", {"status": "timeout"})
+
+    from fastapi.responses import StreamingResponse
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/{agent_name}/history", response_model=list[AgentRunResponse])
 def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(get_db)):
     tz = Settings().app_timezone or "UTC"

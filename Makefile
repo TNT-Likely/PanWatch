@@ -1,4 +1,4 @@
-.PHONY: help setup-backend dev-api dev-web build test test-notify doctor install-hooks clean-venv
+.PHONY: help setup-backend dev-api dev-web build test test-notify eval doctor install-hooks clean-venv
 
 # 端口约定：
 #   - 后端：:8000（Docker / 本地 dev 统一，避免存量用户升级困惑）
@@ -11,6 +11,7 @@ help:
 	@echo "  make dev-web         启动前端（:5183，自动 pnpm install）"
 	@echo "  make test            跑全部单测（默认不发通知）"
 	@echo "  make test-notify     跑全部单测（实际发送通知）"
+	@echo "  make eval            跑 Agent 过程评测集（chat 用例需 EVAL_AI_* 环境变量）"
 	@echo "  make doctor          系统自检(数据源/AI/通知/DB/磁盘/调度)"
 	@echo "  make build VERSION=x 构建前端 + Docker 镜像"
 	@echo "  make install-hooks   安装 git pre-push hook"
@@ -40,6 +41,14 @@ test:
 
 test-notify:
 	. .venv/bin/activate && python -m pytest tests/ -v --notify
+
+# Agent 过程评测(工具选择/参数/有据性/结构化输出/动作白名单):
+#   - 结构化解析用例纯规则,直接跑
+#   - chat 工具循环用例需被测模型: EVAL_AI_BASE_URL / EVAL_AI_API_KEY / EVAL_AI_MODEL
+#   - 追加 LLM-as-judge: EVAL_JUDGE_* 环境变量 + EVAL_ARGS=--judge
+#   - 建议在改动 prompts/*.txt 或工具 schema 后运行,低于阈值(EVAL_PASS_THRESHOLD)退出码非 0
+eval:
+	. .venv/bin/activate && python tests/eval/run_eval.py $(EVAL_ARGS)
 
 # 命令行系统自检:跑一遍数据源/AI/通知 + DB/磁盘/调度,打印结果与修复建议
 doctor:
