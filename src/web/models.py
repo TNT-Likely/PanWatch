@@ -1081,3 +1081,49 @@ class ChatMessage(Base):
     role = Column(String, nullable=False, default="user")  # user/assistant/system
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, server_default=func.now())
+
+
+class PersonalAccessToken(Base):
+    """个人访问令牌(PAT)—— MCP 端点专用的独立长期凭据。
+
+    与登录 JWT 分流:JWT 是单用户会话态(30 天、不可吊销、无 scope),不适合作为
+    分发给外部 MCP client 的长期凭据;PAT 可独立吊销/审计、天然只读 scope。
+    库里只存 sha256(token_hash),明文仅创建时返回一次。单用户应用,不设 user_id。
+    """
+
+    __tablename__ = "personal_access_tokens"
+    __table_args__ = (
+        Index("ix_pat_revoked", "revoked_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, default="")  # 用户可读的用途备注
+    token_hash = Column(String(128), nullable=False, unique=True, index=True)
+    prefix = Column(String(32), nullable=False, default="")  # 明文前缀,列表展示用
+    scopes_json = Column(Text, nullable=False, default="[]")  # JSON: ["mcp:read"]
+    expires_at = Column(DateTime, nullable=True)  # None = 永不过期
+    last_used_at = Column(DateTime, nullable=True)
+    last_used_ip = Column(String, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)  # 非空即已吊销
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class MCPCallLog(Base):
+    """每次 MCP tool 调用的审计记录(只存元数据,不存参数/结果明文)。"""
+
+    __tablename__ = "mcp_call_logs"
+    __table_args__ = (
+        Index("ix_mcp_log_tool", "tool_name"),
+        Index("ix_mcp_log_called", "called_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pat_id = Column(Integer, nullable=True)  # 软引用,PAT 删除后仍保留历史
+    pat_prefix = Column(String, nullable=True)
+    tool_name = Column(String, nullable=False, default="")
+    status = Column(String, nullable=False, default="ok")  # ok / error
+    error_message = Column(Text, nullable=True)
+    args_summary = Column(Text, nullable=True)  # 脱敏摘要,截断
+    duration_ms = Column(Integer, default=0)
+    client_ip = Column(String, nullable=True)
+    called_at = Column(DateTime, server_default=func.now())

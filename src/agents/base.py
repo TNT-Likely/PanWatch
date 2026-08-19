@@ -113,17 +113,38 @@ class PortfolioInfo:
         return any(p.symbol == symbol for p in self.all_positions)
 
 
-@dataclass
 class AgentContext:
     """Agent 运行时上下文"""
 
-    ai_client: AIClient
-    notifier: NotifierManager
-    config: AppConfig
-    portfolio: PortfolioInfo = field(default_factory=PortfolioInfo)
-    model_label: str = ""  # e.g. "智谱/glm-4-flash"
-    notify_policy: NotifyPolicy | None = None
-    suppress_notify: bool = False
+    def __init__(
+        self,
+        ai_client: "AIClient",
+        notifier: NotifierManager,
+        config: AppConfig,
+        portfolio: PortfolioInfo | None = None,
+        model_label: str = "",
+        notify_policy: NotifyPolicy | None = None,
+        suppress_notify: bool = False,
+    ):
+        self.ai_client = ai_client
+        self.notifier = notifier
+        self.config = config
+        self.portfolio = portfolio if portfolio is not None else PortfolioInfo()
+        # 主模型标签(初始);实际使用模型由 ai_client 在 failover 后覆盖。
+        self._primary_model_label = model_label
+        self.notify_policy = notify_policy
+        self.suppress_notify = suppress_notify
+
+    @property
+    def model_label(self) -> str:
+        """实际使用的模型标签。
+
+        failover 客户端会把真正跑通的候选记在 used_model_label;若不存在(普通
+        AIClient)则回退到路由选定的主模型标签。这样 footer 与 agent_runs 落库
+        都能反映"实际用了哪个模型",路由过程透明可观测。
+        """
+        used = getattr(self.ai_client, "used_model_label", "")
+        return used or self._primary_model_label
 
     @property
     def watchlist(self) -> list[StockConfig]:
