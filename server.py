@@ -1517,6 +1517,21 @@ async def lifespan(app):
         logger.info("上下文维护调度器已启动")
     except Exception as e:
         logger.error(f"上下文维护调度器启动失败: {e}")
+    # MCP 调用日志保留期清理:每日 04:00 清理超期审计记录
+    try:
+        from src.web.api.mcp import prune_mcp_logs
+
+        scheduler.add_job(
+            prune_mcp_logs,
+            "cron",
+            hour=4,
+            minute=0,
+            id="mcp_log_retention",
+            replace_existing=True,
+        )
+        logger.info("MCP 日志保留期清理任务已注册")
+    except Exception as e:
+        logger.error(f"MCP 日志清理任务注册失败: {e}")
     yield
     if scheduler:
         scheduler.shutdown()

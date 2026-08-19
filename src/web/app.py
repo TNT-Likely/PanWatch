@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.web.api import (
@@ -30,6 +30,8 @@ from src.web.api import (
 from src.web.api import factors
 from src.web.api import health
 from src.web.api import insights
+from src.web.api import pats
+from src.web.api import mcp
 from src.web.api.auth import get_current_user
 from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
@@ -171,6 +173,33 @@ app.include_router(
     tags=["chat"],
     dependencies=protected,
 )
+# PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌
+app.include_router(
+    pats.router, prefix="/api/pats", tags=["pats"], dependencies=protected
+)
+# MCP Server:挂在顶层 /mcp(不在 /api/ 下,绕开响应包装中间件保证 JSON-RPC 原样),
+# 自带 PAT 鉴权,不走登录 JWT
+app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
+
+
+@app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+@app.get(
+    "/.well-known/oauth-protected-resource/{_resource_path:path}",
+    include_in_schema=False,
+)
+def oauth_protected_resource_metadata(request: Request, _resource_path: str = ""):
+    """RFC 9728 元数据:MCP 客户端握手前会探测此端点决定鉴权方式。
+
+    PanWatch 用静态 PAT(无 OAuth server),返回 authorization_servers=[] +
+    bearer_methods_supported=["header"],告诉客户端直接用 Authorization Bearer。
+    即便不用 OAuth 此端点也必须存在,否则客户端拿到 404 会因 schema 不匹配报错。
+    """
+    base = str(request.base_url).rstrip("/")
+    return {
+        "resource": f"{base}/mcp",
+        "authorization_servers": [],
+        "bearer_methods_supported": ["header"],
+    }
 
 
 @app.get("/api/health")
