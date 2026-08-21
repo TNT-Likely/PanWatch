@@ -1425,6 +1425,14 @@ async def lifespan(app):
     """应用生命周期: 初始化 + 启动调度器"""
     init_db()
     setup_logging()
+    # OTel 导出(可选,默认关闭):仅当配置了 OTEL_EXPORTER_OTLP_ENDPOINT 且装了
+    # opentelemetry SDK 时启用,否则静默 no-op,不影响现有部署。
+    try:
+        from src.core.otel import init_otel
+
+        init_otel()
+    except Exception as e:  # 兜底:OTel 初始化异常绝不阻断服务启动
+        logger.warning(f"OTel 初始化跳过: {e}")
     setup_proxy()  # 设置进程 env 代理(HTTP_PROXY/NO_PROXY);所有 httpx(trust_env=True)据此走代理
     setup_ssl()
     setup_playwright()

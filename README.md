@@ -152,6 +152,7 @@ docker-compose up -d
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | 跳过首次 Chromium 安装（不需要截图时可用） | 未设置 |
 | `LOG_LEVEL` | 控制台日志级别。默认 `INFO`（只输出业务事件 + 错误）；排查问题时设 `DEBUG` 可看到调度心跳、采集过程等底层日志。UI 日志板始终保留完整记录，不受影响 | `INFO` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` | 出站 HTTP 代理。三种配置方式任选其一: ① 启动前 `export HTTP_PROXY=...`；② `.env` 里写 `http_proxy=http://host:port`；③ UI「设置 → 全局 HTTP 代理」。三者优先级:外部环境变量 > UI > `.env`。生效后所有 httpx 客户端走代理。`NO_PROXY` 默认包含 `localhost,127.0.0.1` | 未设置 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry OTLP 导出端点(如 `http://jaeger:4318`)。**配置后**才启用 OTel trace 导出;留空则完全关闭(零副作用)。还需安装可选依赖 `requirements-otel.txt`。详见下方「OTel 导出」 | 未设置(关闭) |
 
 </details>
 
@@ -194,6 +195,45 @@ cd frontend && pnpm install && pnpm dev       # 前端 :5183
 **后端**：FastAPI / SQLAlchemy / APScheduler / OpenAI SDK
 
 **前端**：React 18 / TypeScript / Tailwind CSS / shadcn/ui
+
+</details>
+
+<details>
+<summary><b>OTel 导出（可选，默认关闭）</b></summary>
+
+PanWatch 内建一套自建可观测体系(结构化日志 `trace_id` 贯穿 / `agent_runs` 运行表 / TradingAgents 节点级进度与成本),开箱即用、无需任何外部组件。
+
+在此之上,可**可选地**再挂一层标准 [OpenTelemetry](https://opentelemetry.io/) 导出,把 trace 送到 Jaeger / Tempo / Langfuse 等标准 APM。三类 span 映射:
+
+- **Agent 一次运行** → root span(复用 `agent_runs` 的 `trace_id` 关联)
+- **单次 LLM 调用** → `gen_ai` 子 span,遵循 [OpenTelemetry GenAI 语义约定](https://opentelemetry.io/docs/specs/semconv/gen-ai/)(`gen_ai.system` / `gen_ai.request.model` / `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` / `gen_ai.operation.name`),可被标准 APM 识别为一次模型调用
+- **TradingAgents 节点** → 子 span(复用节点级进度回调)
+
+**默认完全关闭**:不装依赖、不配 endpoint 时,导出层全程 no-op,不改变任何现有行为。
+
+**开启三步**:
+
+```bash
+# 1. 安装可选依赖
+pip install -r requirements-otel.txt
+
+# 2. 配置 OTLP 端点(指向你的 collector / APM)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_SERVICE_NAME=panwatch   # 可选,默认 panwatch
+
+# 3. 正常启动;启动日志出现 "OTel 导出已启用" 即生效
+python server.py
+```
+
+**本地起一个 Jaeger 验证**:
+
+```bash
+docker run -d --name jaeger -p 16686:16686 -p 4318:4318 \
+  jaegertracing/all-in-one:latest
+# 触发任意 Agent 运行后,打开 http://localhost:16686 选 service=panwatch 查看 trace
+```
+
+Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入口即可。
 
 </details>
 
