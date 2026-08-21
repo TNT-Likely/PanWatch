@@ -4,6 +4,8 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
+from src.core import otel
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,14 +65,21 @@ class AIClient:
             create_kwargs = {"model": self.model, "messages": messages}
             if temperature is not None:
                 create_kwargs["temperature"] = temperature
-            response = await self.client.chat.completions.create(**create_kwargs)
-            # 记录 token 用量
-            if response.usage:
-                self.total_tokens_used += response.usage.total_tokens
-                logger.debug(
-                    f"Token usage: {response.usage.prompt_tokens} + "
-                    f"{response.usage.completion_tokens} = {response.usage.total_tokens}"
-                )
+            # OTel gen_ai span(默认关闭时为 no-op);token 用量在拿到 usage 后回填。
+            with otel.llm_span(self.model, operation="chat") as _span:
+                response = await self.client.chat.completions.create(**create_kwargs)
+                # 记录 token 用量
+                if response.usage:
+                    self.total_tokens_used += response.usage.total_tokens
+                    _span.set_response(
+                        model=getattr(response, "model", None) or self.model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                    )
+                    logger.debug(
+                        f"Token usage: {response.usage.prompt_tokens} + "
+                        f"{response.usage.completion_tokens} = {response.usage.total_tokens}"
+                    )
 
             return response.choices[0].message.content or ""
 
@@ -95,13 +104,19 @@ class AIClient:
             create_kwargs: dict = {"model": self.model, "messages": messages}
             if temperature is not None:
                 create_kwargs["temperature"] = temperature
-            response = await self.client.chat.completions.create(**create_kwargs)
-            if response.usage:
-                self.total_tokens_used += response.usage.total_tokens
-                logger.debug(
-                    f"Token usage: {response.usage.prompt_tokens} + "
-                    f"{response.usage.completion_tokens} = {response.usage.total_tokens}"
-                )
+            with otel.llm_span(self.model, operation="chat") as _span:
+                response = await self.client.chat.completions.create(**create_kwargs)
+                if response.usage:
+                    self.total_tokens_used += response.usage.total_tokens
+                    _span.set_response(
+                        model=getattr(response, "model", None) or self.model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                    )
+                    logger.debug(
+                        f"Token usage: {response.usage.prompt_tokens} + "
+                        f"{response.usage.completion_tokens} = {response.usage.total_tokens}"
+                    )
             return response.choices[0].message.content or ""
         except Exception as e:
             logger.error(f"AI 多轮对话调用失败: {e}")
@@ -125,9 +140,15 @@ class AIClient:
             }
             if temperature is not None:
                 create_kwargs["temperature"] = temperature
-            response = await self.client.chat.completions.create(**create_kwargs)
-            if response.usage:
-                self.total_tokens_used += response.usage.total_tokens
+            with otel.llm_span(self.model, operation="chat") as _span:
+                response = await self.client.chat.completions.create(**create_kwargs)
+                if response.usage:
+                    self.total_tokens_used += response.usage.total_tokens
+                    _span.set_response(
+                        model=getattr(response, "model", None) or self.model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                    )
             return response.choices[0].message
         except Exception as e:
             logger.error(f"AI tool use 调用失败: {e}")

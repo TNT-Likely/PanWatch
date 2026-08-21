@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from src.core.log_context import log_context
+from src.core import otel
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,11 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._started_at = time.monotonic()
         self._total_cost = 0.0
         self._completed_stages: set[str] = set()
+        # OTel 桥接:handler 在异步侧构造(to_thread 之前),此处捕获当前上下文,
+        # 供工作线程里的 callback 把节点/LLM 子 span 挂到 root span 下(关闭时为 None)。
+        self._otel_parent = otel.capture_context()
+        self._otel_stage_spans: dict[str, Any] = {}
+        self._otel_llm_span: Any = None
 
     @property
     def elapsed_sec(self) -> float:
@@ -101,6 +107,25 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
     def on_llm_start(self, serialized, prompts, **kwargs):
         self._llm_call_count = getattr(self, "_llm_call_count", 0) + 1
         self._emit("llm_call", "llm_start", call_n=self._llm_call_count)
+        # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
+        model = ""
+        try:
+            model = (
+                (kwargs.get("invocation_params") or {}).get("model")
+                or (serialized or {}).get("name")
+                or ""
+            )
+        except Exception:
+            model = ""
+        self._otel_llm_span = otel.start_detached_span(
+            f"chat {model}".strip() if model else "chat",
+            parent_context=self._otel_parent,
+            attributes={
+                otel.GEN_AI_SYSTEM: "tradingagents",
+                otel.GEN_AI_OPERATION_NAME: "chat",
+                **({otel.GEN_AI_REQUEST_MODEL: model} if model else {}),
+            },
+        )
 
     def on_llm_end(self, response, **kwargs):
         # langchain LLMResult.llm_output 含 token_usage
@@ -124,6 +149,17 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             completion_tokens=completion_tokens,
             call_cost=round(cost, 6),
         )
+        # OTel:回填 token 用量并结束 gen_ai span。
+        if self._otel_llm_span is not None:
+            otel.set_span_attributes(
+                self._otel_llm_span,
+                {
+                    otel.GEN_AI_USAGE_INPUT_TOKENS: int(prompt_tokens),
+                    otel.GEN_AI_USAGE_OUTPUT_TOKENS: int(completion_tokens),
+                },
+            )
+            otel.end_span(self._otel_llm_span)
+            self._otel_llm_span = None
 
     def on_chain_start(self, serialized, inputs, **kwargs):
         # LangGraph 节点切换;name 形如 "Market Analyst" / "Bull Researcher" 等
@@ -137,6 +173,18 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             return
         if stage not in self._completed_stages:
             self._emit(stage, "stage_start", langgraph_node=name)
+            # OTel:TradingAgents 节点 -> 子 span(挂到 root span 下)。
+            if stage not in self._otel_stage_spans:
+                span = otel.start_detached_span(
+                    f"tradingagents.stage {stage}",
+                    parent_context=self._otel_parent,
+                    attributes={
+                        otel.ATTR_TA_STAGE: stage,
+                        otel.ATTR_AGENT_NAME: self.agent_name,
+                    },
+                )
+                if span is not None:
+                    self._otel_stage_spans[stage] = span
 
     def on_chain_end(self, outputs, **kwargs):
         name = (kwargs.get("name") or "").strip()
@@ -144,6 +192,10 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         if stage:
             self._completed_stages.add(stage)
             self._emit(stage, "stage_end", langgraph_node=name)
+            # OTel:结束该节点 span。
+            span = self._otel_stage_spans.pop(stage, None)
+            if span is not None:
+                otel.end_span(span)
 
     def on_llm_error(self, error, **kwargs):
         self._emit("error", "llm_error", error=str(error)[:200])
