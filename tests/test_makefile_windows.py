@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -57,6 +58,25 @@ class WindowsMakefileTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_setup_backend_executes_in_windows_command_shell(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result = subprocess.run(
+                [
+                    "make",
+                    "-f",
+                    str(PROJECT_ROOT / "Makefile"),
+                    "setup-backend",
+                    "PYTHON=echo",
+                    "VENV_PYTHON=echo",
+                ],
+                cwd=temporary_directory,
+                env={**os.environ, "OS": "Windows_NT"},
+                capture_output=True,
+                text=True,
+            )
 
         self.assertEqual(result.returncode, 0, result.stderr)
 

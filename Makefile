@@ -35,7 +35,7 @@ help:
 
 setup-backend:
 ifeq ($(WINDOWS),1)
-	@if not exist .venv ( echo >>> 创建 venv & $(PYTHON) -m venv .venv )
+	@if not exist .venv ( echo [setup] 创建 venv & $(PYTHON) -m venv .venv )
 	@$(VENV_PYTHON) -m pip install -q -r requirements.txt
 	@if not exist .env if exist .env.example copy /Y .env.example .env >nul
 else
