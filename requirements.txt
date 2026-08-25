@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 apprise>=1.6.0
 openai>=1.0.0
 efinance>=0.4.0

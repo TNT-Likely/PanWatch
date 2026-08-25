@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +80,18 @@ class WindowsMakefileTests(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_requirements_file_decodes_as_utf8_when_windows_locale_is_gbk(self):
+        from pip._internal.utils.encoding import auto_decode
+
+        requirements = (PROJECT_ROOT / "requirements.txt").read_bytes()
+        with patch(
+            "pip._internal.utils.encoding.locale.getpreferredencoding",
+            return_value="gbk",
+        ):
+            decoded = auto_decode(requirements)
+
+        self.assertIn("tradingagents @ git+https://", decoded)
 
 
 if __name__ == "__main__":
