@@ -2,12 +2,12 @@
 # 多阶段构建，减小最终镜像大小
 
 # ===== Stage 1: 前端构建 =====
-FROM node:20-alpine AS frontend-builder
+FROM node:24.14.0-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 启用并固定 pnpm，避免镜像构建时随 npm 全局安装漂移
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # 复制依赖文件
 COPY frontend/package.json frontend/pnpm-lock.yaml ./

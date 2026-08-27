@@ -1585,6 +1585,68 @@ def _m118_paper_trading_market_allocations(conn: Connection) -> None:
         )
 
 
+def _m119_pat_and_mcp_tables(conn: Connection) -> None:
+    """PAT 令牌表 + MCP 调用日志表(MCP Server 鉴权与审计)。"""
+    conn.execute(
+        text(
+            """
+        CREATE TABLE IF NOT EXISTS personal_access_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT DEFAULT '',
+            token_hash TEXT NOT NULL,
+            prefix TEXT DEFAULT '',
+            scopes_json TEXT DEFAULT '[]',
+            expires_at TIMESTAMP,
+            last_used_at TIMESTAMP,
+            last_used_ip TEXT,
+            revoked_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        )
+    )
+    # 与 ORM 模型的自动唯一索引同名(token_hash unique+index),便于 create_all 复核
+    _create_index_if_missing(
+        conn,
+        "ix_personal_access_tokens_token_hash",
+        "CREATE UNIQUE INDEX ix_personal_access_tokens_token_hash "
+        "ON personal_access_tokens(token_hash)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_pat_revoked",
+        "CREATE INDEX ix_pat_revoked ON personal_access_tokens(revoked_at)",
+    )
+    conn.execute(
+        text(
+            """
+        CREATE TABLE IF NOT EXISTS mcp_call_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pat_id INTEGER,
+            pat_prefix TEXT,
+            tool_name TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'ok',
+            error_message TEXT,
+            args_summary TEXT,
+            duration_ms INTEGER DEFAULT 0,
+            client_ip TEXT,
+            called_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_mcp_log_tool",
+        "CREATE INDEX ix_mcp_log_tool ON mcp_call_logs(tool_name)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_mcp_log_called",
+        "CREATE INDEX ix_mcp_log_called ON mcp_call_logs(called_at)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1604,6 +1666,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(116, "chat_tables", _m116_chat_tables),
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
+    Migration(119, "pat_and_mcp_tables", _m119_pat_and_mcp_tables),
 )
 
 

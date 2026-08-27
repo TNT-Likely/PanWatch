@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
+import PatSection from '@/components/PatSection'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -654,6 +655,7 @@ export default function SettingsPage() {
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
     { id: 'sec-pack', label: '配置包' },
     { id: 'sec-feedback', label: '反馈' },
+    { id: 'sec-pat', label: 'MCP 令牌' },
   ]
 
   const scrollTo = (id: string) => {
@@ -1094,6 +1096,9 @@ export default function SettingsPage() {
             <div className="text-[12px] text-muted-foreground">暂无反馈数据</div>
           )}
         </section>
+
+        {/* MCP 访问令牌 */}
+        <PatSection />
 
       </div>
 

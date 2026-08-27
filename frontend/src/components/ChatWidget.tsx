@@ -10,6 +10,21 @@ interface StockContext {
   pageContext?: string
 }
 
+// 工具名 → 过程可视化文案
+const TOOL_LABELS: Record<string, string> = {
+  get_portfolio: '正在查询持仓…',
+  get_stock_quote: '正在查询行情…',
+  get_technical_analysis: '正在分析技术面…',
+  get_stock_suggestions: '正在查询 AI 建议…',
+  get_watchlist: '正在查询自选股…',
+}
+
+/** 增量渲染容错：流式文本里未闭合的代码围栏先乐观闭合，避免 markdown 渲染爆版式 */
+function safeStreamMarkdown(text: string): string {
+  const fences = (text.match(/```/g) || []).length
+  return fences % 2 === 1 ? `${text}\n\`\`\`` : text
+}
+
 export default function ChatWidget() {
   const [open, setOpen] = useState(false)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
@@ -20,7 +35,50 @@ export default function ChatWidget() {
   const [view, setView] = useState<'list' | 'chat'>('list')
   const [stockContext, setStockContext] = useState<StockContext | null>(null)
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+  // 流式回复的增量状态
+  const [streamText, setStreamText] = useState('')
+  const [streamTool, setStreamTool] = useState<string | null>(null)
+  // 计划驱动(全面诊断持仓)的计划卡片状态
+  const [plan, setPlan] = useState<{
+    status: string
+    steps: { id: number; title: string; status: string }[]
+    current?: number
+  } | null>(null)
+  const tokenBufRef = useRef('')
+  const rafRef = useRef<number | null>(null)
+  // 自动滚动：用户上滚即停，回到底部恢复
+  const autoScrollRef = useRef(true)
+  const scrollBoxRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
+
+  // token 用 rAF 批量刷新，避免每个分片都触发渲染
+  const pushToken = useCallback((t: string) => {
+    tokenBufRef.current += t
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        setStreamText(tokenBufRef.current)
+      })
+    }
+  }, [])
+
+  const resetStream = useCallback(() => {
+    tokenBufRef.current = ''
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    setStreamText('')
+    setStreamTool(null)
+    setPlan(null)
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const box = scrollBoxRef.current
+    if (!box) return
+    // 距底部 40px 内视为"在底部"，恢复自动滚动；用户上滚则停
+    autoScrollRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40
+  }, [])
 
   const loadConversations = useCallback(async () => {
     try {
@@ -85,8 +143,10 @@ export default function ChatWidget() {
   }, [open, loadConversations])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (autoScrollRef.current) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, streamText, streamTool])
 
   const openConversation = useCallback(async (conv: ChatConversation) => {
     setActiveConvId(conv.id)
@@ -163,24 +223,74 @@ export default function ChatWidget() {
     }
     setMessages((prev) => [...prev, tempUserMsg])
 
+    resetStream()
+    autoScrollRef.current = true
+    let receivedAny = false
+
     try {
-      const reply = await chatApi.sendMessage(convId, content)
-      setMessages((prev) => [...prev, reply])
+      // 优先走 SSE 流式（token 流 + 工具过程可视）
+      await chatApi.sendMessageStream(convId, content, {
+        onToken: (t) => {
+          receivedAny = true
+          setStreamTool(null)
+          pushToken(t)
+        },
+        onToolCallStart: ({ name }) => {
+          receivedAny = true
+          // 工具调用轮的过渡性文本不是最终回答，清空缓冲
+          tokenBufRef.current = ''
+          setStreamText('')
+          setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+        },
+        onToolResult: () => {
+          // 结果已就绪，等待模型基于数据继续回答
+        },
+        onPlan: (p) => {
+          receivedAny = true
+          setStreamTool(null)
+          setPlan(p)
+        },
+        onDone: (m) => {
+          receivedAny = true
+          setMessages((prev) => [...prev, {
+            id: m.message_id || Date.now() + 1,
+            role: 'assistant',
+            content: m.content,
+            created_at: m.created_at || new Date().toISOString(),
+          }])
+        },
+      })
       setConversations((prev) =>
         prev.map((c) => c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)
       )
     } catch (e) {
-      const errMsg: ChatMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: `请求失败：${e instanceof Error ? e.message : '未知错误'}`,
-        created_at: new Date().toISOString(),
+      if (!receivedAny) {
+        // 流式完全不可用（旧后端/代理不支持等）→ 降级非流式端点
+        try {
+          const reply = await chatApi.sendMessage(convId, content)
+          setMessages((prev) => [...prev, reply])
+          setConversations((prev) =>
+            prev.map((c) => c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)
+          )
+        } catch (e2) {
+          const errMsg: ChatMessage = {
+            id: Date.now() + 1,
+            role: 'assistant',
+            content: `请求失败：${e2 instanceof Error ? e2.message : '未知错误'}`,
+            created_at: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, errMsg])
+        }
+      } else {
+        // 已收到部分事件但流中断：生成在服务端继续并落库，稍后拉取最终消息
+        await new Promise((r) => setTimeout(r, 1500))
+        await loadMessages(convId)
       }
-      setMessages((prev) => [...prev, errMsg])
     } finally {
+      resetStream()
       setSending(false)
     }
-  }, [input, sending, activeConvId, stockContext])
+  }, [input, sending, activeConvId, stockContext, pushToken, resetStream, loadMessages])
 
   if (!open) {
     return (
@@ -284,7 +394,7 @@ export default function ChatWidget() {
       {/* Chat view */}
       {view === 'chat' && (
         <>
-          <div className="flex-1 overflow-y-auto scrollbar px-4 py-3 space-y-3">
+          <div ref={scrollBoxRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar px-4 py-3 space-y-3">
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (
               <div className="flex flex-col gap-2">
@@ -331,11 +441,59 @@ export default function ChatWidget() {
                 </div>
               </div>
             ))}
-            {sending && (
+            {sending && plan && plan.steps.length > 0 && (
+              // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
+              <div className="flex justify-start">
+                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-[12px] bg-accent/40 border border-border/40">
+                  <div className="font-medium text-foreground mb-1.5">
+                    诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
+                  </div>
+                  <ol className="space-y-1">
+                    {plan.steps.map((s) => (
+                      <li key={s.id} className="flex items-center gap-2">
+                        <span
+                          className={
+                            s.status === 'done'
+                              ? 'text-emerald-600'
+                              : s.status === 'failed'
+                              ? 'text-rose-600'
+                              : s.status === 'running'
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }
+                        >
+                          {s.status === 'done'
+                            ? '✓'
+                            : s.status === 'failed'
+                            ? '✕'
+                            : s.status === 'running'
+                            ? '⟳'
+                            : '○'}
+                        </span>
+                        <span className={s.status === 'done' ? 'text-muted-foreground' : 'text-foreground'}>
+                          {s.title}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            )}
+            {sending && streamText && (
+              // 流式增量渲染（未闭合代码块乐观闭合）
+              <div className="flex justify-start">
+                <div className="max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-accent/60 text-foreground">
+                  <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px]">
+                    <ReactMarkdown>{safeStreamMarkdown(streamText)}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
+            {sending && !streamText && (
               <div className="flex justify-start">
                 <div className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2">
                   <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                  思考中...
+                  {streamTool || '思考中...'}
                 </div>
               </div>
             )}

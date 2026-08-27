@@ -21,16 +21,32 @@ class ResponseWrapperMiddleware:
         status_code = 200
         response_headers: list[tuple[bytes, bytes]] = []
         body_parts: list[bytes] = []
+        # SSE（text/event-stream）响应必须逐块直通：
+        # 缓冲会把流式打成一次性返回，导致前端收不到增量事件
+        passthrough = False
 
         async def capture_send(message):
-            nonlocal status_code, response_headers
+            nonlocal status_code, response_headers, passthrough
             if message["type"] == "http.response.start":
                 status_code = message["status"]
                 response_headers = list(message.get("headers", []))
+                for key, value in response_headers:
+                    if key.lower() == b"content-type" and b"text/event-stream" in value.lower():
+                        passthrough = True
+                        break
+                if passthrough:
+                    await send(message)
             elif message["type"] == "http.response.body":
-                body_parts.append(message.get("body", b""))
+                if passthrough:
+                    await send(message)
+                else:
+                    body_parts.append(message.get("body", b""))
 
         await self.app(scope, receive, capture_send)
+
+        if passthrough:
+            # 流式响应已经边生成边转发完毕
+            return
 
         # 检查是否 JSON 响应
         content_type = ""

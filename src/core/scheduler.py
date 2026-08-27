@@ -8,6 +8,7 @@ from src.agents.base import BaseAgent, AgentContext
 from src.collectors.kline_collector import kline_source
 from src.core.agent_runs import record_agent_run
 from src.core.log_context import log_context
+from src.core import otel
 from src.models.market import MARKETS
 from src.core.schedule_parser import parse_schedule
 
@@ -75,7 +76,10 @@ class AgentScheduler:
         start = time.monotonic()
         trace_id = f"sch-{agent_name}-{int(time.time() * 1000)}"
         try:
-            with log_context(
+            # OTel root span(默认关闭时 no-op);与自建 trace 共用同一 trace_id 关联。
+            with otel.agent_run_span(
+                agent_name, trace_id=trace_id, trigger_source="schedule"
+            ), log_context(
                 trace_id=trace_id,
                 run_id=trace_id,
                 agent_name=agent_name,

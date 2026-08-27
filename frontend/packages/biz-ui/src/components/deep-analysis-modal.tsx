@@ -16,6 +16,7 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 import {
+  subscribeSSE,
   tradingAgentsApi,
   type BudgetInfo,
   type DeepAnalysisResult,
@@ -109,19 +110,28 @@ export function DeepAnalysisModal({
   const [error, setError] = useState<string>('')
   const [budget, setBudget] = useState<BudgetInfo | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
+  const sseCloseRef = useRef<(() => void) | null>(null)
   // trigger 时间戳:前 60s 内允许 not_found(后端日志还没来得及写),不重置
   const triggerStartedRef = useRef<number>(0)
   const NOT_FOUND_GRACE_MS = 60_000
 
-  // 弹窗关闭时清理 polling
-  useEffect(() => {
-    if (!open) {
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-        timerRef.current = null
-      }
+  /** 停止一切进度监听(SSE + polling) */
+  const stopWatching = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
     }
-  }, [open])
+    if (sseCloseRef.current) {
+      sseCloseRef.current()
+      sseCloseRef.current = null
+    }
+  }, [])
+
+  // 弹窗关闭时清理进度监听
+  useEffect(() => {
+    if (!open) stopWatching()
+  }, [open, stopWatching])
 
   // 重置初始状态 + 后端查询是否有正在跑/已完成的任务
   useEffect(() => {
@@ -165,8 +175,7 @@ export function DeepAnalysisModal({
         // 后端确认在跑 → grace period 已过,不再保护 not_found
         triggerStartedRef.current = Date.now() - NOT_FOUND_GRACE_MS - 1
         tradingAgentsApi.getProgress(tid).then(resp => setProgress(resp))
-        if (timerRef.current) clearInterval(timerRef.current)
-        timerRef.current = setInterval(() => pollProgress(tid), POLL_INTERVAL_MS)
+        startWatching(tid)
         return
       }
 
@@ -184,8 +193,7 @@ export function DeepAnalysisModal({
           setStage('running')
           triggerStartedRef.current = Date.now()
           tradingAgentsApi.getProgress(localTrace).then(resp => setProgress(resp))
-          if (timerRef.current) clearInterval(timerRef.current)
-          timerRef.current = setInterval(() => pollProgress(localTrace), POLL_INTERVAL_MS)
+          startWatching(localTrace)
           return
         }
       }
@@ -205,66 +213,100 @@ export function DeepAnalysisModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialResult, stockSymbol])
 
-  const pollProgress = useCallback(
-    async (tid: string) => {
-      try {
-        const resp = await tradingAgentsApi.getProgress(tid)
-        setProgress(resp)
-        if (resp.status === 'success' && resp.run) {
-          // 完成,拉历史结果
-          if (timerRef.current) {
-            clearInterval(timerRef.current)
-            timerRef.current = null
-          }
-          clearRunningTrace(stockSymbol)
-          const latest = await tradingAgentsApi.getLatestForStock(stockSymbol)
-          if (latest) {
-            setResult(latest)
-            setStage('done')
-          } else {
-            setError('结果未落库,请稍后到「AI 历史」查看')
-            setStage('error')
-          }
-        } else if (resp.status === 'failed') {
-          if (timerRef.current) {
-            clearInterval(timerRef.current)
-            timerRef.current = null
-          }
-          clearRunningTrace(stockSymbol)
-          setError(resp.run?.error || '分析失败')
+  /** 处理一次进度快照(SSE 推送与轮询共用同一套状态机) */
+  const handleProgressResponse = useCallback(
+    async (resp: ProgressResponse) => {
+      setProgress(resp)
+      if (resp.status === 'success' && resp.run) {
+        // 完成,拉历史结果
+        stopWatching()
+        clearRunningTrace(stockSymbol)
+        const latest = await tradingAgentsApi.getLatestForStock(stockSymbol)
+        if (latest) {
+          setResult(latest)
+          setStage('done')
+        } else {
+          setError('结果未落库,请稍后到「AI 历史」查看')
           setStage('error')
-        } else if (resp.status === 'stale') {
-          // 后端检测到僵尸 running(5 分钟无新进度,server 重启 / 进程死掉)
-          // → 自动重置到 idle,用户可以重新触发
-          if (timerRef.current) {
-            clearInterval(timerRef.current)
-            timerRef.current = null
-          }
+        }
+      } else if (resp.status === 'failed') {
+        stopWatching()
+        clearRunningTrace(stockSymbol)
+        setError(resp.run?.error || '分析失败')
+        setStage('error')
+      } else if (resp.status === 'stale') {
+        // 后端检测到僵尸 running(5 分钟无新进度,server 重启 / 进程死掉)
+        // → 自动重置到 idle,用户可以重新触发
+        stopWatching()
+        clearRunningTrace(stockSymbol)
+        setTraceId('')
+        setProgress(null)
+        setStage('idle')
+      } else if (resp.status === 'not_found') {
+        // trigger 刚发出时后端可能还没写日志,前 60s 视为正常等待,
+        // 超过 grace 仍 not_found → 视作触发失败,reset 到 idle
+        const sinceTrigger = Date.now() - triggerStartedRef.current
+        if (triggerStartedRef.current > 0 && sinceTrigger > NOT_FOUND_GRACE_MS) {
+          stopWatching()
           clearRunningTrace(stockSymbol)
           setTraceId('')
           setProgress(null)
           setStage('idle')
-        } else if (resp.status === 'not_found') {
-          // trigger 刚发出时后端可能还没写日志,前 60s 视为正常等待,
-          // 超过 grace 仍 not_found → 视作触发失败,reset 到 idle
-          const sinceTrigger = Date.now() - triggerStartedRef.current
-          if (triggerStartedRef.current > 0 && sinceTrigger > NOT_FOUND_GRACE_MS) {
-            if (timerRef.current) {
-              clearInterval(timerRef.current)
-              timerRef.current = null
-            }
-            clearRunningTrace(stockSymbol)
-            setTraceId('')
-            setProgress(null)
-            setStage('idle')
-          }
         }
+      }
+    },
+    [stockSymbol, stopWatching],
+  )
+
+  const pollProgress = useCallback(
+    async (tid: string) => {
+      try {
+        const resp = await tradingAgentsApi.getProgress(tid)
+        await handleProgressResponse(resp)
       } catch (e) {
         // polling 失败不立即终止,记一次错误
         console.warn('progress poll error:', e)
       }
     },
-    [stockSymbol],
+    [handleProgressResponse],
+  )
+
+  /** 降级方案:setInterval 轮询(SSE 不可用时) */
+  const startPolling = useCallback(
+    (tid: string) => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      timerRef.current = setInterval(() => pollProgress(tid), POLL_INTERVAL_MS)
+      void pollProgress(tid)
+    },
+    [pollProgress],
+  )
+
+  /** 开始监听进度:优先 SSE(服务端推送),失败/关流降级轮询(轮询代码保留兜底) */
+  const startWatching = useCallback(
+    (tid: string) => {
+      stopWatching()
+      let terminal = false
+      sseCloseRef.current = subscribeSSE(`/agents/runs/${tid}/progress/stream`, {
+        onEvent: (ev) => {
+          if (ev.event === 'progress' && ev.data && typeof ev.data === 'object') {
+            const resp = ev.data as ProgressResponse
+            if (['success', 'failed', 'stale'].includes(resp.status)) terminal = true
+            void handleProgressResponse(resp)
+          } else if (ev.event === 'done' && ev.data?.status && ev.data.status !== 'timeout') {
+            terminal = true
+          }
+        },
+        onClosed: () => {
+          // 服务端正常关流:终态则结束;非终态(如流超时)降级轮询接力
+          if (!terminal) startPolling(tid)
+        },
+        onFailed: () => {
+          // SSE 不可用(旧代理缓冲/网络问题)→ 降级轮询
+          startPolling(tid)
+        },
+      })
+    },
+    [handleProgressResponse, startPolling, stopWatching],
   )
 
   const handleStart = useCallback(async (force = false) => {
@@ -284,25 +326,20 @@ export function DeepAnalysisModal({
       }
       // 持久化 trace_id 让关闭重开能恢复进度
       saveRunningTrace(stockSymbol, tid)
-      // 启动 polling
-      timerRef.current = setInterval(() => {
-        pollProgress(tid)
-      }, POLL_INTERVAL_MS)
-      // 立即拉一次
+      // 启动进度监听(SSE 优先,失败降级轮询)
+      startWatching(tid)
+      // 立即拉一次,尽快渲染初始进度
       pollProgress(tid)
     } catch (e) {
       setStage('error')
       setError(e instanceof Error ? e.message : '触发失败')
     }
-  }, [stockId, stockSymbol, pollProgress, toast])
+  }, [stockId, stockSymbol, startWatching, pollProgress, toast])
 
   const handleClose = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
+    stopWatching()
     onOpenChange(false)
-  }, [onOpenChange])
+  }, [onOpenChange, stopWatching])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

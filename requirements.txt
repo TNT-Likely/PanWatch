@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 apprise>=1.6.0
 openai>=1.0.0
 efinance>=0.4.0
@@ -34,3 +35,7 @@ tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.3.0
 
 # 本仓内独立行情数据包(editable 本地安装;发 PyPI 前不占外部依赖)
 -e ./packages/marketdata
+
+# OpenTelemetry 导出为「可选依赖组」,不在主依赖内(默认关闭,未装即 no-op)。
+# 需要把 trace 导出到 Jaeger/Tempo/Langfuse 时:pip install -r requirements-otel.txt
+# 详见 requirements-otel.txt 与 README「OTel 导出」。
