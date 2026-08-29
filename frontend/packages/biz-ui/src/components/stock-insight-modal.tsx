@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
 import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
@@ -355,7 +356,7 @@ export default function StockInsightModal(props: {
   )
   const [autoRefreshSec, setAutoRefreshSec] = useLocalStorage<number>(
     'stock_insight_auto_refresh_sec',
-    20
+    60
   )
   const [quote, setQuote] = useState<QuoteResponse | null>(null)
   const [klineSummary, setKlineSummary] = useState<KlineSummary | null>(null)
@@ -389,25 +390,48 @@ export default function StockInsightModal(props: {
   } | null>(null)
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [newsLoading, setNewsLoading] = useState(false)
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false)
+  const [reportsLoading, setReportsLoading] = useState(false)
   const autoTriggeredRef = useRef<Record<string, number>>({})
+  const autoPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stockCacheRef = useRef<Record<string, StockItem>>({})
-  const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
+  const newsRequestRef = useRef(0)
+  const announcementsRequestRef = useRef(0)
+  const suggestionsRequestRef = useRef(0)
+  const reportsRequestRef = useRef(0)
+  const quoteRequestRef = useRef(0)
+  const klineRequestRef = useRef(0)
+  const miniKlineRequestRef = useRef(0)
+  const coreLoadRequestRef = useRef(0)
+  const activeStockKeyRef = useRef('')
+  const resolvedName = useMemo(() => props.stockName || symbol, [props.stockName, symbol])
+
+  // 跟踪当前活跃股票 key，用于异步请求过期保护
+  const activeStockKey = `${market}:${symbol}`
+  useEffect(() => {
+    activeStockKeyRef.current = activeStockKey
+  }, [activeStockKey])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
+    const requestId = ++quoteRequestRef.current
     const data = await insightApi.quote<QuoteResponse>(symbol, market)
-    setQuote(data || null)
+    if (requestId === quoteRequestRef.current) setQuote(data || null)
   }, [symbol, market])
 
   const loadKline = useCallback(async () => {
     if (!symbol) return
+    const requestId = ++klineRequestRef.current
     const data = await insightApi.klineSummary<KlineSummaryResponse>(symbol, market)
-    setKlineSummary(data?.summary || null)
+    if (requestId === klineRequestRef.current) setKlineSummary(data?.summary || null)
   }, [symbol, market])
 
   const loadMiniKline = useCallback(async (opts?: { silent?: boolean }) => {
     if (!symbol) return
     const silent = !!opts?.silent
+    const requestId = ++miniKlineRequestRef.current
     if (!silent) setMiniKlineLoading(true)
     try {
       const data = await insightApi.klines<MiniKlineResponse>(symbol, {
@@ -415,42 +439,55 @@ export default function StockInsightModal(props: {
         days: 36,
         interval: '1d',
       })
-      setMiniKlines((data?.klines || []).slice(-30))
+      if (requestId === miniKlineRequestRef.current) setMiniKlines((data?.klines || []).slice(-30))
     } catch {
-      setMiniKlines([])
+      if (requestId === miniKlineRequestRef.current) setMiniKlines([])
     } finally {
-      if (!silent) setMiniKlineLoading(false)
+      if (!silent && requestId === miniKlineRequestRef.current) setMiniKlineLoading(false)
     }
   }, [symbol, market])
 
   const loadSuggestions = useCallback(async () => {
     if (!symbol) return
-    const data = await insightApi.suggestions<any[]>(symbol, {
-      market,
-      limit: 20,
-      include_expired: includeExpiredSuggestions,
-    })
-    const list = (data || []).map(item => ({
-      id: item.id,
-      action: normalizeSuggestionAction(item.action, item.action_label),
-      action_label: item.action_label || '',
-      signal: pickSuggestionText(item.signal, 'signal'),
-      reason: pickSuggestionText(item.reason, 'reason'),
-      should_alert: !!item.should_alert,
-      agent_name: item.agent_name,
-      agent_label: item.agent_label,
-      created_at: item.created_at,
-      is_expired: item.is_expired,
-      prompt_context: item.prompt_context,
-      ai_response: item.ai_response,
-      raw: item.raw || '',
-      meta: item.meta,
-    })) as SuggestionInfo[]
-    setSuggestions(list)
+    setSuggestionsLoading(true)
+    const requestId = ++suggestionsRequestRef.current
+    try {
+      const data = await insightApi.suggestions<any[]>(symbol, {
+        market,
+        limit: 20,
+        include_expired: includeExpiredSuggestions,
+      })
+      if (requestId !== suggestionsRequestRef.current) return
+      const list = (data || []).map(item => ({
+        id: item.id,
+        action: normalizeSuggestionAction(item.action, item.action_label),
+        action_label: item.action_label || '',
+        signal: pickSuggestionText(item.signal, 'signal'),
+        reason: pickSuggestionText(item.reason, 'reason'),
+        should_alert: !!item.should_alert,
+        agent_name: item.agent_name,
+        agent_label: item.agent_label,
+        created_at: item.created_at,
+        is_expired: item.is_expired,
+        prompt_context: item.prompt_context,
+        ai_response: item.ai_response,
+        raw: item.raw || '',
+        meta: item.meta,
+      })) as SuggestionInfo[]
+      setSuggestions(list)
+    } finally {
+      setSuggestionsLoading(false)
+    }
   }, [symbol, market, includeExpiredSuggestions])
 
   const loadNews = useCallback(async () => {
     if (!symbol) return
+    setNewsLoading(true)
+    const requestKey = `${market}:${symbol}`
+    const requestId = ++newsRequestRef.current
+    const canApply = () =>
+      requestId === newsRequestRef.current && activeStockKeyRef.current === requestKey
+
     const runQuery = async (opts: { useName: boolean; filterRelated: boolean }) => {
       const params = new URLSearchParams()
       params.set('hours', newsHours)
@@ -524,14 +561,30 @@ export default function StockInsightModal(props: {
             .filter((n) => !!n.title)
         }
       }
-      setNews(data || [])
+      if (canApply()) {
+        // 优先展示东方财富资讯（降级来源），确保 overview tab 的 3 条限制内可见
+        const sorted = (data || []).sort((a, b) => {
+          const aIsFallback = a.source === 'eastmoney_news' ? 1 : 0
+          const bIsFallback = b.source === 'eastmoney_news' ? 1 : 0
+          return bIsFallback - aIsFallback
+        })
+        setNews(sorted)
+      }
     } catch {
-      setNews([])
+      if (canApply()) setNews([])
+    } finally {
+      setNewsLoading(false)
     }
-  }, [symbol, newsHours, resolvedName])
+  }, [symbol, market, newsHours, resolvedName, newsRequestRef])
 
   const loadAnnouncements = useCallback(async () => {
     if (!symbol) return
+    setAnnouncementsLoading(true)
+    const requestKey = `${market}:${symbol}`
+    const requestId = ++announcementsRequestRef.current
+    const canApply = () =>
+      requestId === announcementsRequestRef.current && activeStockKeyRef.current === requestKey
+
     try {
       const runQuery = async (opts: { useName: boolean; filterRelated: boolean }) => {
         const params = new URLSearchParams()
@@ -568,11 +621,13 @@ export default function StockInsightModal(props: {
           return (n.symbols || []).map(x => String(x).toUpperCase()).includes(upperSymbol)
         })
       }
-      setAnnouncements(data || [])
+      if (canApply()) setAnnouncements(data || [])
     } catch {
-      setAnnouncements([])
+      if (canApply()) setAnnouncements([])
+    } finally {
+      setAnnouncementsLoading(false)
     }
-  }, [symbol, announcementHours, resolvedName])
+  }, [symbol, market, announcementHours, resolvedName, announcementsRequestRef])
 
   const loadHoldingAgg = useCallback(async () => {
     if (!symbol) return
@@ -605,6 +660,8 @@ export default function StockInsightModal(props: {
 
   const loadReports = useCallback(async () => {
     if (!symbol) return
+    setReportsLoading(true)
+    const requestId = ++reportsRequestRef.current
     try {
       const agents = ['premarket_outlook', 'daily_report', 'news_digest']
       const bySymbolResults = await Promise.all(
@@ -616,6 +673,7 @@ export default function StockInsightModal(props: {
           }).catch(() => [])
         )
       )
+      if (requestId !== reportsRequestRef.current) return
       let merged = bySymbolResults
         .flatMap(items => items || [])
         .filter(Boolean)
@@ -656,20 +714,23 @@ export default function StockInsightModal(props: {
       setReports(merged)
     } catch {
       setReports([])
+    } finally {
+      setReportsLoading(false)
     }
   }, [symbol, resolvedName])
 
   const loadCore = useCallback(async () => {
     if (!symbol) return
     setLoading(true)
+    const requestId = ++coreLoadRequestRef.current
     try {
-      await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadHoldingAgg()])
+      await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline()])
     } catch (e) {
       toast(e instanceof Error ? e.message : '加载失败', 'error')
     } finally {
-      setLoading(false)
+      if (requestId === coreLoadRequestRef.current) setLoading(false)
     }
-  }, [symbol, loadQuote, loadKline, loadMiniKline, loadHoldingAgg, toast])
+  }, [symbol, loadQuote, loadKline, loadMiniKline, toast])
 
   const handleRefreshAll = useCallback(async () => {
     if (!symbol) return
@@ -733,12 +794,52 @@ export default function StockInsightModal(props: {
     setAnnouncements([])
     setReports([])
     setMiniKlines([])
+    setKlineSummary(null)
+    setQuote(null)
     setWatchingStock(null)
     setDeepResult(null)
     setDeepLoaded(false)
     setDeepHistory(null)
+    setHoldingAgg(null)
+    setHoldingLoaded(false)
+    setHoldingLoadError(false)
     loadCore()
-  }, [props.open, symbol, market, loadCore])
+    // 切换股票时后台加载新闻/公告/建议/持仓（带请求保护，不会覆盖新股票数据）
+    void loadNews()
+    void loadAnnouncements()
+    void loadSuggestions()
+    void loadHoldingAgg()
+  }, [props.open, symbol, market, props.hasPosition, loadCore, loadNews, loadAnnouncements, loadSuggestions, loadHoldingAgg])
+
+  // P0: 切到新闻 tab 时按需拉取
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    if (tab === 'news') {
+      void loadNews()
+    }
+  }, [tab, props.open, symbol, newsHours, loadNews])
+
+  // P0: 切到公告 tab 时按需拉取
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    if (tab === 'announcements') {
+      void loadAnnouncements()
+    }
+  }, [tab, props.open, symbol, announcementHours, loadAnnouncements])
+
+  // P0: 切到建议 tab 时按需拉取
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    if (tab === 'suggestions') {
+      void loadSuggestions()
+    }
+  }, [tab, props.open, symbol, includeExpiredSuggestions, loadSuggestions])
+
+  // P2: reports 在首屏后台加载,不阻塞
+  useEffect(() => {
+    if (!props.open || !symbol) return
+    loadReports().catch(() => setReports([]))
+  }, [props.open, symbol, loadReports])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -748,6 +849,7 @@ export default function StockInsightModal(props: {
     }
   }, [tab, props.open, symbol, deepLoaded, deepLoading, loadDeepResult])
 
+  // P2: holdingAgg 在有持仓区域时才加载
   useEffect(() => {
     if (!props.open || !symbol) return
     let cancelled = false
@@ -771,28 +873,8 @@ export default function StockInsightModal(props: {
   }, [props.open, symbol, market])
 
   useEffect(() => {
-    if (!props.open || !symbol) return
-    loadNews().catch(() => setNews([]))
-  }, [props.open, symbol, newsHours, loadNews])
-
-  useEffect(() => {
-    if (!props.open || !symbol) return
-    loadAnnouncements().catch(() => setAnnouncements([]))
-  }, [props.open, symbol, announcementHours, loadAnnouncements])
-
-  useEffect(() => {
-    if (!props.open || !symbol) return
-    loadSuggestions().catch(() => setSuggestions([]))
-  }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
-
-  useEffect(() => {
-    if (!props.open || !symbol) return
-    loadReports().catch(() => setReports([]))
-  }, [props.open, symbol, loadReports])
-
-  useEffect(() => {
     if (!props.open || !symbol || !autoRefreshEnabled) return
-    const sec = Number(autoRefreshSec) > 0 ? Number(autoRefreshSec) : 20
+    const sec = Number(autoRefreshSec) > 0 ? Number(autoRefreshSec) : 60
     const ms = Math.max(10, sec) * 1000
     const timer = setInterval(() => {
       refreshForAuto().catch(() => undefined)
@@ -1239,12 +1321,15 @@ export default function StockInsightModal(props: {
       })
       // 异步模式：triggerAgent 立即返回，轮询等待建议生成
       const before = Date.now()
+      // 清除上一轮轮询（切换股票时可能残留）
+      if (autoPollRef.current) { clearInterval(autoPollRef.current); autoPollRef.current = null }
       const poll = setInterval(async () => {
-        if (Date.now() - before > 120_000) { clearInterval(poll); setAutoSuggesting(false); return }
+        if (Date.now() - before > 120_000) { clearInterval(poll); autoPollRef.current = null; setAutoSuggesting(false); return }
         await loadSuggestions()
       }, 5_000)
+      autoPollRef.current = poll
       await loadSuggestions()
-      setTimeout(() => clearInterval(poll), 125_000)
+      setTimeout(() => { if (autoPollRef.current === poll) { clearInterval(poll); autoPollRef.current = null } }, 125_000)
       return
     } catch (e) {
       toast(
@@ -1260,7 +1345,11 @@ export default function StockInsightModal(props: {
     const timer = setTimeout(() => {
       triggerAutoAiSuggestion().catch(() => undefined)
     }, 700)
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      // 切换股票时清除轮询，避免残留轮询干扰新股票的 requestId
+      if (autoPollRef.current) { clearInterval(autoPollRef.current); autoPollRef.current = null }
+    }
   }, [props.open, symbol, market, triggerAutoAiSuggestion])
 
   const miniKlineExtrema = useMemo(() => {
@@ -1558,6 +1647,47 @@ export default function StockInsightModal(props: {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+                  {loading ? (
+                    <div className="col-span-full space-y-3">
+                      <div className="card p-4 space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <Skeleton className="h-3 w-12" />
+                          <Skeleton className="h-5 w-10" />
+                        </div>
+                        <div className="space-y-2">
+                          <Skeleton className="h-16 w-full rounded" />
+                          <div className="rounded bg-accent/10 p-2 space-y-1.5">
+                            <Skeleton className="h-2.5 w-16" />
+                            <Skeleton className="h-3 w-32" />
+                            <Skeleton className="h-2.5 w-24" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="card p-4 space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <Skeleton className="h-3 w-12" />
+                          <Skeleton className="h-5 w-10" />
+                        </div>
+                        <div className="space-y-2">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <Skeleton key={i} className="h-10 w-full rounded" />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="card p-4 space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <Skeleton className="h-3 w-12" />
+                          <Skeleton className="h-5 w-10" />
+                        </div>
+                        <div className="space-y-2">
+                          <Skeleton className="h-3 w-24" />
+                          <Skeleton className="h-3.5 w-28" />
+                          <Skeleton className="h-3 w-full" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-[12px] text-muted-foreground">AI建议</div>
@@ -1598,6 +1728,25 @@ export default function StockInsightModal(props: {
                           </div>
                         )}
                         <div className="text-[10px] text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? '正在自动生成 AI 建议...' : ''}</div>
+                      </div>
+                    ) : technicalFallbackSuggestion ? (
+                      <div className="space-y-2">
+                        <SuggestionBadge
+                          suggestion={technicalFallbackSuggestion}
+                          stockName={resolvedName}
+                          stockSymbol={symbol}
+                          kline={klineSummary}
+                          hasPosition={!!props.hasPosition}
+                          showTechnicalCompanion={false}
+                        />
+                        <div className="rounded bg-accent/10 p-2 text-[11px]">
+                          <div className="text-muted-foreground">核心判断</div>
+                          <div className="mt-1 text-foreground line-clamp-2">{technicalFallbackSuggestion.signal || technicalFallbackSuggestion.reason || '暂无说明'}</div>
+                          <div className="mt-1 text-muted-foreground">动作: {technicalFallbackSuggestion.action_label || technicalFallbackSuggestion.action || '--'}</div>
+                          <div className="mt-1 text-foreground line-clamp-2">依据: {technicalFallbackSuggestion.reason || '暂无补充依据'}</div>
+                          <div className="mt-1 text-muted-foreground">来源: 技术指标</div>
+                        </div>
+                        <div className="text-[10px] text-primary min-h-[14px]">{autoSuggesting ? '正在生成 AI 建议...' : '当前显示技术指标基础建议'}</div>
                       </div>
                     ) : (
                       <div className="text-[12px] text-muted-foreground py-6">
@@ -1653,6 +1802,8 @@ export default function StockInsightModal(props: {
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
                 </div>
               </div>
             )}
@@ -1668,75 +1819,83 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'reports' && (
-              <div className="space-y-3">
-                <div className="card p-3">
-                  <div className="flex items-center gap-1">
-                    {([
-                      { key: 'premarket_outlook', label: '盘前' },
-                      { key: 'daily_report', label: '盘后' },
-                      { key: 'news_digest', label: '新闻' },
-                    ] as const).map(item => (
-                      <button
-                        key={item.key}
-                        onClick={() => setReportTab(item.key)}
-                        className={`text-[11px] px-2.5 py-1 rounded ${
-                          reportTab === item.key ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-muted-foreground hover:bg-accent'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
-                ) : (
-                  <div className="card p-4 space-y-3">
-                    <div className="text-[11px] text-muted-foreground">
-                      {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
+              <div className="relative">
+                {reportsLoading && (
+                  <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-sm text-muted-foreground">加载中...</span>
                     </div>
-                    <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
-                    {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
-                      <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {(activeReport.suggestions as any)[symbol].action_label}
-                      </div>
-                    )}
-                    <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
-                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
-                      </div>
-                    </div>
-                    {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
-                      <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
-                        {activeReport.prompt_stats ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.news_debug ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.context_payload ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
-                          </div>
-                        ) : null}
-                        {activeReport.prompt_context ? (
-                          <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
-                          </div>
-                        ) : null}
-                      </details>
-                    )}
                   </div>
                 )}
+                <div className="space-y-3">
+                  <div className="card p-3">
+                    <div className="flex items-center gap-1">
+                      {([
+                        { key: 'premarket_outlook', label: '盘前' },
+                        { key: 'daily_report', label: '盘后' },
+                        { key: 'news_digest', label: '新闻' },
+                      ] as const).map(item => (
+                        <button
+                          key={item.key}
+                          onClick={() => setReportTab(item.key)}
+                          className={`text-[11px] px-2.5 py-1 rounded ${reportTab === item.key ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-muted-foreground hover:bg-accent'}`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {!activeReport ? (
+                    <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  ) : (
+                    <div className="card p-4 space-y-3">
+                      <div className="text-[11px] text-muted-foreground">
+                        {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
+                      </div>
+                      <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
+                      {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
+                        <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
+                          {(activeReport.suggestions as any)[symbol].action_label}
+                        </div>
+                      )}
+                      <div className="rounded-lg bg-accent/10 p-3">
+                        <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
+                          <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
+                        </div>
+                      </div>
+                      {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
+                        <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
+                          <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
+                          {activeReport.prompt_stats ? (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
+                              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                            </div>
+                          ) : null}
+                          {activeReport.news_debug ? (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
+                              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
+                            </div>
+                          ) : null}
+                          {activeReport.context_payload ? (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
+                              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
+                            </div>
+                          ) : null}
+                          {activeReport.prompt_context ? (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
+                              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
+                            </div>
+                          ) : null}
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1775,119 +1934,149 @@ export default function StockInsightModal(props: {
             )}
 
             {tab === 'suggestions' && (
-              <div className="space-y-3">
-                <div className="card p-3 flex items-center justify-between gap-3">
-                  <div className="text-[12px] text-muted-foreground">显示过期建议</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
-                    <Switch
-                      checked={includeExpiredSuggestions}
-                      onCheckedChange={setIncludeExpiredSuggestions}
-                      aria-label="显示过期建议"
-                    />
-                  </div>
-                </div>
-                {suggestions.length === 0 ? (
-                  technicalFallbackSuggestion ? (
-                    <div className="card p-4">
-                      <SuggestionBadge suggestion={technicalFallbackSuggestion} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
-                      <div className="mt-2 text-[10px] text-muted-foreground">
-                        {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '当前显示技术指标基础建议'}
-                      </div>
+              <div className="relative">
+                {suggestionsLoading && (
+                  <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-sm text-muted-foreground">加载中...</span>
                     </div>
-                  ) : (
-                    <div className="card p-6 text-[12px] text-muted-foreground text-center">
-                      {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无建议'}
-                    </div>
-                  )
-                ) : (
-                  <div className="max-h-[56vh] overflow-y-auto pr-1 scrollbar space-y-3">
-                    {suggestions.map((item, idx) => (
-                      <div key={`${item.created_at || 's'}-${idx}`} className="card p-4">
-                        <SuggestionBadge suggestion={item} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
-                      </div>
-                    ))}
                   </div>
                 )}
+                <div className="space-y-3">
+                  <div className="card p-3 flex items-center justify-between gap-3">
+                    <div className="text-[12px] text-muted-foreground">显示过期建议</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
+                      <Switch
+                        checked={includeExpiredSuggestions}
+                        onCheckedChange={setIncludeExpiredSuggestions}
+                        aria-label="显示过期建议"
+                      />
+                    </div>
+                  </div>
+                  {suggestions.length === 0 ? (
+                    technicalFallbackSuggestion ? (
+                      <div className="card p-4">
+                        <SuggestionBadge suggestion={technicalFallbackSuggestion} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
+                        <div className="mt-2 text-[10px] text-muted-foreground">
+                          {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '当前显示技术指标基础建议'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="card p-6 text-[12px] text-muted-foreground text-center">
+                        {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无建议'}
+                      </div>
+                    )
+                  ) : (
+                    <div className="max-h-[56vh] overflow-y-auto pr-1 scrollbar space-y-3">
+                      {suggestions.map((item, idx) => (
+                        <div key={`${item.created_at || 's'}-${idx}`} className="card p-4">
+                          <SuggestionBadge suggestion={item} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {tab === 'news' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-end">
-                  <Select value={newsHours} onValueChange={setNewsHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-[12px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="6">近6小时</SelectItem>
-                      <SelectItem value="12">近12小时</SelectItem>
-                      <SelectItem value="24">近24小时</SelectItem>
-                      <SelectItem value="48">近48小时</SelectItem>
-                      <SelectItem value="168">近7天</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {news.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无相关新闻</div>
-                ) : (
-                  news.map((item, idx) => (
-                    <a
-                      key={`${item.publish_time || 'n'}-${idx}`}
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="card block p-4 hover:bg-accent/20 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
-                    </a>
-                  ))
+              <div className="relative">
+                {newsLoading && (
+                  <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-sm text-muted-foreground">加载中...</span>
+                    </div>
+                  </div>
                 )}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-end">
+                    <Select value={newsHours} onValueChange={setNewsHours}>
+                      <SelectTrigger className="h-8 w-[110px] text-[12px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="6">近6小时</SelectItem>
+                        <SelectItem value="12">近12小时</SelectItem>
+                        <SelectItem value="24">近24小时</SelectItem>
+                        <SelectItem value="48">近48小时</SelectItem>
+                        <SelectItem value="168">近7天</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {news.length === 0 ? (
+                    <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无相关新闻</div>
+                  ) : (
+                    news.map((item, idx) => (
+                      <a
+                        key={`${item.publish_time || 'n'}-${idx}`}
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="card block p-4 hover:bg-accent/20 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
+                          <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        </div>
+                        <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      </a>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
             {tab === 'announcements' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-end">
-                  <Select value={announcementHours} onValueChange={setAnnouncementHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-[12px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="168">近7天</SelectItem>
-                      <SelectItem value="336">近14天</SelectItem>
-                      <SelectItem value="720">近30天</SelectItem>
-                      <SelectItem value="2160">近90天</SelectItem>
-                      <SelectItem value="4320">近180天</SelectItem>
-                      <SelectItem value="24">近24小时</SelectItem>
-                      <SelectItem value="48">近48小时</SelectItem>
-                      <SelectItem value="72">近72小时</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {announcements.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无公告</div>
-                ) : (
-                  announcements.map((item, idx) => (
-                    <a
-                      key={`${item.publish_time || 'a'}-${idx}`}
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="card block p-4 hover:bg-accent/20 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
-                    </a>
-                  ))
+              <div className="relative">
+                {announcementsLoading && (
+                  <div className="absolute inset-0 bg-background/60 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-sm text-muted-foreground">加载中...</span>
+                    </div>
+                  </div>
                 )}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-end">
+                    <Select value={announcementHours} onValueChange={setAnnouncementHours}>
+                      <SelectTrigger className="h-8 w-[110px] text-[12px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="168">近7天</SelectItem>
+                        <SelectItem value="336">近14天</SelectItem>
+                        <SelectItem value="720">近30天</SelectItem>
+                        <SelectItem value="2160">近90天</SelectItem>
+                        <SelectItem value="4320">近180天</SelectItem>
+                        <SelectItem value="24">近24小时</SelectItem>
+                        <SelectItem value="48">近48小时</SelectItem>
+                        <SelectItem value="72">近72小时</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {announcements.length === 0 ? (
+                    <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无公告</div>
+                  ) : (
+                    announcements.map((item, idx) => (
+                      <a
+                        key={`${item.publish_time || 'a'}-${idx}`}
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="card block p-4 hover:bg-accent/20 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
+                          <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        </div>
+                        <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      </a>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
