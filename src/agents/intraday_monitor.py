@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import uuid
 from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
@@ -813,6 +814,7 @@ class IntradayMonitorAgent(BaseAgent):
                 },
             },
         )
+        prediction_group_id = str(uuid.uuid4())
         for horizon in (1, 5):
             save_agent_prediction_outcome(
                 agent_name=self.name,
@@ -820,6 +822,7 @@ class IntradayMonitorAgent(BaseAgent):
                 stock_market=stock.market.value,
                 prediction_date=analysis_date,
                 horizon_days=horizon,
+                prediction_group_id=prediction_group_id,
                 action=suggestion.get("action") or "watch",
                 action_label=suggestion.get("action_label") or "观望",
                 confidence=(float(quality_score) / 100.0)

@@ -388,6 +388,7 @@ class AgentPredictionOutcome(Base):
             "prediction_date",
         ),
         Index("ix_prediction_status_horizon", "outcome_status", "horizon_days"),
+        Index("ix_prediction_group_horizon", "prediction_group_id", "horizon_days"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -396,6 +397,10 @@ class AgentPredictionOutcome(Base):
     stock_market = Column(String, nullable=False, default="CN")
     prediction_date = Column(String, nullable=False)  # YYYY-MM-DD
     horizon_days = Column(Integer, nullable=False, default=1)  # 1/5/10...
+    # 同一次建议的各 horizon 共用 UUID；历史记录为空时由查询侧兼容聚合。
+    prediction_group_id = Column(String, nullable=True)
+    # 旧数据按自然日评估；新写入统一按实际 K 线交易日评估。
+    horizon_unit = Column(String, nullable=False, default="trading_days")
     action = Column(String, nullable=False, default="watch")
     action_label = Column(String, nullable=False, default="观望")
     confidence = Column(Float, nullable=True)
@@ -703,6 +708,31 @@ class StrategyOutcome(Base):
     meta = Column(JSON, default={})
     evaluated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class BacktestRun(Base):
+    """一次可回看的策略历史回测。"""
+
+    __tablename__ = "backtest_runs"
+    __table_args__ = (
+        Index("ix_backtest_runs_created", "created_at"),
+        Index("ix_backtest_runs_status_created", "status", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String, nullable=False, default="queued")  # queued/running/succeeded/failed
+    strategy_code = Column(String, nullable=False)
+    strategy_version = Column(String, default="")
+    market = Column(String, nullable=False, default="CN")
+    start_date = Column(String, nullable=False)
+    end_date = Column(String, nullable=False)
+    config = Column(JSON, default={})
+    input_snapshot = Column(JSON, default={})
+    result = Column(JSON, default={})
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
 
 
 class StrategyWeight(Base):

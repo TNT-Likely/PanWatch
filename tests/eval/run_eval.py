@@ -41,6 +41,36 @@ from tests.eval.framework import ChatEvalRunner, evaluate_case  # noqa: E402
 from tests.eval.judge import JudgeConfig, LLMJudge  # noqa: E402
 
 
+_LOCAL_EVAL_ENV_KEYS = {
+    "EVAL_AI_BASE_URL",
+    "EVAL_AI_API_KEY",
+    "EVAL_AI_MODEL",
+    "EVAL_JUDGE_BASE_URL",
+    "EVAL_JUDGE_API_KEY",
+    "EVAL_JUDGE_MODEL",
+}
+
+
+def load_local_eval_env() -> None:
+    """加载本地 .env.eval；终端/CI 已显式设置的值优先。"""
+    env_file = REPO_ROOT / ".env.eval"
+    if not env_file.is_file():
+        return
+
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in _LOCAL_EVAL_ENV_KEYS:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
 def _eval_ai_config() -> tuple[str, str, str] | None:
     """chat 用例的被测模型配置（仅环境变量，缺任一即跳过）。"""
     base_url = os.environ.get("EVAL_AI_BASE_URL", "").strip()
@@ -116,6 +146,7 @@ async def run_chat(only: str | None, use_judge: bool) -> tuple[int, int]:
 
 
 def main() -> int:
+    load_local_eval_env()
     parser = argparse.ArgumentParser(description="Agent 过程评测")
     parser.add_argument("--judge", action="store_true", help="对 chat 用例追加 LLM-as-judge 评分")
     parser.add_argument("--only", default="", help="只跑指定 id 的用例")
