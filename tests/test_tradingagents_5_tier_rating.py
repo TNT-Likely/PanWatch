@@ -109,6 +109,19 @@ def test_decision_empty_falls_back_to_hold():
     assert r.raw_data["suggestion"]["rating_raw"] == "hold"
 
 
+def test_review_signal_is_preserved_as_manual_review():
+    """0.4.0 的 REVIEW 是不可交易的人工复核信号，不能伪装成普通持有。"""
+    r = map_state_to_result(
+        stock=_stock(),
+        ta_result=_result("REVIEW", final_decision_text="上游无法解析最终评级"),
+    )
+    suggestion = r.raw_data["suggestion"]
+    assert suggestion["action"] == "hold"  # 保持现有前端 3 档 API
+    assert suggestion["action_label"] == "待人工复核"
+    assert suggestion["rating_raw"] == "review"
+    assert suggestion["should_alert"] is True
+
+
 def test_decision_unrecognized_then_text_has_underweight():
     """propagate 返回 'xxxx' 不识别 → 从 final_decision 文本抽 underweight"""
     r = map_state_to_result(
