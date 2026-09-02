@@ -24,8 +24,11 @@ pnpm-debug.log*
 
 # Claude
 .claude/
+AGENTS.md
+CLAUDE.md
 *.tsbuildinfo
 
 # 本地设计/计划文档,不入库
 docs/superpowers/
 .superpowers/
+.worktrees/
