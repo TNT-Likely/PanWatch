@@ -35,6 +35,11 @@ RATING_ACTION_MAP = {
     "sell": "sell",
 }
 
+# 0.4.0 起,上游无法解析 PM 评级时返回 REVIEW。它不是可交易的 Hold:
+# 在不扩展前端 3 档 action API 的前提下,以 hold 阻止自动交易,并保留原始状态供展示/提醒。
+REVIEW_RATING = "review"
+REVIEW_LABEL = "待人工复核"
+
 # 旧字段名兼容:某些下游代码可能 import DECISION_LABEL_MAP
 DECISION_LABEL_MAP = RATING_LABEL_MAP
 
@@ -60,14 +65,20 @@ def map_state_to_result(
     # 却返回 "HOLD"),所以优先解析正文里的显式评级标签。
     # 优先级:正文显式标签 > 上游 decision > 正文模糊扫描兜底。
     final_text = state.get("final_trade_decision") or ""
-    rating_raw = _parse_rating_label(final_text)
-    if rating_raw not in RATING_LABEL_MAP:
-        rating_raw = (ta_result.get("decision") or "").strip().lower()
-    if rating_raw not in RATING_LABEL_MAP:
+    upstream_rating = (ta_result.get("decision") or "").strip().lower()
+    if upstream_rating == REVIEW_RATING:
+        # REVIEW 是上游对整份 PM 输出的不可解析判定,不能被正文里的评级词覆盖。
+        rating_raw = REVIEW_RATING
+    else:
+        rating_raw = _parse_rating_label(final_text)
+    if rating_raw not in RATING_LABEL_MAP and rating_raw != REVIEW_RATING:
+        rating_raw = upstream_rating
+    if rating_raw not in RATING_LABEL_MAP and rating_raw != REVIEW_RATING:
         rating_raw = _parse_rating_from_text(final_text)
 
+    review_required = rating_raw == REVIEW_RATING
     action = RATING_ACTION_MAP.get(rating_raw, "hold")
-    action_label = RATING_LABEL_MAP.get(rating_raw, "持有")
+    action_label = REVIEW_LABEL if review_required else RATING_LABEL_MAP.get(rating_raw, "持有")
 
     confidence = _extract_confidence(state, rating_raw)
     short_reason = _short_reason(state)
@@ -76,9 +87,10 @@ def map_state_to_result(
         "action": action,
         "action_label": action_label,
         "rating_raw": rating_raw or "hold",  # 保留原始 5 档,前端/历史可查
+        "review_required": review_required,
         "signal": _truncate(state.get("trader_investment_plan", ""), 200),
         "reason": state.get("final_trade_decision") or short_reason,
-        "should_alert": rating_raw in ("buy", "overweight", "underweight", "sell"),
+        "should_alert": review_required or rating_raw in ("buy", "overweight", "underweight", "sell"),
         "agent_name": "tradingagents",
         "agent_label": "TradingAgents 深度",
         "confidence": confidence,
