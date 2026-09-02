@@ -65,9 +65,13 @@ def map_state_to_result(
     # 却返回 "HOLD"),所以优先解析正文里的显式评级标签。
     # 优先级:正文显式标签 > 上游 decision > 正文模糊扫描兜底。
     final_text = state.get("final_trade_decision") or ""
-    rating_raw = _parse_rating_label(final_text)
-    if rating_raw not in RATING_LABEL_MAP:
-        upstream_rating = (ta_result.get("decision") or "").strip().lower()
+    upstream_rating = (ta_result.get("decision") or "").strip().lower()
+    if upstream_rating == REVIEW_RATING:
+        # REVIEW 是上游对整份 PM 输出的不可解析判定,不能被正文里的评级词覆盖。
+        rating_raw = REVIEW_RATING
+    else:
+        rating_raw = _parse_rating_label(final_text)
+    if rating_raw not in RATING_LABEL_MAP and rating_raw != REVIEW_RATING:
         rating_raw = upstream_rating
     if rating_raw not in RATING_LABEL_MAP and rating_raw != REVIEW_RATING:
         rating_raw = _parse_rating_from_text(final_text)

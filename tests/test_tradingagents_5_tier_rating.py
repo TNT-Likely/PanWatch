@@ -122,6 +122,19 @@ def test_review_signal_is_preserved_as_manual_review():
     assert suggestion["should_alert"] is True
 
 
+def test_review_signal_overrides_parseable_pm_rating():
+    """上游 REVIEW 优先于正文中的评级词，绝不能转成可交易买入。"""
+    r = map_state_to_result(
+        stock=_stock(),
+        ta_result=_result("REVIEW", final_decision_text="评级：买入"),
+    )
+    suggestion = r.raw_data["suggestion"]
+    assert suggestion["action"] == "hold"
+    assert suggestion["action_label"] == "待人工复核"
+    assert suggestion["rating_raw"] == "review"
+    assert suggestion["review_required"] is True
+
+
 def test_decision_unrecognized_then_text_has_underweight():
     """propagate 返回 'xxxx' 不识别 → 从 final_decision 文本抽 underweight"""
     r = map_state_to_result(
