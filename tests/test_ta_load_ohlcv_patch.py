@@ -62,6 +62,94 @@ def test_load_ohlcv_passthrough_for_us(monkeypatch):
     assert out is sentinel
 
 
+def test_load_ohlcv_us_rate_limit_falls_back_to_marketdata(monkeypatch):
+    """Yahoo 限流时，美股必须使用 MarketData 返回的真实 K 线，而不是中断。"""
+    from yfinance.exceptions import YFRateLimitError
+
+    calls = []
+
+    def rate_limited(*args, **kwargs):
+        raise YFRateLimitError()
+
+    def marketdata_klines(self, symbol, days=60):
+        calls.append((self.market.value, symbol, days))
+        return _sample_klines(10)
+
+    monkeypatch.setattr(ta, "_real_load_ohlcv", rate_limited)
+    monkeypatch.setattr(KlineCollector, "get_klines", marketdata_klines)
+
+    out = ta._panwatch_load_ohlcv("AAPL", "2026-06-18")
+
+    assert len(out) == 10
+    assert calls == [("US", "AAPL", 750)]
+
+
+def test_load_ohlcv_us_service_error_falls_back_to_marketdata(monkeypatch):
+    """Yahoo 503 这类可用性错误也必须走 MarketData，不得中断分析。"""
+    monkeypatch.setattr(
+        ta,
+        "_real_load_ohlcv",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("503 Server Error: Service Unavailable")),
+    )
+    monkeypatch.setattr(KlineCollector, "get_klines", lambda self, symbol, days=60: _sample_klines(10))
+
+    out = ta._panwatch_load_ohlcv("AAPL", "2026-06-18")
+
+    assert len(out) == 10
+
+
+def test_verified_snapshot_returns_unavailable_message_when_all_sources_fail(monkeypatch):
+    """行情源全失败时，验证快照应返回不可用提示而非向 LangGraph 抛异常。"""
+    from tradingagents.dataflows.errors import NoMarketDataError
+
+    def no_data(*args, **kwargs):
+        raise NoMarketDataError("AAPL", "AAPL", "all market data sources failed")
+
+    monkeypatch.setattr(ta, "_real_build_verified_market_snapshot", no_data)
+
+    out = ta._safe_build_verified_market_snapshot("AAPL", "2026-06-18")
+
+    assert "Verified market data unavailable for AAPL" in out
+    assert "Do not make exact price, indicator, stop-loss, or trade-action claims" in out
+
+
+def test_verified_snapshot_preserves_indicators_argument_when_degraded(monkeypatch):
+    """安全包装器必须保持上游的 indicators 参数，避免调用方因签名变化中断。"""
+    from tradingagents.dataflows.errors import NoMarketDataError
+
+    seen = {}
+
+    def no_data(symbol, curr_date, look_back_days=30, indicators=None):
+        seen["indicators"] = indicators
+        raise NoMarketDataError(symbol, symbol, "all market data sources failed")
+
+    monkeypatch.setattr(ta, "_real_build_verified_market_snapshot", no_data)
+
+    out = ta._safe_build_verified_market_snapshot(
+        "AAPL", "2026-06-18", indicators=("rsi",)
+    )
+
+    assert "Verified market data unavailable for AAPL" in out
+    assert seen == {"indicators": ("rsi",)}
+
+
+def test_install_load_ohlcv_patch_updates_yfinance_indicator_import(monkeypatch):
+    """技术指标工具持有的 load_ohlcv 引用也必须接入同一个 US fallback。"""
+    from tradingagents.dataflows import market_data_validator, stockstats_utils, y_finance
+
+    def upstream_load_ohlcv(*args, **kwargs):
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ta, "_LOAD_OHLCV_PATCHED", False)
+    monkeypatch.setattr(ta, "_real_load_ohlcv", None)
+    for module in (stockstats_utils, y_finance, market_data_validator):
+        monkeypatch.setattr(module, "load_ohlcv", upstream_load_ohlcv)
+
+    ta._ensure_load_ohlcv_patched()
+
+    assert y_finance.load_ohlcv is ta._panwatch_load_ohlcv
+
+
 def test_load_ohlcv_a_share_no_klines_raises_not_fallback(monkeypatch):
     """A股取不到 K线时,直接抛 NoMarketDataError 报清晰错,**不回退 yfinance**。
 
