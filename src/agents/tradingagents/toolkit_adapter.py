@@ -143,6 +143,8 @@ def _yfinance_response_has_data(text: str) -> bool:
     if any(kw in low for kw in (
         "no data found",
         "no data available",
+        "no_data_available",
+        "no usable market data",
         "symbol may be delisted",
         "no information available",
     )):
@@ -346,9 +348,9 @@ def patch_route_to_vendor():
         yield
         return
 
-    # 同时接管 load_ohlcv:新上游 get_verified_market_snapshot 绕过 route_to_vendor
-    # 直连 yfinance,A股/港股拉不到会 NoMarketDataError(永久安装,非 PanWatch 标的透传)。
+    # 同时接管 load_ohlcv:新上游 get_verified_market_snapshot 绕过 route_to_vendor。
     _ensure_load_ohlcv_patched()
+    _ensure_market_snapshot_patched()
 
     import importlib
     with _patch_lock:
@@ -395,7 +397,25 @@ _real_load_ohlcv: Any = None
 _LOAD_OHLCV_IMPORT_SITES = (
     "tradingagents.dataflows.market_data_validator",
     "tradingagents.dataflows.interface",
+    "tradingagents.dataflows.y_finance",
 )
+
+_MARKET_SNAPSHOT_PATCHED = False
+_real_build_verified_market_snapshot: Any = None
+_MARKET_SNAPSHOT_IMPORT_SITES = (
+    "tradingagents.agents.utils.market_data_validation_tools",
+)
+
+
+def _market_for_symbol(symbol: str):
+    """将 TradingAgents 的 ticker 映射到 PanWatch 市场。"""
+    from src.models.market import MarketCode
+
+    if is_a_share(symbol):
+        return MarketCode.CN
+    if is_hk_share(symbol):
+        return MarketCode.HK
+    return MarketCode.US
 
 
 def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
@@ -403,9 +423,7 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     import pandas as pd
 
     from src.collectors.kline_collector import KlineCollector
-    from src.models.market import MarketCode
-
-    market = MarketCode.CN if is_a_share(symbol) else MarketCode.HK
+    market = _market_for_symbol(symbol)
     klines = KlineCollector(market).get_klines(symbol, days=750)
     if not klines:
         return None
@@ -432,38 +450,106 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     return df.reset_index(drop=True)
 
 
-def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
-    """A股/港股走 PanWatch K线;美股等非 PanWatch 标的放行原生 yfinance。
+def _is_market_data_failure(error: Exception) -> bool:
+    """判断异常是否表示外部行情不可用，而非程序自身错误。"""
+    name = type(error).__name__.lower()
+    detail = str(error).lower()
+    return (
+        name in {"yfratelimiterror", "nomarketdataerror"}
+        or any(token in detail for token in (
+            "too many requests",
+            "rate limited",
+            "no market data",
+            "no price data",
+            "no ohlcv data",
+            "yahoo finance returned no rows",
+            "no timezone found",
+            "possibly delisted",
+            "connection",
+            "timeout",
+            "service unavailable",
+            "server error",
+            "http error",
+        ))
+    )
 
-    A股/港股 PanWatch 拉空时**不回退 yfinance**(A股/港股在 Yahoo 无数据 + 限流,回退只会
-    把"K线获取失败"变成误导的"Yahoo no rows"),直接抛 NoMarketDataError 报清晰错。
-    """
+
+def _load_panwatch_ohlcv_or_raise(symbol: str, curr_date: str, *, fallback: bool = False):
+    """读取 MarketData 的 K 线；没有可验证的 OHLCV 时抛出统一的数据错误。"""
+    df = None
+    try:
+        df = _build_panwatch_ohlcv_df(symbol, curr_date)
+    except Exception as exc:
+        logger.warning(f"[TA toolkit] load_ohlcv MarketData 取数异常 symbol={symbol}: {exc}")
+    if df is not None and not df.empty:
+        action = "FALLBACK" if fallback else "HIT"
+        _emit_toolkit_log(
+            "info", action, "load_ohlcv", symbol, rows=int(len(df)), source="marketdata"
+        )
+        return df
+
+    _emit_toolkit_log("warning", "MISS", "load_ohlcv", symbol, source="marketdata")
+    try:
+        from tradingagents.dataflows.errors import NoMarketDataError
+        raise NoMarketDataError(
+            symbol, symbol,
+            "MarketData K线获取失败，请检查数据源、代理分流或稍后重试",
+        )
+    except ImportError:
+        raise RuntimeError(
+            f"MarketData K线获取失败 symbol={symbol}(请检查数据源或代理分流)"
+        )
+
+
+def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
+    """A/HK 直接走 MarketData；美股优先 Yahoo，失败时再降级 MarketData。"""
     if is_panwatch_routable(symbol):
-        df = None
-        try:
-            df = _build_panwatch_ohlcv_df(symbol, curr_date)
-        except Exception as e:
-            logger.warning(f"[TA toolkit] load_ohlcv PanWatch 取数异常 symbol={symbol}: {e}")
-        if df is not None and not df.empty:
-            _emit_toolkit_log("info", "panwatch", "load_ohlcv", symbol, rows=int(len(df)))
-            return df
-        _emit_toolkit_log("warning", "miss", "load_ohlcv", symbol)
-        # A股/港股不回退 yahoo:抛 TA 期望的 NoMarketDataError,报清晰真因
-        try:
-            from tradingagents.dataflows.errors import NoMarketDataError
-            raise NoMarketDataError(
-                symbol, symbol,
-                "PanWatch K线获取失败(A股/港股不回退 Yahoo,请检查代理分流/数据源是否可达)",
-            )
-        except ImportError:
-            raise RuntimeError(
-                f"PanWatch K线获取失败 symbol={symbol}(A股/港股不回退 Yahoo,请检查代理/数据源)"
-            )
-    return _real_load_ohlcv(symbol, curr_date, *args, **kwargs)
+        return _load_panwatch_ohlcv_or_raise(symbol, curr_date)
+
+    try:
+        upstream_df = _real_load_ohlcv(symbol, curr_date, *args, **kwargs)
+        if upstream_df is not None and not upstream_df.empty:
+            _emit_toolkit_log("info", "PASSTHROUGH", "load_ohlcv", symbol, source="yfinance")
+            return upstream_df
+        logger.warning(f"[TA toolkit] Yahoo OHLCV 为空，降级 MarketData symbol={symbol}")
+    except Exception as exc:
+        if not _is_market_data_failure(exc):
+            raise
+        logger.warning(f"[TA toolkit] Yahoo OHLCV 不可用，降级 MarketData symbol={symbol}: {exc}")
+        _emit_toolkit_log("warning", "DEGRADE", "load_ohlcv", symbol, source="yfinance", error=str(exc)[:200])
+    return _load_panwatch_ohlcv_or_raise(symbol, curr_date, fallback=True)
+
+
+def _safe_build_verified_market_snapshot(
+    symbol: str,
+    curr_date: str,
+    look_back_days: int = 30,
+    indicators: Any = None,
+) -> str:
+    """行情全部不可用时返回约束性提示，避免单个工具异常中断图执行。"""
+    try:
+        return _real_build_verified_market_snapshot(
+            symbol, curr_date, look_back_days, indicators=indicators
+        )
+    except Exception as exc:
+        if not _is_market_data_failure(exc):
+            raise
+        _emit_toolkit_log(
+            "warning", "DEGRADE", "get_verified_market_snapshot", symbol,
+            source="all market data sources", error=str(exc)[:200],
+        )
+        return (
+            f"## Verified market data unavailable for {symbol.upper()}\n\n"
+            f"- Requested analysis date: {curr_date}\n"
+            "- No usable OHLCV data was returned by the configured providers.\n\n"
+            "Do not make exact price, indicator, stop-loss, or trade-action claims. "
+            "State that market data is temporarily unavailable and limit the analysis "
+            "to non-price qualitative context."
+        )
 
 
 def _ensure_load_ohlcv_patched() -> None:
-    """进程级幂等安装 load_ohlcv 补丁(含所有 import sites);非 PanWatch 标的透传,无需卸载。"""
+    """进程级幂等安装 load_ohlcv 补丁（A/HK 走 MarketData，美股可降级）。"""
     global _LOAD_OHLCV_PATCHED, _real_load_ohlcv
     if _LOAD_OHLCV_PATCHED:
         return
@@ -489,7 +575,37 @@ def _ensure_load_ohlcv_patched() -> None:
                 mod.load_ohlcv = _panwatch_load_ohlcv
                 logger.debug(f"[TA toolkit] patched load_ohlcv in {module_path}")
         _LOAD_OHLCV_PATCHED = True
-        logger.info("[TA toolkit] load_ohlcv 已接管(A股/港股走 PanWatch,防 yfinance NoMarketData)")
+        logger.info("[TA toolkit] load_ohlcv 已接管(A/HK走MarketData，美股Yahoo失败时降级)")
+
+
+def _ensure_market_snapshot_patched() -> None:
+    """将验证快照改为行情全失败时返回安全提示，而不是让图执行失败。"""
+    global _MARKET_SNAPSHOT_PATCHED, _real_build_verified_market_snapshot
+    if _MARKET_SNAPSHOT_PATCHED:
+        return
+    try:
+        from tradingagents.dataflows import market_data_validator
+    except ImportError:
+        return
+    if not hasattr(market_data_validator, "build_verified_market_snapshot"):
+        return
+    import importlib
+
+    with _patch_lock:
+        if _MARKET_SNAPSHOT_PATCHED:
+            return
+        _real_build_verified_market_snapshot = market_data_validator.build_verified_market_snapshot
+        market_data_validator.build_verified_market_snapshot = _safe_build_verified_market_snapshot
+        for module_path in _MARKET_SNAPSHOT_IMPORT_SITES:
+            try:
+                mod = importlib.import_module(module_path)
+            except ImportError:
+                continue
+            if getattr(mod, "build_verified_market_snapshot", None) is not None:
+                mod.build_verified_market_snapshot = _safe_build_verified_market_snapshot
+                logger.debug(f"[TA toolkit] patched build_verified_market_snapshot in {module_path}")
+        _MARKET_SNAPSHOT_PATCHED = True
+        logger.info("[TA toolkit] 已为验证行情快照安装安全降级")
 
 
 def _args_summary(args: tuple) -> str:

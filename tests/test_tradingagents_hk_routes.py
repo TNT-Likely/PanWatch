@@ -108,3 +108,10 @@ def test_yfinance_delisted_msg_detected():
     assert _yfinance_response_has_data(
         "$XXX: possibly delisted; symbol may be delisted"
     ) is False
+
+
+def test_yfinance_unavailable_sentinel_detected():
+    """上游的 NO_DATA_AVAILABLE 哨兵不是有效行情，必须触发 PanWatch fallback。"""
+    assert _yfinance_response_has_data(
+        "NO_DATA_AVAILABLE: No usable market data for '0700.HK' from any configured vendor"
+    ) is False
