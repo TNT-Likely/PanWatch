@@ -56,6 +56,43 @@ def _pick_close_on_or_before(klines: list, target: date) -> float | None:
     return None
 
 
+def _latest_kline_day_on_or_before(klines: list, target: date) -> date | None:
+    """找建议日可见的最后一个实际交易日，用作交易日计数起点。"""
+    found = None
+    for k in klines or []:
+        day = _parse_day(getattr(k, "date", None))
+        if day is not None and day <= target and (found is None or day > found):
+            found = day
+    return found
+
+
+def _find_close_after_n_trading_days(
+    klines: list,
+    base_day: date,
+    horizon: int,
+) -> float | None:
+    """从基准交易日严格往后数 N 条实际 K 线，返回对应收盘价。
+
+    K 线序列本身就是交易日历：停牌、周末、节假日不会占用 horizon。
+    """
+    rows: list[tuple[date, float]] = []
+    for k in klines or []:
+        day = _parse_day(getattr(k, "date", None))
+        close = getattr(k, "close", None)
+        if day is None or close is None:
+            continue
+        try:
+            rows.append((day, float(close)))
+        except (TypeError, ValueError):
+            continue
+    rows.sort(key=lambda item: item[0])
+    future_rows = [item for item in rows if item[0] > base_day]
+    index = max(1, int(horizon)) - 1
+    if index >= len(future_rows):
+        return None
+    return future_rows[index][1]
+
+
 def evaluate_pending_prediction_outcomes(
     *,
     max_horizon_days: int = 10,
@@ -86,12 +123,6 @@ def evaluate_pending_prediction_outcomes(
             continue
 
         horizon = max(1, int(rec.horizon_days or 1))
-        target_day = pred_day + timedelta(days=horizon)
-        if target_day > today:
-            stats["skipped_not_due"] += 1
-            continue
-
-        stats["eligible"] += 1
         market = _to_market(rec.stock_market)
         cache_key = (rec.stock_symbol, market.value)
         if cache_key not in kline_cache:
@@ -111,10 +142,24 @@ def evaluate_pending_prediction_outcomes(
                 kline_cache[cache_key] = []
 
         klines = kline_cache[cache_key]
-        outcome_price = _pick_close_on_or_before(klines, target_day)
+        horizon_unit = getattr(rec, "horizon_unit", None) or "calendar_days_legacy"
+        if horizon_unit == "trading_days":
+            base_day = _latest_kline_day_on_or_before(klines, pred_day)
+            if base_day is None:
+                stats["skipped_no_price"] += 1
+                continue
+            outcome_price = _find_close_after_n_trading_days(klines, base_day, horizon)
+        else:
+            target_day = pred_day + timedelta(days=horizon)
+            if target_day > today:
+                stats["skipped_not_due"] += 1
+                continue
+            outcome_price = _pick_close_on_or_before(klines, target_day)
         if outcome_price is None:
-            stats["skipped_no_price"] += 1
+            stats["skipped_not_due" if horizon_unit == "trading_days" else "skipped_no_price"] += 1
             continue
+
+        stats["eligible"] += 1
 
         base_price = None
         if rec.trigger_price is not None and rec.trigger_price > 0:

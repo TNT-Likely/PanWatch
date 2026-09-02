@@ -3,6 +3,7 @@
 import logging
 import re
 import time
+import uuid
 from collections import Counter
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -770,6 +771,7 @@ class PremarketOutlookAgent(BaseAgent):
                     suggestion_saved += 1
                 else:
                     suggestion_failed += 1
+                prediction_group_id = str(uuid.uuid4())
                 for horizon in (1, 5):
                     ok_outcome = save_agent_prediction_outcome(
                         agent_name=self.name,
@@ -777,6 +779,7 @@ class PremarketOutlookAgent(BaseAgent):
                         stock_market=stock.market.value,
                         prediction_date=analysis_date,
                         horizon_days=horizon,
+                        prediction_group_id=prediction_group_id,
                         action=sug.get("action") or "watch",
                         action_label=sug.get("action_label") or "观望",
                         confidence=(float(quality_score) / 100.0)

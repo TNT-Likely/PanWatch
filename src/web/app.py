@@ -26,6 +26,7 @@ from src.web.api import (
     dashboard,
     paper_trading,
     chat,
+    evaluations,
 )
 from src.web.api import factors
 from src.web.api import health
@@ -102,6 +103,12 @@ app.include_router(
 )
 app.include_router(
     context.router, prefix="/api", tags=["context"], dependencies=protected
+)
+app.include_router(
+    evaluations.router,
+    prefix="/api/evaluations",
+    tags=["evaluations"],
+    dependencies=protected,
 )
 app.include_router(
     news.router, prefix="/api/news", tags=["news"], dependencies=protected

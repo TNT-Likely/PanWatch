@@ -1647,6 +1647,69 @@ def _m119_pat_and_mcp_tables(conn: Connection) -> None:
     )
 
 
+def _m120_agent_prediction_evaluation(conn: Connection) -> None:
+    """建议后验分组与交易日口径。
+
+    已存在记录保留旧自然日口径，避免升级时把历史结果悄悄改写；新记录由 ORM
+    默认写入 trading_days。
+    """
+    _add_column_if_missing(
+        conn,
+        "agent_prediction_outcomes",
+        "prediction_group_id",
+        "ALTER TABLE agent_prediction_outcomes ADD COLUMN prediction_group_id TEXT",
+    )
+    _add_column_if_missing(
+        conn,
+        "agent_prediction_outcomes",
+        "horizon_unit",
+        "ALTER TABLE agent_prediction_outcomes "
+        "ADD COLUMN horizon_unit TEXT NOT NULL DEFAULT 'calendar_days_legacy'",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_prediction_group_horizon",
+        "CREATE INDEX ix_prediction_group_horizon "
+        "ON agent_prediction_outcomes(prediction_group_id, horizon_days)",
+    )
+
+
+def _m121_backtest_runs(conn: Connection) -> None:
+    """可持久化的策略回测运行记录。"""
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS backtest_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                strategy_code TEXT NOT NULL,
+                strategy_version TEXT DEFAULT '',
+                market TEXT NOT NULL DEFAULT 'CN',
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                config JSON DEFAULT '{}',
+                input_snapshot JSON DEFAULT '{}',
+                result JSON DEFAULT '{}',
+                error_message TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                started_at DATETIME,
+                finished_at DATETIME
+            )
+            """
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_backtest_runs_created",
+        "CREATE INDEX ix_backtest_runs_created ON backtest_runs(created_at)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_backtest_runs_status_created",
+        "CREATE INDEX ix_backtest_runs_status_created ON backtest_runs(status, created_at)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1667,6 +1730,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(117, "chat_initial_context", _m117_chat_initial_context),
     Migration(118, "paper_trading_market_allocations", _m118_paper_trading_market_allocations),
     Migration(119, "pat_and_mcp_tables", _m119_pat_and_mcp_tables),
+    Migration(120, "agent_prediction_evaluation", _m120_agent_prediction_evaluation),
+    Migration(121, "backtest_runs", _m121_backtest_runs),
 )
 
 
