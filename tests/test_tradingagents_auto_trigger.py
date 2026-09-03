@@ -7,11 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.agents.tradingagents import auto_trigger
+from src.web.models import AgentConfig
 
 
-def _make_agent(raw_config: dict):
-    agent = MagicMock()
-    agent.raw_config = raw_config
+def _make_agent(config: dict):
+    agent = MagicMock(spec=AgentConfig)
+    agent.config = config
     return agent
 
 
