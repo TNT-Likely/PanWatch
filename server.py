@@ -1529,7 +1529,7 @@ async def lifespan(app):
     try:
         from src.web.api.mcp import prune_mcp_logs
 
-        scheduler.add_job(
+        scheduler.scheduler.add_job(
             prune_mcp_logs,
             "cron",
             hour=4,
