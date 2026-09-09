@@ -80,3 +80,10 @@ def test_research_module_owns_evaluation_and_explanation_services():
 
     for module in (analysis_link, context_scheduler, prediction_outcome, signal_explain):
         assert "/src/modules/research/" in module.__file__.replace("\\", "/")
+
+
+def test_portfolio_module_owns_benchmark_and_diagnostics():
+    from src.modules.portfolio import portfolio_benchmark, portfolio_diagnostics
+
+    assert portfolio_benchmark.__file__.replace("\\", "/").endswith("/src/modules/portfolio/portfolio_benchmark.py")
+    assert portfolio_diagnostics.__file__.replace("\\", "/").endswith("/src/modules/portfolio/portfolio_diagnostics.py")
