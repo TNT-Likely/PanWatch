@@ -7,14 +7,13 @@ from datetime import UTC, datetime
 from pan_agent import RunRequest, ToolRegistry, ToolResult, ToolRisk, ToolSpec
 from sqlalchemy.orm import Session
 
-from src.modules.portfolio.repository import PortfolioRepository
-from src.modules.portfolio.service import PortfolioService
+from src.modules.portfolio import build_portfolio_service
 
 
 def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
     """Register only host-approved, read-only tools for an assistant run."""
     registry = ToolRegistry()
-    portfolio_service = PortfolioService(PortfolioRepository(session))
+    portfolio_service = build_portfolio_service(session)
 
     async def get_portfolio(_request: RunRequest, _arguments: dict) -> ToolResult:
         summary = portfolio_service.build_assistant_summary() or "用户暂无持仓。"
@@ -36,4 +35,3 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_portfolio,
     )
     return registry
-
