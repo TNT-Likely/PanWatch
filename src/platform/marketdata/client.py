@@ -1,6 +1,6 @@
 """Transitional facade for the marketdata package integration."""
 
-from src.core.marketdata_client import (
+from .marketdata_client import (
     DbConfigProvider,
     get_market_data,
     md_news,
@@ -19,4 +19,3 @@ __all__ = [
     "md_stock_data",
     "reset_market_data",
 ]
-

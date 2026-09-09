@@ -28,3 +28,24 @@ def test_research_module_owns_analysis_history_and_context():
     assert analysis_history.__file__.replace("\\", "/").endswith("/src/modules/research/analysis_history.py")
     assert context_builder.__file__.replace("\\", "/").endswith("/src/modules/research/context_builder.py")
     assert context_store.__file__.replace("\\", "/").endswith("/src/modules/research/context_store.py")
+
+
+def test_platform_owns_ai_sse_and_marketdata_implementations():
+    from src.platform.ai import ai_client, ai_failover
+    from src.platform.events import sse
+    from src.platform.marketdata import marketdata_client
+
+    assert ai_client.__file__.replace("\\", "/").endswith("/src/platform/ai/ai_client.py")
+    assert ai_failover.__file__.replace("\\", "/").endswith("/src/platform/ai/ai_failover.py")
+    assert sse.__file__.replace("\\", "/").endswith("/src/platform/events/sse.py")
+    assert marketdata_client.__file__.replace("\\", "/").endswith("/src/platform/marketdata/marketdata_client.py")
+
+
+def test_platform_owns_notification_and_scheduling_implementations():
+    from src.platform.notifications import notifier
+    from src.platform.scheduling import scheduler
+
+    assert notifier.__file__.replace("\\", "/").endswith("/src/platform/notifications/notifier.py")
+    assert scheduler.__file__.replace("\\", "/").endswith("/src/platform/scheduling/scheduler.py")
+    assert notifier.NotifierManager.__module__ == "src.platform.notifications.notifier"
+    assert scheduler.AgentScheduler.__module__ == "src.platform.scheduling.scheduler"
