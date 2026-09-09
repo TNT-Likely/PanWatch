@@ -1,0 +1,2 @@
+"""External market-data adapters."""
+
