@@ -6,8 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
-from src.web.database import get_db
-from src.web.models import StockSuggestion, SuggestionFeedback
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import StockSuggestion, SuggestionFeedback
 
 
 logger = logging.getLogger(__name__)

@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
 
 
 def _mem_db():

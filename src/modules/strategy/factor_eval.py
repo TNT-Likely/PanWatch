@@ -14,8 +14,8 @@ import logging
 from datetime import date, timedelta
 from statistics import fmean, stdev
 
-from src.web.database import SessionLocal
-from src.web.models import StrategyFactorSnapshot, StrategyOutcome
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import StrategyFactorSnapshot, StrategyOutcome
 
 logger = logging.getLogger(__name__)
 

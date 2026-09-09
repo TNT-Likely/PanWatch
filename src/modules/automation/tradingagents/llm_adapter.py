@@ -11,7 +11,7 @@ import logging
 import os
 from typing import Any
 
-from src.core.ai_client import AIClient
+from src.platform.ai.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
 

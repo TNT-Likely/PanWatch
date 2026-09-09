@@ -7,17 +7,17 @@ import uuid
 from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
-from src.agents.base import BaseAgent, AgentContext, AnalysisResult
+from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.kline_collector import KlineCollector
-from src.core.analysis_history import get_latest_analysis, get_analysis
-from src.core.context_builder import ContextBuilder
-from src.core.context_store import (
+from src.modules.research.analysis_history import get_latest_analysis, get_analysis
+from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
 )
-from src.core.suggestion_pool import save_suggestion
-from src.core.signals import SignalPackBuilder
-from src.core.signals.structured_output import try_parse_action_json
+from src.modules.automation.suggestion_pool import save_suggestion
+from src.modules.research.signals import SignalPackBuilder
+from src.modules.research.signals.structured_output import try_parse_action_json
 from src.models.market import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
@@ -229,7 +229,7 @@ class IntradayMonitorAgent(BaseAgent):
 
         # 系统阈值（帮助 AI 做出更稳定的“提醒/不提醒”判断）
         # 价格异动改为相对个股自身波动率(ATR%)的自适应阈值,固定阈值作为下限/兜底。
-        from src.core.intraday_event_gate import (
+        from src.modules.strategy.intraday_event_gate import (
             DEFAULT_ATR_K,
             adaptive_price_threshold,
             is_abnormal_move,
@@ -916,8 +916,8 @@ class IntradayMonitorAgent(BaseAgent):
 
     def _check_throttle(self, symbol: str) -> bool:
         """检查是否可以发送通知（未被节流）"""
-        from src.web.database import SessionLocal
-        from src.web.models import NotifyThrottle
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import NotifyThrottle
 
         db = SessionLocal()
         try:
@@ -945,8 +945,8 @@ class IntradayMonitorAgent(BaseAgent):
 
     def _update_throttle(self, symbol: str):
         """更新节流记录"""
-        from src.web.database import SessionLocal
-        from src.web.models import NotifyThrottle
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import NotifyThrottle
 
         db = SessionLocal()
         try:
@@ -1007,7 +1007,7 @@ class IntradayMonitorAgent(BaseAgent):
             # 产品策略：建议持续刷新，通知再由 should_alert + throttle 控制降噪。
             if self.event_only:
                 try:
-                    from src.core.intraday_event_gate import check_and_update
+                    from src.modules.strategy.intraday_event_gate import check_and_update
 
                     stock = data.get("stock_data")
                     kline_summary = data.get("kline_summary")

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from src.core.json_store import read_json, write_json_atomic
+from src.platform.persistence.json_store import read_json, write_json_atomic
 
 
 def _data_dir() -> str:

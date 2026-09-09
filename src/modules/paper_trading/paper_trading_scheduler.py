@@ -6,8 +6,8 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from src.core.paper_trading_engine import ENGINE
-from src.core.trading_calendar import any_market_trading_day
+from src.modules.paper_trading.paper_trading_engine import ENGINE
+from src.platform.scheduling.trading_calendar import any_market_trading_day
 from src.models.market import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class PaperTradingScheduler:
             logger.debug("[模拟盘] 非交易日,跳过盘前计划通知")
             return
         try:
-            from src.core.paper_trading_notifier import send_premarket_plan
+            from src.modules.paper_trading.paper_trading_notifier import send_premarket_plan
             await send_premarket_plan()
         except Exception as e:
             logger.exception(f"[模拟盘] 盘前计划通知异常: {e}")
@@ -72,7 +72,7 @@ class PaperTradingScheduler:
             logger.debug("[模拟盘] 非交易日,跳过日终摘要通知")
             return
         try:
-            from src.core.paper_trading_notifier import send_daily_summary
+            from src.modules.paper_trading.paper_trading_notifier import send_daily_summary
             await send_daily_summary()
         except Exception as e:
             logger.exception(f"[模拟盘] 日终摘要通知异常: {e}")
@@ -111,7 +111,7 @@ class PaperTradingScheduler:
             max_instances=1,
         )
         self.scheduler.start()
-        from src.core.scheduler_registry import register
+        from src.platform.scheduling.scheduler_registry import register
         register("paper_trading", self.scheduler)
         logger.info(f"模拟盘调度器已启动，扫描间隔 {self.interval_seconds}s")
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.core.signals.structured_output import (
+from src.modules.research.signals.structured_output import (
     TAG_END,
     TAG_START,
     strip_tagged_json,

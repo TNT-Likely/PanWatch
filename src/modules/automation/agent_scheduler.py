@@ -4,13 +4,13 @@ from typing import Callable, Awaitable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from src.agents.base import BaseAgent, AgentContext
+from src.modules.automation.base import BaseAgent, AgentContext
 from src.collectors.kline_collector import kline_source
-from src.core.agent_runs import record_agent_run
-from src.core.log_context import log_context
-from src.core import otel
+from src.modules.automation.agent_runs import record_agent_run
+from src.platform.observability.log_context import log_context
+from src.platform.observability import otel
 from src.models.market import MARKETS
-from src.core.schedule_parser import parse_schedule
+from src.platform.scheduling.schedule_parser import parse_schedule
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class AgentScheduler:
     def start(self):
         """启动调度器"""
         self.scheduler.start()
-        from src.core.scheduler_registry import register
+        from src.platform.scheduling.scheduler_registry import register
         register("agent", self.scheduler)
         logger.info(f"调度器已启动，已注册 {len(self.agents)} 个 Agent")
 

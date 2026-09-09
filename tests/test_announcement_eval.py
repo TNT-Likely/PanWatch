@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from src.web.api import insights
-from src.web.database import SessionLocal
+from src.platform.persistence.database import SessionLocal
 
 
 class _FakeAIClient:

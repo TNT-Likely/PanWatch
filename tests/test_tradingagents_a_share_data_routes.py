@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from src.agents.tradingagents.toolkit_adapter import (
+from src.modules.automation.tradingagents.toolkit_adapter import (
     _serve_from_panwatch,
     panwatch_data_context,
 )

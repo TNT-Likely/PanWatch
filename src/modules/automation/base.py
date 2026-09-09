@@ -3,13 +3,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from src.core.ai_client import AIClient
-from src.core.notifier import NotifierManager
+from src.platform.ai.ai_client import AIClient
+from src.platform.notifications.notifier import NotifierManager
 from src.config import AppConfig, StockConfig
 from src.models.market import MarketCode
-from src.core.notify_dedupe import build_notify_dedupe_key, check_and_mark_notify
-from src.core.notify_policy import NotifyPolicy
-from src.core.log_context import log_context
+from src.platform.notifications.notify_dedupe import build_notify_dedupe_key, check_and_mark_notify
+from src.platform.notifications.notify_policy import NotifyPolicy
+from src.platform.observability.log_context import log_context
 
 logger = logging.getLogger(__name__)
 

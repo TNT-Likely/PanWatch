@@ -5,9 +5,9 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from src.models.market import MarketCode
-from src.core.marketdata_client import md_quote_rows
+from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.collectors.kline_collector import KlineCollector
-from src.core.suggestion_pool import get_latest_suggestions
+from src.modules.automation.suggestion_pool import get_latest_suggestions
 from src.web.api.chat import (
     _build_stock_context,
     _fetch_realtime_context,
@@ -15,8 +15,8 @@ from src.web.api.chat import (
     _get_ai_client,
 )
 from src.collectors.market_http import TTLCache
-from src.web.database import get_db
-from src.web.models import Stock
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import Stock
 import asyncio
 import logging
 import time

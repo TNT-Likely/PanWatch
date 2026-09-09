@@ -7,10 +7,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.core.ai_client import AIClient
-from src.web import models as _models  # noqa: F401  注册 ORM
-from src.web.database import Base
-from src.web.models import AIService, AIModel
+from src.platform.ai.ai_client import AIClient
+import src.platform.persistence.models as _models  # noqa: F401  注册 ORM
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import AIService, AIModel
 
 
 @pytest.fixture

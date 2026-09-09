@@ -32,7 +32,7 @@ def test_get_index_klines_unknown_returns_empty():
 
 def test_fetch_index_context_us_failsoft():
     """美股指数无东财K线 → _fetch_index_context 返回 available False,不抛。"""
-    from src.core.context_builder import ContextBuilder
+    from src.modules.research.context_builder import ContextBuilder
 
     ctx = ContextBuilder()._fetch_index_context(".INX", MarketCode.US)
     assert ctx.get("available") is False
@@ -41,7 +41,7 @@ def test_fetch_index_context_us_failsoft():
 def test_fetch_index_context_computes_returns(monkeypatch):
     """有指数K线时,_fetch_index_context 用收盘价算 5日/20日收益。"""
     from src.collectors import kline_collector
-    from src.core.context_builder import ContextBuilder
+    from src.modules.research.context_builder import ContextBuilder
 
     class _K:
         def __init__(self, c):

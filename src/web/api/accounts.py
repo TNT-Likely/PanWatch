@@ -9,9 +9,9 @@ from pydantic import BaseModel
 
 from datetime import datetime, timedelta, timezone
 
-from src.web.database import get_db
-from src.web.models import Account, PriceAlertRule, Position, Stock
-from src.core.marketdata_client import md_quote_rows
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import Account, PriceAlertRule, Position, Stock
+from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.collectors.market_http import TTLCache
 from src.models.market import MarketCode
 
@@ -668,7 +668,7 @@ def _gather_holdings(db: Session) -> list[dict]:
 @router.get("/portfolio/diagnostics")
 def portfolio_diagnostics(db: Session = Depends(get_db)):
     """真实持仓组合诊断:集中度(HHI)/最大单仓/市场分布/风险提示(只读)。"""
-    from src.core.portfolio_diagnostics import diagnose_positions
+    from src.modules.portfolio.portfolio_diagnostics import diagnose_positions
 
     return diagnose_positions(_gather_holdings(db))
 
@@ -678,7 +678,7 @@ def portfolio_benchmark(
     days: int = 60, benchmark: str = "000300", db: Session = Depends(get_db)
 ):
     """真实持仓组合 vs 基准:超额收益/信息比率/相对回撤 + 归一化净值曲线。"""
-    from src.core.portfolio_benchmark import (
+    from src.modules.portfolio.portfolio_benchmark import (
         DEFAULT_BENCHMARK,
         build_portfolio_benchmark,
     )
@@ -758,7 +758,7 @@ def portfolio_todos(db: Session = Depends(get_db)):
 @router.get("/portfolio/attribution")
 def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session = Depends(get_db)):
     """近 days 日各持仓对组合收益的贡献(谁拖累/贡献),降序。"""
-    from src.core.portfolio_benchmark import DEFAULT_BENCHMARK, build_attribution
+    from src.modules.portfolio.portfolio_benchmark import DEFAULT_BENCHMARK, build_attribution
 
     days = max(20, min(int(days), 250))
     bcode = benchmark or DEFAULT_BENCHMARK
@@ -783,8 +783,8 @@ def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session
 @router.post("/portfolio/ai-review")
 async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends(get_db)):
     """组合 AI 体检:诊断+基准+归因 → 叙述结论 + 调仓建议(只读,不下单)。"""
-    from src.core.portfolio_benchmark import build_attribution, build_portfolio_benchmark
-    from src.core.portfolio_diagnostics import diagnose_positions
+    from src.modules.portfolio.portfolio_benchmark import build_attribution, build_portfolio_benchmark
+    from src.modules.portfolio.portfolio_diagnostics import diagnose_positions
     from src.web.api.chat import _get_ai_client
 
     holdings = _gather_holdings(db)

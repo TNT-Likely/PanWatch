@@ -17,8 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.core import analysis_history, context_builder
-from src.core.context_builder import ContextBuilder
+from src.modules.research import analysis_history, context_builder
+from src.modules.research.context_builder import ContextBuilder
 from src.models.market import MarketCode
 
 

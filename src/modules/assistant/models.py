@@ -1,6 +1,6 @@
 """Temporary model exports for the assistant's retained chat history tables."""
 
-from src.web.models import (
+from src.platform.persistence.models import (
     AssistantArtifact,
     AssistantTaskRun,
     AssistantTaskStep,

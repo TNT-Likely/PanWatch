@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.config import Settings
-from src.core.notifier import get_global_proxy
+from src.platform.notifications.notifier import get_global_proxy
 from src.collectors.discovery_collector import EastMoneyDiscoveryCollector
-from src.web.database import get_db
-from src.web.models import MarketScanSnapshot, Stock
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import MarketScanSnapshot, Stock
 
 
 router = APIRouter()

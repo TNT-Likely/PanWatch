@@ -21,9 +21,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 
-from src.core.backtest import metrics as M
-from src.core.backtest.cost_model import CostModel
-from src.core.backtest.data_adapter import PriceBar, first_index_after
+from src.modules.strategy.backtest import metrics as M
+from src.modules.strategy.backtest.cost_model import CostModel
+from src.modules.strategy.backtest.data_adapter import PriceBar, first_index_after
 
 logger = logging.getLogger(__name__)
 

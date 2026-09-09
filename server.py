@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 
-from src.web.database import init_db, SessionLocal
-from src.web.models import (
+from src.platform.persistence.database import init_db, SessionLocal
+from src.platform.persistence.models import (
     AgentConfig,
     Stock,
     StockAgent,
@@ -22,27 +22,27 @@ from src.web.models import (
 from src.web.log_handler import DBLogHandler
 from src.config import Settings, AppConfig, StockConfig
 from src.models.market import MarketCode
-from src.core.ai_client import AIClient
-from src.core.ai_failover import build_failover_client
-from src.core.notifier import NotifierManager
-from src.core.scheduler import AgentScheduler
-from src.core.price_alert_scheduler import PriceAlertScheduler
-from src.core.paper_trading_scheduler import PaperTradingScheduler
-from src.core.context_scheduler import ContextMaintenanceScheduler
-from src.core.agent_runs import record_agent_run
-from src.core.log_context import install_log_record_factory, log_context
-from src.core.agent_catalog import (
+from src.platform.ai.ai_client import AIClient
+from src.platform.ai.ai_failover import build_failover_client
+from src.platform.notifications.notifier import NotifierManager
+from src.modules.automation.agent_scheduler import AgentScheduler
+from src.modules.market.price_alert_scheduler import PriceAlertScheduler
+from src.modules.paper_trading.paper_trading_scheduler import PaperTradingScheduler
+from src.modules.research.context_scheduler import ContextMaintenanceScheduler
+from src.modules.automation.agent_runs import record_agent_run
+from src.platform.observability.log_context import install_log_record_factory, log_context
+from src.modules.automation.agent_catalog import (
     AGENT_SEED_SPECS,
     AGENT_KIND_WORKFLOW,
 )
-from src.core.strategy_catalog import ensure_strategy_catalog
-from src.agents.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
-from src.agents.daily_report import DailyReportAgent
-from src.agents.news_digest import NewsDigestAgent
-from src.agents.chart_analyst import ChartAnalystAgent
-from src.agents.intraday_monitor import IntradayMonitorAgent
-from src.agents.premarket_outlook import PremarketOutlookAgent
-from src.agents.tradingagents import TradingAgentsAgent
+from src.modules.strategy.strategy_catalog import ensure_strategy_catalog
+from src.modules.automation.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
+from src.modules.automation.daily_report import DailyReportAgent
+from src.modules.automation.news_digest import NewsDigestAgent
+from src.modules.automation.chart_analyst import ChartAnalystAgent
+from src.modules.automation.intraday_monitor import IntradayMonitorAgent
+from src.modules.automation.premarket_outlook import PremarketOutlookAgent
+from src.modules.automation.tradingagents import TradingAgentsAgent
 
 logger = logging.getLogger(__name__)
 
@@ -775,7 +775,7 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
 
 def load_portfolio_for_agent(agent_name: str) -> PortfolioInfo:
     """从数据库加载某个 Agent 关联股票的持仓信息（包括多账户）"""
-    from src.web.models import Account, Position
+    from src.platform.persistence.models import Account, Position
 
     db = SessionLocal()
     try:
@@ -843,7 +843,7 @@ def load_portfolio_for_agent(agent_name: str) -> PortfolioInfo:
 
 def load_portfolio_for_stock(stock_id: int) -> PortfolioInfo:
     """从数据库加载单只股票的持仓信息"""
-    from src.web.models import Account, Position
+    from src.platform.persistence.models import Account, Position
 
     db = SessionLocal()
     try:
@@ -1044,7 +1044,7 @@ def _build_notifier(channels: list[NotifyChannel]) -> NotifierManager:
     except Exception:
         retry_backoff_seconds = settings.notify_retry_backoff_seconds
 
-    from src.core.notify_policy import NotifyPolicy, parse_dedupe_overrides
+    from src.platform.notifications.notify_policy import NotifyPolicy, parse_dedupe_overrides
 
     policy = NotifyPolicy(
         timezone=settings.app_timezone,
@@ -1428,7 +1428,7 @@ async def lifespan(app):
     # OTel 导出(可选,默认关闭):仅当配置了 OTEL_EXPORTER_OTLP_ENDPOINT 且装了
     # opentelemetry SDK 时启用,否则静默 no-op,不影响现有部署。
     try:
-        from src.core.otel import init_otel
+        from src.platform.observability.otel import init_otel
 
         init_otel()
     except Exception as e:  # 兜底:OTel 初始化异常绝不阻断服务启动
@@ -1463,7 +1463,7 @@ async def lifespan(app):
     # 早期 TA 运行没写建议池,这次启动一次性补齐,让「AI 建议」面板能看到。
     # 幂等:已存在不重复写;每次启动重跑代价极低(只查最近 7 天 + dedupe)。
     try:
-        from src.agents.tradingagents.backfill import backfill_tradingagents_suggestions
+        from src.modules.automation.tradingagents.backfill import backfill_tradingagents_suggestions
         backfill_tradingagents_suggestions(days=7)
     except Exception as e:
         logger.warning(f"TradingAgents 建议回填失败,跳过: {e}")
@@ -1483,7 +1483,7 @@ async def lifespan(app):
     # 交易日历预热(判断周末/法定节假日是否开市)。拉取失败会自动降级为只判周末,
     # 因此这里不阻塞启动,交给后台任务;之后每日 03:00 由上下文维护调度器刷新。
     try:
-        from src.core.trading_calendar import refresh as refresh_trading_calendar
+        from src.platform.scheduling.trading_calendar import refresh as refresh_trading_calendar
 
         asyncio.create_task(refresh_trading_calendar())
     except Exception as e:

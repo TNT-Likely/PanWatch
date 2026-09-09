@@ -1,2 +1,1 @@
-"""External market-data adapters."""
-
+"""External market-data clients and normalization, independent of product rules."""

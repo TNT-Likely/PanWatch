@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 
-from src.web.database import SessionLocal
+from src.platform.persistence.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def _status_for(success: bool, latency_ms: int) -> str:
 
 async def probe_datasource(source) -> dict:
     """复用 collector manager.test_source。"""
-    from src.core.data_collector import get_collector_manager
+    from src.modules.market.data_collector import get_collector_manager
 
     t0 = time.monotonic()
     try:
@@ -97,7 +97,7 @@ async def probe_datasource(source) -> dict:
 
 async def probe_ai_model(model, service) -> dict:
     """复用 AIClient.chat 发一个极短 ping。"""
-    from src.core.ai_client import AIClient
+    from src.platform.ai.ai_client import AIClient
 
     name = model.name or model.model
     t0 = time.monotonic()
@@ -114,7 +114,7 @@ async def probe_ai_model(model, service) -> dict:
 
 async def probe_notify_channel(channel, *, send: bool = False) -> dict:
     """默认只校验 URI 配置(add_channel 不通会抛);send=True 才真实发送。"""
-    from src.core.notifier import NotifierManager
+    from src.platform.notifications.notifier import NotifierManager
 
     name = channel.name or channel.type
     t0 = time.monotonic()
@@ -140,7 +140,7 @@ async def probe_db() -> dict:
     """对真实库执行 SELECT 1。"""
     from sqlalchemy import text
 
-    from src.web.database import SessionLocal
+    from src.platform.persistence.database import SessionLocal
 
     t0 = time.monotonic()
     try:
@@ -160,7 +160,7 @@ async def probe_disk() -> dict:
     import os
     import shutil
 
-    from src.web.database import DB_PATH
+    from src.platform.persistence.database import DB_PATH
 
     t0 = time.monotonic()
     try:
@@ -181,7 +181,7 @@ async def probe_disk() -> dict:
 
 async def probe_scheduler() -> dict:
     """经 scheduler_registry 看运行中的调度器;注册表空(CLI/未启动)→ 优雅跳过。"""
-    from src.core import scheduler_registry
+    from src.platform.scheduling import scheduler_registry
 
     regs = scheduler_registry.get_all()
     if not regs:
@@ -222,7 +222,7 @@ async def _guard(coro, fallback: dict) -> dict:
 
 def _enumerate(db, include_system: bool = True) -> list[dict]:
     """枚举所有待检项(身份 + ORM 引用),不探测。include_system 加 DB/磁盘/调度 系统基础项。"""
-    from src.web.models import AIModel, AIService, DataSource, NotifyChannel
+    from src.platform.persistence.models import AIModel, AIService, DataSource, NotifyChannel
 
     targets: list[dict] = []
     if include_system:

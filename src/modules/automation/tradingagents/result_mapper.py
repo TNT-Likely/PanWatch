@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.agents.base import AnalysisResult
+from src.modules.automation.base import AnalysisResult
 
 
 # 上游 5 档评级 → PanWatch 显示标签
@@ -99,7 +99,7 @@ def map_state_to_result(
     content = _render_markdown(state, suggestion, model_label, cost_usd)
     # 详情页可点击链接(配了 panwatch_base_url 才出现)
     from datetime import date as _date
-    from src.core.analysis_link import analysis_detail_markdown
+    from src.modules.research.analysis_link import analysis_detail_markdown
     _link = analysis_detail_markdown(stock.symbol, _date.today().isoformat())
     if _link:
         content = content.rstrip() + f"\n\n---\n{_link}"

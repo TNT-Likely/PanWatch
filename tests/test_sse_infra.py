@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-from src.core.sse import SSEHub, SSEStream, format_sse_event
+from src.platform.events.sse import SSEHub, SSEStream, format_sse_event
 from src.web.response import ResponseWrapperMiddleware
 
 

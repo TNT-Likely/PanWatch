@@ -11,8 +11,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import jwt
 
-from src.web.database import get_db, SessionLocal
-from src.web.models import AppSettings
+from src.platform.persistence.database import get_db, SessionLocal
+from src.platform.persistence.models import AppSettings
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)

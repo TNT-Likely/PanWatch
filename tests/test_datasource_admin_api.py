@@ -9,9 +9,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import src.web.api.datasources as ds
-from src.web import models as M  # noqa: F401  确保模型注册到 Base.metadata
-from src.web.database import Base, get_db
-from src.web.models import DataSource
+import src.platform.persistence.models as M  # noqa: F401  确保模型注册到 Base.metadata
+from src.platform.persistence.database import Base, get_db
+from src.platform.persistence.models import DataSource
 
 
 def _client():

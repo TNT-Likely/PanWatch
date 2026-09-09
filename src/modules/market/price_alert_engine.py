@@ -12,11 +12,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from src.collectors.kline_collector import KlineCollector, kline_source
-from src.core.notifier import NotifierManager
-from src.core.marketdata_client import md_quote_rows
+from src.platform.notifications.notifier import NotifierManager
+from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
-from src.web.database import SessionLocal
-from src.web.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
 
 logger = logging.getLogger(__name__)
 

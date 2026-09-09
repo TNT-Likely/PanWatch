@@ -34,7 +34,7 @@ def test_recent_log_status_running():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "running"
 
@@ -53,7 +53,7 @@ def test_old_log_status_stale():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "stale"
 
@@ -69,7 +69,7 @@ def test_no_logs_status_not_found():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "not_found"
 
@@ -97,6 +97,6 @@ def test_run_completed_overrides_log_status():
     run_query.filter.return_value.order_by.return_value.first.return_value = fake_run
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "success"

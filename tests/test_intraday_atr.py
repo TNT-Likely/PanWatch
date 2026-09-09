@@ -87,7 +87,7 @@ class MarketStub:
 
 def test_is_abnormal_move_beyond_k_times_atr() -> None:
     """自适应异动 — 涨跌幅超过 k×ATR% 判为异动。"""
-    from src.core.intraday_event_gate import is_abnormal_move
+    from src.modules.strategy.intraday_event_gate import is_abnormal_move
 
     # atr_pct=2, k=1.5 -> 阈值=3.0;change=4 应异动
     assert is_abnormal_move(change_pct=4.0, atr_pct=2.0, k=1.5) is True
@@ -96,7 +96,7 @@ def test_is_abnormal_move_beyond_k_times_atr() -> None:
 
 def test_is_abnormal_move_within_band_is_normal() -> None:
     """自适应异动 — 涨跌幅在 k×ATR% 以内判为正常波动。"""
-    from src.core.intraday_event_gate import is_abnormal_move
+    from src.modules.strategy.intraday_event_gate import is_abnormal_move
 
     # atr_pct=2, k=1.5 -> 阈值=3.0;change=2 在带内
     assert is_abnormal_move(change_pct=2.0, atr_pct=2.0, k=1.5) is False
@@ -105,7 +105,7 @@ def test_is_abnormal_move_within_band_is_normal() -> None:
 
 def test_is_abnormal_move_falls_back_to_fixed_threshold() -> None:
     """自适应异动 — atr_pct 为 None/0 时回退到固定阈值。"""
-    from src.core.intraday_event_gate import is_abnormal_move
+    from src.modules.strategy.intraday_event_gate import is_abnormal_move
 
     # 无 ATR -> 用固定阈值 3.0
     assert is_abnormal_move(change_pct=4.0, atr_pct=None, fixed_threshold=3.0) is True
@@ -117,7 +117,7 @@ def test_is_abnormal_move_falls_back_to_fixed_threshold() -> None:
 
 def test_is_abnormal_move_default_k() -> None:
     """自适应异动 — k 有默认值(1.5)。"""
-    from src.core.intraday_event_gate import is_abnormal_move
+    from src.modules.strategy.intraday_event_gate import is_abnormal_move
 
     # 默认 k=1.5, atr_pct=2 -> 阈值=3.0
     assert is_abnormal_move(change_pct=3.5, atr_pct=2.0) is True
@@ -129,7 +129,7 @@ def test_is_abnormal_move_default_k() -> None:
 
 def _build_intraday_prompt_with_atr(atr_pct):
     """构造最小 AgentContext/data,跑 build_prompt,返回 user_content。"""
-    from src.agents.intraday_monitor import IntradayMonitorAgent
+    from src.modules.automation.intraday_monitor import IntradayMonitorAgent
     from src.models.market import MarketCode, StockData
 
     stock = StockData(

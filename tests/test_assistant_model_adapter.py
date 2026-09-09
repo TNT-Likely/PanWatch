@@ -8,8 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.database import Base
-from src.web.models import ChatConversation  # noqa: F401 - registers metadata
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import ChatConversation  # noqa: F401 - registers metadata
 
 
 def test_failover_model_adapter_maps_tool_calls_and_streams_text():

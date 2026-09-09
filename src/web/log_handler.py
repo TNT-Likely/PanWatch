@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import or_
 
-from src.web.database import SessionLocal
-from src.web.models import LogEntry
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import LogEntry
 
 MAX_LOG_ENTRIES_TOTAL = 120_000
 MAX_INFRA_LOG_ENTRIES = 30_000

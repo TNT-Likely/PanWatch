@@ -10,16 +10,16 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.core.marketdata_client import md_quote_rows
+from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
-from src.web.database import SessionLocal
-from src.web.models import (
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import (
     PaperTradingAccount,
     PaperTradingPosition,
     PaperTradingTrade,
     StrategySignalRun,
 )
-from src.core.backtest.cost_model import CostModel
+from src.modules.strategy.backtest.cost_model import CostModel
 
 logger = logging.getLogger(__name__)
 
@@ -700,7 +700,7 @@ class PaperTradingEngine:
         result = await asyncio.to_thread(self.close_position_manual, position_id)
         if result.get("ok"):
             try:
-                from src.core.paper_trading_notifier import notify_exit
+                from src.modules.paper_trading.paper_trading_notifier import notify_exit
                 pos_data = result.pop("pos_data", None)
                 trade_data = result.pop("trade_data", None)
                 if pos_data and trade_data:
@@ -712,7 +712,7 @@ class PaperTradingEngine:
     async def _send_notifications(self, result: dict) -> None:
         """从扫描结果中取出序列化事件，发送通知。"""
         try:
-            from src.core.paper_trading_notifier import notify_entry, notify_exit
+            from src.modules.paper_trading.paper_trading_notifier import notify_entry, notify_exit
 
             for evt in result.pop("entry_events", []):
                 await notify_entry(evt["pos_data"], evt.get("sig_data"))

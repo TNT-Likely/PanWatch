@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 # 端点入参里有名为 logger 的 query 参数，模块级 logger 用别名避免遮蔽
 _module_logger = logging.getLogger(__name__)
 
-from src.web.database import get_db
-from src.web.models import LogEntry
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import LogEntry
 from src.web.log_handler import get_log_handler_stats
 
 
@@ -269,8 +269,8 @@ async def stream_logs(
     - 首次连接（无 Last-Event-ID）从当前最新 id 开始只推增量，
       存量由既有 GET /api/logs 列表端点负责（保留不动，降级兜底）。
     """
-    from src.core.sse import format_sse_comment, format_sse_event
-    from src.web.database import SessionLocal
+    from src.platform.events.sse import format_sse_comment, format_sse_event
+    from src.platform.persistence.database import SessionLocal
 
     header_id = request.headers.get("last-event-id", "")
     resume_id = int(header_id) if header_id.isdigit() else last_event_id

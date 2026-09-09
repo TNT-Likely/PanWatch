@@ -1,6 +1,6 @@
 """md_stock_data 兼容层测试:走 marketdata 包。"""
 
-import src.core.marketdata_client as mc
+import src.platform.marketdata.marketdata_client as mc
 from src.models.market import MarketCode, StockData
 
 

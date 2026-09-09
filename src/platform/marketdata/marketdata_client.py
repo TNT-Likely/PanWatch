@@ -19,8 +19,8 @@ class DbConfigProvider:
     """ConfigProvider 端口实现:从 DataSource 表按 priority 读某类型的启用源。"""
 
     def _query_rows(self, datatype: str) -> list:
-        from src.web.database import SessionLocal
-        from src.web.models import DataSource
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import DataSource
 
         db = SessionLocal()
         try:

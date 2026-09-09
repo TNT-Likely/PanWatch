@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.core.notify_policy import NotifyPolicy, _parse_hhmm, parse_dedupe_overrides
+from src.platform.notifications.notify_policy import NotifyPolicy, _parse_hhmm, parse_dedupe_overrides
 
 
 # ---------------------------------------------------------------------------

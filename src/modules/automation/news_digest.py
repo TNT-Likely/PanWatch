@@ -5,13 +5,13 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from src.agents.base import BaseAgent, AgentContext, AnalysisResult
+from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.collectors.news_collector import NewsCollector, NewsItem
-from src.core.analysis_history import save_analysis
-from src.core.cn_symbol import get_cn_prefix
-from src.core.suggestion_pool import save_suggestion
-from src.core.signals import SignalPackBuilder
-from src.core.signals.structured_output import (
+from src.modules.research.analysis_history import save_analysis
+from src.modules.market.cn_symbol import get_cn_prefix
+from src.modules.automation.suggestion_pool import save_suggestion
+from src.modules.research.signals import SignalPackBuilder
+from src.modules.research.signals.structured_output import (
     TAG_START,
     strip_tagged_json,
     try_extract_tagged_json,
@@ -53,8 +53,8 @@ class NewsDigestAgent(BaseAgent):
         if not items:
             return []
 
-        from src.web.database import SessionLocal
-        from src.web.models import NewsCache
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import NewsCache
 
         db = SessionLocal()
         try:

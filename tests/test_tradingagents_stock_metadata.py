@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.agents.tradingagents.portfolio_context import build_stock_metadata_context
-from src.agents.tradingagents.toolkit_adapter import (
+from src.modules.automation.tradingagents.portfolio_context import build_stock_metadata_context
+from src.modules.automation.tradingagents.toolkit_adapter import (
     _stock_meta_header,
     _serve_from_panwatch,
     panwatch_data_context,
@@ -167,7 +167,7 @@ def test_patch_route_to_vendor_handles_positional_args():
     patch 必须接 *args,否则 TypeError 直接放行到 yfinance"""
     import sys
     from unittest.mock import MagicMock
-    from src.agents.tradingagents.toolkit_adapter import patch_route_to_vendor
+    from src.modules.automation.tradingagents.toolkit_adapter import patch_route_to_vendor
 
     # 构造一个假的 tradingagents.dataflows.interface 模块用于测试
     fake_ti = MagicMock()
@@ -208,7 +208,7 @@ def test_patch_route_to_vendor_intercepts_global_news_with_cache():
     """get_global_news(curr_date, look_back_days, limit) 不带 symbol,
     但 cache 里有 A 股标的时,必须拦截,避免拉 Yahoo 无关全球新闻"""
     import sys
-    from src.agents.tradingagents.toolkit_adapter import patch_route_to_vendor
+    from src.modules.automation.tradingagents.toolkit_adapter import patch_route_to_vendor
 
     def original_func(method, *args, **kwargs):
         return "GLOBAL_SHOE_NEWS_LEAKED"

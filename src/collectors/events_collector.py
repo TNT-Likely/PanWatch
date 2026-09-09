@@ -76,7 +76,7 @@ def fetch_announcement_fulltext(
 
 def get_market_data():
     """惰性导入,避免模块加载时的循环依赖(便于测试 monkeypatch)。"""
-    from src.core.marketdata_client import get_market_data as _g
+    from src.platform.marketdata.marketdata_client import get_market_data as _g
     return _g()
 
 
@@ -183,8 +183,8 @@ class EventsCollector:
 
     @classmethod
     def from_database(cls) -> "EventsCollector":
-        from src.web.database import SessionLocal
-        from src.web.models import DataSource
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import DataSource
 
         collectors = []
         db = SessionLocal()

@@ -38,7 +38,7 @@ class MarketDef:
 
         # 非交易日(周末 / A股法定节假日)一律不交易。
         # 延迟导入:trading_calendar 依赖本模块的 MarketCode/MARKETS。
-        from src.core.trading_calendar import is_trading_day
+        from src.platform.scheduling.trading_calendar import is_trading_day
 
         if not is_trading_day(self.code, dt.date()):
             return False

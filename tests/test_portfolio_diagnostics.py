@@ -1,6 +1,6 @@
 """组合诊断(Phase 4)单元测试 —— 纯函数,不触发 DB。"""
 
-from src.core.portfolio_diagnostics import diagnose_positions, herfindahl
+from src.modules.portfolio.portfolio_diagnostics import diagnose_positions, herfindahl
 
 
 def test_herfindahl_fully_concentrated():

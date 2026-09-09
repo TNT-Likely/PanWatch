@@ -3,8 +3,8 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from src.web.database import get_db
-from src.core.suggestion_pool import (
+from src.platform.persistence.database import get_db
+from src.modules.automation.suggestion_pool import (
     get_suggestions_for_stock,
     get_latest_suggestions,
     cleanup_expired_suggestions,

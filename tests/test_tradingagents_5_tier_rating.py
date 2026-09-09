@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.agents.tradingagents.result_mapper import (
+from src.modules.automation.tradingagents.result_mapper import (
     RATING_ACTION_MAP,
     RATING_LABEL_MAP,
     _parse_rating_from_text,

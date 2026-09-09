@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from src.agents.tradingagents import toolkit_adapter as ta
+from src.modules.automation.tradingagents import toolkit_adapter as ta
 from src.collectors.kline_collector import KlineCollector, KlineData
 
 

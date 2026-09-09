@@ -1544,8 +1544,16 @@ def _m118_paper_trading_market_allocations(conn: Connection) -> None:
     if not _has_table(conn, "paper_trading_account"):
         return
 
-    # 复用引擎的纯函数推导比例（函数内导入，避免模块级循环依赖）
-    from src.core.paper_trading_engine import allocations_from_excluded
+    # 迁移必须自包含，不能依赖业务模块的运行时代码。
+    def allocations_from_excluded(excluded: list[str]) -> dict[str, float]:
+        markets = ("CN", "HK", "US")
+        defaults = {"CN": 0.5, "HK": 0.3, "US": 0.2}
+        excluded_set = {market.upper() for market in excluded}
+        weights = {market: defaults[market] for market in markets if market not in excluded_set}
+        total = sum(weights.values())
+        if total <= 0:
+            return {"CN": 1.0, "HK": 0.0, "US": 0.0}
+        return {market: round(weights.get(market, 0.0) / total, 6) for market in markets}
 
     rows = conn.execute(
         text("SELECT id, excluded_markets, market_allocations FROM paper_trading_account")

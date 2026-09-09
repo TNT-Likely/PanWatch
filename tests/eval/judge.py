@@ -75,7 +75,7 @@ class LLMJudge:
         if client is not None:
             self.client = client
         else:
-            from src.core.ai_client import AIClient
+            from src.platform.ai.ai_client import AIClient
 
             self.client = AIClient(
                 base_url=config.base_url,

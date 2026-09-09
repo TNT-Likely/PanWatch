@@ -14,7 +14,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
-from src.agents.base import AgentContext, AnalysisResult, BaseAgent
+from src.modules.automation.base import AgentContext, AnalysisResult, BaseAgent
 from src.modules.automation.tradingagents.cost_tracker import (
     check_budget,
     estimate_cost,
@@ -37,14 +37,14 @@ from src.modules.automation.tradingagents.toolkit_adapter import (
     panwatch_data_context,
     patch_route_to_vendor,
 )
-from src.core.analysis_history import get_analysis, save_analysis
+from src.modules.research.analysis_history import get_analysis, save_analysis
 
 logger = logging.getLogger(__name__)
 
 
 def get_market_data():
     """lazy import,便于测试 monkeypatch(module 级)。"""
-    from src.core.marketdata_client import get_market_data as _g
+    from src.platform.marketdata.marketdata_client import get_market_data as _g
 
     return _g()
 
@@ -103,7 +103,7 @@ class TradingAgentsAgent(BaseAgent):
         # 单只标的为粒度;若 watchlist 多只,取第一只
         stock = context.watchlist[0]
 
-        from src.core.marketdata_client import _quote_to_row
+        from src.platform.marketdata.marketdata_client import _quote_to_row
 
         md = get_market_data()
         sym, mkt = stock.symbol, stock.market.value
@@ -319,7 +319,7 @@ class TradingAgentsAgent(BaseAgent):
         # 6b) 落库到 StockSuggestion(建议池) — 让持仓页/关注列表上的建议徽章
         # 显示 TradingAgents 的 BUY/HOLD/SELL 决策(跟「盘前分析」「收盘复盘」并列)。
         try:
-            from src.core.suggestion_pool import save_suggestion
+            from src.modules.automation.suggestion_pool import save_suggestion
 
             sug = result.raw_data.get("suggestion") or {}
             action = (sug.get("action") or "hold").lower()
@@ -511,8 +511,8 @@ class TradingAgentsAgent(BaseAgent):
     @staticmethod
     def _collect_toolkit_diagnostic(trace_id: str) -> dict:
         """查同 trace_id 的 ta_toolkit 日志,聚合成 {summary, recent}。"""
-        from src.web.database import SessionLocal
-        from src.web.models import LogEntry
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import LogEntry
 
         db = SessionLocal()
         try:

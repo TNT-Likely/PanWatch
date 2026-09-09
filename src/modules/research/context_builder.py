@@ -4,23 +4,23 @@ import logging
 from datetime import date, datetime, timedelta
 
 from src.collectors.events_collector import fetch_announcement_fulltext
-from src.core.analysis_history import get_latest_ta_verdict
-from src.core.context_store import (
+from src.modules.research.analysis_history import get_latest_ta_verdict
+from src.modules.research.context_store import (
     get_recent_stock_context_snapshots,
     save_news_topic_snapshot,
     save_stock_context_snapshot,
 )
-from src.core.kline_context import build_kline_history_context
-from src.core.news_ranker import (
+from src.modules.market.kline_context import build_kline_history_context
+from src.modules.market.news_ranker import (
     dedupe_news_items,
     parse_news_time,
     rank_news_items,
     summarize_news_topics,
 )
 from src.models.market import MarketCode
-from src.web.database import SessionLocal
-from src.web.models import AnalysisHistory
-from src.core.json_safe import to_jsonable
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AnalysisHistory
+from src.platform.persistence.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,7 @@ class ContextBuilder:
         失败/不支持(如美股指数东财无K线)→ available False(fail-soft)。可被测试打桩。"""
         try:
             from src.collectors.kline_collector import get_index_klines
-            from src.core.kline_context import _pct
+            from src.modules.market.kline_context import _pct
 
             klines = get_index_klines(symbol, market, days=120)
             closes = [float(k.close) for k in klines if k.close is not None]

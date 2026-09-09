@@ -4,7 +4,7 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from src.core import otel
+from src.platform.observability import otel
 
 logger = logging.getLogger(__name__)
 

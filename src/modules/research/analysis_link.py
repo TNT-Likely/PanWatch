@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from src.web.database import SessionLocal
-from src.web.models import AppSettings
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AppSettings
 
 logger = logging.getLogger(__name__)
 

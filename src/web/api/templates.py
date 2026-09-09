@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.web.database import get_db
-from src.web.models import AgentConfig, AppSettings, Stock, StockAgent
-from src.core.agent_catalog import AGENT_KIND_CAPABILITY, infer_agent_kind
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AgentConfig, AppSettings, Stock, StockAgent
+from src.modules.automation.agent_catalog import AGENT_KIND_CAPABILITY, infer_agent_kind
 
 
 logger = logging.getLogger(__name__)

@@ -5,14 +5,14 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import and_
 
-from src.web.database import SessionLocal
-from src.web.models import (
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import (
     AgentContextRun,
     AgentPredictionOutcome,
     NewsTopicSnapshot,
     StockContextSnapshot,
 )
-from src.core.json_safe import to_jsonable
+from src.platform.persistence.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 

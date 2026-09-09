@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def get_global_proxy() -> str:
     """获取全局 HTTP 代理设置"""
     try:
-        from src.web.database import SessionLocal
-        from src.web.models import AppSettings
+        from src.platform.persistence.database import SessionLocal
+        from src.platform.persistence.models import AppSettings
 
         db = SessionLocal()
         try:

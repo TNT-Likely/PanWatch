@@ -11,15 +11,15 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.config import Settings
-from src.core.ai_failover import FailoverAIClient, build_failover_client
-from src.core.chat_planner import run_portfolio_diagnosis, should_use_planning
-from src.core.sse import SSEStream, chat_stream_hub
+from src.platform.ai.ai_failover import FailoverAIClient, build_failover_client
+from src.modules.assistant.chat_planner import run_portfolio_diagnosis, should_use_planning
+from src.platform.events.sse import SSEStream, chat_stream_hub
 from src.models.market import MarketCode
 from src.modules.assistant.repository import AssistantRepository
 from src.modules.portfolio.repository import PortfolioRepository
 from src.modules.portfolio.service import PortfolioService
-from src.web.database import SessionLocal, get_db
-from src.web.models import (
+from src.platform.persistence.database import SessionLocal, get_db
+from src.platform.persistence.models import (
     AIModel,
     AIService,
     AnalysisHistory,
@@ -232,7 +232,7 @@ def _build_portfolio_context(db: Session) -> str:
 async def _fetch_realtime_context(symbol: str, market: str) -> str:
     """异步获取实时行情和技术面。"""
     try:
-        from src.core.marketdata_client import md_quote_rows
+        from src.platform.marketdata.marketdata_client import md_quote_rows
         from src.models.market import MarketCode
 
         mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
@@ -253,7 +253,7 @@ async def _fetch_realtime_context(symbol: str, market: str) -> str:
 async def _fetch_technical_context(symbol: str, market: str) -> str:
     """获取技术面摘要。"""
     try:
-        from src.core.data_collector import DataCollector
+        from src.modules.market.data_collector import DataCollector
 
         collector = DataCollector()
         summary = await asyncio.to_thread(

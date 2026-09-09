@@ -4,8 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.database import Base
-from src.web.models import ChatConversation, ChatMessage  # noqa: F401 - registers metadata
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import ChatConversation, ChatMessage  # noqa: F401 - registers metadata
 
 
 def test_assistant_service_creates_reads_and_deletes_legacy_chat_history():

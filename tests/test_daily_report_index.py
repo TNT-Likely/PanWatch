@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from src.agents import daily_report
+from src.modules.automation import daily_report
 from src.models.market import IndexData, MarketCode
 
 

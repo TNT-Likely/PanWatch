@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.agents.tradingagents.history_comparison import (
+from src.modules.automation.tradingagents.history_comparison import (
     _classify_hit,
     _compute_stats,
     _find_close_after_n_trading_days,

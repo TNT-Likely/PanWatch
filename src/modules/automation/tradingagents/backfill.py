@@ -15,8 +15,8 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from src.web.database import SessionLocal
-from src.web.models import AnalysisHistory, StockSuggestion
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AnalysisHistory, StockSuggestion
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
     Returns:
         {"checked": int, "written": int, "skipped": int}
     """
-    from src.core.suggestion_pool import save_suggestion
+    from src.modules.automation.suggestion_pool import save_suggestion
 
     cutoff_date = (date.today() - timedelta(days=days)).isoformat()
 
@@ -86,7 +86,7 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
             # 从 AnalysisHistory record 拿股票名(如果存在)
             stock_name = ""
             try:
-                from src.web.models import Stock
+                from src.platform.persistence.models import Stock
                 stk = db.query(Stock).filter(Stock.symbol == symbol).first()
                 if stk:
                     stock_name = stk.name or ""

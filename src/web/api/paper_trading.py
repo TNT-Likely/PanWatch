@@ -9,17 +9,17 @@ from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
 from src.config import Settings
-from src.core.paper_trading_engine import (
+from src.modules.paper_trading.paper_trading_engine import (
     ALL_MARKETS,
     ENGINE,
     compute_market_cash,
     market_allocations_or_default,
     normalize_allocations,
 )
-from src.core.portfolio_diagnostics import diagnose_paper_portfolio
-from src.core.quant_adapters import available_backends
-from src.web.database import get_db
-from src.web.models import (
+from src.modules.portfolio.portfolio_diagnostics import diagnose_paper_portfolio
+from src.modules.strategy.quant_adapters import available_backends
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import (
     AppSettings,
     NotifyChannel,
     PaperTradingAccount,
@@ -555,7 +555,7 @@ def update_notify_settings(body: NotifySettingsBody, db: Session = Depends(get_d
 @router.post("/notify-test")
 async def test_notify():
     """发送测试通知。"""
-    from src.core.paper_trading_notifier import send_test_notification
+    from src.modules.paper_trading.paper_trading_notifier import send_test_notification
     result = await send_test_notification()
     if not result.get("success"):
         raise HTTPException(400, result.get("error", "发送失败"))
@@ -565,7 +565,7 @@ async def test_notify():
 @router.post("/premarket-plan")
 async def trigger_premarket_plan():
     """手动触发盘前计划通知。"""
-    from src.core.paper_trading_notifier import send_premarket_plan
+    from src.modules.paper_trading.paper_trading_notifier import send_premarket_plan
     await send_premarket_plan()
     return {"ok": True}
 
@@ -573,6 +573,6 @@ async def trigger_premarket_plan():
 @router.post("/daily-summary")
 async def trigger_daily_summary():
     """手动触发日终摘要通知。"""
-    from src.core.paper_trading_notifier import send_daily_summary
+    from src.modules.paper_trading.paper_trading_notifier import send_daily_summary
     await send_daily_summary()
     return {"ok": True}

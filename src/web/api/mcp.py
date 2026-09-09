@@ -20,15 +20,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
-from src.core.pat import (
+from src.modules.administration.pat import (
     SCOPE_MCP_READ,
     hash_token,
     looks_like_pat,
     verify_pat_hash,
 )
 from src.web.api.chat import CHAT_TOOLS, _execute_tool
-from src.web.database import SessionLocal, get_db
-from src.web.models import MCPCallLog, PersonalAccessToken
+from src.platform.persistence.database import SessionLocal, get_db
+from src.platform.persistence.models import MCPCallLog, PersonalAccessToken
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

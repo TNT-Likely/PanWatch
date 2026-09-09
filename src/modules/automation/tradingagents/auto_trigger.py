@@ -20,8 +20,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.web.database import SessionLocal
-from src.web.models import AgentConfig, AnalysisHistory
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AgentConfig, AnalysisHistory
 
 logger = logging.getLogger(__name__)
 

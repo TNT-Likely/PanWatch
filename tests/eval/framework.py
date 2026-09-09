@@ -65,7 +65,7 @@ class ChatEvalRunner:
     """驱动 chat 工具循环跑一条评测用例（工具执行被 mock 数据替代）。
 
     ai_client 需实现 `chat_with_tools(messages, tools, temperature) -> message`
-    （与 src.core.ai_client.AIClient 一致）：
+    （与 src.platform.ai.ai_client.AIClient 一致）：
     - make eval 时注入真实 AIClient（配置从环境变量读取，见 run_eval.py）；
     - 单测里注入脚本化的假客户端，不发任何真实请求。
     """

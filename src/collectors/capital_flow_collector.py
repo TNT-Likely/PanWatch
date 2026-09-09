@@ -28,7 +28,7 @@ class CapitalFlow:
 
 def get_market_data():
     """惰性导入,避免模块加载时的循环依赖(便于测试 monkeypatch)。"""
-    from src.core.marketdata_client import get_market_data as _g
+    from src.platform.marketdata.marketdata_client import get_market_data as _g
     return _g()
 
 

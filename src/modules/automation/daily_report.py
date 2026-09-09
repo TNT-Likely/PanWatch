@@ -4,17 +4,17 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from src.agents.base import BaseAgent, AgentContext, AnalysisResult
-from src.core.analysis_history import save_analysis
-from src.core.cn_symbol import get_cn_prefix
-from src.core.suggestion_pool import save_suggestion
-from src.core.context_builder import ContextBuilder
-from src.core.context_store import (
+from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
+from src.modules.research.analysis_history import save_analysis
+from src.modules.market.cn_symbol import get_cn_prefix
+from src.modules.automation.suggestion_pool import save_suggestion
+from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
 )
-from src.core.signals import SignalPackBuilder
-from src.core.signals.structured_output import (
+from src.modules.research.signals import SignalPackBuilder
+from src.modules.research.signals.structured_output import (
     TAG_START,
     strip_tagged_json,
     try_extract_tagged_json,
@@ -41,7 +41,7 @@ _CN_INDEX_TENCENT_SYMBOLS = ["sh000001", "sz399001", "sz399006"]
 
 def get_market_data():
     """惰性 import,避免包未装/循环 import 影响本模块加载。"""
-    from src.core.marketdata_client import get_market_data as _g
+    from src.platform.marketdata.marketdata_client import get_market_data as _g
 
     return _g()
 

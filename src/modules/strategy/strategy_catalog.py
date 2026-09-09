@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from src.web.database import SessionLocal
-from src.web.models import StrategyCatalog, StrategyWeight
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import StrategyCatalog, StrategyWeight
 
 
 @dataclass(frozen=True)

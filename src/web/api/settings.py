@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import AppSettings
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AppSettings
 from src.config import Settings
-from src.core.update_checker import check_update
+from src.modules.administration.update_checker import check_update
 
 router = APIRouter()
 

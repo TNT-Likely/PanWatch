@@ -3,7 +3,7 @@ import unittest
 from marketdata.symbol import Symbol
 
 from src.collectors.screenshot_collector import ScreenshotCollector
-from src.core.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
+from src.modules.market.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
 from src.models.market import MarketCode
 
 

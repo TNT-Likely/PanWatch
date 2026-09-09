@@ -12,9 +12,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import src.web.api.chat as chat_api
-from src.core.sse import SSEStream
-from src.web.database import Base
-from src.web.models import ChatConversation, ChatMessage
+from src.platform.events.sse import SSEStream
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import ChatConversation, ChatMessage
 
 
 def _make_session_factory():

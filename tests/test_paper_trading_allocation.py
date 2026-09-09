@@ -4,7 +4,7 @@ import math
 import unittest
 from types import SimpleNamespace
 
-from src.core.paper_trading_engine import (
+from src.modules.paper_trading.paper_trading_engine import (
     ALL_MARKETS,
     DEFAULT_ALLOCATIONS,
     allocations_from_excluded,

@@ -47,6 +47,6 @@ class NewsCollector:
         Returns:
             按时间倒序排列的新闻列表
         """
-        from src.core.marketdata_client import md_news
+        from src.platform.marketdata.marketdata_client import md_news
 
         return await asyncio.to_thread(md_news, symbols or [], since_hours, symbol_names)

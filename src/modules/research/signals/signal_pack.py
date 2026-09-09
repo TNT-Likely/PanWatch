@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from src.collectors.kline_collector import KlineCollector
 from src.collectors.news_collector import NewsCollector, NewsItem
-from src.core.marketdata_client import md_stock_data
+from src.platform.marketdata.marketdata_client import md_stock_data
 from src.models.market import MarketCode
 from src.models.market import StockData
 
@@ -79,8 +79,8 @@ class SignalPackBuilder:
         """
 
         try:
-            from src.web.database import SessionLocal
-            from src.web.models import DataSource
+            from src.platform.persistence.database import SessionLocal
+            from src.platform.persistence.models import DataSource
 
             db = SessionLocal()
             try:

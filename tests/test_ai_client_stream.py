@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from src.core.ai_client import AIClient
+from src.platform.ai.ai_client import AIClient
 
 
 def _chunk(content=None, tool_calls=None, usage=None):

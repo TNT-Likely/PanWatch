@@ -13,10 +13,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.config import Settings
-from src.core.strategy_engine import get_strategy_stats, list_strategy_signals
+from src.modules.strategy.strategy_engine import get_strategy_stats, list_strategy_signals
 from src.web.api.chat import _get_ai_client
-from src.web.database import get_db
-from src.web.models import (
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import (
     AnalysisHistory,
     EntryCandidate,
     LogEntry,
@@ -249,7 +249,7 @@ def get_dashboard_overview(
         bucket["positions"] += 1
         bucket["invested_cost"] += cost
     watchlist_count = int((db.query(func.count(Stock.id)).scalar() or 0))
-    from src.web.models import Account  # local import to avoid circular import at module import time
+    from src.platform.persistence.models import Account  # local import to avoid circular import at module import time
 
     total_available = float(
         db.query(func.coalesce(func.sum(Account.available_funds), 0.0))

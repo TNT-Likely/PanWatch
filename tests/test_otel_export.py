@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.core import otel
+from src.platform.observability import otel
 
 # 未装 opentelemetry SDK 时,涉及 exporter 的用例整体跳过(no-op 用例不需要 SDK)。
 _otel_sdk = pytest.importorskip("opentelemetry.sdk")
@@ -80,7 +80,7 @@ def test_关闭时span接口全部no_op不报错():
 def test_关闭时ai_client正常工作无span():
     """OTel 关闭时,ai_client.chat 正常返回且不产生任何 span。"""
     otel.reset()
-    from src.core.ai_client import AIClient
+    from src.platform.ai.ai_client import AIClient
 
     client = AIClient(base_url="http://x", api_key="k", model="test-model")
     fake = _fake_openai_response("你好", 10, 5)
@@ -110,7 +110,7 @@ def test_agent运行映射为root_span(in_memory_exporter):
 
 def test_llm调用产生带genai属性的子span(in_memory_exporter):
     """LLM 调用映射为 gen_ai 子 span,带 GenAI 语义约定属性,且挂在 root span 之下。"""
-    from src.core.ai_client import AIClient
+    from src.platform.ai.ai_client import AIClient
 
     client = AIClient(base_url="http://x", api_key="k", model="test-model")
     fake = _fake_openai_response("分析结果", 100, 40)

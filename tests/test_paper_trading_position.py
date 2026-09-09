@@ -1,7 +1,7 @@
 """模拟盘仓位管理(Phase 1)单元测试 —— 纯函数,不触发 DB/网络。"""
 
-from src.core.backtest.cost_model import CostModel
-from src.core.paper_trading_engine import _compute_quantity, _position_weight
+from src.modules.strategy.backtest.cost_model import CostModel
+from src.modules.paper_trading.paper_trading_engine import _compute_quantity, _position_weight
 
 
 def test_position_weight_tiers():
@@ -49,7 +49,7 @@ def test_compute_quantity_insufficient_cash_returns_zero():
 
 def test_engine_imports_ok():
     """改造后 paper_trading_engine 可正常导入(无语法/循环 import 错),关键符号在位。"""
-    import src.core.paper_trading_engine as e
+    import src.modules.paper_trading.paper_trading_engine as e
 
     assert hasattr(e, "ENGINE")
     assert hasattr(e, "COST_MODEL")

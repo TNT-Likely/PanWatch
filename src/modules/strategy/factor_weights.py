@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import logging
 
-from src.core.timezone import utc_now
-from src.web.database import SessionLocal
-from src.web.models import FactorWeight, FactorWeightHistory
+from src.platform.scheduling.timezone import utc_now
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import FactorWeight, FactorWeightHistory
 
 logger = logging.getLogger(__name__)
 

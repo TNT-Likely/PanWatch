@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import logging
 
-from src.web.database import SessionLocal
-from src.web.models import AppSettings
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AppSettings
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,6 @@ def _xueqiu_url(symbol: str, market: str) -> str:
     if market == "HK":
         return f"https://xueqiu.com/S/{symbol}"
     # CN A股
-    from src.core.cn_symbol import get_cn_prefix
+    from src.modules.market.cn_symbol import get_cn_prefix
     prefix = get_cn_prefix(symbol, upper=True)
     return f"https://xueqiu.com/S/{prefix}{symbol}"

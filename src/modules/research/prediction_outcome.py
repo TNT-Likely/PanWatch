@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime, timedelta
 
 from src.collectors.kline_collector import KlineCollector
-from src.core.context_store import (
+from src.modules.research.context_store import (
     list_pending_prediction_outcomes,
     mark_agent_prediction_outcome,
 )

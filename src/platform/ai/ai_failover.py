@@ -35,8 +35,8 @@ from openai import (
     RateLimitError,
 )
 
-from src.core.ai_client import AIClient
-from src.core.log_context import get_log_context
+from src.platform.ai.ai_client import AIClient
+from src.platform.observability.log_context import get_log_context
 
 logger = logging.getLogger(__name__)
 
@@ -342,12 +342,12 @@ def build_failover_client(
     # 补齐备选候选
     own_session = False
     if db is None:
-        from src.web.database import SessionLocal
+        from src.platform.persistence.database import SessionLocal
 
         db = SessionLocal()
         own_session = True
     try:
-        from src.web.models import AIModel, AIService
+        from src.platform.persistence.models import AIModel, AIService
 
         rows = (
             db.query(AIModel)

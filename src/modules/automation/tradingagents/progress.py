@@ -14,8 +14,8 @@ import logging
 import time
 from typing import Any
 
-from src.core.log_context import log_context
-from src.core import otel
+from src.platform.observability.log_context import log_context
+from src.platform.observability import otel
 
 logger = logging.getLogger(__name__)
 

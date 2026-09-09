@@ -10,12 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import AgentConfig, AgentRun, LogEntry
-from src.core.schedule_parser import preview_schedule
-from src.core.schedule_parser import count_runs_within
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
+from src.platform.scheduling.schedule_parser import preview_schedule
+from src.platform.scheduling.schedule_parser import count_runs_within
 from src.config import Settings
-from src.core.agent_catalog import (
+from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
     infer_agent_kind,
@@ -340,7 +340,7 @@ def delete_agent(agent_name: str, db: Session = Depends(get_db)):
         raise HTTPException(404, f"Agent {agent_name} 不存在")
 
     # 删除关联的 stock_agents 记录
-    from src.web.models import StockAgent
+    from src.platform.persistence.models import StockAgent
 
     db.query(StockAgent).filter(StockAgent.agent_name == agent_name).delete()
 
@@ -508,7 +508,7 @@ def get_tradingagents_latest(
     /history 端点 cherry-pick 字段不含 raw_data,这里专门为深度分析弹窗
     暴露完整字段(suggestion / debate_history / analyst_reports / cost_usd 等)。
     """
-    from src.web.models import AnalysisHistory
+    from src.platform.persistence.models import AnalysisHistory
 
     record = (
         db.query(AnalysisHistory)
@@ -546,7 +546,7 @@ def get_tradingagents_analysis(
     db: Session = Depends(get_db),
 ):
     """按 symbol + date 查某次 TradingAgents 深度分析完整结果(详细阅读页用)。"""
-    from src.web.models import AnalysisHistory
+    from src.platform.persistence.models import AnalysisHistory
 
     record = (
         db.query(AnalysisHistory)
@@ -589,8 +589,8 @@ def export_tradingagents_analysis_pdf(
     from fastapi import HTTPException
     from fastapi.responses import Response
 
-    from src.core.pdf_export import assemble_report_markdown, render_analysis_pdf
-    from src.web.models import AnalysisHistory
+    from src.modules.reporting.pdf_export import assemble_report_markdown, render_analysis_pdf
+    from src.platform.persistence.models import AnalysisHistory
 
     record = (
         db.query(AnalysisHistory)
@@ -807,8 +807,8 @@ async def stream_run_progress(trace_id: str):
     """
     import json as _json
 
-    from src.core.sse import format_sse_comment, format_sse_event
-    from src.web.database import SessionLocal
+    from src.platform.events.sse import format_sse_comment, format_sse_event
+    from src.platform.persistence.database import SessionLocal
 
     if not trace_id or len(trace_id) > 64:
         raise HTTPException(400, "无效的 trace_id")
@@ -920,14 +920,14 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         load_portfolio_for_agent,
         build_context,
     )
-    from src.core.marketdata_client import md_stock_data
+    from src.platform.marketdata.marketdata_client import md_stock_data
     from src.collectors.kline_collector import KlineCollector
     from src.models.market import MarketCode, MARKETS
-    from src.agents.intraday_monitor import IntradayMonitorAgent
-    from src.core.analysis_history import get_latest_analysis, get_analysis
-    from src.core.context_builder import ContextBuilder
-    from src.core.signals import SignalPackBuilder
-    from src.core.suggestion_pool import save_suggestion
+    from src.modules.automation.intraday_monitor import IntradayMonitorAgent
+    from src.modules.research.analysis_history import get_latest_analysis, get_analysis
+    from src.modules.research.context_builder import ContextBuilder
+    from src.modules.research.signals import SignalPackBuilder
+    from src.modules.automation.suggestion_pool import save_suggestion
 
     agent_name = "intraday_monitor"
     agent_cfg = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
@@ -1155,7 +1155,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                         # 产品策略：建议持续更新，通知层再做去重与降噪。
                         try:
                             if getattr(agent, "event_only", False):
-                                from src.core.intraday_event_gate import check_and_update
+                                from src.modules.strategy.intraday_event_gate import check_and_update
 
                                 decision = check_and_update(
                                     symbol=item["symbol"],

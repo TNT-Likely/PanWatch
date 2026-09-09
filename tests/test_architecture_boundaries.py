@@ -53,3 +53,11 @@ def test_platform_does_not_import_modules_and_modules_do_not_cross_import_storag
 
     assert platform_violations == []
     assert module_violations == []
+
+
+def test_legacy_compatibility_packages_are_removed_after_migration():
+    assert not (SOURCE_ROOT / "core" / "__init__.py").exists()
+    assert not (SOURCE_ROOT / "agents" / "__init__.py").exists()
+    assert not (SOURCE_ROOT / "web" / "database.py").exists()
+    assert not (SOURCE_ROOT / "web" / "models.py").exists()
+    assert not (SOURCE_ROOT / "web" / "migrations.py").exists()

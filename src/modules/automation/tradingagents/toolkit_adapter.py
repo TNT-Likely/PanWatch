@@ -71,7 +71,7 @@ def panwatch_data_context(data: dict[str, Any], trace_id: str = ""):
 
 def _emit_toolkit_log(level: str, action: str, method_name: str, symbol: str, **extra):
     """把 toolkit hit/miss/passthrough 写进同 trace_id 的日志,前端可在弹窗看到。"""
-    from src.core.log_context import log_context
+    from src.platform.observability.log_context import log_context
 
     trace_id = _CURRENT_TRACE_ID.get()
     if not trace_id:
@@ -764,7 +764,7 @@ def _serve_keyword_news(keyword: str) -> str:
     用于 get_news 的 query 是行业/主题词(非 ticker,如"汽车行业""新能源汽车")时,
     替代拉不到中文数据的上游 vendor。md_news_by_keyword 本身同步,直接调用即可。
     """
-    from src.core.marketdata_client import md_news_by_keyword
+    from src.platform.marketdata.marketdata_client import md_news_by_keyword
 
     items = md_news_by_keyword(keyword)
     if not items:

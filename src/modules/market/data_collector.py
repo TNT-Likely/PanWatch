@@ -9,8 +9,8 @@ from typing import Any, Callable
 
 from marketdata import PACKAGE_VENDORS_BY_TYPE, capture_errors
 
-from src.web.database import SessionLocal
-from src.web.models import DataSource
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import DataSource
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
@@ -156,7 +156,7 @@ class DataCollectorManager:
 
     def _get_stock_names(self, symbols: list[str]) -> dict[str, str]:
         """获取股票代码到名称的映射"""
-        from src.web.models import Stock
+        from src.platform.persistence.models import Stock
 
         # 默认测试股票名称映射
         default_names = {
@@ -315,7 +315,7 @@ class DataCollectorManager:
 
     async def collect_quote(self, symbols: list[str]) -> CollectorResult:
         """采集实时行情"""
-        from src.core.marketdata_client import md_stock_data
+        from src.platform.marketdata.marketdata_client import md_stock_data
 
         start_time = datetime.now()
         self._log("实时行情", "quote", "start", f"获取 {len(symbols)} 只股票的行情")
@@ -620,7 +620,7 @@ class DataCollectorManager:
         """按 provider 测试行情源:走 marketdata 包的单源 Engine(仅该 vendor,不串备份链)。"""
         from marketdata import MarketData, SourceConfig, StaticConfigProvider
 
-        from src.core.marketdata_client import _quote_to_row
+        from src.platform.marketdata.marketdata_client import _quote_to_row
 
         if source.provider not in self._QUOTE_PACKAGE_VENDORS:
             return CollectorResult(

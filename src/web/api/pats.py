@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.core.pat import SCOPE_MCP_READ, generate_pat
-from src.web.database import get_db
-from src.web.models import PersonalAccessToken
+from src.modules.administration.pat import SCOPE_MCP_READ, generate_pat
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import PersonalAccessToken
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

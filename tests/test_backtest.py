@@ -1,9 +1,9 @@
 """回测内核(Phase 0)单元测试 —— 纯合成数据,不触发网络。"""
 
-from src.core.backtest import metrics as M
-from src.core.backtest.cost_model import CostModel
-from src.core.backtest.data_adapter import PriceBar
-from src.core.backtest.engine import Backtester, Signal, horizon_return
+from src.modules.strategy.backtest import metrics as M
+from src.modules.strategy.backtest.cost_model import CostModel
+from src.modules.strategy.backtest.data_adapter import PriceBar
+from src.modules.strategy.backtest.engine import Backtester, Signal, horizon_return
 
 
 def _bar(date, o, h, low, c, v=1e6):

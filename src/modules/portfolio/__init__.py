@@ -1,4 +1,8 @@
-"""Portfolio business module public surface."""
+"""Portfolio capability public surface.
+
+Other modules use the factory/service below rather than importing portfolio
+repositories or ORM models directly.
+"""
 
 from sqlalchemy.orm import Session
 

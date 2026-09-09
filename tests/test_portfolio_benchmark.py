@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.collectors.kline_collector import KlineData
-from src.core import portfolio_benchmark as pb
+from src.modules.portfolio import portfolio_benchmark as pb
 
 
 def _bars(dates_closes):

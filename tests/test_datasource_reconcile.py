@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web import models as M  # noqa: F401  确保模型注册到 Base.metadata
-from src.web.database import Base
-from src.web.models import DataSource
+import src.platform.persistence.models as M  # noqa: F401  确保模型注册到 Base.metadata
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import DataSource
 
 import server
 

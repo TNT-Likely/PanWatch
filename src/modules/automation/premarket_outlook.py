@@ -8,22 +8,22 @@ from collections import Counter
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
-from src.agents.base import BaseAgent, AgentContext, AnalysisResult
-from src.core.signals import SignalPackBuilder
-from src.core.analysis_history import save_analysis, get_latest_analysis
-from src.core.cn_symbol import get_cn_prefix
-from src.core.suggestion_pool import save_suggestion
-from src.core.context_builder import ContextBuilder
-from src.core.context_store import (
+from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
+from src.modules.research.signals import SignalPackBuilder
+from src.modules.research.analysis_history import save_analysis, get_latest_analysis
+from src.modules.market.cn_symbol import get_cn_prefix
+from src.modules.automation.suggestion_pool import save_suggestion
+from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
 )
-from src.core.signals.structured_output import (
+from src.modules.research.signals.structured_output import (
     TAG_START,
     strip_tagged_json,
     try_extract_tagged_json,
 )
-from src.core.log_context import get_log_context
+from src.platform.observability.log_context import get_log_context
 from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class PremarketOutlookAgent(BaseAgent):
         # 2. 获取美股指数（隔夜表现）
         us_indices = []
         try:
-            from src.core.marketdata_client import get_market_data
+            from src.platform.marketdata.marketdata_client import get_market_data
 
             items = get_market_data().index_quotes(["usDJI", "usIXIC", "usINX"])
             for item in items:

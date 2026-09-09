@@ -15,7 +15,7 @@
    不引入运行时依赖、不改变任何既有行为。
 2. **薄桥接**:只在既有埋点处包一层 context manager;埋点本身不感知 OTel 细节。
 3. **懒加载**:本模块顶层**不** import opentelemetry,只有 ``init_otel()`` 被调用且
-   endpoint 已配置时才尝试导入,因此 ``import src.core.otel`` 永远安全、零成本。
+   endpoint 已配置时才尝试导入,因此 ``import src.platform.observability.otel`` 永远安全、零成本。
 
 GenAI 语义约定(OpenTelemetry Semantic Conventions for Generative AI)让 span 能被
 Jaeger / Tempo / Langfuse(OTLP)等标准 APM 直接识别为"一次模型调用"。

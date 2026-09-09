@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from src.core.timezone import (
+from src.platform.scheduling.timezone import (
     format_beijing,
     to_beijing,
     to_iso_utc,

@@ -35,12 +35,12 @@ def _suppress_notifications(request, monkeypatch):
 
     # patch NotifierManager.notify / notify_with_result
     monkeypatch.setattr(
-        "src.core.notifier.NotifierManager.notify",
+        "src.platform.notifications.notifier.NotifierManager.notify",
         AsyncMock(return_value=None),
         raising=False,
     )
     monkeypatch.setattr(
-        "src.core.notifier.NotifierManager.notify_with_result",
+        "src.platform.notifications.notifier.NotifierManager.notify_with_result",
         AsyncMock(return_value={"success": True, "suppressed": True}),
         raising=False,
     )
@@ -50,7 +50,7 @@ def _suppress_notifications(request, monkeypatch):
 def _mock_stock_link_platform(monkeypatch):
     """避免 stock_link 模块访问数据库读取平台设置。"""
     monkeypatch.setattr(
-        "src.core.stock_link.get_platform",
+        "src.modules.administration.stock_link.get_platform",
         lambda: "xueqiu",
     )
 
@@ -82,8 +82,8 @@ def _ensure_db_schema():
     data/panwatch.db 无表会报 'no such table: stocks'。这里在会话开始时幂等建表
     (本地已有表则无副作用),与各用例自建的内存库互不影响。
     """
-    from src.web import models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
-    from src.web.database import Base, engine
+    import src.platform.persistence.models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
+    from src.platform.persistence.database import Base, engine
 
     Base.metadata.create_all(engine)
     yield

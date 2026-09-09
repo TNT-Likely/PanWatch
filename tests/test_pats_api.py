@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.web.api import mcp as mcp_router_mod
 from src.web.api import pats as pats_router_mod
-from src.web.database import Base, get_db
+from src.platform.persistence.database import Base, get_db
 
 
 def _setup(monkeypatch):

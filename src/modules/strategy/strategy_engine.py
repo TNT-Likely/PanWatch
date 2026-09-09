@@ -9,19 +9,19 @@ from math import sqrt
 from sqlalchemy import and_, case, func
 
 from src.collectors.kline_collector import KlineCollector
-from src.core.entry_candidates import refresh_entry_candidates
-from src.core.json_safe import to_jsonable
-from src.core.strategy_catalog import (
+from src.modules.strategy.entry_candidates import refresh_entry_candidates
+from src.platform.persistence.json_safe import to_jsonable
+from src.modules.strategy.strategy_catalog import (
     ensure_strategy_catalog,
     get_effective_weight_map,
     get_strategy_profile_map,
     list_strategy_catalog,
 )
-from src.core.factor_weights import get_factor_weights
-from src.core.timezone import to_iso_with_tz, utc_now
+from src.modules.strategy.factor_weights import get_factor_weights
+from src.platform.scheduling.timezone import to_iso_with_tz, utc_now
 from src.models.market import MarketCode
-from src.web.database import SessionLocal
-from src.web.models import (
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import (
     EntryCandidate,
     MarketRegimeSnapshot,
     NewsCache,

@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.core.factor_weights import get_all_factor_weights, set_factor_weight
-from src.web.database import get_db
+from src.modules.strategy.factor_weights import get_all_factor_weights, set_factor_weight
+from src.platform.persistence.database import get_db
 
 router = APIRouter()
 

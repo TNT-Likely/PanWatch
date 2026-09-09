@@ -3,10 +3,10 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 
-from src.core.agent_catalog import infer_agent_kind
-from src.web.database import SessionLocal
-from src.web.models import AnalysisHistory
-from src.core.json_safe import to_jsonable
+from src.modules.automation.agent_catalog import infer_agent_kind
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AnalysisHistory
+from src.platform.persistence.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 

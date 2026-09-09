@@ -7,7 +7,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from src.core.price_alert_engine import ENGINE
+from src.modules.market.price_alert_engine import ENGINE
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class PriceAlertScheduler:
             max_instances=1,
         )
         self.scheduler.start()
-        from src.core.scheduler_registry import register
+        from src.platform.scheduling.scheduler_registry import register
         register("price_alert", self.scheduler)
         logger.info(f"价格提醒调度器已启动，扫描间隔 {self.interval_seconds}s")
 

@@ -9,10 +9,10 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import AnalysisHistory
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AnalysisHistory
 from src.config import Settings
-from src.core.agent_catalog import (
+from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
     CAPABILITY_AGENT_NAMES,

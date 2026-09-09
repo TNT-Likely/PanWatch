@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from src.core.notifier import NotifierManager
-from src.web.database import SessionLocal
-from src.web.models import (
+from src.platform.notifications.notifier import NotifierManager
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import (
     AppSettings,
     NotifyChannel,
     PaperTradingAccount,
@@ -130,7 +130,7 @@ def _strategy_label(code: str) -> str:
 
 def _stock_display(symbol: str, market: str, name: str = "") -> str:
     """生成带链接的股票显示文本，点击代码跳转到行情页。"""
-    from src.core.stock_link import stock_link_markdown
+    from src.modules.administration.stock_link import stock_link_markdown
     label = f"{name} " if name else ""
     return f"{label}({stock_link_markdown(symbol, market)})"
 
@@ -217,7 +217,7 @@ def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradi
     lines.append("今日候选:")
     for i, (sig, strat_count) in enumerate(deduped, 1):
         name = sig.stock_name or sig.stock_symbol
-        from src.core.stock_link import stock_link_markdown
+        from src.modules.administration.stock_link import stock_link_markdown
         link = stock_link_markdown(sig.stock_symbol, sig.stock_market)
         entry_range = ""
         if sig.entry_low and sig.entry_high:
@@ -320,7 +320,7 @@ async def send_premarket_plan() -> None:
                 return
 
             # 按投资比例排除不投入（比例为 0）的市场
-            from src.core.paper_trading_engine import ALL_MARKETS, market_allocations_or_default
+            from src.modules.paper_trading.paper_trading_engine import ALL_MARKETS, market_allocations_or_default
             alloc = market_allocations_or_default(account)
             excluded = [m for m in ALL_MARKETS if alloc.get(m, 0.0) <= 0]
             query = (

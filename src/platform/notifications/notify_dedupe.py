@@ -9,9 +9,9 @@ from __future__ import annotations
 import hashlib
 from datetime import timedelta
 
-from src.core.timezone import utc_now
-from src.web.database import SessionLocal
-from src.web.models import NotifyThrottle
+from src.platform.scheduling.timezone import utc_now
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import NotifyThrottle
 
 
 def build_notify_dedupe_key(agent_name: str, title: str, content: str) -> str:

@@ -41,14 +41,14 @@ def test_platform_owns_ai_sse_and_marketdata_implementations():
     assert marketdata_client.__file__.replace("\\", "/").endswith("/src/platform/marketdata/marketdata_client.py")
 
 
-def test_platform_owns_notification_and_scheduling_implementations():
+def test_platform_owns_notification_and_automation_owns_agent_scheduling():
     from src.platform.notifications import notifier
-    from src.platform.scheduling import scheduler
+    from src.modules.automation import agent_scheduler
 
     assert notifier.__file__.replace("\\", "/").endswith("/src/platform/notifications/notifier.py")
-    assert scheduler.__file__.replace("\\", "/").endswith("/src/platform/scheduling/scheduler.py")
+    assert agent_scheduler.__file__.replace("\\", "/").endswith("/src/modules/automation/agent_scheduler.py")
     assert notifier.NotifierManager.__module__ == "src.platform.notifications.notifier"
-    assert scheduler.AgentScheduler.__module__ == "src.platform.scheduling.scheduler"
+    assert agent_scheduler.AgentScheduler.__module__ == "src.modules.automation.agent_scheduler"
 
 
 def test_reporting_and_administration_modules_own_their_implementations():

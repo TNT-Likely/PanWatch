@@ -9,13 +9,13 @@ from sqlalchemy import and_, case, func, or_
 from src.config import Settings
 from src.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.collectors.kline_collector import KlineCollector
-from src.core.json_safe import to_jsonable
-from src.core.marketdata_client import md_stock_data
-from src.core.notifier import get_global_proxy
-from src.core.timezone import to_iso_with_tz, utc_now
+from src.platform.persistence.json_safe import to_jsonable
+from src.platform.marketdata.marketdata_client import md_stock_data
+from src.platform.notifications.notifier import get_global_proxy
+from src.platform.scheduling.timezone import to_iso_with_tz, utc_now
 from src.models.market import MarketCode
-from src.web.database import SessionLocal
-from src.web.models import (
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import (
     EntryCandidate,
     EntryCandidateFeedback,
     EntryCandidateOutcome,

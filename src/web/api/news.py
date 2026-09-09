@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import Stock, DataSource
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import Stock, DataSource
 from src.collectors.news_collector import NewsCollector, NewsItem
 
 router = APIRouter()

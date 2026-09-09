@@ -24,8 +24,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.core import ai_failover as m
-from src.core.ai_failover import (
+from src.platform.ai import ai_failover as m
+from src.platform.ai.ai_failover import (
     ERR_FATAL,
     ERR_PARAM,
     ERR_SWITCH,
@@ -34,8 +34,8 @@ from src.core.ai_failover import (
     classify_ai_error,
     clear_ai_failover_state,
 )
-from src.web.database import Base
-from src.web.models import AIModel, AIService
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import AIModel, AIService
 
 _REQ = httpx.Request("POST", "http://test")
 
@@ -331,7 +331,7 @@ def test_build_failover_client_env_fallback(monkeypatch):
 
 def test_agent_context_model_label_reflects_used_model():
     """AgentContext.model_label 反映 failover 实际使用的模型（供 agent_runs 落库）"""
-    from src.agents.base import AgentContext
+    from src.modules.automation.base import AgentContext
 
     fc = FailoverAIClient([(_FakeClient("m1"), "svc/m1"), (_FakeClient("m2"), "svc/m2")])
     ctx = AgentContext(ai_client=fc, notifier=None, config=None, model_label="svc/m1")

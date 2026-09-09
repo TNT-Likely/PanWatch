@@ -8,14 +8,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from src.core.agent_prediction_evaluation import (
+from src.modules.automation.agent_prediction_evaluation import (
     EVALUATION_POLICY,
     group_prediction_outcomes,
     summarize_prediction_groups,
 )
-from src.core.prediction_outcome import evaluate_pending_prediction_outcomes
-from src.web.database import get_db
-from src.web.models import AgentPredictionOutcome
+from src.modules.research.prediction_outcome import evaluate_pending_prediction_outcomes
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AgentPredictionOutcome
 
 
 router = APIRouter()

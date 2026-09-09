@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import AIService, AIModel
-from src.core.ai_client import AIClient
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AIService, AIModel
+from src.platform.ai.ai_client import AIClient
 
 router = APIRouter()
 

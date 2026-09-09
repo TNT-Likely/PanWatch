@@ -5,9 +5,9 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
-from src.web.models import AgentPredictionOutcome
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import AgentPredictionOutcome
 
 
 def _mem_db():

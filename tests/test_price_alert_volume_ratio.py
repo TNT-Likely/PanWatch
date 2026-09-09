@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-from src.core.price_alert_engine import PriceAlertEngine
+from src.modules.market.price_alert_engine import PriceAlertEngine
 from src.models.market import MarketCode
 
 

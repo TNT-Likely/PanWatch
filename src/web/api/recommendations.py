@@ -7,15 +7,15 @@ import threading
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from src.core.entry_candidates import (
+from src.modules.strategy.entry_candidates import (
     evaluate_entry_candidate_outcomes,
     get_entry_candidate_stats,
     list_entry_candidates,
     refresh_entry_candidates,
     save_entry_candidate_feedback,
 )
-from src.core.strategy_catalog import list_strategy_catalog
-from src.core.strategy_engine import (
+from src.modules.strategy.strategy_catalog import list_strategy_catalog
+from src.modules.strategy.strategy_engine import (
     evaluate_strategy_outcomes,
     get_strategy_factor_snapshot,
     get_strategy_stats,
@@ -26,10 +26,10 @@ from src.core.strategy_engine import (
     rebalance_strategy_weights,
     refresh_strategy_signals,
 )
-from src.core.factor_eval import evaluate_factor_ic
-from src.core.signal_explain import enrich_signal
-from src.web.database import SessionLocal
-from src.web.models import StrategySignalRun
+from src.modules.strategy.factor_eval import evaluate_factor_ic
+from src.modules.research.signal_explain import enrich_signal
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import StrategySignalRun
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

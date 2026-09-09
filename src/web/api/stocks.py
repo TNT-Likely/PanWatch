@@ -8,8 +8,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import (
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import (
     Stock,
     StockAgent,
     AgentConfig,
@@ -18,9 +18,9 @@ from src.web.models import (
     PriceAlertHit,
 )
 from src.web.stock_list import search_stocks, refresh_stock_list
-from src.core.marketdata_client import md_quote_rows
+from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.models.market import MarketCode, MARKETS
-from src.core.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
+from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -437,7 +437,7 @@ async def trigger_stock_agent(
     # → 60s grace 过后前端 reset 到 idle,看起来像"进度卡死自动退回"。
     if agent_name == "tradingagents":
         try:
-            from src.core.log_context import log_context
+            from src.platform.observability.log_context import log_context
             with log_context(
                 trace_id=trace_id,
                 agent_name="tradingagents",

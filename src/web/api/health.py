@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Query
 
-from src.core.selfcheck import list_selfcheck_items, run_selfcheck
+from src.modules.administration.selfcheck import list_selfcheck_items, run_selfcheck
 
 router = APIRouter()
 

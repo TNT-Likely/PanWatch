@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 
-from src.web.database import SessionLocal
-from src.web.models import AnalysisHistory
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import AnalysisHistory
 
 logger = logging.getLogger(__name__)
 

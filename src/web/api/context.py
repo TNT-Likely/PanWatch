@@ -9,14 +9,14 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from src.config import Settings
-from src.core.context_store import (
+from src.modules.research.context_store import (
     cleanup_context_data,
     get_latest_news_topic_snapshot,
     get_recent_stock_context_snapshots,
     list_agent_prediction_outcomes,
     list_recent_agent_context_runs,
 )
-from src.core.prediction_outcome import evaluate_pending_prediction_outcomes
+from src.modules.research.prediction_outcome import evaluate_pending_prediction_outcomes
 
 router = APIRouter(prefix="/context", tags=["context"])
 

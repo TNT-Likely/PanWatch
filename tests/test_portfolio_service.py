@@ -4,8 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.database import Base
-from src.web.models import Account, Position, Stock  # noqa: F401 - registers metadata
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import Account, Position, Stock  # noqa: F401 - registers metadata
 
 
 def test_portfolio_service_builds_position_summary_from_repository():

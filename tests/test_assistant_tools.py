@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from pan_agent import ModelMessage, RunRequest
-from src.web.database import Base
-from src.web.models import Account, Position, Stock  # noqa: F401 - registers metadata
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import Account, Position, Stock  # noqa: F401 - registers metadata
 
 
 def test_portfolio_tool_is_read_only_and_includes_provenance():

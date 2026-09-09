@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from src.agents.tradingagents import toolkit_adapter as tk
+from src.modules.automation.tradingagents import toolkit_adapter as tk
 
 
 def test_looks_like_cn_keyword_distinguishes_ticker_from_cn_query():

@@ -8,9 +8,9 @@
 vectorbt 作为未来可选的向量化升级路径(见 .docs/quant-framework-comparison.md)。
 """
 
-from src.core.backtest.cost_model import CostConfig, CostModel, DEFAULT_COST_MODEL, Fill
-from src.core.backtest.data_adapter import PriceBar, from_klines, load_price_history
-from src.core.backtest.engine import (
+from src.modules.strategy.backtest.cost_model import CostConfig, CostModel, DEFAULT_COST_MODEL, Fill
+from src.modules.strategy.backtest.data_adapter import PriceBar, from_klines, load_price_history
+from src.modules.strategy.backtest.engine import (
     Backtester,
     BacktestResult,
     BTTrade,
@@ -18,7 +18,7 @@ from src.core.backtest.engine import (
     fixed_cash_sizer,
     horizon_return,
 )
-from src.core.backtest import metrics
+from src.modules.strategy.backtest import metrics
 
 __all__ = [
     "CostConfig",

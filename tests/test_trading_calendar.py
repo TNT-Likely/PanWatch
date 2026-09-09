@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.core import trading_calendar as tc
+from src.platform.scheduling import trading_calendar as tc
 from src.models.market import MARKETS, MarketCode
 
 # 2026 年真实日历切片:8/8 周六、8/9 周日休市;8/10 周一开市;
@@ -168,17 +168,17 @@ def _patch_notifiers(monkeypatch) -> dict[str, int]:
         calls["summary"] += 1
 
     monkeypatch.setattr(
-        "src.core.paper_trading_notifier.send_premarket_plan", _fake_premarket
+        "src.modules.paper_trading.paper_trading_notifier.send_premarket_plan", _fake_premarket
     )
     monkeypatch.setattr(
-        "src.core.paper_trading_notifier.send_daily_summary", _fake_summary
+        "src.modules.paper_trading.paper_trading_notifier.send_daily_summary", _fake_summary
     )
     return calls
 
 
 def test_周末不发盘前计划和日终摘要(monkeypatch):
     """周末两条模拟盘定时通知都必须跳过 —— 这是用户报告的 bug。"""
-    from src.core.paper_trading_scheduler import PaperTradingScheduler
+    from src.modules.paper_trading.paper_trading_scheduler import PaperTradingScheduler
 
     calls = _patch_notifiers(monkeypatch)
     saturday = datetime(2026, 8, 8, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
@@ -193,7 +193,7 @@ def test_周末不发盘前计划和日终摘要(monkeypatch):
 
 def test_法定节假日不发盘前计划和日终摘要(monkeypatch, loaded_calendar):
     """A股国庆期间(美股也休市的那几天)同样跳过。"""
-    from src.core.paper_trading_scheduler import PaperTradingScheduler
+    from src.modules.paper_trading.paper_trading_scheduler import PaperTradingScheduler
 
     calls = _patch_notifiers(monkeypatch)
     # 10/3 是周六:三市场全休 → 必须跳过
@@ -209,7 +209,7 @@ def test_法定节假日不发盘前计划和日终摘要(monkeypatch, loaded_ca
 
 def test_交易日照常发盘前计划和日终摘要(monkeypatch, loaded_calendar):
     """交易日不受守卫影响,通知照常发送。"""
-    from src.core.paper_trading_scheduler import PaperTradingScheduler
+    from src.modules.paper_trading.paper_trading_scheduler import PaperTradingScheduler
 
     calls = _patch_notifiers(monkeypatch)
     monday = datetime(2026, 8, 10, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
@@ -229,7 +229,7 @@ def test_交易日照常发盘前计划和日终摘要(monkeypatch, loaded_calen
 
 def test_周末跳过机会刷新(monkeypatch):
     """周末不重算机会池 —— 行情没变,扫全市场纯属浪费。"""
-    from src.core.context_scheduler import ContextMaintenanceScheduler
+    from src.modules.research.context_scheduler import ContextMaintenanceScheduler
 
     calls = {"n": 0}
 
@@ -238,7 +238,7 @@ def test_周末跳过机会刷新(monkeypatch):
         return {"count": 0}
 
     monkeypatch.setattr(
-        "src.core.context_scheduler.refresh_strategy_signals", _fake_refresh
+        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
     saturday = datetime(2026, 8, 8, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday)
@@ -251,7 +251,7 @@ def test_周末跳过机会刷新(monkeypatch):
 
 def test_交易日照常刷新机会(monkeypatch, loaded_calendar):
     """交易日机会刷新不受守卫影响。"""
-    from src.core.context_scheduler import ContextMaintenanceScheduler
+    from src.modules.research.context_scheduler import ContextMaintenanceScheduler
 
     calls = {"n": 0}
 
@@ -260,7 +260,7 @@ def test_交易日照常刷新机会(monkeypatch, loaded_calendar):
         return {"count": 3, "snapshot_date": "2026-08-10"}
 
     monkeypatch.setattr(
-        "src.core.context_scheduler.refresh_strategy_signals", _fake_refresh
+        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
     monday = datetime(2026, 8, 10, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday)
@@ -273,7 +273,7 @@ def test_交易日照常刷新机会(monkeypatch, loaded_calendar):
 
 def test_手动刷新机会不受非交易日守卫影响(monkeypatch):
     """手动触发是用户显式意图,周末也必须能跑。"""
-    from src.core.context_scheduler import ContextMaintenanceScheduler
+    from src.modules.research.context_scheduler import ContextMaintenanceScheduler
 
     calls = {"n": 0}
 
@@ -282,7 +282,7 @@ def test_手动刷新机会不受非交易日守卫影响(monkeypatch):
         return {"count": 1}
 
     monkeypatch.setattr(
-        "src.core.context_scheduler.refresh_strategy_signals", _fake_refresh
+        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
     saturday = datetime(2026, 8, 8, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday)

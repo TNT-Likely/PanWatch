@@ -1,4 +1,4 @@
-from src.agents.intraday_monitor import IntradayMonitorAgent
+from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 
 
 def test_intraday_monitor_loose_json_parse_with_json_prefix() -> None:

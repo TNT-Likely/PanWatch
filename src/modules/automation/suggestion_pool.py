@@ -6,10 +6,10 @@ from typing import Optional
 from datetime import timezone
 from sqlalchemy import and_, func, or_
 
-from src.web.database import SessionLocal
-from src.web.models import StockSuggestion
-from src.core.timezone import utc_now, to_iso_with_tz
-from src.core.json_safe import to_jsonable
+from src.platform.persistence.database import SessionLocal
+from src.platform.persistence.models import StockSuggestion
+from src.platform.scheduling.timezone import utc_now, to_iso_with_tz
+from src.platform.persistence.json_safe import to_jsonable
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,7 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
         # 确保比较时都使用 UTC
         expires_utc = suggestion.expires_at
         if expires_utc.tzinfo is None:
-            from src.core.timezone import timezone
+            from src.platform.scheduling.timezone import timezone
 
             expires_utc = expires_utc.replace(tzinfo=timezone.utc)
         is_expired = expires_utc < now
@@ -336,7 +336,7 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
     if suggestion.created_at:
         created_at = suggestion.created_at
         if created_at.tzinfo is None:
-            from src.core.timezone import timezone
+            from src.platform.scheduling.timezone import timezone
 
             created_at = created_at.replace(tzinfo=timezone.utc)
         created_at_str = to_iso_with_tz(created_at)
@@ -345,7 +345,7 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
     if suggestion.expires_at:
         expires_at = suggestion.expires_at
         if expires_at.tzinfo is None:
-            from src.core.timezone import timezone
+            from src.platform.scheduling.timezone import timezone
 
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         expires_at_str = to_iso_with_tz(expires_at)

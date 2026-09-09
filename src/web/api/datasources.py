@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from src.web.database import get_db
-from src.web.models import DataSource
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ def list_datasources(type: str | None = None, db: Session = Depends(get_db)):
     if type:
         query = query.filter(DataSource.type == type)
     sources = query.order_by(DataSource.type, DataSource.priority, DataSource.id).all()
-    from src.core.marketdata_client import get_market_data
+    from src.platform.marketdata.marketdata_client import get_market_data
     health_map = get_market_data().health()
     return [_to_response(s, health_map) for s in sources]
 
@@ -213,7 +213,7 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
     if not source:
         raise HTTPException(status_code=404, detail="数据源不存在")
 
-    from src.core.data_collector import get_collector_manager
+    from src.modules.market.data_collector import get_collector_manager
 
     manager = get_collector_manager()
     manager.clear_logs()

@@ -9,10 +9,10 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.collectors.kline_collector import kline_source
-from src.core.context_store import cleanup_context_data
-from src.core.entry_candidates import evaluate_entry_candidate_outcomes
-from src.core.prediction_outcome import evaluate_pending_prediction_outcomes
-from src.core.strategy_engine import (
+from src.modules.research.context_store import cleanup_context_data
+from src.modules.strategy.entry_candidates import evaluate_entry_candidate_outcomes
+from src.modules.research.prediction_outcome import evaluate_pending_prediction_outcomes
+from src.modules.strategy.strategy_engine import (
     evaluate_strategy_outcomes,
     rebalance_strategy_weights,
     refresh_strategy_signals,
@@ -107,7 +107,7 @@ class ContextMaintenanceScheduler:
             # Phase 4 → 因子自校准闭环:把 IC/IR 接进每因子权重的轻量标定
             # (calibrate_all_markets 内部按市场算 IC 并据此调权,不再只是记录)。
             try:
-                from src.core.factor_calibration import calibrate_all_markets
+                from src.modules.strategy.factor_calibration import calibrate_all_markets
 
                 fcal = await asyncio.to_thread(calibrate_all_markets)
                 changed = sum(r.get("changed", 0) for r in fcal.values())
@@ -174,7 +174,7 @@ class ContextMaintenanceScheduler:
             strategy_rebalance_task,
         )
         # 因子自校准:须在 outcome 评估之后(IC 才新鲜),不能并进上面的 gather。
-        from src.core.factor_calibration import calibrate_all_markets
+        from src.modules.strategy.factor_calibration import calibrate_all_markets
 
         factor_calibration_stats = await asyncio.to_thread(calibrate_all_markets)
         return {
@@ -187,7 +187,7 @@ class ContextMaintenanceScheduler:
 
     async def _refresh_opportunities_job(self):
         """定时刷新机会池（候选 + 策略信号）。全市场休市日跳过。"""
-        from src.core.trading_calendar import any_market_trading_day
+        from src.platform.scheduling.trading_calendar import any_market_trading_day
 
         if not any_market_trading_day():
             logger.debug("[上下文维护] 非交易日，跳过机会刷新")
@@ -245,7 +245,7 @@ class ContextMaintenanceScheduler:
         日历只覆盖到当年年底,长跑实例跨年后会超出覆盖范围而降级为"只判周末",
         因此每天凌晨拉一次。安排在各类盘前通知之前,保证当天判断用的是新日历。
         """
-        from src.core.trading_calendar import refresh
+        from src.platform.scheduling.trading_calendar import refresh
 
         try:
             await refresh()
@@ -311,7 +311,7 @@ class ContextMaintenanceScheduler:
             max_instances=1,
         )
         self.scheduler.start()
-        from src.core.scheduler_registry import register
+        from src.platform.scheduling.scheduler_registry import register
         register("context", self.scheduler)
         logger.info(
             "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00）",
