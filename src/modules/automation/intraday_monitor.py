@@ -51,7 +51,7 @@ SUGGESTION_TYPES = {
     "观望": "watch",  # 暂不操作
 }
 
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "intraday_monitor.txt"
+PROMPT_PATH = Path(__file__).parent.parent.parent.parent / "prompts" / "intraday_monitor.txt"
 
 
 class IntradayMonitorAgent(BaseAgent):

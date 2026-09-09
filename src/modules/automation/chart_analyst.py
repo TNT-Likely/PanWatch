@@ -10,7 +10,7 @@ from src.core.signals import SignalPackBuilder
 
 logger = logging.getLogger(__name__)
 
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "chart_analyst.txt"
+PROMPT_PATH = Path(__file__).parent.parent.parent.parent / "prompts" / "chart_analyst.txt"
 
 
 class ChartAnalystAgent(BaseAgent):

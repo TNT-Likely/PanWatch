@@ -37,7 +37,7 @@ PREMARKET_ACTION_MAP = {
     "观望": {"action": "watch", "label": "观望"},
 }
 
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "premarket_outlook.txt"
+PROMPT_PATH = Path(__file__).parent.parent.parent.parent / "prompts" / "premarket_outlook.txt"
 
 
 class PremarketOutlookAgent(BaseAgent):

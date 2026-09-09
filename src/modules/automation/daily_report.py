@@ -33,7 +33,7 @@ DAILY_ACTION_MAP = {
     "暂时回避": {"action": "avoid", "label": "暂时回避"},
 }
 
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "daily_report.txt"
+PROMPT_PATH = Path(__file__).parent.parent.parent.parent / "prompts" / "daily_report.txt"
 
 # A 股大盘指数的显式腾讯符号（与 akshare_collector.CN_INDICES 口径一致）
 _CN_INDEX_TENCENT_SYMBOLS = ["sh000001", "sz399001", "sz399006"]

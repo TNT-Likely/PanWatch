@@ -20,7 +20,7 @@ from src.models.market import MarketCode
 
 logger = logging.getLogger(__name__)
 
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "news_digest.txt"
+PROMPT_PATH = Path(__file__).parent.parent.parent.parent / "prompts" / "news_digest.txt"
 
 # 新闻速递建议类型映射（偏“消息面”）
 NEWS_ACTION_MAP = {
