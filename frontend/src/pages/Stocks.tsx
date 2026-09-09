@@ -223,6 +223,33 @@ const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const round2 = (value: number) => Math.round(value * 100) / 100
 
+// --- 持仓摘要缓存（请求失败时兜底）---
+const PORTFOLIO_SUMMARY_CACHE_KEY = 'panwatch_portfolio_summary_cache_v1'
+
+interface PortfolioSummaryCache {
+  savedAt: string
+  data: PortfolioSummary
+}
+
+const readPortfolioSummaryCache = (): PortfolioSummary | null => {
+  try {
+    const raw = localStorage.getItem(PORTFOLIO_SUMMARY_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PortfolioSummaryCache
+    if (!parsed?.data?.accounts || !parsed?.data?.total) return null
+    return parsed.data
+  } catch { return null }
+}
+
+const writePortfolioSummaryCache = (data: PortfolioSummary) => {
+  try {
+    localStorage.setItem(PORTFOLIO_SUMMARY_CACHE_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      data,
+    }))
+  } catch { /* ignore quota / private mode errors */ }
+}
+
 const mergePortfolioQuotes = (
   portfolio: PortfolioSummary | null,
   quotes: Record<string, { current_price: number | null; change_pct: number | null }>
@@ -342,6 +369,7 @@ export default function StocksPage() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null)
   const [portfolioRaw, setPortfolioRaw] = useState<PortfolioSummary | null>(null)
   const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [portfolioCacheUsed, setPortfolioCacheUsed] = useState(false)
   const [expandedAccounts, setExpandedAccounts] = useState<Set<number>>(new Set())
 
   // Quotes for all stocks (used in stock list)
@@ -583,11 +611,25 @@ export default function StocksPage() {
   }
 
   const loadPortfolio = async () => {
+    // 先尝试从缓存读取，避免请求未返回时页面空白
+    const cached = readPortfolioSummaryCache()
+    if (cached && !portfolioRaw) {
+      setPortfolioRaw(cached)
+      setPortfolio(mergePortfolioQuotes(cached, quotes))
+      setPortfolioCacheUsed(true)
+    }
+
     setPortfolioLoading(true)
     try {
-      // 核心数据：仅本地账户/持仓
-      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false')
+      // 核心数据：仅本地账户/持仓（缩短超时，失败时快速降级到缓存）
+      const portfolioData = await fetchAPI<PortfolioSummary>(
+        '/portfolio/summary?include_quotes=false',
+        { timeoutMs: 8000 },
+      )
       setPortfolioRaw(portfolioData)
+      setPortfolio(mergePortfolioQuotes(portfolioData, quotes))
+      writePortfolioSummaryCache(portfolioData)
+      setPortfolioCacheUsed(false)
       setPortfolio(mergePortfolioQuotes(portfolioData, quotes))
 
       // 市场状态（非核心，失败不影响页面）
@@ -599,6 +641,16 @@ export default function StocksPage() {
       }
     } catch (e) {
       console.error(e)
+      // 请求失败时用缓存兜底
+      const fallback = readPortfolioSummaryCache()
+      if (fallback) {
+        setPortfolioRaw(fallback)
+        setPortfolio(mergePortfolioQuotes(fallback, quotes))
+        setPortfolioCacheUsed(true)
+        toast('持仓数据请求失败，已显示上次缓存', 'info')
+      } else {
+        toast(e instanceof Error ? e.message : '持仓数据加载失败', 'error')
+      }
     } finally {
       setPortfolioLoading(false)
     }
@@ -1425,6 +1477,10 @@ export default function StocksPage() {
     return stocks.length
   }, [stocks])
 
+  const dataUpdateTimeText = lastRefreshTime
+    ? lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '—'
+
   const toggleAccountExpanded = (id: number) => {
     setExpandedAccounts(prev => {
       const next = new Set(prev)
@@ -1524,14 +1580,6 @@ export default function StocksPage() {
                   </div>
                 </>
               )}
-              {lastRefreshTime && (
-                <>
-                  <div className="w-px h-4 bg-border" />
-                  <span className="text-[10px] text-muted-foreground/60">
-                    {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                </>
-              )}
             </div>
             {/* Buttons */}
             <Button variant="secondary" onClick={handleRefresh} disabled={quotesLoading}>
@@ -1566,8 +1614,9 @@ export default function StocksPage() {
         </div>
 
         {/* 移动端 row 2：市场状态 + 自动刷新 + 时间戳合并到同一行,横向滚动避免换行；桌面端只展示市场 pills (auto-refresh 在桌面顶部已展示) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:flex-wrap md:overflow-visible">
-          {marketStatus.map(m => {
+        <div className="flex items-center justify-between gap-3 -mx-1 px-1">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto scrollbar-none md:flex-wrap md:overflow-visible">
+            {marketStatus.map(m => {
             const statusColors: Record<string, string> = {
               trading: 'bg-emerald-500',
               pre_market: 'bg-amber-500',
@@ -1612,13 +1661,32 @@ export default function StocksPage() {
             )}
           </div>
           {lastRefreshTime && (
-            <span className="md:hidden shrink-0 text-[10px] text-muted-foreground/60 font-mono ml-1">
-              {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            <span
+              key={`mobile-${dataUpdateTimeText}`}
+              className="md:hidden shrink-0 text-[11px] text-emerald-500/80 font-mono ml-1 animate-[updateTimePulse_650ms_ease-out]"
+            >
+              {dataUpdateTimeText}
             </span>
           )}
         </div>
+        <div className="hidden md:flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-emerald-500/85">
+          <span>数据更新时间：</span>
+          <span
+            key={dataUpdateTimeText}
+            className="font-mono text-[15px] font-semibold text-emerald-400 drop-shadow-sm animate-[updateTimePulse_650ms_ease-out]"
+          >
+            {dataUpdateTimeText}
+          </span>
+        </div>
+      </div>
       </div>
 
+      {/* 缓存提示 */}
+      {portfolioCacheUsed && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 mb-3 text-xs text-amber-600">
+          当前显示的是上次缓存的持仓数据，行情和盈亏可能不是最新。
+        </div>
+      )}
       {/* Portfolio Total Summary */}
       {portfolioLoading && !portfolio ? (
         // 首次加载时显示骨架屏
@@ -1989,6 +2057,13 @@ export default function StocksPage() {
                                     </button>
                                     {(() => {
                                       const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                                      if (poolSuggestionsLoading && !suggestion && !kline) {
+                                        return (
+                                          <span className="ml-2">
+                                            <div className="h-5 w-28 rounded-full bg-accent/50 animate-pulse" />
+                                          </span>
+                                        )
+                                      }
                                       return (suggestion || kline) ? (
                                         <span className="ml-2">
                                           <SuggestionBadge
@@ -2174,6 +2249,13 @@ export default function StocksPage() {
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
                               {(() => {
                                 const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true)
+                                if (poolSuggestionsLoading && !suggestion && !kline) {
+                                  return (
+                                    <div className="mb-2">
+                                      <div className="h-5 w-28 rounded-full bg-accent/50 animate-pulse" />
+                                    </div>
+                                  )
+                                }
                                 return (suggestion || kline) ? (
                                   <div className="mb-2">
                                     <SuggestionBadge
@@ -2406,7 +2488,9 @@ export default function StocksPage() {
                     </div>
 
                     <div className="mt-2">
-                      {(suggestion || kline) ? (
+                      {poolSuggestionsLoading && !suggestion && !kline ? (
+                        <div className="h-5 w-28 rounded-full bg-accent/50 animate-pulse" />
+                      ) : (suggestion || kline) ? (
                         <SuggestionBadge
                           suggestion={suggestion}
                           stockName={stock.name}
@@ -3038,9 +3122,17 @@ export default function StocksPage() {
           {/* 新闻列表 */}
           <div className="flex-1 overflow-y-auto min-h-0 py-2">
             {newsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <span className="ml-2 text-[13px] text-muted-foreground">加载中...</span>
+              <div className="space-y-2 py-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-3 rounded-lg bg-accent/30 animate-pulse space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3.5 w-14 rounded bg-accent/50" />
+                      <div className="h-3.5 w-10 rounded bg-accent/50" />
+                    </div>
+                    <div className="h-4 w-3/4 rounded bg-accent/50" />
+                    <div className="h-3 w-1/3 rounded bg-accent/50" />
+                  </div>
+                ))}
               </div>
             ) : news.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-[13px]">
