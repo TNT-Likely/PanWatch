@@ -13,6 +13,11 @@ class AssistantRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    @property
+    def session(self) -> Session:
+        """Expose the unit-of-work only to this module's service layer."""
+        return self._session
+
     def create_conversation(self, *, stock_symbol: str | None, stock_market: str | None, initial_context: str | None) -> ChatConversation:
         conversation = ChatConversation(
             stock_symbol=stock_symbol,

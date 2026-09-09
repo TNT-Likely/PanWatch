@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pan_agent import AgentRuntime
+
+from .llm_adapter import FailoverModelAdapter
 from .repository import AssistantRepository
 from .schemas import (
     ConversationDetailDTO,
@@ -9,6 +12,7 @@ from .schemas import (
     CreateConversationCommand,
     MessageDTO,
 )
+from .tools import build_panwatch_tool_registry
 
 
 class AssistantNotFoundError(LookupError):
@@ -45,6 +49,13 @@ class AssistantService:
             return self._repository.get_task_snapshot(task_run_id)
         except LookupError as exc:
             raise AssistantNotFoundError(str(exc)) from exc
+
+    def build_runtime(self, failover_client) -> AgentRuntime:
+        """Compose host adapters into the business-agnostic PanAgent runtime."""
+        return AgentRuntime(
+            FailoverModelAdapter(failover_client),
+            build_panwatch_tool_registry(self._repository.session),
+        )
 
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)
