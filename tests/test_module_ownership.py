@@ -49,3 +49,12 @@ def test_platform_owns_notification_and_scheduling_implementations():
     assert scheduler.__file__.replace("\\", "/").endswith("/src/platform/scheduling/scheduler.py")
     assert notifier.NotifierManager.__module__ == "src.platform.notifications.notifier"
     assert scheduler.AgentScheduler.__module__ == "src.platform.scheduling.scheduler"
+
+
+def test_reporting_and_administration_modules_own_their_implementations():
+    from src.modules.administration import pat, selfcheck, stock_link, update_checker
+    from src.modules.reporting import pdf_export
+
+    for module in (pat, selfcheck, stock_link, update_checker):
+        assert "/src/modules/administration/" in module.__file__.replace("\\", "/")
+    assert pdf_export.__file__.replace("\\", "/").endswith("/src/modules/reporting/pdf_export.py")
