@@ -17,13 +17,14 @@ from .contracts import (
 )
 from .errors import DisallowedTool, DuplicateToolName, PanAgentError, UnknownTool
 from .ports import EventSink, ModelPort, ToolExecutor
+from .registry import ToolRegistry
+from .runtime import AgentRuntime
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "DisallowedTool", "DuplicateToolName", "EventSink", "EventType", "ModelMessage",
+    "AgentRuntime", "DisallowedTool", "DuplicateToolName", "EventSink", "EventType", "ModelMessage",
     "ModelPort", "ModelTurn", "PanAgentError", "RunLimits", "RunRequest", "RunResult",
     "RunStatus", "RuntimeEvent", "Source", "ToolCall", "ToolExecutor", "ToolResult",
-    "ToolRisk", "ToolSpec", "UnknownTool", "__version__",
+    "ToolRegistry", "ToolRisk", "ToolSpec", "UnknownTool", "__version__",
 ]
-
