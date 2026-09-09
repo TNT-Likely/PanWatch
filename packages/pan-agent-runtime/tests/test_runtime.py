@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from pan_agent import (
     AgentRuntime,
@@ -99,3 +100,21 @@ def test_tool_timeout_returns_partial_result():
 
     assert result.status is RunStatus.PARTIAL
     assert result.error_code == "tool_timeout"
+
+
+def test_run_timeout_bounds_a_tool_call_even_when_tool_timeout_is_longer():
+    async def slow_tool(_request, _arguments):
+        await asyncio.sleep(1.2)
+        return ToolResult.success(summary="late", data={}, sources=[], observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC))
+
+    model = FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup")])])
+    started = time.monotonic()
+    result = asyncio.run(
+        AgentRuntime(model, registry(slow_tool)).run(
+            request(run_timeout_seconds=1, tool_timeout_seconds=3), CollectingSink()
+        )
+    )
+
+    assert result.status is RunStatus.PARTIAL
+    assert result.error_code == "run_timeout"
+    assert time.monotonic() - started < 1.15

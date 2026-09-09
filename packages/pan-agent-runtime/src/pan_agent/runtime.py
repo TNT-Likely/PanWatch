@@ -61,7 +61,7 @@ class AgentRuntime:
                             sink, request, RunStatus.PARTIAL, answer, tool_calls, "tool_call_limit"
                         )
                     tool_calls += 1
-                    result, error_code = await self._execute_call(request, sink, call)
+                    result, error_code = await self._execute_call(request, sink, call, deadline)
                     if error_code:
                         return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, error_code)
                     messages.append(ModelMessage(role="assistant", content="", name=call.name))
@@ -88,7 +88,9 @@ class AgentRuntime:
         async with asyncio.timeout(remaining):
             return await self._model.run_turn(messages, self._tools.model_tools(), emit_token)
 
-    async def _execute_call(self, request: RunRequest, sink: EventSink, call: ToolCall) -> tuple[ToolResult, str | None]:
+    async def _execute_call(
+        self, request: RunRequest, sink: EventSink, call: ToolCall, deadline: float
+    ) -> tuple[ToolResult, str | None]:
         try:
             self._tools.get(call.name)
         except UnknownTool:
@@ -96,13 +98,18 @@ class AgentRuntime:
 
         await self._publish(sink, request, EventType.TOOL_STARTED, {"call_id": call.id, "tool": call.name})
         result: ToolResult | None = None
-        timeout = request.limits.tool_timeout_seconds
         for attempt in range(request.limits.step_retry_count + 1):
             try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                timeout = min(request.limits.tool_timeout_seconds, remaining)
                 async with asyncio.timeout(timeout):
                     result = await self._tools.execute(call.name, request, call.arguments)
                 break
             except TimeoutError:
+                if time.monotonic() >= deadline:
+                    raise
                 if attempt == request.limits.step_retry_count:
                     return ToolResult.failure(summary="工具调用超时", error_code="tool_timeout"), "tool_timeout"
             except Exception:
@@ -147,4 +154,3 @@ class AgentRuntime:
     @staticmethod
     async def _publish(sink: EventSink, request: RunRequest, event_type: EventType, data: dict | None = None) -> None:
         await sink.publish(RuntimeEvent(type=event_type, run_id=request.run_id, data=data or {}))
-

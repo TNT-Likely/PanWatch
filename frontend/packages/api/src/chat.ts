@@ -52,6 +52,8 @@ export const chatApi = {
     ),
 
   sendMessageStream,
+  sendAssistantMessageStream: (conversationId: number, content: string, callbacks: ChatStreamCallbacks, signal?: AbortSignal) =>
+    sendMessageStream(conversationId, content, callbacks, signal, `/assistant/conversations/${conversationId}/messages/stream`),
 }
 
 export interface ChatStreamCallbacks {
@@ -87,7 +89,8 @@ async function sendMessageStream(
   conversationId: number,
   content: string,
   callbacks: ChatStreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  streamPath = `/chat/conversations/${conversationId}/messages/stream`
 ): Promise<void> {
   let streamId = ''
   let lastEventId = 0
@@ -126,7 +129,7 @@ async function sendMessageStream(
     }
   }
 
-  await readSSE(`/chat/conversations/${conversationId}/messages/stream`, {
+  await readSSE(streamPath, {
     method: 'POST',
     body: { content },
     signal,

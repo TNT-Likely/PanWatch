@@ -229,7 +229,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
 
     try {
       // 优先走 SSE 流式（token 流 + 工具过程可视）
-      await chatApi.sendMessageStream(convId, content, {
+      const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
+      await stream(convId, content, {
         onToken: (t) => {
           receivedAny = true
           setStreamTool(null)

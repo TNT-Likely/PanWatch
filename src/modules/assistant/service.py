@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pan_agent import AgentRuntime
 
+from src.platform.ai.ai_failover import build_failover_client
+from src.platform.persistence.models import AIModel, AIService
+
 from .llm_adapter import FailoverModelAdapter
 from .repository import AssistantRepository
 from .schemas import (
@@ -56,6 +59,26 @@ class AssistantService:
             FailoverModelAdapter(failover_client),
             build_panwatch_tool_registry(self._repository.session),
         )
+
+    def build_failover_client(self):
+        model = self._repository.session.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
+        if not model:
+            model = self._repository.session.query(AIModel).first()
+        provider = self._repository.session.query(AIService).filter(AIService.id == model.service_id).first() if model else None
+        return build_failover_client(model, provider, db=self._repository.session)
+
+    def create_task(self, conversation_id: int, user_message_id: int):
+        self._require_conversation(conversation_id)
+        return self._repository.create_task(conversation_id=conversation_id, user_message_id=user_message_id, context={})
+
+    def record_tool_completion(self, task_id: int, data: dict) -> None:
+        self._repository.record_tool_completed(task_id, call_id=data.get("call_id", ""), tool_name=data.get("tool", ""), summary=data.get("summary", ""))
+
+    def record_assistant_message(self, conversation_id: int, content: str) -> MessageDTO:
+        return self._message_dto(self._repository.add_message(self._require_conversation(conversation_id), role="assistant", content=content))
+
+    def finish_task(self, task_id: int, result, final_message_id: int) -> None:
+        self._repository.finish_task(task_id, status=result.status.value, final_message_id=final_message_id, error_code=result.error_code)
 
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)
