@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pan-agent-runtime"
+version = "0.1.0"
+description = "A small, host-agnostic runtime for safe tool-using agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pan_agent"]
+
