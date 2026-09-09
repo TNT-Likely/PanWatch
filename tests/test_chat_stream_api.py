@@ -187,7 +187,7 @@ def test_send_message_stream_endpoint(monkeypatch):
     conv_id = _setup_conversation(session_factory)
     monkeypatch.setattr(chat_api, "SessionLocal", session_factory)
 
-    async def fake_task(conversation_id, stream):
+    async def fake_task(conversation_id, stream, task_id=None):
         await stream.publish("done", {"message_id": 1, "content": "x"})
         await stream.finish()
 
@@ -213,6 +213,7 @@ def test_send_message_stream_endpoint(monkeypatch):
     )
     stream_id = json.loads(meta_line[len("data: "):])["stream_id"]
     assert chat_api.chat_stream_hub.get(stream_id) is not None
+    assert json.loads(meta_line[len("data: "):])["task_id"] > 0
 
     # 用户消息已落库
     db = session_factory()

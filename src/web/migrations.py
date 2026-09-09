@@ -1710,6 +1710,70 @@ def _m121_backtest_runs(conn: Connection) -> None:
     )
 
 
+def _m122_assistant_task_snapshots(conn: Connection) -> None:
+    """Durable assistant task, tool and artifact snapshots."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_task_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            user_message_id INTEGER,
+            final_message_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'pending',
+            context JSON DEFAULT '{}',
+            error_code TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            started_at DATETIME,
+            finished_at DATETIME
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_task_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_run_id INTEGER NOT NULL,
+            step_index INTEGER NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            detail JSON DEFAULT '{}',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_tool_invocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_run_id INTEGER NOT NULL,
+            call_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'started',
+            summary TEXT NOT NULL DEFAULT '',
+            source_data JSON DEFAULT '[]',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_run_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            payload JSON DEFAULT '{}',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    _create_index_if_missing(conn, "ix_assistant_task_run_conversation_created",
+                             "CREATE INDEX ix_assistant_task_run_conversation_created ON assistant_task_runs(conversation_id, created_at)")
+    _create_index_if_missing(conn, "ix_assistant_task_run_status_created",
+                             "CREATE INDEX ix_assistant_task_run_status_created ON assistant_task_runs(status, created_at)")
+    _create_index_if_missing(conn, "ix_assistant_task_step_run_order",
+                             "CREATE INDEX ix_assistant_task_step_run_order ON assistant_task_steps(task_run_id, step_index)")
+    _create_index_if_missing(conn, "ix_assistant_tool_invocation_run",
+                             "CREATE INDEX ix_assistant_tool_invocation_run ON assistant_tool_invocations(task_run_id, created_at)")
+    _create_index_if_missing(conn, "ix_assistant_artifact_run",
+                             "CREATE INDEX ix_assistant_artifact_run ON assistant_artifacts(task_run_id, created_at)")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1732,6 +1796,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(119, "pat_and_mcp_tables", _m119_pat_and_mcp_tables),
     Migration(120, "agent_prediction_evaluation", _m120_agent_prediction_evaluation),
     Migration(121, "backtest_runs", _m121_backtest_runs),
+    Migration(122, "assistant_task_snapshots", _m122_assistant_task_snapshots),
 )
 
 

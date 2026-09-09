@@ -67,3 +67,13 @@ def delete_conversation(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
 
+
+@router.get("/tasks/{task_run_id}")
+def get_task_snapshot(
+    task_run_id: int,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    try:
+        return service.get_task_snapshot(task_run_id)
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

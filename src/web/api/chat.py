@@ -15,6 +15,7 @@ from src.core.ai_failover import FailoverAIClient, build_failover_client
 from src.core.chat_planner import run_portfolio_diagnosis, should_use_planning
 from src.core.sse import SSEStream, chat_stream_hub
 from src.models.market import MarketCode
+from src.modules.assistant.repository import AssistantRepository
 from src.web.database import SessionLocal, get_db
 from src.web.models import (
     AIModel,
@@ -622,9 +623,14 @@ async def send_message(
 TOOL_RESULT_PREVIEW_CHARS = 200
 
 
-async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None:
+async def _run_chat_stream_task(
+    conversation_id: int,
+    stream: SSEStream,
+    task_id: int | None = None,
+) -> None:
     """后台执行对话生成（工具循环 + token 流），事件推入 stream。"""
     db = SessionLocal()
+    task_repository = AssistantRepository(db)
     try:
         conv = db.query(ChatConversation).filter(ChatConversation.id == conversation_id).first()
         if not conv:
@@ -705,6 +711,13 @@ async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None
                                 "preview": (result or "")[:TOOL_RESULT_PREVIEW_CHARS],
                             },
                         )
+                        if task_id is not None:
+                            task_repository.record_tool_completed(
+                                task_id,
+                                call_id=tc["id"],
+                                tool_name=tc["name"],
+                                summary=(result or "")[:TOOL_RESULT_PREVIEW_CHARS],
+                            )
                         messages_for_ai.append({
                             "role": "tool",
                             "tool_call_id": tc["id"],
@@ -728,6 +741,12 @@ async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None
         conv.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(assistant_msg)
+        if task_id is not None:
+            task_repository.finish_task(
+                task_id,
+                status="completed",
+                final_message_id=assistant_msg.id,
+            )
 
         await stream.publish("done", {
             "message_id": assistant_msg.id,
@@ -742,6 +761,16 @@ async def _run_chat_stream_task(conversation_id: int, stream: SSEStream) -> None
             await stream.publish("error", {"message": str(e)})
         except Exception:
             pass
+        if task_id is not None:
+            try:
+                task_repository.finish_task(
+                    task_id,
+                    status="failed",
+                    final_message_id=None,
+                    error_code="chat_stream_failed",
+                )
+            except Exception:
+                pass
     finally:
         await stream.finish()
         db.close()
@@ -776,6 +805,16 @@ async def send_message_stream(
             raise HTTPException(404, "对话不存在")
         user_msg = _save_user_message(db, conv, body.content)
         user_message_id = user_msg.id
+        task = AssistantRepository(db).create_task(
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            context={
+                "stock_symbol": conv.stock_symbol,
+                "stock_market": conv.stock_market,
+                "initial_context": conv.initial_context or "",
+            },
+        )
+        task_id = task.id
     finally:
         db.close()
 
@@ -785,9 +824,10 @@ async def send_message_stream(
         "stream_id": stream.stream_id,
         "conversation_id": conversation_id,
         "user_message_id": user_message_id,
+        "task_id": task_id,
     })
     # 生成任务独立运行，不随本次响应连接断开而中止
-    asyncio.create_task(_run_chat_stream_task(conversation_id, stream))
+    asyncio.create_task(_run_chat_stream_task(conversation_id, stream, task_id))
     return _sse_response(stream)
 
 

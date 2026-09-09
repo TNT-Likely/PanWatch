@@ -40,6 +40,12 @@ class AssistantService:
     def delete_conversation(self, conversation_id: int) -> None:
         self._repository.delete_conversation(self._require_conversation(conversation_id))
 
+    def get_task_snapshot(self, task_run_id: int) -> dict:
+        try:
+            return self._repository.get_task_snapshot(task_run_id)
+        except LookupError as exc:
+            raise AssistantNotFoundError(str(exc)) from exc
+
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)
         if not conversation:
@@ -59,4 +65,3 @@ class AssistantService:
     @staticmethod
     def _message_dto(message) -> MessageDTO:
         return MessageDTO(id=message.id, role=message.role, content=message.content, created_at=message.created_at)
-
