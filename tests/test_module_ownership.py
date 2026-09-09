@@ -65,3 +65,11 @@ def test_market_module_owns_market_domain_implementations():
 
     for module in (cn_symbol, data_collector, kline_context, news_ranker):
         assert "/src/modules/market/" in module.__file__.replace("\\", "/")
+
+
+def test_assistant_and_automation_own_planning_and_suggestions():
+    from src.modules.assistant import chat_planner
+    from src.modules.automation import suggestion_pool
+
+    assert chat_planner.__file__.replace("\\", "/").endswith("/src/modules/assistant/chat_planner.py")
+    assert suggestion_pool.__file__.replace("\\", "/").endswith("/src/modules/automation/suggestion_pool.py")
