@@ -15,25 +15,25 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from src.agents.base import AgentContext, AnalysisResult, BaseAgent
-from src.agents.tradingagents.cost_tracker import (
+from src.modules.automation.tradingagents.cost_tracker import (
     check_budget,
     estimate_cost,
     get_today_cache_key,
 )
-from src.agents.tradingagents.langchain_compat import apply_compat_patches
-from src.agents.tradingagents.llm_adapter import (
+from src.modules.automation.tradingagents.langchain_compat import apply_compat_patches
+from src.modules.automation.tradingagents.llm_adapter import (
     VALID_ANALYSTS,
     build_ta_llm_config,
     inject_api_key_env,
 )
-from src.agents.tradingagents.portfolio_context import (
+from src.modules.automation.tradingagents.portfolio_context import (
     build_portfolio_context,
     build_stock_metadata_context,
     patch_propagator,
 )
-from src.agents.tradingagents.progress import PanWatchProgressHandler
-from src.agents.tradingagents.result_mapper import map_state_to_result
-from src.agents.tradingagents.toolkit_adapter import (
+from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
+from src.modules.automation.tradingagents.result_mapper import map_state_to_result
+from src.modules.automation.tradingagents.toolkit_adapter import (
     panwatch_data_context,
     patch_route_to_vendor,
 )
@@ -124,7 +124,7 @@ class TradingAgentsAgent(BaseAgent):
         financial: dict | None = None
         if stock.market.value == "CN" and stock.symbol.isdigit() and len(stock.symbol) == 6:
             try:
-                from src.agents.tradingagents.financial_data import fetch_financial_abstract
+                from src.modules.automation.tradingagents.financial_data import fetch_financial_abstract
                 financial = await asyncio.to_thread(fetch_financial_abstract, stock.symbol)
             except Exception as e:
                 logger.warning(f"[TA] 拉财报失败: {e}")
@@ -355,7 +355,7 @@ class TradingAgentsAgent(BaseAgent):
         # 7) 可选:把 BUY/SELL 决策写入 StrategySignalRun 驱动模拟盘
         if self.emit_paper_trading_signal:
             try:
-                from src.agents.tradingagents.paper_trading_bridge import (
+                from src.modules.automation.tradingagents.paper_trading_bridge import (
                     maybe_emit_paper_trading_signal,
                 )
                 quote = data.get("quote") or {}

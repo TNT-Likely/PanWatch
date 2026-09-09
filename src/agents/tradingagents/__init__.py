@@ -1,17 +1,17 @@
-"""TradingAgents 集成模块。
+"""Compatibility package for the automation TradingAgents implementation."""
 
-把 TauricResearch/TradingAgents (多 Agent 投资决策框架,76k star) 适配进 PanWatch:
-- 桥接 PanWatch AI Service 到 TradingAgents LLM config
-- 把 PanWatch Provider 体系的数据注入 TradingAgents 的 data vendor 层(A 股专用)
-- 把 TradingAgents 的 final_state 映射成 PanWatch 的 AnalysisResult
-- 通过 LangChain callbacks 反馈进度
+import importlib
+import sys
 
-软依赖:`tradingagents` 库不在 PyPI,需用户自行 git clone + pip install -e。
-未安装时 TradingAgentsAgent.run() 会返回明确错误,不会让服务 crash。
+from src.modules.automation import tradingagents as _implementation
 
-详细设计:`.docs/tradingagents/02-technical-design.md`
-"""
+for _name in (
+    "agent", "auto_trigger", "backfill", "cost_tracker", "financial_data",
+    "history_comparison", "langchain_compat", "llm_adapter", "paper_trading_bridge",
+    "portfolio_context", "progress", "result_mapper", "toolkit_adapter",
+):
+    _module = importlib.import_module(f"src.modules.automation.tradingagents.{_name}")
+    sys.modules[f"{__name__}.{_name}"] = _module
+    setattr(_implementation, _name, _module)
 
-from src.agents.tradingagents.agent import TradingAgentsAgent
-
-__all__ = ["TradingAgentsAgent"]
+sys.modules[__name__] = _implementation

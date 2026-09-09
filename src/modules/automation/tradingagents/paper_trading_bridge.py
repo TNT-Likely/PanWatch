@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from src.agents.tradingagents.result_mapper import DECISION_LABEL_MAP
+from src.modules.automation.tradingagents.result_mapper import DECISION_LABEL_MAP
 
 logger = logging.getLogger(__name__)
 

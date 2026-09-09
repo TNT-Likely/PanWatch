@@ -628,7 +628,7 @@ def get_tradingagents_history_comparison(
     返回 items(每条决策 + 1d/5d/20d 后涨跌)+ stats(命中率/平均收益)。
     "命中" 定义:buy→后续上涨 / sell→后续下跌 / hold→|涨跌| < 2%(横盘)。
     """
-    from src.agents.tradingagents.history_comparison import build_history_comparison
+    from src.modules.automation.tradingagents.history_comparison import build_history_comparison
 
     return build_history_comparison(stock_symbol=stock_symbol, market=market, days=days)
 
@@ -649,7 +649,7 @@ def get_tradingagents_budget(db: Session = Depends(get_db)):
     monthly_budget = float(cfg.get("monthly_budget_usd", 10.0))
 
     # 复用 cost_tracker 的 SQL 聚合
-    from src.agents.tradingagents.cost_tracker import check_budget, estimate_cost
+    from src.modules.automation.tradingagents.cost_tracker import check_budget, estimate_cost
 
     budget = check_budget(monthly_budget, "tradingagents")
 
@@ -695,7 +695,7 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
         }
     }
     """
-    from src.agents.tradingagents.progress import aggregate_progress
+    from src.modules.automation.tradingagents.progress import aggregate_progress
 
     if not trace_id or len(trace_id) > 64:
         raise HTTPException(400, "无效的 trace_id")

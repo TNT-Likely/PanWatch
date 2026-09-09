@@ -111,3 +111,10 @@ def test_automation_and_platform_own_remaining_core_implementations():
     for module in (notify_dedupe, notify_policy, log_context, otel, json_safe, json_store,
                    schedule_parser, scheduler_registry, timezone, trading_calendar):
         assert "/src/platform/" in module.__file__.replace("\\", "/")
+
+
+def test_automation_module_owns_tradingagents_package():
+    from src.modules.automation.tradingagents import agent, auto_trigger, result_mapper
+
+    for module in (agent, auto_trigger, result_mapper):
+        assert "/src/modules/automation/tradingagents/" in module.__file__.replace("\\", "/")
