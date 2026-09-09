@@ -95,4 +95,19 @@ def test_market_and_strategy_own_alerting_and_event_gating():
 
     assert price_alert_engine.__file__.replace("\\", "/").endswith("/src/modules/market/price_alert_engine.py")
     assert price_alert_scheduler.__file__.replace("\\", "/").endswith("/src/modules/market/price_alert_scheduler.py")
-    assert intraday_event_gate.__file__.replace("\\", "/src/modules/strategy/intraday_event_gate.py")
+    assert intraday_event_gate.__file__.replace("\\", "/").endswith("/src/modules/strategy/intraday_event_gate.py")
+
+
+def test_automation_and_platform_own_remaining_core_implementations():
+    from src.modules.administration import doctor
+    from src.modules.automation import agent_catalog, agent_prediction_evaluation, agent_runs
+    from src.platform.notifications import notify_dedupe, notify_policy
+    from src.platform.observability import log_context, otel
+    from src.platform.persistence import json_safe, json_store
+    from src.platform.scheduling import schedule_parser, scheduler_registry, timezone, trading_calendar
+
+    for module in (doctor, agent_catalog, agent_prediction_evaluation, agent_runs):
+        assert "/src/modules/" in module.__file__.replace("\\", "/")
+    for module in (notify_dedupe, notify_policy, log_context, otel, json_safe, json_store,
+                   schedule_parser, scheduler_registry, timezone, trading_calendar):
+        assert "/src/platform/" in module.__file__.replace("\\", "/")
