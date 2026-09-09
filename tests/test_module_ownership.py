@@ -73,3 +73,10 @@ def test_assistant_and_automation_own_planning_and_suggestions():
 
     assert chat_planner.__file__.replace("\\", "/").endswith("/src/modules/assistant/chat_planner.py")
     assert suggestion_pool.__file__.replace("\\", "/").endswith("/src/modules/automation/suggestion_pool.py")
+
+
+def test_research_module_owns_evaluation_and_explanation_services():
+    from src.modules.research import analysis_link, context_scheduler, prediction_outcome, signal_explain
+
+    for module in (analysis_link, context_scheduler, prediction_outcome, signal_explain):
+        assert "/src/modules/research/" in module.__file__.replace("\\", "/")
