@@ -20,3 +20,11 @@ def test_paper_trading_module_owns_execution_engine():
     from src.modules.paper_trading import paper_trading_engine
 
     assert paper_trading_engine.__file__.replace("\\", "/").endswith("/src/modules/paper_trading/paper_trading_engine.py")
+
+
+def test_research_module_owns_analysis_history_and_context():
+    from src.modules.research import analysis_history, context_builder, context_store
+
+    assert analysis_history.__file__.replace("\\", "/").endswith("/src/modules/research/analysis_history.py")
+    assert context_builder.__file__.replace("\\", "/").endswith("/src/modules/research/context_builder.py")
+    assert context_store.__file__.replace("\\", "/").endswith("/src/modules/research/context_store.py")
