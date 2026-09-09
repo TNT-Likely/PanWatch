@@ -14,3 +14,9 @@ def test_strategy_module_owns_strategy_engine_and_candidates():
 
     assert entry_candidates.__file__.replace("\\", "/").endswith("/src/modules/strategy/entry_candidates.py")
     assert strategy_engine.__file__.replace("\\", "/").endswith("/src/modules/strategy/strategy_engine.py")
+
+
+def test_paper_trading_module_owns_execution_engine():
+    from src.modules.paper_trading import paper_trading_engine
+
+    assert paper_trading_engine.__file__.replace("\\", "/").endswith("/src/modules/paper_trading/paper_trading_engine.py")
