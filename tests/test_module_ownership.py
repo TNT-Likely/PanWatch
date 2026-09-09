@@ -58,3 +58,10 @@ def test_reporting_and_administration_modules_own_their_implementations():
     for module in (pat, selfcheck, stock_link, update_checker):
         assert "/src/modules/administration/" in module.__file__.replace("\\", "/")
     assert pdf_export.__file__.replace("\\", "/").endswith("/src/modules/reporting/pdf_export.py")
+
+
+def test_market_module_owns_market_domain_implementations():
+    from src.modules.market import cn_symbol, data_collector, kline_context, news_ranker
+
+    for module in (cn_symbol, data_collector, kline_context, news_ranker):
+        assert "/src/modules/market/" in module.__file__.replace("\\", "/")
