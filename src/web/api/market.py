@@ -4,8 +4,8 @@ import logging
 import time
 from fastapi import APIRouter
 
-from src.collectors.kline_collector import get_index_klines
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.kline_collector import get_index_klines
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from math import sqrt
 
-from src.collectors.kline_collector import KlineCollector
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.models import MarketCode
 
 
 def _pct(a: float | None, b: float | None) -> float | None:

@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Account, PriceAlertRule, Position, Stock
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.collectors.market_http import TTLCache
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.market_http import TTLCache
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

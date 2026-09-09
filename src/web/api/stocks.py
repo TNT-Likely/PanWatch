@@ -19,7 +19,7 @@ from src.platform.persistence.models import (
 )
 from src.web.stock_list import search_stocks, refresh_stock_list
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.models.market import MarketCode, MARKETS
+from src.platform.marketdata.models import MarketCode, MARKETS
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ from math import sqrt
 
 from sqlalchemy import and_, case, func
 
-from src.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.strategy.entry_candidates import refresh_entry_candidates
 from src.platform.persistence.json_safe import to_jsonable
 from src.modules.strategy.strategy_catalog import (
@@ -19,7 +19,7 @@ from src.modules.strategy.strategy_catalog import (
 )
 from src.modules.strategy.factor_weights import get_factor_weights
 from src.platform.scheduling.timezone import to_iso_with_tz, utc_now
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     EntryCandidate,

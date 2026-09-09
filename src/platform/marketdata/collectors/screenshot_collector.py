@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from src.modules.market.cn_symbol import get_cn_prefix
+from src.platform.marketdata.cn_symbol import get_cn_prefix
 
 logger = logging.getLogger(__name__)
 

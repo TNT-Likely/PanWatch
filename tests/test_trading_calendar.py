@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from src.platform.scheduling import trading_calendar as tc
-from src.models.market import MARKETS, MarketCode
+from src.platform.marketdata.models import MARKETS, MarketCode
 
 # 2026 年真实日历切片:8/8 周六、8/9 周日休市;8/10 周一开市;
 # 10/1~10/8 国庆休市(其中 10/1 是周四 —— 工作日却休市,只靠周末判断抓不到)。

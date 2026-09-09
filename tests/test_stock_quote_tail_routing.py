@@ -5,7 +5,7 @@ _fetch_tencent_quotes / AkshareCollector.get_stock_data 直连。
 
 import asyncio
 
-from src.models.market import MarketCode, StockData
+from src.platform.marketdata.models import MarketCode, StockData
 
 
 def test_insights_fundamental_context_uses_md_quote_rows(monkeypatch):

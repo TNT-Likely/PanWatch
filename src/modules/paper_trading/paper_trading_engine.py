@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.models.market import MarketCode, MARKETS
+from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     PaperTradingAccount,

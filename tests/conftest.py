@@ -58,7 +58,7 @@ def _mock_stock_link_platform(monkeypatch):
 @pytest.fixture(autouse=True)
 def _clear_market_caches():
     """清空采集层内存缓存,避免用例间互相污染(K线/报价/资金流等现按 TTL 缓存)。"""
-    from src.collectors import (
+    from src.platform.marketdata.collectors import (
         capital_flow_collector,
         kline_collector,
     )

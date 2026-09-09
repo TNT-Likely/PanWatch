@@ -1,7 +1,7 @@
 """指数取数(K线 + market.py /indices)路由测试"""
 import asyncio
 
-import src.collectors.kline_collector as kc
+import src.platform.marketdata.collectors.kline_collector as kc
 import src.web.api.market as mkt
 
 

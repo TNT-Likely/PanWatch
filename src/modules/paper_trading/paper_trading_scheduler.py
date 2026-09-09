@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.modules.paper_trading.paper_trading_engine import ENGINE
 from src.platform.scheduling.trading_calendar import any_market_trading_day
-from src.models.market import MARKETS, MarketCode
+from src.platform.marketdata.models import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
 

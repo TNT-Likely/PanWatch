@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
-from src.collectors.events_collector import fetch_announcement_fulltext
+from src.platform.marketdata.collectors.events_collector import fetch_announcement_fulltext
 from src.modules.research.analysis_history import get_latest_ta_verdict
 from src.modules.research.context_store import (
     get_recent_stock_context_snapshots,
@@ -17,7 +17,7 @@ from src.modules.market.news_ranker import (
     rank_news_items,
     summarize_news_topics,
 )
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import AnalysisHistory
 from src.platform.persistence.json_safe import to_jsonable
@@ -227,7 +227,7 @@ class ContextBuilder:
         """取指数多周期收益。指数 secid 规则与个股不同,用 get_index_klines 显式映射直取;
         失败/不支持(如美股指数东财无K线)→ available False(fail-soft)。可被测试打桩。"""
         try:
-            from src.collectors.kline_collector import get_index_klines
+            from src.platform.marketdata.collectors.kline_collector import get_index_klines
             from src.modules.market.kline_context import _pct
 
             klines = get_index_klines(symbol, market, days=120)

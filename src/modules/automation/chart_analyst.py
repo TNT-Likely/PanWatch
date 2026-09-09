@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.screenshot_collector import ScreenshotCollector, ChartScreenshot
+from src.platform.marketdata.collectors.screenshot_collector import ScreenshotCollector, ChartScreenshot
 from src.modules.research.signals import SignalPackBuilder
 
 logger = logging.getLogger(__name__)

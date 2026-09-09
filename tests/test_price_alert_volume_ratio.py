@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 
 from src.modules.market.price_alert_engine import PriceAlertEngine
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 
 def test_volume_ratio_uses_quote_not_kline(monkeypatch):

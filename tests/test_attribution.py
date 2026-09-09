@@ -1,6 +1,6 @@
 """组合归因(Phase D):各持仓对组合收益的贡献。"""
 from __future__ import annotations
-from src.collectors.kline_collector import KlineData
+from src.platform.marketdata.collectors.kline_collector import KlineData
 from src.modules.portfolio import portfolio_benchmark as pb
 
 

@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 import threading
 import time
 
-from src.collectors.market_http import fetch_source
-from src.models.market import MARKETS, MarketCode
+from src.platform.marketdata.collectors.market_http import fetch_source
+from src.platform.marketdata.models import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
 

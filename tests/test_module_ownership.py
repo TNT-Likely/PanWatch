@@ -61,10 +61,12 @@ def test_reporting_and_administration_modules_own_their_implementations():
 
 
 def test_market_module_owns_market_domain_implementations():
-    from src.modules.market import cn_symbol, data_collector, kline_context, news_ranker
+    from src.modules.market import data_collector, kline_context, news_ranker
+    from src.platform.marketdata import cn_symbol
 
-    for module in (cn_symbol, data_collector, kline_context, news_ranker):
+    for module in (data_collector, kline_context, news_ranker):
         assert "/src/modules/market/" in module.__file__.replace("\\", "/")
+    assert cn_symbol.__file__.replace("\\", "/").endswith("/src/platform/marketdata/cn_symbol.py")
 
 
 def test_assistant_and_automation_own_planning_and_suggestions():

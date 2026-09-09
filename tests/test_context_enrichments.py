@@ -19,7 +19,7 @@ import pytest
 
 from src.modules.research import analysis_history, context_builder
 from src.modules.research.context_builder import ContextBuilder
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 
 # --------------------------------------------------------------------------- #
@@ -258,7 +258,7 @@ def test_announcement_fulltext_empty_result_no_attach(monkeypatch):
 
 def test_fetch_announcement_fulltext_parses_notice_content(monkeypatch):
     """东财 content API 返回 data.notice_content 时抽取纯文本。"""
-    from src.collectors import events_collector
+    from src.platform.marketdata.collectors import events_collector
 
     class _Resp:
         def raise_for_status(self):
@@ -287,7 +287,7 @@ def test_fetch_announcement_fulltext_parses_notice_content(monkeypatch):
 
 def test_fetch_announcement_fulltext_failsoft(monkeypatch):
     """content API 抛错时返回空串,不抛异常。"""
-    from src.collectors import events_collector
+    from src.platform.marketdata.collectors import events_collector
 
     class _Client:
         def __init__(self, *a, **k):

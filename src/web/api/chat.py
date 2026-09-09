@@ -14,7 +14,7 @@ from src.config import Settings
 from src.platform.ai.ai_failover import FailoverAIClient, build_failover_client
 from src.modules.assistant.chat_planner import run_portfolio_diagnosis, should_use_planning
 from src.platform.events.sse import SSEStream, chat_stream_hub
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.modules.assistant.repository import AssistantRepository
 from src.modules.portfolio.repository import PortfolioRepository
 from src.modules.portfolio.service import PortfolioService
@@ -233,7 +233,7 @@ async def _fetch_realtime_context(symbol: str, market: str) -> str:
     """异步获取实时行情和技术面。"""
     try:
         from src.platform.marketdata.marketdata_client import md_quote_rows
-        from src.models.market import MarketCode
+        from src.platform.marketdata.models import MarketCode
 
         mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
         rows = await asyncio.to_thread(md_quote_rows, [symbol], mc.value)

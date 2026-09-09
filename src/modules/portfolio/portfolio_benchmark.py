@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import logging
 
-from src.collectors.kline_collector import KlineCollector, KlineData
-from src.collectors.market_http import market_get
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.kline_collector import KlineCollector, KlineData
+from src.platform.marketdata.collectors.market_http import market_get
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 

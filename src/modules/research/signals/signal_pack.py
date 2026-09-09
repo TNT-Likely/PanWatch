@@ -5,11 +5,11 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from src.collectors.kline_collector import KlineCollector
-from src.collectors.news_collector import NewsCollector, NewsItem
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.collectors.news_collector import NewsCollector, NewsItem
 from src.platform.marketdata.marketdata_client import md_stock_data
-from src.models.market import MarketCode
-from src.models.market import StockData
+from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.models import StockData
 
 
 logger = logging.getLogger(__name__)
@@ -294,7 +294,7 @@ class SignalPackBuilder:
                         flow_map[sym] = self._flow_cache[key]
                 else:
                     try:
-                        from src.collectors.capital_flow_collector import (
+                        from src.platform.marketdata.collectors.capital_flow_collector import (
                             CapitalFlowCollector,
                         )
 
@@ -354,7 +354,7 @@ class SignalPackBuilder:
                             )
                             continue
                         try:
-                            from src.collectors.events_collector import EventsCollector
+                            from src.platform.marketdata.collectors.events_collector import EventsCollector
 
                             collector = EventsCollector.from_database()
                             items = await collector.fetch_all(

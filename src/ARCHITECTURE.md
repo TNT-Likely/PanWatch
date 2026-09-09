@@ -15,8 +15,8 @@ src/
 ```
 
 `collectors/`、`models/` 和 `compat/` 是仍待收口的历史目录：采集器将迁至
-`platform/marketdata/collectors/`，市场领域模型将迁至
-`modules/market/models.py`，`compat/` 没有调用者后必须删除。新代码不得放入
+`platform/marketdata/collectors/`；市场共用的行情值对象将迁至
+`platform/marketdata/models.py`，`compat/` 没有调用者后必须删除。新代码不得放入
 这些目录。
 
 ## 依赖方向
@@ -45,7 +45,7 @@ web ───────────────► modules ──────�
 | --- | --- | --- |
 | `persistence/` | engine、Session、ORM Base、全部表定义、版本迁移 | 持仓、策略等业务判断 |
 | `ai/` | AI provider client、failover、模型传输适配 | 提示词、工具授权 |
-| `marketdata/` | 外部行情客户端、供应商路由、数据归一化 | 告警阈值、选股规则 |
+| `marketdata/` | 外部行情客户端、采集器、行情值对象、代码规范化、供应商路由、数据归一化 | 告警阈值、选股规则 |
 | `events/` | SSE 等事件传输 | 事件的业务含义 |
 | `scheduling/` | cron 解析、交易日历、注册表 | Agent 调度流程 |
 | `notifications/` | 通道发送、基础去重和策略 | 哪种业务事件应通知 |

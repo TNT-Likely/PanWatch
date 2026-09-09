@@ -921,8 +921,8 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
         build_context,
     )
     from src.platform.marketdata.marketdata_client import md_stock_data
-    from src.collectors.kline_collector import KlineCollector
-    from src.models.market import MarketCode, MARKETS
+    from src.platform.marketdata.collectors.kline_collector import KlineCollector
+    from src.platform.marketdata.models import MarketCode, MARKETS
     from src.modules.automation.intraday_monitor import IntradayMonitorAgent
     from src.modules.research.analysis_history import get_latest_analysis, get_analysis
     from src.modules.research.context_builder import ContextBuilder

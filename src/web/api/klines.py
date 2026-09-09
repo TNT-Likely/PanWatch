@@ -3,8 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from src.collectors.kline_collector import KlineCollector
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.models import MarketCode
 
 router = APIRouter()
 

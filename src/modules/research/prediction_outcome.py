@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
-from src.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.research.context_store import (
     list_pending_prediction_outcomes,
     mark_agent_prediction_outcome,
 )
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 

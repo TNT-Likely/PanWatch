@@ -101,7 +101,7 @@ def test_keyword_news_formats():
     """行业/主题词搜中文新闻:格式化含关键词 + 标题"""
     from unittest.mock import patch
     from datetime import datetime
-    from src.collectors.news_collector import NewsItem
+    from src.platform.marketdata.collectors.news_collector import NewsItem
 
     def fake(kw):
         return [NewsItem(source="em", external_id="1", title=f"{kw}动态", content="", publish_time=datetime(2026, 5, 30))]

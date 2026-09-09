@@ -68,6 +68,6 @@ def _xueqiu_url(symbol: str, market: str) -> str:
     if market == "HK":
         return f"https://xueqiu.com/S/{symbol}"
     # CN A股
-    from src.modules.market.cn_symbol import get_cn_prefix
+    from src.platform.marketdata.cn_symbol import get_cn_prefix
     prefix = get_cn_prefix(symbol, upper=True)
     return f"https://xueqiu.com/S/{prefix}{symbol}"

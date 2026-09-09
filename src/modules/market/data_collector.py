@@ -11,7 +11,7 @@ from marketdata import PACKAGE_VENDORS_BY_TYPE, capture_errors
 
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import DataSource
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +66,9 @@ class DataCollectorManager:
 
     def _register_collectors(self):
         """注册所有采集器"""
-        from src.collectors.kline_collector import KlineCollector
-        from src.collectors.capital_flow_collector import CapitalFlowCollector
-        from src.collectors.events_collector import EastMoneyEventsCollector
+        from src.platform.marketdata.collectors.kline_collector import KlineCollector
+        from src.platform.marketdata.collectors.capital_flow_collector import CapitalFlowCollector
+        from src.platform.marketdata.collectors.events_collector import EastMoneyEventsCollector
 
         self.COLLECTOR_FACTORIES = {
             "kline": {
@@ -189,7 +189,7 @@ class DataCollectorManager:
         self, symbols: list[str], hours: int = 12
     ) -> CollectorResult:
         """采集新闻（使用所有已启用的新闻数据源）"""
-        from src.collectors.news_collector import NewsCollector
+        from src.platform.marketdata.collectors.news_collector import NewsCollector
 
         start_time = datetime.now()
         self._log("新闻采集", "news", "start", f"开始采集 {len(symbols)} 只股票的新闻")
@@ -223,8 +223,8 @@ class DataCollectorManager:
         self, symbol: str, market: str = "CN", days: int = 60
     ) -> CollectorResult:
         """采集 K 线数据"""
-        from src.collectors.kline_collector import KlineCollector
-        from src.models.market import MarketCode
+        from src.platform.marketdata.collectors.kline_collector import KlineCollector
+        from src.platform.marketdata.models import MarketCode
 
         start_time = datetime.now()
         self._log("K线数据", "kline", "start", f"获取 {symbol} 的 K 线数据")
@@ -269,7 +269,7 @@ class DataCollectorManager:
 
     async def collect_capital_flow(self, symbol: str) -> CollectorResult:
         """采集资金流向"""
-        from src.collectors.capital_flow_collector import CapitalFlowCollector
+        from src.platform.marketdata.collectors.capital_flow_collector import CapitalFlowCollector
 
         start_time = datetime.now()
         self._log("资金流向", "capital_flow", "start", f"获取 {symbol} 的资金流向")
@@ -425,7 +425,7 @@ class DataCollectorManager:
             return await self._test_kline_source(source, test_symbols)
 
         elif source.type == "capital_flow":
-            from src.collectors.capital_flow_collector import CapitalFlowCollector
+            from src.platform.marketdata.collectors.capital_flow_collector import CapitalFlowCollector
 
             collector = CapitalFlowCollector(MarketCode.CN)
             results = []
@@ -453,7 +453,7 @@ class DataCollectorManager:
             return await self._test_quote_source(source, test_symbols)
 
         elif source.type == "chart":
-            from src.collectors.screenshot_collector import ScreenshotCollector
+            from src.platform.marketdata.collectors.screenshot_collector import ScreenshotCollector
             import base64
 
             collector = ScreenshotCollector(config={"extra_wait_ms": 3000})
@@ -478,7 +478,7 @@ class DataCollectorManager:
                 await collector.close()
 
         elif source.type == "events":
-            from src.collectors.events_collector import EastMoneyEventsCollector
+            from src.platform.marketdata.collectors.events_collector import EastMoneyEventsCollector
 
             from datetime import timedelta
 

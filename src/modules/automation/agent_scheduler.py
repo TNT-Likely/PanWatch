@@ -5,11 +5,11 @@ from typing import Callable, Awaitable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.modules.automation.base import BaseAgent, AgentContext
-from src.collectors.kline_collector import kline_source
+from src.platform.marketdata.collectors.kline_collector import kline_source
 from src.modules.automation.agent_runs import record_agent_run
 from src.platform.observability.log_context import log_context
 from src.platform.observability import otel
-from src.models.market import MARKETS
+from src.platform.marketdata.models import MARKETS
 from src.platform.scheduling.schedule_parser import parse_schedule
 
 logger = logging.getLogger(__name__)

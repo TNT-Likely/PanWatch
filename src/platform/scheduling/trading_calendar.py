@@ -87,7 +87,7 @@ async def refresh() -> bool:
 
 def _to_market_code(market):
     """把 MarketCode / 字符串归一化为 MarketCode;无法识别返回 None。"""
-    from src.models.market import MarketCode
+    from src.platform.marketdata.models import MarketCode
 
     if isinstance(market, MarketCode):
         return market
@@ -98,7 +98,7 @@ def _to_market_code(market):
 
 
 def _market_tz(code) -> ZoneInfo:
-    from src.models.market import MARKETS
+    from src.platform.marketdata.models import MARKETS
 
     md = MARKETS.get(code) if code else None
     return md.get_tz() if md else ZoneInfo(_FALLBACK_TZ)
@@ -128,7 +128,7 @@ def is_trading_day(market, d: date | datetime | None = None) -> bool:
         d: 目标日期;`None` 表示该市场时区的今天。带时区的 `datetime`
            会先换算到市场时区再取日期。
     """
-    from src.models.market import MarketCode
+    from src.platform.marketdata.models import MarketCode
 
     code = _to_market_code(market)
     target = _resolve_date(code, d)
@@ -149,7 +149,7 @@ def is_trading_day(market, d: date | datetime | None = None) -> bool:
 
 def any_market_trading_day(d: date | datetime | None = None) -> bool:
     """CN/HK/US 任一为交易日即 `True`。全市场休市(如周末)返回 `False`。"""
-    from src.models.market import MarketCode
+    from src.platform.marketdata.models import MarketCode
 
     return any(
         is_trading_day(m, d) for m in (MarketCode.CN, MarketCode.HK, MarketCode.US)

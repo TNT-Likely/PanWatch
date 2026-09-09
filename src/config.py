@@ -5,7 +5,7 @@ import yaml
 from pydantic_settings import BaseSettings
 from pydantic import Field, AliasChoices
 
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 
 class Settings(BaseSettings):

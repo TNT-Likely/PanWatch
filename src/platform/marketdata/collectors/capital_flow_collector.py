@@ -1,8 +1,8 @@
 """资金流向采集器 - 经 marketdata 包统一接入"""
 from dataclasses import dataclass
 
-from src.collectors.market_http import TTLCache
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.market_http import TTLCache
+from src.platform.marketdata.models import MarketCode
 
 # 资金流为日级数据、变动慢:中等 TTL 缓存,避免每轮重复拉。
 _FLOW_CACHE = TTLCache(default_ttl_sec=600.0)

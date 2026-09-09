@@ -104,7 +104,7 @@ def _article_to_newsitem(a):
     lazy import 避免与 news_collector 的模块级循环引用(news_collector 会
     在模块级 import 本模块的 md_news)。
     """
-    from src.collectors.news_collector import NewsItem
+    from src.platform.marketdata.collectors.news_collector import NewsItem
 
     return NewsItem(
         source=a.source,
@@ -147,7 +147,7 @@ def md_news_by_keyword(keyword: str) -> list:
 
 def md_stock_data(symbols: list[str], market: str) -> list:
     """返回 list[StockData](旧 AkshareCollector.get_stock_data 同形)。同步。"""
-    from src.models.market import MarketCode, StockData
+    from src.platform.marketdata.models import MarketCode, StockData
 
     syms = list(symbols)
     if not syms:

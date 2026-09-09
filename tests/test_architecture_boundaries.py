@@ -61,3 +61,9 @@ def test_legacy_compatibility_packages_are_removed_after_migration():
     assert not (SOURCE_ROOT / "web" / "database.py").exists()
     assert not (SOURCE_ROOT / "web" / "models.py").exists()
     assert not (SOURCE_ROOT / "web" / "migrations.py").exists()
+
+
+def test_root_level_market_legacy_packages_are_removed_after_migration():
+    assert not (SOURCE_ROOT / "collectors" / "__init__.py").exists()
+    assert not (SOURCE_ROOT / "models" / "__init__.py").exists()
+    assert not (SOURCE_ROOT / "compat" / "__init__.py").exists()

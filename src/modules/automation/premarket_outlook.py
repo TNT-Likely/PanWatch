@@ -11,7 +11,7 @@ from pathlib import Path
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.modules.research.signals import SignalPackBuilder
 from src.modules.research.analysis_history import save_analysis, get_latest_analysis
-from src.modules.market.cn_symbol import get_cn_prefix
+from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.context_builder import ContextBuilder
 from src.modules.research.context_store import (
@@ -24,7 +24,7 @@ from src.modules.research.signals.structured_output import (
     try_extract_tagged_json,
 )
 from src.platform.observability.log_context import get_log_context
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 

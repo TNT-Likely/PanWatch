@@ -8,7 +8,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from src.collectors.kline_collector import kline_source
+from src.platform.marketdata.collectors.kline_collector import kline_source
 from src.modules.research.context_store import cleanup_context_data
 from src.modules.strategy.entry_candidates import evaluate_entry_candidate_outcomes
 from src.modules.research.prediction_outcome import evaluate_pending_prediction_outcomes

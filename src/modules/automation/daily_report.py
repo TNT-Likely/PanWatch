@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.modules.research.analysis_history import save_analysis
-from src.modules.market.cn_symbol import get_cn_prefix
+from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.context_builder import ContextBuilder
 from src.modules.research.context_store import (
@@ -19,7 +19,7 @@ from src.modules.research.signals.structured_output import (
     strip_tagged_json,
     try_extract_tagged_json,
 )
-from src.models.market import MarketCode, IndexData
+from src.platform.marketdata.models import MarketCode, IndexData
 
 logger = logging.getLogger(__name__)
 

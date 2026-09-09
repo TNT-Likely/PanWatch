@@ -15,8 +15,8 @@ import time
 
 import pytest
 
-from src.collectors import kline_collector as kc
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors import kline_collector as kc
+from src.platform.marketdata.models import MarketCode
 
 
 @pytest.fixture(autouse=True)

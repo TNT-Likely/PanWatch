@@ -6,7 +6,7 @@ from datetime import datetime
 from src.platform.ai.ai_client import AIClient
 from src.platform.notifications.notifier import NotifierManager
 from src.config import AppConfig, StockConfig
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.platform.notifications.notify_dedupe import build_notify_dedupe_key, check_and_mark_notify
 from src.platform.notifications.notify_policy import NotifyPolicy
 from src.platform.observability.log_context import log_context

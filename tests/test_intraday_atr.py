@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from src.collectors.kline_collector import (
+from src.platform.marketdata.collectors.kline_collector import (
     KlineData,
     _calculate_atr,
 )
@@ -49,7 +49,7 @@ def test_calculate_atr_insufficient_data_returns_none() -> None:
 
 def test_get_technical_indicators_includes_atr_and_pct() -> None:
     """技术指标 — get_technical_indicators 返回 atr 与 atr_pct(=atr/收盘*100)。"""
-    from src.collectors.kline_collector import KlineCollector
+    from src.platform.marketdata.collectors.kline_collector import KlineCollector
 
     # 默认 ATR period=14,需要 >=15 根 K 线才能算出。
     klines = [_mk(10 + i * 0.1, 11 + i * 0.1, 9 + i * 0.1, 10 + i * 0.1) for i in range(14)]
@@ -64,7 +64,7 @@ def test_get_technical_indicators_includes_atr_and_pct() -> None:
 
 def test_get_technical_indicators_atr_none_when_insufficient() -> None:
     """技术指标 — K 线过少时 atr / atr_pct 为 None,其余指标仍可返回。"""
-    from src.collectors.kline_collector import KlineCollector
+    from src.platform.marketdata.collectors.kline_collector import KlineCollector
 
     klines = [_mk(10, 11, 9, 10)]
     collector = KlineCollector(MarketStub())
@@ -77,7 +77,7 @@ class MarketStub:
     """KlineCollector 仅在联网取数时用到 market;本测试只传 klines,占位即可。"""
 
     def __init__(self) -> None:
-        from src.models.market import MarketCode
+        from src.platform.marketdata.models import MarketCode
 
         self.value = MarketCode.CN
 
@@ -130,7 +130,7 @@ def test_is_abnormal_move_default_k() -> None:
 def _build_intraday_prompt_with_atr(atr_pct):
     """构造最小 AgentContext/data,跑 build_prompt,返回 user_content。"""
     from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-    from src.models.market import MarketCode, StockData
+    from src.platform.marketdata.models import MarketCode, StockData
 
     stock = StockData(
         symbol="000001",

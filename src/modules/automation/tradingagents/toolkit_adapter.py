@@ -409,7 +409,7 @@ _MARKET_SNAPSHOT_IMPORT_SITES = (
 
 def _market_for_symbol(symbol: str):
     """将 TradingAgents 的 ticker 映射到 PanWatch 市场。"""
-    from src.models.market import MarketCode
+    from src.platform.marketdata.models import MarketCode
 
     if is_a_share(symbol):
         return MarketCode.CN
@@ -422,7 +422,7 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     """用 PanWatch K线构建与原生 load_ohlcv 同结构的 DataFrame(Date/Open/High/Low/Close/Volume)。"""
     import pandas as pd
 
-    from src.collectors.kline_collector import KlineCollector
+    from src.platform.marketdata.collectors.kline_collector import KlineCollector
     market = _market_for_symbol(symbol)
     klines = KlineCollector(market).get_klines(symbol, days=750)
     if not klines:

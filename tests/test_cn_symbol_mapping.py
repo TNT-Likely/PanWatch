@@ -2,9 +2,9 @@ import unittest
 
 from marketdata.symbol import Symbol
 
-from src.collectors.screenshot_collector import ScreenshotCollector
-from src.modules.market.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.screenshot_collector import ScreenshotCollector
+from src.platform.marketdata.cn_symbol import get_cn_exchange, get_cn_prefix, is_cn_sh
+from src.platform.marketdata.models import MarketCode
 
 
 class TestCnSymbolMapping(unittest.TestCase):

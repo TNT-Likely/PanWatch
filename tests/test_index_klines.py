@@ -1,5 +1,5 @@
 """② 指数 K线 secid 映射:指数 secid 规则与个股不同,必须显式映射,否则相对强度永远取不到数。"""
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 
 def test_get_index_klines_passes_correct_code_and_market(monkeypatch):
@@ -7,7 +7,7 @@ def test_get_index_klines_passes_correct_code_and_market(monkeypatch):
     index_klines(secid 映射规则已内聚进 marketdata 包,见
     packages/marketdata/src/marketdata/client.py + packages/marketdata/tests/test_index_methods.py)。
     """
-    from src.collectors import kline_collector
+    from src.platform.marketdata.collectors import kline_collector
 
     captured: dict[str, tuple] = {}
 
@@ -25,7 +25,7 @@ def test_get_index_klines_passes_correct_code_and_market(monkeypatch):
 
 def test_get_index_klines_unknown_returns_empty():
     """未映射的指数(如美股 .INX,东财K线不支持)→ 空列表,fail-soft 不抛。"""
-    from src.collectors import kline_collector
+    from src.platform.marketdata.collectors import kline_collector
 
     assert kline_collector.get_index_klines(".INX", MarketCode.US) == []
 
@@ -40,7 +40,7 @@ def test_fetch_index_context_us_failsoft():
 
 def test_fetch_index_context_computes_returns(monkeypatch):
     """有指数K线时,_fetch_index_context 用收盘价算 5日/20日收益。"""
-    from src.collectors import kline_collector
+    from src.platform.marketdata.collectors import kline_collector
     from src.modules.research.context_builder import ContextBuilder
 
     class _K:

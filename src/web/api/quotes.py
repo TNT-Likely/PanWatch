@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 router = APIRouter()
 

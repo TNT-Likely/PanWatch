@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock, DataSource
-from src.collectors.news_collector import NewsCollector, NewsItem
+from src.platform.marketdata.collectors.news_collector import NewsCollector, NewsItem
 
 router = APIRouter()
 

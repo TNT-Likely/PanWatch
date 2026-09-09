@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.research.analysis_history import get_latest_analysis, get_analysis
 from src.modules.research.context_builder import ContextBuilder
 from src.modules.research.context_store import (
@@ -18,7 +18,7 @@ from src.modules.research.context_store import (
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.signals import SignalPackBuilder
 from src.modules.research.signals.structured_output import try_parse_action_json
-from src.models.market import MarketCode, StockData, MARKETS
+from src.platform.marketdata.models import MarketCode, StockData, MARKETS
 
 logger = logging.getLogger(__name__)
 

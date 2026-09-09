@@ -18,8 +18,8 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from src.collectors.kline_collector import KlineCollector
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import AnalysisHistory
 

@@ -4,9 +4,9 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.automation.suggestion_pool import get_latest_suggestions
 from src.web.api.chat import (
     _build_stock_context,
@@ -14,7 +14,7 @@ from src.web.api.chat import (
     _fetch_technical_context,
     _get_ai_client,
 )
-from src.collectors.market_http import TTLCache
+from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock
 import asyncio
@@ -172,7 +172,7 @@ async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
     """消息面摘要:近 3 天新闻/公告标题 + 本地最近 AI 建议/分析(失败降级为空)。"""
     parts: list[str] = []
     try:
-        from src.collectors.news_collector import NewsCollector
+        from src.platform.marketdata.collectors.news_collector import NewsCollector
 
         stock = db.query(Stock).filter(Stock.symbol == symbol).first()
         name = stock.name if stock else symbol
@@ -284,7 +284,7 @@ def _parse_tone(text: str) -> str:
 async def _fetch_recent_announcements(symbol: str, name: str, limit: int = 5) -> list[dict]:
     """取近 7 天公告/新闻(优先东财公告),失败返回 []。"""
     try:
-        from src.collectors.news_collector import NewsCollector
+        from src.platform.marketdata.collectors.news_collector import NewsCollector
 
         items = await NewsCollector.from_database().fetch_all(
             symbols=[symbol], since_hours=168, symbol_names={symbol: name}

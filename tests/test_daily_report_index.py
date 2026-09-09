@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from src.modules.automation import daily_report
-from src.models.market import IndexData, MarketCode
+from src.platform.marketdata.models import IndexData, MarketCode
 
 
 def _fake_index_items() -> list[dict]:

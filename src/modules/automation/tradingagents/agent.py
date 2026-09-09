@@ -133,7 +133,7 @@ class TradingAgentsAgent(BaseAgent):
         # 预算技术指标(MA/MACD/RSI/KDJ/BOLL),给 get_indicators 工具用
         technical = None
         try:
-            from src.collectors.kline_collector import KlineCollector
+            from src.platform.marketdata.collectors.kline_collector import KlineCollector
             technical = await asyncio.to_thread(
                 KlineCollector(stock.market).get_technical_indicators, stock.symbol
             )

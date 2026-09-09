@@ -21,7 +21,7 @@ from src.platform.persistence.models import (
 )
 from src.web.log_handler import DBLogHandler
 from src.config import Settings, AppConfig, StockConfig
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 from src.platform.ai.ai_client import AIClient
 from src.platform.ai.ai_failover import build_failover_client
 from src.platform.notifications.notifier import NotifierManager

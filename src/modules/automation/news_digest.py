@@ -6,9 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
-from src.collectors.news_collector import NewsCollector, NewsItem
+from src.platform.marketdata.collectors.news_collector import NewsCollector, NewsItem
 from src.modules.research.analysis_history import save_analysis
-from src.modules.market.cn_symbol import get_cn_prefix
+from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.signals import SignalPackBuilder
 from src.modules.research.signals.structured_output import (
@@ -16,7 +16,7 @@ from src.modules.research.signals.structured_output import (
     strip_tagged_json,
     try_extract_tagged_json,
 )
-from src.models.market import MarketCode
+from src.platform.marketdata.models import MarketCode
 
 logger = logging.getLogger(__name__)
 
