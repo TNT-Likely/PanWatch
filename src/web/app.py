@@ -33,6 +33,7 @@ from src.web.api import health
 from src.web.api import insights
 from src.web.api import pats
 from src.web.api import mcp
+from src.modules.assistant import api as assistant_api
 from src.web.api.auth import get_current_user
 from src.web.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
@@ -178,6 +179,12 @@ app.include_router(
     chat.router,
     prefix="/api/chat",
     tags=["chat"],
+    dependencies=protected,
+)
+app.include_router(
+    assistant_api.router,
+    prefix="/api/assistant",
+    tags=["assistant"],
     dependencies=protected,
 )
 # PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌

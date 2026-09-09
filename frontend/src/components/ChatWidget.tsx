@@ -25,8 +25,8 @@ function safeStreamMarkdown(text: string): string {
   return fences % 2 === 1 ? `${text}\n\`\`\`` : text
 }
 
-export default function ChatWidget() {
-  const [open, setOpen] = useState(false)
+export default function ChatWidget({ embedded = false }: { embedded?: boolean }) {
+  const [open, setOpen] = useState(embedded)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeConvId, setActiveConvId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -292,7 +292,7 @@ export default function ChatWidget() {
     }
   }, [input, sending, activeConvId, stockContext, pushToken, resetStream, loadMessages])
 
-  if (!open) {
+  if (!open && !embedded) {
     return (
       <button
         onClick={() => setOpen(true)}
@@ -304,7 +304,9 @@ export default function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-0 right-0 z-50 w-full h-full md:w-[420px] md:h-[600px] md:bottom-5 md:right-5 md:rounded-xl bg-background border border-border/60 shadow-2xl flex flex-col overflow-hidden">
+    <div className={embedded
+      ? 'w-full min-h-[calc(100vh-16rem)] md:h-[calc(100vh-12rem)] card border border-border/60 flex flex-col overflow-hidden'
+      : 'fixed bottom-0 right-0 z-50 w-full h-full md:w-[420px] md:h-[600px] md:bottom-5 md:right-5 md:rounded-xl bg-background border border-border/60 shadow-2xl flex flex-col overflow-hidden'}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-accent/20">
         <div className="flex items-center gap-2">
@@ -340,12 +342,14 @@ export default function ChatWidget() {
               <Plus className="w-4 h-4" />
             </button>
           )}
-          <button
-            onClick={() => setOpen(false)}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!embedded && (
+            <button
+              onClick={() => setOpen(false)}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
