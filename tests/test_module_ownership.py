@@ -118,3 +118,11 @@ def test_automation_module_owns_tradingagents_package():
 
     for module in (agent, auto_trigger, result_mapper):
         assert "/src/modules/automation/tradingagents/" in module.__file__.replace("\\", "/")
+
+
+def test_platform_persistence_owns_database_models_and_migrations():
+    from src.platform.persistence import database, migrations, models
+
+    assert database.Base.__module__ == "src.platform.persistence.database"
+    assert models.AIService.__module__ == "src.platform.persistence.models"
+    assert migrations.run_versioned_migrations.__module__ == "src.platform.persistence.migrations"
