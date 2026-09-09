@@ -16,6 +16,8 @@ from src.core.chat_planner import run_portfolio_diagnosis, should_use_planning
 from src.core.sse import SSEStream, chat_stream_hub
 from src.models.market import MarketCode
 from src.modules.assistant.repository import AssistantRepository
+from src.modules.portfolio.repository import PortfolioRepository
+from src.modules.portfolio.service import PortfolioService
 from src.web.database import SessionLocal, get_db
 from src.web.models import (
     AIModel,
@@ -223,47 +225,8 @@ def _build_stock_context(db: Session, symbol: str, market: str) -> str:
 
 
 def _build_portfolio_context(db: Session) -> str:
-    """构建用户全部持仓摘要。"""
-    lines: list[str] = []
-
-    # 实盘持仓
-    positions = db.query(Position).all()
-    if positions:
-        real_lines = []
-        for p in positions:
-            stock = db.query(Stock).filter(Stock.id == p.stock_id).first()
-            if not stock:
-                continue
-            real_lines.append(
-                f"- {stock.name}({stock.market}:{stock.symbol}) "
-                f"{p.quantity}股 成本{p.cost_price} 风格{p.trading_style or '波段'}"
-            )
-        if real_lines:
-            lines.append("实盘持仓：\n" + "\n".join(real_lines))
-
-    # 模拟盘持仓
-    paper_positions = (
-        db.query(PaperTradingPosition)
-        .filter(PaperTradingPosition.status == "open")
-        .all()
-    )
-    if paper_positions:
-        paper_lines = []
-        for pp in paper_positions:
-            pnl_str = f"浮盈{pp.unrealized_pnl:.1f}" if pp.unrealized_pnl else ""
-            paper_lines.append(
-                f"- {pp.stock_name or pp.stock_symbol}({pp.stock_market}:{pp.stock_symbol}) "
-                f"{pp.quantity}股 入场价{pp.entry_price}"
-                f"{f' 止损{pp.stop_loss}' if pp.stop_loss else ''}"
-                f"{f' 目标{pp.target_price}' if pp.target_price else ''}"
-                f"{f' {pnl_str}' if pnl_str else ''}"
-            )
-        if paper_lines:
-            lines.append("模拟盘持仓：\n" + "\n".join(paper_lines))
-
-    if not lines:
-        return ""
-    return "\n\n".join(lines)
+    """兼容旧聊天函数；实际读模型归 portfolio 模块所有。"""
+    return PortfolioService(PortfolioRepository(db)).build_assistant_summary()
 
 
 async def _fetch_realtime_context(symbol: str, market: str) -> str:
