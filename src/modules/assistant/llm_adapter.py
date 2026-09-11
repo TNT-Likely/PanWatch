@@ -16,21 +16,43 @@ class FailoverModelAdapter:
         self._temperature = temperature
 
     async def run_turn(self, messages: list[ModelMessage], tools: list[ToolSpec], emit_token) -> ModelTurn:
-        response = await self._client.chat_with_tools(
+        """Run one model turn and forward every model delta immediately.
+
+        The HTTP layer is already an SSE endpoint.  Its perceived streaming
+        speed therefore depends on this adapter consuming the model client's
+        tool-compatible stream rather than waiting for ``chat_with_tools`` to
+        assemble the complete answer.
+        """
+        content_parts: list[str] = []
+        final_content = ""
+        raw_tool_calls: list[dict[str, Any]] = []
+
+        async for event_type, payload in self._client.chat_stream(
             [message.model_dump(exclude_none=True) for message in messages],
             tools=[tool.openai_schema() for tool in tools],
             temperature=self._temperature,
-        )
-        content = response.content or ""
-        if content:
-            await emit_token(content)
+        ):
+            if event_type == "token":
+                token = str(payload or "")
+                if token:
+                    content_parts.append(token)
+                    await emit_token(token)
+            elif event_type == "message" and isinstance(payload, dict):
+                final_content = str(payload.get("content") or "")
+                raw_tool_calls = payload.get("tool_calls") or []
+
         tool_calls: list[ToolCall] = []
-        for call in response.tool_calls or []:
-            raw_arguments = call.function.arguments or "{}"
+        for call in raw_tool_calls:
+            raw_arguments = call.get("arguments") or "{}"
             try:
                 arguments = json.loads(raw_arguments)
             except (TypeError, json.JSONDecodeError):
                 arguments = {}
-            tool_calls.append(ToolCall(id=call.id, name=call.function.name, arguments=arguments))
-        return ModelTurn(content=content, tool_calls=tool_calls)
-
+            tool_calls.append(
+                ToolCall(
+                    id=str(call.get("id") or ""),
+                    name=str(call.get("name") or ""),
+                    arguments=arguments,
+                )
+            )
+        return ModelTurn(content=final_content or "".join(content_parts), tool_calls=tool_calls)
