@@ -1,15 +1,15 @@
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
     Integer,
     String,
     Text,
-    Float,
-    Boolean,
-    DateTime,
-    JSON,
-    ForeignKey,
     UniqueConstraint,
-    Index,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -1128,6 +1128,7 @@ class AssistantTaskRun(Base):
     final_message_id = Column(Integer, nullable=True)
     status = Column(String, nullable=False, default="pending")
     context = Column(JSON, default={})
+    checkpoint = Column(JSON, nullable=True)
     error_code = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     started_at = Column(DateTime, nullable=True)
@@ -1160,11 +1161,59 @@ class AssistantToolInvocation(Base):
     task_run_id = Column(Integer, nullable=False)
     call_id = Column(String, nullable=False)
     tool_name = Column(String, nullable=False)
+    risk = Column(String, nullable=False, default="read")
+    arguments = Column(JSON, default={})
     status = Column(String, nullable=False, default="started")
     summary = Column(Text, nullable=False, default="")
     source_data = Column(JSON, default=[])
     created_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime, nullable=True)
+
+
+class AssistantToolApproval(Base):
+    """One human decision required before an agent tool call can execute."""
+
+    __tablename__ = "assistant_tool_approvals"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "call_id", name="ux_assistant_approval_run_call"),
+        Index("ix_assistant_approval_run_status", "task_run_id", "status"),
+        Index("ix_assistant_approval_pending_expiry", "status", "expires_at"),
+    )
+
+    id = Column(String, primary_key=True)
+    task_run_id = Column(Integer, nullable=False)
+    call_id = Column(String, nullable=False)
+    tool_name = Column(String, nullable=False)
+    risk = Column(String, nullable=False)
+    arguments = Column(JSON, default={})
+    presentation = Column(JSON, default={})
+    status = Column(String, nullable=False, default="pending")
+    expires_at = Column(DateTime, nullable=False)
+    decided_at = Column(DateTime, nullable=True)
+    decided_by = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class AssistantToolPermission(Base):
+    """A local principal's durable preference for a tool or risk category."""
+
+    __tablename__ = "assistant_tool_permissions"
+    __table_args__ = (
+        UniqueConstraint(
+            "principal_scope",
+            "selector_kind",
+            "selector_value",
+            name="ux_assistant_permission_selector",
+        ),
+        Index("ix_assistant_permission_principal", "principal_scope"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    principal_scope = Column(String, nullable=False, default="local")
+    selector_kind = Column(String, nullable=False)  # tool | risk
+    selector_value = Column(String, nullable=False)
+    mode = Column(String, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class AssistantArtifact(Base):

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from pan_agent import AgentRuntime
+from pan_agent import (
+    AgentRuntime,
+    RunRequest,
+    ToolCall,
+    ToolPermissionDecision,
+    ToolSpec,
+)
 
 from src.platform.ai.ai_failover import build_failover_client
 from src.platform.persistence.models import AIModel, AIService
@@ -20,6 +26,28 @@ from .tools import build_panwatch_tool_registry
 
 class AssistantNotFoundError(LookupError):
     pass
+
+
+class PanWatchToolPolicy:
+    """A per-run, trusted snapshot of PanWatch's local tool preferences."""
+
+    def __init__(self, repository: AssistantRepository, permissions: dict) -> None:
+        self._repository = repository
+        self._permissions = permissions
+
+    def is_tool_visible(self, request: RunRequest, tool: ToolSpec) -> bool:
+        return self._decision(tool).mode.value != "deny"
+
+    async def decide(
+        self,
+        _request: RunRequest,
+        tool: ToolSpec,
+        _call: ToolCall,
+    ) -> ToolPermissionDecision:
+        return self._decision(tool)
+
+    def _decision(self, tool: ToolSpec) -> ToolPermissionDecision:
+        return self._repository.resolve_permission(tool, snapshot=self._permissions)
 
 
 class AssistantService:
@@ -58,10 +86,15 @@ class AssistantService:
         return AgentRuntime(
             FailoverModelAdapter(failover_client),
             build_panwatch_tool_registry(self._repository.session),
+            policy=self.build_tool_policy(),
         )
 
+    def build_tool_policy(self) -> PanWatchToolPolicy:
+        """Freeze a user's preferences for the lifetime of one runtime run."""
+        return PanWatchToolPolicy(self._repository, self._repository.permission_snapshot())
+
     def build_failover_client(self):
-        model = self._repository.session.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
+        model = self._repository.session.query(AIModel).filter(AIModel.is_default == True).first()
         if not model:
             model = self._repository.session.query(AIModel).first()
         provider = self._repository.session.query(AIService).filter(AIService.id == model.service_id).first() if model else None

@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-import logging
 import json
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
-from typing import Callable
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
-
 
 logger = logging.getLogger(__name__)
 
@@ -1782,6 +1781,84 @@ def _m122_assistant_task_snapshots(conn: Connection) -> None:
                              "CREATE INDEX ix_assistant_artifact_run ON assistant_artifacts(task_run_id, created_at)")
 
 
+def _m123_assistant_approval_workflow(conn: Connection) -> None:
+    """Add durable checkpoints, approval decisions and tool permission rules."""
+    _add_column_if_missing(
+        conn,
+        "assistant_task_runs",
+        "checkpoint",
+        "ALTER TABLE assistant_task_runs ADD COLUMN checkpoint JSON",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_tool_invocations",
+        "arguments",
+        "ALTER TABLE assistant_tool_invocations ADD COLUMN arguments JSON DEFAULT '{}'",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_tool_invocations",
+        "risk",
+        "ALTER TABLE assistant_tool_invocations ADD COLUMN risk TEXT NOT NULL DEFAULT 'read'",
+    )
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_tool_approvals (
+            id TEXT PRIMARY KEY,
+            task_run_id INTEGER NOT NULL,
+            call_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            risk TEXT NOT NULL,
+            arguments JSON DEFAULT '{}',
+            presentation JSON DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending',
+            expires_at DATETIME NOT NULL,
+            decided_at DATETIME,
+            decided_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_tool_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            principal_scope TEXT NOT NULL DEFAULT 'local',
+            selector_kind TEXT NOT NULL,
+            selector_value TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    _create_index_if_missing(
+        conn,
+        "ux_assistant_approval_run_call",
+        "CREATE UNIQUE INDEX ux_assistant_approval_run_call "
+        "ON assistant_tool_approvals(task_run_id, call_id)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_assistant_approval_run_status",
+        "CREATE INDEX ix_assistant_approval_run_status "
+        "ON assistant_tool_approvals(task_run_id, status)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_assistant_approval_pending_expiry",
+        "CREATE INDEX ix_assistant_approval_pending_expiry "
+        "ON assistant_tool_approvals(status, expires_at)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ux_assistant_permission_selector",
+        "CREATE UNIQUE INDEX ux_assistant_permission_selector "
+        "ON assistant_tool_permissions(principal_scope, selector_kind, selector_value)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_assistant_permission_principal",
+        "CREATE INDEX ix_assistant_permission_principal "
+        "ON assistant_tool_permissions(principal_scope)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1805,6 +1882,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(120, "agent_prediction_evaluation", _m120_agent_prediction_evaluation),
     Migration(121, "backtest_runs", _m121_backtest_runs),
     Migration(122, "assistant_task_snapshots", _m122_assistant_task_snapshots),
+    Migration(123, "assistant_approval_workflow", _m123_assistant_approval_workflow),
 )
 
 
