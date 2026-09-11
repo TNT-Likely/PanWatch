@@ -1,16 +1,23 @@
-"""股票列表缓存与模糊搜索"""
+"""股票标的清单的数据源适配器、项目级缓存与模糊搜索。
+
+清单可被 API、任务调度和业务模块共同使用，因此属于市场数据平台，而不是
+HTTP 层。缓存仍固定保存在项目根目录的 ``data/``，避免移动代码后悄然生成
+另一份 ``src/data`` 缓存。
+"""
 import json
 import os
 import time
 import logging
 import concurrent.futures
+from pathlib import Path
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
-CACHE_FILE = os.path.join(DATA_DIR, "stock_list_cache.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = PROJECT_ROOT / "data"
+CACHE_FILE = DATA_DIR / "stock_list_cache.json"
 CACHE_TTL = 86400 * 7  # 7 days
 
 # 东方财富 A 股（使用 push2delay 域名，避免重定向）

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.paper_trading.paper_trading_engine import (
     ALL_MARKETS,
     ENGINE,

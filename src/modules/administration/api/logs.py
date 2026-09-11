@@ -15,7 +15,7 @@ _module_logger = logging.getLogger(__name__)
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import LogEntry
-from src.web.log_handler import get_log_handler_stats
+from src.platform.observability.log_handler import get_log_handler_stats
 
 
 def _format_datetime(dt) -> str:

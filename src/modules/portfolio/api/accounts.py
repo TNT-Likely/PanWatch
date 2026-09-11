@@ -785,7 +785,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
     """组合 AI 体检:诊断+基准+归因 → 叙述结论 + 调仓建议(只读,不下单)。"""
     from src.modules.portfolio.portfolio_benchmark import build_attribution, build_portfolio_benchmark
     from src.modules.portfolio.portfolio_diagnostics import diagnose_positions
-    from src.web.api.chat import _get_ai_client
+    from src.platform.ai.ai_failover import get_configured_failover_client
 
     holdings = _gather_holdings(db)
     if not holdings:
@@ -822,7 +822,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
     )
     user_content = "组合概况:\n" + "\n".join(lines)
     try:
-        content = await _get_ai_client(db, model_id).chat(system_prompt, user_content, temperature=0.3)
+        content = await get_configured_failover_client(db, model_id).chat(system_prompt, user_content, temperature=0.3)
     except Exception as e:
         raise HTTPException(502, f"AI 体检失败: {e}")
 

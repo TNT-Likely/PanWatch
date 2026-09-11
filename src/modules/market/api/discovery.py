@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.platform.notifications.notifier import get_global_proxy
 from src.platform.marketdata.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.platform.persistence.database import get_db

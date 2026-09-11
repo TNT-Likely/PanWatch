@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import src.platform.persistence.models as M  # noqa: F401 (确保模型注册到 Base)
-from src.web.api import settings as settings_api
+from src.modules.administration.api import settings as settings_api
 from src.platform.persistence.database import Base, get_db
 
 # 任意有效 base64;后端按字节落文件,GET 再读回同样的 data URL

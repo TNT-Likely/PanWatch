@@ -62,7 +62,7 @@ def _clear_market_caches():
         capital_flow_collector,
         kline_collector,
     )
-    from src.web.api import market as market_api
+    from src.modules.market.api import market as market_api
 
     def _clear():
         kline_collector.clear_kline_cache()

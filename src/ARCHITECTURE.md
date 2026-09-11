@@ -11,13 +11,12 @@ src/
 ├── bootstrap/       # 应用启动与依赖装配
 ├── platform/        # 与业务无关的技术能力
 ├── modules/         # 产品业务能力
-└── web/             # FastAPI HTTP 边界与应用组装
+└── web/             # 跨模块复用的 HTTP 中间件与响应适配
 ```
 
-`collectors/`、`models/` 和 `compat/` 是仍待收口的历史目录：采集器将迁至
-`platform/marketdata/collectors/`；市场共用的行情值对象将迁至
-`platform/marketdata/models.py`，`compat/` 没有调用者后必须删除。新代码不得放入
-这些目录。
+`collectors/`、`models/` 和 `compat/` 已完成收口并被删除。采集器位于
+`platform/marketdata/collectors/`，市场共用的行情值对象位于
+`platform/marketdata/models.py`；不得重新创建这些根目录。
 
 ## 依赖方向
 
@@ -30,6 +29,8 @@ web ───────────────► modules ──────�
 
 - `platform` 不得导入 `modules`，也不做产品或投资决策。
 - `modules` 可使用 `platform`，但不能直接导入另一个模块的 ORM models 或 repository。
+- 一个模块不得导入另一个模块的 `api/` router 或 `*_api.py`；跨模块 HTTP 代码也
+  必须改为调用目标模块公开的 service、DTO 或受支持的工具边界。
 - 跨模块协作必须经过拥有模块公开的 service、DTO 或 event。
 - `web` 只做 HTTP 输入输出映射与服务装配，不承载复杂 SQL、Agent 工具循环或策略判断。
 - `bootstrap` 只负责启动期装配，不实现业务流程。
@@ -50,6 +51,7 @@ web ───────────────► modules ──────�
 | `scheduling/` | cron 解析、交易日历、注册表 | Agent 调度流程 |
 | `notifications/` | 通道发送、基础去重和策略 | 哪种业务事件应通知 |
 | `observability/` | 日志上下文、trace、指标导出 | 领域指标推导 |
+| `runtime/` | 进程配置、环境变量与其他横切运行期设置 | 产品业务规则 |
 
 ## `modules/`：业务能力
 
@@ -79,16 +81,41 @@ web ───────────────► modules ──────�
 | `reporting` | 报告与 PDF 等产物渲染 | render/export function |
 | `administration` | 健康检查、设置维护、PAT、升级检查 | administration service |
 
-## `web/`：HTTP 边界
+## `bootstrap/`：应用装配
 
-`web/app.py` 创建 FastAPI 应用并注册 router。每个 router 仅负责：
+`bootstrap/application.py` 是唯一创建 FastAPI 应用并注册 router 的位置。它可以
+依赖 `web`、`modules` 和 `platform` 的公开 HTTP 入口，但不得承载领域规则、SQL 或
+Agent 执行循环。`bootstrap` 中只保留确有启动期职责的文件；没有调用者的“容器”或
+转发 facade 不应为了预留结构而存在。
+
+## 模块拥有 HTTP router
+
+应用组装由 `bootstrap/application.py` 负责；业务 router 位于各自模块的
+`api/` 包，而非集中到新的 `web/api` 目录。例如，`modules/market/api/` 拥有
+行情、K 线、标的、新闻和价格告警接口；`modules/portfolio/api/` 拥有账户、历史和
+仪表盘接口。
+
+`web/` 只保留跨模块复用的 HTTP 技术组件，例如响应包装中间件。每个业务 router
+仅负责：
 
 1. 校验 HTTP 输入并创建 command/DTO；
 2. 获取模块 service；
 3. 将 service 结果映射为 HTTP response、SSE 或错误码。
 
 数据库、ORM models 与 migrations 均在 `platform/persistence/`。禁止恢复
-`src/web/database.py`、`models.py` 或 `migrations.py`。
+`src/web/api/`、`src/web/app.py`、`src/web/database.py`、`src/web/models.py` 或
+`src/web/migrations.py`。
+
+| 模块 | HTTP router 目录 | 接口范围 |
+| --- | --- | --- |
+| `administration` | `modules/administration/api/` | 鉴权、设置、健康检查、日志、数据源、PAT、MCP |
+| `assistant` | `modules/assistant/api.py`、`chat_api.py` | 导航级助手与兼容的聊天接口；共享旧聊天工具在 `legacy_chat_tools.py` |
+| `automation` | `modules/automation/api/` | Agent、建议池、模板 |
+| `market` | `modules/market/api/` | 标的、行情、K 线、新闻、发现、价格告警 |
+| `portfolio` | `modules/portfolio/api/` | 账户、持仓历史、仪表盘 |
+| `research` | `modules/research/api/` | 上下文、洞察、评估、反馈、建议 |
+| `strategy` | `modules/strategy/api/` | 因子接口 |
+| `paper_trading` | `modules/paper_trading/api/` | 模拟盘接口 |
 
 ## 关键流程
 
@@ -127,14 +154,14 @@ Session 与 `get_db` 在 `database.py`；版本迁移在 `migrations.py`。
 | --- | --- |
 | 新 AI、行情或通知供应商 | 对应 `platform/*` adapter |
 | 新投资、分析或用户工作流 | 对应 `modules/<domain>` service |
-| 新 API | 优先模块自己的 `api.py`；旧 `web/api` 仅作过渡 |
+| 新 API | 所属模块的 `api/` 包；只有该模块确实只有一个 router 时才用单个 `api.py` |
 | 新后台任务 | 业务执行在模块，cron/日历使用 `platform/scheduling` |
 | 新 ORM 表或迁移 | `platform/persistence`，由所属模块 service 使用 |
 | 带业务含义的 helper | 其所属 module；不得创建新的 `core` |
 
 ## 禁止项
 
-- 不恢复 `src/core`、`src/agents` 或旧 `src/web` 持久化文件；
+- 不恢复 `src/core`、`src/agents`、`src/web/api` 或旧 `src/web` 持久化文件；
 - 不让 `platform` 导入 `modules`；
 - 不跨模块导入 `models.py`、`repository.py`；
 - 不把业务规则、SQL 或工具循环塞进 HTTP router；

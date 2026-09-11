@@ -1,3 +1,8 @@
+"""从环境和项目配置文件读取运行期设置的技术边界。
+
+该模块可同时被 HTTP、后台任务和平台适配器使用；它不包含任何投资或产品决策。
+"""
+
 from pathlib import Path
 from dataclasses import dataclass, field
 

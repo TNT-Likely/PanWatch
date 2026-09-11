@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from src.web.api.chat import CHAT_TOOLS, SYSTEM_PROMPT
+from src.modules.assistant.chat_api import SYSTEM_PROMPT
+from src.modules.assistant.legacy_chat_tools import CHAT_TOOLS
 
 # 动作白名单：chat agent 只允许调用这些只读工具
 TOOL_WHITELIST = {t["function"]["name"] for t in CHAT_TOOLS}

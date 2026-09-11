@@ -37,7 +37,7 @@ def _row(horizon: int) -> AgentPredictionOutcome:
 
 def test_evaluations_router_is_mounted():
     """验证中心仅暴露 Agent 建议复盘接口。"""
-    from src.web.app import app
+    from src.bootstrap.application import app
 
     paths = app.openapi()["paths"]
 
@@ -49,7 +49,7 @@ def test_evaluations_router_is_mounted():
 
 def test_list_agent_predictions_returns_one_group_with_policy():
     """两条 horizon 原始记录被 API 组装为一条复盘建议。"""
-    from src.web.api import evaluations
+    from src.modules.research.api import evaluations
 
     db = _mem_db()
     try:
@@ -73,7 +73,7 @@ def test_list_agent_predictions_returns_one_group_with_policy():
 
 def test_summary_only_counts_trading_day_records():
     """旧自然日记录可浏览，但不进入默认命中率汇总。"""
-    from src.web.api import evaluations
+    from src.modules.research.api import evaluations
 
     db = _mem_db()
     try:
@@ -104,7 +104,7 @@ def test_summary_only_counts_trading_day_records():
 
 def test_status_filter_keeps_all_horizons_for_matched_suggestion():
     """按状态筛选命中一条 horizon 时，返回的建议仍保留完整 1/5 日结果。"""
-    from src.web.api import evaluations
+    from src.modules.research.api import evaluations
 
     db = _mem_db()
     try:

@@ -14,7 +14,7 @@ from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
 from src.platform.scheduling.schedule_parser import preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
@@ -454,48 +454,6 @@ def find_running_for_stock(
         "status": status,
         "last_activity_at": _format_datetime(latest_log.timestamp),
     }
-
-
-def find_active_tradingagents_trace(db: Session, stock_symbol: str) -> str | None:
-    """内部 helper:查该 symbol 是否有"真正在跑"的 tradingagents 任务。
-
-    给 trigger API 做幂等校验用。返回正在跑的 trace_id(或 None)。
-    - 有 AgentRun.status 终态(success/failed) → 不在跑(None)
-    - 5 分钟无新进度日志 → stale,不在跑(None)
-    - 否则 → 返回 trace_id
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
-    latest_log = (
-        db.query(LogEntry)
-        .filter(
-            LogEntry.event == "ta_progress",
-            LogEntry.agent_name == "tradingagents",
-            LogEntry.timestamp >= cutoff,
-            LogEntry.trace_id.like(f"%-{stock_symbol}-%"),
-        )
-        .order_by(LogEntry.timestamp.desc())
-        .first()
-    )
-    if not latest_log or not latest_log.trace_id:
-        return None
-
-    trace_id = latest_log.trace_id
-    run = (
-        db.query(AgentRun)
-        .filter(AgentRun.trace_id == trace_id)
-        .order_by(AgentRun.id.desc())
-        .first()
-    )
-    if run and run.status in ("success", "failed"):
-        return None
-
-    last_ts = latest_log.timestamp
-    if last_ts and last_ts.tzinfo is None:
-        last_ts = last_ts.replace(tzinfo=timezone.utc)
-    if last_ts and (datetime.now(timezone.utc) - last_ts).total_seconds() > 300:
-        return None  # stale → 视为不在跑
-
-    return trace_id
 
 
 @router.get("/tradingagents/latest")

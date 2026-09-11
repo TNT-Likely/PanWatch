@@ -8,12 +8,12 @@ from src.platform.marketdata.models import MarketCode
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.automation.suggestion_pool import get_latest_suggestions
-from src.web.api.chat import (
-    _build_stock_context,
-    _fetch_realtime_context,
-    _fetch_technical_context,
-    _get_ai_client,
+from src.modules.assistant.legacy_chat_tools import (
+    build_stock_context,
+    fetch_realtime_context,
+    fetch_technical_context,
 )
+from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock
@@ -190,7 +190,7 @@ async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
         logger.debug(f"消息面新闻获取失败 {symbol}: {e}")
 
     try:
-        ctx = _build_stock_context(db, symbol, market)
+        ctx = build_stock_context(db, symbol, market)
         if ctx:
             parts.append(ctx)
     except Exception:
@@ -218,9 +218,9 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     action = "加仓" if is_add else "建仓"
 
     # 上下文:实时行情 + 基本面 + 技术面 + 消息面(新闻/公告/本地观点)
-    realtime = await _fetch_realtime_context(req.symbol, market)
+    realtime = await fetch_realtime_context(req.symbol, market)
     fundamental = await _fetch_fundamental_context(req.symbol, market)
-    technical = await _fetch_technical_context(req.symbol, market)
+    technical = await fetch_technical_context(req.symbol, market)
     message = await _fetch_message_context(db, req.symbol, market)
 
     holding_line = (
@@ -250,7 +250,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     )
 
     try:
-        client = _get_ai_client(db, req.model_id)
+        client = get_configured_failover_client(db, req.model_id)
         content = await client.chat(system_prompt, user_content, temperature=0.3)
     except Exception as e:
         raise HTTPException(502, f"AI 评估失败: {e}")
@@ -338,7 +338,7 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
     )
     user_content = f"标的 {name}({market}:{req.symbol}) 近期公告:\n{listing}"
     try:
-        content = await _get_ai_client(db, req.model_id).chat(
+        content = await get_configured_failover_client(db, req.model_id).chat(
             system_prompt, user_content, temperature=0.2
         )
     except Exception as e:

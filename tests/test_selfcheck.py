@@ -278,7 +278,7 @@ def test_run_selfcheck_keys_filter(monkeypatch):
 
 def test_selfcheck_endpoint(monkeypatch):
     """端点调用 run_selfcheck 并原样返回看板。"""
-    from src.web.api import health
+    from src.modules.administration.api import health
 
     async def fake_run(*, notify_send=False, keys=None):
         return {"items": [], "summary": {"total": 0, "ok": 0, "slow": 0, "fail": 0},
@@ -293,7 +293,7 @@ def test_selfcheck_endpoint(monkeypatch):
 
 def test_selfcheck_route_mounted():
     """/api/health/selfcheck 已挂载到 app。"""
-    from src.web.app import app
+    from src.bootstrap.application import app
 
     assert "/api/health/selfcheck" in set(app.openapi().get("paths", {}).keys())
 

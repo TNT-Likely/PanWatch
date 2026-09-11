@@ -10,22 +10,23 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.config import Settings
-from src.platform.ai.ai_failover import FailoverAIClient, build_failover_client
 from src.modules.assistant.chat_planner import run_portfolio_diagnosis, should_use_planning
+from src.modules.assistant.legacy_chat_tools import (
+    CHAT_TOOLS as LEGACY_CHAT_TOOLS,
+    build_portfolio_context,
+    build_stock_context,
+    build_watchlist_context,
+    execute_chat_tool,
+    fetch_realtime_context,
+    fetch_technical_context,
+)
+from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.events.sse import SSEStream, chat_stream_hub
-from src.platform.marketdata.models import MarketCode
 from src.modules.assistant.repository import AssistantRepository
-from src.modules.portfolio.repository import PortfolioRepository
-from src.modules.portfolio.service import PortfolioService
 from src.platform.persistence.database import SessionLocal, get_db
 from src.platform.persistence.models import (
-    AIModel,
-    AIService,
-    AnalysisHistory,
     ChatConversation,
     ChatMessage,
-    PaperTradingPosition,
     Position,
     Stock,
     StockSuggestion,
@@ -49,110 +50,17 @@ SYSTEM_PROMPT = """你是 PanWatch 的 AI 投资助手。
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 5
 
-# ──────────────── Tool Definitions ────────────────
-
-CHAT_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_portfolio",
-            "description": "获取用户的实盘持仓和模拟盘持仓。用于回答持仓相关问题（持仓健康吗、该调仓吗、盈亏情况等）。",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_stock_quote",
-            "description": "获取某只股票的实时行情（价格、涨跌幅、成交量等）。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbol": {"type": "string", "description": "股票代码，如 600519"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
-                },
-                "required": ["symbol"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_technical_analysis",
-            "description": "获取股票的技术面分析（趋势、MACD、RSI、支撑位、压力位等）。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbol": {"type": "string", "description": "股票代码"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
-                },
-                "required": ["symbol"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_stock_suggestions",
-            "description": "获取某只股票最近的 AI 建议和分析报告。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "symbol": {"type": "string", "description": "股票代码"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
-                },
-                "required": ["symbol"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_watchlist",
-            "description": "获取用户的自选股（关注列表）。",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-]
-
-
-def _build_watchlist_context(db: Session) -> str:
-    """构建用户自选股列表。"""
-    stocks = db.query(Stock).order_by(Stock.sort_order.asc()).all()
-    if not stocks:
-        return "用户暂无自选股。"
-    lines = [f"- {s.name}({s.market}:{s.symbol})" for s in stocks]
-    return "自选股列表：\n" + "\n".join(lines)
-
-
-async def _execute_tool(db: Session, name: str, args: dict) -> str:
-    """执行工具调用，返回结果文本。"""
-    try:
-        if name == "get_portfolio":
-            result = _build_portfolio_context(db)
-            return result or "用户暂无持仓。"
-        elif name == "get_stock_quote":
-            symbol = args.get("symbol", "")
-            market = args.get("market", "CN")
-            result = await _fetch_realtime_context(symbol, market)
-            return result or f"未能获取 {market}:{symbol} 的行情数据。"
-        elif name == "get_technical_analysis":
-            symbol = args.get("symbol", "")
-            market = args.get("market", "CN")
-            result = await _fetch_technical_context(symbol, market)
-            return result or f"未能获取 {market}:{symbol} 的技术面数据。"
-        elif name == "get_stock_suggestions":
-            symbol = args.get("symbol", "")
-            market = args.get("market", "CN")
-            result = _build_stock_context(db, symbol, market)
-            return result or f"暂无 {market}:{symbol} 的 AI 建议。"
-        elif name == "get_watchlist":
-            return _build_watchlist_context(db)
-        else:
-            return f"未知工具: {name}"
-    except Exception as e:
-        logger.error(f"工具执行失败 {name}: {e}")
-        return f"工具执行出错: {e}"
+# ──────────────── Shared legacy tool boundary ────────────────
+# The route retains private aliases so its stream code and tests keep their
+# contract; reusable implementations live outside this HTTP router.
+CHAT_TOOLS = LEGACY_CHAT_TOOLS
+_build_watchlist_context = build_watchlist_context
+_execute_tool = execute_chat_tool
+_get_ai_client = get_configured_failover_client
+_build_stock_context = build_stock_context
+_build_portfolio_context = build_portfolio_context
+_fetch_realtime_context = fetch_realtime_context
+_fetch_technical_context = fetch_technical_context
 
 
 class CreateConversationBody(BaseModel):
@@ -163,115 +71,6 @@ class CreateConversationBody(BaseModel):
 
 class SendMessageBody(BaseModel):
     content: str
-
-
-def _get_ai_client(db: Session, model_id: int | None = None) -> FailoverAIClient:
-    """获取带 failover 的 AI 客户端（主模型沿用三级选取，备选从库里补齐）。
-
-    对话工具循环 / 组合体检等直接调用方都经此入口 —— 主模型超时/限流/挂掉时
-    自动降级备选，实际使用的模型记在 used_model_label，可回填到 done 事件供前端
-    透明展示。返回的 FailoverAIClient 与 AIClient 接口兼容，可原地替换。
-    """
-    model = None
-    service = None
-    if model_id:
-        model = db.query(AIModel).filter(AIModel.id == model_id).first()
-    if not model:
-        model = db.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
-    if not model:
-        model = db.query(AIModel).first()
-    if model:
-        service = db.query(AIService).filter(AIService.id == model.service_id).first()
-    return build_failover_client(model, service, db=db)
-
-
-def _build_stock_context(db: Session, symbol: str, market: str) -> str:
-    """为绑定股票构建上下文摘要。"""
-    parts = []
-
-    # 最近建议
-    suggestions = (
-        db.query(StockSuggestion)
-        .filter(
-            StockSuggestion.stock_symbol == symbol,
-            StockSuggestion.stock_market == market,
-        )
-        .order_by(StockSuggestion.created_at.desc())
-        .limit(3)
-        .all()
-    )
-    if suggestions:
-        lines = []
-        for s in suggestions:
-            lines.append(f"- [{s.agent_label or s.agent_name}] {s.action_label}: {s.signal or s.reason or ''}")
-        parts.append("最近 AI 建议：\n" + "\n".join(lines))
-
-    # 最近分析报告
-    histories = (
-        db.query(AnalysisHistory)
-        .filter(AnalysisHistory.stock_symbol == symbol)
-        .order_by(AnalysisHistory.created_at.desc())
-        .limit(1)
-        .all()
-    )
-    if histories:
-        h = histories[0]
-        content_preview = (h.content or "")[:500]
-        parts.append(f"最近分析（{h.agent_name}, {h.analysis_date}）：\n{content_preview}")
-
-    if not parts:
-        return ""
-    return "\n\n".join(parts)
-
-
-def _build_portfolio_context(db: Session) -> str:
-    """兼容旧聊天函数；实际读模型归 portfolio 模块所有。"""
-    return PortfolioService(PortfolioRepository(db)).build_assistant_summary()
-
-
-async def _fetch_realtime_context(symbol: str, market: str) -> str:
-    """异步获取实时行情和技术面。"""
-    try:
-        from src.platform.marketdata.marketdata_client import md_quote_rows
-        from src.platform.marketdata.models import MarketCode
-
-        mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
-        rows = await asyncio.to_thread(md_quote_rows, [symbol], mc.value)
-        if not rows:
-            return ""
-        q = rows[0]
-        price = q.get("current_price", "--")
-        change = q.get("change_pct", "--")
-        volume = q.get("volume", "--")
-        name = q.get("name", symbol)
-        return f"实时行情：{name}（{market}:{symbol}）价格 {price}，涨跌幅 {change}%，成交量 {volume}"
-    except Exception as e:
-        logger.debug(f"获取实时行情失败: {e}")
-        return ""
-
-
-async def _fetch_technical_context(symbol: str, market: str) -> str:
-    """获取技术面摘要。"""
-    try:
-        from src.modules.market.data_collector import DataCollector
-
-        collector = DataCollector()
-        summary = await asyncio.to_thread(
-            collector.get_kline_summary, symbol, market
-        )
-        if not summary or summary.get("error"):
-            return ""
-        s = summary.get("summary", {})
-        trend = s.get("trend", "--")
-        macd = s.get("macd_status", "--")
-        rsi = s.get("rsi_14", "--")
-        support = s.get("support_level", "--")
-        resistance = s.get("resistance_level", "--")
-        return f"技术面：趋势 {trend}，MACD {macd}，RSI {rsi}，支撑位 {support}，压力位 {resistance}"
-    except Exception as e:
-        logger.debug(f"获取技术面失败: {e}")
-        return ""
-
 
 @router.get("/suggested-questions")
 def suggested_questions(

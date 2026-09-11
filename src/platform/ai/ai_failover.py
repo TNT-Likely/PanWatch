@@ -312,7 +312,7 @@ def build_failover_client(
     与四级路由自洽:主候选沿用上层已解析结果,备选按 `is_default` 优先、其余按 id
     顺序补齐,天然复用现有 AIService/AIModel 配置体系,无需新增全局配置。
     """
-    from src.config import Settings
+    from src.platform.runtime.config import Settings
 
     candidates: list[tuple[AIClient, str]] = []
     primary_model_id = None
@@ -375,3 +375,23 @@ def build_failover_client(
             db.close()
 
     return FailoverAIClient(candidates)
+
+
+def get_configured_failover_client(db, model_id: int | None = None) -> FailoverAIClient:
+    """Select the requested/default persisted model and build its failover chain.
+
+    HTTP routers in several business modules need an AI client.  Model selection is
+    infrastructure composition, so callers use this platform function instead of
+    borrowing a helper from the assistant's HTTP router.
+    """
+    from src.platform.persistence.models import AIModel, AIService
+
+    model = None
+    if model_id:
+        model = db.query(AIModel).filter(AIModel.id == model_id).first()
+    if not model:
+        model = db.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
+    if not model:
+        model = db.query(AIModel).first()
+    service = db.query(AIService).filter(AIService.id == model.service_id).first() if model else None
+    return build_failover_client(model, service, db=db)

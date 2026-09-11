@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from src.web.api.agents import find_active_tradingagents_trace
+from src.modules.automation import find_active_tradingagents_trace
 
 
 def _fake_log(timestamp, trace_id="man-tradingagents-601127-1234"):

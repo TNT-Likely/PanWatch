@@ -87,7 +87,7 @@ def _mem_db():
 
 def test_pdf_endpoint_returns_full_detail_content():
     """端点:返回 application/pdf 附件,且含详情页完整内容(分析师/辩论全文,来自 raw_data,非仅 content 摘要)。"""
-    from src.web.api import agents
+    from src.modules.automation.api import agents
     from src.platform.persistence.models import AnalysisHistory
 
     db = _mem_db()
@@ -130,7 +130,7 @@ def test_pdf_endpoint_404_when_missing():
     import pytest
     from fastapi import HTTPException
 
-    from src.web.api import agents
+    from src.modules.automation.api import agents
 
     db = _mem_db()
     try:

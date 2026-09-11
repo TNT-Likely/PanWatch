@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.market.price_alert_engine import ENGINE
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import PriceAlertHit, PriceAlertRule, Stock

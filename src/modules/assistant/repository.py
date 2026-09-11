@@ -6,7 +6,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from .models import AssistantTaskRun, AssistantToolInvocation, ChatConversation, ChatMessage
+# 助手表由共享持久化平台注册；repository 是其唯一的模块内访问边界，
+# 不需要再经由一个只做 re-export 的 ``assistant.models`` 转发层。
+from src.platform.persistence.models import (
+    AssistantTaskRun,
+    AssistantToolInvocation,
+    ChatConversation,
+    ChatMessage,
+)
 
 
 class AssistantRepository:

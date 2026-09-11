@@ -1,15 +1,20 @@
 import base64
 import os
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AppSettings
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.administration.update_checker import check_update
 
 router = APIRouter()
+
+# 模块 router 已不在仓库根的浅层目录；版本文件必须从本文件的绝对位置推导，
+# 不能依赖服务进程的当前工作目录。
+VERSION_FILE = Path(__file__).resolve().parents[4] / "VERSION"
 
 
 def get_app_version() -> str:
@@ -20,14 +25,10 @@ def get_app_version() -> str:
         return version
 
     # 从 VERSION 文件读取（支持多个位置）
-    possible_paths = [
-        "VERSION",  # 当前工作目录（开发和生产）
-        os.path.join(os.path.dirname(__file__), "../../../VERSION"),  # 相对于本文件
-    ]
+    possible_paths = [Path("VERSION"), VERSION_FILE]
     for path in possible_paths:
         try:
-            with open(path, "r") as f:
-                return f.read().strip()
+            return path.read_text(encoding="utf-8").strip()
         except FileNotFoundError:
             continue
     return "dev"

@@ -12,9 +12,9 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.strategy.strategy_engine import get_strategy_stats, list_strategy_signals
-from src.web.api.chat import _get_ai_client
+from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import (
     AnalysisHistory,
@@ -429,7 +429,7 @@ async def curate_today(req: CurateRequest, db: Session = Depends(get_db)):
 
     items: list[dict] = []
     try:
-        content = await _get_ai_client(db, req.model_id).chat(
+        content = await get_configured_failover_client(db, req.model_id).chat(
             system_prompt, user_content, temperature=0.3
         )
         for line in (content or "").splitlines():

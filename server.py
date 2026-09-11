@@ -19,8 +19,8 @@ from src.platform.persistence.models import (
     AppSettings,
     DataSource,
 )
-from src.web.log_handler import DBLogHandler
-from src.config import Settings, AppConfig, StockConfig
+from src.platform.observability.log_handler import DBLogHandler
+from src.platform.runtime.config import Settings, AppConfig, StockConfig
 from src.platform.marketdata.models import MarketCode
 from src.platform.ai.ai_client import AIClient
 from src.platform.ai.ai_failover import build_failover_client
@@ -1438,7 +1438,7 @@ async def lifespan(app):
     setup_playwright()
 
     # 从环境变量初始化认证（Docker 部署用）
-    from src.web.api.auth import init_auth_from_env
+    from src.modules.administration.api.auth import init_auth_from_env
 
     db = SessionLocal()
     try:
@@ -1470,7 +1470,7 @@ async def lifespan(app):
 
     # 后台刷新股票列表缓存
     import threading
-    from src.web.stock_list import get_stock_list, refresh_stock_list
+    from src.platform.marketdata.stock_list import get_stock_list, refresh_stock_list
 
     def refresh_stock_cache():
         stocks = get_stock_list()
@@ -1527,7 +1527,7 @@ async def lifespan(app):
         logger.error(f"上下文维护调度器启动失败: {e}")
     # MCP 调用日志保留期清理:每日 04:00 清理超期审计记录
     try:
-        from src.web.api.mcp import prune_mcp_logs
+        from src.modules.administration.api.mcp import prune_mcp_logs
 
         scheduler.add_job(
             prune_mcp_logs,
@@ -1556,7 +1556,7 @@ async def lifespan(app):
 
 
 # 模块级 app 实例，供 uvicorn reload 使用
-from src.web.app import app  # noqa: E402
+from src.bootstrap.application import app  # noqa: E402
 
 app.router.lifespan_context = lifespan
 

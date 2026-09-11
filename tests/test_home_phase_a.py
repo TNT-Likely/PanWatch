@@ -10,8 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import src.platform.persistence.models as M
-from src.web.api import accounts as accounts_api
-from src.web.api import price_alerts as alerts_api
+from src.modules.portfolio.api import accounts as accounts_api
+from src.modules.market.api import price_alerts as alerts_api
 from src.platform.persistence.database import Base
 
 

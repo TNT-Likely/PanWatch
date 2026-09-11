@@ -7,7 +7,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from src.web.api import insights
+from src.modules.research.api import insights
 from src.platform.persistence.database import SessionLocal
 
 
@@ -20,14 +20,14 @@ class _FakeAIClient:
 
 
 def _run_eval(monkeypatch, req, reply="结论: 适合\n理由:\n- 摊薄明显\n风险: 大盘转弱"):
-    monkeypatch.setattr(insights, "_get_ai_client", lambda db, mid=None: _FakeAIClient(reply))
+    monkeypatch.setattr(insights, "get_configured_failover_client", lambda db, mid=None: _FakeAIClient(reply))
 
     async def _empty(*a, **k):
         return ""
 
-    monkeypatch.setattr(insights, "_fetch_realtime_context", _empty)
+    monkeypatch.setattr(insights, "fetch_realtime_context", _empty)
     monkeypatch.setattr(insights, "_fetch_fundamental_context", _empty)
-    monkeypatch.setattr(insights, "_fetch_technical_context", _empty)
+    monkeypatch.setattr(insights, "fetch_technical_context", _empty)
     monkeypatch.setattr(insights, "_fetch_message_context", _empty)
     db = SessionLocal()
     try:

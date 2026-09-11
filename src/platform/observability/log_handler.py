@@ -1,4 +1,8 @@
-"""Custom logging handler that writes log entries to SQLite."""
+"""将结构化日志缓冲写入 SQLite 的可观测性适配器。
+
+它维护写入节流与保留策略，但不理解日志关联的产品业务含义，因此归属
+``platform.observability`` 而非 HTTP 路由层。
+"""
 
 import logging
 import threading

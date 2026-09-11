@@ -11,8 +11,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.api import mcp as mcp_api
-from src.web.api import pats as pats_api
+from src.modules.administration.api import mcp as mcp_api
+from src.modules.administration.api import pats as pats_api
 from src.platform.persistence.database import Base, get_db
 
 

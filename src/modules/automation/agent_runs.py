@@ -1,8 +1,11 @@
 """Agent 运行记录 - 写入 agent_runs 表（供 UI 查询）"""
 import logging
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import SessionLocal
-from src.platform.persistence.models import AgentRun
+from src.platform.persistence.models import AgentRun, LogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +59,42 @@ def record_agent_run(
         db.rollback()
     finally:
         db.close()
+
+
+def find_active_tradingagents_trace(db: Session, stock_symbol: str) -> str | None:
+    """返回标的仍在执行的 TradingAgents trace，用于跨模块幂等触发。
+
+    运行状态属于自动化模块，市场模块只能通过这个公开查询判断是否需要创建新任务，
+    不应导入自动化 HTTP router 或直接查询其内部实现。
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    latest_log = (
+        db.query(LogEntry)
+        .filter(
+            LogEntry.event == "ta_progress",
+            LogEntry.agent_name == "tradingagents",
+            LogEntry.timestamp >= cutoff,
+            LogEntry.trace_id.like(f"%-{stock_symbol}-%"),
+        )
+        .order_by(LogEntry.timestamp.desc())
+        .first()
+    )
+    if not latest_log or not latest_log.trace_id:
+        return None
+
+    trace_id = latest_log.trace_id
+    run = (
+        db.query(AgentRun)
+        .filter(AgentRun.trace_id == trace_id)
+        .order_by(AgentRun.id.desc())
+        .first()
+    )
+    if run and run.status in ("success", "failed"):
+        return None
+
+    last_ts = latest_log.timestamp
+    if last_ts and last_ts.tzinfo is None:
+        last_ts = last_ts.replace(tzinfo=timezone.utc)
+    if last_ts and (datetime.now(timezone.utc) - last_ts).total_seconds() > 300:
+        return None
+    return trace_id

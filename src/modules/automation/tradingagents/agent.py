@@ -170,7 +170,7 @@ class TradingAgentsAgent(BaseAgent):
 
         # 浅克隆 context.config 让 watchlist 只剩目标股票,其他字段不变
         from copy import copy
-        from src.config import AppConfig
+        from src.platform.runtime.config import AppConfig
 
         narrow_config = AppConfig(
             settings=context.config.settings,

@@ -1,7 +1,7 @@
 """首页指数 spark(近20日收盘) 注入 + 60s 缓存 + fail-soft 测试"""
 import asyncio
 
-import src.web.api.market as mkt
+import src.modules.market.api.market as mkt
 
 
 class _K:

@@ -2,7 +2,7 @@
 import asyncio
 
 import src.platform.marketdata.collectors.kline_collector as kc
-import src.web.api.market as mkt
+import src.modules.market.api.market as mkt
 
 
 def test_get_index_klines_uses_marketdata(monkeypatch):

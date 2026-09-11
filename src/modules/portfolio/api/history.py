@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AnalysisHistory
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from .models import PaperTradingPosition, Position, Stock
+# 表由共享持久化平台注册；组合 repository 直接使用它们，避免模块内保留
+# 一个不承载任何领域行为的 ``portfolio.models`` re-export 文件。
+from src.platform.persistence.models import PaperTradingPosition, Position, Stock
 
 
 class PortfolioRepository:
@@ -25,4 +27,3 @@ class PortfolioRepository:
             .filter(PaperTradingPosition.status == "open")
             .all()
         )
-

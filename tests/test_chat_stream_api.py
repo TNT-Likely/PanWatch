@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import src.web.api.chat as chat_api
+import src.modules.assistant.chat_api as chat_api
 from src.platform.events.sse import SSEStream
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import ChatConversation, ChatMessage

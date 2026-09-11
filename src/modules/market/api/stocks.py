@@ -17,7 +17,7 @@ from src.platform.persistence.models import (
     PriceAlertRule,
     PriceAlertHit,
 )
-from src.web.stock_list import search_stocks, refresh_stock_list
+from src.platform.marketdata.stock_list import search_stocks, refresh_stock_list
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
@@ -414,7 +414,7 @@ async def trigger_stock_agent(
     # 后端先查"该 symbol 是否有真正在跑的 TA 任务",有则返回现有 trace_id(不启新任务)。
     # force_refresh=true 时跳过去重,允许用户主动强制重跑(老任务自然终止,新 trace_id)。
     if agent_name == "tradingagents" and not force_refresh:
-        from src.web.api.agents import find_active_tradingagents_trace
+        from src.modules.automation import find_active_tradingagents_trace
         existing_trace = find_active_tradingagents_trace(db, trigger_stock.symbol)
         if existing_trace:
             logger.info(

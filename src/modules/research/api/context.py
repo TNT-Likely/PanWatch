@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.modules.research.context_store import (
     cleanup_context_data,
     get_latest_news_topic_snapshot,

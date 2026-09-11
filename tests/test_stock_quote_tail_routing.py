@@ -10,7 +10,7 @@ from src.platform.marketdata.models import MarketCode, StockData
 
 def test_insights_fundamental_context_uses_md_quote_rows(monkeypatch):
     """insights._fetch_fundamental_context(dict 消费方)应调用 md_quote_rows 而非旧直连。"""
-    import src.web.api.insights as insights
+    import src.modules.research.api.insights as insights
 
     calls = []
 

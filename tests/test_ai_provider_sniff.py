@@ -88,7 +88,7 @@ def test_chat_sends_temperature_when_float():
 
 def test_discover_models_returns_list(db, monkeypatch):
     """discover-models 用服务商凭证嗅探并返回模型 id 列表。"""
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     svc = AIService(name="s", base_url="http://x", api_key="k")
     db.add(svc)
@@ -110,7 +110,7 @@ def test_discover_models_returns_list(db, monkeypatch):
 def test_discover_models_error_maps_to_400(db, monkeypatch):
     """嗅探失败(服务商不支持/网络错误)返回 400。"""
     from fastapi import HTTPException
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     svc = AIService(name="s", base_url="http://x", api_key="k")
     db.add(svc)
@@ -134,7 +134,7 @@ def test_discover_models_error_maps_to_400(db, monkeypatch):
 
 def test_batch_add_skips_duplicates_and_sets_default(db, monkeypatch):
     """批量新增:跳过已存在的 model 标识,设默认时清零其余。"""
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     svc = AIService(name="s", base_url="http://x", api_key="k")
     db.add(svc)
@@ -163,7 +163,7 @@ def test_batch_add_skips_duplicates_and_sets_default(db, monkeypatch):
 
 def test_test_model_omits_temperature(db, monkeypatch):
     """测试连通性时不下发 temperature(对不支持该参数的模型也安全)。"""
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     m = _seed_service_with_model(db)
     seen: dict = {}
@@ -185,7 +185,7 @@ def test_test_model_omits_temperature(db, monkeypatch):
 def test_test_model_error_maps_to_400(db, monkeypatch):
     """测试调用报错时映射为 400。"""
     from fastapi import HTTPException
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     m = _seed_service_with_model(db)
 
@@ -206,7 +206,7 @@ def test_test_model_error_maps_to_400(db, monkeypatch):
 
 def test_discover_models_empty_list(db, monkeypatch):
     """嗅探返回空列表时,接口正常返回空 models。"""
-    from src.web.api import providers
+    from src.modules.administration.api import providers
 
     svc = AIService(name="s", base_url="http://x", api_key="k")
     db.add(svc)

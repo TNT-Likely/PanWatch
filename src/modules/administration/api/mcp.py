@@ -8,8 +8,7 @@
 - 鉴权用**独立 PAT 体系**(pwmcp_ 前缀 + sha256 存库 + 常数时间比较 + mcp:read
   scope),与登录 JWT 分流;工具全只读,天然安全;每次调用落审计日志。
 
-工具实现直接复用 chat.py 的 CHAT_TOOLS(schema)与 _execute_tool(dispatch),
-不重写业务逻辑。
+工具实现复用 assistant 的公开工具 schema 与 dispatcher，不重写业务逻辑。
 """
 
 import json
@@ -26,7 +25,7 @@ from src.modules.administration.pat import (
     looks_like_pat,
     verify_pat_hash,
 )
-from src.web.api.chat import CHAT_TOOLS, _execute_tool
+from src.modules.assistant.legacy_chat_tools import CHAT_TOOLS, execute_chat_tool
 from src.platform.persistence.database import SessionLocal, get_db
 from src.platform.persistence.models import MCPCallLog, PersonalAccessToken
 
@@ -227,7 +226,7 @@ async def _handle_tools_call(params: dict, db: Session, pat: dict, req_id) -> JS
     start = time.perf_counter()
     err: str | None = None
     try:
-        text = await _execute_tool(db, name, args if isinstance(args, dict) else {})
+        text = await execute_chat_tool(db, name, args if isinstance(args, dict) else {})
         is_error = text.startswith("工具执行出错")
         if is_error:
             err = text

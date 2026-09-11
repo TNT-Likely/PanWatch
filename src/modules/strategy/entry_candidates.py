@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_
 
-from src.config import Settings
+from src.platform.runtime.config import Settings
 from src.platform.marketdata.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.platform.persistence.json_safe import to_jsonable
