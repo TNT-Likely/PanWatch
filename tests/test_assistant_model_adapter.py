@@ -2,7 +2,7 @@
 
 import asyncio
 
-from pan_agent import ModelMessage, ToolRisk, ToolSpec
+from pan_agent import ModelMessage, ToolCall, ToolRisk, ToolSpec
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -43,6 +43,56 @@ def test_failover_model_adapter_forwards_each_model_stream_chunk_and_maps_tool_c
     assert turn.content == "已查询"
     assert turn.tool_calls[0].name == "get_portfolio"
     assert emitted == ["已", "查询"]
+
+
+def test_failover_model_adapter_encodes_tool_call_history_for_model():
+    from src.modules.assistant.llm_adapter import FailoverModelAdapter
+
+    captured_messages: list[dict] = []
+
+    class FakeClient:
+        async def chat_stream(self, messages, tools, temperature):
+            captured_messages.extend(messages)
+            yield ("message", {"content": "已基于持仓回答", "tool_calls": []})
+
+    async def ignore_token(_token: str) -> None:
+        return None
+
+    turn = asyncio.run(FailoverModelAdapter(FakeClient()).run_turn(
+        [
+            ModelMessage(
+                role="assistant",
+                tool_calls=[ToolCall(id="call-1", name="get_portfolio", arguments={})],
+            ),
+            ModelMessage(
+                role="tool",
+                name="get_portfolio",
+                tool_call_id="call-1",
+                content="实盘持仓：广汽集团",
+            ),
+        ],
+        [],
+        ignore_token,
+    ))
+
+    assert turn.content == "已基于持仓回答"
+    assert captured_messages == [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "get_portfolio", "arguments": "{}"},
+            }],
+        },
+        {
+            "role": "tool",
+            "content": "实盘持仓：广汽集团",
+            "tool_call_id": "call-1",
+            "name": "get_portfolio",
+        },
+    ]
 
 
 def test_assistant_service_builds_panagent_runtime_from_host_adapters():

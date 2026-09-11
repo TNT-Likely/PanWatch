@@ -55,6 +55,17 @@ class AgentRuntime:
                 if not turn.tool_calls:
                     return await self._finish(sink, request, RunStatus.COMPLETED, answer, tool_calls)
 
+                # Keep the complete assistant tool-call turn immediately
+                # before its results.  OpenAI-compatible providers use this
+                # association to understand that each tool response is new
+                # evidence rather than a fresh request to call the tool.
+                messages.append(
+                    ModelMessage(
+                        role="assistant",
+                        content=turn.content,
+                        tool_calls=[call.model_copy(deep=True) for call in turn.tool_calls],
+                    )
+                )
                 for call in turn.tool_calls:
                     if tool_calls >= request.limits.max_tool_calls:
                         return await self._finish(
@@ -64,7 +75,6 @@ class AgentRuntime:
                     result, error_code = await self._execute_call(request, sink, call, deadline)
                     if error_code:
                         return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, error_code)
-                    messages.append(ModelMessage(role="assistant", content="", name=call.name))
                     messages.append(
                         ModelMessage(
                             role="tool",

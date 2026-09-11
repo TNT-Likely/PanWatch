@@ -106,17 +106,24 @@ class RunLimits(BaseModel):
     step_retry_count: int = Field(default=1, ge=0, le=3)
 
 
-class ModelMessage(BaseModel):
-    role: str = Field(pattern=r"^(system|user|assistant|tool)$")
-    content: str = ""
-    tool_call_id: str | None = None
-    name: str | None = None
-
-
 class ToolCall(BaseModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelMessage(BaseModel):
+    """A provider-neutral conversation message passed between model turns.
+
+    Tool results must retain the assistant call that produced them.  The host
+    adapter converts ``tool_calls`` to the chosen provider's wire format.
+    """
+
+    role: str = Field(pattern=r"^(system|user|assistant|tool)$")
+    content: str = ""
+    tool_call_id: str | None = None
+    name: str | None = None
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 class ModelTurn(BaseModel):
@@ -145,4 +152,3 @@ class RunResult(BaseModel):
     answer: str = ""
     tool_calls: int = 0
     error_code: str | None = None
-

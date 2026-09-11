@@ -15,6 +15,34 @@ class FailoverModelAdapter:
         self._client = client
         self._temperature = temperature
 
+    @staticmethod
+    def _to_provider_messages(messages: list[ModelMessage]) -> list[dict[str, Any]]:
+        """Translate PanAgent's neutral tool-call history to OpenAI format."""
+        provider_messages: list[dict[str, Any]] = []
+        for message in messages:
+            payload = message.model_dump(exclude_none=True, exclude={"tool_calls"})
+            if message.tool_calls:
+                # A tool result is only meaningful to an OpenAI-compatible
+                # model when the preceding assistant message declares its id.
+                payload["content"] = message.content or None
+                payload["tool_calls"] = [
+                    {
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(
+                                call.arguments,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        },
+                    }
+                    for call in message.tool_calls
+                ]
+            provider_messages.append(payload)
+        return provider_messages
+
     async def run_turn(self, messages: list[ModelMessage], tools: list[ToolSpec], emit_token) -> ModelTurn:
         """Run one model turn and forward every model delta immediately.
 
@@ -28,7 +56,7 @@ class FailoverModelAdapter:
         raw_tool_calls: list[dict[str, Any]] = []
 
         async for event_type, payload in self._client.chat_stream(
-            [message.model_dump(exclude_none=True) for message in messages],
+            self._to_provider_messages(messages),
             tools=[tool.openai_schema() for tool in tools],
             temperature=self._temperature,
         ):

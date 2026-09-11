@@ -28,8 +28,10 @@ class CollectingSink:
 class FixedModel:
     def __init__(self, turns):
         self.turns = iter(turns)
+        self.received_messages = []
 
-    async def run_turn(self, _messages, _tools, _emit_token):
+    async def run_turn(self, messages, _tools, _emit_token):
+        self.received_messages.append([message.model_copy(deep=True) for message in messages])
         return next(self.turns)
 
 
@@ -85,6 +87,32 @@ def test_tool_failure_is_retried_once_and_answer_is_completed():
     assert result.status is RunStatus.COMPLETED
     assert result.answer == "完成"
     assert EventType.TOOL_COMPLETED in [event.type for event in sink.events]
+
+
+def test_tool_result_keeps_the_preceding_call_for_the_next_model_turn():
+    async def lookup(_request, _arguments):
+        return ToolResult.success(
+            summary="查询完成",
+            data={"value": 1},
+            sources=[{"name": "test"}],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
+
+    model = FixedModel([
+        ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup", arguments={"symbol": "CN:601238"})]),
+        ModelTurn(content="完成"),
+    ])
+
+    result = asyncio.run(AgentRuntime(model, registry(lookup)).run(request(), CollectingSink()))
+
+    next_turn_messages = model.received_messages[1]
+    assert result.status is RunStatus.COMPLETED
+    assert next_turn_messages[1].role == "assistant"
+    assert [call.model_dump() for call in next_turn_messages[1].tool_calls] == [
+        {"id": "call-1", "name": "lookup", "arguments": {"symbol": "CN:601238"}}
+    ]
+    assert next_turn_messages[2].role == "tool"
+    assert next_turn_messages[2].tool_call_id == "call-1"
 
 
 def test_tool_timeout_returns_partial_result():
