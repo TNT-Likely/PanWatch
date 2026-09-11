@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pan_agent import ApprovalDecision
 from pydantic import BaseModel, Field
 
 
@@ -11,6 +12,10 @@ class CreateConversationCommand(BaseModel):
     stock_symbol: str | None = Field(default=None, max_length=32)
     stock_market: str | None = Field(default=None, max_length=16)
     initial_context: str | None = Field(default=None, max_length=20_000)
+
+
+class ApprovalDecisionCommand(BaseModel):
+    decision: ApprovalDecision
 
 
 class ConversationDTO(BaseModel):
@@ -31,4 +36,3 @@ class MessageDTO(BaseModel):
 class ConversationDetailDTO(BaseModel):
     conversation: ConversationDTO
     messages: list[MessageDTO]
-

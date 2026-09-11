@@ -129,6 +129,10 @@ class AssistantRepository:
             return None
         return AgentCheckpoint.model_validate(task.checkpoint)
 
+    def get_task_run(self, task_run_id: int) -> AssistantTaskRun:
+        """Return the durable task metadata needed to rebuild a runtime request."""
+        return self._require_task(task_run_id)
+
     def create_approvals(
         self,
         task_run_id: int,
@@ -166,6 +170,14 @@ class AssistantRepository:
                 AssistantToolApproval.status == "pending",
             )
             .first()
+        )
+
+    def list_task_approvals(self, task_run_id: int) -> list[AssistantToolApproval]:
+        return (
+            self._session.query(AssistantToolApproval)
+            .filter(AssistantToolApproval.task_run_id == task_run_id)
+            .order_by(AssistantToolApproval.created_at.asc())
+            .all()
         )
 
     def decide_approval(
@@ -309,13 +321,9 @@ class AssistantRepository:
                     "expires_at": approval.expires_at,
                 }
                 for approval in (
-                    self._session.query(AssistantToolApproval)
-                    .filter(
-                        AssistantToolApproval.task_run_id == task_run_id,
-                        AssistantToolApproval.status == "pending",
-                    )
-                    .order_by(AssistantToolApproval.created_at.asc())
-                    .all()
+                    approval
+                    for approval in self.list_task_approvals(task_run_id)
+                    if approval.status == "pending"
                 )
             ],
             "tools": [

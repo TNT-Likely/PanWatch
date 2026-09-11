@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
 from pan_agent import (
+    AgentCheckpoint,
     AgentRuntime,
+    ApprovalDecision,
     RunRequest,
     ToolCall,
     ToolPermissionDecision,
@@ -26,6 +31,23 @@ from .tools import build_panwatch_tool_registry
 
 class AssistantNotFoundError(LookupError):
     pass
+
+
+class AssistantApprovalConflictError(RuntimeError):
+    """A decision was already consumed or no longer matches its checkpoint."""
+
+
+class AssistantApprovalExpiredError(AssistantApprovalConflictError):
+    """A pending approval reached its durable expiry time."""
+
+
+@dataclass(frozen=True)
+class AssistantApprovalResolution:
+    """All data the HTTP boundary needs before it can safely call resume()."""
+
+    task: object
+    checkpoint: AgentCheckpoint | None
+    decisions: dict[str, ApprovalDecision]
 
 
 class PanWatchToolPolicy:
@@ -81,6 +103,53 @@ class AssistantService:
         except LookupError as exc:
             raise AssistantNotFoundError(str(exc)) from exc
 
+    def pause_task(self, task_id: int, result) -> list:
+        """Persist a waiting runtime before exposing any approval to a browser."""
+        if result.checkpoint is None or not result.pending_approvals:
+            raise ValueError("waiting runtime result must include checkpoint and pending approvals")
+        self._repository.save_checkpoint(task_id, result.checkpoint)
+        return self._repository.create_approvals(
+            task_id,
+            result.pending_approvals,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+
+    def resolve_approval_decision(
+        self,
+        approval_id: str,
+        decision: ApprovalDecision,
+    ) -> AssistantApprovalResolution:
+        """Consume one decision and return a resume plan only when the batch is complete."""
+        approval, accepted = self._repository.decide_approval(
+            approval_id,
+            decision,
+            decided_by="local",
+        )
+        if approval is None:
+            raise AssistantNotFoundError("审批不存在")
+        if not accepted:
+            if approval.status == "pending" and self._is_expired(approval.expires_at):
+                raise AssistantApprovalExpiredError("审批已过期")
+            raise AssistantApprovalConflictError("审批已处理")
+
+        task = self._repository.get_task_run(approval.task_run_id)
+        checkpoint = self._repository.get_task_checkpoint(task.id)
+        if checkpoint is None:
+            raise AssistantApprovalConflictError("审批任务没有可恢复检查点")
+        approvals = self._repository.list_task_approvals(task.id)
+        if any(row.status == "pending" for row in approvals):
+            return AssistantApprovalResolution(task=task, checkpoint=None, decisions={})
+
+        expected_ids = {pending.call_id for pending in checkpoint.pending_approvals}
+        decisions = {
+            row.call_id: ApprovalDecision(row.status)
+            for row in approvals
+            if row.call_id in expected_ids
+        }
+        if set(decisions) != expected_ids:
+            raise AssistantApprovalConflictError("审批批次与检查点不一致")
+        return AssistantApprovalResolution(task=task, checkpoint=checkpoint, decisions=decisions)
+
     def build_runtime(self, failover_client) -> AgentRuntime:
         """Compose host adapters into the business-agnostic PanAgent runtime."""
         return AgentRuntime(
@@ -121,6 +190,12 @@ class AssistantService:
             final_message_id=None,
             error_code=error_code,
         )
+
+    @staticmethod
+    def _is_expired(expires_at: datetime) -> bool:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return expires_at <= datetime.now(timezone.utc)
 
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)

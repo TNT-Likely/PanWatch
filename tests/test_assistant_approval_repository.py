@@ -9,6 +9,8 @@ from pan_agent import (
     PendingApproval,
     PermissionMode,
     RunRequest,
+    RunResult,
+    RunStatus,
     ToolCall,
     ToolRisk,
     ToolSpec,
@@ -122,5 +124,30 @@ def test_service_builds_a_stable_policy_snapshot_for_one_runtime():
 
     assert policy.is_tool_visible(policy_request, write_tool) is False
     assert decision.mode is PermissionMode.DENY
+    session.close()
+    engine.dispose()
+
+
+def test_service_persists_a_waiting_batch_then_builds_exact_resume_decisions():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, task = _repository()
+    checkpoint = _checkpoint()
+    service = AssistantService(repository)
+    approvals = service.pause_task(
+        task.id,
+        RunResult(
+            run_id=str(task.id),
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=checkpoint,
+            pending_approvals=checkpoint.pending_approvals,
+        ),
+    )
+
+    outcome = service.resolve_approval_decision(approvals[0].id, ApprovalDecision.REJECTED)
+
+    assert outcome.task.id == task.id
+    assert outcome.checkpoint == checkpoint
+    assert outcome.decisions == {"call-1": ApprovalDecision.REJECTED}
     session.close()
     engine.dispose()
