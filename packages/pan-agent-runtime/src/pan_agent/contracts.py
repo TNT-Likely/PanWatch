@@ -14,6 +14,42 @@ class ToolRisk(StrEnum):
 
     READ = "read"
     WRITE = "write"
+    EXTERNAL = "external"
+    DESTRUCTIVE = "destructive"
+
+
+class PermissionMode(StrEnum):
+    """The host-owned outcome for one proposed tool call."""
+
+    ALLOW = "allow"
+    ASK = "ask"
+    DENY = "deny"
+
+
+class ApprovalDecision(StrEnum):
+    """A durable human decision for a pending tool call."""
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ToolPermissionDecision(BaseModel):
+    """A policy decision that the model cannot create or override."""
+
+    mode: PermissionMode
+    reason: str = ""
+
+    @classmethod
+    def allow(cls) -> ToolPermissionDecision:
+        return cls(mode=PermissionMode.ALLOW)
+
+    @classmethod
+    def ask(cls, reason: str = "") -> ToolPermissionDecision:
+        return cls(mode=PermissionMode.ASK, reason=reason)
+
+    @classmethod
+    def deny(cls, reason: str) -> ToolPermissionDecision:
+        return cls(mode=PermissionMode.DENY, reason=reason)
 
 
 class RunStatus(StrEnum):
@@ -23,6 +59,7 @@ class RunStatus(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    WAITING_FOR_APPROVAL = "waiting_for_approval"
 
 
 class EventType(StrEnum):
@@ -32,6 +69,7 @@ class EventType(StrEnum):
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     ANSWER_TOKEN = "answer_token"
+    APPROVAL_REQUIRED = "approval_required"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
 
@@ -84,7 +122,7 @@ class ToolResult(BaseModel):
         data: dict[str, Any],
         sources: list[Source | dict[str, Any]],
         observed_at: datetime,
-    ) -> "ToolResult":
+    ) -> ToolResult:
         return cls(
             ok=True,
             summary=summary,
@@ -94,7 +132,7 @@ class ToolResult(BaseModel):
         )
 
     @classmethod
-    def failure(cls, *, summary: str, error_code: str = "tool_failed") -> "ToolResult":
+    def failure(cls, *, summary: str, error_code: str = "tool_failed") -> ToolResult:
         return cls(ok=False, summary=summary, error_code=error_code)
 
 
@@ -126,6 +164,25 @@ class ModelMessage(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
+class PendingApproval(BaseModel):
+    """A proposed call preserved until a trusted human decides it."""
+
+    call_id: str = Field(min_length=1)
+    tool_name: str = Field(min_length=1)
+    risk: ToolRisk
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentCheckpoint(BaseModel):
+    """Provider-neutral state required to resume a paused agent run."""
+
+    messages: list[ModelMessage]
+    answer: str = ""
+    step_index: int = Field(ge=0)
+    tool_calls_used: int = Field(ge=0)
+    pending_approvals: list[PendingApproval] = Field(default_factory=list)
+
+
 class ModelTurn(BaseModel):
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
@@ -152,3 +209,5 @@ class RunResult(BaseModel):
     answer: str = ""
     tool_calls: int = 0
     error_code: str | None = None
+    checkpoint: AgentCheckpoint | None = None
+    pending_approvals: list[PendingApproval] = Field(default_factory=list)

@@ -2,13 +2,17 @@
 
 import asyncio
 
+from pan_agent import ModelMessage, ReadOnlyToolPolicy, RunRequest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from pan_agent import ModelMessage, RunRequest
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import Account, Position, Stock  # noqa: F401 - registers metadata
+from src.platform.persistence.models import (
+    Account,
+    Position,
+    Stock,
+)
 
 
 def test_portfolio_tool_is_read_only_and_includes_provenance():
@@ -31,7 +35,8 @@ def test_portfolio_tool_is_read_only_and_includes_provenance():
         {},
     ))
 
-    assert registry.model_tools()[0].risk == "read"
+    request = RunRequest(run_id="run", messages=[ModelMessage(role="user", content="持仓")])
+    assert registry.model_tools(request, ReadOnlyToolPolicy())[0].risk == "read"
     assert result.ok is True
     assert "贵州茅台" in result.summary
     assert result.sources[0].name == "PanWatch 持仓"

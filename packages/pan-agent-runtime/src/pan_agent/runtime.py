@@ -17,7 +17,8 @@ from .contracts import (
     ToolResult,
 )
 from .errors import UnknownTool
-from .ports import EventSink, ModelPort
+from .policy import ReadOnlyToolPolicy
+from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
 
 
@@ -28,9 +29,10 @@ class AgentRuntime:
     this class only emits portable events and never imports host concepts.
     """
 
-    def __init__(self, model: ModelPort, tools: ToolRegistry) -> None:
+    def __init__(self, model: ModelPort, tools: ToolRegistry, policy: ToolPolicy | None = None) -> None:
         self._model = model
         self._tools = tools
+        self._policy = policy or ReadOnlyToolPolicy()
 
     async def run(self, request: RunRequest, sink: EventSink) -> RunResult:
         await self._publish(sink, request, EventType.RUN_CREATED)
@@ -48,7 +50,7 @@ class AgentRuntime:
             for step_index in range(1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
                 await self._publish(sink, request, EventType.STEP_UPDATED, {"step": step_index, "status": "running"})
-                turn = await self._run_model_turn(messages, emit_token, deadline)
+                turn = await self._run_model_turn(request, messages, emit_token, deadline)
                 if turn.content and not answer:
                     await emit_token(turn.content)
 
@@ -88,15 +90,19 @@ class AgentRuntime:
             return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, "run_timeout")
         except asyncio.CancelledError:
             return await self._finish(sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled")
-        except Exception:
+        except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
             return await self._finish(sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed")
 
-    async def _run_model_turn(self, messages, emit_token, deadline):
+    async def _run_model_turn(self, request: RunRequest, messages, emit_token, deadline):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError
         async with asyncio.timeout(remaining):
-            return await self._model.run_turn(messages, self._tools.model_tools(), emit_token)
+            return await self._model.run_turn(
+                messages,
+                self._tools.model_tools(request, self._policy),
+                emit_token,
+            )
 
     async def _execute_call(
         self, request: RunRequest, sink: EventSink, call: ToolCall, deadline: float
@@ -122,7 +128,7 @@ class AgentRuntime:
                     raise
                 if attempt == request.limits.step_retry_count:
                     return ToolResult.failure(summary="工具调用超时", error_code="tool_timeout"), "tool_timeout"
-            except Exception:
+            except Exception:  # noqa: BLE001 - tool adapters are untrusted host boundaries
                 if attempt == request.limits.step_retry_count:
                     return ToolResult.failure(summary="工具调用失败", error_code="tool_failed"), "tool_failed"
 
