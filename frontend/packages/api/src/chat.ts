@@ -57,6 +57,8 @@ export const chatApi = {
 }
 
 export interface ChatStreamCallbacks {
+  /** 已接受请求或正在执行的阶段提示 */
+  onStatus?: (message: string) => void
   /** token 增量文本 */
   onToken?: (text: string) => void
   /** 模型开始调用工具（前端应清空当前 token 缓冲并展示"正在查询…"） */
@@ -95,6 +97,7 @@ async function sendMessageStream(
   let streamId = ''
   let lastEventId = 0
   let finished = false
+  let terminalError = ''
 
   const handleEvent = (ev: SSEEvent) => {
     if (ev.id > 0) lastEventId = ev.id
@@ -102,6 +105,9 @@ async function sendMessageStream(
     switch (ev.event) {
       case 'meta':
         streamId = d.stream_id || ''
+        break
+      case 'status':
+        callbacks.onStatus?.(d.message || '思考中…')
         break
       case 'token':
         callbacks.onToken?.(d.text || '')
@@ -124,7 +130,8 @@ async function sendMessageStream(
         })
         break
       case 'error':
-        callbacks.onError?.(d.message || '未知错误')
+        terminalError = d.message || '未知错误'
+        callbacks.onError?.(terminalError)
         break
     }
   }
@@ -135,6 +142,11 @@ async function sendMessageStream(
     signal,
     onEvent: handleEvent,
   })
+
+  // The legacy /api/chat endpoint intentionally emits `error` then persists a
+  // fallback response as `done`.  Only a stream that ends without `done` is a
+  // terminal failure for the caller.
+  if (terminalError && !finished) throw new Error(terminalError)
 
   // 连接被中断但生成未结束 → 经续推端点接回（服务端缓冲全量事件）
   let reconnects = 0

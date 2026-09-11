@@ -80,6 +80,15 @@ class AssistantService:
     def finish_task(self, task_id: int, result, final_message_id: int) -> None:
         self._repository.finish_task(task_id, status=result.status.value, final_message_id=final_message_id, error_code=result.error_code)
 
+    def fail_task(self, task_id: int, error_code: str) -> None:
+        """Close a task that could not yield a usable assistant answer."""
+        self._repository.finish_task(
+            task_id,
+            status="failed",
+            final_message_id=None,
+            error_code=error_code,
+        )
+
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)
         if not conversation:

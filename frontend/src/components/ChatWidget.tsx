@@ -226,11 +226,16 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     resetStream()
     autoScrollRef.current = true
     let receivedAny = false
+    let streamError = ''
 
     try {
       // 优先走 SSE 流式（token 流 + 工具过程可视）
       const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
       await stream(convId, content, {
+        onStatus: (message) => {
+          receivedAny = true
+          setStreamTool(message)
+        },
         onToken: (t) => {
           receivedAny = true
           setStreamTool(null)
@@ -260,12 +265,23 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
             created_at: m.created_at || new Date().toISOString(),
           }])
         },
+        onError: (message) => {
+          receivedAny = true
+          streamError = message
+        },
       })
       setConversations((prev) =>
         prev.map((c) => c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)
       )
     } catch (e) {
-      if (!receivedAny) {
+      if (streamError) {
+        setMessages((prev) => [...prev, {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: `请求未完成：${streamError}`,
+          created_at: new Date().toISOString(),
+        }])
+      } else if (!receivedAny) {
         // 流式完全不可用（旧后端/代理不支持等）→ 降级非流式端点
         try {
           const reply = await chatApi.sendMessage(convId, content)
@@ -282,6 +298,14 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           }
           setMessages((prev) => [...prev, errMsg])
         }
+      } else if (embedded) {
+        // 新助手没有旧 /api/chat 的 SSE 续推端点；缺少终态时不能静默收起。
+        setMessages((prev) => [...prev, {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: '请求未完成：连接已中断，请稍后重试。',
+          created_at: new Date().toISOString(),
+        }])
       } else {
         // 已收到部分事件但流中断：生成在服务端继续并落库，稍后拉取最终消息
         await new Promise((r) => setTimeout(r, 1500))

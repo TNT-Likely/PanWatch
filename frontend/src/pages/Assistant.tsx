@@ -4,7 +4,7 @@ import { Bot } from 'lucide-react'
 /** Navigation-level home for the PanAgent-powered interactive assistant. */
 export default function AssistantPage() {
   return (
-    <div className="max-w-6xl mx-auto space-y-4 md:space-y-5">
+    <div className="w-full space-y-4 md:space-y-5">
       <section className="card px-5 py-4 md:px-6 md:py-5 flex items-start gap-3">
         <div className="w-9 h-9 shrink-0 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
           <Bot className="w-4 h-4" />
@@ -20,4 +20,3 @@ export default function AssistantPage() {
     </div>
   )
 }
-
