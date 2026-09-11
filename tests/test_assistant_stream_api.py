@@ -5,7 +5,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from pan_agent import RunResult, RunStatus
+from pan_agent import EventType, RunResult, RunStatus, RuntimeEvent
 
 import src.modules.assistant.api as assistant_api
 
@@ -47,8 +47,9 @@ class _FakeService:
 class _CompletedRuntime:
     request = None
 
-    async def run(self, request, _sink):
+    async def run(self, request, sink):
         self.request = request
+        await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已完成")
 
 
@@ -82,7 +83,8 @@ class _BlockingRuntime:
     def __init__(self):
         self.started = asyncio.Event()
 
-    async def run(self, _request, _sink):
+    async def run(self, _request, sink):
+        await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
         self.started.set()
         await asyncio.Event().wait()
 
@@ -105,8 +107,8 @@ async def _read_events(response) -> list[tuple[str, dict]]:
     return events
 
 
-def test_assistant_stream_announces_progress_and_completes_within_product_limit():
-    """Without an immediate status event, a slow first model byte looks like a frozen UI."""
+def test_assistant_stream_announces_a_durable_run_without_fake_status():
+    """The assistant transport exposes run creation, not fabricated progress copy."""
     service = _FakeService(_CompletedRuntime())
 
     async def run():
@@ -119,7 +121,8 @@ def test_assistant_stream_announces_progress_and_completes_within_product_limit(
 
     assert headers["cache-control"] == "no-cache"
     assert headers["x-accel-buffering"] == "no"
-    assert events[0] == ("status", {"message": "正在理解你的问题…"})
+    assert events[0] == ("run_started", {"task_id": 12})
+    assert all(event != "status" for event, _data in events)
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "已完成"
     assert service.runtime.request.limits.run_timeout_seconds == 45
@@ -217,8 +220,8 @@ def test_assistant_stream_does_not_wait_for_a_slow_to_cancel_adapter(monkeypatch
     assert service.finished == [("failed", "transport_timeout")]
 
 
-def test_assistant_stream_closes_a_task_when_client_disconnects_after_status():
-    """Closing the body after its first status event must cancel and terminally persist the worker."""
+def test_assistant_stream_closes_a_task_when_client_disconnects_after_run_start():
+    """Closing the body after run creation must cancel and terminally persist the worker."""
     runtime = _BlockingRuntime()
     service = _FakeService(runtime)
 
@@ -237,7 +240,7 @@ def test_assistant_stream_closes_a_task_when_client_disconnects_after_status():
 
     first = asyncio.run(run())
 
-    assert "event: status" in first
+    assert "event: run_started" in first
     assert service.finished == [("failed", "cancelled")]
 
 

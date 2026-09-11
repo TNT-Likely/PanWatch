@@ -10,21 +10,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pan_agent import EventType, ModelMessage, RunLimits, RunRequest
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
-from pan_agent import EventType, ModelMessage, RunLimits, RunRequest
 
 from src.platform.persistence.database import get_db
 
 from .repository import AssistantRepository
 from .schemas import ConversationDetailDTO, ConversationDTO, CreateConversationCommand
 from .service import AssistantNotFoundError, AssistantService
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -60,7 +57,7 @@ def _finish_failed_task(service: AssistantService, task_id: int, error_code: str
     """Best-effort task cleanup shared by setup and streaming failure paths."""
     try:
         service.fail_task(task_id, error_code)
-    except Exception:  # noqa: BLE001 - a client still needs a terminal event
+    except Exception:  # a client still needs a terminal event
         logger.exception("Assistant task state could not be persisted: task_id=%s", task_id)
 
 
@@ -82,9 +79,7 @@ class _SSEEventSink:
     async def publish(self, event) -> None:
         data = dict(event.data)
         if event.type is EventType.RUN_CREATED:
-            await self._queue.put(("status", {"message": "正在准备回答…"}))
-        elif event.type is EventType.STEP_UPDATED:
-            await self._queue.put(("status", {"message": "正在生成回答…"}))
+            await self._queue.put(("run_started", {"task_id": self._task_id}))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:
@@ -127,7 +122,7 @@ async def stream_assistant_message(
             _finish_failed_task(service, task.id, "transport_setup_failed")
             return _error_response("transport_setup_failed")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception:  # noqa: BLE001 - task setup failures must become terminal states
+    except Exception:  # task setup failures must become terminal states
         if task is None:
             raise
         logger.exception(
@@ -162,7 +157,7 @@ async def stream_assistant_message(
                 completed_task.result()
             except asyncio.CancelledError:
                 pass
-            except Exception:  # noqa: BLE001 - the transport already sent a terminal event
+            except Exception:  # the transport already sent a terminal event
                 logger.exception("Assistant runtime stopped after transport cleanup: task_id=%s", task.id)
 
         try:
@@ -204,8 +199,6 @@ async def stream_assistant_message(
 
     async def events():
         try:
-            # Flush a first event before waiting on an unpredictable model/provider.
-            yield _encode_sse("status", {"message": "正在理解你的问题…"})
             while (item := await queue.get()) is not None:
                 event, data = item
                 yield _encode_sse(event, data)

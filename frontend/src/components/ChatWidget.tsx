@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MessageCircle, X, Plus, Trash2, Send, ChevronLeft, XCircle } from 'lucide-react'
+import { ArrowDown, MessageCircle, X, Plus, Trash2, Send, ChevronLeft, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { chatApi, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
 
 interface StockContext {
   symbol: string
@@ -46,10 +47,14 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   } | null>(null)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
-  // 自动滚动：用户上滚即停，回到底部恢复
-  const autoScrollRef = useRef(true)
-  const scrollBoxRef = useRef<HTMLDivElement>(null)
-  const endRef = useRef<HTMLDivElement>(null)
+  const {
+    scrollBoxRef,
+    followNewContent,
+    handleScroll,
+    scrollToBottom,
+    showScrollToBottom,
+    resetFollowing,
+  } = useChatAutoScroll()
 
   // token 用 rAF 批量刷新，避免每个分片都触发渲染
   const pushToken = useCallback((t: string) => {
@@ -71,13 +76,6 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     setStreamText('')
     setStreamTool(null)
     setPlan(null)
-  }, [])
-
-  const handleScroll = useCallback(() => {
-    const box = scrollBoxRef.current
-    if (!box) return
-    // 距底部 40px 内视为"在底部"，恢复自动滚动；用户上滚则停
-    autoScrollRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40
   }, [])
 
   const loadConversations = useCallback(async () => {
@@ -115,6 +113,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setOpen(true)
       setStockContext(detail)
       setSuggestedQuestions([])
+      resetFollowing()
 
       // Create a new conversation bound to this stock, with page context
       chatApi.createConversation({
@@ -134,7 +133,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     }
     window.addEventListener('panwatch-open-chat', handler)
     return () => window.removeEventListener('panwatch-open-chat', handler)
-  }, [loadSuggestedQuestions])
+  }, [loadSuggestedQuestions, resetFollowing])
 
   useEffect(() => {
     if (open) {
@@ -143,12 +142,11 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   }, [open, loadConversations])
 
   useEffect(() => {
-    if (autoScrollRef.current) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, streamText, streamTool])
+    followNewContent()
+  }, [messages, streamText, streamTool, followNewContent])
 
   const openConversation = useCallback(async (conv: ChatConversation) => {
+    resetFollowing()
     setActiveConvId(conv.id)
     setView('chat')
     setSuggestedQuestions([])
@@ -159,10 +157,11 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setStockContext(null)
     }
     await loadMessages(conv.id)
-  }, [loadMessages, loadSuggestedQuestions])
+  }, [loadMessages, loadSuggestedQuestions, resetFollowing])
 
   const createNewConversation = useCallback(async () => {
     try {
+      resetFollowing()
       const conv = await chatApi.createConversation()
       setActiveConvId(conv.id)
       setMessages([])
@@ -173,7 +172,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     } catch {
       // ignore
     }
-  }, [])
+  }, [resetFollowing])
 
   const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -224,7 +223,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     setMessages((prev) => [...prev, tempUserMsg])
 
     resetStream()
-    autoScrollRef.current = true
+    resetFollowing()
     let receivedAny = false
     let streamError = ''
 
@@ -232,10 +231,6 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       // 优先走 SSE 流式（token 流 + 工具过程可视）
       const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
       await stream(convId, content, {
-        onStatus: (message) => {
-          receivedAny = true
-          setStreamTool(message)
-        },
         onToken: (t) => {
           receivedAny = true
           setStreamTool(null)
@@ -315,7 +310,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       resetStream()
       setSending(false)
     }
-  }, [input, sending, activeConvId, stockContext, pushToken, resetStream, loadMessages])
+  }, [input, sending, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing])
 
   if (!open && !embedded) {
     return (
@@ -330,7 +325,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
 
   return (
     <div className={embedded
-      ? 'w-full min-h-[calc(100vh-16rem)] md:h-[calc(100vh-12rem)] card border border-border/60 flex flex-col overflow-hidden'
+      ? 'relative w-full min-h-[calc(100vh-16rem)] md:h-[calc(100vh-12rem)] card border border-border/60 flex flex-col overflow-hidden'
       : 'fixed bottom-0 right-0 z-50 w-full h-full md:w-[420px] md:h-[600px] md:bottom-5 md:right-5 md:rounded-xl bg-background border border-border/60 shadow-2xl flex flex-col overflow-hidden'}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-accent/20">
@@ -520,14 +515,29 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
             )}
             {sending && !streamText && (
               <div className="flex justify-start">
-                <div className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2">
+                <div
+                  className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2"
+                  role="status"
+                  aria-label={streamTool || '正在请求助手回复'}
+                >
                   <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                  {streamTool || '思考中...'}
+                  {streamTool && <span>{streamTool}</span>}
                 </div>
               </div>
             )}
-            <div ref={endRef} />
           </div>
+
+          {showScrollToBottom && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              className="absolute right-5 bottom-16 z-10 w-8 h-8 rounded-full bg-background border border-border shadow-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
+              aria-label="回到底部"
+              title="回到底部"
+            >
+              <ArrowDown className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Input */}
           <div className="flex items-center gap-2 px-4 py-3 border-t border-border/40">

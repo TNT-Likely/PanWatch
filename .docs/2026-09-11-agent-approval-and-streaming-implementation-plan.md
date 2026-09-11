@@ -108,7 +108,7 @@ describe('isNearBottom', () => {
 
 - [ ] **Step 4: Run the frontend test to verify RED**
 
-Run: `pnpm --dir frontend test --run src/hooks/useChatAutoScroll.test.ts`
+Run: `pnpm --dir frontend run test -- --run src/hooks/useChatAutoScroll.test.ts`
 
 Expected: FAIL because the `test` script and `useChatAutoScroll` export do not exist.
 
@@ -150,7 +150,7 @@ Run:
 
 ```bash
 python -m pytest tests/test_assistant_stream_api.py -q
-pnpm --dir frontend test --run src/hooks/useChatAutoScroll.test.ts
+pnpm --dir frontend run test -- --run src/hooks/useChatAutoScroll.test.ts
 pnpm --dir frontend build
 ```
 
@@ -513,7 +513,7 @@ In the settings test, assert defaults render as “读取：直接允许、修�
 Run:
 
 ```bash
-pnpm --dir frontend test --run src/components/assistant/ApprovalCard.test.tsx src/pages/Settings.agent-permissions.test.tsx
+pnpm --dir frontend run test -- --run src/components/assistant/ApprovalCard.test.tsx src/pages/Settings.agent-permissions.test.tsx
 ```
 
 Expected: FAIL because approval types, card, permissions API and settings section are absent.
@@ -541,7 +541,7 @@ Add the settings section using the existing settings card, select and toast patt
 Run:
 
 ```bash
-pnpm --dir frontend test --run
+pnpm --dir frontend run test -- --run
 pnpm --dir frontend build
 ```
 
@@ -599,7 +599,7 @@ Run:
 python -m pytest packages/pan-agent-runtime/tests -q
 python -m pytest tests -q
 python -m compileall -q src packages/pan-agent-runtime/src server.py
-pnpm --dir frontend test --run
+pnpm --dir frontend run test -- --run
 pnpm --dir frontend build
 git diff --check
 ```
