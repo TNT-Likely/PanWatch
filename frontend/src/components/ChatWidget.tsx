@@ -663,7 +663,7 @@ export default function ChatWidget({
       <div
         data-testid={embedded ? 'assistant-shell' : undefined}
         className={embedded
-        ? 'relative flex h-[calc(100dvh-12rem)] min-h-0 w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm md:h-[calc(100dvh-8rem)]'
+        ? 'relative flex h-full min-h-0 w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm'
         : 'fixed bottom-0 right-0 z-50 flex h-full w-full flex-col overflow-hidden bg-background shadow-2xl md:bottom-5 md:right-5 md:h-[600px] md:w-[420px] md:rounded-xl md:border md:border-border/60'}>
         {embedded && (
           <div className="hidden w-64 shrink-0 md:flex">
