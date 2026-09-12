@@ -20,6 +20,7 @@ vi.mock('@panwatch/api', () => ({
       status: 'completed',
       pending_approvals: [],
     }),
+    sendMessage: vi.fn(),
     sendAssistantMessageStream: vi.fn().mockResolvedValue(undefined),
     decideAssistantApprovalStream: vi.fn().mockResolvedValue(undefined),
   },
@@ -30,6 +31,13 @@ beforeEach(() => {
 })
 
 describe('ChatWidget layout', () => {
+  it('uses the sidebar new research entry instead of a duplicate header plus', async () => {
+    render(<ChatWidget embedded />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '新研究' })).toBeTruthy())
+    expect(screen.queryByRole('button', { name: '新建对话' })).toBeNull()
+  })
+
   it('keeps the composer at the bottom while only the message list scrolls', async () => {
     const user = userEvent.setup()
 
@@ -102,6 +110,40 @@ describe('ChatWidget layout', () => {
     expect(screen.getByRole('columnheader', { name: '标的' })).toBeTruthy()
     expect(screen.getByRole('cell', { name: '贵州茅台' })).toBeTruthy()
     expect(screen.getByRole('cell', { name: '+1.2%' })).toBeTruthy()
+  })
+
+  it('keeps a write failure recoverable without adding a generic error bubble', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
+      callbacks.onRunStarted?.({ taskId: 45 })
+      callbacks.onActionStatus?.({
+        status: 'needs_retry',
+        message: '我还没有执行这次修改，请确认目标后重试。',
+        retryable: true,
+      })
+      callbacks.onError?.('我还没有执行这次修改，请确认目标后重试。')
+      throw new Error('我还没有执行这次修改，请确认目标后重试。')
+    })
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+
+    expect(await screen.findByRole('status', { name: '尚未执行' })).toBeTruthy()
+    expect(screen.queryByText('请求未完成：我还没有执行这次修改，请确认目标后重试。')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: '重试执行' }))
+    expect(screen.getByDisplayValue('诊断我的持仓风险和关键关注点')).toBeTruthy()
+  })
+
+  it('does not downgrade the embedded assistant to the legacy non-streaming endpoint', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockRejectedValueOnce(new Error('SSE unavailable'))
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+
+    await screen.findByText('请求未完成：连接已中断，请稍后重试。')
+    expect(chatApi.sendMessage).not.toHaveBeenCalled()
   })
 
   it('keeps the first card visible as completed while the next approval remains pending', async () => {

@@ -45,6 +45,19 @@ export interface AssistantTaskSnapshot {
   }>
 }
 
+export type AssistantActionStatus =
+  | 'preparing'
+  | 'awaiting_approval'
+  | 'executing'
+  | 'completed'
+  | 'needs_retry'
+
+export interface AssistantActionStatusEvent {
+  status: AssistantActionStatus
+  message?: string
+  retryable?: boolean
+}
+
 export interface AgentPermissions {
   defaults: Array<{ risk: AssistantApproval['risk']; mode: 'allow' | 'ask' | 'deny' }>
   tools: Array<{
@@ -119,6 +132,8 @@ export interface ChatStreamCallbacks {
   onToolCallStart?: (info: { name: string; arguments: Record<string, unknown> }) => void
   /** 工具执行完成 */
   onToolResult?: (info: { name: string; ok: boolean; preview: string }) => void
+  /** 写入型请求的真实执行状态；用于展示等待确认、执行中或可恢复失败。 */
+  onActionStatus?: (info: AssistantActionStatusEvent) => void
   /** 计划驱动(全面诊断持仓):计划生成/步骤推进/完成 */
   onPlan?: (info: {
     status: string
@@ -184,6 +199,16 @@ async function sendMessageStream(
         break
       case 'tool_result':
         callbacks.onToolResult?.({ name: d.name || '', ok: !!d.ok, preview: d.preview || '' })
+        break
+      case 'action_status':
+        callbacks.onActionStatus?.({
+          status: d.status as AssistantActionStatus,
+          message: d.message || undefined,
+          retryable: d.retryable === true,
+        })
+        if (d.status === 'needs_retry') {
+          terminalError = d.message || '我还没有执行这次修改，请确认目标后重试。'
+        }
         break
       case 'plan':
         callbacks.onPlan?.({ status: d.status || '', steps: d.steps || [], current: d.current })
@@ -283,6 +308,16 @@ async function decideAssistantApprovalStream(
           break
         case 'tool_result':
           callbacks.onToolResult?.({ name: d.name || '', ok: !!d.ok, preview: d.preview || '' })
+          break
+        case 'action_status':
+          callbacks.onActionStatus?.({
+            status: d.status as AssistantActionStatus,
+            message: d.message || undefined,
+            retryable: d.retryable === true,
+          })
+          if (d.status === 'needs_retry') {
+            terminalError = d.message || '我还没有执行这次修改，请确认目标后重试。'
+          }
           break
         case 'approval_required': {
           const call = d.calls?.[0] || {}

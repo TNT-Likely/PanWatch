@@ -43,7 +43,13 @@ class FailoverModelAdapter:
             provider_messages.append(payload)
         return provider_messages
 
-    async def run_turn(self, messages: list[ModelMessage], tools: list[ToolSpec], emit_token) -> ModelTurn:
+    async def run_turn(
+        self,
+        messages: list[ModelMessage],
+        tools: list[ToolSpec],
+        emit_token,
+        tool_choice: str | None = None,
+    ) -> ModelTurn:
         """Run one model turn and forward every model delta immediately.
 
         The HTTP layer is already an SSE endpoint.  Its perceived streaming
@@ -55,16 +61,25 @@ class FailoverModelAdapter:
         final_content = ""
         raw_tool_calls: list[dict[str, Any]] = []
 
+        stream_kwargs = {
+            "tools": [tool.openai_schema() for tool in tools],
+            "temperature": self._temperature,
+        }
+        if tool_choice is not None:
+            stream_kwargs["tool_choice"] = tool_choice
+
         async for event_type, payload in self._client.chat_stream(
-            self._to_provider_messages(messages),
-            tools=[tool.openai_schema() for tool in tools],
-            temperature=self._temperature,
+            self._to_provider_messages(messages), **stream_kwargs
         ):
             if event_type == "token":
                 token = str(payload or "")
                 if token:
                     content_parts.append(token)
-                    await emit_token(token)
+                    # A required-tool turn is an internal proposal.  The
+                    # runtime will expose the final answer after the tool
+                    # result, not the model's pre-tool narration.
+                    if tool_choice != "required":
+                        await emit_token(token)
             elif event_type == "message" and isinstance(payload, dict):
                 final_content = str(payload.get("content") or "")
                 raw_tool_calls = payload.get("tool_calls") or []

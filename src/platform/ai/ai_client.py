@@ -159,6 +159,7 @@ class AIClient:
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float | None = 0.4,
+        tool_choice: str | None = None,
     ):
         """流式对话通道（stream=True），支持可选 tool use。
 
@@ -179,6 +180,8 @@ class AIClient:
             create_kwargs["temperature"] = temperature
         if tools:
             create_kwargs["tools"] = tools
+        if tool_choice is not None:
+            create_kwargs["tool_choice"] = tool_choice
 
         try:
             stream = await self.client.chat.completions.create(**create_kwargs)

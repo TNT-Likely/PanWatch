@@ -95,6 +95,51 @@ def test_failover_model_adapter_encodes_tool_call_history_for_model():
     ]
 
 
+def test_failover_model_adapter_requires_a_tool_without_streaming_action_preamble():
+    from src.modules.assistant.llm_adapter import FailoverModelAdapter
+
+    class FakeClient:
+        async def chat_stream(
+            self, messages, tools, temperature, tool_choice=None
+        ):
+            assert tool_choice == "required"
+            yield ("token", "我已经更新")
+            yield (
+                "message",
+                {
+                    "content": "我已经更新",
+                    "tool_calls": [
+                        {"id": "call-1", "name": "update_price_alert", "arguments": "{}"}
+                    ],
+                },
+            )
+
+    emitted: list[str] = []
+
+    async def emit(token: str) -> None:
+        emitted.append(token)
+
+    turn = asyncio.run(
+        FailoverModelAdapter(FakeClient()).run_turn(
+            [ModelMessage(role="user", content="修改提醒")],
+            [
+                ToolSpec(
+                    name="update_price_alert",
+                    title="修改提醒",
+                    description="修改价格提醒",
+                    risk=ToolRisk.WRITE,
+                    input_schema={"type": "object", "properties": {}},
+                )
+            ],
+            emit,
+            tool_choice="required",
+        )
+    )
+
+    assert turn.tool_calls[0].name == "update_price_alert"
+    assert emitted == []
+
+
 def test_assistant_service_builds_panagent_runtime_from_host_adapters():
     from src.modules.assistant.repository import AssistantRepository
     from src.modules.assistant.service import AssistantService

@@ -26,6 +26,11 @@ from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
 
 _MAX_IDENTICAL_TOOL_CALLS = 2
+_REQUIRED_TOOL_CHOICE = "required"
+_REQUIRED_TOOL_REPAIR_MESSAGE = (
+    "本轮请求需要执行写入操作。不要用自然语言代替操作结果，"
+    "必须调用可用的写入工具；如果缺少必要信息，请明确说明。"
+)
 
 
 def _tool_call_fingerprint(call: ToolCall) -> str:
@@ -184,8 +189,18 @@ class AgentRuntime:
             answer += token
             await self._publish(sink, request, EventType.ANSWER_TOKEN, {"token": token})
 
+        current_tool_choice: str | None = None
+
+        async def emit_model_token(token: str) -> None:
+            # A required-tool turn is an internal action proposal.  Never leak
+            # its preamble to the user before the tool has actually run.
+            if current_tool_choice == _REQUIRED_TOOL_CHOICE:
+                return
+            await emit_token(token)
+
         last_tool_fingerprint = ""
         identical_tool_calls = 0
+        required_tool_repair_used = False
         try:
             for current_step in range(step_index + 1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
@@ -195,13 +210,32 @@ class AgentRuntime:
                     EventType.STEP_UPDATED,
                     {"step": current_step, "status": "running"},
                 )
+                current_tool_choice = self._tool_choice_for_turn(request, messages)
                 turn = await self._run_model_turn(
-                    request, messages, emit_token, deadline
+                    request, messages, emit_model_token, deadline, current_tool_choice
                 )
-                if turn.content and not answer:
+                if turn.content and not answer and current_tool_choice != _REQUIRED_TOOL_CHOICE:
                     await emit_token(turn.content)
 
                 if not turn.tool_calls:
+                    if current_tool_choice == _REQUIRED_TOOL_CHOICE:
+                        if not required_tool_repair_used:
+                            required_tool_repair_used = True
+                            messages.append(
+                                ModelMessage(
+                                    role="system",
+                                    content=_REQUIRED_TOOL_REPAIR_MESSAGE,
+                                )
+                            )
+                            continue
+                        return await self._finish(
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            "required_tool_call_missing",
+                        )
                     return await self._finish(
                         sink, request, RunStatus.COMPLETED, answer, tool_calls
                     )
@@ -335,17 +369,44 @@ class AgentRuntime:
             )
 
     async def _run_model_turn(
-        self, request: RunRequest, messages, emit_token, deadline
+        self,
+        request: RunRequest,
+        messages,
+        emit_token,
+        deadline,
+        tool_choice: str | None = None,
     ):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError
         async with asyncio.timeout(remaining):
+            model_tools = self._tools.model_tools(request, self._policy)
+            if tool_choice is None:
+                return await self._model.run_turn(messages, model_tools, emit_token)
             return await self._model.run_turn(
                 messages,
-                self._tools.model_tools(request, self._policy),
+                model_tools,
                 emit_token,
+                tool_choice=tool_choice,
             )
+
+    @staticmethod
+    def _tool_choice_for_turn(request: RunRequest, messages: list[ModelMessage]) -> str | None:
+        """Require a tool only for the initial turn of an action run.
+
+        Once a tool result is present, the model must be allowed to produce a
+        normal final answer; otherwise ``required`` would force an endless
+        second tool call after a successful write.
+        """
+        if request.context.get("tool_choice") != _REQUIRED_TOOL_CHOICE:
+            return None
+        if any(message.role == "tool" for message in messages):
+            # The first turn is restricted to registered write tools. Once a
+            # result exists, restore the host's normal tool visibility so the
+            # model can read context and compose a grounded final answer.
+            request.context.pop("allowed_tool_names", None)
+            return None
+        return _REQUIRED_TOOL_CHOICE
 
     async def _execute_call(
         self, request: RunRequest, sink: EventSink, call: ToolCall, deadline: float

@@ -74,6 +74,16 @@ class _EmptyCompletedRuntime:
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="")
 
 
+class _RequiredToolMissingRuntime:
+    async def run(self, _request, _sink):
+        return RunResult(
+            run_id="12",
+            status=RunStatus.PARTIAL,
+            answer="",
+            error_code="required_tool_call_missing",
+        )
+
+
 class _SuccessfulMutationRuntime:
     async def run(self, _request, sink):
         await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
@@ -185,6 +195,26 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert service.runtime.request.limits.max_tool_calls == 24
 
 
+def test_assistant_write_intent_requires_write_tools_from_the_host():
+    service = _FakeService(_CompletedRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="请修改价格提醒"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1][0] == "done"
+    assert service.runtime.request.context["tool_choice"] == "required"
+    assert service.runtime.request.context["allowed_tool_names"] == [
+        "update_price_alert"
+    ]
+
+
 def test_assistant_messages_prepend_tool_first_instruction():
     prompt = importlib.import_module("src.modules.assistant.prompt")
     messages = prompt.build_assistant_messages(
@@ -237,6 +267,28 @@ def test_assistant_stream_rejects_an_empty_completed_reply():
     )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "empty_answer")]
+
+
+def test_assistant_write_failure_emits_a_recoverable_action_status():
+    """A missed write call should leave an actionable card, not only an error bubble."""
+    service = _FakeService(_RequiredToolMissingRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="请修改价格提醒"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1][0] == "error"
+    assert any(
+        event == "action_status" and data["status"] == "needs_retry"
+        for event, data in events
+    )
+    assert service.finished == [("failed", "required_tool_call_missing")]
 
 
 def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool():

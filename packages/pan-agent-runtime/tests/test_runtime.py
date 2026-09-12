@@ -174,6 +174,92 @@ def test_tool_result_keeps_the_preceding_call_for_the_next_model_turn():
     assert next_turn_messages[2].tool_call_id == "call-1"
 
 
+def test_required_tool_choice_repairs_a_text_only_turn_without_leaking_text():
+    class RequiredModel:
+        def __init__(self):
+            self.turns = iter(
+                [
+                    ModelTurn(content="我已经更新提醒"),
+                    ModelTurn(
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1",
+                                name="write_note",
+                                arguments={},
+                            )
+                        ]
+                    ),
+                    ModelTurn(content="提醒已成功更新。"),
+                ]
+            )
+            self.tool_choices = []
+            self.received_messages = []
+
+        async def run_turn(
+            self, messages, _tools, emit_token, tool_choice=None
+        ):
+            self.received_messages.append(
+                [message.model_copy(deep=True) for message in messages]
+            )
+            self.tool_choices.append(tool_choice)
+            turn = next(self.turns)
+            if turn.content and tool_choice != "required":
+                await emit_token(turn.content)
+            return turn
+
+    async def write_note(_request, _arguments):
+        return ToolResult.success(
+            summary="提醒已更新",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
+
+    model = RequiredModel()
+    request_with_required_tool = RunRequest(
+        run_id="required-run",
+        messages=[ModelMessage(role="user", content="修改提醒")],
+        context={"tool_choice": "required"},
+    )
+    registry = write_registry(write_note)
+    sink = CollectingSink()
+
+    result = asyncio.run(AgentRuntime(model, registry).run(request_with_required_tool, sink))
+
+    assert result.status is RunStatus.COMPLETED
+    assert result.answer == "提醒已成功更新。"
+    assert model.tool_choices == ["required", "required", None]
+    assert model.received_messages[1][-1].role == "system"
+    assert "必须调用可用的写入工具" in model.received_messages[1][-1].content
+    assert [
+        event.data.get("token")
+        for event in sink.events
+        if event.type is EventType.ANSWER_TOKEN
+    ] == ["提醒已成功更新。"]
+
+
+def test_required_tool_choice_returns_stable_error_after_one_repair_attempt():
+    class TextOnlyModel:
+        async def run_turn(self, _messages, _tools, _emit_token, tool_choice=None):
+            assert tool_choice == "required"
+            return ModelTurn(content="提醒已成功更新。")
+
+    request_with_required_tool = RunRequest(
+        run_id="required-run",
+        messages=[ModelMessage(role="user", content="修改提醒")],
+        context={"tool_choice": "required"},
+    )
+
+    result = asyncio.run(
+        AgentRuntime(TextOnlyModel(), write_registry(lambda *_: None)).run(
+            request_with_required_tool, CollectingSink()
+        )
+    )
+
+    assert result.status is RunStatus.PARTIAL
+    assert result.error_code == "required_tool_call_missing"
+
+
 def test_tool_timeout_returns_partial_result():
     async def slow_tool(_request, _arguments):
         await asyncio.sleep(1.1)

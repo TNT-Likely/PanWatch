@@ -60,6 +60,9 @@ class PanWatchToolPolicy:
         self._permissions = permissions
 
     def is_tool_visible(self, request: RunRequest, tool: ToolSpec) -> bool:
+        allowed_tool_names = request.context.get("allowed_tool_names")
+        if allowed_tool_names is not None and tool.name not in set(allowed_tool_names):
+            return False
         return self._decision(tool).mode.value != "deny"
 
     async def decide(

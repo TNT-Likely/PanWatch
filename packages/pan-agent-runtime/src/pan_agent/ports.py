@@ -25,6 +25,7 @@ class ModelPort(Protocol):
         messages: list[ModelMessage],
         tools: list[ToolSpec],
         emit_token: TokenEmitter,
+        tool_choice: str | None = None,
     ) -> ModelTurn: ...
 
 

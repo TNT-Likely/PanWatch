@@ -42,7 +42,7 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
   const content = (
     <>
       <div className="mb-4">
-        <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">智能体工具权限</h3>
+        <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">助手工具权限</h3>
         <p className="mt-1 text-[11px] text-muted-foreground">
           仅影响助手可见和可执行的工具；破坏性操作始终禁止，需确认的工具不能设为直接允许。
         </p>

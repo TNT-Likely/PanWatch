@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronLeft, MessageCircle, Menu, Plus, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
+import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { chatApi, type AssistantApproval, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { chatApi, type AssistantApproval, type AssistantActionStatusEvent, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { ActionStatusCard } from '@/components/assistant/ActionStatusCard'
 import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
 import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
@@ -76,11 +77,18 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   } | null>(null)
   const [taskId, setTaskId] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<AssistantApproval[]>([])
+  const [actionStatus, setActionStatus] = useState<{
+    status: 'needs_retry'
+    message: string
+  } | null>(null)
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null)
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const retryContentRef = useRef('')
+  const actionNeedsRetryRef = useRef(false)
   // React state updates are batched; this synchronous guard closes the small
   // window where two clicks could otherwise create duplicate tasks/messages.
   const sendingRef = useRef(false)
@@ -113,6 +121,18 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     setStreamText('')
     setStreamTool(null)
     setPlan(null)
+  }, [])
+
+  const handleActionStatus = useCallback((info: AssistantActionStatusEvent) => {
+    if (info.status === 'needs_retry') {
+      actionNeedsRetryRef.current = true
+      setActionStatus({
+        status: 'needs_retry',
+        message: info.message || '我还没有执行这次修改，请确认目标后重试。',
+      })
+      return
+    }
+    if (info.status === 'completed') setActionStatus(null)
   }, [])
 
   const loadConversations = useCallback(async () => {
@@ -152,6 +172,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setSuggestedQuestions([])
       setTaskId(null)
       setPendingApprovals([])
+      setActionStatus(null)
+      actionNeedsRetryRef.current = false
       resetFollowing()
 
       // Create a new conversation bound to this stock, with page context
@@ -205,6 +227,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
+    setActionStatus(null)
+    actionNeedsRetryRef.current = false
     setActiveConvId(conv.id)
     setView('chat')
     setSuggestedQuestions([])
@@ -222,6 +246,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       resetFollowing()
       setTaskId(null)
       setPendingApprovals([])
+      setActionStatus(null)
+      actionNeedsRetryRef.current = false
       const conv = await chatApi.createConversation()
       setActiveConvId(conv.id)
       setMessages([])
@@ -238,6 +264,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
+    setActionStatus(null)
+    actionNeedsRetryRef.current = false
     setActiveConvId(null)
     setMessages([])
     setView('list')
@@ -254,6 +282,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         setActiveConvId(null)
         setTaskId(null)
         setPendingApprovals([])
+        setActionStatus(null)
+        actionNeedsRetryRef.current = false
         setMessages([])
         setView('list')
         setStockContext(null)
@@ -272,6 +302,10 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent || input).trim()
     if (!content || sending || sendingRef.current || pendingApprovals.length > 0) return
+
+    retryContentRef.current = content
+    setActionStatus(null)
+    actionNeedsRetryRef.current = false
 
     sendingRef.current = true
     setSending(true)
@@ -338,6 +372,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         onToolResult: () => {
           // 结果已就绪，等待模型基于数据继续回答
         },
+        onActionStatus: handleActionStatus,
         onPlan: (p) => {
           receivedAny = true
           setStreamTool(null)
@@ -367,6 +402,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
+          setActionStatus(null)
+          requestAnimationFrame(() => inputRef.current?.focus())
         },
         onError: (message) => {
           receivedAny = true
@@ -378,13 +415,15 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       )
     } catch (e) {
       if (streamError) {
-        setMessages((prev) => [...prev, {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: `请求未完成：${streamError}`,
-          created_at: new Date().toISOString(),
-        }])
-      } else if (!receivedAny) {
+        if (!actionNeedsRetryRef.current) {
+          setMessages((prev) => [...prev, {
+            id: Date.now() + 1,
+            role: 'assistant',
+            content: `请求未完成：${streamError}`,
+            created_at: new Date().toISOString(),
+          }])
+        }
+      } else if (!receivedAny && !embedded) {
         // 流式完全不可用（旧后端/代理不支持等）→ 降级非流式端点
         try {
           const reply = await chatApi.sendMessage(convId, content)
@@ -419,7 +458,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       sendingRef.current = false
       setSending(false)
     }
-  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing])
+  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, handleActionStatus])
 
   const handleApprovalDecision = useCallback(async (
     approval: AssistantApproval,
@@ -430,6 +469,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
 
     setDecidingApprovalId(approval.id)
     setSending(true)
+    actionNeedsRetryRef.current = false
     resetStream()
     resetFollowing()
     let streamError = ''
@@ -449,6 +489,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         onToolResult: () => {
           // 工具结果到达后，等待模型继续输出最终回答。
         },
+        onActionStatus: handleActionStatus,
         onApprovalRequired: (nextApproval) => {
           setPendingApprovals((previous) => (
             previous.some((item) => item.id === nextApproval.id)
@@ -478,6 +519,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
+          setActionStatus(null)
+          requestAnimationFrame(() => inputRef.current?.focus())
         },
         onError: (message) => {
           streamError = message
@@ -522,7 +565,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       } catch {
         // The original failure remains actionable when recovery is unavailable.
       }
-      if (!reconciled || terminalFailure) {
+      if ((!reconciled || terminalFailure) && !actionNeedsRetryRef.current) {
         setMessages((previous) => [...previous, {
           id: Date.now() + 1,
           role: 'assistant',
@@ -538,7 +581,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setSending(false)
       setDecidingApprovalId(null)
     }
-  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages])
+  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages, handleActionStatus])
 
   const interactionLocked = sending || pendingApprovals.length > 0
 
@@ -631,16 +674,6 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           )}
         </div>
         <div className="flex items-center gap-1">
-          {view === 'list' && (
-            <button
-              onClick={embedded ? beginNewResearch : createNewConversation}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-              title="新建对话"
-              aria-label="新建对话"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          )}
           {embedded && (
             <button
               type="button"
@@ -771,6 +804,18 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
                 />
               </div>
             ))}
+            {actionStatus && (
+              <div className="flex justify-start">
+                <ActionStatusCard
+                  status={actionStatus.status}
+                  message={actionStatus.message}
+                  onRetry={() => {
+                    setInput(retryContentRef.current)
+                    requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                />
+              </div>
+            )}
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
@@ -849,6 +894,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           {/* Input */}
           <div data-testid="assistant-composer" className="flex shrink-0 items-center gap-2 px-4 py-3 border-t border-border/40">
             <input
+              ref={inputRef}
               type="text"
               className="flex-1 h-9 px-3 rounded-lg bg-accent/40 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
               placeholder="输入问题..."

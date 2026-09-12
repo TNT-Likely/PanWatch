@@ -240,6 +240,7 @@ class FailoverAIClient:
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float | None = 0.4,
+        tool_choice: str | None = None,
     ):
         """流式 failover。
 
@@ -250,9 +251,10 @@ class FailoverAIClient:
         for client, label in self._iter_candidates():
             started = False
             try:
-                async for ev in client.chat_stream(
-                    messages, tools=tools, temperature=temperature
-                ):
+                stream_kwargs = {"tools": tools, "temperature": temperature}
+                if tool_choice is not None:
+                    stream_kwargs["tool_choice"] = tool_choice
+                async for ev in client.chat_stream(messages, **stream_kwargs):
                     started = True
                     yield ev
                 _mark_ok(label)
@@ -264,9 +266,10 @@ class FailoverAIClient:
                 kind = classify_ai_error(exc)
                 if kind == ERR_PARAM:
                     try:
-                        async for ev in client.chat_stream(
-                            messages, tools=tools, temperature=None
-                        ):
+                        retry_kwargs = {"tools": tools, "temperature": None}
+                        if tool_choice is not None:
+                            retry_kwargs["tool_choice"] = tool_choice
+                        async for ev in client.chat_stream(messages, **retry_kwargs):
                             started = True
                             yield ev
                         _mark_ok(label)
