@@ -17,6 +17,18 @@ interface StockContext {
   pageContext?: string
 }
 
+interface ConversationChangeOptions {
+  replace?: boolean
+}
+
+interface ChatWidgetProps {
+  embedded?: boolean
+  /** Canonical conversation selected by the navigation-level route. */
+  conversationIdFromUrl?: number | null
+  /** Keep the route in sync when a user opens, creates, or leaves a session. */
+  onConversationChange?: (conversationId: number | null, options?: ConversationChangeOptions) => void
+}
+
 function taskStorageKey(conversationId: number): string {
   return 'panwatch:assistant-task:' + conversationId
 }
@@ -56,9 +68,14 @@ function safeStreamMarkdown(text: string): string {
   return fences % 2 === 1 ? `${text}\n\`\`\`` : text
 }
 
-export default function ChatWidget({ embedded = false }: { embedded?: boolean }) {
+export default function ChatWidget({
+  embedded = false,
+  conversationIdFromUrl = null,
+  onConversationChange,
+}: ChatWidgetProps) {
   const [open, setOpen] = useState(embedded)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
+  const [conversationsLoaded, setConversationsLoaded] = useState(false)
   const [activeConvId, setActiveConvId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -89,6 +106,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   const inputRef = useRef<HTMLInputElement | null>(null)
   const retryContentRef = useRef('')
   const actionNeedsRetryRef = useRef(false)
+  const routeLoadRef = useRef<number | null>(null)
   // React state updates are batched; this synchronous guard closes the small
   // window where two clicks could otherwise create duplicate tasks/messages.
   const sendingRef = useRef(false)
@@ -141,6 +159,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setConversations(list)
     } catch {
       // ignore
+    } finally {
+      setConversationsLoaded(true)
     }
   }, [])
 
@@ -183,6 +203,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         initial_context: detail.pageContext,
       }).then((conv) => {
         setActiveConvId(conv.id)
+        onConversationChange?.(conv.id)
         setMessages([])
         setView('chat')
         setConversations((prev) => [conv, ...prev])
@@ -194,7 +215,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     }
     window.addEventListener('panwatch-open-chat', handler)
     return () => window.removeEventListener('panwatch-open-chat', handler)
-  }, [loadSuggestedQuestions, resetFollowing])
+  }, [loadSuggestedQuestions, onConversationChange, resetFollowing])
 
   useEffect(() => {
     if (open) {
@@ -223,7 +244,10 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     followNewContent()
   }, [messages, streamText, streamTool, pendingApprovals, followNewContent])
 
-  const openConversation = useCallback(async (conv: ChatConversation) => {
+  const openConversation = useCallback(async (
+    conv: ChatConversation,
+    options: { updateUrl?: boolean } = {},
+  ) => {
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
@@ -231,6 +255,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     actionNeedsRetryRef.current = false
     setActiveConvId(conv.id)
     setView('chat')
+    if (options.updateUrl !== false) onConversationChange?.(conv.id)
     setSuggestedQuestions([])
     if (conv.stock_symbol && conv.stock_market) {
       setStockContext({ symbol: conv.stock_symbol, market: conv.stock_market, stockName: '' })
@@ -239,7 +264,58 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setStockContext(null)
     }
     await loadMessages(conv.id)
-  }, [loadMessages, loadSuggestedQuestions, resetFollowing])
+  }, [loadMessages, loadSuggestedQuestions, onConversationChange, resetFollowing])
+
+  // A route is the source of truth for the embedded assistant. The first
+  // render may not have the conversation list yet, so wait until that request
+  // settles before resolving an ID. If the session is older than the list
+  // window, hydrate it directly by ID instead of losing a valid deep link.
+  useEffect(() => {
+    if (!embedded || !onConversationChange) return
+
+    const requestedId = conversationIdFromUrl
+    if (requestedId == null) {
+      routeLoadRef.current = null
+      if (activeConvId !== null || view === 'chat') {
+        setActiveConvId(null)
+        setTaskId(null)
+        setPendingApprovals([])
+        setActionStatus(null)
+        actionNeedsRetryRef.current = false
+        setMessages([])
+        setView('list')
+        setStockContext(null)
+        setSuggestedQuestions([])
+      }
+      return
+    }
+
+    if (!conversationsLoaded || (activeConvId === requestedId && view === 'chat')) return
+    if (routeLoadRef.current === requestedId) return
+
+    routeLoadRef.current = requestedId
+    const listedConversation = conversations.find((item) => item.id === requestedId)
+    const hydrate = listedConversation
+      ? Promise.resolve(listedConversation)
+      : chatApi.getConversation(requestedId).then((detail) => {
+        setConversations((previous) => (
+          previous.some((item) => item.id === detail.conversation.id)
+            ? previous
+            : [detail.conversation, ...previous]
+        ))
+        return detail.conversation
+      })
+
+    hydrate
+      .then((conversation) => openConversation(conversation, { updateUrl: false }))
+      .catch(() => {
+        routeLoadRef.current = null
+        onConversationChange?.(null, { replace: true })
+        setActiveConvId(null)
+        setMessages([])
+        setView('list')
+      })
+  }, [activeConvId, conversationIdFromUrl, conversations, conversationsLoaded, embedded, onConversationChange, openConversation, view])
 
   const createNewConversation = useCallback(async () => {
     try {
@@ -250,6 +326,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       actionNeedsRetryRef.current = false
       const conv = await chatApi.createConversation()
       setActiveConvId(conv.id)
+      onConversationChange?.(conv.id)
       setMessages([])
       setView('chat')
       setStockContext(null)
@@ -258,7 +335,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     } catch {
       // ignore
     }
-  }, [resetFollowing])
+  }, [onConversationChange, resetFollowing])
 
   const beginNewResearch = useCallback(() => {
     resetFollowing()
@@ -267,12 +344,13 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     setActionStatus(null)
     actionNeedsRetryRef.current = false
     setActiveConvId(null)
+    onConversationChange?.(null)
     setMessages([])
     setView('list')
     setStockContext(null)
     setSuggestedQuestions([])
     setHistoryOpen(false)
-  }, [resetFollowing])
+  }, [onConversationChange, resetFollowing])
 
   const removeConversation = useCallback(async (convId: number) => {
     try {
@@ -280,6 +358,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setConversations((prev) => prev.filter((c) => c.id !== convId))
       if (activeConvId === convId) {
         setActiveConvId(null)
+        onConversationChange?.(null, { replace: true })
         setTaskId(null)
         setPendingApprovals([])
         setActionStatus(null)
@@ -292,7 +371,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     } catch {
       // ignore
     }
-  }, [activeConvId])
+  }, [activeConvId, onConversationChange])
 
   const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -318,6 +397,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         )
         convId = conv.id
         setActiveConvId(conv.id)
+        onConversationChange?.(conv.id)
         setConversations((prev) => [conv, ...prev])
         setView('chat')
       } catch {
@@ -452,7 +532,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       sendingRef.current = false
       setSending(false)
     }
-  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, handleActionStatus])
+  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, handleActionStatus, onConversationChange])
 
   const handleApprovalDecision = useCallback(async (
     approval: AssistantApproval,

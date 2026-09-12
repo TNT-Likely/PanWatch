@@ -267,6 +267,7 @@ function App() {
           <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/alerts" element={<PriceAlertsPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/assistant/:conversationId" element={<AssistantPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
