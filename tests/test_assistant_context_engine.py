@@ -125,8 +125,14 @@ def test_service_exposes_context_usage_and_latest_summary_for_the_ui():
     engine.dispose()
 
 
-def test_prepare_context_includes_durable_tool_findings_as_trusted_facts():
+def test_prepare_context_includes_durable_tool_findings_as_trusted_facts(monkeypatch):
+    from pan_agent import ExtractiveContextSummarizer
     engine, session, service = _service()
+    monkeypatch.setattr(
+        service,
+        "build_context_summarizer",
+        lambda: ExtractiveContextSummarizer(),
+    )
     conversation = service.create_conversation(CreateConversationCommand())
     service.record_user_message(conversation.id, "删除它")
     task = service.create_task(conversation.id, 1)
