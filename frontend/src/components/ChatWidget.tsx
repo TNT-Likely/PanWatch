@@ -815,11 +815,12 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
             <button
               type="button"
               onClick={scrollToBottom}
-              className="absolute right-5 bottom-16 z-10 w-8 h-8 rounded-full bg-background border border-border shadow-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex items-center justify-center"
+              className="absolute left-1/2 bottom-16 z-10 flex h-10 -translate-x-1/2 items-center gap-2 rounded-full border border-primary/30 bg-background/95 px-4 text-sm font-medium text-foreground shadow-xl shadow-black/20 backdrop-blur transition-all hover:-translate-x-1/2 hover:scale-105 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               aria-label="回到底部"
-              title="回到底部"
+              title="滚动到最新消息"
             >
-              <ArrowDown className="w-4 h-4" />
+              <ArrowDown className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">回到底部</span>
             </button>
           )}
 

@@ -53,4 +53,27 @@ describe('ChatWidget layout', () => {
     await waitFor(() => expect(chatApi.createConversation).toHaveBeenCalledTimes(1))
     expect(chatApi.sendAssistantMessageStream).toHaveBeenCalledTimes(1)
   })
+
+  it('shows a prominent centered control when the reader scrolls away from the latest message', async () => {
+    const user = userEvent.setup()
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+    const messageList = await screen.findByTestId('assistant-message-list')
+
+    Object.defineProperties(messageList, {
+      scrollHeight: { configurable: true, value: 1000, writable: true },
+      scrollTop: { configurable: true, value: 0, writable: true },
+      clientHeight: { configurable: true, value: 500, writable: true },
+    })
+    fireEvent.scroll(messageList)
+
+    const scrollButton = await screen.findByRole('button', { name: '回到底部' })
+    expect(scrollButton.textContent).toContain('回到底部')
+    expect(scrollButton.className).toContain('left-1/2')
+    expect(scrollButton.className).toContain('h-10')
+
+    await user.click(scrollButton)
+    expect(screen.queryByRole('button', { name: '回到底部' })).toBeNull()
+  })
 })
