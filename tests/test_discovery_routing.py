@@ -1,7 +1,7 @@
 """发现(东财热门榜)取数路由测试:统一走 marketdata 包"""
 import asyncio
 
-import src.collectors.discovery_collector as dc
+import src.platform.marketdata.collectors.discovery_collector as dc
 
 
 def test_fetch_hot_stocks_uses_marketdata(monkeypatch):

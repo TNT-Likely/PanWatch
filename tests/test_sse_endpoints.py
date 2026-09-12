@@ -11,10 +11,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import src.web.api.agents as agents_api
-import src.web.api.logs as logs_api
-from src.web.database import Base
-from src.web.models import LogEntry
+import src.modules.automation.api.agents as agents_api
+import src.modules.administration.api.logs as logs_api
+from src.platform.persistence.database import Base
+from src.platform.persistence.models import LogEntry
 
 
 def _parse_events(body: str) -> list[tuple[str, dict]]:
@@ -86,14 +86,14 @@ def _make_log_db(monkeypatch):
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
-    monkeypatch.setattr("src.web.database.SessionLocal", factory)
+    monkeypatch.setattr("src.platform.persistence.database.SessionLocal", factory)
 
     db = factory()
     for level, msg in [("INFO", "启动完成"), ("ERROR", "行情拉取失败"), ("INFO", "调度执行")]:
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
             level=level,
-            logger_name="src.core.test",
+            logger_name="panwatch.test",
             message=msg,
         ))
     db.commit()
@@ -178,7 +178,7 @@ def test_logs_sse_tail_only_new(monkeypatch):
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
             level="WARNING",
-            logger_name="src.core.test",
+            logger_name="panwatch.test",
             message="新增日志",
         ))
         db.commit()

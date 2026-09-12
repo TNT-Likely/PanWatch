@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from src.core.stock_link import stock_url, stock_link_markdown
+from src.modules.administration.stock_link import stock_url, stock_link_markdown
 
 
 class TestStockUrl:

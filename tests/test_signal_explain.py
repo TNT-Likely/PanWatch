@@ -1,6 +1,6 @@
 """信号可解释化(Phase 3)单元测试 —— 纯函数。"""
 
-from src.core.signal_explain import enrich_signal, explain_factors, to_ai_score
+from src.modules.research.signal_explain import enrich_signal, explain_factors, to_ai_score
 
 
 def test_ai_score_mapping():

@@ -59,18 +59,18 @@ Agent 是 PanWatch 的核心分析单元，负责采集数据、调用 AI 分析
 
 ### 1. 创建 Agent 文件
 
-在 `src/agents/` 目录创建新文件，例如 `my_agent.py`：
+在 `src/modules/automation/` 目录创建新文件，例如 `my_agent.py`：
 
 ```python
 import logging
 from pathlib import Path
 
-from src.agents.base import BaseAgent, AgentContext, AnalysisResult
+from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
 # Prompt 文件路径
-PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "my_agent.txt"
+PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "my_agent.txt"
 
 
 class MyAgent(BaseAgent):
@@ -169,7 +169,7 @@ class MyAgent(BaseAgent):
 
 ```python
 # 1. 导入
-from src.agents.my_agent import MyAgent
+from src.modules.automation.my_agent import MyAgent
 
 # 2. 添加到 AGENT_REGISTRY
 AGENT_REGISTRY: dict[str, type] = {
@@ -330,7 +330,7 @@ def seed_data_sources():
 ### 4. 在 Agent 中使用数据源
 
 ```python
-from src.collectors.my_collector import MyNewsCollector
+from src.platform.marketdata.collectors.my_collector import MyNewsCollector
 
 class MyAgent(BaseAgent):
     async def collect(self, context: AgentContext) -> dict:

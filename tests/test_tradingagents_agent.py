@@ -16,27 +16,27 @@ import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from src.agents.tradingagents.agent import TradingAgentsAgent, TradingAgentsUnavailable
-from src.agents.tradingagents.cost_tracker import (
+from src.modules.automation.tradingagents.agent import TradingAgentsAgent, TradingAgentsUnavailable
+from src.modules.automation.tradingagents.cost_tracker import (
     check_budget,
     estimate_cost,
     get_today_cache_key,
 )
-from src.agents.tradingagents.llm_adapter import (
+from src.modules.automation.tradingagents.llm_adapter import (
     VALID_ANALYSTS,
     build_ta_llm_config,
     inject_api_key_env,
 )
-from src.agents.tradingagents.progress import (
+from src.modules.automation.tradingagents.progress import (
     PanWatchProgressHandler,
     aggregate_progress,
     STAGES_ORDER,
 )
-from src.agents.tradingagents.result_mapper import (
+from src.modules.automation.tradingagents.result_mapper import (
     DECISION_LABEL_MAP,
     map_state_to_result,
 )
-from src.agents.tradingagents.toolkit_adapter import (
+from src.modules.automation.tradingagents.toolkit_adapter import (
     is_a_share,
     panwatch_data_context,
     patch_route_to_vendor,
@@ -217,7 +217,7 @@ class TestToolkitAdapter(unittest.TestCase):
 
     def test_panwatch_data_context_isolation(self):
         """数据上下文 — 进入/退出时不污染外部(基于 ContextVar)"""
-        from src.agents.tradingagents import toolkit_adapter
+        from src.modules.automation.tradingagents import toolkit_adapter
         self.assertEqual(toolkit_adapter._cache(), {})
         with panwatch_data_context({"klines": [1, 2, 3]}):
             self.assertEqual(toolkit_adapter._cache().get("klines"), [1, 2, 3])
@@ -368,7 +368,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_disabled_skips(self):
         """模拟盘 bridge — enabled=False 直接 skip,不写库"""
-        from src.agents.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.paper_trading_bridge import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -386,7 +386,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_sell_skipped(self):
         """模拟盘 bridge — SELL 不开新仓 (不会写 buy 信号)"""
-        from src.agents.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.paper_trading_bridge import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -404,7 +404,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_no_price_skipped(self):
         """模拟盘 bridge — 当前价缺失时不写信号(避免错价)"""
-        from src.agents.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.paper_trading_bridge import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -444,14 +444,14 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_empty_portfolio_returns_empty_string(self):
         """无持仓且无账户 — 不注入(返回空串)"""
-        from src.agents.tradingagents.portfolio_context import build_portfolio_context
+        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
         portfolio = self._mock_portfolio(with_position=False, with_cash=False)
         result = build_portfolio_context(portfolio, "600519")
         self.assertEqual(result, "")
 
     def test_with_position_renders_holding_info(self):
         """有持仓 — 文本含数量/成本/风格"""
-        from src.agents.tradingagents.portfolio_context import build_portfolio_context
+        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
         portfolio = self._mock_portfolio()
         text = build_portfolio_context(portfolio, "600519", current_price=1350.0)
         self.assertIn("[User Portfolio Context]", text)
@@ -466,7 +466,7 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_no_position_warns_new_entry(self):
         """有账户但未持有该股票 — 提示这是新建仓决策"""
-        from src.agents.tradingagents.portfolio_context import build_portfolio_context
+        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
         portfolio = self._mock_portfolio(with_position=False, with_cash=True)
         text = build_portfolio_context(portfolio, "BABA")
         self.assertIn("does NOT currently hold", text)
@@ -474,7 +474,7 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_patch_propagator_prepends_to_past_context(self):
         """propagator.create_initial_state — portfolio context 拼到 past_context 前面"""
-        from src.agents.tradingagents.portfolio_context import patch_propagator
+        from src.modules.automation.tradingagents.portfolio_context import patch_propagator
 
         captured = {}
         def original(company_name, trade_date, past_context=""):
@@ -498,7 +498,7 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_patch_propagator_no_context_skips(self):
         """空 portfolio context — 不 patch,原函数行为不变"""
-        from src.agents.tradingagents.portfolio_context import patch_propagator
+        from src.modules.automation.tradingagents.portfolio_context import patch_propagator
 
         graph = MagicMock()
         original = graph.propagator.create_initial_state
@@ -512,7 +512,7 @@ class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
         """collect() — 走 marketdata 包(quote→dict / capital_flow→list)"""
         from datetime import datetime as _dt
 
-        from src.agents.tradingagents import agent as agent_module
+        from src.modules.automation.tradingagents import agent as agent_module
         from marketdata import Bar, CapitalFlow, EventItem, Quote
 
         agent = TradingAgentsAgent()

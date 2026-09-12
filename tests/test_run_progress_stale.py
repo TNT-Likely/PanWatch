@@ -20,7 +20,7 @@ def _fake_log(timestamp, message="stage:market_analyst", tags=None):
 
 def test_recent_log_status_running():
     """最近 1 分钟内有日志 → status=running"""
-    from src.web.api.agents import get_run_progress
+    from src.modules.automation.api.agents import get_run_progress
 
     now = datetime.now(timezone.utc)
     recent = _fake_log(now - timedelta(seconds=30))
@@ -34,14 +34,14 @@ def test_recent_log_status_running():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "running"
 
 
 def test_old_log_status_stale():
     """最后日志距今 > 5 分钟 → status=stale(server 重启 / 进程死掉)"""
-    from src.web.api.agents import get_run_progress
+    from src.modules.automation.api.agents import get_run_progress
 
     now = datetime.now(timezone.utc)
     old = _fake_log(now - timedelta(minutes=10))
@@ -53,14 +53,14 @@ def test_old_log_status_stale():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "stale"
 
 
 def test_no_logs_status_not_found():
     """没日志没 run → status=not_found"""
-    from src.web.api.agents import get_run_progress
+    from src.modules.automation.api.agents import get_run_progress
 
     db = MagicMock()
     log_query = MagicMock()
@@ -69,14 +69,14 @@ def test_no_logs_status_not_found():
     run_query.filter.return_value.order_by.return_value.first.return_value = None
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "not_found"
 
 
 def test_run_completed_overrides_log_status():
     """有 AgentRun 完成记录时,以 run.status 为准,不再判 stale"""
-    from src.web.api.agents import get_run_progress
+    from src.modules.automation.api.agents import get_run_progress
 
     now = datetime.now(timezone.utc)
     old_log = _fake_log(now - timedelta(minutes=20))
@@ -97,6 +97,6 @@ def test_run_completed_overrides_log_status():
     run_query.filter.return_value.order_by.return_value.first.return_value = fake_run
     db.query.side_effect = [log_query, run_query]
 
-    with patch("src.agents.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
+    with patch("src.modules.automation.tradingagents.progress.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
     assert result["status"] == "success"

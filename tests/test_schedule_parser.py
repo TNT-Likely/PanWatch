@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 
-from src.core.schedule_parser import normalize_cron_day_of_week_field, preview_schedule
+from src.platform.scheduling.schedule_parser import normalize_cron_day_of_week_field, preview_schedule
 
 
 class TestScheduleParser(unittest.TestCase):

@@ -6,7 +6,7 @@
 
 import asyncio
 
-from src.core.chat_planner import (
+from src.modules.assistant.chat_planner import (
     build_default_plan,
     normalize_steps,
     parse_plan,

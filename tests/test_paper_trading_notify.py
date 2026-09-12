@@ -4,12 +4,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from src.core.paper_trading_engine import (
+from src.modules.paper_trading.paper_trading_engine import (
     _serialize_position,
     _serialize_signal,
     _serialize_trade,
 )
-from src.core.paper_trading_notifier import (
+from src.modules.paper_trading.paper_trading_notifier import (
     _dedup_signals,
     _format_entry_message,
     _format_exit_message,
@@ -17,7 +17,7 @@ from src.core.paper_trading_notifier import (
     _format_daily_summary,
     _strategy_label,
 )
-from src.core.stock_link import stock_url
+from src.modules.administration.stock_link import stock_url
 
 
 def _make_signal(**kwargs):

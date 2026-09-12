@@ -8,8 +8,8 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
 
 
 def _bar(day: str, close: float):
@@ -18,7 +18,7 @@ def _bar(day: str, close: float):
 
 def test_friday_prediction_one_trading_day_uses_monday_close():
     """周五建议的 1 个交易日结果取周一收盘，而非周六。"""
-    from src.core.prediction_outcome import _find_close_after_n_trading_days
+    from src.modules.research.prediction_outcome import _find_close_after_n_trading_days
 
     bars = [_bar("2026-08-28", 10), _bar("2026-08-31", 11)]
 
@@ -27,14 +27,14 @@ def test_friday_prediction_one_trading_day_uses_monday_close():
 
 def test_two_horizons_saved_for_one_suggestion_share_group_id(monkeypatch):
     """同一次建议的 1/5 个交易日记录必须共用 group ID。"""
-    from src.core.context_store import save_agent_prediction_outcome
-    from src.web.database import Base
-    from src.web.models import AgentPredictionOutcome
+    from src.modules.research.context_store import save_agent_prediction_outcome
+    from src.platform.persistence.database import Base
+    from src.platform.persistence.models import AgentPredictionOutcome
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
-    monkeypatch.setattr("src.core.context_store.SessionLocal", lambda: session)
+    monkeypatch.setattr("src.modules.research.context_store.SessionLocal", lambda: session)
 
     try:
         for horizon in (1, 5):
@@ -89,7 +89,7 @@ def _outcome(
 
 def test_classify_prediction_hit_matches_declared_policy():
     """买卖方向与观望横盘阈值由后端统一判定。"""
-    from src.core.agent_prediction_evaluation import classify_prediction_hit
+    from src.modules.automation.agent_prediction_evaluation import classify_prediction_hit
 
     assert classify_prediction_hit("add", 0.01) is True
     assert classify_prediction_hit("reduce", -0.01) is True
@@ -100,7 +100,7 @@ def test_classify_prediction_hit_matches_declared_policy():
 
 def test_group_prediction_outcomes_pivots_one_and_five_days():
     """同组 1/5 个交易日结果在前端只占一行。"""
-    from src.core.agent_prediction_evaluation import group_prediction_outcomes
+    from src.modules.automation.agent_prediction_evaluation import group_prediction_outcomes
 
     groups = group_prediction_outcomes(
         [_outcome("group-1", 1, 1.2), _outcome("group-1", 5, -2.0)]
@@ -114,7 +114,7 @@ def test_group_prediction_outcomes_pivots_one_and_five_days():
 
 def test_legacy_same_day_suggestions_are_not_merged():
     """旧数据中同日同方向的两次建议仍必须是两条复盘。"""
-    from src.core.agent_prediction_evaluation import group_prediction_outcomes
+    from src.modules.automation.agent_prediction_evaluation import group_prediction_outcomes
 
     first_created_at = datetime(2026, 8, 28, 9, 0, 0)
     second_created_at = first_created_at + timedelta(minutes=30)
@@ -138,7 +138,7 @@ def test_legacy_same_day_suggestions_are_not_merged():
 
 def test_legacy_horizons_saved_across_seconds_stay_in_one_group():
     """旧写入将 1/5 日分开提交时，即使跨秒也仍属于同一建议。"""
-    from src.core.agent_prediction_evaluation import group_prediction_outcomes
+    from src.modules.automation.agent_prediction_evaluation import group_prediction_outcomes
 
     first_created_at = datetime(2026, 8, 28, 9, 0, 0)
     one_day = vars(_outcome("", 1, 1.0)).copy()
@@ -160,7 +160,7 @@ def test_legacy_horizons_saved_across_seconds_stay_in_one_group():
 
 def test_interleaved_legacy_writes_are_not_cross_paired():
     """同一旧分组键的并发写入宁可拆开，也不能错误交叉配对。"""
-    from src.core.agent_prediction_evaluation import group_prediction_outcomes
+    from src.modules.automation.agent_prediction_evaluation import group_prediction_outcomes
 
     created_at = datetime(2026, 8, 28, 9, 0, 0)
     rows = []
@@ -183,7 +183,7 @@ def test_interleaved_legacy_writes_are_not_cross_paired():
 
 def test_summary_marks_less_than_twenty_completed_samples_insufficient():
     """不足 20 个完成样本时不能包装成稳定命中率。"""
-    from src.core.agent_prediction_evaluation import (
+    from src.modules.automation.agent_prediction_evaluation import (
         group_prediction_outcomes,
         summarize_prediction_groups,
     )

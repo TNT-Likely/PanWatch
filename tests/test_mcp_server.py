@@ -11,9 +11,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.api import mcp as mcp_api
-from src.web.api import pats as pats_api
-from src.web.database import Base, get_db
+from src.modules.administration.api import mcp as mcp_api
+from src.modules.administration.api import pats as pats_api
+from src.platform.persistence.database import Base, get_db
 
 
 @pytest.fixture()
@@ -145,7 +145,7 @@ def test_tools_call_and_audit_log(client_and_session):
     assert isinstance(res["content"][0]["text"], str)
 
     # 审计日志落库
-    from src.web.models import MCPCallLog
+    from src.platform.persistence.models import MCPCallLog
 
     db = TestSession()
     try:

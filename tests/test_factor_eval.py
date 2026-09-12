@@ -1,6 +1,6 @@
 """因子评估相关系数(Phase 2)单元测试 —— 纯函数,不触发 DB。"""
 
-from src.core.factor_eval import pearson, spearman
+from src.modules.strategy.factor_eval import pearson, spearman
 
 
 def test_pearson_perfect_positive():

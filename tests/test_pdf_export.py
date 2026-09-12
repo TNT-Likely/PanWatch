@@ -21,7 +21,7 @@ _WEASY = _weasyprint_renders()
 
 def test_render_pdf_returns_valid_bytes_with_chinese():
     """markdown→PDF:返回合法 PDF 字节,且中文进入文本层(非豆腐块、可复制)。"""
-    from src.core.pdf_export import render_analysis_pdf
+    from src.modules.reporting.pdf_export import render_analysis_pdf
 
     md = "# 广汽集团(601238)深度分析\n\n**最终决策:持有**\n\n- 多头:业绩拐点确认\n- 空头:估值偏高"
     data = render_analysis_pdf("【深度】广汽集团(601238):持有", md)
@@ -41,7 +41,7 @@ def test_render_pdf_returns_valid_bytes_with_chinese():
 
 def test_render_pdf_handles_empty_markdown():
     """空正文也不崩,仍返回合法 PDF(至少有标题)。"""
-    from src.core.pdf_export import render_analysis_pdf
+    from src.modules.reporting.pdf_export import render_analysis_pdf
 
     data = render_analysis_pdf("标题", "")
     assert bytes(data[:4]) == b"%PDF"
@@ -49,7 +49,7 @@ def test_render_pdf_handles_empty_markdown():
 
 def test_assemble_report_markdown_mirrors_detail_page_sections():
     """从 raw_data 拼出的报告含详情页全部分节:PM/交易员/4分析师全文/多空辩论全文/风控辩论全文。"""
-    from src.core.pdf_export import assemble_report_markdown
+    from src.modules.reporting.pdf_export import assemble_report_markdown
 
     raw = {
         "suggestion": {"action_label": "持有", "confidence": 5.0},
@@ -77,8 +77,8 @@ def _mem_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    import src.web.models  # noqa: F401
-    from src.web.database import Base
+    import src.platform.persistence.models  # noqa: F401
+    from src.platform.persistence.database import Base
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -87,8 +87,8 @@ def _mem_db():
 
 def test_pdf_endpoint_returns_full_detail_content():
     """端点:返回 application/pdf 附件,且含详情页完整内容(分析师/辩论全文,来自 raw_data,非仅 content 摘要)。"""
-    from src.web.api import agents
-    from src.web.models import AnalysisHistory
+    from src.modules.automation.api import agents
+    from src.platform.persistence.models import AnalysisHistory
 
     db = _mem_db()
     try:
@@ -130,7 +130,7 @@ def test_pdf_endpoint_404_when_missing():
     import pytest
     from fastapi import HTTPException
 
-    from src.web.api import agents
+    from src.modules.automation.api import agents
 
     db = _mem_db()
     try:

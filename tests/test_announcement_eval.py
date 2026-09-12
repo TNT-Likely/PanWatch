@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from src.web.api import insights
-from src.web.database import SessionLocal
+from src.modules.research.api import insights
+from src.platform.persistence.database import SessionLocal
 
 
 class _FakeAIClient:
@@ -37,7 +37,7 @@ def test_announcement_eval_maps_tone_per_item(monkeypatch):
     monkeypatch.setattr(insights, "_fetch_recent_announcements", fake_fetch)
     monkeypatch.setattr(
         insights,
-        "_get_ai_client",
+            "get_configured_failover_client",
         lambda db, mid=None: _FakeAIClient("1|利好|中标利好业绩\n2|利空|减持承压"),
     )
 
@@ -67,7 +67,7 @@ def test_announcement_eval_empty(monkeypatch):
         return _FakeAIClient("")
 
     monkeypatch.setattr(insights, "_fetch_recent_announcements", fake_fetch)
-    monkeypatch.setattr(insights, "_get_ai_client", fake_ai)
+    monkeypatch.setattr(insights, "get_configured_failover_client", fake_ai)
 
     req = insights.AnnouncementEvalRequest(symbol="000001", market="CN")
     db = SessionLocal()

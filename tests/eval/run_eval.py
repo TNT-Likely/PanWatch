@@ -109,7 +109,7 @@ async def run_chat(only: str | None, use_judge: bool) -> tuple[int, int]:
         return 0, 0
 
     base_url, api_key, model = config
-    from src.core.ai_client import AIClient
+    from src.platform.ai.ai_client import AIClient
 
     runner = ChatEvalRunner(AIClient(base_url=base_url, api_key=api_key, model=model))
 

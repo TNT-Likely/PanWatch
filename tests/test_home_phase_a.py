@@ -9,10 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web import models as M
-from src.web.api import accounts as accounts_api
-from src.web.api import price_alerts as alerts_api
-from src.web.database import Base
+import src.platform.persistence.models as M
+from src.modules.portfolio.api import accounts as accounts_api
+from src.modules.market.api import price_alerts as alerts_api
+from src.platform.persistence.database import Base
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-import src.web.api.stocks as stocks_api
+import src.modules.market.api.stocks as stocks_api
 
 
 def test_get_quotes_uses_md_quote_rows(monkeypatch):

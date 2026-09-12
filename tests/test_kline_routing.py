@@ -1,5 +1,5 @@
-import src.collectors.kline_collector as kc
-from src.models.market import MarketCode
+import src.platform.marketdata.collectors.kline_collector as kc
+from src.platform.marketdata.models import MarketCode
 
 
 def test_fetch_all_sources_uses_marketdata(monkeypatch):

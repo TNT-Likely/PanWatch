@@ -7,8 +7,8 @@ import asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401
+from src.platform.persistence.database import Base
 
 
 def _mem_db():
@@ -21,7 +21,7 @@ def _mem_db():
 
 def test_hint_datasource_proxy():
     """CN 数据源连接类错误 → 提示代理 / trust_env。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("datasource", "Server disconnected without sending a response")
     assert "代理" in h or "trust_env" in h
@@ -29,7 +29,7 @@ def test_hint_datasource_proxy():
 
 def test_hint_db_locked():
     """database is locked → 提示并发 / 锁。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("datasource", "sqlite3.OperationalError: database is locked")
     assert "锁" in h or "并发" in h
@@ -37,7 +37,7 @@ def test_hint_db_locked():
 
 def test_hint_ai_auth():
     """AI 401 → 提示 API Key / 鉴权。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("ai", "Error code: 401 - invalid_api_key")
     assert "Key" in h or "key" in h or "鉴权" in h
@@ -45,7 +45,7 @@ def test_hint_ai_auth():
 
 def test_hint_ai_model_not_found():
     """AI model 不存在 → 提示模型名。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("ai", "The model `gpt-x` does not exist (404)")
     assert "模型" in h
@@ -53,7 +53,7 @@ def test_hint_ai_model_not_found():
 
 def test_hint_notify_invalid():
     """通知 URI 无效 → 提示配置 / 格式。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("notify", "Unsupported URL or invalid scheme")
     assert "配置" in h or "URI" in h or "格式" in h
@@ -61,7 +61,7 @@ def test_hint_notify_invalid():
 
 def test_hint_system_disk():
     """磁盘类错误 → 提示空间/清理。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("system", "disk space low: only 50MB free")
     assert "磁盘" in h or "空间" in h
@@ -69,7 +69,7 @@ def test_hint_system_disk():
 
 def test_hint_system_scheduler():
     """调度器停止 → 提示重启。"""
-    from src.core.selfcheck import classify_hint
+    from src.modules.administration.selfcheck import classify_hint
 
     h = classify_hint("system", "scheduler stopped")
     assert "调度" in h
@@ -79,7 +79,7 @@ def test_hint_system_scheduler():
 
 def test_probe_db_ok():
     """DB 探测对真实库执行 SELECT 1,应通。"""
-    from src.core.selfcheck import probe_db
+    from src.modules.administration.selfcheck import probe_db
 
     r = asyncio.run(probe_db())
     assert r["category"] == "system" and r["key"] == "sys:db"
@@ -88,7 +88,7 @@ def test_probe_db_ok():
 
 def test_probe_disk_ok():
     """磁盘探测返回用量,正常机器应通且带 note。"""
-    from src.core.selfcheck import probe_disk
+    from src.modules.administration.selfcheck import probe_disk
 
     r = asyncio.run(probe_disk())
     assert r["key"] == "sys:disk"
@@ -98,8 +98,8 @@ def test_probe_disk_ok():
 
 def test_probe_scheduler_empty_registry_ok():
     """无注册调度器(如 CLI/未启动)→ ok 但带说明,不误报断。"""
-    from src.core import scheduler_registry
-    from src.core.selfcheck import probe_scheduler
+    from src.platform.scheduling import scheduler_registry
+    from src.modules.administration.selfcheck import probe_scheduler
 
     scheduler_registry.clear()
     r = asyncio.run(probe_scheduler())
@@ -109,8 +109,8 @@ def test_probe_scheduler_empty_registry_ok():
 
 def test_probe_scheduler_running():
     """注册了运行中的调度器 → ok,note 含任务数。"""
-    from src.core import scheduler_registry
-    from src.core.selfcheck import probe_scheduler
+    from src.platform.scheduling import scheduler_registry
+    from src.modules.administration.selfcheck import probe_scheduler
 
     class _FakeSched:
         running = True
@@ -130,11 +130,11 @@ def test_probe_scheduler_running():
 
 def test_run_selfcheck_always_includes_system_items():
     """空库也含 3 个系统基础项(数据库/磁盘/调度)。"""
-    from src.core.selfcheck import run_selfcheck
+    from src.modules.administration.selfcheck import run_selfcheck
 
     db = _mem_db()
     try:
-        from src.core import scheduler_registry
+        from src.platform.scheduling import scheduler_registry
         scheduler_registry.clear()
         res = asyncio.run(run_selfcheck(db=db))
         keys = {i["key"] for i in res["items"]}
@@ -147,8 +147,8 @@ def test_run_selfcheck_always_includes_system_items():
 
 def test_run_selfcheck_aggregates(monkeypatch):
     """枚举启用项 → 并发 probe → 聚合 summary(total/ok/slow/fail)。"""
-    from src.core import selfcheck
-    from src.web.models import AIModel, AIService, DataSource, NotifyChannel
+    from src.modules.administration import selfcheck
+    from src.platform.persistence.models import AIModel, AIService, DataSource, NotifyChannel
 
     db = _mem_db()
     try:
@@ -185,7 +185,7 @@ def test_run_selfcheck_aggregates(monkeypatch):
 
 def test_run_selfcheck_empty_db():
     """无启用项 → 空看板,不报错。"""
-    from src.core.selfcheck import run_selfcheck
+    from src.modules.administration.selfcheck import run_selfcheck
 
     db = _mem_db()
     try:
@@ -198,8 +198,8 @@ def test_run_selfcheck_empty_db():
 
 def test_list_selfcheck_items_no_probe(monkeypatch):
     """list 模式只枚举待检身份(category/key/name),不跑探测。"""
-    from src.core import selfcheck
-    from src.web.models import DataSource, NotifyChannel
+    from src.modules.administration import selfcheck
+    from src.platform.persistence.models import DataSource, NotifyChannel
 
     db = _mem_db()
     try:
@@ -226,8 +226,8 @@ def test_list_selfcheck_items_no_probe(monkeypatch):
 
 def test_list_items_ai_has_service_group():
     """AI 项带 group=服务商名(供前端「服务商 → 模型」层级)。"""
-    from src.core.selfcheck import list_selfcheck_items
-    from src.web.models import AIModel, AIService
+    from src.modules.administration.selfcheck import list_selfcheck_items
+    from src.platform.persistence.models import AIModel, AIService
 
     db = _mem_db()
     try:
@@ -247,8 +247,8 @@ def test_list_items_ai_has_service_group():
 
 def test_run_selfcheck_keys_filter(monkeypatch):
     """keys 过滤:只探测指定 key 的项(供前端逐项更新进度)。"""
-    from src.core import selfcheck
-    from src.web.models import DataSource, NotifyChannel
+    from src.modules.administration import selfcheck
+    from src.platform.persistence.models import DataSource, NotifyChannel
 
     db = _mem_db()
     try:
@@ -278,7 +278,7 @@ def test_run_selfcheck_keys_filter(monkeypatch):
 
 def test_selfcheck_endpoint(monkeypatch):
     """端点调用 run_selfcheck 并原样返回看板。"""
-    from src.web.api import health
+    from src.modules.administration.api import health
 
     async def fake_run(*, notify_send=False, keys=None):
         return {"items": [], "summary": {"total": 0, "ok": 0, "slow": 0, "fail": 0},
@@ -293,7 +293,7 @@ def test_selfcheck_endpoint(monkeypatch):
 
 def test_selfcheck_route_mounted():
     """/api/health/selfcheck 已挂载到 app。"""
-    from src.web.app import app
+    from src.bootstrap.application import app
 
     assert "/api/health/selfcheck" in set(app.openapi().get("paths", {}).keys())
 
@@ -302,7 +302,7 @@ def test_selfcheck_route_mounted():
 
 def test_doctor_print_report(capsys):
     """make doctor 的报告:分组打印 + 失败项带错误与中文建议。"""
-    from src.core.doctor import _print_report
+    from src.modules.administration.doctor import _print_report
 
     res = {
         "summary": {"total": 2, "ok": 1, "slow": 0, "fail": 1},

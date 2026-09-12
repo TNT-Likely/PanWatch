@@ -5,12 +5,12 @@ _fetch_tencent_quotes / AkshareCollector.get_stock_data 直连。
 
 import asyncio
 
-from src.models.market import MarketCode, StockData
+from src.platform.marketdata.models import MarketCode, StockData
 
 
 def test_insights_fundamental_context_uses_md_quote_rows(monkeypatch):
     """insights._fetch_fundamental_context(dict 消费方)应调用 md_quote_rows 而非旧直连。"""
-    import src.web.api.insights as insights
+    import src.modules.research.api.insights as insights
 
     calls = []
 
@@ -31,7 +31,7 @@ def test_insights_fundamental_context_uses_md_quote_rows(monkeypatch):
 
 def test_entry_candidates_seed_inputs_uses_md_stock_data(monkeypatch):
     """entry_candidates._load_market_scan_seed_inputs(StockData 消费方)应调用 md_stock_data。"""
-    import src.core.entry_candidates as ec
+    import src.modules.strategy.entry_candidates as ec
 
     calls = []
 

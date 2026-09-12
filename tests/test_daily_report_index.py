@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 
-from src.agents import daily_report
-from src.models.market import IndexData, MarketCode
+from src.modules.automation import daily_report
+from src.platform.marketdata.models import IndexData, MarketCode
 
 
 def _fake_index_items() -> list[dict]:

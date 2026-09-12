@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from src.collectors import capital_flow_collector, market_http
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors import capital_flow_collector, market_http
+from src.platform.marketdata.models import MarketCode
 
 
 def test_capital_flow_cached(monkeypatch):

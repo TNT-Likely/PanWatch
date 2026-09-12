@@ -10,8 +10,8 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from src.agents.tradingagents import toolkit_adapter as ta
-from src.collectors.kline_collector import KlineCollector, KlineData
+from src.modules.automation.tradingagents import toolkit_adapter as ta
+from src.platform.marketdata.collectors.kline_collector import KlineCollector, KlineData
 
 
 def _sample_klines(n: int = 40) -> list[KlineData]:

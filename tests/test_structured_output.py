@@ -1,4 +1,4 @@
-from src.core.signals.structured_output import try_parse_action_json
+from src.modules.research.signals.structured_output import try_parse_action_json
 
 
 def test_try_parse_action_json_plain_json_prefix() -> None:

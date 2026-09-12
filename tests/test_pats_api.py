@@ -3,17 +3,17 @@
 全自包含:内存 SQLite + TestClient，不连外部。
 """
 
-import src.web.api.mcp as mcp_module
-import src.web.api.pats as pats_module  # noqa: F401 (确保模块可导入)
+import src.modules.administration.api.mcp as mcp_module
+import src.modules.administration.api.pats as pats_module  # noqa: F401 (确保模块可导入)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.web.api import mcp as mcp_router_mod
-from src.web.api import pats as pats_router_mod
-from src.web.database import Base, get_db
+from src.modules.administration.api import mcp as mcp_router_mod
+from src.modules.administration.api import pats as pats_router_mod
+from src.platform.persistence.database import Base, get_db
 
 
 def _setup(monkeypatch):

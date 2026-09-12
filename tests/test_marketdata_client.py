@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from marketdata import Quote
-import src.core.marketdata_client as mc
+import src.platform.marketdata.marketdata_client as mc
 
 
 def test_quote_to_row_keys():

@@ -7,8 +7,8 @@ from datetime import date, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
 
 
 def _mem_db():
@@ -18,7 +18,7 @@ def _mem_db():
 
 
 def _seed_pair(db, sid, *, market, snapshot_date, alpha, ret, horizon=5):
-    from src.web.models import StrategyFactorSnapshot, StrategyOutcome
+    from src.platform.persistence.models import StrategyFactorSnapshot, StrategyOutcome
 
     db.add(StrategyFactorSnapshot(
         signal_run_id=sid, snapshot_date=snapshot_date, stock_symbol=f"S{sid}",
@@ -34,10 +34,10 @@ def _seed_pair(db, sid, *, market, snapshot_date, alpha, ret, horizon=5):
 
 def test_calibrate_all_markets_closes_loop_into_scoring():
     """端到端:快照+outcome → calibrate_all_markets → CN alpha 权重上调 → 评分 raw_score 提升。"""
-    from src.core.factor_calibration import calibrate_all_markets
-    from src.core.factor_weights import get_factor_weights
-    from src.core.strategy_engine import _compute_factor_breakdown
-    from src.web.models import EntryCandidate
+    from src.modules.strategy.factor_calibration import calibrate_all_markets
+    from src.modules.strategy.factor_weights import get_factor_weights
+    from src.modules.strategy.strategy_engine import _compute_factor_breakdown
+    from src.platform.persistence.models import EntryCandidate
 
     db = _mem_db()
     try:

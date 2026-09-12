@@ -1,7 +1,7 @@
 """md_stock_data 兼容层测试:走 marketdata 包。"""
 
-import src.core.marketdata_client as mc
-from src.models.market import MarketCode, StockData
+import src.platform.marketdata.marketdata_client as mc
+from src.platform.marketdata.models import MarketCode, StockData
 
 
 def test_md_stock_data_uses_marketdata(monkeypatch):

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from marketdata import Bar, Quote
-from src.core.data_collector import DataCollectorManager
+from src.modules.market.data_collector import DataCollectorManager
 
 
 def _make_source(**kwargs):

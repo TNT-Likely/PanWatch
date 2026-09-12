@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
@@ -14,11 +14,12 @@ import AnalysisDetailPage from '@/pages/AnalysisDetail'
 import PriceAlertsPage from '@/pages/PriceAlerts'
 import PaperTradingPage from '@/pages/PaperTrading'
 import EvaluationsPage from '@/pages/Evaluations'
+import AssistantPage from '@/pages/Assistant'
 import LoginPage from '@/pages/Login'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
-import ChatWidget from '@/components/ChatWidget'
 import AccountMenu from '@/components/AccountMenu'
+import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -28,6 +29,7 @@ const navItems = [
   { to: '/portfolio', icon: List, label: '持仓' },
   { to: '/opportunities', icon: Sparkles, label: '机会' },
   { to: '/paper-trading', icon: Activity, label: '模拟盘' },
+  { to: '/assistant', icon: MessageCircle, label: '助手' },
   { to: '/alerts', icon: BellRing, label: '提醒' },
   { to: '/agents', icon: Bot, label: 'Agent' },
   { to: '/evaluations', icon: ClipboardCheck, label: '验证中心' },
@@ -256,6 +258,7 @@ function App() {
 
       {/* Content */}
       <main className="px-4 md:px-6 py-4 md:py-6 w-full">
+        <AssistantOpenBridge />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />
@@ -265,12 +268,13 @@ function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/alerts" element={<PriceAlertsPage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/assistant/:conversationId" element={<AssistantPage />} />
           <Route path="/datasources" element={<DataSourcesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
         </Routes>
       </main>
-      <ChatWidget />
       <LogsModal open={logsOpen} onOpenChange={setLogsOpen} />
       <SelfCheckModal open={selfCheckOpen} onClose={() => setSelfCheckOpen(false)} />
       <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>

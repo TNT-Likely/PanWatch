@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime, timedelta
 
-import src.collectors.events_collector as ec
+import src.platform.marketdata.collectors.events_collector as ec
 
 
 def test_fetch_events_uses_marketdata(monkeypatch):

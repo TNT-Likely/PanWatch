@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from src.collectors import kline_collector
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors import kline_collector
+from src.platform.marketdata.models import MarketCode
 
 
 def _mk_bars(n: int) -> list[kline_collector.KlineData]:

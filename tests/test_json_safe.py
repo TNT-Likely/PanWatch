@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from src.core.json_safe import to_jsonable
+from src.platform.persistence.json_safe import to_jsonable
 
 
 class TestPrimitives:

@@ -10,9 +10,9 @@ _KLINE_CACHE/_get_fetch_lock/_FAIL_UNTIL(kline)与 _FLOW_CACHE(capital_flow)
 
 from __future__ import annotations
 
-from src.collectors import capital_flow_collector as cfc
-from src.collectors import kline_collector as kc
-from src.models.market import MarketCode
+from src.platform.marketdata.collectors import capital_flow_collector as cfc
+from src.platform.marketdata.collectors import kline_collector as kc
+from src.platform.marketdata.models import MarketCode
 
 from marketdata.types import Bar
 from marketdata.types import CapitalFlow as MDCapitalFlow

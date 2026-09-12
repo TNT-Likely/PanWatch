@@ -7,8 +7,8 @@ from datetime import date, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
 
 
 def _mem_db():
@@ -21,7 +21,7 @@ def _mem_db():
 
 def test_compute_target_additive_positive_ir():
     """加分因子 + 正 IR:目标权重 > 1(IR 优先,clamp 到上限 1.4)。"""
-    from src.core.factor_calibration import compute_target
+    from src.modules.strategy.factor_calibration import compute_target
 
     # ir=0.55 → term=1.1 → clamp 1.0 → 1 + 0.4*1.0 = 1.4
     assert abs(compute_target("catalyst_score", ic=0.06, ir=0.55) - 1.4) < 1e-9
@@ -29,7 +29,7 @@ def test_compute_target_additive_positive_ir():
 
 def test_compute_target_falls_back_to_ic_when_no_ir():
     """IR 缺失时 fallback 用 IC。"""
-    from src.core.factor_calibration import compute_target
+    from src.modules.strategy.factor_calibration import compute_target
 
     # ir=None, ic=0.025 → term=0.5 → 1 + 0.4*0.5 = 1.2
     assert abs(compute_target("alpha_score", ic=0.025, ir=None) - 1.2) < 1e-9
@@ -37,7 +37,7 @@ def test_compute_target_falls_back_to_ic_when_no_ir():
 
 def test_compute_target_penalty_good_negative_ic_raises_weight():
     """惩罚因子 IC 为负(惩罚有效)→ 翻符号后提权。"""
-    from src.core.factor_calibration import compute_target
+    from src.modules.strategy.factor_calibration import compute_target
 
     # risk_penalty ir=-0.5 → term=-1.0 → 惩罚翻符号 +1.0 → 1.4
     assert abs(compute_target("risk_penalty", ic=-0.04, ir=-0.5) - 1.4) < 1e-9
@@ -45,7 +45,7 @@ def test_compute_target_penalty_good_negative_ic_raises_weight():
 
 def test_compute_target_penalty_failing_positive_ic_lowers_weight():
     """惩罚因子 IC 翻正(惩罚失效)→ 翻符号后降权。"""
-    from src.core.factor_calibration import compute_target
+    from src.modules.strategy.factor_calibration import compute_target
 
     # risk_penalty ir=+0.5 → term=1.0 → 翻符号 -1.0 → 1 - 0.4 = 0.6
     assert abs(compute_target("risk_penalty", ic=0.04, ir=0.5) - 0.6) < 1e-9
@@ -53,7 +53,7 @@ def test_compute_target_penalty_failing_positive_ic_lowers_weight():
 
 def test_compute_target_returns_none_when_no_ic_ir():
     """IC、IR 均缺失 → 信息不足,返回 None(跳过该因子)。"""
-    from src.core.factor_calibration import compute_target
+    from src.modules.strategy.factor_calibration import compute_target
 
     assert compute_target("alpha_score", ic=None, ir=None) is None
 
@@ -62,21 +62,21 @@ def test_compute_target_returns_none_when_no_ic_ir():
 
 def test_blend_ema():
     """EMA 平滑:blend(1.0, 1.4, alpha=0.35) = 1.14。"""
-    from src.core.factor_calibration import blend
+    from src.modules.strategy.factor_calibration import blend
 
     assert abs(blend(1.0, 1.4, alpha=0.35) - 1.14) < 1e-9
 
 
 def test_blend_clamps_high():
     """混合结果超上限被 clamp 到 hi。"""
-    from src.core.factor_calibration import blend
+    from src.modules.strategy.factor_calibration import blend
 
     assert blend(1.45, 2.0, alpha=0.35, lo=0.5, hi=1.5) == 1.5
 
 
 def test_blend_clamps_low():
     """混合结果低于下限被 clamp 到 lo。"""
-    from src.core.factor_calibration import blend
+    from src.modules.strategy.factor_calibration import blend
 
     assert blend(0.55, 0.0, alpha=0.35, lo=0.5, hi=1.5) == 0.5
 
@@ -86,7 +86,7 @@ def test_blend_clamps_low():
 def _seed_pair(db, sid, *, market, snapshot_date, alpha=0.0, ret=0.0,
                horizon=5, status="evaluated"):
     """插入一对 StrategyFactorSnapshot + StrategyOutcome(按 signal_run_id 关联)。"""
-    from src.web.models import StrategyFactorSnapshot, StrategyOutcome
+    from src.platform.persistence.models import StrategyFactorSnapshot, StrategyOutcome
 
     db.add(StrategyFactorSnapshot(
         signal_run_id=sid, snapshot_date=snapshot_date, stock_symbol=f"S{sid}",
@@ -106,7 +106,7 @@ def _old_date(days_ago=30):
 
 def test_evaluate_factor_ic_filters_by_market():
     """传 market 时只统计该市场的样本。"""
-    from src.core.factor_eval import evaluate_factor_ic
+    from src.modules.strategy.factor_eval import evaluate_factor_ic
 
     db = _mem_db()
     try:
@@ -125,7 +125,7 @@ def test_evaluate_factor_ic_filters_by_market():
 
 def test_evaluate_factor_ic_excludes_unelapsed_horizon():
     """持有期未走完的样本(快照=今天)即使被标 evaluated 也被排除(防泄漏)。"""
-    from src.core.factor_eval import evaluate_factor_ic
+    from src.modules.strategy.factor_eval import evaluate_factor_ic
 
     db = _mem_db()
     try:
@@ -146,8 +146,8 @@ def test_evaluate_factor_ic_excludes_unelapsed_horizon():
 
 def test_calibrate_moves_weight_from_ic_and_audits():
     """alpha 与收益完全正相关 → IC=+1 → 权重上调并写 auto 审计。"""
-    from src.core.factor_calibration import calibrate_factor_weights
-    from src.web.models import FactorWeight, FactorWeightHistory
+    from src.modules.strategy.factor_calibration import calibrate_factor_weights
+    from src.platform.persistence.models import FactorWeight, FactorWeightHistory
 
     db = _mem_db()
     try:
@@ -172,8 +172,8 @@ def test_calibrate_moves_weight_from_ic_and_audits():
 
 def test_calibrate_skips_pinned():
     """已 pin 的因子即使有强 IC 也不动。"""
-    from src.core.factor_calibration import calibrate_factor_weights
-    from src.web.models import FactorWeight
+    from src.modules.strategy.factor_calibration import calibrate_factor_weights
+    from src.platform.persistence.models import FactorWeight
 
     db = _mem_db()
     try:

@@ -11,10 +11,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import src.core.portfolio_benchmark as pb
-from src.web import models as M
-from src.web.api import accounts as accounts_api
-from src.web.database import Base
+import src.modules.portfolio.portfolio_benchmark as pb
+import src.platform.persistence.models as M
+from src.modules.portfolio.api import accounts as accounts_api
+from src.platform.persistence.database import Base
 
 _HOLDINGS = [{"symbol": "600519", "market": "CN", "quantity": 100, "market_value": 100.0, "fx": 1.0}]
 

@@ -1,15 +1,15 @@
 import asyncio
 
-import src.core.marketdata_client as mc
+import src.platform.marketdata.marketdata_client as mc
 
 
 def test_paper_trading_uses_md_quote_rows(monkeypatch):
     """模拟盘 _fetch_quotes_map 应走 md_quote_rows(不再直接碰 orchestrator)。"""
-    from src.core.paper_trading_engine import PaperTradingEngine
+    from src.modules.paper_trading.paper_trading_engine import PaperTradingEngine
 
     calls = []
     monkeypatch.setattr(
-        "src.core.paper_trading_engine.md_quote_rows",
+        "src.modules.paper_trading.paper_trading_engine.md_quote_rows",
         lambda symbols, market: (calls.append((tuple(symbols), market)),
                                  [{"symbol": symbols[0], "current_price": 5.0}])[1],
     )
@@ -20,11 +20,11 @@ def test_paper_trading_uses_md_quote_rows(monkeypatch):
 
 
 def test_price_alert_uses_md_quote_rows(monkeypatch):
-    from src.core.price_alert_engine import PriceAlertEngine
-    from src.web.models import Stock
+    from src.modules.market.price_alert_engine import PriceAlertEngine
+    from src.platform.persistence.models import Stock
 
     monkeypatch.setattr(
-        "src.core.price_alert_engine.md_quote_rows",
+        "src.modules.market.price_alert_engine.md_quote_rows",
         lambda symbols, market: [{"symbol": symbols[0], "current_price": 7.0}],
     )
     eng = PriceAlertEngine()

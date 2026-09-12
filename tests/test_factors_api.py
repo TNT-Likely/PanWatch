@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册 ORM 模型
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
+from src.platform.persistence.database import Base
 
 
 def _mem_db():
@@ -19,7 +19,7 @@ def _mem_db():
 
 def test_list_weights_returns_all_market_factor_pairs():
     """GET 列表返回 5 因子 × 3 市场。"""
-    from src.web.api import factors
+    from src.modules.strategy.api import factors
 
     db = _mem_db()
     try:
@@ -32,7 +32,7 @@ def test_list_weights_returns_all_market_factor_pairs():
 
 def test_update_weight_pins_and_sets_value():
     """POST 手动设权重 + pin。"""
-    from src.web.api import factors
+    from src.modules.strategy.api import factors
 
     db = _mem_db()
     try:
@@ -46,7 +46,7 @@ def test_update_weight_pins_and_sets_value():
 
 def test_update_weight_unknown_factor_returns_400():
     """未知因子 → HTTP 400。"""
-    from src.web.api import factors
+    from src.modules.strategy.api import factors
 
     db = _mem_db()
     try:
@@ -60,7 +60,7 @@ def test_update_weight_unknown_factor_returns_400():
 
 def test_factors_router_mounted():
     """/api/factors/weights 已挂载到 app(走 OpenAPI schema,兼容自定义 _IncludedRouter)。"""
-    from src.web.app import app
+    from src.bootstrap.application import app
 
     paths = set(app.openapi().get("paths", {}).keys())
     assert "/api/factors/weights" in paths

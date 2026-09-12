@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from src.agents.tradingagents.toolkit_adapter import (
+from src.modules.automation.tradingagents.toolkit_adapter import (
     _yfinance_response_has_data,
     hk_symbol_to_yfinance,
     is_a_share,

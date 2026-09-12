@@ -1,8 +1,8 @@
 """今日必读 AI 策展(Phase C)。"""
 from __future__ import annotations
 import asyncio
-from src.web.api import dashboard
-from src.web.database import SessionLocal
+from src.modules.portfolio.api import dashboard
+from src.platform.persistence.database import SessionLocal
 
 
 class _FakeAI:
@@ -12,7 +12,7 @@ class _FakeAI:
 
 def test_curate_orders_by_importance(monkeypatch):
     """AI 返回的重要度用于降序排序,并带 why。"""
-    monkeypatch.setattr(dashboard, "_get_ai_client", lambda db, mid=None: _FakeAI("0|40|小异动\n1|90|提醒触发"))
+    monkeypatch.setattr(dashboard, "get_configured_failover_client", lambda db, mid=None: _FakeAI("0|40|小异动\n1|90|提醒触发"))
     req = dashboard.CurateRequest(candidates=[
         dashboard.CurateCandidate(type="watch", symbol="A", name="甲", signal="x"),
         dashboard.CurateCandidate(type="alert", symbol="B", name="乙", signal="y"),
@@ -31,7 +31,7 @@ def test_curate_fallback_on_ai_fail(monkeypatch):
     """AI 失败时按原序兜底,不报错。"""
     class _Boom:
         async def chat(self, *a, **k): raise RuntimeError("boom")
-    monkeypatch.setattr(dashboard, "_get_ai_client", lambda db, mid=None: _Boom())
+    monkeypatch.setattr(dashboard, "get_configured_failover_client", lambda db, mid=None: _Boom())
     req = dashboard.CurateRequest(candidates=[dashboard.CurateCandidate(type="alert", symbol="B", name="乙", signal="y")])
     db = SessionLocal()
     try:

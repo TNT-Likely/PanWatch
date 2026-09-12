@@ -1,4 +1,4 @@
-import src.web.api.datasources as ds
+import src.modules.administration.api.datasources as ds
 
 
 def test_to_response_includes_health_and_engine_attached(monkeypatch):

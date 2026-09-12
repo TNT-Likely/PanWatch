@@ -5,8 +5,8 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import src.web.models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
-from src.web.database import Base
+import src.platform.persistence.models  # noqa: F401  注册所有 ORM 模型到 Base.metadata
+from src.platform.persistence.database import Base
 
 
 def _mem_db():
@@ -18,7 +18,7 @@ def _mem_db():
 
 def test_get_factor_weights_lazy_seeds_defaults():
     """首次读取某市场:5 个可标定因子全部 lazy seed 为 1.0。"""
-    from src.core.factor_weights import CALIBRATABLE_FACTORS, get_factor_weights
+    from src.modules.strategy.factor_weights import CALIBRATABLE_FACTORS, get_factor_weights
 
     db = _mem_db()
     try:
@@ -31,8 +31,8 @@ def test_get_factor_weights_lazy_seeds_defaults():
 
 def test_get_factor_weights_idempotent_no_dup_rows():
     """重复读取不产生重复行(幂等 seed)。"""
-    from src.core.factor_weights import CALIBRATABLE_FACTORS, get_factor_weights
-    from src.web.models import FactorWeight
+    from src.modules.strategy.factor_weights import CALIBRATABLE_FACTORS, get_factor_weights
+    from src.platform.persistence.models import FactorWeight
 
     db = _mem_db()
     try:
@@ -46,8 +46,8 @@ def test_get_factor_weights_idempotent_no_dup_rows():
 
 def test_get_factor_weights_reads_stored_value():
     """已存在的非默认权重应被读出,不被 seed 覆盖。"""
-    from src.core.factor_weights import get_factor_weights
-    from src.web.models import FactorWeight
+    from src.modules.strategy.factor_weights import get_factor_weights
+    from src.platform.persistence.models import FactorWeight
 
     db = _mem_db()
     try:
@@ -63,7 +63,7 @@ def test_get_factor_weights_reads_stored_value():
 
 def test_get_all_factor_weights_lists_all_markets():
     """列出所有市场 × 因子,字段含 weight/is_pinned/auto_calibrate。"""
-    from src.core.factor_weights import (
+    from src.modules.strategy.factor_weights import (
         CALIBRATABLE_FACTORS,
         MARKETS,
         get_all_factor_weights,
@@ -83,8 +83,8 @@ def test_get_all_factor_weights_lists_all_markets():
 
 def test_set_factor_weight_manual_writes_history():
     """手动改权重写 manual 审计,并能同时设 is_pinned。"""
-    from src.core.factor_weights import set_factor_weight
-    from src.web.models import FactorWeightHistory
+    from src.modules.strategy.factor_weights import set_factor_weight
+    from src.platform.persistence.models import FactorWeightHistory
 
     db = _mem_db()
     try:
@@ -103,7 +103,7 @@ def test_set_factor_weight_rejects_unknown_factor():
     """未知因子抛 ValueError(API 层转 400)。"""
     import pytest
 
-    from src.core.factor_weights import set_factor_weight
+    from src.modules.strategy.factor_weights import set_factor_weight
 
     db = _mem_db()
     try:

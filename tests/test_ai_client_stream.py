@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from src.core.ai_client import AIClient
+from src.platform.ai.ai_client import AIClient
 
 
 def _chunk(content=None, tool_calls=None, usage=None):
@@ -90,6 +90,25 @@ def test_stream_tool_calls_assembled():
         {"id": "call_1", "name": "get_stock_quote", "arguments": '{"symbol": "600519"}'},
         {"id": "call_2", "name": "get_portfolio", "arguments": "{}"},
     ]
+
+
+def test_stream_forwards_required_tool_choice_to_provider():
+    captured: dict = {}
+    client = AIClient(base_url="http://mock", api_key="mock", model="mock-model")
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        return _FakeStream([_chunk(tool_calls=[_tc_delta(0, id="call_1", name="update_price_alert")])])
+
+    client.client.chat.completions.create = fake_create
+
+    _collect(
+        client,
+        tools=[{"type": "function", "function": {"name": "update_price_alert"}}],
+        tool_choice="required",
+    )
+
+    assert captured["tool_choice"] == "required"
 
 
 def test_stream_usage_and_empty_choices():

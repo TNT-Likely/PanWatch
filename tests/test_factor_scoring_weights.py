@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.core.strategy_engine import _compute_factor_breakdown
-from src.web.models import EntryCandidate
+from src.modules.strategy.strategy_engine import _compute_factor_breakdown
+from src.platform.persistence.models import EntryCandidate
 
 
 def _candidate(**kw):

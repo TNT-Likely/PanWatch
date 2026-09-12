@@ -1,6 +1,6 @@
 """资金流取数路由测试(经 marketdata 包统一接入)"""
-import src.collectors.capital_flow_collector as cf
-from src.models.market import MarketCode
+import src.platform.marketdata.collectors.capital_flow_collector as cf
+from src.platform.marketdata.models import MarketCode
 
 
 def test_get_capital_flow_uses_marketdata(monkeypatch):
