@@ -185,6 +185,144 @@ def test_service_persists_a_waiting_batch_then_builds_exact_resume_decisions():
     engine.dispose()
 
 
+def test_repausing_a_partial_resume_reuses_existing_pending_approval_rows():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, task = _repository()
+    checkpoint = AgentCheckpoint(
+        messages=[ModelMessage(role="user", content="创建两个提醒")],
+        step_index=1,
+        tool_calls_used=2,
+        pending_approvals=[
+            PendingApproval(
+                call_id="call-1",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "600519"},
+            ),
+            PendingApproval(
+                call_id="call-2",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "601238"},
+            ),
+        ],
+    )
+    service = AssistantService(repository)
+    first = service.pause_task(
+        task.id,
+        RunResult(
+            run_id=str(task.id),
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=checkpoint,
+            pending_approvals=checkpoint.pending_approvals,
+        ),
+    )
+
+    partial_checkpoint = checkpoint.model_copy(
+        update={"pending_approvals": [checkpoint.pending_approvals[1]]}
+    )
+    second = service.pause_task(
+        task.id,
+        RunResult(
+            run_id=str(task.id),
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=partial_checkpoint,
+            pending_approvals=partial_checkpoint.pending_approvals,
+        ),
+    )
+
+    assert [row.id for row in second] == [first[1].id]
+    assert repository.get_task_checkpoint(task.id) == partial_checkpoint
+    session.close()
+    engine.dispose()
+
+
+def test_service_returns_one_decision_for_immediate_resume_when_other_approvals_remain():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, task = _repository()
+    checkpoint = AgentCheckpoint(
+        messages=[ModelMessage(role="user", content="创建两个提醒")],
+        step_index=1,
+        tool_calls_used=2,
+        pending_approvals=[
+            PendingApproval(
+                call_id="call-1",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "600519"},
+            ),
+            PendingApproval(
+                call_id="call-2",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "601238"},
+            ),
+        ],
+    )
+    service = AssistantService(repository)
+    approvals = service.pause_task(
+        task.id,
+        RunResult(
+            run_id=str(task.id),
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=checkpoint,
+            pending_approvals=checkpoint.pending_approvals,
+        ),
+    )
+
+    outcome = service.resolve_approval_decision(
+        approvals[0].id, ApprovalDecision.APPROVED
+    )
+
+    assert outcome.checkpoint == checkpoint
+    assert outcome.decisions == {"call-1": ApprovalDecision.APPROVED}
+    session.close()
+    engine.dispose()
+
+
+def test_finishing_a_failed_task_cancels_unresolved_approval_cards():
+    engine, session, repository, task = _repository()
+    checkpoint = AgentCheckpoint(
+        messages=[ModelMessage(role="user", content="创建两个提醒")],
+        step_index=1,
+        tool_calls_used=2,
+        pending_approvals=[
+            PendingApproval(
+                call_id="call-1",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "600519"},
+            ),
+            PendingApproval(
+                call_id="call-2",
+                tool_name="create_alert",
+                risk=ToolRisk.WRITE,
+                arguments={"symbol": "601238"},
+            ),
+        ],
+    )
+    repository.save_checkpoint(task.id, checkpoint)
+    approvals = repository.create_approvals(
+        task.id,
+        checkpoint.pending_approvals,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+
+    repository.finish_task(
+        task.id,
+        status="failed",
+        final_message_id=None,
+        error_code="stock_not_found",
+    )
+
+    assert [approval.status for approval in approvals] == ["cancelled", "cancelled"]
+    assert repository.get_task_snapshot(task.id)["pending_approvals"] == []
+    session.close()
+    engine.dispose()
+
+
 def test_service_presents_price_alert_approval_in_plain_language():
     from src.modules.assistant.service import AssistantService
 

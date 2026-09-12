@@ -432,6 +432,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     resetStream()
     resetFollowing()
     let streamError = ''
+    let resolvedApprovalId = ''
 
     try {
       await chatApi.decideAssistantApprovalStream(approval.id, decision, {
@@ -454,10 +455,16 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
               : [...previous, nextApproval]
           ))
         },
-        onPaused: ({ taskId: pausedTaskId }) => {
+        onPaused: ({ taskId: pausedTaskId, resolvedApprovalId: resolvedId, resolvedStatus }) => {
           if (pausedTaskId > 0) {
             setTaskId(pausedTaskId)
             sessionStorage.setItem(taskStorageKey(convId), String(pausedTaskId))
+          }
+          if (resolvedId && resolvedStatus) {
+            resolvedApprovalId = resolvedId
+            setPendingApprovals((previous) => previous.map((item) => (
+              item.id === resolvedId ? { ...item, status: resolvedStatus } : item
+            )))
           }
         },
         onDone: (message) => {
@@ -477,12 +484,17 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       })
 
       if (streamError) throw new Error(streamError)
-      setPendingApprovals((previous) => previous.filter((item) => item.id !== approval.id))
+      // New hosts return the resolved card status in `paused`; old hosts did
+      // not, so keep a compatibility fallback for their one-card behavior.
+      if (!resolvedApprovalId) {
+        setPendingApprovals((previous) => previous.filter((item) => item.id !== approval.id))
+      }
     } catch (error) {
       // A decision is exactly-once on the server. If a browser loses the SSE
       // response after submitting it, rehydrate instead of inviting a blind
       // duplicate click that can only yield a conflict.
       let reconciled = false
+      let terminalFailure = false
       try {
         const snapshot = await chatApi.getAssistantTask(taskId)
         if (snapshot.conversation_id === convId) {
@@ -495,12 +507,21 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
             setPendingApprovals([])
             sessionStorage.removeItem(taskStorageKey(convId))
             reconciled = true
+          } else if (snapshot.status === 'failed' || snapshot.status === 'cancelled') {
+            // The server cancels every unresolved card when a task fails. Do
+            // the same in the current view so a stale card cannot be clicked
+            // again after the checkpoint has been discarded.
+            setTaskId(null)
+            setPendingApprovals([])
+            sessionStorage.removeItem(taskStorageKey(convId))
+            terminalFailure = true
+            reconciled = true
           }
         }
       } catch {
         // The original failure remains actionable when recovery is unavailable.
       }
-      if (!reconciled) {
+      if (!reconciled || terminalFailure) {
         setMessages((previous) => [...previous, {
           id: Date.now() + 1,
           role: 'assistant',

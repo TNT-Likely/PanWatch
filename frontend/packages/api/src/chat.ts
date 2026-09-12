@@ -128,7 +128,12 @@ export interface ChatStreamCallbacks {
   /** A host-persisted tool approval is now waiting for a human decision. */
   onApprovalRequired?: (approval: AssistantApproval) => void
   /** The current stream ended normally because its task awaits approval. */
-  onPaused?: (info: { taskId: number; reason: string }) => void
+  onPaused?: (info: {
+    taskId: number
+    reason: string
+    resolvedApprovalId?: string
+    resolvedStatus?: AssistantApproval['status']
+  }) => void
   /** 最终回答（已落库） */
   onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
   /** AI 服务异常（服务端已把错误文案落库） */
@@ -197,7 +202,14 @@ async function sendMessageStream(
       }
       case 'paused':
         paused = true
-        callbacks.onPaused?.({ taskId: Number(d.task_id) || 0, reason: d.reason || '' })
+        callbacks.onPaused?.({
+          taskId: Number(d.task_id) || 0,
+          reason: d.reason || '',
+          resolvedApprovalId: d.resolved_approval_id || undefined,
+          resolvedStatus: d.resolved_status === 'approved' || d.resolved_status === 'rejected'
+            ? d.resolved_status
+            : undefined,
+        })
         break
       case 'done':
         finished = true
@@ -286,7 +298,14 @@ async function decideAssistantApprovalStream(
         }
         case 'paused':
           paused = true
-          callbacks.onPaused?.({ taskId: Number(d.task_id) || 0, reason: d.reason || '' })
+          callbacks.onPaused?.({
+            taskId: Number(d.task_id) || 0,
+            reason: d.reason || '',
+            resolvedApprovalId: d.resolved_approval_id || undefined,
+            resolvedStatus: d.resolved_status === 'approved' || d.resolved_status === 'rejected'
+              ? d.resolved_status
+              : undefined,
+          })
           break
         case 'done':
           finished = true

@@ -137,3 +137,79 @@ def test_rejected_price_alert_never_writes_a_rule():
     assert session.query(PriceAlertRule).count() == 0
     session.close()
     engine.dispose()
+
+
+def test_multiple_price_alert_approvals_execute_one_card_at_a_time():
+    engine, session, service, task = _setup()
+    session.add(Stock(symbol="601238", name="广汽集团", market="CN"))
+    session.commit()
+    request = _request(task.id)
+    paused = asyncio.run(
+        AgentRuntime(
+            _FixedModel(
+                [
+                    ModelTurn(
+                        tool_calls=[
+                            ToolCall(
+                                id="price-alert-1",
+                                name="create_price_alert",
+                                arguments={
+                                    "symbol": "600519",
+                                    "market": "CN",
+                                    "direction": "above",
+                                    "target_price": 1800,
+                                },
+                            ),
+                            ToolCall(
+                                id="price-alert-2",
+                                name="create_price_alert",
+                                arguments={
+                                    "symbol": "601238",
+                                    "market": "CN",
+                                    "direction": "below",
+                                    "target_price": 10,
+                                },
+                            ),
+                        ]
+                    )
+                ]
+            ),
+            build_panwatch_tool_registry(session),
+            policy=service.build_tool_policy(),
+        ).run(request, _CollectingSink())
+    )
+
+    approvals = service.pause_task(task.id, paused)
+    first = service.resolve_approval_decision(
+        approvals[0].id, ApprovalDecision.APPROVED
+    )
+    partially_resumed = asyncio.run(
+        AgentRuntime(
+            _FixedModel([]),
+            build_panwatch_tool_registry(session),
+            policy=service.build_tool_policy(),
+        ).resume(request, first.checkpoint, first.decisions, _CollectingSink())
+    )
+
+    assert partially_resumed.status is RunStatus.WAITING_FOR_APPROVAL
+    assert [item.call_id for item in partially_resumed.pending_approvals] == [
+        "price-alert-2"
+    ]
+    assert session.query(PriceAlertRule).count() == 1
+
+    remaining = service.pause_task(task.id, partially_resumed)
+    second = service.resolve_approval_decision(
+        remaining[0].id, ApprovalDecision.APPROVED
+    )
+    completed = asyncio.run(
+        AgentRuntime(
+            _FixedModel([ModelTurn(content="两条提醒已创建")]),
+            build_panwatch_tool_registry(session),
+            policy=service.build_tool_policy(),
+        ).resume(request, second.checkpoint, second.decisions, _CollectingSink())
+    )
+
+    assert completed.status is RunStatus.COMPLETED
+    assert session.query(PriceAlertRule).count() == 2
+    session.close()
+    engine.dispose()

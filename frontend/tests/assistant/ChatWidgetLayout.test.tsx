@@ -15,7 +15,13 @@ vi.mock('@panwatch/api', () => ({
       stock_market: null,
       created_at: '2026-09-12T00:00:00Z',
     }),
+    getAssistantTask: vi.fn().mockResolvedValue({
+      conversation_id: 1,
+      status: 'completed',
+      pending_approvals: [],
+    }),
     sendAssistantMessageStream: vi.fn().mockResolvedValue(undefined),
+    decideAssistantApprovalStream: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -75,5 +81,53 @@ describe('ChatWidget layout', () => {
 
     await user.click(scrollButton)
     expect(screen.queryByRole('button', { name: '回到底部' })).toBeNull()
+  })
+
+  it('keeps the first card visible as completed while the next approval remains pending', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
+      callbacks.onRunStarted?.({ taskId: 42 })
+      callbacks.onApprovalRequired?.({
+        id: 'approval-1',
+        tool_title: '创建提醒',
+        risk: 'write',
+        summary: '创建第一个提醒',
+        expires_at: '',
+        status: 'pending',
+      })
+      callbacks.onApprovalRequired?.({
+        id: 'approval-2',
+        tool_title: '创建提醒',
+        risk: 'write',
+        summary: '创建第二个提醒',
+        expires_at: '',
+        status: 'pending',
+      })
+      callbacks.onPaused?.({ taskId: 42, reason: 'approval_required' })
+    })
+    vi.mocked(chatApi.decideAssistantApprovalStream).mockImplementation(async (_approvalId, _decision, callbacks) => {
+      callbacks.onToolResult?.({ name: 'create_price_alert', ok: true, preview: '已创建第一个提醒' })
+      callbacks.onPaused?.({
+        taskId: 42,
+        reason: 'approval_required',
+        resolvedApprovalId: 'approval-1',
+        resolvedStatus: 'approved',
+      })
+    })
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+    await screen.findByText('创建第一个提醒')
+    await screen.findByText('创建第二个提醒')
+
+    await user.click(screen.getAllByRole('button', { name: '本次允许' })[0])
+
+    await screen.findByText('已允许，已执行')
+    expect(screen.getAllByRole('button', { name: '本次允许' })).toHaveLength(1)
+    expect(chatApi.decideAssistantApprovalStream).toHaveBeenCalledWith(
+      'approval-1',
+      'approved',
+      expect.any(Object),
+    )
   })
 })

@@ -31,6 +31,15 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
     }
   }
 
+  const decisionStatus = approval.status === 'approved'
+    ? '已允许，已执行'
+    : approval.status === 'rejected'
+      ? '已拒绝，不会执行'
+      : ''
+  const decisionStatusClass = approval.status === 'rejected'
+    ? 'text-destructive'
+    : 'text-emerald-600 dark:text-emerald-400'
+
   return (
     <section className="max-w-[85%] rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-[13px]">
       <div className="flex items-start gap-2.5">
@@ -45,30 +54,36 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
             </span>
           </div>
           <p className="mt-1 text-muted-foreground">{approval.summary}</p>
-          {approval.expires_at && (
+          {decisionStatus ? (
+            <p className={`mt-1.5 text-[11px] ${decisionStatusClass}`}>
+              {decisionStatus}
+            </p>
+          ) : approval.expires_at && (
             <p className="mt-1.5 text-[11px] text-muted-foreground/80">
               请在 {new Date(approval.expires_at).toLocaleString()} 前决定
             </p>
           )}
           {failed && <p className="mt-1.5 text-[11px] text-destructive">提交决定失败，请重试。</p>}
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void decide('approved')}
-              disabled={disabled}
-              className="rounded-lg bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {decision === 'approved' ? '提交中…' : '本次允许'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void decide('rejected')}
-              disabled={disabled}
-              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {decision === 'rejected' ? '提交中…' : '拒绝'}
-            </button>
-          </div>
+          {approval.status === 'pending' && (
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void decide('approved')}
+                disabled={disabled}
+                className="rounded-lg bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {decision === 'approved' ? '提交中…' : '本次允许'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void decide('rejected')}
+                disabled={disabled}
+                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {decision === 'rejected' ? '提交中…' : '拒绝'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>

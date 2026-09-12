@@ -141,22 +141,42 @@ class AssistantRepository:
         expires_at: datetime,
         presentations: dict[str, dict] | None = None,
     ) -> list[AssistantToolApproval]:
-        """Create the opaque approval records that own a checkpoint's calls."""
-        rows = [
-            AssistantToolApproval(
-                id=str(uuid4()),
-                task_run_id=task_run_id,
-                call_id=pending.call_id,
-                tool_name=pending.tool_name,
-                risk=pending.risk.value,
-                arguments=pending.arguments,
-                presentation=(presentations or {}).get(pending.call_id, {}),
-                status="pending",
-                expires_at=expires_at,
+        """Create or reuse the opaque records that own checkpoint calls.
+
+        A partial approval resume writes a smaller checkpoint containing the
+        still-pending calls. Reusing those rows keeps the browser's approval ID
+        stable and makes checkpoint persistence idempotent across reconnects.
+        """
+        pending = list(pending_approvals)
+        call_ids = [item.call_id for item in pending]
+        existing = (
+            self._session.query(AssistantToolApproval)
+            .filter(
+                AssistantToolApproval.task_run_id == task_run_id,
+                AssistantToolApproval.call_id.in_(call_ids),
             )
-            for pending in pending_approvals
-        ]
-        self._session.add_all(rows)
+            .all()
+            if call_ids
+            else []
+        )
+        existing_by_call = {row.call_id: row for row in existing}
+        rows: list[AssistantToolApproval] = []
+        for item in pending:
+            row = existing_by_call.get(item.call_id)
+            if row is None:
+                row = AssistantToolApproval(
+                    id=str(uuid4()),
+                    task_run_id=task_run_id,
+                    call_id=item.call_id,
+                    tool_name=item.tool_name,
+                    risk=item.risk.value,
+                    arguments=item.arguments,
+                    presentation=(presentations or {}).get(item.call_id, {}),
+                    status="pending",
+                    expires_at=expires_at,
+                )
+                self._session.add(row)
+            rows.append(row)
         self._session.commit()
         for row in rows:
             self._session.refresh(row)
@@ -297,6 +317,16 @@ class AssistantRepository:
         error_code: str | None = None,
     ) -> None:
         task = self._require_task(task_run_id)
+        if status != "completed":
+            # A failed/cancelled task must not leave actionable approval cards
+            # behind.  Otherwise a browser reconnect can offer a decision for
+            # a checkpoint that has already been discarded.
+            now = datetime.now(timezone.utc)
+            for approval in self.list_task_approvals(task_run_id):
+                if approval.status == "pending":
+                    approval.status = "cancelled"
+                    approval.decided_at = now
+                    approval.decided_by = "system"
         task.status = status
         task.final_message_id = final_message_id
         task.error_code = error_code

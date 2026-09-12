@@ -139,7 +139,11 @@ class AssistantService:
         approval_id: str,
         decision: ApprovalDecision,
     ) -> AssistantApprovalResolution:
-        """Consume one decision and return a resume plan only when the batch is complete."""
+        """Consume one decision and return a resume plan for that card.
+
+        The runtime deliberately resumes immediately with the decided subset;
+        any other cards remain pending in the persisted checkpoint.
+        """
         approval, accepted = self._repository.decide_approval(
             approval_id,
             decision,
@@ -157,17 +161,14 @@ class AssistantService:
         if checkpoint is None:
             raise AssistantApprovalConflictError("审批任务没有可恢复检查点")
         approvals = self._repository.list_task_approvals(task.id)
-        if any(row.status == "pending" for row in approvals):
-            return AssistantApprovalResolution(task=task, checkpoint=None, decisions={})
-
         expected_ids = {pending.call_id for pending in checkpoint.pending_approvals}
         decisions = {
             row.call_id: ApprovalDecision(row.status)
             for row in approvals
-            if row.call_id in expected_ids
+            if row.call_id in expected_ids and row.status in {"approved", "rejected"}
         }
-        if set(decisions) != expected_ids:
-            raise AssistantApprovalConflictError("审批批次与检查点不一致")
+        if not decisions:
+            raise AssistantApprovalConflictError("审批批次没有可执行的决定")
         return AssistantApprovalResolution(
             task=task, checkpoint=checkpoint, decisions=decisions
         )

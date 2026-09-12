@@ -68,6 +68,18 @@ class _ResumedRuntime:
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已恢复")
 
 
+class _PartiallyResumedRuntime:
+    async def resume(self, _request, checkpoint, _decisions, _sink):
+        remaining = checkpoint.pending_approvals[1:]
+        next_checkpoint = checkpoint.model_copy(update={"pending_approvals": remaining})
+        return RunResult(
+            run_id="12",
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=next_checkpoint,
+            pending_approvals=remaining,
+        )
+
+
 class _ApprovalService:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -184,7 +196,7 @@ def test_waiting_runtime_persists_then_streams_an_approval_and_pause():
     assert service.finished == []
 
 
-def test_approved_decision_resumes_with_all_checkpoint_decisions_and_streams_done():
+def test_approved_decision_resumes_with_checkpoint_decision_and_streams_done():
     runtime = _ResumedRuntime()
     service = _ApprovalService(runtime)
     checkpoint = AgentCheckpoint(
@@ -216,6 +228,44 @@ def test_approved_decision_resumes_with_all_checkpoint_decisions_and_streams_don
     assert runtime.resume_calls[0][2] == {"call-1": ApprovalDecision.APPROVED}
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "已恢复"
+
+
+def test_partial_approval_resume_streams_resolved_card_status_and_remaining_pause():
+    service = _ApprovalService(_PartiallyResumedRuntime())
+    checkpoint = AgentCheckpoint(
+        messages=[ModelMessage(role="user", content="创建两个提醒")],
+        step_index=1,
+        tool_calls_used=2,
+        pending_approvals=[
+            PendingApproval(call_id="call-1", tool_name="create_alert", risk=ToolRisk.WRITE),
+            PendingApproval(call_id="call-2", tool_name="create_alert", risk=ToolRisk.WRITE),
+        ],
+    )
+    service.decision_outcome = SimpleNamespace(
+        task=SimpleNamespace(id=12, conversation_id=1),
+        checkpoint=checkpoint,
+        decisions={"call-1": ApprovalDecision.APPROVED},
+    )
+
+    async def run():
+        response = await assistant_api.stream_assistant_approval_decision(
+            "approval-1",
+            assistant_api.ApprovalDecisionCommand(decision=ApprovalDecision.APPROVED),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1] == (
+        "paused",
+        {
+            "task_id": 12,
+            "reason": "approval_required",
+            "resolved_approval_id": "approval-1",
+            "resolved_status": "approved",
+        },
+    )
 
 
 @pytest.mark.parametrize(

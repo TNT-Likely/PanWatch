@@ -67,11 +67,18 @@ class AgentRuntime:
         decisions: dict[str, ApprovalDecision],
         sink: EventSink,
     ) -> RunResult:
-        """Apply one complete approval batch, then continue from its checkpoint."""
+        """Apply supplied decisions and pause again for remaining calls.
+
+        Hosts may present one checkpoint as several independent approval cards.
+        A resume therefore accepts any non-empty subset of pending call IDs:
+        decided calls execute now while undecided calls stay in a new checkpoint.
+        Once the last card is decided, normal model execution continues.
+        """
         pending_ids = {pending.call_id for pending in checkpoint.pending_approvals}
-        if not pending_ids or set(decisions) != pending_ids:
+        decision_ids = set(decisions)
+        if not pending_ids or not decision_ids or not decision_ids <= pending_ids:
             raise ValueError(
-                "decisions must contain exactly the pending approval call IDs"
+                "decisions must contain one or more pending approval call IDs"
             )
 
         messages = [message.model_copy(deep=True) for message in checkpoint.messages]
@@ -79,8 +86,12 @@ class AgentRuntime:
         tool_calls = checkpoint.tool_calls_used
         deadline = time.monotonic() + request.limits.run_timeout_seconds
 
+        remaining_pending: list[PendingApproval] = []
         try:
             for pending in checkpoint.pending_approvals:
+                if pending.call_id not in decisions:
+                    remaining_pending.append(pending)
+                    continue
                 call = ToolCall(
                     id=pending.call_id,
                     name=pending.tool_name,
@@ -117,6 +128,34 @@ class AgentRuntime:
         except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
             return await self._finish(
                 sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed"
+            )
+
+        if remaining_pending:
+            next_checkpoint = AgentCheckpoint(
+                messages=messages,
+                answer=answer,
+                step_index=checkpoint.step_index,
+                tool_calls_used=tool_calls,
+                pending_approvals=remaining_pending,
+            )
+            await self._publish(
+                sink,
+                request,
+                EventType.APPROVAL_REQUIRED,
+                {
+                    "calls": [
+                        pending_call.model_dump(mode="json")
+                        for pending_call in remaining_pending
+                    ]
+                },
+            )
+            return RunResult(
+                run_id=request.run_id,
+                status=RunStatus.WAITING_FOR_APPROVAL,
+                answer=answer,
+                tool_calls=tool_calls,
+                checkpoint=next_checkpoint,
+                pending_approvals=remaining_pending,
             )
 
         return await self._run_loop(

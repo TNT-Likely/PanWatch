@@ -448,7 +448,59 @@ def test_ask_policy_emits_one_approval_event_for_multiple_calls_in_original_orde
     assert [call["risk"] for call in approvals[0].data["calls"]] == ["write", "write"]
 
 
-def test_resume_requires_decisions_for_exactly_the_pending_calls():
+def test_resume_executes_decided_call_and_repauses_remaining_approvals():
+    executed = []
+
+    async def recording_executor(_request, arguments):
+        executed.append(arguments["text"])
+        return ToolResult.success(
+            summary=f"已写入 {arguments['text']}",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
+
+    tools = write_registry(recording_executor)
+    paused = asyncio.run(
+        AgentRuntime(
+            FixedModel(
+                [
+                    ModelTurn(
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1",
+                                name="write_note",
+                                arguments={"text": "first"},
+                            ),
+                            ToolCall(
+                                id="call-2",
+                                name="write_note",
+                                arguments={"text": "second"},
+                            ),
+                        ]
+                    )
+                ]
+            ),
+            tools,
+            policy=AskPolicy(),
+        ).run(request(), CollectingSink())
+    )
+
+    result = asyncio.run(
+        AgentRuntime(FixedModel([]), tools, policy=AskPolicy()).resume(
+            request(),
+            paused.checkpoint,
+            {"call-1": ApprovalDecision.APPROVED},
+            CollectingSink(),
+        )
+    )
+
+    assert result.status is RunStatus.WAITING_FOR_APPROVAL
+    assert [item.call_id for item in result.pending_approvals] == ["call-2"]
+    assert executed == ["first"]
+
+
+def test_resume_rejects_decisions_for_unknown_pending_calls():
     async def recording_executor(_request, _arguments):
         return ToolResult.success(
             summary="written",
@@ -469,7 +521,7 @@ def test_resume_requires_decisions_for_exactly_the_pending_calls():
     )
     assert paused.checkpoint is not None
 
-    with __import__("pytest").raises(ValueError, match="exactly"):
+    with __import__("pytest").raises(ValueError, match="pending approval call IDs"):
         asyncio.run(
             AgentRuntime(FixedModel([]), tools, policy=AskPolicy()).resume(
                 request(),

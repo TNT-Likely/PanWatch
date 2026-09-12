@@ -163,6 +163,7 @@ async def _stream_runtime(
     conversation_id: int,
     service: AssistantService,
     runtime_call: Callable[[_SSEEventSink], Awaitable[RunResult]],
+    paused_extra: dict | None = None,
 ) -> StreamingResponse:
     """Run or resume one task while keeping HTTP transport out of the runtime."""
     queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
@@ -216,8 +217,14 @@ async def _stream_runtime(
                     await queue.put(
                         ("approval_required", _approval_event_payload(approval))
                     )
+                paused_payload = {
+                    "task_id": task_id,
+                    "reason": "approval_required",
+                }
+                if paused_extra:
+                    paused_payload.update(paused_extra)
                 await queue.put(
-                    ("paused", {"task_id": task_id, "reason": "approval_required"})
+                    ("paused", paused_payload)
                 )
                 return
             if result.status is not RunStatus.COMPLETED or not result.answer.strip():
@@ -326,7 +333,7 @@ async def stream_assistant_approval_decision(
     body: ApprovalDecisionCommand,
     service: AssistantService = Depends(get_assistant_service),
 ):
-    """Consume one approval and resume only after its whole batch is decided."""
+    """Consume one approval card and resume its tool call immediately."""
     try:
         outcome = service.resolve_approval_decision(approval_id, body.decision)
     except AssistantNotFoundError as exc:
@@ -338,7 +345,13 @@ async def stream_assistant_approval_decision(
 
         async def events():
             yield _encode_sse(
-                "paused", {"task_id": outcome.task.id, "reason": "approval_required"}
+                "paused",
+                {
+                    "task_id": outcome.task.id,
+                    "reason": "approval_required",
+                    "resolved_approval_id": approval_id,
+                    "resolved_status": body.decision.value,
+                },
             )
 
         return StreamingResponse(
@@ -371,6 +384,10 @@ async def stream_assistant_approval_decision(
         runtime_call=lambda sink: runtime.resume(
             request, outcome.checkpoint, outcome.decisions, sink
         ),
+        paused_extra={
+            "resolved_approval_id": approval_id,
+            "resolved_status": body.decision.value,
+        },
     )
 
 
