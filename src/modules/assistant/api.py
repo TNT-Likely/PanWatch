@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 
+from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
     ApprovalDecisionCommand,
@@ -235,10 +236,10 @@ async def stream_assistant_message(
         user_message = service.record_user_message(conversation_id, body.content)
         task = service.create_task(conversation_id, user_message.id)
         runtime = service.build_runtime(service.build_failover_client())
-        messages = [
+        messages = build_assistant_messages([
             ModelMessage(role=item.role, content=item.content)
             for item in service.get_conversation(conversation_id).messages
-        ]
+        ])
         request = RunRequest(
             run_id=str(task.id),
             messages=messages,

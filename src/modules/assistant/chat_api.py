@@ -10,9 +10,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.modules.assistant.chat_planner import run_portfolio_diagnosis, should_use_planning
+from src.modules.assistant.chat_planner import (
+    run_portfolio_diagnosis,
+    should_use_planning,
+)
 from src.modules.assistant.legacy_chat_tools import (
     CHAT_TOOLS as LEGACY_CHAT_TOOLS,
+)
+from src.modules.assistant.legacy_chat_tools import (
     build_portfolio_context,
     build_stock_context,
     build_watchlist_context,
@@ -20,9 +25,10 @@ from src.modules.assistant.legacy_chat_tools import (
     fetch_realtime_context,
     fetch_technical_context,
 )
+from src.modules.assistant.prompt import ASSISTANT_SYSTEM_PROMPT as SYSTEM_PROMPT
+from src.modules.assistant.repository import AssistantRepository
 from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.events.sse import SSEStream, chat_stream_hub
-from src.modules.assistant.repository import AssistantRepository
 from src.platform.persistence.database import SessionLocal, get_db
 from src.platform.persistence.models import (
     ChatConversation,
@@ -34,18 +40,6 @@ from src.platform.persistence.models import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-SYSTEM_PROMPT = """你是 PanWatch 的 AI 投资助手。
-
-你可以使用工具获取用户的投资数据。当用户的问题涉及具体数据时，主动调用工具获取，不要让用户自己提供。
-
-规则：
-- 需要数据时主动调用工具，不要反问用户要数据
-- 基于工具返回的实时数据回答，不编造价格等具体数据
-- 给出明确的观点和理由
-- 涉及买卖建议时说明风险
-- 用中文回答
-- 保持简洁，避免冗余"""
 
 MAX_HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 5

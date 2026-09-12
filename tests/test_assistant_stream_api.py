@@ -1,6 +1,7 @@
 """Regression tests for the navigation assistant's SSE transport contract."""
 
 import asyncio
+import importlib
 import json
 import time
 from types import SimpleNamespace
@@ -126,6 +127,16 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "已完成"
     assert service.runtime.request.limits.run_timeout_seconds == 45
+
+
+def test_assistant_messages_prepend_tool_first_instruction():
+    prompt = importlib.import_module("src.modules.assistant.prompt")
+    messages = prompt.build_assistant_messages([assistant_api.ModelMessage(role="user", content="分析 600519")])
+
+    assert messages[0].role == "system"
+    assert messages[0].content == prompt.ASSISTANT_SYSTEM_PROMPT
+    assert "主动调用工具" in messages[0].content
+    assert messages[1].content == "分析 600519"
 
 
 def test_assistant_stream_surfaces_runtime_timeout_instead_of_saving_empty_reply():
