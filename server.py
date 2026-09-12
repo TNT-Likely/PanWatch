@@ -1149,6 +1149,26 @@ def build_scheduler() -> AgentScheduler:
     return sched
 
 
+def register_mcp_log_cleanup(sched: AgentScheduler) -> None:
+    """Register MCP audit-log retention on the wrapped APScheduler instance.
+
+    ``AgentScheduler`` owns the concrete APScheduler as ``.scheduler``;
+    keeping this boundary explicit prevents startup code from accidentally
+    calling ``add_job`` on the wrapper itself.
+    """
+    from src.modules.administration.api.mcp import prune_mcp_logs
+
+    sched.scheduler.add_job(
+        prune_mcp_logs,
+        "cron",
+        hour=4,
+        minute=0,
+        id="mcp_log_retention",
+        replace_existing=True,
+    )
+    logger.info("MCP 日志保留期清理任务已注册")
+
+
 def reload_scheduler() -> bool:
     """重载调度器（用于配置导入/批量修改后立即生效）"""
     global scheduler
@@ -1527,17 +1547,7 @@ async def lifespan(app):
         logger.error(f"上下文维护调度器启动失败: {e}")
     # MCP 调用日志保留期清理:每日 04:00 清理超期审计记录
     try:
-        from src.modules.administration.api.mcp import prune_mcp_logs
-
-        scheduler.add_job(
-            prune_mcp_logs,
-            "cron",
-            hour=4,
-            minute=0,
-            id="mcp_log_retention",
-            replace_existing=True,
-        )
-        logger.info("MCP 日志保留期清理任务已注册")
+        register_mcp_log_cleanup(scheduler)
     except Exception as e:
         logger.error(f"MCP 日志清理任务注册失败: {e}")
     yield
