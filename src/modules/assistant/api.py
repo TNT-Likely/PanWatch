@@ -27,8 +27,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 
-from .grounding import UNVERIFIED_MUTATION_ERROR, unverified_mutation_claim
-from .intent import is_write_intent
+from .grounding import unverified_mutation_claim
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
@@ -63,7 +62,6 @@ _ERROR_MESSAGES = {
     "repeated_tool_call": "助手检测到重复工具调用，请重试或换一种问法。",
     "runtime_failed": "助手暂时不可用，请稍后重试。",
     "required_tool_call_missing": "我还没有执行这次修改，请确认目标后重试。",
-    UNVERIFIED_MUTATION_ERROR: "助手没有执行写入操作，请重新确认后再试。",
     "transport_timeout": "助手响应超时，请稍后重试。",
     "transport_failed": "助手任务执行失败，请稍后重试。",
     "transport_setup_failed": "助手任务执行失败，请稍后重试。",
@@ -117,11 +115,9 @@ class _SSEEventSink:
         service: AssistantService,
         task_id: int,
         completed_tools: list[dict] | None = None,
-        write_mode: bool = False,
     ) -> None:
         self._queue, self._service, self._task_id = queue, service, task_id
         self._completed_tools = completed_tools
-        self._write_mode = write_mode
 
     async def publish(self, event) -> None:
         data = dict(event.data)
@@ -130,13 +126,6 @@ class _SSEEventSink:
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:
-            if self._write_mode:
-                await self._queue.put(
-                    (
-                        "action_status",
-                        {"status": "executing", "message": "正在执行已确认的操作…"},
-                    )
-                )
             await self._queue.put(
                 ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
             )
@@ -189,7 +178,6 @@ async def _stream_runtime(
     service: AssistantService,
     runtime_call: Callable[[_SSEEventSink], Awaitable[RunResult]],
     paused_extra: dict | None = None,
-    write_mode: bool = False,
 ) -> StreamingResponse:
     """Run or resume one task while keeping HTTP transport out of the runtime."""
     queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
@@ -209,20 +197,6 @@ async def _stream_runtime(
             exc_info=exc_info,
         )
         _finish_failed_task(service, task_id, error_code)
-        if error_code in {
-            "required_tool_call_missing",
-            UNVERIFIED_MUTATION_ERROR,
-        }:
-            await queue.put(
-                (
-                    "action_status",
-                    {
-                        "status": "needs_retry",
-                        "message": "我还没有执行这次修改，请确认目标后重试。",
-                        "retryable": True,
-                    },
-                )
-            )
         await queue.put(
             ("error", {"message": _error_message(error_code), "code": error_code})
         )
@@ -230,9 +204,7 @@ async def _stream_runtime(
     async def run_runtime_with_timeout() -> RunResult:
         runtime_task = asyncio.create_task(
             runtime_call(
-                _SSEEventSink(
-                    queue, service, task_id, completed_tools, write_mode=write_mode
-                )
+                _SSEEventSink(queue, service, task_id, completed_tools)
             )
         )
 
@@ -262,13 +234,6 @@ async def _stream_runtime(
         try:
             result = await run_runtime_with_timeout()
             if result.status is RunStatus.WAITING_FOR_APPROVAL:
-                if write_mode:
-                    await queue.put(
-                        (
-                            "action_status",
-                            {"status": "awaiting_approval", "message": "等待你确认后执行…"},
-                        )
-                    )
                 approvals = service.pause_task(task_id, result)
                 for approval in approvals:
                     await queue.put(
@@ -293,7 +258,26 @@ async def _stream_runtime(
                 mutation_tool_names,
             )
             if mutation_error:
-                await fail(UNVERIFIED_MUTATION_ERROR)
+                # A model's completion sentence is not an execution result.
+                # Keep the task usable by persisting a deterministic answer
+                # that states the missing evidence instead of showing a
+                # generic retry workflow.
+                final = service.record_assistant_message(
+                    conversation_id, mutation_error
+                )
+                service.finish_task(task_id, result, final.id)
+                await queue.put(
+                    (
+                        "done",
+                        {
+                            "message_id": final.id,
+                            "content": final.content,
+                            "created_at": final.created_at.isoformat()
+                            if final.created_at
+                            else "",
+                        },
+                    )
+                )
                 return
             final = service.record_assistant_message(conversation_id, result.answer)
             service.finish_task(task_id, result, final.id)
@@ -358,17 +342,9 @@ async def stream_assistant_message(
                 for item in service.get_conversation(conversation_id).messages
             ]
         )
-        write_intent = is_write_intent(body.content)
-        request_context: dict[str, object] = {}
-        if write_intent:
-            request_context["tool_choice"] = "required"
-            mutation_names = getattr(service, "mutation_tool_names", None)
-            if callable(mutation_names):
-                request_context["allowed_tool_names"] = sorted(mutation_names())
         request = RunRequest(
             run_id=str(task.id),
             messages=messages,
-            context=request_context,
             limits=RunLimits(
                 max_steps=ASSISTANT_MAX_STEPS,
                 max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,
@@ -397,7 +373,6 @@ async def stream_assistant_message(
         conversation_id=conversation_id,
         service=service,
         runtime_call=lambda sink: runtime.run(request, sink),
-        write_mode=write_intent,
     )
 
 
@@ -462,7 +437,6 @@ async def stream_assistant_approval_decision(
             "resolved_approval_id": approval_id,
             "resolved_status": body.decision.value,
         },
-        write_mode=True,
     )
 
 

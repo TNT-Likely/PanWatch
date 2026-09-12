@@ -205,7 +205,7 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert service.runtime.request.limits.max_tool_calls == 24
 
 
-def test_assistant_write_intent_requires_write_tools_from_the_host():
+def test_assistant_message_does_not_force_tool_choice_from_text():
     service = _FakeService(_CompletedRuntime())
 
     async def run():
@@ -219,10 +219,7 @@ def test_assistant_write_intent_requires_write_tools_from_the_host():
     events = asyncio.run(run())
 
     assert events[-1][0] == "done"
-    assert service.runtime.request.context["tool_choice"] == "required"
-    assert service.runtime.request.context["allowed_tool_names"] == [
-        "update_price_alert"
-    ]
+    assert service.runtime.request.context == {}
 
 
 def test_assistant_messages_prepend_tool_first_instruction():
@@ -279,8 +276,8 @@ def test_assistant_stream_rejects_an_empty_completed_reply():
     assert service.finished == [("failed", "empty_answer")]
 
 
-def test_assistant_write_failure_emits_a_recoverable_action_status():
-    """A missed write call should leave an actionable card, not only an error bubble."""
+def test_assistant_write_failure_does_not_emit_a_retry_card():
+    """A runtime failure is a terminal error, not a second user-facing retry workflow."""
     service = _FakeService(_RequiredToolMissingRuntime())
 
     async def run():
@@ -294,14 +291,11 @@ def test_assistant_write_failure_emits_a_recoverable_action_status():
     events = asyncio.run(run())
 
     assert events[-1][0] == "error"
-    assert any(
-        event == "action_status" and data["status"] == "needs_retry"
-        for event, data in events
-    )
+    assert all(event != "action_status" for event, _data in events)
     assert service.finished == [("failed", "required_tool_call_missing")]
 
 
-def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool():
+def test_assistant_stream_replaces_unverified_mutation_claim_with_fact_based_reply():
     """A text-only mutation claim must never be persisted as a completed answer."""
 
     service = _FakeService(_HallucinatedMutationRuntime())
@@ -316,19 +310,18 @@ def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool()
 
     events = asyncio.run(run())
 
-    assert events[-1] == (
-        "error",
-        {
-            "message": "助手没有执行写入操作，请重新确认后再试。",
-            "code": "unverified_mutation",
-        },
+    assert events[-1][0] == "done"
+    assert events[-1][1]["content"] == (
+        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
     )
-    assert service.recorded_assistant_messages == []
-    assert service.finished == [("failed", "unverified_mutation")]
+    assert service.recorded_assistant_messages == [
+        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
+    ]
+    assert service.finished == [("completed", None)]
 
 
-def test_assistant_stream_turns_an_unrequested_mutation_claim_into_action_status():
-    """The grounding detector still produces a recoverable status if intent was ambiguous."""
+def test_assistant_stream_does_not_turn_an_unrequested_mutation_claim_into_retry_status():
+    """An ambiguous text-only claim is answered with the same fact-based reply."""
     service = _FakeService(_HallucinatedMutationRuntime())
 
     async def run():
@@ -341,11 +334,11 @@ def test_assistant_stream_turns_an_unrequested_mutation_claim_into_action_status
 
     events = asyncio.run(run())
 
-    action_events = [
-        data for event, data in events
-        if event == "action_status" and data["status"] == "needs_retry"
-    ]
-    assert action_events and action_events[0]["retryable"] is True
+    assert events[-1][0] == "done"
+    assert events[-1][1]["content"] == (
+        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
+    )
+    assert all(event != "action_status" for event, _data in events)
 
 
 def test_assistant_stream_allows_mutation_claim_with_successful_write_tool():

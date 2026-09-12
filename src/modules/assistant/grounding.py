@@ -13,8 +13,9 @@ from collections.abc import Iterable
 from typing import Any
 
 
-UNVERIFIED_MUTATION_ERROR = "unverified_mutation"
-UNVERIFIED_MUTATION_MESSAGE = "助手没有执行写入操作，请重新确认后再试。"
+UNVERIFIED_MUTATION_MESSAGE = (
+    "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
+)
 
 # Only match completion language, not a discussion of how an operation could
 # be performed or an explicit failure such as ``更新没有成功``.  The check is

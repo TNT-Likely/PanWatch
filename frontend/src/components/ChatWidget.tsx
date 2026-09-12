@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { chatApi, type AssistantApproval, type AssistantActionStatusEvent, type ChatConversation, type ChatMessage } from '@panwatch/api'
-import { ActionStatusCard } from '@/components/assistant/ActionStatusCard'
+import { chatApi, type AssistantApproval, type ChatConversation, type ChatMessage } from '@panwatch/api'
 import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
 import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
@@ -94,18 +93,12 @@ export default function ChatWidget({
   } | null>(null)
   const [taskId, setTaskId] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<AssistantApproval[]>([])
-  const [actionStatus, setActionStatus] = useState<{
-    status: 'needs_retry'
-    message: string
-  } | null>(null)
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null)
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const retryContentRef = useRef('')
-  const actionNeedsRetryRef = useRef(false)
   const routeLoadRef = useRef<number | null>(null)
   // React state updates are batched; this synchronous guard closes the small
   // window where two clicks could otherwise create duplicate tasks/messages.
@@ -139,18 +132,6 @@ export default function ChatWidget({
     setStreamText('')
     setStreamTool(null)
     setPlan(null)
-  }, [])
-
-  const handleActionStatus = useCallback((info: AssistantActionStatusEvent) => {
-    if (info.status === 'needs_retry') {
-      actionNeedsRetryRef.current = true
-      setActionStatus({
-        status: 'needs_retry',
-        message: info.message || '我还没有执行这次修改，请确认目标后重试。',
-      })
-      return
-    }
-    if (info.status === 'completed') setActionStatus(null)
   }, [])
 
   const loadConversations = useCallback(async () => {
@@ -192,8 +173,6 @@ export default function ChatWidget({
       setSuggestedQuestions([])
       setTaskId(null)
       setPendingApprovals([])
-      setActionStatus(null)
-      actionNeedsRetryRef.current = false
       resetFollowing()
 
       // Create a new conversation bound to this stock, with page context
@@ -251,8 +230,6 @@ export default function ChatWidget({
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
-    setActionStatus(null)
-    actionNeedsRetryRef.current = false
     setActiveConvId(conv.id)
     setView('chat')
     if (options.updateUrl !== false) onConversationChange?.(conv.id)
@@ -280,8 +257,6 @@ export default function ChatWidget({
         setActiveConvId(null)
         setTaskId(null)
         setPendingApprovals([])
-        setActionStatus(null)
-        actionNeedsRetryRef.current = false
         setMessages([])
         setView('list')
         setStockContext(null)
@@ -322,8 +297,6 @@ export default function ChatWidget({
       resetFollowing()
       setTaskId(null)
       setPendingApprovals([])
-      setActionStatus(null)
-      actionNeedsRetryRef.current = false
       const conv = await chatApi.createConversation()
       setActiveConvId(conv.id)
       onConversationChange?.(conv.id)
@@ -341,8 +314,6 @@ export default function ChatWidget({
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
-    setActionStatus(null)
-    actionNeedsRetryRef.current = false
     setActiveConvId(null)
     onConversationChange?.(null)
     setMessages([])
@@ -361,8 +332,6 @@ export default function ChatWidget({
         onConversationChange?.(null, { replace: true })
         setTaskId(null)
         setPendingApprovals([])
-        setActionStatus(null)
-        actionNeedsRetryRef.current = false
         setMessages([])
         setView('list')
         setStockContext(null)
@@ -381,10 +350,6 @@ export default function ChatWidget({
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent || input).trim()
     if (!content || sending || sendingRef.current || pendingApprovals.length > 0) return
-
-    retryContentRef.current = content
-    setActionStatus(null)
-    actionNeedsRetryRef.current = false
 
     sendingRef.current = true
     setSending(true)
@@ -452,7 +417,6 @@ export default function ChatWidget({
         onToolResult: () => {
           // 结果已就绪，等待模型基于数据继续回答
         },
-        onActionStatus: handleActionStatus,
         onPlan: (p) => {
           receivedAny = true
           setStreamTool(null)
@@ -482,7 +446,6 @@ export default function ChatWidget({
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
-          setActionStatus(null)
           requestAnimationFrame(() => inputRef.current?.focus())
         },
         onError: (message) => {
@@ -495,7 +458,7 @@ export default function ChatWidget({
       )
     } catch (e) {
       if (streamError) {
-        if (!actionNeedsRetryRef.current && !embedded) {
+        if (!embedded) {
           setMessages((prev) => [...prev, {
             id: Date.now() + 1,
             role: 'assistant',
@@ -532,7 +495,7 @@ export default function ChatWidget({
       sendingRef.current = false
       setSending(false)
     }
-  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, handleActionStatus, onConversationChange])
+  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, onConversationChange])
 
   const handleApprovalDecision = useCallback(async (
     approval: AssistantApproval,
@@ -543,7 +506,6 @@ export default function ChatWidget({
 
     setDecidingApprovalId(approval.id)
     setSending(true)
-    actionNeedsRetryRef.current = false
     resetStream()
     resetFollowing()
     let streamError = ''
@@ -563,7 +525,6 @@ export default function ChatWidget({
         onToolResult: () => {
           // 工具结果到达后，等待模型继续输出最终回答。
         },
-        onActionStatus: handleActionStatus,
         onApprovalRequired: (nextApproval) => {
           setPendingApprovals((previous) => (
             previous.some((item) => item.id === nextApproval.id)
@@ -593,7 +554,6 @@ export default function ChatWidget({
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
-          setActionStatus(null)
           requestAnimationFrame(() => inputRef.current?.focus())
         },
         onError: (message) => {
@@ -639,7 +599,7 @@ export default function ChatWidget({
       } catch {
         // The original failure remains actionable when recovery is unavailable.
       }
-      if ((!reconciled || terminalFailure) && !actionNeedsRetryRef.current) {
+      if (!reconciled || terminalFailure) {
         setMessages((previous) => [...previous, {
           id: Date.now() + 1,
           role: 'assistant',
@@ -655,7 +615,7 @@ export default function ChatWidget({
       setSending(false)
       setDecidingApprovalId(null)
     }
-  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages, handleActionStatus])
+  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages])
 
   const interactionLocked = sending || pendingApprovals.length > 0
 
@@ -878,18 +838,6 @@ export default function ChatWidget({
                 />
               </div>
             ))}
-            {actionStatus && (
-              <div className="flex justify-start">
-                <ActionStatusCard
-                  status={actionStatus.status}
-                  message={actionStatus.message}
-                  onRetry={() => {
-                    setInput(retryContentRef.current)
-                    requestAnimationFrame(() => inputRef.current?.focus())
-                  }}
-                />
-              </div>
-            )}
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">

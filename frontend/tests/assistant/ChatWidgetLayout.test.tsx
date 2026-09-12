@@ -112,27 +112,19 @@ describe('ChatWidget layout', () => {
     expect(screen.getByRole('cell', { name: '+1.2%' })).toBeTruthy()
   })
 
-  it('keeps a write failure recoverable without adding a generic error bubble', async () => {
+  it('does not render a generic retry card when a stream fails', async () => {
     const user = userEvent.setup()
     vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
       callbacks.onRunStarted?.({ taskId: 45 })
-      callbacks.onActionStatus?.({
-        status: 'needs_retry',
-        message: '我还没有执行这次修改，请确认目标后重试。',
-        retryable: true,
-      })
-      callbacks.onError?.('我还没有执行这次修改，请确认目标后重试。')
-      throw new Error('我还没有执行这次修改，请确认目标后重试。')
+      callbacks.onError?.('助手没有执行写入操作，因为本轮没有收到对应工具的成功结果。')
+      throw new Error('助手没有执行写入操作，因为本轮没有收到对应工具的成功结果。')
     })
 
     render(<ChatWidget embedded />)
     await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
 
-    expect(await screen.findByRole('status', { name: '尚未执行' })).toBeTruthy()
-    expect(screen.queryByText('请求未完成：我还没有执行这次修改，请确认目标后重试。')).toBeNull()
-
-    await user.click(screen.getByRole('button', { name: '重试执行' }))
-    expect(screen.getByDisplayValue('诊断我的持仓风险和关键关注点')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('button', { name: '重试执行' })).toBeNull())
+    expect(screen.queryByText(/尚未执行/)).toBeNull()
   })
 
   it('does not downgrade the embedded assistant to the legacy non-streaming endpoint', async () => {
