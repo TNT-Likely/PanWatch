@@ -31,9 +31,14 @@ class _WaitingRuntime:
         await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
         pending = PendingApproval(
             call_id="call-1",
-            tool_name="create_alert",
+            tool_name="create_price_alert",
             risk=ToolRisk.WRITE,
-            arguments={"symbol": "600519"},
+            arguments={
+                "symbol": "600519",
+                "market": "CN",
+                "direction": "above",
+                "target_price": 1800,
+            },
         )
         checkpoint = AgentCheckpoint(
             messages=[ModelMessage(role="user", content="创建提醒")],
@@ -55,7 +60,11 @@ class _ResumedRuntime:
 
     async def resume(self, request, checkpoint, decisions, sink):
         self.resume_calls.append((request, checkpoint, decisions))
-        await sink.publish(RuntimeEvent(type=EventType.ANSWER_TOKEN, run_id="12", data={"token": "已恢复"}))
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.ANSWER_TOKEN, run_id="12", data={"token": "已恢复"}
+            )
+        )
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已恢复")
 
 
@@ -80,7 +89,9 @@ class _ApprovalService:
         return self.runtime
 
     def get_conversation(self, _conversation_id):
-        return SimpleNamespace(messages=[SimpleNamespace(role="user", content="创建提醒")])
+        return SimpleNamespace(
+            messages=[SimpleNamespace(role="user", content="创建提醒")]
+        )
 
     def pause_task(self, task_id, result):
         self.paused_results.append((task_id, result))
@@ -88,10 +99,18 @@ class _ApprovalService:
             SimpleNamespace(
                 id="approval-1",
                 call_id="call-1",
-                tool_name="create_alert",
+                tool_name="create_price_alert",
                 risk="write",
-                arguments={"symbol": "600519"},
-                presentation={},
+                arguments={
+                    "symbol": "600519",
+                    "market": "CN",
+                    "direction": "above",
+                    "target_price": 1800,
+                },
+                presentation={
+                    "tool_title": "创建价格提醒",
+                    "summary": "为 CN:600519 创建价格 ≥ 1800 的盘中提醒，冷却 30 分钟。",
+                },
                 expires_at=datetime.now(UTC) + timedelta(minutes=10),
             )
         ]
@@ -117,8 +136,12 @@ async def _read_events(response) -> list[tuple[str, dict]]:
     events = []
     for block in "".join(chunks).strip().split("\n\n"):
         lines = block.splitlines()
-        event = next(line.removeprefix("event: ") for line in lines if line.startswith("event: "))
-        data = next(line.removeprefix("data: ") for line in lines if line.startswith("data: "))
+        event = next(
+            line.removeprefix("event: ") for line in lines if line.startswith("event: ")
+        )
+        data = next(
+            line.removeprefix("data: ") for line in lines if line.startswith("data: ")
+        )
         events.append((event, json.loads(data)))
     return events
 
@@ -138,8 +161,22 @@ def test_waiting_runtime_persists_then_streams_an_approval_and_pause():
 
     assert events[-2][0] == "approval_required"
     assert events[-2][1]["approval_id"] == "approval-1"
+    assert events[-2][1]["presentation"] == {
+        "tool_title": "创建价格提醒",
+        "summary": "为 CN:600519 创建价格 ≥ 1800 的盘中提醒，冷却 30 分钟。",
+    }
     assert events[-2][1]["calls"] == [
-        {"call_id": "call-1", "name": "create_alert", "risk": "write", "arguments": {"symbol": "600519"}}
+        {
+            "call_id": "call-1",
+            "name": "create_price_alert",
+            "risk": "write",
+            "arguments": {
+                "symbol": "600519",
+                "market": "CN",
+                "direction": "above",
+                "target_price": 1800,
+            },
+        }
     ]
     assert events[-1] == ("paused", {"task_id": 12, "reason": "approval_required"})
     assert service.paused_results
@@ -155,7 +192,9 @@ def test_approved_decision_resumes_with_all_checkpoint_decisions_and_streams_don
         step_index=1,
         tool_calls_used=1,
         pending_approvals=[
-            PendingApproval(call_id="call-1", tool_name="create_alert", risk=ToolRisk.WRITE),
+            PendingApproval(
+                call_id="call-1", tool_name="create_alert", risk=ToolRisk.WRITE
+            ),
         ],
     )
     service.decision_outcome = SimpleNamespace(
@@ -194,7 +233,9 @@ def test_expired_or_repeated_decisions_cannot_start_another_resume_worker(error)
         with pytest.raises(HTTPException) as exc_info:
             await assistant_api.stream_assistant_approval_decision(
                 "approval-1",
-                assistant_api.ApprovalDecisionCommand(decision=ApprovalDecision.APPROVED),
+                assistant_api.ApprovalDecisionCommand(
+                    decision=ApprovalDecision.APPROVED
+                ),
                 service,
             )
         return exc_info.value

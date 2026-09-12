@@ -26,12 +26,18 @@ from src.platform.persistence.database import Base
 def _repository():
     from src.modules.assistant.repository import AssistantRepository
 
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     repository = AssistantRepository(session)
-    conversation = repository.create_conversation(stock_symbol=None, stock_market=None, initial_context=None)
-    task = repository.create_task(conversation_id=conversation.id, user_message_id=None, context={})
+    conversation = repository.create_conversation(
+        stock_symbol=None, stock_market=None, initial_context=None
+    )
+    task = repository.create_task(
+        conversation_id=conversation.id, user_message_id=None, context={}
+    )
     return engine, session, repository, task
 
 
@@ -83,8 +89,15 @@ def test_checkpoint_and_approval_decision_are_durable_and_exactly_once():
 
 def test_permission_resolution_uses_tool_then_risk_defaults_and_safety_floors():
     engine, session, repository, _task = _repository()
-    write_tool = ToolSpec(name="create_alert", title="提醒", description="write", risk=ToolRisk.WRITE)
-    destructive = ToolSpec(name="delete_alert", title="删除", description="delete", risk=ToolRisk.DESTRUCTIVE)
+    write_tool = ToolSpec(
+        name="create_alert", title="提醒", description="write", risk=ToolRisk.WRITE
+    )
+    destructive = ToolSpec(
+        name="delete_alert",
+        title="删除",
+        description="delete",
+        risk=ToolRisk.DESTRUCTIVE,
+    )
     confirmed = ToolSpec(
         name="export_report",
         title="导出",
@@ -92,10 +105,18 @@ def test_permission_resolution_uses_tool_then_risk_defaults_and_safety_floors():
         risk=ToolRisk.READ,
         confirmation_required=True,
     )
-    repository.upsert_tool_permission("local", "risk", ToolRisk.WRITE.value, PermissionMode.ALLOW)
-    repository.upsert_tool_permission("local", "tool", "create_alert", PermissionMode.ASK)
-    repository.upsert_tool_permission("local", "tool", "delete_alert", PermissionMode.ALLOW)
-    repository.upsert_tool_permission("local", "tool", "export_report", PermissionMode.ALLOW)
+    repository.upsert_tool_permission(
+        "local", "risk", ToolRisk.WRITE.value, PermissionMode.ALLOW
+    )
+    repository.upsert_tool_permission(
+        "local", "tool", "create_alert", PermissionMode.ASK
+    )
+    repository.upsert_tool_permission(
+        "local", "tool", "delete_alert", PermissionMode.ALLOW
+    )
+    repository.upsert_tool_permission(
+        "local", "tool", "export_report", PermissionMode.ALLOW
+    )
 
     assert repository.resolve_permission(write_tool).mode is PermissionMode.ASK
     assert repository.resolve_permission(destructive).mode is PermissionMode.DENY
@@ -108,13 +129,21 @@ def test_service_builds_a_stable_policy_snapshot_for_one_runtime():
     from src.modules.assistant.service import AssistantService
 
     engine, session, repository, _task = _repository()
-    write_tool = ToolSpec(name="create_alert", title="提醒", description="write", risk=ToolRisk.WRITE)
-    repository.upsert_tool_permission("local", "tool", "create_alert", PermissionMode.DENY)
+    write_tool = ToolSpec(
+        name="create_alert", title="提醒", description="write", risk=ToolRisk.WRITE
+    )
+    repository.upsert_tool_permission(
+        "local", "tool", "create_alert", PermissionMode.DENY
+    )
 
     policy = AssistantService(repository).build_tool_policy()
-    repository.upsert_tool_permission("local", "tool", "create_alert", PermissionMode.ALLOW)
+    repository.upsert_tool_permission(
+        "local", "tool", "create_alert", PermissionMode.ALLOW
+    )
 
-    policy_request = RunRequest(run_id="policy", messages=[ModelMessage(role="user", content="x")])
+    policy_request = RunRequest(
+        run_id="policy", messages=[ModelMessage(role="user", content="x")]
+    )
     decision = __import__("asyncio").run(
         policy.decide(
             policy_request,
@@ -145,11 +174,55 @@ def test_service_persists_a_waiting_batch_then_builds_exact_resume_decisions():
         ),
     )
 
-    outcome = service.resolve_approval_decision(approvals[0].id, ApprovalDecision.REJECTED)
+    outcome = service.resolve_approval_decision(
+        approvals[0].id, ApprovalDecision.REJECTED
+    )
 
     assert outcome.task.id == task.id
     assert outcome.checkpoint == checkpoint
     assert outcome.decisions == {"call-1": ApprovalDecision.REJECTED}
+    session.close()
+    engine.dispose()
+
+
+def test_service_presents_price_alert_approval_in_plain_language():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, task = _repository()
+    checkpoint = AgentCheckpoint(
+        messages=[ModelMessage(role="user", content="茅台涨到 1800 提醒我")],
+        step_index=1,
+        tool_calls_used=1,
+        pending_approvals=[
+            PendingApproval(
+                call_id="call-price-alert",
+                tool_name="create_price_alert",
+                risk=ToolRisk.WRITE,
+                arguments={
+                    "symbol": "600519",
+                    "market": "CN",
+                    "direction": "above",
+                    "target_price": 1800,
+                    "cooldown_minutes": 30,
+                },
+            )
+        ],
+    )
+
+    approvals = AssistantService(repository).pause_task(
+        task.id,
+        RunResult(
+            run_id=str(task.id),
+            status=RunStatus.WAITING_FOR_APPROVAL,
+            checkpoint=checkpoint,
+            pending_approvals=checkpoint.pending_approvals,
+        ),
+    )
+
+    assert approvals[0].presentation == {
+        "tool_title": "创建价格提醒",
+        "summary": "为 CN:600519 创建价格 ≥ 1800 的盘中提醒，冷却 30 分钟。",
+    }
     session.close()
     engine.dispose()
 
