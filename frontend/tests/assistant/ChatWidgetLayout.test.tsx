@@ -15,6 +15,10 @@ vi.mock('@panwatch/api', () => ({
       stock_market: null,
       created_at: '2026-09-12T00:00:00Z',
     }),
+    getConversation: vi.fn().mockResolvedValue({
+      conversation: { id: 1, title: '', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' },
+      messages: [],
+    }),
     getAssistantTask: vi.fn().mockResolvedValue({
       conversation_id: 1,
       status: 'completed',
@@ -31,6 +35,47 @@ beforeEach(() => {
 })
 
 describe('ChatWidget layout', () => {
+  it('does not restore an approval from a conversation that was left before the response arrived', async () => {
+    let resolveTask: ((value: unknown) => void) | undefined
+    vi.mocked(chatApi.listConversations).mockResolvedValue([
+      { id: 1, title: '旧会话', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' },
+      { id: 2, title: '新会话', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' },
+    ])
+    vi.mocked(chatApi.getConversation).mockImplementation(async (id) => ({
+      conversation: { id, title: id === 1 ? '旧会话' : '新会话', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' },
+      messages: [{ id: id * 10, role: 'assistant', content: `会话 ${id}`, created_at: '2026-09-12T00:00:00Z' }],
+    }))
+    vi.mocked(chatApi.getAssistantTask).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveTask = resolve
+    }))
+    sessionStorage.setItem('panwatch:assistant-task:1', '99')
+
+    const onConversationChange = vi.fn()
+    const { rerender } = render(
+      <ChatWidget embedded conversationIdFromUrl={1} onConversationChange={onConversationChange} />,
+    )
+    await screen.findByText('会话 1')
+
+    rerender(<ChatWidget embedded conversationIdFromUrl={2} onConversationChange={onConversationChange} />)
+    await screen.findByText('会话 2')
+
+    resolveTask?.({
+      id: 99,
+      conversation_id: 1,
+      status: 'awaiting_approval',
+      pending_approvals: [{
+        id: 'old-approval',
+        tool_name: 'delete_price_alert',
+        risk: 'write',
+        presentation: { tool_title: '旧会话操作', summary: '不应显示' },
+        expires_at: '2026-09-12T01:00:00Z',
+      }],
+    })
+
+    await waitFor(() => expect(screen.queryByText('不应显示')).toBeNull())
+    sessionStorage.removeItem('panwatch:assistant-task:1')
+  })
+
   it('uses the sidebar new research entry instead of a duplicate header plus', async () => {
     render(<ChatWidget embedded />)
 

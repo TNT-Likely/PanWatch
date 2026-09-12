@@ -213,9 +213,13 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(404, "账户不存在")
 
+    # Read relationship-independent values before commit.  SQLAlchemy expires
+    # and detaches deleted instances, so accessing ``account.name`` after the
+    # commit may trigger a lazy load and raise DetachedInstanceError.
+    account_name = account.name
     db.delete(account)
     db.commit()
-    logger.info(f"删除账户: {account.name}")
+    logger.info("删除账户: %s", account_name)
     return {"success": True}
 
 
@@ -349,9 +353,14 @@ def delete_position(position_id: int, db: Session = Depends(get_db)):
     if not position:
         raise HTTPException(404, "持仓不存在")
 
+    # Capture lazy relationships before the row is deleted/committed.  The
+    # deleted Position is no longer session-bound afterwards; logging its
+    # relationships at that point can raise DetachedInstanceError.
+    account_name = position.account.name if position.account else "未知账户"
+    stock_name = position.stock.name if position.stock else "未知股票"
     db.delete(position)
     db.commit()
-    logger.info(f"删除持仓: {position.account.name} - {position.stock.name}")
+    logger.info("删除持仓: %s - %s", account_name, stock_name)
     return {"success": True}
 
 

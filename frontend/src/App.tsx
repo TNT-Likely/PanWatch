@@ -19,6 +19,7 @@ import LoginPage from '@/pages/Login'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import AccountMenu from '@/components/AccountMenu'
+import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -257,6 +258,7 @@ function App() {
 
       {/* Content */}
       <main className="px-4 md:px-6 py-4 md:py-6 w-full">
+        <AssistantOpenBridge />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />

@@ -27,7 +27,6 @@ from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 
-from .grounding import unverified_mutation_claim
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
@@ -114,10 +113,8 @@ class _SSEEventSink:
         queue: asyncio.Queue,
         service: AssistantService,
         task_id: int,
-        completed_tools: list[dict] | None = None,
     ) -> None:
         self._queue, self._service, self._task_id = queue, service, task_id
-        self._completed_tools = completed_tools
 
     async def publish(self, event) -> None:
         data = dict(event.data)
@@ -130,13 +127,6 @@ class _SSEEventSink:
                 ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
             )
         elif event.type is EventType.TOOL_COMPLETED:
-            if self._completed_tools is not None:
-                self._completed_tools.append(
-                    {
-                        "name": data.get("tool", ""),
-                        "ok": bool(data.get("ok")),
-                    }
-                )
             self._service.record_tool_completion(self._task_id, data)
             await self._queue.put(
                 (
@@ -181,12 +171,6 @@ async def _stream_runtime(
 ) -> StreamingResponse:
     """Run or resume one task while keeping HTTP transport out of the runtime."""
     queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
-    completed_tools: list[dict] = []
-    mutation_tool_names = (
-        set(service.mutation_tool_names())
-        if callable(getattr(service, "mutation_tool_names", None))
-        else set()
-    )
 
     async def fail(error_code: str, *, exc_info: bool = False) -> None:
         logger.error(
@@ -204,7 +188,7 @@ async def _stream_runtime(
     async def run_runtime_with_timeout() -> RunResult:
         runtime_task = asyncio.create_task(
             runtime_call(
-                _SSEEventSink(queue, service, task_id, completed_tools)
+                _SSEEventSink(queue, service, task_id)
             )
         )
 
@@ -252,33 +236,13 @@ async def _stream_runtime(
             if result.status is not RunStatus.COMPLETED or not result.answer.strip():
                 await fail(result.error_code or "empty_answer")
                 return
-            mutation_error = unverified_mutation_claim(
-                result.answer,
-                completed_tools,
-                mutation_tool_names,
-            )
-            if mutation_error:
-                # A model's completion sentence is not an execution result.
-                # Keep the task usable by persisting a deterministic answer
-                # that states the missing evidence instead of showing a
-                # generic retry workflow.
-                final = service.record_assistant_message(
-                    conversation_id, mutation_error
-                )
-                service.finish_task(task_id, result, final.id)
-                await queue.put(
-                    (
-                        "done",
-                        {
-                            "message_id": final.id,
-                            "content": final.content,
-                            "created_at": final.created_at.isoformat()
-                            if final.created_at
-                            else "",
-                        },
-                    )
-                )
-                return
+            # The model's natural-language answer is the source of truth for
+            # this turn.  A host-side keyword guard cannot distinguish a
+            # confirmation question from a completion claim; replacing it
+            # with a fixed error makes the SSE transcript misleading.  Actual
+            # writes remain protected by the runtime's tool policy and approval
+            # checkpoint, while this boundary simply persists what the model
+            # returned.
             final = service.record_assistant_message(conversation_id, result.answer)
             service.finish_task(task_id, result, final.id)
             await queue.put(

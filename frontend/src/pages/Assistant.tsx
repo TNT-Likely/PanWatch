@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ChatWidget from '@/components/ChatWidget'
+import type { AssistantStockContext } from '@/components/AssistantOpenBridge'
 
 function parseConversationId(rawId: string | undefined): number | null {
   if (!rawId || !/^\d+$/.test(rawId)) return null
@@ -14,6 +15,7 @@ export default function AssistantPage() {
   const conversationId = parseConversationId(rawConversationId)
   const navigate = useNavigate()
   const location = useLocation()
+  const launchContext = (location.state as { assistantContext?: AssistantStockContext } | null)?.assistantContext || null
 
   const setConversationId = useCallback((nextId: number | null, options?: { replace?: boolean }) => {
     const nextPath = nextId == null ? '/assistant' : `/assistant/${nextId}`
@@ -41,6 +43,7 @@ export default function AssistantPage() {
       embedded
       conversationIdFromUrl={conversationId}
       onConversationChange={setConversationId}
+      initialStockContext={launchContext}
     />
   )
 }

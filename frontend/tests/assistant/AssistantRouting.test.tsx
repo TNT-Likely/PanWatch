@@ -37,7 +37,7 @@ function BackButton() {
   return <button onClick={() => navigate(-1)}>后退</button>
 }
 
-function renderAssistant(initialEntry: string) {
+function renderAssistant(initialEntry: string | { pathname: string; state?: unknown }) {
   return render(
     (
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -100,5 +100,34 @@ describe('assistant conversation routing', () => {
 
     expect(await screen.findByText('会话 2 的消息')).toBeTruthy()
     expect(screen.getByTestId('location').textContent).toBe('/assistant/2')
+  })
+
+  it('opens a stock context handed off by the app shell into a new assistant conversation', async () => {
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 3,
+      title: '',
+      stock_symbol: '600519',
+      stock_market: 'CN',
+      created_at: '2026-09-12T00:00:00Z',
+    })
+
+    renderAssistant({
+      pathname: '/assistant',
+      state: {
+        assistantContext: {
+          symbol: '600519',
+          market: 'CN',
+          stockName: '贵州茅台',
+          pageContext: '行情上下文',
+        },
+      },
+    })
+
+    await waitFor(() => expect(chatApi.createConversation).toHaveBeenCalledWith({
+      stock_symbol: '600519',
+      stock_market: 'CN',
+      initial_context: '行情上下文',
+    }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/assistant/3'))
   })
 })

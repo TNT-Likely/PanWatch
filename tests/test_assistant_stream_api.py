@@ -46,9 +46,6 @@ class _FakeService:
     def fail_task(self, _task_id, error_code):
         self.finished.append(("failed", error_code))
 
-    def mutation_tool_names(self):
-        return {"update_price_alert"}
-
     def record_tool_completion(self, _task_id, _data):
         return None
 
@@ -295,8 +292,8 @@ def test_assistant_write_failure_does_not_emit_a_retry_card():
     assert service.finished == [("failed", "required_tool_call_missing")]
 
 
-def test_assistant_stream_replaces_unverified_mutation_claim_with_fact_based_reply():
-    """A text-only mutation claim must never be persisted as a completed answer."""
+def test_assistant_stream_preserves_the_model_answer_without_a_host_fallback():
+    """A confirmation or claim from the model must not be replaced by a fixed host sentence."""
 
     service = _FakeService(_HallucinatedMutationRuntime())
 
@@ -311,17 +308,13 @@ def test_assistant_stream_replaces_unverified_mutation_claim_with_fact_based_rep
     events = asyncio.run(run())
 
     assert events[-1][0] == "done"
-    assert events[-1][1]["content"] == (
-        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
-    )
-    assert service.recorded_assistant_messages == [
-        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
-    ]
+    assert events[-1][1]["content"] == "两条提醒的名称已成功更新。"
+    assert service.recorded_assistant_messages == ["两条提醒的名称已成功更新。"]
     assert service.finished == [("completed", None)]
 
 
-def test_assistant_stream_does_not_turn_an_unrequested_mutation_claim_into_retry_status():
-    """An ambiguous text-only claim is answered with the same fact-based reply."""
+def test_assistant_stream_keeps_an_ambiguous_confirmation_answer_intact():
+    """An ambiguous text-only answer is not rewritten as a generic error."""
     service = _FakeService(_HallucinatedMutationRuntime())
 
     async def run():
@@ -335,9 +328,7 @@ def test_assistant_stream_does_not_turn_an_unrequested_mutation_claim_into_retry
     events = asyncio.run(run())
 
     assert events[-1][0] == "done"
-    assert events[-1][1]["content"] == (
-        "我没有执行写入操作，因为本轮没有收到对应工具的成功结果。"
-    )
+    assert events[-1][1]["content"] == "两条提醒的名称已成功更新。"
     assert all(event != "action_status" for event, _data in events)
 
 

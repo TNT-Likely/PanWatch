@@ -26,6 +26,8 @@ interface ChatWidgetProps {
   conversationIdFromUrl?: number | null
   /** Keep the route in sync when a user opens, creates, or leaves a session. */
   onConversationChange?: (conversationId: number | null, options?: ConversationChangeOptions) => void
+  /** Stock context handed off by the application shell when a page opens “问 AI”. */
+  initialStockContext?: StockContext | null
 }
 
 function taskStorageKey(conversationId: number): string {
@@ -71,6 +73,7 @@ export default function ChatWidget({
   embedded = false,
   conversationIdFromUrl = null,
   onConversationChange,
+  initialStockContext = null,
 }: ChatWidgetProps) {
   const [open, setOpen] = useState(embedded)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
@@ -100,9 +103,17 @@ export default function ChatWidget({
   const rafRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const routeLoadRef = useRef<number | null>(null)
+  // Async task/message requests may finish after the user has switched
+  // conversations.  Keep the latest selection outside React's async closures
+  // so stale responses cannot re-introduce an old task or message list.
+  const activeConvIdRef = useRef<number | null>(null)
   // React state updates are batched; this synchronous guard closes the small
   // window where two clicks could otherwise create duplicate tasks/messages.
   const sendingRef = useRef(false)
+  const setActiveConversationId = useCallback((conversationId: number | null) => {
+    activeConvIdRef.current = conversationId
+    setActiveConvId(conversationId)
+  }, [])
   const {
     scrollBoxRef,
     followNewContent,
@@ -148,6 +159,7 @@ export default function ChatWidget({
   const loadMessages = useCallback(async (convId: number) => {
     try {
       const detail = await chatApi.getConversation(convId)
+      if (activeConvIdRef.current !== convId) return
       setMessages(detail.messages)
     } catch {
       // ignore
@@ -163,38 +175,38 @@ export default function ChatWidget({
     }
   }, [])
 
-  // Listen for stock context events from stock insight modal
+  // The application shell owns cross-page “问 AI” routing.  Keeping the
+  // handoff as a prop means it is not lost while this page is unmounted.
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as StockContext
-      if (!detail?.symbol) return
-      setOpen(true)
-      setStockContext(detail)
-      setSuggestedQuestions([])
-      setTaskId(null)
-      setPendingApprovals([])
-      resetFollowing()
+    if (!embedded || !initialStockContext?.symbol) return
 
-      // Create a new conversation bound to this stock, with page context
-      chatApi.createConversation({
-        stock_symbol: detail.symbol,
-        stock_market: detail.market,
-        initial_context: detail.pageContext,
-      }).then((conv) => {
-        setActiveConvId(conv.id)
-        onConversationChange?.(conv.id)
-        setMessages([])
-        setView('chat')
-        setConversations((prev) => [conv, ...prev])
-        loadSuggestedQuestions(detail.symbol, detail.market)
-      }).catch(() => {
-        // fallback: just open chat
-        setView('chat')
-      })
-    }
-    window.addEventListener('panwatch-open-chat', handler)
-    return () => window.removeEventListener('panwatch-open-chat', handler)
-  }, [loadSuggestedQuestions, onConversationChange, resetFollowing])
+    let cancelled = false
+    const detail = initialStockContext
+    setOpen(true)
+    setStockContext(detail)
+    setSuggestedQuestions([])
+    setTaskId(null)
+    setPendingApprovals([])
+    resetFollowing()
+
+    chatApi.createConversation({
+      stock_symbol: detail.symbol,
+      stock_market: detail.market,
+      initial_context: detail.pageContext,
+    }).then((conv) => {
+      if (cancelled) return
+      setActiveConversationId(conv.id)
+      onConversationChange?.(conv.id)
+      setMessages([])
+      setView('chat')
+      setConversations((prev) => [conv, ...prev.filter((item) => item.id !== conv.id)])
+      loadSuggestedQuestions(detail.symbol, detail.market)
+    }).catch(() => {
+      if (!cancelled) setView('chat')
+    })
+
+    return () => { cancelled = true }
+  }, [embedded, initialStockContext, loadSuggestedQuestions, onConversationChange, resetFollowing, setActiveConversationId])
 
   useEffect(() => {
     if (open) {
@@ -204,19 +216,34 @@ export default function ChatWidget({
 
   useEffect(() => {
     if (!activeConvId) return
-    const storedTaskId = Number(sessionStorage.getItem(taskStorageKey(activeConvId)))
+    const conversationId = activeConvId
+    const storageKey = taskStorageKey(conversationId)
+    const storedTaskId = Number(sessionStorage.getItem(storageKey))
     if (!Number.isInteger(storedTaskId) || storedTaskId <= 0) return
 
+    let cancelled = false
     chatApi.getAssistantTask(storedTaskId).then((snapshot) => {
-      if (snapshot.conversation_id !== activeConvId || snapshot.status !== 'awaiting_approval') return
+      // The request can resolve after a route/session switch.  Both checks
+      // are required: the snapshot's owner and the currently selected owner.
+      if (cancelled || activeConvIdRef.current !== conversationId) return
+      if (snapshot.conversation_id !== conversationId || snapshot.status !== 'awaiting_approval') {
+        sessionStorage.removeItem(storageKey)
+        return
+      }
       const approvals = snapshot.pending_approvals.map(approvalFromSnapshot)
-      if (approvals.length === 0) return
+      if (approvals.length === 0) {
+        sessionStorage.removeItem(storageKey)
+        return
+      }
       setTaskId(snapshot.id)
       setPendingApprovals(approvals)
     }).catch(() => {
       // A stale local task marker is harmless; a new message will create a new task.
-      sessionStorage.removeItem(taskStorageKey(activeConvId))
+      if (!cancelled && activeConvIdRef.current === conversationId) {
+        sessionStorage.removeItem(storageKey)
+      }
     })
+    return () => { cancelled = true }
   }, [activeConvId])
 
   useEffect(() => {
@@ -230,7 +257,7 @@ export default function ChatWidget({
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
-    setActiveConvId(conv.id)
+    setActiveConversationId(conv.id)
     setView('chat')
     if (options.updateUrl !== false) onConversationChange?.(conv.id)
     setSuggestedQuestions([])
@@ -254,7 +281,7 @@ export default function ChatWidget({
     if (requestedId == null) {
       routeLoadRef.current = null
       if (activeConvId !== null || view === 'chat') {
-        setActiveConvId(null)
+        setActiveConversationId(null)
         setTaskId(null)
         setPendingApprovals([])
         setMessages([])
@@ -286,7 +313,7 @@ export default function ChatWidget({
       .catch(() => {
         routeLoadRef.current = null
         onConversationChange?.(null, { replace: true })
-        setActiveConvId(null)
+        setActiveConversationId(null)
         setMessages([])
         setView('list')
       })
@@ -298,7 +325,7 @@ export default function ChatWidget({
       setTaskId(null)
       setPendingApprovals([])
       const conv = await chatApi.createConversation()
-      setActiveConvId(conv.id)
+      setActiveConversationId(conv.id)
       onConversationChange?.(conv.id)
       setMessages([])
       setView('chat')
@@ -314,7 +341,7 @@ export default function ChatWidget({
     resetFollowing()
     setTaskId(null)
     setPendingApprovals([])
-    setActiveConvId(null)
+    setActiveConversationId(null)
     onConversationChange?.(null)
     setMessages([])
     setView('list')
@@ -328,7 +355,7 @@ export default function ChatWidget({
       await chatApi.deleteConversation(convId)
       setConversations((prev) => prev.filter((c) => c.id !== convId))
       if (activeConvId === convId) {
-        setActiveConvId(null)
+        setActiveConversationId(null)
         onConversationChange?.(null, { replace: true })
         setTaskId(null)
         setPendingApprovals([])
@@ -361,7 +388,7 @@ export default function ChatWidget({
           stockContext ? { stock_symbol: stockContext.symbol, stock_market: stockContext.market } : undefined
         )
         convId = conv.id
-        setActiveConvId(conv.id)
+        setActiveConversationId(conv.id)
         onConversationChange?.(conv.id)
         setConversations((prev) => [conv, ...prev])
         setView('chat')
