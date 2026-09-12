@@ -1859,6 +1859,36 @@ def _m123_assistant_approval_workflow(conn: Connection) -> None:
     )
 
 
+def _m124_assistant_context_snapshots(conn: Connection) -> None:
+    """Persist versioned context summaries without mutating chat messages."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_context_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            version INTEGER NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'balanced',
+            summary JSON NOT NULL DEFAULT '{}',
+            covered_until_message_id INTEGER,
+            source_message_count INTEGER NOT NULL DEFAULT 0,
+            usage_before JSON NOT NULL DEFAULT '{}',
+            usage_after JSON NOT NULL DEFAULT '{}',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    _create_index_if_missing(
+        conn,
+        "ux_assistant_context_snapshot_version",
+        "CREATE UNIQUE INDEX ux_assistant_context_snapshot_version "
+        "ON assistant_context_snapshots(conversation_id, version)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_assistant_context_snapshot_conversation_created",
+        "CREATE INDEX ix_assistant_context_snapshot_conversation_created "
+        "ON assistant_context_snapshots(conversation_id, created_at)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1883,6 +1913,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(121, "backtest_runs", _m121_backtest_runs),
     Migration(122, "assistant_task_snapshots", _m122_assistant_task_snapshots),
     Migration(123, "assistant_approval_workflow", _m123_assistant_approval_workflow),
+    Migration(124, "assistant_context_snapshots", _m124_assistant_context_snapshots),
 )
 
 

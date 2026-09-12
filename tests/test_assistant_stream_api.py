@@ -6,7 +6,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from pan_agent import EventType, RunResult, RunStatus, RuntimeEvent
+from pan_agent import ContextBuildResult, ContextUsage, EventType, ModelMessage, RunResult, RunStatus, RuntimeEvent
 
 import src.modules.assistant.api as assistant_api
 
@@ -14,8 +14,9 @@ import src.modules.assistant.api as assistant_api
 class _FakeService:
     """Keeps the HTTP test at the service boundary; no real model/network is used."""
 
-    def __init__(self, runtime):
+    def __init__(self, runtime, context_result=None):
         self.runtime = runtime
+        self.context_result = context_result
         self.recorded_assistant_messages: list[str] = []
         self.finished: list[tuple[str, str | None]] = []
 
@@ -35,6 +36,9 @@ class _FakeService:
         return SimpleNamespace(
             messages=[SimpleNamespace(role="user", content="测试问题")]
         )
+
+    async def prepare_context(self, _conversation_id):
+        return self.context_result
 
     def record_assistant_message(self, _conversation_id, content):
         self.recorded_assistant_messages.append(content)
@@ -200,6 +204,52 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert service.runtime.request.limits.run_timeout_seconds == 45
     assert service.runtime.request.limits.max_steps == 12
     assert service.runtime.request.limits.max_tool_calls == 24
+
+
+def test_assistant_stream_exposes_context_usage_before_runtime_steps():
+    usage_before = ContextUsage(
+        total_tokens=9000,
+        budget_tokens=12000,
+        soft_limit_tokens=8400,
+        hard_limit_tokens=10200,
+    )
+    usage_after = ContextUsage(
+        total_tokens=2500,
+        budget_tokens=12000,
+        soft_limit_tokens=8400,
+        hard_limit_tokens=10200,
+    )
+    context = ContextBuildResult(
+        messages=[ModelMessage(role="user", content="已压缩的问题")],
+        usage_before=usage_before,
+        usage_after=usage_after,
+        compressed=True,
+        compressed_message_count=4,
+    )
+    service = _FakeService(_CompletedRuntime(), context_result=context)
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1, assistant_api.SendAssistantMessageCommand(content="测试问题"), service
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[0] == (
+        "run_started",
+        {"task_id": 12, "context_usage": usage_after.model_dump(mode="json")},
+    )
+    assert events[1] == (
+        "context_prepared",
+        {
+            "compressed": True,
+            "mode": "balanced",
+            "usage_before": usage_before.model_dump(mode="json"),
+            "usage_after": usage_after.model_dump(mode="json"),
+            "compressed_message_count": 4,
+        },
+    )
 
 
 def test_assistant_message_does_not_force_tool_choice_from_text():

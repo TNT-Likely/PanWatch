@@ -45,6 +45,49 @@ export interface AssistantTaskSnapshot {
   }>
 }
 
+export interface ContextSectionUsage {
+  name: string
+  tokens: number
+  estimated: boolean
+}
+
+export interface ContextUsage {
+  total_tokens: number
+  budget_tokens: number
+  soft_limit_tokens: number
+  hard_limit_tokens: number
+  estimated: boolean
+  state: 'normal' | 'warning' | 'needs_compression'
+  sections: ContextSectionUsage[]
+}
+
+export interface AssistantContextSnapshot {
+  version: number
+  mode: 'balanced' | 'preserve_details' | 'handoff'
+  summary: {
+    goal: string[]
+    constraints: string[]
+    decisions: string[]
+    facts: string[]
+    current_state: string
+    open_items: string[]
+    tool_findings: string[]
+  }
+  covered_until_message_id?: number | null
+  source_message_count: number
+  usage_before: ContextUsage
+  usage_after: ContextUsage
+  created_at?: string | null
+}
+
+export interface AssistantContextDetail {
+  conversation_id: number
+  usage: ContextUsage
+  snapshot?: AssistantContextSnapshot | null
+  compression_available: boolean
+  status: ContextUsage['state']
+}
+
 export interface AgentPermissions {
   defaults: Array<{ risk: AssistantApproval['risk']; mode: 'allow' | 'ask' | 'deny' }>
   tools: Array<{
@@ -89,6 +132,15 @@ export const chatApi = {
   getAssistantTask: (taskId: number) =>
     fetchAPI<AssistantTaskSnapshot>('/assistant/tasks/' + taskId),
 
+  getAssistantContext: (conversationId: number) =>
+    fetchAPI<AssistantContextDetail>(`/assistant/conversations/${conversationId}/context`),
+
+  compressAssistantContext: (conversationId: number, mode: AssistantContextSnapshot['mode']) =>
+    fetchAPI<AssistantContextDetail>(`/assistant/conversations/${conversationId}/context/compress`, {
+      method: 'POST',
+      body: JSON.stringify({ mode }),
+    }),
+
   getAgentPermissions: () =>
     fetchAPI<AgentPermissions>('/assistant/tool-permissions'),
 
@@ -112,7 +164,15 @@ export interface ChatStreamCallbacks {
   /** 已接受请求或正在执行的阶段提示 */
   onStatus?: (message: string) => void
   /** Server accepted a durable assistant task. */
-  onRunStarted?: (info: { taskId: number }) => void
+  onRunStarted?: (info: { taskId: number; contextUsage?: ContextUsage }) => void
+  /** Context was measured and, when needed, compacted before the agent loop. */
+  onContextPrepared?: (info: {
+    compressed: boolean
+    mode: AssistantContextSnapshot['mode']
+    usageBefore: ContextUsage
+    usageAfter: ContextUsage
+    compressedMessageCount: number
+  }) => void
   /** token 增量文本 */
   onToken?: (text: string) => void
   /** 模型开始调用工具（前端应清空当前 token 缓冲并展示"正在查询…"） */
@@ -138,7 +198,27 @@ export interface ChatStreamCallbacks {
   onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
   /** AI 服务异常（服务端已把错误文案落库） */
   onError?: (message: string) => void
+  /** Factual runtime events for the user-facing trace panel. */
+  onTrace?: (event: AssistantTraceEvent) => void
 }
+
+export interface AssistantTraceEvent {
+  event: string
+  data: Record<string, any>
+  id?: number
+}
+
+const TRACE_EVENTS = new Set([
+  'run_started',
+  'context_prepared',
+  'step_updated',
+  'tool_call_start',
+  'tool_result',
+  'approval_required',
+  'paused',
+  'done',
+  'error',
+])
 
 const CHAT_STREAM_MAX_RECONNECTS = 3
 
@@ -166,6 +246,9 @@ async function sendMessageStream(
   const handleEvent = (ev: SSEEvent) => {
     if (ev.id > 0) lastEventId = ev.id
     const d = ev.data || {}
+    if (TRACE_EVENTS.has(ev.event)) {
+      callbacks.onTrace?.({ event: ev.event, data: d, id: ev.id })
+    }
     switch (ev.event) {
       case 'meta':
         streamId = d.stream_id || ''
@@ -174,7 +257,19 @@ async function sendMessageStream(
         callbacks.onStatus?.(d.message || '思考中…')
         break
       case 'run_started':
-        callbacks.onRunStarted?.({ taskId: Number(d.task_id) || 0 })
+        callbacks.onRunStarted?.({
+          taskId: Number(d.task_id) || 0,
+          contextUsage: d.context_usage as ContextUsage | undefined,
+        })
+        break
+      case 'context_prepared':
+        callbacks.onContextPrepared?.({
+          compressed: !!d.compressed,
+          mode: d.mode || 'balanced',
+          usageBefore: d.usage_before as ContextUsage,
+          usageAfter: d.usage_after as ContextUsage,
+          compressedMessageCount: Number(d.compressed_message_count) || 0,
+        })
         break
       case 'token':
         callbacks.onToken?.(d.text || '')
@@ -274,6 +369,9 @@ async function decideAssistantApprovalStream(
     signal,
     onEvent: (ev) => {
       const d = ev.data || {}
+      if (TRACE_EVENTS.has(ev.event)) {
+        callbacks.onTrace?.({ event: ev.event, data: d, id: ev.id })
+      }
       switch (ev.event) {
         case 'token':
           callbacks.onToken?.(d.text || '')

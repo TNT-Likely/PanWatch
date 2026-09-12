@@ -1113,6 +1113,33 @@ class ChatMessage(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class AssistantContextSnapshot(Base):
+    """The latest provider-neutral summary used to build assistant context."""
+
+    __tablename__ = "assistant_context_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id", "version", name="ux_assistant_context_snapshot_version"
+        ),
+        Index(
+            "ix_assistant_context_snapshot_conversation_created",
+            "conversation_id",
+            "created_at",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(Integer, nullable=False)
+    version = Column(Integer, nullable=False)
+    mode = Column(String, nullable=False, default="balanced")
+    summary = Column(JSON, nullable=False, default={})
+    covered_until_message_id = Column(Integer, nullable=True)
+    source_message_count = Column(Integer, nullable=False, default=0)
+    usage_before = Column(JSON, nullable=False, default={})
+    usage_after = Column(JSON, nullable=False, default={})
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class AssistantTaskRun(Base):
     """Durable execution snapshot for an interactive assistant request."""
 

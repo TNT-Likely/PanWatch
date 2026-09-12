@@ -8,6 +8,9 @@ from uuid import uuid4
 from pan_agent import (
     AgentCheckpoint,
     ApprovalDecision,
+    ContextCompressionMode,
+    ContextSummary,
+    ContextUsage,
     PendingApproval,
     PermissionMode,
     ToolPermissionDecision,
@@ -20,6 +23,7 @@ from sqlalchemy.orm import Session
 # 不需要再经由一个只做 re-export 的 ``assistant.models`` 转发层。
 from src.platform.persistence.models import (
     AssistantTaskRun,
+    AssistantContextSnapshot,
     AssistantToolApproval,
     AssistantToolInvocation,
     AssistantToolPermission,
@@ -67,6 +71,54 @@ class AssistantRepository:
             .all()
         )
 
+    def get_latest_context_snapshot(
+        self, conversation_id: int
+    ) -> AssistantContextSnapshot | None:
+        return (
+            self._session.query(AssistantContextSnapshot)
+            .filter(AssistantContextSnapshot.conversation_id == conversation_id)
+            .order_by(AssistantContextSnapshot.version.desc())
+            .first()
+        )
+
+    def list_context_snapshots(
+        self, conversation_id: int, limit: int = 20
+    ) -> list[AssistantContextSnapshot]:
+        return (
+            self._session.query(AssistantContextSnapshot)
+            .filter(AssistantContextSnapshot.conversation_id == conversation_id)
+            .order_by(AssistantContextSnapshot.version.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def save_context_snapshot(
+        self,
+        conversation_id: int,
+        *,
+        mode: ContextCompressionMode,
+        summary: ContextSummary,
+        covered_until_message_id: int | None,
+        source_message_count: int,
+        usage_before: ContextUsage,
+        usage_after: ContextUsage,
+    ) -> AssistantContextSnapshot:
+        latest = self.get_latest_context_snapshot(conversation_id)
+        snapshot = AssistantContextSnapshot(
+            conversation_id=conversation_id,
+            version=(latest.version + 1) if latest else 1,
+            mode=mode.value,
+            summary=summary.model_dump(mode="json"),
+            covered_until_message_id=covered_until_message_id,
+            source_message_count=source_message_count,
+            usage_before=usage_before.model_dump(mode="json"),
+            usage_after=usage_after.model_dump(mode="json"),
+        )
+        self._session.add(snapshot)
+        self._session.commit()
+        self._session.refresh(snapshot)
+        return snapshot
+
     def add_message(self, conversation: ChatConversation, *, role: str, content: str) -> ChatMessage:
         message = ChatMessage(conversation_id=conversation.id, role=role, content=content)
         self._session.add(message)
@@ -79,6 +131,9 @@ class AssistantRepository:
 
     def delete_conversation(self, conversation: ChatConversation) -> None:
         self._session.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).delete()
+        self._session.query(AssistantContextSnapshot).filter(
+            AssistantContextSnapshot.conversation_id == conversation.id
+        ).delete()
         self._session.delete(conversation)
         self._session.commit()
 

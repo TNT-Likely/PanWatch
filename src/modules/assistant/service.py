@@ -9,6 +9,12 @@ from pan_agent import (
     AgentCheckpoint,
     AgentRuntime,
     ApprovalDecision,
+    ContextBudget,
+    ContextCompressionMode,
+    ContextEngine,
+    ContextSummary,
+    ContextUsage,
+    ModelMessage,
     PermissionMode,
     RunRequest,
     ToolCall,
@@ -17,11 +23,18 @@ from pan_agent import (
     ToolSpec,
 )
 
-from src.platform.ai.ai_failover import build_failover_client
+from src.platform.ai.ai_failover import (
+    build_failover_client,
+    get_configured_failover_client,
+)
 from src.platform.persistence.models import AIModel, AIService
+from src.platform.runtime.config import Settings
 
 from .llm_adapter import FailoverModelAdapter
 from .repository import AssistantRepository
+from .context_summarizer import FailoverContextSummarizer
+from .context_schemas import ContextDetailDTO, ContextSnapshotDTO
+from .prompt import build_assistant_messages
 from .schemas import (
     ConversationDetailDTO,
     ConversationDTO,
@@ -78,8 +91,9 @@ class PanWatchToolPolicy:
 
 
 class AssistantService:
-    def __init__(self, repository: AssistantRepository) -> None:
+    def __init__(self, repository: AssistantRepository, settings: Settings | None = None) -> None:
         self._repository = repository
+        self._settings = settings or Settings()
 
     def create_conversation(
         self, command: CreateConversationCommand
@@ -102,6 +116,84 @@ class AssistantService:
                 for row in self._repository.list_messages(conversation_id)
             ],
         )
+
+    def get_context_detail(self, conversation_id: int) -> ContextDetailDTO:
+        conversation = self._require_conversation(conversation_id)
+        messages = build_assistant_messages(
+            [
+                ModelMessage(role=item.role, content=item.content)
+                for item in self._repository.list_messages(conversation_id)
+            ]
+        )
+        budget = self._context_budget()
+        latest = self._repository.get_latest_context_snapshot(conversation_id)
+        summary = ContextSummary.model_validate(latest.summary) if latest else None
+        usage = ContextEngine().measure(
+            messages,
+            summary=summary,
+            page_context=conversation.initial_context,
+            budget=budget,
+        )
+        return ContextDetailDTO(
+            conversation_id=conversation_id,
+            usage=usage,
+            snapshot=self._snapshot_dto(latest) if latest else None,
+            status=usage.state,
+        )
+
+    async def compress_context(
+        self,
+        conversation_id: int,
+        *,
+        mode: ContextCompressionMode = ContextCompressionMode.BALANCED,
+    ):
+        return await self.prepare_context(
+            conversation_id,
+            mode=mode,
+            force_compress=True,
+        )
+
+    async def prepare_context(
+        self,
+        conversation_id: int,
+        *,
+        mode: ContextCompressionMode = ContextCompressionMode.BALANCED,
+        force_compress: bool = False,
+    ):
+        conversation = self._require_conversation(conversation_id)
+        rows = self._repository.list_messages(conversation_id)
+        messages = build_assistant_messages(
+            [ModelMessage(role=row.role, content=row.content) for row in rows]
+        )
+        latest = self._repository.get_latest_context_snapshot(conversation_id)
+        existing_summary = ContextSummary.model_validate(latest.summary) if latest else None
+        engine = ContextEngine(
+            self.build_context_summarizer(),
+        )
+        result = await engine.prepare(
+            messages,
+            existing_summary=existing_summary,
+            mode=mode,
+            force_compress=force_compress,
+            page_context=conversation.initial_context,
+            budget=self._context_budget(),
+        )
+        if result.compressed and result.summary is not None:
+            non_system_rows = rows
+            old_count = result.compressed_message_count
+            covered_until = (
+                non_system_rows[old_count - 1].id if old_count > 0 else None
+            )
+            self._repository.save_context_snapshot(
+                conversation_id,
+                mode=mode,
+                summary=result.summary,
+                covered_until_message_id=covered_until,
+                source_message_count=old_count,
+                usage_before=result.usage_before,
+                usage_after=result.usage_after,
+            )
+        return result
 
     def record_user_message(self, conversation_id: int, content: str) -> MessageDTO:
         conversation = self._require_conversation(conversation_id)
@@ -281,6 +373,40 @@ class AssistantService:
             else None
         )
         return build_failover_client(model, provider, db=self._repository.session)
+
+    def build_context_compression_client(self):
+        """Resolve the optional summary model through the shared failover path."""
+        return get_configured_failover_client(
+            self._repository.session,
+            self._settings.context_compression_model_id,
+        )
+
+    def build_context_summarizer(self) -> FailoverContextSummarizer:
+        return FailoverContextSummarizer(
+            self.build_context_compression_client(),
+            temperature=self._settings.context_compression_temperature,
+        )
+
+    def _context_budget(self) -> ContextBudget:
+        return ContextBudget(
+            max_tokens=self._settings.context_max_tokens,
+            soft_limit_tokens=self._settings.context_soft_limit_tokens,
+            hard_limit_tokens=self._settings.context_hard_limit_tokens,
+            keep_recent_messages=self._settings.context_keep_recent_messages,
+        )
+
+    @staticmethod
+    def _snapshot_dto(snapshot) -> ContextSnapshotDTO:
+        return ContextSnapshotDTO(
+            version=snapshot.version,
+            mode=ContextCompressionMode(snapshot.mode),
+            summary=ContextSummary.model_validate(snapshot.summary or {}),
+            covered_until_message_id=snapshot.covered_until_message_id,
+            source_message_count=snapshot.source_message_count,
+            usage_before=ContextUsage.model_validate(snapshot.usage_before or {}),
+            usage_after=ContextUsage.model_validate(snapshot.usage_after or {}),
+            created_at=snapshot.created_at,
+        )
 
     def create_task(self, conversation_id: int, user_message_id: int):
         self._require_conversation(conversation_id)
