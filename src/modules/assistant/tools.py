@@ -166,6 +166,51 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             observed_at=datetime.now(UTC),
         )
 
+    async def _find_or_register_stock(
+        symbol: str, market: MarketCode
+    ) -> tuple[Stock | None, bool]:
+        """Resolve a stock id for write tools without requiring watchlist setup.
+
+        Price-alert rules reference the local ``stocks`` table, while research
+        tools can operate on any symbol returned by the market-data providers.
+        A verified quote is enough to create the lightweight stock directory
+        record; an unverified symbol remains a controlled ``stock_not_found``
+        result and never produces a dangling alert rule.
+        """
+        stock = (
+            session.query(Stock)
+            .filter(Stock.symbol == symbol, Stock.market == market.value)
+            .first()
+        )
+        if stock is not None:
+            return stock, False
+
+        try:
+            rows = await asyncio.to_thread(md_quote_rows, [symbol], market.value)
+        except Exception:  # noqa: BLE001 - quote failures become a controlled write failure
+            return None, False
+
+        def matches(row: dict[str, Any]) -> bool:
+            row_symbol = str(row.get("symbol") or "").strip().upper()
+            if market is MarketCode.HK and row_symbol.isdigit():
+                row_symbol = row_symbol.zfill(5)
+            return row_symbol == symbol
+
+        quote = next((row for row in rows if matches(row)), None)
+        if quote is None:
+            return None, False
+
+        stock = Stock(
+            symbol=symbol,
+            name=str(quote.get("name") or symbol).strip() or symbol,
+            market=market.value,
+        )
+        session.add(stock)
+        # 规则通过外键引用新登记的股票；先 flush 获取主键，仍由下方
+        # 的单次 commit 保证股票目录和提醒规则一起成功或一起回滚。
+        session.flush()
+        return stock, True
+
     async def create_price_alert(_request: RunRequest, arguments: dict) -> ToolResult:
         parsed = _symbol_and_market(arguments)
         if parsed is None:
@@ -195,11 +240,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 summary="冷却时间必须是非负整数。", error_code="cooldown_invalid"
             )
 
-        stock = (
-            session.query(Stock)
-            .filter(Stock.symbol == symbol, Stock.market == market.value)
-            .first()
-        )
+        stock, stock_registered = await _find_or_register_stock(symbol, market)
         if stock is None:
             return ToolResult.failure(
                 summary=f"PanWatch 股票库中未找到 {market.value}:{symbol}，未创建提醒。",
@@ -240,6 +281,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "market": market.value,
                 "direction": direction,
                 "target_price": target_price,
+                "stock_registered": stock_registered,
             },
             sources=[{"name": "PanWatch 价格提醒"}],
             observed_at=datetime.now(UTC),

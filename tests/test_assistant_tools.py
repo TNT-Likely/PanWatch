@@ -204,8 +204,43 @@ def test_create_price_alert_validates_and_persists_rule():
     engine.dispose()
 
 
-def test_create_price_alert_does_not_write_for_unknown_stock():
+def test_create_price_alert_registers_a_known_quote_before_writing_rule(monkeypatch):
     engine, session = _session()
+    monkeypatch.setattr(
+        assistant_tools,
+        "md_quote_rows",
+        lambda *_: [{"symbol": "02269", "name": "药明生物", "market": "HK"}],
+        raising=False,
+    )
+
+    result = asyncio.run(
+        assistant_tools.build_panwatch_tool_registry(session).execute(
+            "create_price_alert",
+            _request(),
+            {
+                "symbol": "02269",
+                "market": "HK",
+                "direction": "below",
+                "target_price": 40,
+            },
+        )
+    )
+
+    stock = session.query(Stock).one()
+    rule = session.query(PriceAlertRule).one()
+    assert result.ok is True
+    assert result.data["stock_registered"] is True
+    assert stock.symbol == "02269"
+    assert stock.market == "HK"
+    assert stock.name == "药明生物"
+    assert rule.stock_id == stock.id
+    session.close()
+    engine.dispose()
+
+
+def test_create_price_alert_does_not_write_for_unknown_stock(monkeypatch):
+    engine, session = _session()
+    monkeypatch.setattr(assistant_tools, "md_quote_rows", lambda *_: [], raising=False)
 
     result = asyncio.run(
         assistant_tools.build_panwatch_tool_registry(session).execute(

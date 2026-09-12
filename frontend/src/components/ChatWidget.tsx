@@ -80,6 +80,9 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   const [historyOpen, setHistoryOpen] = useState(false)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
+  // React state updates are batched; this synchronous guard closes the small
+  // window where two clicks could otherwise create duplicate tasks/messages.
+  const sendingRef = useRef(false)
   const {
     scrollBoxRef,
     followNewContent,
@@ -267,7 +270,10 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
 
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent || input).trim()
-    if (!content || sending || pendingApprovals.length > 0) return
+    if (!content || sending || sendingRef.current || pendingApprovals.length > 0) return
+
+    sendingRef.current = true
+    setSending(true)
 
     let convId = activeConvId
     if (!convId) {
@@ -280,12 +286,13 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         setConversations((prev) => [conv, ...prev])
         setView('chat')
       } catch {
+        sendingRef.current = false
+        setSending(false)
         return
       }
     }
 
     setInput('')
-    setSending(true)
     setSuggestedQuestions([]) // hide after first send
     setTaskId(null)
     setPendingApprovals([])
@@ -408,6 +415,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       }
     } finally {
       resetStream()
+      sendingRef.current = false
       setSending(false)
     }
   }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing])
