@@ -247,6 +247,41 @@ if paused.status is RunStatus.WAITING_FOR_APPROVAL:
 
 ## 核心公开 API
 
+### Context Engineering 扩展
+
+长会话的上下文控制已经作为 `pan_agent.context` 的通用能力提供，不依赖
+PanWatch 的数据库、FastAPI 或模型厂商。它包括：
+
+- `ContextBudget`：最大 token、soft/hard 阈值和最近消息窗口；
+- `ContextUsage`：系统指令、历史消息、最近消息、页面上下文和摘要的分段用量；
+- `ContextSummary`：目标、约束、决定、事实、当前状态、未完成事项和工具发现；
+- `ContextEngine`：自动压缩和 `force_compress=True` 主动压缩；
+- `ContextSummarizer`：宿主接入任意摘要模型的协议；
+- `ExtractiveContextSummarizer`：模型不可用时的确定性 fallback。
+
+示例：
+
+~~~python
+from pan_agent import ContextBudget, ContextEngine
+
+result = await ContextEngine(my_summarizer).prepare(
+    messages,
+    budget=ContextBudget(
+        max_tokens=12_000,
+        soft_limit_tokens=8_400,
+        hard_limit_tokens=10_200,
+        keep_recent_messages=8,
+        summary_max_tokens=800,
+    ),
+)
+next_request_messages = result.messages
+~~~
+
+runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapshot
+持久化、HTTP/SSE 和 UI 都由宿主项目注入。更完整的边界说明见
+[`docs/architecture.md`](docs/architecture.md) 和
+[`docs/context.md`](docs/context.md)。
+
 | 类型 | 用途 |
 | --- | --- |
 | <code>AgentRuntime</code> | 启动、暂停和恢复有界 Agent loop |

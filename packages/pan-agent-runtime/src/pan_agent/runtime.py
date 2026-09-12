@@ -422,7 +422,7 @@ class AgentRuntime:
             sink,
             request,
             EventType.TOOL_STARTED,
-            {"call_id": call.id, "tool": call.name},
+            {"call_id": call.id, "tool": call.name, "arguments": call.arguments},
         )
         result: ToolResult | None = None
         for attempt in range(request.limits.step_retry_count + 1):

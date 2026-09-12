@@ -26,3 +26,24 @@ def test_m123_adds_approval_workflow_to_the_m122_assistant_schema(tmp_path):
     assert {"arguments", "risk"} <= invocation_columns
     assert tables >= {"assistant_tool_approvals", "assistant_tool_permissions"}
     assert approval_indexes >= {"ux_assistant_approval_run_call"}
+
+
+def test_m124_adds_context_snapshots_idempotently(tmp_path):
+    from src.platform.persistence.migrations import _m124_assistant_context_snapshots
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'context-snapshot.db'}")
+    with engine.begin() as conn:
+        _m124_assistant_context_snapshots(conn)
+        _m124_assistant_context_snapshots(conn)
+        columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(assistant_context_snapshots)"))
+        }
+        indexes = {
+            row[1]
+            for row in conn.execute(text("PRAGMA index_list(assistant_context_snapshots)"))
+        }
+    engine.dispose()
+
+    assert {"conversation_id", "version", "summary", "usage_before", "usage_after"} <= columns
+    assert "ux_assistant_context_snapshot_version" in indexes

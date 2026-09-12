@@ -6,7 +6,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from pan_agent import EventType, RunResult, RunStatus, RuntimeEvent
+from pan_agent import ContextBuildResult, ContextUsage, EventType, ModelMessage, RunResult, RunStatus, RuntimeEvent
 
 import src.modules.assistant.api as assistant_api
 
@@ -14,8 +14,9 @@ import src.modules.assistant.api as assistant_api
 class _FakeService:
     """Keeps the HTTP test at the service boundary; no real model/network is used."""
 
-    def __init__(self, runtime):
+    def __init__(self, runtime, context_result=None):
         self.runtime = runtime
+        self.context_result = context_result
         self.recorded_assistant_messages: list[str] = []
         self.finished: list[tuple[str, str | None]] = []
 
@@ -35,6 +36,9 @@ class _FakeService:
         return SimpleNamespace(
             messages=[SimpleNamespace(role="user", content="测试问题")]
         )
+
+    async def prepare_context(self, _conversation_id):
+        return self.context_result
 
     def record_assistant_message(self, _conversation_id, content):
         self.recorded_assistant_messages.append(content)
@@ -57,6 +61,47 @@ class _CompletedRuntime:
         self.request = request
         await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已完成")
+
+
+class _TracedRuntime:
+    async def run(self, _request, sink):
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.RUN_CREATED,
+                run_id="12",
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.STEP_UPDATED,
+                run_id="12",
+                data={"step": 1, "status": "running"},
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_STARTED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "get_price_alerts",
+                    "arguments": {"limit": 20},
+                },
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_COMPLETED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "get_price_alerts",
+                    "ok": True,
+                    "summary": "找到 1 条提醒",
+                },
+            )
+        )
+        return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已查询")
 
 
 class _TimedOutRuntime:
@@ -202,20 +247,89 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert service.runtime.request.limits.max_tool_calls == 24
 
 
-def test_assistant_message_does_not_force_tool_choice_from_text():
-    service = _FakeService(_CompletedRuntime())
+def test_assistant_stream_exposes_context_usage_before_runtime_steps():
+    usage_before = ContextUsage(
+        total_tokens=9000,
+        budget_tokens=12000,
+        soft_limit_tokens=8400,
+        hard_limit_tokens=10200,
+    )
+    usage_after = ContextUsage(
+        total_tokens=2500,
+        budget_tokens=12000,
+        soft_limit_tokens=8400,
+        hard_limit_tokens=10200,
+    )
+    context = ContextBuildResult(
+        messages=[ModelMessage(role="user", content="已压缩的问题")],
+        usage_before=usage_before,
+        usage_after=usage_after,
+        compressed=True,
+        compression_status="compressed",
+        compressed_message_count=4,
+    )
+    service = _FakeService(_CompletedRuntime(), context_result=context)
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1, assistant_api.SendAssistantMessageCommand(content="测试问题"), service
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[0] == (
+        "run_started",
+        {"task_id": 12, "context_usage": usage_after.model_dump(mode="json")},
+    )
+    assert events[1] == (
+        "context_prepared",
+        {
+            "compressed": True,
+            "compression_status": "compressed",
+            "mode": "balanced",
+            "usage_before": usage_before.model_dump(mode="json"),
+            "usage_after": usage_after.model_dump(mode="json"),
+            "compressed_message_count": 4,
+        },
+    )
+
+
+def test_assistant_stream_preserves_runtime_step_and_tool_trace_events():
+    service = _FakeService(_TracedRuntime())
 
     async def run():
         response = await assistant_api.stream_assistant_message(
             1,
-            assistant_api.SendAssistantMessageCommand(content="修改下标题"),
+            assistant_api.SendAssistantMessageCommand(content="查询提醒"),
             service,
         )
         return await _read_events(response)
 
     events = asyncio.run(run())
 
-    assert events[-1][0] == "done"
+    assert [(event, data) for event, data in events if event in {
+        "step_updated", "tool_call_start", "tool_result"
+    }] == [
+        ("step_updated", {"step": 1, "status": "running"}),
+        ("tool_call_start", {"name": "get_price_alerts", "arguments": {"limit": 20}}),
+        ("tool_result", {"name": "get_price_alerts", "ok": True, "preview": "找到 1 条提醒"}),
+    ]
+
+
+def test_assistant_message_leaves_tool_choice_optional_for_normal_chat():
+    service = _FakeService(_CompletedRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="你好，介绍一下自己"),
+            service,
+        )
+        return await _read_events(response)
+
+    asyncio.run(run())
+
     assert service.runtime.request.context == {}
 
 
@@ -230,6 +344,7 @@ def test_assistant_messages_prepend_tool_first_instruction():
     assert "主动调用工具" in messages[0].content
     assert "相同工具和参数最多调用一次" in messages[0].content
     assert "没有成功工具结果时绝不能声称已创建、修改或删除" in messages[0].content
+    assert "历史助手文本可能只是计划或错误声明" in messages[0].content
     assert messages[1].content == "分析 600519"
 
 

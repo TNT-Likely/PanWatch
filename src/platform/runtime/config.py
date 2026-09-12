@@ -3,12 +3,12 @@
 该模块可同时被 HTTP、后台任务和平台适配器使用；它不包含任何投资或产品决策。
 """
 
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import yaml
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field, AliasChoices
 
 from src.platform.marketdata.models import MarketCode
 
@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     ai_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     ai_api_key: str = ""
     ai_model: str = "glm-4"
+
+    # Assistant context engineering. The compression model is optional: when
+    # unset, the host reuses the configured default assistant model.
+    context_compression_model_id: int | None = Field(default=None, ge=1)
+    context_compression_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    context_summary_max_tokens: int = Field(default=800, ge=128, le=4_000)
+    context_max_tokens: int = Field(default=12_000, ge=256)
+    context_soft_limit_tokens: int = Field(default=8_400, ge=128)
+    context_hard_limit_tokens: int = Field(default=10_200, ge=256)
+    context_keep_recent_messages: int = Field(default=8, ge=1, le=100)
 
     # Telegram
     notify_telegram_bot_token: str = ""
@@ -59,6 +69,14 @@ class Settings(BaseSettings):
         # .env 里可能有 HTTPS_PROXY 等未声明字段(httpx/系统标准变量),忽略不报错
         "extra": "ignore",
     }
+
+    @model_validator(mode="after")
+    def validate_context_thresholds(self) -> "Settings":
+        if not self.context_soft_limit_tokens < self.context_hard_limit_tokens <= self.context_max_tokens:
+            raise ValueError(
+                "context thresholds must satisfy soft_limit < hard_limit <= max_tokens"
+            )
+        return self
 
 
 @dataclass

@@ -28,6 +28,12 @@ from sqlalchemy.orm import Session
 from src.platform.persistence.database import get_db
 
 from .prompt import build_assistant_messages
+from .context_schemas import (
+    AssistantConfigDTO,
+    AssistantConfigUpdate,
+    CompressContextCommand,
+    ContextDetailDTO,
+)
 from .repository import AssistantRepository
 from .schemas import (
     ApprovalDecisionCommand,
@@ -113,18 +119,45 @@ class _SSEEventSink:
         queue: asyncio.Queue,
         service: AssistantService,
         task_id: int,
+        context_result=None,
     ) -> None:
         self._queue, self._service, self._task_id = queue, service, task_id
+        self._context_result = context_result
 
     async def publish(self, event) -> None:
         data = dict(event.data)
         if event.type is EventType.RUN_CREATED:
-            await self._queue.put(("run_started", {"task_id": self._task_id}))
+            payload = {"task_id": self._task_id}
+            if self._context_result is not None:
+                payload["context_usage"] = self._context_result.usage_after.model_dump(mode="json")
+            await self._queue.put(("run_started", payload))
+            if self._context_result is not None:
+                await self._queue.put(
+                    (
+                        "context_prepared",
+                        {
+                            "compressed": self._context_result.compressed,
+                            "compression_status": self._context_result.compression_status,
+                            "mode": self._context_result.mode.value,
+                            "usage_before": self._context_result.usage_before.model_dump(mode="json"),
+                            "usage_after": self._context_result.usage_after.model_dump(mode="json"),
+                            "compressed_message_count": self._context_result.compressed_message_count,
+                        },
+                    )
+                )
+        elif event.type is EventType.STEP_UPDATED:
+            await self._queue.put(("step_updated", data))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:
             await self._queue.put(
-                ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
+                (
+                    "tool_call_start",
+                    {
+                        "name": data.get("tool", ""),
+                        "arguments": data.get("arguments") or {},
+                    },
+                )
             )
         elif event.type is EventType.TOOL_COMPLETED:
             self._service.record_tool_completion(self._task_id, data)
@@ -168,6 +201,7 @@ async def _stream_runtime(
     service: AssistantService,
     runtime_call: Callable[[_SSEEventSink], Awaitable[RunResult]],
     paused_extra: dict | None = None,
+    context_result=None,
 ) -> StreamingResponse:
     """Run or resume one task while keeping HTTP transport out of the runtime."""
     queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
@@ -188,7 +222,7 @@ async def _stream_runtime(
     async def run_runtime_with_timeout() -> RunResult:
         runtime_task = asyncio.create_task(
             runtime_call(
-                _SSEEventSink(queue, service, task_id)
+                _SSEEventSink(queue, service, task_id, context_result=context_result)
             )
         )
 
@@ -296,19 +330,30 @@ async def stream_assistant_message(
 ):
     """Run the navigation assistant through PanAgent and stream its portable events."""
     task = None
+    context_result = None
     try:
         user_message = service.record_user_message(conversation_id, body.content)
         task = service.create_task(conversation_id, user_message.id)
+        prepare_context = getattr(service, "prepare_context", None)
+        if prepare_context is not None:
+            context_result = await prepare_context(conversation_id)
         runtime = service.build_runtime(service.build_failover_client())
-        messages = build_assistant_messages(
+        messages = context_result.messages if context_result is not None else build_assistant_messages(
             [
                 ModelMessage(role=item.role, content=item.content)
                 for item in service.get_conversation(conversation_id).messages
             ]
         )
+        request_context = {}
+        if context_result is not None:
+            request_context = {
+                "context_usage": context_result.usage_after.model_dump(mode="json"),
+                "context_compressed": context_result.compressed,
+            }
         request = RunRequest(
             run_id=str(task.id),
             messages=messages,
+            context=request_context,
             limits=RunLimits(
                 max_steps=ASSISTANT_MAX_STEPS,
                 max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,
@@ -337,6 +382,7 @@ async def stream_assistant_message(
         conversation_id=conversation_id,
         service=service,
         runtime_call=lambda sink: runtime.run(request, sink),
+        context_result=context_result,
     )
 
 
@@ -404,6 +450,33 @@ async def stream_assistant_approval_decision(
     )
 
 
+@router.get("/conversations/{conversation_id}/context", response_model=ContextDetailDTO)
+def get_context_detail(
+    conversation_id: int,
+    service: AssistantService = Depends(get_assistant_service),
+) -> ContextDetailDTO:
+    try:
+        return service.get_context_detail(conversation_id)
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/conversations/{conversation_id}/context/compress", response_model=ContextDetailDTO)
+async def compress_context(
+    conversation_id: int,
+    body: CompressContextCommand,
+    service: AssistantService = Depends(get_assistant_service),
+) -> ContextDetailDTO:
+    try:
+        result = await service.compress_context(conversation_id, mode=body.mode)
+        return service.get_context_detail(
+            conversation_id,
+            compression_result=result,
+        )
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "runtime": "pan-agent-runtime"}
@@ -414,6 +487,24 @@ def get_tool_permissions(
     service: AssistantService = Depends(get_assistant_service),
 ) -> dict:
     return service.get_tool_permissions()
+
+
+@router.get("/config", response_model=AssistantConfigDTO)
+def get_assistant_config(
+    service: AssistantService = Depends(get_assistant_service),
+) -> AssistantConfigDTO:
+    return service.get_assistant_config()
+
+
+@router.put("/config", response_model=AssistantConfigDTO)
+def update_assistant_config(
+    body: AssistantConfigUpdate,
+    service: AssistantService = Depends(get_assistant_service),
+) -> AssistantConfigDTO:
+    try:
+        return service.update_assistant_config(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/tool-permissions")

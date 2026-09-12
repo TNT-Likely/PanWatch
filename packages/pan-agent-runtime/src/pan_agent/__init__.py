@@ -20,6 +20,18 @@ from .contracts import (
     ToolRisk,
     ToolSpec,
 )
+from .context import (
+    ContextBudget,
+    ContextBuildResult,
+    ContextCompressionMode,
+    ContextEngine,
+    ContextSectionUsage,
+    ContextSummarizer,
+    ContextSummary,
+    ContextUsage,
+    ExtractiveContextSummarizer,
+    estimate_tokens,
+)
 from .errors import DisallowedTool, DuplicateToolName, PanAgentError, UnknownTool
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolExecutor, ToolPolicy
@@ -32,10 +44,19 @@ __all__ = [
     "AgentCheckpoint",
     "AgentRuntime",
     "ApprovalDecision",
+    "ContextBudget",
+    "ContextBuildResult",
+    "ContextCompressionMode",
+    "ContextEngine",
+    "ContextSectionUsage",
+    "ContextSummarizer",
+    "ContextSummary",
+    "ContextUsage",
     "DisallowedTool",
     "DuplicateToolName",
     "EventSink",
     "EventType",
+    "ExtractiveContextSummarizer",
     "ModelMessage",
     "ModelPort",
     "ModelTurn",
@@ -59,4 +80,5 @@ __all__ = [
     "ToolSpec",
     "UnknownTool",
     "__version__",
+    "estimate_tokens",
 ]

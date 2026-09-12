@@ -2,11 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { chatApi, type AssistantApproval, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import {
+  chatApi,
+  type AssistantApproval,
+  type AssistantContextDetail,
+  type AssistantContextSnapshot,
+  type AssistantTraceEvent,
+  type ChatConversation,
+  type ChatMessage,
+} from '@panwatch/api'
 import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
 import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
 import { AssistantWelcome } from '@/components/assistant/AssistantWelcome'
+import { ContextPanel } from '@/components/assistant/ContextPanel'
+import { ContextUsageIndicator } from '@/components/assistant/ContextUsageIndicator'
+import { TraceTimeline } from '@/components/assistant/TraceTimeline'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
 
 interface StockContext {
@@ -99,6 +110,12 @@ export default function ChatWidget({
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null)
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [contextDetail, setContextDetail] = useState<AssistantContextDetail | null>(null)
+  const [contextPanelOpen, setContextPanelOpen] = useState(false)
+  const [contextLoading, setContextLoading] = useState(false)
+  const [contextCompressing, setContextCompressing] = useState(false)
+  const [contextError, setContextError] = useState('')
+  const [traceEvents, setTraceEvents] = useState<AssistantTraceEvent[]>([])
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -145,6 +162,16 @@ export default function ChatWidget({
     setPlan(null)
   }, [])
 
+  const appendTrace = useCallback((event: AssistantTraceEvent) => {
+    setTraceEvents((previous) => {
+      const fingerprint = `${event.id ?? ''}:${event.event}:${JSON.stringify(event.data)}`
+      if (previous.some((item) => `${item.id ?? ''}:${item.event}:${JSON.stringify(item.data)}` === fingerprint)) {
+        return previous
+      }
+      return [...previous, event].slice(-40)
+    })
+  }, [])
+
   const loadConversations = useCallback(async () => {
     try {
       const list = await chatApi.listConversations(30)
@@ -165,6 +192,52 @@ export default function ChatWidget({
       // ignore
     }
   }, [])
+
+  useEffect(() => {
+    const conversationId = activeConvId
+    setContextPanelOpen(false)
+    setContextDetail(null)
+    setContextError('')
+    if (!conversationId || typeof chatApi.getAssistantContext !== 'function') return
+    let cancelled = false
+    setContextLoading(true)
+    chatApi.getAssistantContext(conversationId)
+      .then((detail) => {
+        if (!cancelled) setContextDetail(detail)
+      })
+      .catch(() => {
+        if (!cancelled) setContextError('无法读取上下文用量。')
+      })
+      .finally(() => {
+        if (!cancelled) setContextLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [activeConvId])
+
+  const handleCompressContext = useCallback(async (mode: AssistantContextSnapshot['mode']) => {
+    if (!activeConvId || contextCompressing || typeof chatApi.compressAssistantContext !== 'function') return
+    setContextCompressing(true)
+    setContextError('')
+    try {
+      const next = await chatApi.compressAssistantContext(activeConvId, mode)
+      setContextDetail(next)
+      const compression = next.last_compression
+      appendTrace({
+        event: 'context_prepared',
+        data: {
+          compressed: compression?.status === 'compressed',
+          compression_status: compression?.status || 'not_needed',
+          mode,
+          usage_before: compression?.usage_before,
+          usage_after: compression?.usage_after,
+        },
+      })
+    } catch {
+      setContextError('上下文压缩失败，原始消息未改变。')
+    } finally {
+      setContextCompressing(false)
+    }
+  }, [activeConvId, appendTrace, contextCompressing])
 
   const loadSuggestedQuestions = useCallback(async (symbol: string, market: string) => {
     try {
@@ -403,6 +476,7 @@ export default function ChatWidget({
     setSuggestedQuestions([]) // hide after first send
     setTaskId(null)
     setPendingApprovals([])
+    setTraceEvents([])
     sessionStorage.removeItem(taskStorageKey(convId))
 
     const tempUserMsg: ChatMessage = {
@@ -422,13 +496,37 @@ export default function ChatWidget({
       // 优先走 SSE 流式（token 流 + 工具过程可视）
       const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
       await stream(convId, content, {
-        onRunStarted: ({ taskId: nextTaskId }) => {
+        onRunStarted: ({ taskId: nextTaskId, contextUsage }) => {
           receivedAny = true
           if (nextTaskId > 0) {
             setTaskId(nextTaskId)
             sessionStorage.setItem(taskStorageKey(convId), String(nextTaskId))
           }
+          if (contextUsage) {
+            setContextDetail((previous) => previous ? {
+              ...previous,
+              usage: contextUsage,
+              status: contextUsage.state,
+            } : previous)
+          }
         },
+        onContextPrepared: ({ compressedMessageCount, compressionStatus, mode, usageAfter, usageBefore }) => {
+          setContextDetail((previous) => previous ? {
+            ...previous,
+            usage: usageAfter,
+            status: usageAfter.state,
+            last_compression: {
+              status: compressionStatus,
+              mode,
+              usage_before: usageBefore,
+              usage_after: usageAfter,
+              saved_tokens: Math.max(0, usageBefore.total_tokens - usageAfter.total_tokens),
+              saved_percent: Math.round(Math.max(0, usageBefore.total_tokens - usageAfter.total_tokens) / Math.max(usageBefore.total_tokens, 1) * 100),
+              compressed_message_count: compressedMessageCount,
+            },
+          } : previous)
+        },
+        onTrace: appendTrace,
         onToken: (t) => {
           receivedAny = true
           setStreamTool(null)
@@ -522,7 +620,7 @@ export default function ChatWidget({
       sendingRef.current = false
       setSending(false)
     }
-  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, onConversationChange])
+  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, onConversationChange, appendTrace])
 
   const handleApprovalDecision = useCallback(async (
     approval: AssistantApproval,
@@ -552,6 +650,7 @@ export default function ChatWidget({
         onToolResult: () => {
           // 工具结果到达后，等待模型继续输出最终回答。
         },
+        onTrace: appendTrace,
         onApprovalRequired: (nextApproval) => {
           setPendingApprovals((previous) => (
             previous.some((item) => item.id === nextApproval.id)
@@ -642,7 +741,7 @@ export default function ChatWidget({
       setSending(false)
       setDecidingApprovalId(null)
     }
-  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages])
+  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages, appendTrace])
 
   const interactionLocked = sending || pendingApprovals.length > 0
 
@@ -733,6 +832,12 @@ export default function ChatWidget({
               </button>
             </span>
           )}
+          {view === 'chat' && (
+            <ContextUsageIndicator
+              usage={contextDetail?.usage || null}
+              onClick={() => setContextPanelOpen((open) => !open)}
+            />
+          )}
         </div>
         <div className="flex items-center gap-1">
           {embedded && (
@@ -756,6 +861,17 @@ export default function ChatWidget({
           )}
         </div>
       </div>
+
+      {view === 'chat' && contextPanelOpen && (
+        <ContextPanel
+          detail={contextDetail}
+          loading={contextLoading}
+          compressing={contextCompressing}
+          error={contextError}
+          onCompress={(mode) => { void handleCompressContext(mode) }}
+          onClose={() => setContextPanelOpen(false)}
+        />
+      )}
 
       {/* List view */}
       {view === 'list' && embedded && (
@@ -865,6 +981,7 @@ export default function ChatWidget({
                 />
               </div>
             ))}
+            <TraceTimeline events={traceEvents} />
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
