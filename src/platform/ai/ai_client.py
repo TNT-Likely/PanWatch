@@ -91,6 +91,7 @@ class AIClient:
         self,
         messages: list[dict],
         temperature: float | None = 0.4,
+        max_tokens: int | None = None,
     ) -> str:
         """
         多轮对话：传入完整 messages 列表。
@@ -104,6 +105,8 @@ class AIClient:
             create_kwargs: dict = {"model": self.model, "messages": messages}
             if temperature is not None:
                 create_kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                create_kwargs["max_tokens"] = max_tokens
             with otel.llm_span(self.model, operation="chat") as _span:
                 response = await self.client.chat.completions.create(**create_kwargs)
                 if response.usage:

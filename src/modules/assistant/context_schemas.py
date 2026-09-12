@@ -27,6 +27,7 @@ class AssistantModelOption(BaseModel):
 class AssistantConfigUpdate(BaseModel):
     compression_model_id: int | None = Field(default=None, ge=1)
     compression_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    summary_max_tokens: int = Field(default=800, ge=128, le=4_000)
     max_tokens: int = Field(default=12_000, ge=256)
     soft_limit_tokens: int = Field(default=8_400, ge=128)
     hard_limit_tokens: int = Field(default=10_200, ge=256)
@@ -56,9 +57,20 @@ class ContextSnapshotDTO(BaseModel):
     created_at: datetime | None = None
 
 
+class ContextCompressionDTO(BaseModel):
+    status: Literal["not_needed", "compressed", "no_gain"]
+    mode: ContextCompressionMode
+    usage_before: ContextUsage
+    usage_after: ContextUsage
+    saved_tokens: int = Field(ge=0)
+    saved_percent: int = Field(ge=0, le=100)
+    compressed_message_count: int = Field(default=0, ge=0)
+
+
 class ContextDetailDTO(BaseModel):
     conversation_id: int
     usage: ContextUsage
     snapshot: ContextSnapshotDTO | None = None
+    last_compression: ContextCompressionDTO | None = None
     compression_available: bool = True
     status: Literal["normal", "warning", "needs_compression"]

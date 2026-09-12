@@ -7,6 +7,7 @@ import { chatApi } from '@panwatch/api'
 const config = {
   compression_model_id: 6,
   compression_temperature: 0.1,
+  summary_max_tokens: 800,
   max_tokens: 12000,
   soft_limit_tokens: 8400,
   hard_limit_tokens: 10200,
@@ -34,6 +35,7 @@ describe('AssistantConfigPanel', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({
       compression_model_id: 6,
       compression_temperature: 0.1,
+      summary_max_tokens: 800,
       max_tokens: 16000,
       soft_limit_tokens: 8400,
       hard_limit_tokens: 10200,

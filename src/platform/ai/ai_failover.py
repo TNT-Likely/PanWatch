@@ -196,7 +196,12 @@ class FailoverAIClient:
                 if kind == ERR_PARAM:
                     # 摘掉 temperature 重试同一模型一次
                     try:
-                        result = await method(*args, temperature=None, **kwargs)
+                        retry_kwargs = dict(kwargs)
+                        retry_kwargs["temperature"] = None
+                        # Some OpenAI-compatible services reject max_tokens;
+                        # a summary can still fall back to local normalization.
+                        retry_kwargs.pop("max_tokens", None)
+                        result = await method(*args, **retry_kwargs)
                         _mark_ok(label)
                         self.used_model_label = label
                         return result
@@ -224,9 +229,15 @@ class FailoverAIClient:
         )
 
     async def chat_multi(
-        self, messages: list[dict], temperature: float | None = 0.4
+        self,
+        messages: list[dict],
+        temperature: float | None = 0.4,
+        max_tokens: int | None = None,
     ) -> str:
-        return await self._run("chat_multi", messages, temperature=temperature)
+        kwargs = {"max_tokens": max_tokens} if max_tokens is not None else {}
+        return await self._run(
+            "chat_multi", messages, temperature=temperature, **kwargs
+        )
 
     async def chat_with_tools(
         self, messages: list[dict], tools: list[dict], temperature: float | None = 0.4

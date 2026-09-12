@@ -5,6 +5,7 @@ import { chatApi, type AssistantConfig, type AssistantConfigUpdate } from '@panw
 interface AssistantConfigForm {
   compression_model_id: string
   compression_temperature: string
+  summary_max_tokens: string
   max_tokens: string
   soft_limit_tokens: string
   hard_limit_tokens: string
@@ -14,6 +15,7 @@ interface AssistantConfigForm {
 const EMPTY_FORM: AssistantConfigForm = {
   compression_model_id: '',
   compression_temperature: '0.1',
+  summary_max_tokens: '800',
   max_tokens: '12000',
   soft_limit_tokens: '8400',
   hard_limit_tokens: '10200',
@@ -24,6 +26,7 @@ function toForm(config: AssistantConfig): AssistantConfigForm {
   return {
     compression_model_id: config.compression_model_id?.toString() || '',
     compression_temperature: config.compression_temperature.toString(),
+    summary_max_tokens: config.summary_max_tokens.toString(),
     max_tokens: config.max_tokens.toString(),
     soft_limit_tokens: config.soft_limit_tokens.toString(),
     hard_limit_tokens: config.hard_limit_tokens.toString(),
@@ -35,6 +38,7 @@ function toPayload(form: AssistantConfigForm): AssistantConfigUpdate {
   return {
     compression_model_id: form.compression_model_id ? Number(form.compression_model_id) : null,
     compression_temperature: Number(form.compression_temperature),
+    summary_max_tokens: Number(form.summary_max_tokens),
     max_tokens: Number(form.max_tokens),
     soft_limit_tokens: Number(form.soft_limit_tokens),
     hard_limit_tokens: Number(form.hard_limit_tokens),
@@ -139,6 +143,7 @@ export function AssistantConfigPanel() {
 
           <div className="grid grid-cols-2 gap-2">
             {([
+              ['summary_max_tokens', '摘要最大 Token'],
               ['max_tokens', '最大上下文 Token'],
               ['soft_limit_tokens', '自动压缩阈值'],
               ['hard_limit_tokens', '硬上限 Token'],

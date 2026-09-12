@@ -3,12 +3,12 @@
 该模块可同时被 HTTP、后台任务和平台适配器使用；它不包含任何投资或产品决策。
 """
 
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import yaml
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field, AliasChoices, model_validator
 
 from src.platform.marketdata.models import MarketCode
 
@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # unset, the host reuses the configured default assistant model.
     context_compression_model_id: int | None = Field(default=None, ge=1)
     context_compression_temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    context_summary_max_tokens: int = Field(default=800, ge=128, le=4_000)
     context_max_tokens: int = Field(default=12_000, ge=256)
     context_soft_limit_tokens: int = Field(default=8_400, ge=128)
     context_hard_limit_tokens: int = Field(default=10_200, ge=256)

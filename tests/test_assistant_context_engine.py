@@ -26,6 +26,7 @@ def _settings(**overrides):
     values = {
         "context_compression_model_id": None,
         "context_compression_temperature": 0.1,
+        "context_summary_max_tokens": 800,
         "context_max_tokens": 400,
         "context_soft_limit_tokens": 128,
         "context_hard_limit_tokens": 256,
@@ -87,8 +88,11 @@ def test_model_failure_still_creates_extractive_snapshot(monkeypatch):
 
     engine, session, service = _service(_settings())
     conversation = service.create_conversation(CreateConversationCommand())
-    service.record_user_message(conversation.id, "目标是继续跟踪这个标的 " + "x" * 600)
-    service.record_user_message(conversation.id, "当前需要保留未完成事项 " + "x" * 600)
+    for index in range(10):
+        service.record_user_message(
+            conversation.id,
+            f"目标是继续跟踪这个标的，当前需要保留未完成事项 {index} " + "x" * 600,
+        )
 
     class BrokenClient:
         async def chat_multi(self, messages, temperature=0.4):
@@ -166,15 +170,18 @@ def test_assistant_config_can_select_compression_model_and_budget():
             soft_limit_tokens=10000,
             hard_limit_tokens=14000,
             keep_recent_messages=6,
+            summary_max_tokens=600,
         )
     )
 
     assert updated.compression_model_id == 1
+    assert updated.summary_max_tokens == 600
     assert updated.max_tokens == 16000
     assert updated.soft_limit_tokens == 10000
     assert updated.hard_limit_tokens == 14000
     assert updated.keep_recent_messages == 6
     assert updated.models[0].model == "summary-model"
     assert service._context_budget().max_tokens == 16000
+    assert service._context_budget().summary_max_tokens == 600
     session.close()
     engine.dispose()

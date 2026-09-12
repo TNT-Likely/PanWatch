@@ -30,17 +30,18 @@ from src.platform.ai.ai_failover import (
 from src.platform.persistence.models import AIModel, AIService, AppSettings
 from src.platform.runtime.config import Settings
 
-from .llm_adapter import FailoverModelAdapter
-from .repository import AssistantRepository
-from .context_summarizer import FailoverContextSummarizer
 from .context_schemas import (
     AssistantConfigDTO,
     AssistantConfigUpdate,
     AssistantModelOption,
+    ContextCompressionDTO,
     ContextDetailDTO,
     ContextSnapshotDTO,
 )
+from .context_summarizer import FailoverContextSummarizer
+from .llm_adapter import FailoverModelAdapter
 from .prompt import build_assistant_messages
+from .repository import AssistantRepository
 from .schemas import (
     ConversationDetailDTO,
     ConversationDTO,
@@ -123,7 +124,9 @@ class AssistantService:
             ],
         )
 
-    def get_context_detail(self, conversation_id: int) -> ContextDetailDTO:
+    def get_context_detail(
+        self, conversation_id: int, *, compression_result=None
+    ) -> ContextDetailDTO:
         conversation = self._require_conversation(conversation_id)
         messages = self._context_messages(conversation_id)
         budget = self._context_budget()
@@ -133,12 +136,19 @@ class AssistantService:
             messages,
             summary=summary,
             page_context=conversation.initial_context,
+            tool_schemas=self._context_tool_schemas(),
+            compact_history=latest is not None,
             budget=budget,
         )
         return ContextDetailDTO(
             conversation_id=conversation_id,
             usage=usage,
             snapshot=self._snapshot_dto(latest) if latest else None,
+            last_compression=(
+                self._compression_dto(compression_result)
+                if compression_result is not None
+                else self._snapshot_compression_dto(latest)
+            ),
             status=usage.state,
         )
 
@@ -221,14 +231,16 @@ class AssistantService:
         result = await engine.prepare(
             messages,
             existing_summary=existing_summary,
+            existing_summary_message_count=latest.source_message_count if latest else 0,
             mode=mode,
             force_compress=force_compress,
             page_context=conversation.initial_context,
+            tool_schemas=self._context_tool_schemas(),
             budget=self._context_budget(),
         )
         if result.compressed and result.summary is not None:
             non_system_rows = rows
-            old_count = result.compressed_message_count
+            old_count = result.covered_message_count
             covered_until = (
                 non_system_rows[old_count - 1].id if old_count > 0 else None
             )
@@ -452,6 +464,7 @@ class AssistantService:
         return FailoverContextSummarizer(
             self.build_context_compression_client(),
             temperature=config["compression_temperature"],
+            max_summary_tokens=config["summary_max_tokens"],
         )
 
     def _context_budget(self) -> ContextBudget:
@@ -461,12 +474,14 @@ class AssistantService:
             soft_limit_tokens=config["soft_limit_tokens"],
             hard_limit_tokens=config["hard_limit_tokens"],
             keep_recent_messages=config["keep_recent_messages"],
+            summary_max_tokens=config["summary_max_tokens"],
         )
 
     def _context_config_values(self) -> dict[str, object]:
         defaults = {
             "compression_model_id": getattr(self._settings, "context_compression_model_id", None),
             "compression_temperature": getattr(self._settings, "context_compression_temperature", 0.1),
+            "summary_max_tokens": getattr(self._settings, "context_summary_max_tokens", 800),
             "max_tokens": getattr(self._settings, "context_max_tokens", 12_000),
             "soft_limit_tokens": getattr(self._settings, "context_soft_limit_tokens", 8_400),
             "hard_limit_tokens": getattr(self._settings, "context_hard_limit_tokens", 10_200),
@@ -475,6 +490,7 @@ class AssistantService:
         casts = {
             "compression_model_id": int,
             "compression_temperature": float,
+            "summary_max_tokens": int,
             "max_tokens": int,
             "soft_limit_tokens": int,
             "hard_limit_tokens": int,
@@ -494,6 +510,13 @@ class AssistantService:
                 continue
         return AssistantConfigUpdate(**defaults).model_dump()
 
+    def _context_tool_schemas(self) -> list[dict]:
+        """Estimate the definitions registered for the assistant model input."""
+        return [
+            tool.openai_schema()
+            for tool in build_panwatch_tool_registry(self._repository.session).registered_tools()
+        ]
+
     @staticmethod
     def _snapshot_dto(snapshot) -> ContextSnapshotDTO:
         return ContextSnapshotDTO(
@@ -505,6 +528,38 @@ class AssistantService:
             usage_before=ContextUsage.model_validate(snapshot.usage_before or {}),
             usage_after=ContextUsage.model_validate(snapshot.usage_after or {}),
             created_at=snapshot.created_at,
+        )
+
+    @staticmethod
+    def _compression_dto(result) -> ContextCompressionDTO:
+        before = result.usage_before.total_tokens
+        after = result.usage_after.total_tokens
+        saved = max(0, before - after)
+        return ContextCompressionDTO(
+            status=result.compression_status,
+            mode=result.mode,
+            usage_before=result.usage_before,
+            usage_after=result.usage_after,
+            saved_tokens=saved,
+            saved_percent=round(saved / max(before, 1) * 100),
+            compressed_message_count=result.compressed_message_count,
+        )
+
+    @classmethod
+    def _snapshot_compression_dto(cls, snapshot) -> ContextCompressionDTO | None:
+        if snapshot is None or not snapshot.usage_before or not snapshot.usage_after:
+            return None
+        before = ContextUsage.model_validate(snapshot.usage_before)
+        after = ContextUsage.model_validate(snapshot.usage_after)
+        saved = max(0, before.total_tokens - after.total_tokens)
+        return ContextCompressionDTO(
+            status="compressed",
+            mode=ContextCompressionMode(snapshot.mode),
+            usage_before=before,
+            usage_after=after,
+            saved_tokens=saved,
+            saved_percent=round(saved / max(before.total_tokens, 1) * 100),
+            compressed_message_count=snapshot.source_message_count,
         )
 
     def create_task(self, conversation_id: int, user_message_id: int):

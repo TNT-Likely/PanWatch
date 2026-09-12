@@ -14,9 +14,16 @@ const SECTION_LABELS: Record<string, string> = {
   system: '系统指令',
   summary: '结构化摘要',
   page_context: '页面上下文',
+  tool_definitions: '工具定义',
   history: '历史消息',
   recent_messages: '最近消息',
 }
+
+const STATUS_LABELS = {
+  not_needed: '本次无需压缩',
+  compressed: '压缩完成',
+  no_gain: '本次压缩无收益，已保留原上下文',
+} as const
 
 const MODE_LABELS: Array<{ mode: AssistantContextSnapshot['mode']; label: string }> = [
   { mode: 'balanced', label: '平衡压缩' },
@@ -47,9 +54,9 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
       {!loading && detail && (
         <>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="font-medium tabular-nums">{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()} tokens</span>
+            <span className="font-medium tabular-nums">估算输入 Token：{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
             <span className={detail.status === 'needs_compression' ? 'text-rose-600' : detail.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'}>
-              {usagePercent(detail.usage)}%
+              {detail.status === 'needs_compression' ? '需要压缩' : detail.status === 'warning' ? '接近上限' : '正常'} · {usagePercent(detail.usage)}%
             </span>
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -72,6 +79,18 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
               {detail.snapshot.summary.goal.length > 0 && <p className="mt-1 truncate">目标：{detail.snapshot.summary.goal[0]}</p>}
               {detail.snapshot.summary.current_state && <p className="truncate">状态：{detail.snapshot.summary.current_state}</p>}
               {detail.snapshot.summary.open_items.length > 0 && <p className="truncate">待办：{detail.snapshot.summary.open_items[0]}</p>}
+            </div>
+          )}
+          {detail.last_compression && (
+            <div className="mt-3 border-t border-border/40 pt-2 text-muted-foreground">
+              <div className={detail.last_compression.status === 'no_gain' ? 'text-amber-600' : 'text-emerald-600'}>
+                {STATUS_LABELS[detail.last_compression.status]}
+              </div>
+              {detail.last_compression.status === 'compressed' && (
+                <p className="mt-1">
+                  {detail.last_compression.usage_before.total_tokens.toLocaleString()} → {detail.last_compression.usage_after.total_tokens.toLocaleString()}，节省 {detail.last_compression.saved_tokens.toLocaleString()} Token（{detail.last_compression.saved_percent}%）
+                </p>
+              )}
             </div>
           )}
           <div className="mt-3 flex flex-wrap gap-1.5">

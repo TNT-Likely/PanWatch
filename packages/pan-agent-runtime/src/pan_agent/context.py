@@ -28,6 +28,7 @@ class ContextBudget(BaseModel):
     soft_limit_tokens: int = Field(default=8_400, ge=128)
     hard_limit_tokens: int = Field(default=10_200, ge=256)
     keep_recent_messages: int = Field(default=8, ge=1, le=100)
+    summary_max_tokens: int = Field(default=800, ge=128, le=4_000)
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> ContextBudget:
@@ -90,6 +91,8 @@ class ContextBuildResult(BaseModel):
     compressed: bool = False
     mode: ContextCompressionMode = ContextCompressionMode.BALANCED
     compressed_message_count: int = Field(default=0, ge=0)
+    covered_message_count: int = Field(default=0, ge=0)
+    compression_status: Literal["not_needed", "compressed", "no_gain"] = "not_needed"
 
 
 class ContextSummarizer(Protocol):
@@ -118,13 +121,32 @@ def _message_tokens(message: ModelMessage) -> int:
     return estimate_tokens(payload)
 
 
-def _normalize_summary(summary: ContextSummary) -> ContextSummary:
+def _normalize_summary(summary: ContextSummary, *, max_tokens: int = 800) -> ContextSummary:
     """Keep a provider response from replacing history with another giant prompt."""
 
     values = summary.model_dump(mode="python")
     for field in ("goal", "constraints", "decisions", "facts", "open_items", "tool_findings"):
         values[field] = [str(item)[:240] for item in values[field][:4]]
     values["current_state"] = str(values["current_state"])[:400]
+
+    # A structured response can still be larger than the history it replaces.
+    # Trim lower-priority list items until the serialized summary fits its own
+    # budget, while retaining the goal and current state as long as possible.
+    removable_fields = ("tool_findings", "facts", "decisions", "constraints", "open_items", "goal")
+    while estimate_tokens(json.dumps(values, ensure_ascii=False, sort_keys=True)) > max_tokens:
+        removed = False
+        for field in removable_fields:
+            if values[field]:
+                values[field].pop()
+                removed = True
+                break
+        if removed:
+            continue
+        current_state = values["current_state"]
+        if len(current_state) > 80:
+            values["current_state"] = current_state[: max(80, len(current_state) - 80)]
+            continue
+        break
     return ContextSummary.model_validate(values)
 
 
@@ -170,6 +192,8 @@ class ContextEngine:
         *,
         summary: ContextSummary | None = None,
         page_context: str | None = None,
+        tool_schemas: Sequence[object] | None = None,
+        compact_history: bool = False,
         budget: ContextBudget | None = None,
     ) -> ContextUsage:
         active_budget = budget or ContextBudget()
@@ -186,15 +210,30 @@ class ContextEngine:
             else:
                 system_tokens += _message_tokens(message)
         non_system = [message for message in messages if message.role != "system"]
+        if compact_history:
+            non_system = non_system[-active_budget.keep_recent_messages :]
         recent_start = max(0, len(non_system) - active_budget.keep_recent_messages)
         older_tokens = sum(_message_tokens(message) for message in non_system[:recent_start])
         recent_tokens = sum(_message_tokens(message) for message in non_system[recent_start:])
         summary_tokens = embedded_summary_tokens or (estimate_tokens(summary.model_dump_json()) if summary else 0)
         page_tokens = embedded_page_tokens or (estimate_tokens(page_context) if page_context else 0)
+        serialized_tools: list[object] = []
+        for schema in tool_schemas or []:
+            if hasattr(schema, "openai_schema"):
+                schema = schema.openai_schema()
+            elif hasattr(schema, "model_dump"):
+                schema = schema.model_dump(mode="json")
+            serialized_tools.append(schema)
+        tool_tokens = (
+            estimate_tokens(json.dumps(serialized_tools, ensure_ascii=False, sort_keys=True))
+            if serialized_tools
+            else 0
+        )
         sections = [
             ContextSectionUsage(name="system", tokens=system_tokens),
             ContextSectionUsage(name="summary", tokens=summary_tokens),
             ContextSectionUsage(name="page_context", tokens=page_tokens),
+            ContextSectionUsage(name="tool_definitions", tokens=tool_tokens),
             ContextSectionUsage(name="history", tokens=older_tokens),
             ContextSectionUsage(name="recent_messages", tokens=recent_tokens),
         ]
@@ -211,26 +250,30 @@ class ContextEngine:
         messages: Sequence[ModelMessage],
         *,
         existing_summary: ContextSummary | None = None,
+        existing_summary_message_count: int = 0,
         mode: ContextCompressionMode = ContextCompressionMode.BALANCED,
         force_compress: bool = False,
         page_context: str | None = None,
+        tool_schemas: Sequence[object] | None = None,
         budget: ContextBudget | None = None,
     ) -> ContextBuildResult:
         active_budget = budget or ContextBudget()
         original = [message.model_copy(deep=True) for message in messages]
-        usage_before = self.measure(
-            original,
-            summary=existing_summary,
-            page_context=page_context,
-            budget=active_budget,
-        )
-        should_compress = force_compress or usage_before.total_tokens >= active_budget.soft_limit_tokens
         system_messages = [message for message in original if message.role == "system"]
         history = [message for message in original if message.role != "system"]
-        older = history[:-active_budget.keep_recent_messages]
+        covered_count = min(
+            max(existing_summary_message_count, 0), len(history)
+        ) if existing_summary else 0
+        already_compacted = existing_summary is not None and covered_count > 0
         recent = history[-active_budget.keep_recent_messages:]
+        unsummarized_history = history[covered_count:]
+        older = unsummarized_history[:-active_budget.keep_recent_messages]
 
-        def build_messages(summary: ContextSummary | None) -> list[ModelMessage]:
+        def build_messages(
+            summary: ContextSummary | None,
+            *,
+            compact_history: bool,
+        ) -> list[ModelMessage]:
             result = [message.model_copy(deep=True) for message in system_messages]
             if page_context:
                 result.append(ModelMessage(role="system", content=f"页面上下文:\n{page_context}"))
@@ -242,17 +285,40 @@ class ContextEngine:
                         + summary.model_dump_json(ensure_ascii=False),
                     )
                 )
-            result.extend(message.model_copy(deep=True) for message in (recent if should_compress else history))
+            selected_history = recent if compact_history else history
+            result.extend(message.model_copy(deep=True) for message in selected_history)
             return result
 
+        current_messages = build_messages(
+            existing_summary,
+            compact_history=already_compacted,
+        ) if already_compacted else original
+        usage_before = self.measure(
+            current_messages,
+            page_context=page_context,
+            tool_schemas=tool_schemas,
+            budget=active_budget,
+        )
+        should_compress = force_compress or usage_before.total_tokens >= active_budget.soft_limit_tokens
+
         if not should_compress or not older:
-            result_messages = build_messages(existing_summary)
+            result_messages = build_messages(
+                existing_summary,
+                compact_history=already_compacted or existing_summary is not None,
+            )
             return ContextBuildResult(
                 messages=result_messages,
                 summary=existing_summary,
                 usage_before=usage_before,
-                usage_after=self.measure(result_messages, budget=active_budget),
+                usage_after=self.measure(
+                    result_messages,
+                    page_context=page_context,
+                    tool_schemas=tool_schemas,
+                    budget=active_budget,
+                ),
                 mode=mode,
+                covered_message_count=covered_count,
+                compression_status="no_gain" if force_compress else "not_needed",
             )
 
         summary_input = list(older)
@@ -268,14 +334,43 @@ class ContextEngine:
             summary = await self._summarizer.summarize(summary_input, mode=mode)
         except Exception:
             summary = await ExtractiveContextSummarizer().summarize(summary_input, mode=mode)
-        summary = _normalize_summary(summary)
-        result_messages = build_messages(summary)
+        summary = _normalize_summary(summary, max_tokens=active_budget.summary_max_tokens)
+        result_messages = build_messages(summary, compact_history=True)
+        usage_after = self.measure(
+            result_messages,
+            page_context=page_context,
+            tool_schemas=tool_schemas,
+            budget=active_budget,
+        )
+        if usage_after.total_tokens >= usage_before.total_tokens:
+            fallback_messages = build_messages(
+                existing_summary,
+                compact_history=existing_summary is not None,
+            ) if existing_summary else original
+            fallback_usage = self.measure(
+                fallback_messages,
+                page_context=page_context,
+                tool_schemas=tool_schemas,
+                budget=active_budget,
+            )
+            return ContextBuildResult(
+                messages=fallback_messages,
+                summary=existing_summary,
+                usage_before=usage_before,
+                usage_after=fallback_usage,
+                mode=mode,
+                compressed_message_count=len(older),
+                covered_message_count=covered_count,
+                compression_status="no_gain",
+            )
         return ContextBuildResult(
             messages=result_messages,
             summary=summary,
             usage_before=usage_before,
-            usage_after=self.measure(result_messages, budget=active_budget),
+            usage_after=usage_after,
             compressed=True,
             mode=mode,
             compressed_message_count=len(older),
+            covered_message_count=covered_count + len(older),
+            compression_status="compressed",
         )

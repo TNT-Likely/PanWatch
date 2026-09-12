@@ -16,13 +16,17 @@ result = await engine.prepare(
         soft_limit_tokens=8_400,
         hard_limit_tokens=10_200,
         keep_recent_messages=8,
+        summary_max_tokens=800,
     ),
 )
 ```
 
 `result.usage_before` is the measured input before compaction and
-`result.usage_after` is the input that should be sent to the model. The UI can
-display `usage_after.state` as `normal`, `warning`, or `needs_compression`.
+`result.usage_after` is the input that should be sent to the model. The
+measurement is an estimate unless the host replaces it with provider usage.
+The breakdown includes system instructions, summaries, page context, tool
+definitions, older history, and recent messages. The UI can display
+`usage_after.state` as `normal`, `warning`, or `needs_compression`.
 
 ## Compression behavior
 
@@ -31,6 +35,11 @@ display `usage_after.state` as `normal`, `warning`, or `needs_compression`.
   window.
 - `force_compress=True` provides an explicit user action.
 - Trusted system messages and page context are retained.
+- A compaction candidate is accepted only when its estimated input is smaller
+  than the current input. Otherwise the original context is kept and
+  `compression_status` is `no_gain`.
+- A previously persisted summary replaces the messages it covers when measuring
+  the next model input; the original conversation records remain immutable.
 - A structured summary contains `goal`, `constraints`, `decisions`, `facts`,
   `current_state`, `open_items`, and `tool_findings`.
 - A summarizer failure falls back to `ExtractiveContextSummarizer`; the engine

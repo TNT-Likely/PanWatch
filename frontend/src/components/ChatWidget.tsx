@@ -221,7 +221,17 @@ export default function ChatWidget({
     try {
       const next = await chatApi.compressAssistantContext(activeConvId, mode)
       setContextDetail(next)
-      appendTrace({ event: 'context_prepared', data: { compressed: true, mode } })
+      const compression = next.last_compression
+      appendTrace({
+        event: 'context_prepared',
+        data: {
+          compressed: compression?.status === 'compressed',
+          compression_status: compression?.status || 'not_needed',
+          mode,
+          usage_before: compression?.usage_before,
+          usage_after: compression?.usage_after,
+        },
+      })
     } catch {
       setContextError('上下文压缩失败，原始消息未改变。')
     } finally {
@@ -500,11 +510,20 @@ export default function ChatWidget({
             } : previous)
           }
         },
-        onContextPrepared: ({ usageAfter }) => {
+        onContextPrepared: ({ compressedMessageCount, compressionStatus, mode, usageAfter, usageBefore }) => {
           setContextDetail((previous) => previous ? {
             ...previous,
             usage: usageAfter,
             status: usageAfter.state,
+            last_compression: {
+              status: compressionStatus,
+              mode,
+              usage_before: usageBefore,
+              usage_after: usageAfter,
+              saved_tokens: Math.max(0, usageBefore.total_tokens - usageAfter.total_tokens),
+              saved_percent: Math.round(Math.max(0, usageBefore.total_tokens - usageAfter.total_tokens) / Math.max(usageBefore.total_tokens, 1) * 100),
+              compressed_message_count: compressedMessageCount,
+            },
           } : previous)
         },
         onTrace: appendTrace,

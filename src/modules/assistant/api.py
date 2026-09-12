@@ -137,6 +137,7 @@ class _SSEEventSink:
                         "context_prepared",
                         {
                             "compressed": self._context_result.compressed,
+                            "compression_status": self._context_result.compression_status,
                             "mode": self._context_result.mode.value,
                             "usage_before": self._context_result.usage_before.model_dump(mode="json"),
                             "usage_after": self._context_result.usage_after.model_dump(mode="json"),
@@ -467,8 +468,11 @@ async def compress_context(
     service: AssistantService = Depends(get_assistant_service),
 ) -> ContextDetailDTO:
     try:
-        await service.compress_context(conversation_id, mode=body.mode)
-        return service.get_context_detail(conversation_id)
+        result = await service.compress_context(conversation_id, mode=body.mode)
+        return service.get_context_detail(
+            conversation_id,
+            compression_result=result,
+        )
     except AssistantNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

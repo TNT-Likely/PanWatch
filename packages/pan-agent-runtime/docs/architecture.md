@@ -66,7 +66,9 @@ PanWatch supplies the failover model adapter, the configurable context
 summarizer, SQLAlchemy snapshots, FastAPI/SSE mapping, and React context/trace
 views. The compression model is selected by the host: an explicit
 `CONTEXT_COMPRESSION_MODEL_ID` uses that persisted model and its existing
-failover chain; otherwise the default assistant model is used.
+failover chain; otherwise the default assistant model is used. The host also
+controls `CONTEXT_SUMMARY_MAX_TOKENS`, which bounds the structured summary
+before it can replace older history.
 
 The runtime package never sees a model ID or a database session.
 

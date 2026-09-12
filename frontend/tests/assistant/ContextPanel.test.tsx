@@ -61,7 +61,7 @@ describe('ContextPanel', () => {
     const onCompress = vi.fn()
     render(<ContextPanel detail={detail} loading={false} compressing={false} onCompress={onCompress} />)
 
-    expect(screen.getByText('9,000 / 12,000 tokens')).toBeTruthy()
+    expect(screen.getByText('估算输入 Token：9,000 / 12,000')).toBeTruthy()
     expect(screen.getByText('历史消息')).toBeTruthy()
     expect(screen.getByText(/分析持仓/)).toBeTruthy()
 

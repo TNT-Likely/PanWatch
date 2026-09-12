@@ -265,6 +265,7 @@ def test_assistant_stream_exposes_context_usage_before_runtime_steps():
         usage_before=usage_before,
         usage_after=usage_after,
         compressed=True,
+        compression_status="compressed",
         compressed_message_count=4,
     )
     service = _FakeService(_CompletedRuntime(), context_result=context)
@@ -285,6 +286,7 @@ def test_assistant_stream_exposes_context_usage_before_runtime_steps():
         "context_prepared",
         {
             "compressed": True,
+            "compression_status": "compressed",
             "mode": "balanced",
             "usage_before": usage_before.model_dump(mode="json"),
             "usage_after": usage_after.model_dump(mode="json"),

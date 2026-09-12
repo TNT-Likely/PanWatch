@@ -271,6 +271,7 @@ result = await ContextEngine(my_summarizer).prepare(
         soft_limit_tokens=8_400,
         hard_limit_tokens=10_200,
         keep_recent_messages=8,
+        summary_max_tokens=800,
     ),
 )
 next_request_messages = result.messages

@@ -61,6 +61,16 @@ export interface ContextUsage {
   sections: ContextSectionUsage[]
 }
 
+export interface ContextCompressionReport {
+  status: 'not_needed' | 'compressed' | 'no_gain'
+  mode: AssistantContextSnapshot['mode']
+  usage_before: ContextUsage
+  usage_after: ContextUsage
+  saved_tokens: number
+  saved_percent: number
+  compressed_message_count: number
+}
+
 export interface AssistantContextSnapshot {
   version: number
   mode: 'balanced' | 'preserve_details' | 'handoff'
@@ -84,6 +94,7 @@ export interface AssistantContextDetail {
   conversation_id: number
   usage: ContextUsage
   snapshot?: AssistantContextSnapshot | null
+  last_compression?: ContextCompressionReport | null
   compression_available: boolean
   status: ContextUsage['state']
 }
@@ -109,6 +120,7 @@ export interface AssistantConfigModel {
 export interface AssistantConfig {
   compression_model_id: number | null
   compression_temperature: number
+  summary_max_tokens: number
   max_tokens: number
   soft_limit_tokens: number
   hard_limit_tokens: number
@@ -195,6 +207,7 @@ export interface ChatStreamCallbacks {
   /** Context was measured and, when needed, compacted before the agent loop. */
   onContextPrepared?: (info: {
     compressed: boolean
+    compressionStatus: ContextCompressionReport['status']
     mode: AssistantContextSnapshot['mode']
     usageBefore: ContextUsage
     usageAfter: ContextUsage
@@ -292,6 +305,7 @@ async function sendMessageStream(
       case 'context_prepared':
         callbacks.onContextPrepared?.({
           compressed: !!d.compressed,
+          compressionStatus: d.compression_status || (d.compressed ? 'compressed' : 'not_needed'),
           mode: d.mode || 'balanced',
           usageBefore: d.usage_before as ContextUsage,
           usageAfter: d.usage_after as ContextUsage,
