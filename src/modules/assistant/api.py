@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 
+from .grounding import UNVERIFIED_MUTATION_ERROR, unverified_mutation_claim
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
@@ -60,6 +61,7 @@ _ERROR_MESSAGES = {
     "tool_call_limit": "助手调用步骤过多，请缩小问题范围后重试。",
     "repeated_tool_call": "助手检测到重复工具调用，请重试或换一种问法。",
     "runtime_failed": "助手暂时不可用，请稍后重试。",
+    UNVERIFIED_MUTATION_ERROR: "助手没有执行写入操作，请重新确认后再试。",
     "transport_timeout": "助手响应超时，请稍后重试。",
     "transport_failed": "助手任务执行失败，请稍后重试。",
     "transport_setup_failed": "助手任务执行失败，请稍后重试。",
@@ -108,9 +110,14 @@ class SendAssistantMessageCommand(BaseModel):
 
 class _SSEEventSink:
     def __init__(
-        self, queue: asyncio.Queue, service: AssistantService, task_id: int
+        self,
+        queue: asyncio.Queue,
+        service: AssistantService,
+        task_id: int,
+        completed_tools: list[dict] | None = None,
     ) -> None:
         self._queue, self._service, self._task_id = queue, service, task_id
+        self._completed_tools = completed_tools
 
     async def publish(self, event) -> None:
         data = dict(event.data)
@@ -123,6 +130,13 @@ class _SSEEventSink:
                 ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
             )
         elif event.type is EventType.TOOL_COMPLETED:
+            if self._completed_tools is not None:
+                self._completed_tools.append(
+                    {
+                        "name": data.get("tool", ""),
+                        "ok": bool(data.get("ok")),
+                    }
+                )
             self._service.record_tool_completion(self._task_id, data)
             await self._queue.put(
                 (
@@ -167,6 +181,12 @@ async def _stream_runtime(
 ) -> StreamingResponse:
     """Run or resume one task while keeping HTTP transport out of the runtime."""
     queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
+    completed_tools: list[dict] = []
+    mutation_tool_names = (
+        set(service.mutation_tool_names())
+        if callable(getattr(service, "mutation_tool_names", None))
+        else set()
+    )
 
     async def fail(error_code: str, *, exc_info: bool = False) -> None:
         logger.error(
@@ -183,7 +203,9 @@ async def _stream_runtime(
 
     async def run_runtime_with_timeout() -> RunResult:
         runtime_task = asyncio.create_task(
-            runtime_call(_SSEEventSink(queue, service, task_id))
+            runtime_call(
+                _SSEEventSink(queue, service, task_id, completed_tools)
+            )
         )
 
         def consume_background_result(completed_task: asyncio.Task) -> None:
@@ -229,6 +251,14 @@ async def _stream_runtime(
                 return
             if result.status is not RunStatus.COMPLETED or not result.answer.strip():
                 await fail(result.error_code or "empty_answer")
+                return
+            mutation_error = unverified_mutation_claim(
+                result.answer,
+                completed_tools,
+                mutation_tool_names,
+            )
+            if mutation_error:
+                await fail(UNVERIFIED_MUTATION_ERROR)
                 return
             final = service.record_assistant_message(conversation_id, result.answer)
             service.finish_task(task_id, result, final.id)

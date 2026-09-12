@@ -46,6 +46,12 @@ class _FakeService:
     def fail_task(self, _task_id, error_code):
         self.finished.append(("failed", error_code))
 
+    def mutation_tool_names(self):
+        return {"update_price_alert"}
+
+    def record_tool_completion(self, _task_id, _data):
+        return None
+
 
 class _CompletedRuntime:
     request = None
@@ -66,6 +72,46 @@ class _TimedOutRuntime:
 class _EmptyCompletedRuntime:
     async def run(self, _request, _sink):
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="")
+
+
+class _SuccessfulMutationRuntime:
+    async def run(self, _request, sink):
+        await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_COMPLETED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "update_price_alert",
+                    "ok": True,
+                    "summary": "提醒已更新",
+                },
+            )
+        )
+        return RunResult(
+            run_id="12", status=RunStatus.COMPLETED, answer="提醒已成功更新。"
+        )
+
+
+class _FailedMutationRuntime:
+    async def run(self, _request, sink):
+        await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_COMPLETED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "update_price_alert",
+                    "ok": False,
+                    "summary": "未找到提醒",
+                },
+            )
+        )
+        return RunResult(
+            run_id="12", status=RunStatus.COMPLETED, answer="提醒更新没有成功。"
+        )
 
 
 class _HangingRuntime:
@@ -149,6 +195,7 @@ def test_assistant_messages_prepend_tool_first_instruction():
     assert messages[0].content == prompt.ASSISTANT_SYSTEM_PROMPT
     assert "主动调用工具" in messages[0].content
     assert "相同工具和参数最多调用一次" in messages[0].content
+    assert "没有成功工具结果时绝不能声称已创建、修改或删除" in messages[0].content
     assert messages[1].content == "分析 600519"
 
 
@@ -190,6 +237,81 @@ def test_assistant_stream_rejects_an_empty_completed_reply():
     )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "empty_answer")]
+
+
+def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool():
+    """A text-only mutation claim must never be persisted as a completed answer."""
+
+    class _HallucinatedMutationRuntime:
+        async def run(self, _request, sink):
+            await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
+            return RunResult(
+                run_id="12",
+                status=RunStatus.COMPLETED,
+                answer="两条提醒的名称已成功更新。",
+            )
+
+    service = _FakeService(_HallucinatedMutationRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="修改两条提醒名称"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1] == (
+        "error",
+        {
+            "message": "助手没有执行写入操作，请重新确认后再试。",
+            "code": "unverified_mutation",
+        },
+    )
+    assert service.recorded_assistant_messages == []
+    assert service.finished == [("failed", "unverified_mutation")]
+
+
+def test_assistant_stream_allows_mutation_claim_with_successful_write_tool():
+    """A successful registered write event is sufficient evidence for completion."""
+    service = _FakeService(_SuccessfulMutationRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="修改提醒名称"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1][0] == "done"
+    assert events[-1][1]["content"] == "提醒已成功更新。"
+    assert service.recorded_assistant_messages == ["提醒已成功更新。"]
+    assert service.finished == [("completed", None)]
+
+
+def test_assistant_stream_allows_explicit_failed_mutation_result():
+    """A failure explanation is not mistaken for a claim that the write succeeded."""
+    service = _FakeService(_FailedMutationRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="修改提醒名称"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    assert events[-1][0] == "done"
+    assert events[-1][1]["content"] == "提醒更新没有成功。"
+    assert service.recorded_assistant_messages == ["提醒更新没有成功。"]
+    assert service.finished == [("completed", None)]
 
 
 def test_assistant_stream_starts_work_even_if_the_client_never_reads_the_body():

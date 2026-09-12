@@ -187,6 +187,26 @@ class AssistantService:
             self._repository, self._repository.permission_snapshot()
         )
 
+    def mutation_tool_names(self) -> set[str]:
+        """Return registered tools that can mutate PanWatch state.
+
+        The answer-grounding guard uses the registry metadata instead of a
+        second hard-coded list, so newly registered write tools are covered by
+        the same invariant automatically.
+        """
+        mutation_risks = {
+            ToolRisk.WRITE,
+            ToolRisk.EXTERNAL,
+            ToolRisk.DESTRUCTIVE,
+        }
+        return {
+            tool.name
+            for tool in build_panwatch_tool_registry(
+                self._repository.session
+            ).registered_tools()
+            if tool.risk in mutation_risks
+        }
+
     def get_tool_permissions(self) -> dict:
         """Return default risk policy plus registered-tool overrides for settings."""
         snapshot = self._repository.permission_snapshot()
