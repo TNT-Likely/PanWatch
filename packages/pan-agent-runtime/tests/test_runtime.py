@@ -34,7 +34,9 @@ class FixedModel:
         self.received_messages = []
 
     async def run_turn(self, messages, _tools, _emit_token):
-        self.received_messages.append([message.model_copy(deep=True) for message in messages])
+        self.received_messages.append(
+            [message.model_copy(deep=True) for message in messages]
+        )
         return next(self.turns)
 
 
@@ -65,8 +67,13 @@ def request(**kwargs):
 def registry(executor):
     result = ToolRegistry()
     result.register(
-        ToolSpec(name="lookup", title="查询", description="read", risk=ToolRisk.READ,
-                 input_schema={"type": "object", "properties": {}}),
+        ToolSpec(
+            name="lookup",
+            title="查询",
+            description="read",
+            risk=ToolRisk.READ,
+            input_schema={"type": "object", "properties": {}},
+        ),
         executor,
     )
     return result
@@ -75,8 +82,13 @@ def registry(executor):
 def write_registry(executor):
     result = ToolRegistry()
     result.register(
-        ToolSpec(name="write_note", title="写入备注", description="write", risk=ToolRisk.WRITE,
-                 input_schema={"type": "object", "properties": {}}),
+        ToolSpec(
+            name="write_note",
+            title="写入备注",
+            description="write",
+            risk=ToolRisk.WRITE,
+            input_schema={"type": "object", "properties": {}},
+        ),
         executor,
     )
     return result
@@ -86,7 +98,9 @@ def test_unknown_tool_is_never_executed_and_returns_partial_result():
     model = FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="unknown")])])
     sink = CollectingSink()
 
-    result = asyncio.run(AgentRuntime(model, registry(lambda *_: None)).run(request(), sink))
+    result = asyncio.run(
+        AgentRuntime(model, registry(lambda *_: None)).run(request(), sink)
+    )
 
     assert result.status is RunStatus.PARTIAL
     assert result.error_code == "unknown_tool"
@@ -101,13 +115,19 @@ def test_tool_failure_is_retried_once_and_answer_is_completed():
         attempts += 1
         if attempts == 1:
             raise RuntimeError("temporary")
-        return ToolResult.success(summary="ok", data={}, sources=[{"name": "test"}],
-                                  observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC))
+        return ToolResult.success(
+            summary="ok",
+            data={},
+            sources=[{"name": "test"}],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
 
-    model = FixedModel([
-        ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup")]),
-        ModelTurn(content="完成"),
-    ])
+    model = FixedModel(
+        [
+            ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup")]),
+            ModelTurn(content="完成"),
+        ]
+    )
     sink = CollectingSink()
 
     result = asyncio.run(AgentRuntime(model, registry(flaky_tool)).run(request(), sink))
@@ -127,12 +147,22 @@ def test_tool_result_keeps_the_preceding_call_for_the_next_model_turn():
             observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
         )
 
-    model = FixedModel([
-        ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup", arguments={"symbol": "CN:601238"})]),
-        ModelTurn(content="完成"),
-    ])
+    model = FixedModel(
+        [
+            ModelTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-1", name="lookup", arguments={"symbol": "CN:601238"}
+                    )
+                ]
+            ),
+            ModelTurn(content="完成"),
+        ]
+    )
 
-    result = asyncio.run(AgentRuntime(model, registry(lookup)).run(request(), CollectingSink()))
+    result = asyncio.run(
+        AgentRuntime(model, registry(lookup)).run(request(), CollectingSink())
+    )
 
     next_turn_messages = model.received_messages[1]
     assert result.status is RunStatus.COMPLETED
@@ -152,7 +182,9 @@ def test_tool_timeout_returns_partial_result():
     model = FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup")])])
 
     result = asyncio.run(
-        AgentRuntime(model, registry(slow_tool)).run(request(tool_timeout_seconds=1), CollectingSink())
+        AgentRuntime(model, registry(slow_tool)).run(
+            request(tool_timeout_seconds=1), CollectingSink()
+        )
     )
 
     assert result.status is RunStatus.PARTIAL
@@ -162,7 +194,12 @@ def test_tool_timeout_returns_partial_result():
 def test_run_timeout_bounds_a_tool_call_even_when_tool_timeout_is_longer():
     async def slow_tool(_request, _arguments):
         await asyncio.sleep(1.2)
-        return ToolResult.success(summary="late", data={}, sources=[], observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC))
+        return ToolResult.success(
+            summary="late",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
 
     model = FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="lookup")])])
     started = time.monotonic()
@@ -184,20 +221,76 @@ def test_ask_policy_pauses_without_executing_and_returns_a_checkpoint():
         nonlocal executor_calls
         executor_calls += 1
         return ToolResult.success(
-            summary="written", data={}, sources=[], observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC)
+            summary="written",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
         )
 
     tools = write_registry(recording_executor)
-    model = FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note", arguments={"text": "x"})])])
+    model = FixedModel(
+        [
+            ModelTurn(
+                tool_calls=[
+                    ToolCall(id="call-1", name="write_note", arguments={"text": "x"})
+                ]
+            )
+        ]
+    )
 
-    result = asyncio.run(AgentRuntime(model, tools, policy=AskPolicy()).run(request(), CollectingSink()))
+    result = asyncio.run(
+        AgentRuntime(model, tools, policy=AskPolicy()).run(request(), CollectingSink())
+    )
 
     assert result.status is RunStatus.WAITING_FOR_APPROVAL
     assert executor_calls == 0
     assert result.checkpoint is not None
     assert result.checkpoint.pending_approvals == [
-        PendingApproval(call_id="call-1", tool_name="write_note", risk=ToolRisk.WRITE, arguments={"text": "x"})
+        PendingApproval(
+            call_id="call-1",
+            tool_name="write_note",
+            risk=ToolRisk.WRITE,
+            arguments={"text": "x"},
+        )
     ]
+
+
+def test_repeated_identical_tool_calls_are_stopped_before_the_run_can_loop_forever():
+    executor_calls = 0
+
+    async def recording_executor(_request, _arguments):
+        nonlocal executor_calls
+        executor_calls += 1
+        return ToolResult.success(
+            summary="查询完成",
+            data={"value": 1},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        )
+
+    class RepeatingModel:
+        def __init__(self):
+            self.calls = 0
+
+        async def run_turn(self, _messages, _tools, _emit_token):
+            self.calls += 1
+            return ModelTurn(
+                tool_calls=[
+                    ToolCall(id=f"call-{self.calls}", name="lookup", arguments={})
+                ]
+            )
+
+    model = RepeatingModel()
+    result = asyncio.run(
+        AgentRuntime(model, registry(recording_executor)).run(
+            request(max_steps=12, max_tool_calls=24), CollectingSink()
+        )
+    )
+
+    assert result.status is RunStatus.PARTIAL
+    assert result.error_code == "repeated_tool_call"
+    assert model.calls == 2
+    assert executor_calls == 1
 
 
 def test_resume_approved_call_executes_once_on_a_fresh_runtime_and_completes():
@@ -207,13 +300,26 @@ def test_resume_approved_call_executes_once_on_a_fresh_runtime_and_completes():
         nonlocal executor_calls
         executor_calls += 1
         return ToolResult.success(
-            summary="written", data={}, sources=[], observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC)
+            summary="written",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
         )
 
     tools = write_registry(recording_executor)
     paused = asyncio.run(
         AgentRuntime(
-            FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note", arguments={"text": "x"})])]),
+            FixedModel(
+                [
+                    ModelTurn(
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1", name="write_note", arguments={"text": "x"}
+                            )
+                        ]
+                    )
+                ]
+            ),
             tools,
             policy=AskPolicy(),
         ).run(request(), CollectingSink())
@@ -223,7 +329,10 @@ def test_resume_approved_call_executes_once_on_a_fresh_runtime_and_completes():
     resumed_model = FixedModel([ModelTurn(content="已写入")])
     result = asyncio.run(
         AgentRuntime(resumed_model, tools, policy=AskPolicy()).resume(
-            request(), paused.checkpoint, {"call-1": ApprovalDecision.APPROVED}, CollectingSink()
+            request(),
+            paused.checkpoint,
+            {"call-1": ApprovalDecision.APPROVED},
+            CollectingSink(),
         )
     )
 
@@ -244,7 +353,9 @@ def test_resume_rejected_call_does_not_execute_and_returns_rejection_to_the_mode
     tools = write_registry(recording_executor)
     paused = asyncio.run(
         AgentRuntime(
-            FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")])]),
+            FixedModel(
+                [ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")])]
+            ),
             tools,
             policy=AskPolicy(),
         ).run(request(), CollectingSink())
@@ -254,14 +365,20 @@ def test_resume_rejected_call_does_not_execute_and_returns_rejection_to_the_mode
     resumed_model = FixedModel([ModelTurn(content="无法写入")])
     result = asyncio.run(
         AgentRuntime(resumed_model, tools, policy=AskPolicy()).resume(
-            request(), paused.checkpoint, {"call-1": ApprovalDecision.REJECTED}, CollectingSink()
+            request(),
+            paused.checkpoint,
+            {"call-1": ApprovalDecision.REJECTED},
+            CollectingSink(),
         )
     )
 
     tool_message = resumed_model.received_messages[0][-1]
     assert result.status is RunStatus.COMPLETED
     assert executor_calls == 0
-    assert __import__("json").loads(tool_message.content)["error_code"] == "approval_rejected"
+    assert (
+        __import__("json").loads(tool_message.content)["error_code"]
+        == "approval_rejected"
+    )
 
 
 def test_denied_call_does_not_execute_and_the_model_can_return_a_safe_alternative():
@@ -272,18 +389,25 @@ def test_denied_call_does_not_execute_and_the_model_can_return_a_safe_alternativ
         executor_calls += 1
         raise AssertionError("denied calls must not execute")
 
-    model = FixedModel([
-        ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")]),
-        ModelTurn(content="我无法执行写入操作。"),
-    ])
+    model = FixedModel(
+        [
+            ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")]),
+            ModelTurn(content="我无法执行写入操作。"),
+        ]
+    )
 
     result = asyncio.run(
-        AgentRuntime(model, write_registry(recording_executor), policy=DenyPolicy()).run(request(), CollectingSink())
+        AgentRuntime(
+            model, write_registry(recording_executor), policy=DenyPolicy()
+        ).run(request(), CollectingSink())
     )
 
     assert result.status is RunStatus.COMPLETED
     assert executor_calls == 0
-    assert __import__("json").loads(model.received_messages[1][-1].content)["error_code"] == "permission_denied"
+    assert (
+        __import__("json").loads(model.received_messages[1][-1].content)["error_code"]
+        == "permission_denied"
+    )
 
 
 def test_ask_policy_emits_one_approval_event_for_multiple_calls_in_original_order():
@@ -291,32 +415,54 @@ def test_ask_policy_emits_one_approval_event_for_multiple_calls_in_original_orde
         raise AssertionError("pending calls must not execute")
 
     sink = CollectingSink()
-    model = FixedModel([
-        ModelTurn(tool_calls=[
-            ToolCall(id="call-1", name="write_note", arguments={"text": "first"}),
-            ToolCall(id="call-2", name="write_note", arguments={"text": "second"}),
-        ])
-    ])
+    model = FixedModel(
+        [
+            ModelTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="call-1", name="write_note", arguments={"text": "first"}
+                    ),
+                    ToolCall(
+                        id="call-2", name="write_note", arguments={"text": "second"}
+                    ),
+                ]
+            )
+        ]
+    )
 
-    result = asyncio.run(AgentRuntime(model, write_registry(recording_executor), policy=AskPolicy()).run(request(), sink))
+    result = asyncio.run(
+        AgentRuntime(model, write_registry(recording_executor), policy=AskPolicy()).run(
+            request(), sink
+        )
+    )
 
-    approvals = [event for event in sink.events if event.type is EventType.APPROVAL_REQUIRED]
+    approvals = [
+        event for event in sink.events if event.type is EventType.APPROVAL_REQUIRED
+    ]
     assert result.status is RunStatus.WAITING_FOR_APPROVAL
     assert len(approvals) == 1
-    assert [call["call_id"] for call in approvals[0].data["calls"]] == ["call-1", "call-2"]
+    assert [call["call_id"] for call in approvals[0].data["calls"]] == [
+        "call-1",
+        "call-2",
+    ]
     assert [call["risk"] for call in approvals[0].data["calls"]] == ["write", "write"]
 
 
 def test_resume_requires_decisions_for_exactly_the_pending_calls():
     async def recording_executor(_request, _arguments):
         return ToolResult.success(
-            summary="written", data={}, sources=[], observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC)
+            summary="written",
+            data={},
+            sources=[],
+            observed_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
         )
 
     tools = write_registry(recording_executor)
     paused = asyncio.run(
         AgentRuntime(
-            FixedModel([ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")])]),
+            FixedModel(
+                [ModelTurn(tool_calls=[ToolCall(id="call-1", name="write_note")])]
+            ),
             tools,
             policy=AskPolicy(),
         ).run(request(), CollectingSink())
@@ -326,6 +472,9 @@ def test_resume_requires_decisions_for_exactly_the_pending_calls():
     with __import__("pytest").raises(ValueError, match="exactly"):
         asyncio.run(
             AgentRuntime(FixedModel([]), tools, policy=AskPolicy()).resume(
-                request(), paused.checkpoint, {"unexpected": ApprovalDecision.APPROVED}, CollectingSink()
+                request(),
+                paused.checkpoint,
+                {"unexpected": ApprovalDecision.APPROVED},
+                CollectingSink(),
             )
         )

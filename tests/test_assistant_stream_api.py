@@ -32,7 +32,9 @@ class _FakeService:
         return self.runtime
 
     def get_conversation(self, _conversation_id):
-        return SimpleNamespace(messages=[SimpleNamespace(role="user", content="测试问题")])
+        return SimpleNamespace(
+            messages=[SimpleNamespace(role="user", content="测试问题")]
+        )
 
     def record_assistant_message(self, _conversation_id, content):
         self.recorded_assistant_messages.append(content)
@@ -56,7 +58,9 @@ class _CompletedRuntime:
 
 class _TimedOutRuntime:
     async def run(self, _request, _sink):
-        return RunResult(run_id="12", status=RunStatus.PARTIAL, answer="", error_code="run_timeout")
+        return RunResult(
+            run_id="12", status=RunStatus.PARTIAL, answer="", error_code="run_timeout"
+        )
 
 
 class _EmptyCompletedRuntime:
@@ -102,8 +106,12 @@ async def _read_events(response) -> list[tuple[str, dict]]:
     events: list[tuple[str, dict]] = []
     for block in "".join(chunks).strip().split("\n\n"):
         lines = block.splitlines()
-        event = next(line.removeprefix("event: ") for line in lines if line.startswith("event: "))
-        payload = next(line.removeprefix("data: ") for line in lines if line.startswith("data: "))
+        event = next(
+            line.removeprefix("event: ") for line in lines if line.startswith("event: ")
+        )
+        payload = next(
+            line.removeprefix("data: ") for line in lines if line.startswith("data: ")
+        )
         events.append((event, json.loads(payload)))
     return events
 
@@ -127,15 +135,20 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "已完成"
     assert service.runtime.request.limits.run_timeout_seconds == 45
+    assert service.runtime.request.limits.max_steps == 12
+    assert service.runtime.request.limits.max_tool_calls == 24
 
 
 def test_assistant_messages_prepend_tool_first_instruction():
     prompt = importlib.import_module("src.modules.assistant.prompt")
-    messages = prompt.build_assistant_messages([assistant_api.ModelMessage(role="user", content="分析 600519")])
+    messages = prompt.build_assistant_messages(
+        [assistant_api.ModelMessage(role="user", content="分析 600519")]
+    )
 
     assert messages[0].role == "system"
     assert messages[0].content == prompt.ASSISTANT_SYSTEM_PROMPT
     assert "主动调用工具" in messages[0].content
+    assert "相同工具和参数最多调用一次" in messages[0].content
     assert messages[1].content == "分析 600519"
 
 
@@ -151,7 +164,10 @@ def test_assistant_stream_surfaces_runtime_timeout_instead_of_saving_empty_reply
 
     events = asyncio.run(run())
 
-    assert events[-1] == ("error", {"message": "助手响应超时，请稍后重试。", "code": "run_timeout"})
+    assert events[-1] == (
+        "error",
+        {"message": "助手响应超时，请稍后重试。", "code": "run_timeout"},
+    )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "run_timeout")]
 
@@ -168,7 +184,10 @@ def test_assistant_stream_rejects_an_empty_completed_reply():
 
     events = asyncio.run(run())
 
-    assert events[-1] == ("error", {"message": "助手暂时不可用，请稍后重试。", "code": "empty_answer"})
+    assert events[-1] == (
+        "error",
+        {"message": "助手暂时不可用，请稍后重试。", "code": "empty_answer"},
+    )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "empty_answer")]
 
@@ -207,7 +226,10 @@ def test_assistant_stream_enforces_the_transport_timeout(monkeypatch):
     elapsed, events = asyncio.run(run())
 
     assert elapsed < 1.5
-    assert events[-1] == ("error", {"message": "助手响应超时，请稍后重试。", "code": "transport_timeout"})
+    assert events[-1] == (
+        "error",
+        {"message": "助手响应超时，请稍后重试。", "code": "transport_timeout"},
+    )
     assert service.finished == [("failed", "transport_timeout")]
 
 
@@ -267,5 +289,13 @@ def test_assistant_stream_closes_the_task_when_runtime_setup_fails():
 
     events = asyncio.run(run())
 
-    assert events == [("error", {"message": "助手任务执行失败，请稍后重试。", "code": "transport_setup_failed"})]
+    assert events == [
+        (
+            "error",
+            {
+                "message": "助手任务执行失败，请稍后重试。",
+                "code": "transport_setup_failed",
+            },
+        )
+    ]
     assert service.finished == [("failed", "transport_setup_failed")]

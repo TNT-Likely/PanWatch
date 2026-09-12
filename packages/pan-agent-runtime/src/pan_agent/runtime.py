@@ -25,6 +25,13 @@ from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
 
+_MAX_IDENTICAL_TOOL_CALLS = 2
+
+
+def _tool_call_fingerprint(call: ToolCall) -> str:
+    """Create a stable key for detecting a model repeating one tool request."""
+    return f"{call.name}:{json.dumps(call.arguments, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
+
 
 class AgentRuntime:
     """A serial tool loop with hard limits and durable approval pauses.
@@ -33,7 +40,9 @@ class AgentRuntime:
     owns provider-neutral messages, permission decisions and portable events.
     """
 
-    def __init__(self, model: ModelPort, tools: ToolRegistry, policy: ToolPolicy | None = None) -> None:
+    def __init__(
+        self, model: ModelPort, tools: ToolRegistry, policy: ToolPolicy | None = None
+    ) -> None:
         self._model = model
         self._tools = tools
         self._policy = policy or ReadOnlyToolPolicy()
@@ -61,7 +70,9 @@ class AgentRuntime:
         """Apply one complete approval batch, then continue from its checkpoint."""
         pending_ids = {pending.call_id for pending in checkpoint.pending_approvals}
         if not pending_ids or set(decisions) != pending_ids:
-            raise ValueError("decisions must contain exactly the pending approval call IDs")
+            raise ValueError(
+                "decisions must contain exactly the pending approval call IDs"
+            )
 
         messages = [message.model_copy(deep=True) for message in checkpoint.messages]
         answer = checkpoint.answer
@@ -76,10 +87,17 @@ class AgentRuntime:
                     arguments=pending.arguments,
                 )
                 if decisions[pending.call_id] is ApprovalDecision.APPROVED:
-                    result, error_code = await self._execute_call(request, sink, call, deadline)
+                    result, error_code = await self._execute_call(
+                        request, sink, call, deadline
+                    )
                     if error_code:
                         return await self._finish(
-                            sink, request, RunStatus.PARTIAL, answer, tool_calls, error_code
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            error_code,
                         )
                 else:
                     result = ToolResult.failure(
@@ -89,11 +107,17 @@ class AgentRuntime:
                     await self._publish_tool_completed(sink, request, call, result)
                 self._append_tool_result(messages, call, result)
         except TimeoutError:
-            return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, "run_timeout")
+            return await self._finish(
+                sink, request, RunStatus.PARTIAL, answer, tool_calls, "run_timeout"
+            )
         except asyncio.CancelledError:
-            return await self._finish(sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled")
+            return await self._finish(
+                sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled"
+            )
         except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
-            return await self._finish(sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed")
+            return await self._finish(
+                sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed"
+            )
 
         return await self._run_loop(
             request,
@@ -121,6 +145,8 @@ class AgentRuntime:
             answer += token
             await self._publish(sink, request, EventType.ANSWER_TOKEN, {"token": token})
 
+        last_tool_fingerprint = ""
+        identical_tool_calls = 0
         try:
             for current_step in range(step_index + 1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
@@ -130,12 +156,16 @@ class AgentRuntime:
                     EventType.STEP_UPDATED,
                     {"step": current_step, "status": "running"},
                 )
-                turn = await self._run_model_turn(request, messages, emit_token, deadline)
+                turn = await self._run_model_turn(
+                    request, messages, emit_token, deadline
+                )
                 if turn.content and not answer:
                     await emit_token(turn.content)
 
                 if not turn.tool_calls:
-                    return await self._finish(sink, request, RunStatus.COMPLETED, answer, tool_calls)
+                    return await self._finish(
+                        sink, request, RunStatus.COMPLETED, answer, tool_calls
+                    )
 
                 # An OpenAI-compatible provider needs every result associated
                 # with exactly one preceding assistant tool-call turn.
@@ -143,21 +173,49 @@ class AgentRuntime:
                     ModelMessage(
                         role="assistant",
                         content=turn.content,
-                        tool_calls=[call.model_copy(deep=True) for call in turn.tool_calls],
+                        tool_calls=[
+                            call.model_copy(deep=True) for call in turn.tool_calls
+                        ],
                     )
                 )
                 pending: list[PendingApproval] = []
                 for call in turn.tool_calls:
                     if tool_calls >= request.limits.max_tool_calls:
                         return await self._finish(
-                            sink, request, RunStatus.PARTIAL, answer, tool_calls, "tool_call_limit"
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            "tool_call_limit",
                         )
                     tool_calls += 1
                     try:
                         tool = self._tools.get(call.name)
                     except UnknownTool:
                         return await self._finish(
-                            sink, request, RunStatus.PARTIAL, answer, tool_calls, "unknown_tool"
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            "unknown_tool",
+                        )
+
+                    fingerprint = _tool_call_fingerprint(call)
+                    if fingerprint == last_tool_fingerprint:
+                        identical_tool_calls += 1
+                    else:
+                        last_tool_fingerprint = fingerprint
+                        identical_tool_calls = 1
+                    if identical_tool_calls >= _MAX_IDENTICAL_TOOL_CALLS:
+                        return await self._finish(
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            "repeated_tool_call",
                         )
 
                     decision = await self._policy.decide(request, tool.spec, call)
@@ -172,14 +230,25 @@ class AgentRuntime:
                         )
                         continue
                     if decision.mode is PermissionMode.DENY:
-                        result = ToolResult.failure(summary="工具权限不足", error_code="permission_denied")
+                        result = ToolResult.failure(
+                            summary="工具权限不足", error_code="permission_denied"
+                        )
                         await self._publish_tool_completed(sink, request, call, result)
                         self._append_tool_result(messages, call, result)
                         continue
 
-                    result, error_code = await self._execute_call(request, sink, call, deadline)
+                    result, error_code = await self._execute_call(
+                        request, sink, call, deadline
+                    )
                     if error_code:
-                        return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, error_code)
+                        return await self._finish(
+                            sink,
+                            request,
+                            RunStatus.PARTIAL,
+                            answer,
+                            tool_calls,
+                            error_code,
+                        )
                     self._append_tool_result(messages, call, result)
 
                 if pending:
@@ -194,7 +263,12 @@ class AgentRuntime:
                         sink,
                         request,
                         EventType.APPROVAL_REQUIRED,
-                        {"calls": [pending_call.model_dump(mode="json") for pending_call in pending]},
+                        {
+                            "calls": [
+                                pending_call.model_dump(mode="json")
+                                for pending_call in pending
+                            ]
+                        },
                     )
                     return RunResult(
                         run_id=request.run_id,
@@ -205,15 +279,25 @@ class AgentRuntime:
                         pending_approvals=pending,
                     )
 
-            return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, "step_limit")
+            return await self._finish(
+                sink, request, RunStatus.PARTIAL, answer, tool_calls, "step_limit"
+            )
         except TimeoutError:
-            return await self._finish(sink, request, RunStatus.PARTIAL, answer, tool_calls, "run_timeout")
+            return await self._finish(
+                sink, request, RunStatus.PARTIAL, answer, tool_calls, "run_timeout"
+            )
         except asyncio.CancelledError:
-            return await self._finish(sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled")
+            return await self._finish(
+                sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled"
+            )
         except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
-            return await self._finish(sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed")
+            return await self._finish(
+                sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed"
+            )
 
-    async def _run_model_turn(self, request: RunRequest, messages, emit_token, deadline):
+    async def _run_model_turn(
+        self, request: RunRequest, messages, emit_token, deadline
+    ):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError
@@ -230,9 +314,16 @@ class AgentRuntime:
         try:
             self._tools.get(call.name)
         except UnknownTool:
-            return ToolResult.failure(summary="请求的工具不可用", error_code="unknown_tool"), "unknown_tool"
+            return ToolResult.failure(
+                summary="请求的工具不可用", error_code="unknown_tool"
+            ), "unknown_tool"
 
-        await self._publish(sink, request, EventType.TOOL_STARTED, {"call_id": call.id, "tool": call.name})
+        await self._publish(
+            sink,
+            request,
+            EventType.TOOL_STARTED,
+            {"call_id": call.id, "tool": call.name},
+        )
         result: ToolResult | None = None
         for attempt in range(request.limits.step_retry_count + 1):
             try:
@@ -241,16 +332,22 @@ class AgentRuntime:
                     raise TimeoutError
                 timeout = min(request.limits.tool_timeout_seconds, remaining)
                 async with asyncio.timeout(timeout):
-                    result = await self._tools.execute(call.name, request, call.arguments)
+                    result = await self._tools.execute(
+                        call.name, request, call.arguments
+                    )
                 break
             except TimeoutError:
                 if time.monotonic() >= deadline:
                     raise
                 if attempt == request.limits.step_retry_count:
-                    return ToolResult.failure(summary="工具调用超时", error_code="tool_timeout"), "tool_timeout"
+                    return ToolResult.failure(
+                        summary="工具调用超时", error_code="tool_timeout"
+                    ), "tool_timeout"
             except Exception:  # noqa: BLE001 - tool adapters are untrusted host boundaries
                 if attempt == request.limits.step_retry_count:
-                    return ToolResult.failure(summary="工具调用失败", error_code="tool_failed"), "tool_failed"
+                    return ToolResult.failure(
+                        summary="工具调用失败", error_code="tool_failed"
+                    ), "tool_failed"
 
         assert result is not None
         await self._publish_tool_completed(sink, request, call, result)
@@ -259,7 +356,9 @@ class AgentRuntime:
         return result, None
 
     @staticmethod
-    def _append_tool_result(messages: list[ModelMessage], call: ToolCall, result: ToolResult) -> None:
+    def _append_tool_result(
+        messages: list[ModelMessage], call: ToolCall, result: ToolResult
+    ) -> None:
         messages.append(
             ModelMessage(
                 role="tool",
@@ -299,8 +398,14 @@ class AgentRuntime:
         tool_calls: int,
         error_code: str | None = None,
     ) -> RunResult:
-        event_type = EventType.RUN_COMPLETED if status is RunStatus.COMPLETED else EventType.RUN_FAILED
-        await self._publish(sink, request, event_type, {"status": status, "error_code": error_code})
+        event_type = (
+            EventType.RUN_COMPLETED
+            if status is RunStatus.COMPLETED
+            else EventType.RUN_FAILED
+        )
+        await self._publish(
+            sink, request, event_type, {"status": status, "error_code": error_code}
+        )
         return RunResult(
             run_id=request.run_id,
             status=status,
@@ -310,5 +415,12 @@ class AgentRuntime:
         )
 
     @staticmethod
-    async def _publish(sink: EventSink, request: RunRequest, event_type: EventType, data: dict | None = None) -> None:
-        await sink.publish(RuntimeEvent(type=event_type, run_id=request.run_id, data=data or {}))
+    async def _publish(
+        sink: EventSink,
+        request: RunRequest,
+        event_type: EventType,
+        data: dict | None = None,
+    ) -> None:
+        await sink.publish(
+            RuntimeEvent(type=event_type, run_id=request.run_id, data=data or {})
+        )

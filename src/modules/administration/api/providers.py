@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+import time
 
-from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AIService, AIModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
+
 from src.platform.ai.ai_client import AIClient
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import AIModel, AIService
 
 router = APIRouter()
 
 
 # --- Service ---
+
 
 class ServiceCreate(BaseModel):
     name: str
@@ -58,7 +62,13 @@ def _service_to_response(service: AIService) -> dict:
         "base_url": service.base_url,
         "api_key": service.api_key or "",
         "models": [
-            {"id": m.id, "name": m.name, "service_id": m.service_id, "model": m.model, "is_default": m.is_default}
+            {
+                "id": m.id,
+                "name": m.name,
+                "service_id": m.service_id,
+                "model": m.model,
+                "is_default": m.is_default,
+            }
             for m in service.models
         ],
     }
@@ -98,6 +108,7 @@ def delete_service(service_id: int, db: Session = Depends(get_db)):
 
 
 # --- Model ---
+
 
 class ModelCreate(BaseModel):
     name: str = ""
@@ -216,8 +227,7 @@ async def discover_models(service_id: int, db: Session = Depends(get_db)):
         raise HTTPException(400, f"嗅探失败: {e}")
 
 
-@router.post("/services/{service_id}/models/batch")
-def batch_add_models(service_id: int, body: BatchModelCreate, db: Session = Depends(get_db)):
+def _batch_add_models_once(service_id: int, body: BatchModelCreate, db: Session):
     service = db.query(AIService).filter(AIService.id == service_id).first()
     if not service:
         raise HTTPException(404, "AI 服务商不存在")
@@ -229,13 +239,36 @@ def batch_add_models(service_id: int, body: BatchModelCreate, db: Session = Depe
             continue
         if item.is_default:
             db.query(AIModel).update({"is_default": False})
-        db.add(AIModel(
-            name=item.name or item.model,
-            service_id=service_id,
-            model=item.model,
-            is_default=item.is_default,
-        ))
+        db.add(
+            AIModel(
+                name=item.name or item.model,
+                service_id=service_id,
+                model=item.model,
+                is_default=item.is_default,
+            )
+        )
         existing.add(item.model)
         added += 1
     db.commit()
     return {"added": added}
+
+
+@router.post("/services/{service_id}/models/batch")
+def batch_add_models(
+    service_id: int, body: BatchModelCreate, db: Session = Depends(get_db)
+):
+    """批量写入模型；本地 SQLite 短暂争用时重试并快速返回可读错误。"""
+    for attempt in range(3):
+        try:
+            return _batch_add_models_once(service_id, body, db)
+        except OperationalError as exc:
+            db.rollback()
+            message = str(exc).lower()
+            locked = (
+                "database is locked" in message or "database table is locked" in message
+            )
+            if not locked or attempt == 2:
+                if locked:
+                    raise HTTPException(409, "数据库正忙，请稍后重试。") from exc
+                raise
+            time.sleep(0.05 * (attempt + 1))

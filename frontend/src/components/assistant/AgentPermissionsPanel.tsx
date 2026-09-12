@@ -47,13 +47,13 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
           仅影响助手可见和可执行的工具；破坏性操作始终禁止，需确认的工具不能设为直接允许。
         </p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`grid gap-2 ${variant === 'drawer' ? 'grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-4'}`}>
         {permissions.defaults.map((item) => (
           <label
             key={item.risk}
-            className="flex items-center justify-between gap-2 rounded-xl border border-border/50 bg-accent/20 px-2.5 py-2 text-[11px] text-muted-foreground"
+            className="flex min-w-0 items-center justify-between gap-1 rounded-xl border border-border/50 bg-accent/20 px-2.5 py-2 text-[11px] text-muted-foreground"
           >
-            <span>{RISK_LABELS[item.risk]}</span>
+            <span className="min-w-0 shrink truncate whitespace-nowrap">{RISK_LABELS[item.risk]}</span>
             <select
               aria-label={`${RISK_LABELS[item.risk]}默认权限`}
               value={item.mode}
@@ -63,7 +63,7 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
                 mode: event.target.value as PermissionMode,
                 risk: item.risk,
               })}
-              className="h-7 rounded-md border border-border/60 bg-background px-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-7 min-w-0 shrink-0 rounded-md border border-border/60 bg-background px-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             >
               {availableModesForRisk(item.risk).map((mode) => (
                 <option key={mode} value={mode}>{MODE_LABELS[mode]}</option>

@@ -3,22 +3,31 @@ import logging
 import os
 import shutil
 from datetime import datetime
+
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
-from src.platform.persistence.migrations import has_pending_migrations, run_versioned_migrations
+from src.platform.persistence.migrations import (
+    has_pending_migrations,
+    run_versioned_migrations,
+)
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "panwatch.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
+# SQLite 适合本地开发和单实例部署，但并发写入时不能无限等待锁。
+# 将等待限制在数秒内，让上层事务可以回滚/重试或返回明确错误，而不是
+# 让浏览器请求长时间表现为“卡死”。
+SQLITE_BUSY_TIMEOUT_MS = 5_000
+
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
     echo=False,
     connect_args={
-        "timeout": 30,
+        "timeout": SQLITE_BUSY_TIMEOUT_MS / 1_000,
         "check_same_thread": False,
     },
     poolclass=NullPool,
@@ -29,7 +38,7 @@ engine = create_engine(
 def _set_sqlite_pragma(dbapi_conn, connection_record):
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()

@@ -1,22 +1,26 @@
 """AI 服务商模型嗅探 + 测试 temperature 降级 的单元测试。"""
+
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.platform.ai.ai_client import AIClient
 import src.platform.persistence.models as _models  # noqa: F401  注册 ORM
+from src.platform.ai.ai_client import AIClient
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import AIService, AIModel
+from src.platform.persistence.models import AIModel, AIService
 
 
 @pytest.fixture
 def db():
     """独立内存 SQLite 会话,建全表。"""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
     try:
@@ -110,6 +114,7 @@ def test_discover_models_returns_list(db, monkeypatch):
 def test_discover_models_error_maps_to_400(db, monkeypatch):
     """嗅探失败(服务商不支持/网络错误)返回 400。"""
     from fastapi import HTTPException
+
     from src.modules.administration.api import providers
 
     svc = AIService(name="s", base_url="http://x", api_key="k")
@@ -143,12 +148,18 @@ def test_batch_add_skips_duplicates_and_sets_default(db, monkeypatch):
     db.add(AIModel(name="exists", service_id=svc.id, model="dup", is_default=True))
     db.commit()
 
-    body = providers.BatchModelCreate(models=[
-        providers.BatchModelItem(name="", model="dup", is_default=False),   # 重复,跳过
-        providers.BatchModelItem(name="新A", model="new-a", is_default=True),
-        providers.BatchModelItem(name="", model="new-b", is_default=False),
-    ])
-    res = providers.batch_add_models(svc.id, body, db)  # 同步端点(threadpool),不阻塞事件循环
+    body = providers.BatchModelCreate(
+        models=[
+            providers.BatchModelItem(
+                name="", model="dup", is_default=False
+            ),  # 重复,跳过
+            providers.BatchModelItem(name="新A", model="new-a", is_default=True),
+            providers.BatchModelItem(name="", model="new-b", is_default=False),
+        ]
+    )
+    res = providers.batch_add_models(
+        svc.id, body, db
+    )  # 同步端点(threadpool),不阻塞事件循环
     assert res["added"] == 2
 
     all_models = db.query(AIModel).filter(AIModel.service_id == svc.id).all()
@@ -159,6 +170,39 @@ def test_batch_add_skips_duplicates_and_sets_default(db, monkeypatch):
     assert defaults == ["new-a"]
     # 显示名为空的回退为 model 标识
     assert next(m for m in all_models if m.model == "new-b").name == "new-b"
+
+
+def test_batch_add_retries_a_transient_sqlite_lock(db, monkeypatch):
+    """批量写模型遇到短暂 SQLite 锁时重试，不让请求卡满数据库超时。"""
+    from src.modules.administration.api import providers
+
+    svc = AIService(name="s", base_url="http://x", api_key="k")
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    body = providers.BatchModelCreate(
+        models=[providers.BatchModelItem(model="new-model")]
+    )
+    original_commit = db.commit
+    attempts = 0
+
+    def commit_with_one_transient_lock():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise providers.OperationalError(
+                "UPDATE ai_models SET is_default=?",
+                {},
+                sqlite3.OperationalError("database is locked"),
+            )
+        return original_commit()
+
+    monkeypatch.setattr(db, "commit", commit_with_one_transient_lock)
+    result = providers.batch_add_models(svc.id, body, db)
+
+    assert result == {"added": 1}
+    assert attempts == 2
+    assert db.query(AIModel).filter(AIModel.model == "new-model").count() == 1
 
 
 def test_test_model_omits_temperature(db, monkeypatch):
@@ -185,6 +229,7 @@ def test_test_model_omits_temperature(db, monkeypatch):
 def test_test_model_error_maps_to_400(db, monkeypatch):
     """测试调用报错时映射为 400。"""
     from fastapi import HTTPException
+
     from src.modules.administration.api import providers
 
     m = _seed_service_with_model(db)

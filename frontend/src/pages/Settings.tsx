@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
-import { chatApi, fetchAPI, type AIService, type AIModel, type AgentPermissions, type NotifyChannel } from '@panwatch/api'
-import { AgentPermissionsPanel } from '@/components/assistant/AgentPermissionsPanel'
+import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import PatSection from '@/components/PatSection'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -147,7 +146,6 @@ export default function SettingsPage() {
   const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [health, setHealth] = useState<AgentsHealth | null>(null)
-  const [agentPermissions, setAgentPermissions] = useState<AgentPermissions | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [edited, setEdited] = useState<Record<string, string>>({})
@@ -254,22 +252,18 @@ export default function SettingsPage() {
 
   const load = async () => {
     try {
-      const [settingsData, servicesData, channelsData, versionData, healthData, permissionsData] = await Promise.all([
+      const [settingsData, servicesData, channelsData, versionData, healthData] = await Promise.all([
         fetchAPI<Setting[]>('/settings'),
         fetchAPI<AIService[]>('/providers/services'),
         fetchAPI<NotifyChannel[]>('/channels'),
         fetchAPI<{ version: string }>('/settings/version'),
         fetchAPI<AgentsHealth>('/agents/health'),
-        // Assistant permissions are an optional surface while rolling out a
-        // mixed frontend/backend deployment; they must not blank Settings.
-        chatApi.getAgentPermissions().catch(() => null),
       ])
       setSettings(settingsData)
       setServices(servicesData)
       setChannels(channelsData)
       setVersion(versionData.version)
       setHealth(healthData)
-      setAgentPermissions(permissionsData)
     } catch (e) {
       console.error(e)
     } finally {
@@ -375,20 +369,6 @@ export default function SettingsPage() {
       toast('保存失败', 'error')
     } finally {
       setSaving(null)
-    }
-  }
-
-  const updateAgentPermission = async (change: {
-    selector_kind: 'tool' | 'risk'
-    selector_value: string
-    mode: 'allow' | 'ask' | 'deny'
-    risk: 'read' | 'write' | 'external' | 'destructive'
-  }) => {
-    try {
-      setAgentPermissions(await chatApi.updateAgentPermission(change))
-      toast('工具权限已更新', 'success')
-    } catch (error) {
-      toast(error instanceof Error ? error.message : '更新工具权限失败', 'error')
     }
   }
 
@@ -671,7 +651,6 @@ export default function SettingsPage() {
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
-    { id: 'sec-agent-permissions', label: '工具权限' },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
     { id: 'sec-pack', label: '配置包' },
@@ -905,13 +884,6 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
-
-        {agentPermissions && (
-          <AgentPermissionsPanel
-            permissions={agentPermissions}
-            onChange={(change) => { void updateAgentPermission(change) }}
-          />
-        )}
 
         {/* General Settings */}
         {settings.length > 0 && (

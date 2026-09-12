@@ -50,9 +50,15 @@ logger = logging.getLogger(__name__)
 # a misbehaving adapter cannot leave a browser request and durable task open.
 ASSISTANT_RUN_TIMEOUT_SECONDS = 45
 ASSISTANT_TOOL_TIMEOUT_SECONDS = 15
+# 研究型请求可能需要行情、K 线、新闻和持仓多轮组合调用；同时由
+# PanAgent runtime 的重复调用保护避免小模型陷入同一工具循环。
+ASSISTANT_MAX_STEPS = 12
+ASSISTANT_MAX_TOOL_CALLS = 24
 
 _ERROR_MESSAGES = {
     "run_timeout": "助手响应超时，请稍后重试。",
+    "tool_call_limit": "助手调用步骤过多，请缩小问题范围后重试。",
+    "repeated_tool_call": "助手检测到重复工具调用，请重试或换一种问法。",
     "runtime_failed": "助手暂时不可用，请稍后重试。",
     "transport_timeout": "助手响应超时，请稍后重试。",
     "transport_failed": "助手任务执行失败，请稍后重试。",
@@ -73,19 +79,27 @@ def _encode_sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _finish_failed_task(service: AssistantService, task_id: int, error_code: str) -> None:
+def _finish_failed_task(
+    service: AssistantService, task_id: int, error_code: str
+) -> None:
     """Best-effort task cleanup shared by setup and streaming failure paths."""
     try:
         service.fail_task(task_id, error_code)
     except Exception:  # a client still needs a terminal event
-        logger.exception("Assistant task state could not be persisted: task_id=%s", task_id)
+        logger.exception(
+            "Assistant task state could not be persisted: task_id=%s", task_id
+        )
 
 
 def _error_response(error_code: str) -> StreamingResponse:
     async def events():
-        yield _encode_sse("error", {"message": _error_message(error_code), "code": error_code})
+        yield _encode_sse(
+            "error", {"message": _error_message(error_code), "code": error_code}
+        )
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return StreamingResponse(
+        events(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
 
 
 class SendAssistantMessageCommand(BaseModel):
@@ -93,7 +107,9 @@ class SendAssistantMessageCommand(BaseModel):
 
 
 class _SSEEventSink:
-    def __init__(self, queue: asyncio.Queue, service: AssistantService, task_id: int) -> None:
+    def __init__(
+        self, queue: asyncio.Queue, service: AssistantService, task_id: int
+    ) -> None:
         self._queue, self._service, self._task_id = queue, service, task_id
 
     async def publish(self, event) -> None:
@@ -103,10 +119,21 @@ class _SSEEventSink:
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:
-            await self._queue.put(("tool_call_start", {"name": data.get("tool", ""), "arguments": {}}))
+            await self._queue.put(
+                ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
+            )
         elif event.type is EventType.TOOL_COMPLETED:
             self._service.record_tool_completion(self._task_id, data)
-            await self._queue.put(("tool_result", {"name": data.get("tool", ""), "ok": data.get("ok", False), "preview": data.get("summary", "")}))
+            await self._queue.put(
+                (
+                    "tool_result",
+                    {
+                        "name": data.get("tool", ""),
+                        "ok": data.get("ok", False),
+                        "preview": data.get("summary", ""),
+                    },
+                )
+            )
         elif event.type is EventType.APPROVAL_REQUIRED:
             # Browser-facing approval IDs exist only after the host persists
             # the checkpoint. The stream worker emits the host-facing event.
@@ -149,10 +176,14 @@ async def _stream_runtime(
             exc_info=exc_info,
         )
         _finish_failed_task(service, task_id, error_code)
-        await queue.put(("error", {"message": _error_message(error_code), "code": error_code}))
+        await queue.put(
+            ("error", {"message": _error_message(error_code), "code": error_code})
+        )
 
     async def run_runtime_with_timeout() -> RunResult:
-        runtime_task = asyncio.create_task(runtime_call(_SSEEventSink(queue, service, task_id)))
+        runtime_task = asyncio.create_task(
+            runtime_call(_SSEEventSink(queue, service, task_id))
+        )
 
         def consume_background_result(completed_task: asyncio.Task) -> None:
             try:
@@ -160,7 +191,10 @@ async def _stream_runtime(
             except asyncio.CancelledError:
                 pass
             except Exception:
-                logger.exception("Assistant runtime stopped after transport cleanup: task_id=%s", task_id)
+                logger.exception(
+                    "Assistant runtime stopped after transport cleanup: task_id=%s",
+                    task_id,
+                )
 
         try:
             return await asyncio.wait_for(
@@ -179,22 +213,30 @@ async def _stream_runtime(
             if result.status is RunStatus.WAITING_FOR_APPROVAL:
                 approvals = service.pause_task(task_id, result)
                 for approval in approvals:
-                    await queue.put(("approval_required", _approval_event_payload(approval)))
-                await queue.put(("paused", {"task_id": task_id, "reason": "approval_required"}))
+                    await queue.put(
+                        ("approval_required", _approval_event_payload(approval))
+                    )
+                await queue.put(
+                    ("paused", {"task_id": task_id, "reason": "approval_required"})
+                )
                 return
             if result.status is not RunStatus.COMPLETED or not result.answer.strip():
                 await fail(result.error_code or "empty_answer")
                 return
             final = service.record_assistant_message(conversation_id, result.answer)
             service.finish_task(task_id, result, final.id)
-            await queue.put((
-                "done",
-                {
-                    "message_id": final.id,
-                    "content": final.content,
-                    "created_at": final.created_at.isoformat() if final.created_at else "",
-                },
-            ))
+            await queue.put(
+                (
+                    "done",
+                    {
+                        "message_id": final.id,
+                        "content": final.content,
+                        "created_at": final.created_at.isoformat()
+                        if final.created_at
+                        else "",
+                    },
+                )
+            )
         except asyncio.TimeoutError:
             await fail("transport_timeout")
         except asyncio.CancelledError:
@@ -217,7 +259,9 @@ async def _stream_runtime(
                 worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return StreamingResponse(
+        events(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
 
 
 def get_assistant_service(db: Session = Depends(get_db)) -> AssistantService:
@@ -236,14 +280,18 @@ async def stream_assistant_message(
         user_message = service.record_user_message(conversation_id, body.content)
         task = service.create_task(conversation_id, user_message.id)
         runtime = service.build_runtime(service.build_failover_client())
-        messages = build_assistant_messages([
-            ModelMessage(role=item.role, content=item.content)
-            for item in service.get_conversation(conversation_id).messages
-        ])
+        messages = build_assistant_messages(
+            [
+                ModelMessage(role=item.role, content=item.content)
+                for item in service.get_conversation(conversation_id).messages
+            ]
+        )
         request = RunRequest(
             run_id=str(task.id),
             messages=messages,
             limits=RunLimits(
+                max_steps=ASSISTANT_MAX_STEPS,
+                max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,
                 run_timeout_seconds=ASSISTANT_RUN_TIMEOUT_SECONDS,
                 tool_timeout_seconds=ASSISTANT_TOOL_TIMEOUT_SECONDS,
             ),
@@ -287,10 +335,15 @@ async def stream_assistant_approval_decision(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     if outcome.checkpoint is None:
-        async def events():
-            yield _encode_sse("paused", {"task_id": outcome.task.id, "reason": "approval_required"})
 
-        return StreamingResponse(events(), media_type="text/event-stream", headers=_SSE_HEADERS)
+        async def events():
+            yield _encode_sse(
+                "paused", {"task_id": outcome.task.id, "reason": "approval_required"}
+            )
+
+        return StreamingResponse(
+            events(), media_type="text/event-stream", headers=_SSE_HEADERS
+        )
 
     try:
         runtime = service.build_runtime(service.build_failover_client())
@@ -298,12 +351,16 @@ async def stream_assistant_approval_decision(
             run_id=str(outcome.task.id),
             messages=outcome.checkpoint.messages,
             limits=RunLimits(
+                max_steps=ASSISTANT_MAX_STEPS,
+                max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,
                 run_timeout_seconds=ASSISTANT_RUN_TIMEOUT_SECONDS,
                 tool_timeout_seconds=ASSISTANT_TOOL_TIMEOUT_SECONDS,
             ),
         )
     except Exception:
-        logger.exception("Assistant approval resume setup failed: approval_id=%s", approval_id)
+        logger.exception(
+            "Assistant approval resume setup failed: approval_id=%s", approval_id
+        )
         _finish_failed_task(service, outcome.task.id, "transport_setup_failed")
         return _error_response("transport_setup_failed")
 
@@ -311,7 +368,9 @@ async def stream_assistant_approval_decision(
         task_id=outcome.task.id,
         conversation_id=outcome.task.conversation_id,
         service=service,
-        runtime_call=lambda sink: runtime.resume(request, outcome.checkpoint, outcome.decisions, sink),
+        runtime_call=lambda sink: runtime.resume(
+            request, outcome.checkpoint, outcome.decisions, sink
+        ),
     )
 
 
