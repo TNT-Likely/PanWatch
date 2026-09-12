@@ -415,11 +415,11 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       )
     } catch (e) {
       if (streamError) {
-        if (!actionNeedsRetryRef.current) {
+        if (!actionNeedsRetryRef.current && !embedded) {
           setMessages((prev) => [...prev, {
             id: Date.now() + 1,
             role: 'assistant',
-            content: `请求未完成：${streamError}`,
+            content: streamError,
             created_at: new Date().toISOString(),
           }])
         }
@@ -441,13 +441,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           setMessages((prev) => [...prev, errMsg])
         }
       } else if (embedded) {
-        // 新助手没有旧 /api/chat 的 SSE 续推端点；缺少终态时不能静默收起。
-        setMessages((prev) => [...prev, {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: '请求未完成：连接已中断，请稍后重试。',
-          created_at: new Date().toISOString(),
-        }])
+        // 新助手不再追加“请求未完成”错误气泡；用户可直接重新提交。
       } else {
         // 已收到部分事件但流中断：生成在服务端继续并落库，稍后拉取最终消息
         await new Promise((r) => setTimeout(r, 1500))
@@ -569,7 +563,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         setMessages((previous) => [...previous, {
           id: Date.now() + 1,
           role: 'assistant',
-          content: `请求未完成：${error instanceof Error ? error.message : '未知错误'}`,
+          content: error instanceof Error ? error.message : '未知错误',
           created_at: new Date().toISOString(),
         }])
       }

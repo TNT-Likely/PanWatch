@@ -209,7 +209,7 @@ async def _stream_runtime(
             exc_info=exc_info,
         )
         _finish_failed_task(service, task_id, error_code)
-        if write_mode and error_code in {
+        if error_code in {
             "required_tool_call_missing",
             UNVERIFIED_MUTATION_ERROR,
         }:

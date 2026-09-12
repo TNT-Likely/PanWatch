@@ -142,7 +142,8 @@ describe('ChatWidget layout', () => {
     render(<ChatWidget embedded />)
     await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
 
-    await screen.findByText('请求未完成：连接已中断，请稍后重试。')
+    await waitFor(() => expect((screen.getByPlaceholderText('输入问题...') as HTMLInputElement).disabled).toBe(false))
+    expect(screen.queryByText(/请求未完成/)).toBeNull()
     expect(chatApi.sendMessage).not.toHaveBeenCalled()
   })
 

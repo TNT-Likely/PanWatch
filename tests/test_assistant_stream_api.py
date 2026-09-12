@@ -74,6 +74,16 @@ class _EmptyCompletedRuntime:
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="")
 
 
+class _HallucinatedMutationRuntime:
+    async def run(self, _request, sink):
+        await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
+        return RunResult(
+            run_id="12",
+            status=RunStatus.COMPLETED,
+            answer="两条提醒的名称已成功更新。",
+        )
+
+
 class _RequiredToolMissingRuntime:
     async def run(self, _request, _sink):
         return RunResult(
@@ -201,7 +211,7 @@ def test_assistant_write_intent_requires_write_tools_from_the_host():
     async def run():
         response = await assistant_api.stream_assistant_message(
             1,
-            assistant_api.SendAssistantMessageCommand(content="请修改价格提醒"),
+            assistant_api.SendAssistantMessageCommand(content="修改下标题"),
             service,
         )
         return await _read_events(response)
@@ -294,15 +304,6 @@ def test_assistant_write_failure_emits_a_recoverable_action_status():
 def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool():
     """A text-only mutation claim must never be persisted as a completed answer."""
 
-    class _HallucinatedMutationRuntime:
-        async def run(self, _request, sink):
-            await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))
-            return RunResult(
-                run_id="12",
-                status=RunStatus.COMPLETED,
-                answer="两条提醒的名称已成功更新。",
-            )
-
     service = _FakeService(_HallucinatedMutationRuntime())
 
     async def run():
@@ -324,6 +325,27 @@ def test_assistant_stream_rejects_mutation_claim_without_successful_write_tool()
     )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "unverified_mutation")]
+
+
+def test_assistant_stream_turns_an_unrequested_mutation_claim_into_action_status():
+    """The grounding detector still produces a recoverable status if intent was ambiguous."""
+    service = _FakeService(_HallucinatedMutationRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="复审确认，包括价格和名字"),
+            service,
+        )
+        return await _read_events(response)
+
+    events = asyncio.run(run())
+
+    action_events = [
+        data for event, data in events
+        if event == "action_status" and data["status"] == "needs_retry"
+    ]
+    assert action_events and action_events[0]["retryable"] is True
 
 
 def test_assistant_stream_allows_mutation_claim_with_successful_write_tool():

@@ -12,6 +12,9 @@ from src.modules.assistant.intent import is_write_intent
         "帮我创建一个跌破40的价格提醒",
         "删除提醒 #4",
         "把这条提醒重命名为低位观察",
+        "修改下标题",
+        "把这个规则的阈值改成 40",
+        "更新提醒名称",
     ],
 )
 def test_explicit_price_alert_actions_are_write_intents(content):
