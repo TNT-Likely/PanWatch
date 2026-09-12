@@ -526,8 +526,10 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   return (
     <>
       {embedded && <AssistantPermissionsDrawer open={permissionsOpen} onOpenChange={setPermissionsOpen} />}
-      <div className={embedded
-        ? 'relative flex w-full min-h-[calc(100vh-12rem)] overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm'
+      <div
+        data-testid={embedded ? 'assistant-shell' : undefined}
+        className={embedded
+        ? 'relative flex h-[calc(100dvh-12rem)] min-h-0 w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm md:h-[calc(100dvh-8rem)]'
         : 'fixed bottom-0 right-0 z-50 flex h-full w-full flex-col overflow-hidden bg-background shadow-2xl md:bottom-5 md:right-5 md:h-[600px] md:w-[420px] md:rounded-xl md:border md:border-border/60'}>
         {embedded && (
           <div className="hidden w-64 shrink-0 md:flex">
@@ -679,7 +681,12 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       {/* Chat view */}
       {view === 'chat' && (
         <>
-          <div ref={scrollBoxRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar px-4 py-3 space-y-3">
+          <div
+            ref={scrollBoxRef}
+            data-testid="assistant-message-list"
+            onScroll={handleScroll}
+            className="min-h-0 flex-1 overflow-y-auto scrollbar px-4 py-3 space-y-3"
+          >
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (
               <div className="flex flex-col gap-2">
@@ -809,7 +816,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           )}
 
           {/* Input */}
-          <div className="flex items-center gap-2 px-4 py-3 border-t border-border/40">
+          <div data-testid="assistant-composer" className="flex shrink-0 items-center gap-2 px-4 py-3 border-t border-border/40">
             <input
               type="text"
               className="flex-1 h-9 px-3 rounded-lg bg-accent/40 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
