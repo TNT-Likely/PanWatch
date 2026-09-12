@@ -96,7 +96,7 @@ describe('ChatWidget layout', () => {
     const composer = screen.getByTestId('assistant-composer')
 
     expect(shell.className).toContain('min-h-0')
-    expect(shell.className).toContain('h-[calc(100dvh-8rem)]')
+    expect(shell.className).toContain('h-full')
     expect(messageList.className).toContain('min-h-0')
     expect(messageList.className).toContain('overflow-y-auto')
     expect(composer.className).toContain('shrink-0')

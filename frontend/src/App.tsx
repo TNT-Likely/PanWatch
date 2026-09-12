@@ -76,6 +76,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function App() {
   const { mode, setMode } = useTheme()
   const location = useLocation()
+  const isAssistantRoute = location.pathname === '/assistant' || location.pathname.startsWith('/assistant/')
   const [version, setVersion] = useState('')
   const [logsOpen, setLogsOpen] = useState(false)
   const [selfCheckOpen, setSelfCheckOpen] = useState(false)
@@ -121,7 +122,11 @@ function App() {
 
   return (
     <RequireAuth>
-    <div className="min-h-screen pb-16 md:pb-0 relative overflow-x-clip bg-background">
+    <div
+      className={isAssistantRoute
+        ? 'relative flex h-dvh flex-col overflow-hidden bg-background pb-16 md:pb-0'
+        : 'min-h-screen pb-16 md:pb-0 relative overflow-x-clip bg-background'}
+    >
       <AmbientBackground />
       {/* Desktop Floating Nav */}
       <div className="sticky top-0 z-50 px-4 md:px-6 pt-3 md:pt-4 pb-2 hidden md:block">
@@ -257,7 +262,9 @@ function App() {
       </nav>
 
       {/* Content */}
-      <main className="px-4 md:px-6 py-4 md:py-6 w-full">
+      <main
+        className={`${isAssistantRoute ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''} px-4 md:px-6 py-4 md:py-6 w-full`}
+      >
         <AssistantOpenBridge />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
