@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from pan_agent import (
     AgentCheckpoint,
     ApprovalDecision,
@@ -149,5 +150,43 @@ def test_service_persists_a_waiting_batch_then_builds_exact_resume_decisions():
     assert outcome.task.id == task.id
     assert outcome.checkpoint == checkpoint
     assert outcome.decisions == {"call-1": ApprovalDecision.REJECTED}
+    session.close()
+    engine.dispose()
+
+
+def test_service_exposes_and_updates_tool_permission_settings_with_safety_floor():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, _task = _repository()
+    service = AssistantService(repository)
+
+    initial = service.get_tool_permissions()
+    defaults = {row["risk"]: row["mode"] for row in initial["defaults"]}
+    assert defaults == {
+        "read": "allow",
+        "write": "ask",
+        "external": "ask",
+        "destructive": "deny",
+    }
+
+    updated = service.update_tool_permission(
+        selector_kind="tool",
+        selector_value="create_alert",
+        mode=PermissionMode.ALLOW,
+        risk=ToolRisk.WRITE,
+    )
+    assert {
+        "selector_kind": "tool",
+        "selector_value": "create_alert",
+        "mode": "allow",
+    } in updated["overrides"]
+
+    with pytest.raises(ValueError, match="只能设为禁止"):
+        service.update_tool_permission(
+            selector_kind="risk",
+            selector_value="destructive",
+            mode=PermissionMode.ALLOW,
+            risk=None,
+        )
     session.close()
     engine.dispose()

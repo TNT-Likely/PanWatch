@@ -260,6 +260,14 @@ class AssistantRepository:
             for row in rows
         }
 
+    def list_tool_permissions(self, principal_scope: str = "local") -> list[AssistantToolPermission]:
+        return (
+            self._session.query(AssistantToolPermission)
+            .filter(AssistantToolPermission.principal_scope == principal_scope)
+            .order_by(AssistantToolPermission.selector_kind, AssistantToolPermission.selector_value)
+            .all()
+        )
+
     def resolve_permission(
         self,
         tool: ToolSpec,

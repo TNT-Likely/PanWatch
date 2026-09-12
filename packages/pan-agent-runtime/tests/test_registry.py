@@ -40,3 +40,4 @@ def test_registry_registers_write_tools_but_default_policy_hides_them_from_the_m
     registry.register(write_spec("create_alert"), fake_executor)
 
     assert registry.model_tools(request(), ReadOnlyToolPolicy()) == []
+    assert registry.registered_tools()[0].name == "create_alert"

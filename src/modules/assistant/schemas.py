@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pan_agent import ApprovalDecision
+from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +17,13 @@ class CreateConversationCommand(BaseModel):
 
 class ApprovalDecisionCommand(BaseModel):
     decision: ApprovalDecision
+
+
+class ToolPermissionCommand(BaseModel):
+    selector_kind: Literal["tool", "risk"]
+    selector_value: str = Field(min_length=1, max_length=64)
+    mode: PermissionMode
+    risk: ToolRisk | None = None
 
 
 class ConversationDTO(BaseModel):

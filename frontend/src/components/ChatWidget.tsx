@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, MessageCircle, X, Plus, Trash2, Send, ChevronLeft, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { chatApi, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { chatApi, type AssistantApproval, type ChatConversation, type ChatMessage } from '@panwatch/api'
+import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
 
 interface StockContext {
@@ -9,6 +10,27 @@ interface StockContext {
   market: string
   stockName: string
   pageContext?: string
+}
+
+function taskStorageKey(conversationId: number): string {
+  return 'panwatch:assistant-task:' + conversationId
+}
+
+function approvalFromSnapshot(approval: {
+  id: string
+  tool_name: string
+  risk: AssistantApproval['risk']
+  presentation: { tool_title?: string; summary?: string }
+  expires_at: string
+}): AssistantApproval {
+  return {
+    id: approval.id,
+    tool_title: approval.presentation?.tool_title || approval.tool_name,
+    risk: approval.risk,
+    summary: approval.presentation?.summary || ('请求执行 ' + approval.tool_name),
+    expires_at: approval.expires_at,
+    status: 'pending',
+  }
 }
 
 // 工具名 → 过程可视化文案
@@ -45,6 +67,9 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     steps: { id: number; title: string; status: string }[]
     current?: number
   } | null>(null)
+  const [taskId, setTaskId] = useState<number | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<AssistantApproval[]>([])
+  const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   const {
@@ -113,6 +138,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setOpen(true)
       setStockContext(detail)
       setSuggestedQuestions([])
+      setTaskId(null)
+      setPendingApprovals([])
       resetFollowing()
 
       // Create a new conversation bound to this stock, with page context
@@ -142,11 +169,30 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   }, [open, loadConversations])
 
   useEffect(() => {
+    if (!activeConvId) return
+    const storedTaskId = Number(sessionStorage.getItem(taskStorageKey(activeConvId)))
+    if (!Number.isInteger(storedTaskId) || storedTaskId <= 0) return
+
+    chatApi.getAssistantTask(storedTaskId).then((snapshot) => {
+      if (snapshot.conversation_id !== activeConvId || snapshot.status !== 'awaiting_approval') return
+      const approvals = snapshot.pending_approvals.map(approvalFromSnapshot)
+      if (approvals.length === 0) return
+      setTaskId(snapshot.id)
+      setPendingApprovals(approvals)
+    }).catch(() => {
+      // A stale local task marker is harmless; a new message will create a new task.
+      sessionStorage.removeItem(taskStorageKey(activeConvId))
+    })
+  }, [activeConvId])
+
+  useEffect(() => {
     followNewContent()
-  }, [messages, streamText, streamTool, followNewContent])
+  }, [messages, streamText, streamTool, pendingApprovals, followNewContent])
 
   const openConversation = useCallback(async (conv: ChatConversation) => {
     resetFollowing()
+    setTaskId(null)
+    setPendingApprovals([])
     setActiveConvId(conv.id)
     setView('chat')
     setSuggestedQuestions([])
@@ -162,6 +208,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   const createNewConversation = useCallback(async () => {
     try {
       resetFollowing()
+      setTaskId(null)
+      setPendingApprovals([])
       const conv = await chatApi.createConversation()
       setActiveConvId(conv.id)
       setMessages([])
@@ -181,6 +229,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       setConversations((prev) => prev.filter((c) => c.id !== convId))
       if (activeConvId === convId) {
         setActiveConvId(null)
+        setTaskId(null)
+        setPendingApprovals([])
         setMessages([])
         setView('list')
         setStockContext(null)
@@ -193,7 +243,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
 
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent || input).trim()
-    if (!content || sending) return
+    if (!content || sending || pendingApprovals.length > 0) return
 
     let convId = activeConvId
     if (!convId) {
@@ -213,6 +263,9 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     setInput('')
     setSending(true)
     setSuggestedQuestions([]) // hide after first send
+    setTaskId(null)
+    setPendingApprovals([])
+    sessionStorage.removeItem(taskStorageKey(convId))
 
     const tempUserMsg: ChatMessage = {
       id: Date.now(),
@@ -231,6 +284,13 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       // 优先走 SSE 流式（token 流 + 工具过程可视）
       const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
       await stream(convId, content, {
+        onRunStarted: ({ taskId: nextTaskId }) => {
+          receivedAny = true
+          if (nextTaskId > 0) {
+            setTaskId(nextTaskId)
+            sessionStorage.setItem(taskStorageKey(convId), String(nextTaskId))
+          }
+        },
         onToken: (t) => {
           receivedAny = true
           setStreamTool(null)
@@ -251,6 +311,19 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           setStreamTool(null)
           setPlan(p)
         },
+        onApprovalRequired: (approval) => {
+          receivedAny = true
+          setPendingApprovals((previous) => (
+            previous.some((item) => item.id === approval.id) ? previous : [...previous, approval]
+          ))
+        },
+        onPaused: ({ taskId: pausedTaskId }) => {
+          if (pausedTaskId > 0) {
+            setTaskId(pausedTaskId)
+            sessionStorage.setItem(taskStorageKey(convId), String(pausedTaskId))
+          }
+          setSending(false)
+        },
         onDone: (m) => {
           receivedAny = true
           setMessages((prev) => [...prev, {
@@ -259,6 +332,9 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
             content: m.content,
             created_at: m.created_at || new Date().toISOString(),
           }])
+          setTaskId(null)
+          setPendingApprovals([])
+          sessionStorage.removeItem(taskStorageKey(convId))
         },
         onError: (message) => {
           receivedAny = true
@@ -310,7 +386,107 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       resetStream()
       setSending(false)
     }
-  }, [input, sending, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing])
+  }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing])
+
+  const handleApprovalDecision = useCallback(async (
+    approval: AssistantApproval,
+    decision: 'approved' | 'rejected',
+  ) => {
+    const convId = activeConvId
+    if (!convId || !taskId || decidingApprovalId) return
+
+    setDecidingApprovalId(approval.id)
+    setSending(true)
+    resetStream()
+    resetFollowing()
+    let streamError = ''
+
+    try {
+      await chatApi.decideAssistantApprovalStream(approval.id, decision, {
+        onToken: (token) => {
+          setStreamTool(null)
+          pushToken(token)
+        },
+        onToolCallStart: ({ name }) => {
+          tokenBufRef.current = ''
+          setStreamText('')
+          setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+        },
+        onToolResult: () => {
+          // 工具结果到达后，等待模型继续输出最终回答。
+        },
+        onApprovalRequired: (nextApproval) => {
+          setPendingApprovals((previous) => (
+            previous.some((item) => item.id === nextApproval.id)
+              ? previous
+              : [...previous, nextApproval]
+          ))
+        },
+        onPaused: ({ taskId: pausedTaskId }) => {
+          if (pausedTaskId > 0) {
+            setTaskId(pausedTaskId)
+            sessionStorage.setItem(taskStorageKey(convId), String(pausedTaskId))
+          }
+        },
+        onDone: (message) => {
+          setMessages((previous) => [...previous, {
+            id: message.message_id || Date.now() + 1,
+            role: 'assistant',
+            content: message.content,
+            created_at: message.created_at || new Date().toISOString(),
+          }])
+          setTaskId(null)
+          setPendingApprovals([])
+          sessionStorage.removeItem(taskStorageKey(convId))
+        },
+        onError: (message) => {
+          streamError = message
+        },
+      })
+
+      if (streamError) throw new Error(streamError)
+      setPendingApprovals((previous) => previous.filter((item) => item.id !== approval.id))
+    } catch (error) {
+      // A decision is exactly-once on the server. If a browser loses the SSE
+      // response after submitting it, rehydrate instead of inviting a blind
+      // duplicate click that can only yield a conflict.
+      let reconciled = false
+      try {
+        const snapshot = await chatApi.getAssistantTask(taskId)
+        if (snapshot.conversation_id === convId) {
+          if (snapshot.status === 'awaiting_approval') {
+            setPendingApprovals(snapshot.pending_approvals.map(approvalFromSnapshot))
+            reconciled = true
+          } else if (snapshot.status === 'completed') {
+            await loadMessages(convId)
+            setTaskId(null)
+            setPendingApprovals([])
+            sessionStorage.removeItem(taskStorageKey(convId))
+            reconciled = true
+          }
+        }
+      } catch {
+        // The original failure remains actionable when recovery is unavailable.
+      }
+      if (!reconciled) {
+        setMessages((previous) => [...previous, {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: `请求未完成：${error instanceof Error ? error.message : '未知错误'}`,
+          created_at: new Date().toISOString(),
+        }])
+      }
+      // The approval card owns its temporary disabled state. Re-throw so a
+      // transport conflict or outage leaves the user a clear retry path.
+      throw error
+    } finally {
+      resetStream()
+      setSending(false)
+      setDecidingApprovalId(null)
+    }
+  }, [activeConvId, taskId, decidingApprovalId, pushToken, resetStream, resetFollowing, loadMessages])
+
+  const interactionLocked = sending || pendingApprovals.length > 0
 
   if (!open && !embedded) {
     return (
@@ -429,7 +605,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
                       key={q}
                       className="text-[11px] px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left"
                       onClick={() => handleSend(q)}
-                      disabled={sending}
+                      disabled={interactionLocked}
                     >
                       {q}
                     </button>
@@ -463,6 +639,14 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
                     msg.content
                   )}
                 </div>
+              </div>
+            ))}
+            {pendingApprovals.map((approval) => (
+              <div key={approval.id} className="flex justify-start">
+                <ApprovalCard
+                  approval={approval}
+                  onDecision={(decision) => handleApprovalDecision(approval, decision)}
+                />
               </div>
             ))}
             {sending && plan && plan.steps.length > 0 && (
@@ -513,7 +697,7 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
                 </div>
               </div>
             )}
-            {sending && !streamText && (
+            {sending && !streamText && pendingApprovals.length === 0 && (
               <div className="flex justify-start">
                 <div
                   className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2"
@@ -553,12 +737,12 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
                   handleSend()
                 }
               }}
-              disabled={sending}
+              disabled={interactionLocked}
             />
             <button
               className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
               onClick={() => handleSend()}
-              disabled={sending || !input.trim()}
+              disabled={interactionLocked || !input.trim()}
             >
               <Send className="w-4 h-4" />
             </button>

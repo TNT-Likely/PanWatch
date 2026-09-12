@@ -30,6 +30,10 @@ class ToolRegistry:
         """Return only tools that the trusted policy lets the model discover."""
         return [tool.spec for tool in self._tools.values() if policy.is_tool_visible(request, tool.spec)]
 
+    def registered_tools(self) -> list[ToolSpec]:
+        """Expose host metadata for settings UIs without exposing executors."""
+        return [tool.spec for tool in self._tools.values()]
+
     def get(self, name: str) -> RegisteredTool:
         try:
             return self._tools[name]

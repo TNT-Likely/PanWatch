@@ -21,6 +21,41 @@ export interface ConversationDetail {
   messages: ChatMessage[]
 }
 
+export interface AssistantApproval {
+  id: string
+  tool_title: string
+  risk: 'read' | 'write' | 'external' | 'destructive'
+  summary: string
+  expires_at: string
+  status: 'pending' | 'approved' | 'rejected'
+}
+
+export interface AssistantTaskSnapshot {
+  id: number
+  conversation_id: number
+  status: string
+  pending_approvals: Array<{
+    id: string
+    call_id: string
+    tool_name: string
+    risk: AssistantApproval['risk']
+    arguments: Record<string, unknown>
+    presentation: { tool_title?: string; summary?: string }
+    expires_at: string
+  }>
+}
+
+export interface AgentPermissions {
+  defaults: Array<{ risk: AssistantApproval['risk']; mode: 'allow' | 'ask' | 'deny' }>
+  tools: Array<{
+    name: string
+    title: string
+    risk: AssistantApproval['risk']
+    mode: 'allow' | 'ask' | 'deny'
+    confirmation_required: boolean
+  }>
+}
+
 export const chatApi = {
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>
     fetchAPI<ChatConversation>('/chat/conversations', {
@@ -51,14 +86,33 @@ export const chatApi = {
       `/chat/suggested-questions?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}`
     ),
 
+  getAssistantTask: (taskId: number) =>
+    fetchAPI<AssistantTaskSnapshot>('/assistant/tasks/' + taskId),
+
+  getAgentPermissions: () =>
+    fetchAPI<AgentPermissions>('/assistant/tool-permissions'),
+
+  updateAgentPermission: (change: {
+    selector_kind: 'tool' | 'risk'
+    selector_value: string
+    mode: 'allow' | 'ask' | 'deny'
+    risk?: AssistantApproval['risk']
+  }) => fetchAPI<AgentPermissions>('/assistant/tool-permissions', {
+    method: 'PUT',
+    body: JSON.stringify(change),
+  }),
+
   sendMessageStream,
   sendAssistantMessageStream: (conversationId: number, content: string, callbacks: ChatStreamCallbacks, signal?: AbortSignal) =>
-    sendMessageStream(conversationId, content, callbacks, signal, `/assistant/conversations/${conversationId}/messages/stream`),
+    sendMessageStream(conversationId, content, callbacks, signal, '/assistant/conversations/' + conversationId + '/messages/stream'),
+  decideAssistantApprovalStream,
 }
 
 export interface ChatStreamCallbacks {
   /** 已接受请求或正在执行的阶段提示 */
   onStatus?: (message: string) => void
+  /** Server accepted a durable assistant task. */
+  onRunStarted?: (info: { taskId: number }) => void
   /** token 增量文本 */
   onToken?: (text: string) => void
   /** 模型开始调用工具（前端应清空当前 token 缓冲并展示"正在查询…"） */
@@ -71,6 +125,10 @@ export interface ChatStreamCallbacks {
     steps: { id: number; title: string; status: string }[]
     current?: number
   }) => void
+  /** A host-persisted tool approval is now waiting for a human decision. */
+  onApprovalRequired?: (approval: AssistantApproval) => void
+  /** The current stream ended normally because its task awaits approval. */
+  onPaused?: (info: { taskId: number; reason: string }) => void
   /** 最终回答（已落库） */
   onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
   /** AI 服务异常（服务端已把错误文案落库） */
@@ -97,6 +155,7 @@ async function sendMessageStream(
   let streamId = ''
   let lastEventId = 0
   let finished = false
+  let paused = false
   let terminalError = ''
 
   const handleEvent = (ev: SSEEvent) => {
@@ -109,6 +168,9 @@ async function sendMessageStream(
       case 'status':
         callbacks.onStatus?.(d.message || '思考中…')
         break
+      case 'run_started':
+        callbacks.onRunStarted?.({ taskId: Number(d.task_id) || 0 })
+        break
       case 'token':
         callbacks.onToken?.(d.text || '')
         break
@@ -120,6 +182,22 @@ async function sendMessageStream(
         break
       case 'plan':
         callbacks.onPlan?.({ status: d.status || '', steps: d.steps || [], current: d.current })
+        break
+      case 'approval_required': {
+        const call = d.calls?.[0] || {}
+        callbacks.onApprovalRequired?.({
+          id: d.approval_id || '',
+          tool_title: d.presentation?.tool_title || call.name || '需要确认的工具操作',
+          risk: call.risk || 'write',
+          summary: d.presentation?.summary || ('请求执行 ' + (call.name || '工具操作')),
+          expires_at: d.expires_at || '',
+          status: 'pending',
+        })
+        break
+      }
+      case 'paused':
+        paused = true
+        callbacks.onPaused?.({ taskId: Number(d.task_id) || 0, reason: d.reason || '' })
         break
       case 'done':
         finished = true
@@ -150,7 +228,7 @@ async function sendMessageStream(
 
   // 连接被中断但生成未结束 → 经续推端点接回（服务端缓冲全量事件）
   let reconnects = 0
-  while (!finished && streamId && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
+  while (!finished && !paused && streamId && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     reconnects += 1
     try {
@@ -165,5 +243,67 @@ async function sendMessageStream(
     }
   }
 
-  if (!finished) throw new Error('流式回复未完成')
+  if (!finished && !paused) throw new Error('流式回复未完成')
+}
+
+async function decideAssistantApprovalStream(
+  approvalId: string,
+  decision: 'approved' | 'rejected',
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  let finished = false
+  let paused = false
+  let terminalError = ''
+
+  await readSSE('/assistant/approvals/' + encodeURIComponent(approvalId) + '/decision/stream', {
+    method: 'POST',
+    body: { decision },
+    signal,
+    onEvent: (ev) => {
+      const d = ev.data || {}
+      switch (ev.event) {
+        case 'token':
+          callbacks.onToken?.(d.text || '')
+          break
+        case 'tool_call_start':
+          callbacks.onToolCallStart?.({ name: d.name || '', arguments: d.arguments || {} })
+          break
+        case 'tool_result':
+          callbacks.onToolResult?.({ name: d.name || '', ok: !!d.ok, preview: d.preview || '' })
+          break
+        case 'approval_required': {
+          const call = d.calls?.[0] || {}
+          callbacks.onApprovalRequired?.({
+            id: d.approval_id || '',
+            tool_title: d.presentation?.tool_title || call.name || '需要确认的工具操作',
+            risk: call.risk || 'write',
+            summary: d.presentation?.summary || ('请求执行 ' + (call.name || '工具操作')),
+            expires_at: d.expires_at || '',
+            status: 'pending',
+          })
+          break
+        }
+        case 'paused':
+          paused = true
+          callbacks.onPaused?.({ taskId: Number(d.task_id) || 0, reason: d.reason || '' })
+          break
+        case 'done':
+          finished = true
+          callbacks.onDone?.({
+            message_id: d.message_id || 0,
+            content: d.content || '',
+            created_at: d.created_at || '',
+          })
+          break
+        case 'error':
+          terminalError = d.message || '未知错误'
+          callbacks.onError?.(terminalError)
+          break
+      }
+    },
+  })
+
+  if (terminalError && !finished) throw new Error(terminalError)
+  if (!finished && !paused) throw new Error('流式回复未完成')
 }

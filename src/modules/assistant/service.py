@@ -9,9 +9,11 @@ from pan_agent import (
     AgentCheckpoint,
     AgentRuntime,
     ApprovalDecision,
+    PermissionMode,
     RunRequest,
     ToolCall,
     ToolPermissionDecision,
+    ToolRisk,
     ToolSpec,
 )
 
@@ -162,6 +164,69 @@ class AssistantService:
         """Freeze a user's preferences for the lifetime of one runtime run."""
         return PanWatchToolPolicy(self._repository, self._repository.permission_snapshot())
 
+    def get_tool_permissions(self) -> dict:
+        """Return default risk policy plus registered-tool overrides for settings."""
+        snapshot = self._repository.permission_snapshot()
+        defaults = []
+        for risk in ToolRisk:
+            # Destructive operations have a non-overridable safety floor even
+            # if an older database happens to contain an unsafe preference.
+            mode = self._default_mode_for_risk(risk) if risk is ToolRisk.DESTRUCTIVE else snapshot.get(
+                ("risk", risk.value),
+                self._default_mode_for_risk(risk),
+            )
+            defaults.append({"risk": risk.value, "mode": mode.value})
+        tools = [
+            {
+                "name": tool.name,
+                "title": tool.title,
+                "risk": tool.risk.value,
+                "mode": self._repository.resolve_permission(tool, snapshot=snapshot).mode.value,
+                "confirmation_required": tool.confirmation_required,
+            }
+            for tool in build_panwatch_tool_registry(self._repository.session).registered_tools()
+        ]
+        return {
+            "defaults": defaults,
+            "tools": tools,
+            "overrides": [
+                {
+                    "selector_kind": row.selector_kind,
+                    "selector_value": row.selector_value,
+                    "mode": row.mode,
+                }
+                for row in self._repository.list_tool_permissions()
+            ],
+        }
+
+    def update_tool_permission(
+        self,
+        *,
+        selector_kind: str,
+        selector_value: str,
+        mode: PermissionMode,
+        risk: ToolRisk | None,
+    ) -> dict:
+        """Persist a UI preference while enforcing the same policy floors."""
+        resolved_risk = risk
+        if selector_kind == "risk":
+            resolved_risk = ToolRisk(selector_value)
+        elif selector_kind == "tool" and resolved_risk is None:
+            registered = {
+                tool.name: tool
+                for tool in build_panwatch_tool_registry(self._repository.session).registered_tools()
+            }
+            if selector_value not in registered:
+                raise ValueError("未知工具必须携带风险类别")
+            resolved_risk = registered[selector_value].risk
+        elif selector_kind != "tool":
+            raise ValueError("不支持的权限选择器")
+
+        if resolved_risk is ToolRisk.DESTRUCTIVE and mode is not PermissionMode.DENY:
+            raise ValueError("破坏性工具只能设为禁止")
+        self._repository.upsert_tool_permission("local", selector_kind, selector_value, mode)
+        return self.get_tool_permissions()
+
     def build_failover_client(self):
         model = self._repository.session.query(AIModel).filter(AIModel.is_default == True).first()
         if not model:
@@ -196,6 +261,14 @@ class AssistantService:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         return expires_at <= datetime.now(timezone.utc)
+
+    @staticmethod
+    def _default_mode_for_risk(risk: ToolRisk) -> PermissionMode:
+        if risk is ToolRisk.READ:
+            return PermissionMode.ALLOW
+        if risk in {ToolRisk.WRITE, ToolRisk.EXTERNAL}:
+            return PermissionMode.ASK
+        return PermissionMode.DENY
 
     def _require_conversation(self, conversation_id: int):
         conversation = self._repository.get_conversation(conversation_id)

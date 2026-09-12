@@ -33,6 +33,7 @@ from .schemas import (
     ConversationDetailDTO,
     ConversationDTO,
     CreateConversationCommand,
+    ToolPermissionCommand,
 )
 from .service import (
     AssistantApprovalConflictError,
@@ -115,6 +116,7 @@ def _approval_event_payload(approval) -> dict:
     expires_at = approval.expires_at
     return {
         "approval_id": approval.id,
+        "presentation": approval.presentation or {},
         "calls": [
             {
                 "call_id": approval.call_id,
@@ -315,6 +317,24 @@ async def stream_assistant_approval_decision(
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "runtime": "pan-agent-runtime"}
+
+
+@router.get("/tool-permissions")
+def get_tool_permissions(
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    return service.get_tool_permissions()
+
+
+@router.put("/tool-permissions")
+def update_tool_permission(
+    body: ToolPermissionCommand,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    try:
+        return service.update_tool_permission(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/conversations", response_model=ConversationDTO)
