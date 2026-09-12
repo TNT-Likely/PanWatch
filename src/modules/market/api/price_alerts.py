@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
 from src.platform.runtime.config import Settings
+from src.modules.market import price_alert_service
 from src.modules.market.price_alert_engine import ENGINE
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import PriceAlertHit, PriceAlertRule, Stock
@@ -69,23 +70,6 @@ class ToggleBody(BaseModel):
     enabled: bool
 
 
-def _validate_condition_group(group: AlertConditionGroup):
-    if group.op not in ("and", "or"):
-        raise HTTPException(400, "condition_group.op 仅支持 and/or")
-    if not group.items:
-        raise HTTPException(400, "condition_group.items 不能为空")
-    allowed_types = {"price", "change_pct", "turnover", "volume", "volume_ratio"}
-    allowed_ops = {">=", "<=", ">", "<", "==", "=", "!=", "<>", "between", "in"}
-    for it in group.items:
-        if it.type not in allowed_types:
-            raise HTTPException(400, f"不支持的条件类型: {it.type}")
-        if it.op not in allowed_ops:
-            raise HTTPException(400, f"不支持的运算符: {it.op}")
-        if it.op in ("between", "in"):
-            if not isinstance(it.value, list) or len(it.value) != 2:
-                raise HTTPException(400, f"{it.type} 的 {it.op} 需要两个值")
-
-
 def _to_response(rule: PriceAlertRule) -> dict:
     stock = rule.stock
     return {
@@ -114,80 +98,42 @@ def _to_response(rule: PriceAlertRule) -> dict:
 
 @router.get("")
 def list_alert_rules(db: Session = Depends(get_db)):
-    rows = (
-        db.query(PriceAlertRule)
-        .join(Stock)
-        .order_by(PriceAlertRule.updated_at.desc(), PriceAlertRule.id.desc())
-        .all()
-    )
+    rows = price_alert_service.list_alert_rules(db, limit=None)
     return [_to_response(r) for r in rows]
 
 
 @router.post("")
 def create_alert_rule(body: PriceAlertCreate, db: Session = Depends(get_db)):
-    stock = db.query(Stock).filter(Stock.id == body.stock_id).first()
-    if not stock:
-        raise HTTPException(404, "股票不存在")
-    _validate_condition_group(body.condition_group)
-
-    expire_at = None
-    if body.expire_at:
-        try:
-            expire_at = datetime.fromisoformat(body.expire_at)
-        except Exception:
-            raise HTTPException(400, "expire_at 格式错误")
-
-    row = PriceAlertRule(
-        stock_id=body.stock_id,
-        name=(body.name or "").strip() or f"{stock.name} 提醒",
-        enabled=bool(body.enabled),
-        condition_group=body.condition_group.model_dump(),
-        market_hours_mode=body.market_hours_mode or "trading_only",
-        cooldown_minutes=max(0, int(body.cooldown_minutes)),
-        max_triggers_per_day=max(0, int(body.max_triggers_per_day)),
-        repeat_mode=body.repeat_mode or "repeat",
-        expire_at=expire_at,
-        notify_channel_ids=body.notify_channel_ids or [],
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
+    try:
+        row = price_alert_service.create_alert_rule(
+            db,
+            stock_id=body.stock_id,
+            name=body.name,
+            enabled=body.enabled,
+            condition_group=body.condition_group.model_dump(),
+            market_hours_mode=body.market_hours_mode,
+            cooldown_minutes=body.cooldown_minutes,
+            max_triggers_per_day=body.max_triggers_per_day,
+            repeat_mode=body.repeat_mode,
+            expire_at=body.expire_at,
+            notify_channel_ids=body.notify_channel_ids,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return _to_response(row)
 
 
 @router.put("/{rule_id}")
 def update_alert_rule(rule_id: int, body: PriceAlertUpdate, db: Session = Depends(get_db)):
-    row = db.query(PriceAlertRule).filter(PriceAlertRule.id == rule_id).first()
-    if not row:
-        raise HTTPException(404, "规则不存在")
-
     updates = body.model_dump(exclude_unset=True)
-    if "condition_group" in updates and body.condition_group:
-        _validate_condition_group(body.condition_group)
-        updates["condition_group"] = body.condition_group.model_dump()
-    if "cooldown_minutes" in updates:
-        updates["cooldown_minutes"] = max(0, int(updates["cooldown_minutes"]))
-    if "max_triggers_per_day" in updates:
-        updates["max_triggers_per_day"] = max(0, int(updates["max_triggers_per_day"]))
-    if "expire_at" in updates:
-        val = updates.get("expire_at")
-        if val:
-            try:
-                updates["expire_at"] = datetime.fromisoformat(val)
-            except Exception:
-                raise HTTPException(400, "expire_at 格式错误")
-        else:
-            updates["expire_at"] = None
-
-    for k, v in updates.items():
-        setattr(row, k, v)
-
-    # 修改提醒规则后重置当日触发计数
-    row.trigger_count_today = 0
-    row.trigger_date = ""
-
-    db.commit()
-    db.refresh(row)
+    try:
+        row = price_alert_service.update_alert_rule(db, rule_id, updates)
+    except LookupError as exc:
+        raise HTTPException(404, "规则不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return _to_response(row)
 
 
@@ -204,11 +150,10 @@ def toggle_alert_rule(rule_id: int, body: ToggleBody, db: Session = Depends(get_
 
 @router.delete("/{rule_id}")
 def delete_alert_rule(rule_id: int, db: Session = Depends(get_db)):
-    row = db.query(PriceAlertRule).filter(PriceAlertRule.id == rule_id).first()
-    if not row:
-        raise HTTPException(404, "规则不存在")
-    db.delete(row)
-    db.commit()
+    try:
+        price_alert_service.delete_alert_rule(db, rule_id)
+    except LookupError as exc:
+        raise HTTPException(404, "规则不存在") from exc
     return {"ok": True}
 
 

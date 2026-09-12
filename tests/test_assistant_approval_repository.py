@@ -365,6 +365,46 @@ def test_service_presents_price_alert_approval_in_plain_language():
     engine.dispose()
 
 
+def test_service_presents_update_and_delete_alert_approvals_with_effects():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, _task = _repository()
+    service = AssistantService(repository)
+
+    update_presentation = service._approval_presentation(
+        PendingApproval(
+            call_id="call-update",
+            tool_name="update_price_alert",
+            risk=ToolRisk.WRITE,
+            arguments={
+                "rule_id": 7,
+                "direction": "below",
+                "target_price": 1700,
+                "enabled": False,
+            },
+        )
+    )
+    delete_presentation = service._approval_presentation(
+        PendingApproval(
+            call_id="call-delete",
+            tool_name="delete_price_alert",
+            risk=ToolRisk.WRITE,
+            arguments={"rule_id": 7},
+        )
+    )
+
+    assert update_presentation == {
+        "tool_title": "修改价格提醒",
+        "summary": "修改价格提醒 #7：目标价 ≤ 1700；停用。",
+    }
+    assert delete_presentation == {
+        "tool_title": "删除价格提醒",
+        "summary": "删除价格提醒 #7 及其历史命中记录。",
+    }
+    session.close()
+    engine.dispose()
+
+
 def test_service_exposes_and_updates_tool_permission_settings_with_safety_floor():
     from src.modules.assistant.service import AssistantService
 

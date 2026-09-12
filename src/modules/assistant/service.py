@@ -324,13 +324,53 @@ class AssistantService:
     @staticmethod
     def _approval_presentation(pending) -> dict[str, str]:
         """Translate host tool arguments into the text a human needs to approve."""
+        arguments = pending.arguments
+
+        if pending.tool_name == "update_price_alert":
+            rule_id = arguments.get("rule_id", "?")
+            changes: list[str] = []
+            if "target_price" in arguments:
+                try:
+                    display_price = f"{float(arguments['target_price']):g}"
+                except (TypeError, ValueError):
+                    display_price = str(arguments["target_price"])
+                if "direction" in arguments:
+                    direction = "≥" if arguments.get("direction") == "above" else "≤"
+                    changes.append(f"目标价 {direction} {display_price}")
+                else:
+                    changes.append(f"目标价改为 {display_price}（方向保持不变）")
+            elif "direction" in arguments:
+                direction = "≥" if arguments.get("direction") == "above" else "≤"
+                changes.append(f"方向改为 {direction}")
+            if "enabled" in arguments:
+                changes.append("启用" if arguments["enabled"] else "停用")
+            if "name" in arguments:
+                changes.append(f"名称改为 {arguments['name']}")
+            if "cooldown_minutes" in arguments:
+                changes.append(f"冷却 {arguments['cooldown_minutes']} 分钟")
+            if "max_triggers_per_day" in arguments:
+                changes.append(f"每日最多触发 {arguments['max_triggers_per_day']} 次")
+            if "repeat_mode" in arguments:
+                changes.append(f"重复模式改为 {arguments['repeat_mode']}")
+            summary = "；".join(changes) or "更新规则"
+            return {
+                "tool_title": "修改价格提醒",
+                "summary": f"修改价格提醒 #{rule_id}：{summary}。",
+            }
+
+        if pending.tool_name == "delete_price_alert":
+            rule_id = arguments.get("rule_id", "?")
+            return {
+                "tool_title": "删除价格提醒",
+                "summary": f"删除价格提醒 #{rule_id} 及其历史命中记录。",
+            }
+
         if pending.tool_name != "create_price_alert":
             return {
                 "tool_title": "需要授权的操作",
                 "summary": f"将调用 {pending.tool_name}。",
             }
 
-        arguments = pending.arguments
         market = str(arguments.get("market") or "CN").upper()
         symbol = str(arguments.get("symbol") or "").upper()
         direction = "≥" if arguments.get("direction") == "above" else "≤"
