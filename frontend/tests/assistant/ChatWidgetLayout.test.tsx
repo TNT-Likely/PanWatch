@@ -83,6 +83,27 @@ describe('ChatWidget layout', () => {
     expect(screen.queryByRole('button', { name: '回到底部' })).toBeNull()
   })
 
+  it('renders GFM table syntax as a semantic table in assistant answers', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
+      callbacks.onRunStarted?.({ taskId: 43 })
+      callbacks.onDone?.({
+        message_id: 44,
+        content: '| 标的 | 涨跌幅 |\n| --- | ---: |\n| 贵州茅台 | +1.2% |',
+        created_at: '2026-09-12T00:00:00Z',
+      })
+    })
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+
+    const table = await screen.findByRole('table')
+    expect(table).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: '标的' })).toBeTruthy()
+    expect(screen.getByRole('cell', { name: '贵州茅台' })).toBeTruthy()
+    expect(screen.getByRole('cell', { name: '+1.2%' })).toBeTruthy()
+  })
+
   it('keeps the first card visible as completed while the next approval remains pending', async () => {
     const user = userEvent.setup()
     vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
