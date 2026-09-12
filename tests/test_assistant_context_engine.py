@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import AIModel, AIService, ChatConversation  # noqa: F401
+from src.modules.assistant.schemas import CreateConversationCommand
 
 
 def _service(settings=None):
@@ -116,5 +117,64 @@ def test_service_exposes_context_usage_and_latest_summary_for_the_ui():
     assert detail.usage.total_tokens > 0
     assert detail.snapshot is None
     assert detail.status == detail.usage.state
+    session.close()
+    engine.dispose()
+
+
+def test_prepare_context_includes_durable_tool_findings_as_trusted_facts():
+    engine, session, service = _service()
+    conversation = service.create_conversation(CreateConversationCommand())
+    service.record_user_message(conversation.id, "删除它")
+    task = service.create_task(conversation.id, 1)
+    service._repository.record_tool_completed(
+        task.id,
+        call_id="call-1",
+        tool_name="get_price_alerts",
+        summary="找到 1 条价格提醒：#3 浪潮信息，突破 76，启用",
+    )
+
+    result = asyncio.run(service.prepare_context(conversation.id))
+
+    trusted_messages = [
+        message
+        for message in result.messages
+        if message.role == "system" and "可信工具执行记录" in message.content
+    ]
+    assert len(trusted_messages) == 1
+    assert "get_price_alerts" in trusted_messages[0].content
+    assert "#3 浪潮信息" in trusted_messages[0].content
+    assert "历史助手文本的完成声明不作为工具证据" in trusted_messages[0].content
+    session.close()
+    engine.dispose()
+
+
+def test_assistant_config_can_select_compression_model_and_budget():
+    from src.modules.assistant.context_schemas import AssistantConfigUpdate
+
+    engine, session, service = _service()
+    ai_service = AIService(name="Test AI", base_url="https://example.test", api_key="key")
+    session.add(ai_service)
+    session.flush()
+    session.add(AIModel(name="Summary", model="summary-model", service_id=ai_service.id))
+    session.commit()
+
+    updated = service.update_assistant_config(
+        AssistantConfigUpdate(
+            compression_model_id=1,
+            compression_temperature=0.2,
+            max_tokens=16000,
+            soft_limit_tokens=10000,
+            hard_limit_tokens=14000,
+            keep_recent_messages=6,
+        )
+    )
+
+    assert updated.compression_model_id == 1
+    assert updated.max_tokens == 16000
+    assert updated.soft_limit_tokens == 10000
+    assert updated.hard_limit_tokens == 14000
+    assert updated.keep_recent_messages == 6
+    assert updated.models[0].model == "summary-model"
+    assert service._context_budget().max_tokens == 16000
     session.close()
     engine.dispose()

@@ -9,13 +9,14 @@ import {
   DialogTitle,
 } from '@panwatch/base-ui/components/ui/dialog'
 import { AgentPermissionsPanel } from '@/components/assistant/AgentPermissionsPanel'
+import { AssistantConfigPanel } from '@/components/assistant/AssistantConfigPanel'
 
 interface AssistantPermissionsDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-/** Inline assistant settings surface for per-tool permission choices. */
+/** Inline assistant settings surface for tool permissions and context engineering. */
 export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPermissionsDrawerProps) {
   const [permissions, setPermissions] = useState<AgentPermissions | null>(null)
   const [error, setError] = useState('')
@@ -54,9 +55,9 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
         <DialogHeader className="border-b border-border/50 px-5 py-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <span className="rounded-lg bg-primary/10 p-1.5 text-primary"><SlidersHorizontal className="h-4 w-4" /></span>
-            工具权限
+            小助手配置
           </DialogTitle>
-          <DialogDescription>在此控制助手可以直接执行、每次询问或禁止使用的工具。</DialogDescription>
+          <DialogDescription>管理工具权限，以及上下文压缩使用的模型和预算。</DialogDescription>
         </DialogHeader>
         <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4">
           {error && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
@@ -68,6 +69,7 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
               正在加载工具权限…
             </div>
           ) : null}
+          <AssistantConfigPanel />
         </div>
       </DialogContent>
     </Dialog>

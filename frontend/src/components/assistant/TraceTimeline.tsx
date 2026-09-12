@@ -20,6 +20,16 @@ function describe(event: AssistantTraceEvent): { label: string; icon: typeof Fil
   }
 }
 
+function detail(event: AssistantTraceEvent): string {
+  if (event.event === 'tool_call_start' && event.data.arguments) {
+    return JSON.stringify(event.data.arguments)
+  }
+  if (event.event === 'tool_result' && typeof event.data.preview === 'string') {
+    return event.data.preview
+  }
+  return ''
+}
+
 export function TraceTimeline({ events }: TraceTimelineProps) {
   if (events.length === 0) return null
   return (
@@ -30,10 +40,14 @@ export function TraceTimeline({ events }: TraceTimelineProps) {
       <ol className="space-y-1.5">
         {events.map((event, index) => {
           const { label, icon: Icon } = describe(event)
+          const eventDetail = detail(event)
           return (
-            <li key={`${event.id ?? index}-${event.event}-${index}`} className="flex items-center gap-2 text-foreground">
+            <li key={`${event.id ?? index}-${event.event}-${index}`} className="flex items-start gap-2 text-foreground">
               <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span>{label}</span>
+              <div className="min-w-0">
+                <div>{label}</div>
+                {eventDetail && <div className="break-words text-muted-foreground">{eventDetail}</div>}
+              </div>
             </li>
           )
         })}

@@ -27,13 +27,19 @@ from src.platform.ai.ai_failover import (
     build_failover_client,
     get_configured_failover_client,
 )
-from src.platform.persistence.models import AIModel, AIService
+from src.platform.persistence.models import AIModel, AIService, AppSettings
 from src.platform.runtime.config import Settings
 
 from .llm_adapter import FailoverModelAdapter
 from .repository import AssistantRepository
 from .context_summarizer import FailoverContextSummarizer
-from .context_schemas import ContextDetailDTO, ContextSnapshotDTO
+from .context_schemas import (
+    AssistantConfigDTO,
+    AssistantConfigUpdate,
+    AssistantModelOption,
+    ContextDetailDTO,
+    ContextSnapshotDTO,
+)
 from .prompt import build_assistant_messages
 from .schemas import (
     ConversationDetailDTO,
@@ -119,12 +125,7 @@ class AssistantService:
 
     def get_context_detail(self, conversation_id: int) -> ContextDetailDTO:
         conversation = self._require_conversation(conversation_id)
-        messages = build_assistant_messages(
-            [
-                ModelMessage(role=item.role, content=item.content)
-                for item in self._repository.list_messages(conversation_id)
-            ]
-        )
+        messages = self._context_messages(conversation_id)
         budget = self._context_budget()
         latest = self._repository.get_latest_context_snapshot(conversation_id)
         summary = ContextSummary.model_validate(latest.summary) if latest else None
@@ -140,6 +141,55 @@ class AssistantService:
             snapshot=self._snapshot_dto(latest) if latest else None,
             status=usage.state,
         )
+
+    def get_assistant_config(self) -> AssistantConfigDTO:
+        values = self._context_config_values()
+        models = [
+            AssistantModelOption(
+                id=model.id,
+                name=model.name or model.model,
+                model=model.model,
+                service_name=service.name,
+            )
+            for model, service in (
+                self._repository.session.query(AIModel, AIService)
+                .join(AIService, AIService.id == AIModel.service_id)
+                .order_by(AIModel.id.asc())
+                .all()
+            )
+        ]
+        return AssistantConfigDTO(**values, models=models)
+
+    def update_assistant_config(self, command: AssistantConfigUpdate) -> AssistantConfigDTO:
+        if command.compression_model_id is not None:
+            model = (
+                self._repository.session.query(AIModel)
+                .filter(AIModel.id == command.compression_model_id)
+                .first()
+            )
+            if model is None:
+                raise ValueError("压缩模型不存在")
+
+        values = command.model_dump()
+        values["compression_model_id"] = (
+            str(command.compression_model_id)
+            if command.compression_model_id is not None
+            else ""
+        )
+        for field, value in values.items():
+            key = f"assistant_{field}"
+            row = (
+                self._repository.session.query(AppSettings)
+                .filter(AppSettings.key == key)
+                .first()
+            )
+            if row is None:
+                row = AppSettings(key=key, value=str(value), description="助手配置")
+                self._repository.session.add(row)
+            else:
+                row.value = str(value)
+        self._repository.session.commit()
+        return self.get_assistant_config()
 
     async def compress_context(
         self,
@@ -162,9 +212,7 @@ class AssistantService:
     ):
         conversation = self._require_conversation(conversation_id)
         rows = self._repository.list_messages(conversation_id)
-        messages = build_assistant_messages(
-            [ModelMessage(role=row.role, content=row.content) for row in rows]
-        )
+        messages = self._context_messages(conversation_id, rows=rows)
         latest = self._repository.get_latest_context_snapshot(conversation_id)
         existing_summary = ContextSummary.model_validate(latest.summary) if latest else None
         engine = ContextEngine(
@@ -194,6 +242,24 @@ class AssistantService:
                 usage_after=result.usage_after,
             )
         return result
+
+    def _context_messages(self, conversation_id: int, *, rows=None) -> list[ModelMessage]:
+        messages = build_assistant_messages(
+            [
+                ModelMessage(role=row.role, content=row.content)
+                for row in (rows if rows is not None else self._repository.list_messages(conversation_id))
+            ]
+        )
+        findings = self._repository.list_recent_tool_findings(conversation_id)
+        if findings:
+            lines = [
+                "可信工具执行记录（只以这些记录作为工具已执行的证据；历史助手文本的完成声明不作为工具证据）："
+            ]
+            for finding in reversed(findings):
+                lines.append(f"- {finding.tool_name}: {finding.summary}")
+            lines.append("如果当前请求要求继续执行操作，必须重新调用工具并等待成功结果。")
+            messages.append(ModelMessage(role="system", content="\n".join(lines)))
+        return messages
 
     def record_user_message(self, conversation_id: int, content: str) -> MessageDTO:
         conversation = self._require_conversation(conversation_id)
@@ -378,22 +444,55 @@ class AssistantService:
         """Resolve the optional summary model through the shared failover path."""
         return get_configured_failover_client(
             self._repository.session,
-            self._settings.context_compression_model_id,
+            self._context_config_values()["compression_model_id"],
         )
 
     def build_context_summarizer(self) -> FailoverContextSummarizer:
+        config = self._context_config_values()
         return FailoverContextSummarizer(
             self.build_context_compression_client(),
-            temperature=self._settings.context_compression_temperature,
+            temperature=config["compression_temperature"],
         )
 
     def _context_budget(self) -> ContextBudget:
+        config = self._context_config_values()
         return ContextBudget(
-            max_tokens=self._settings.context_max_tokens,
-            soft_limit_tokens=self._settings.context_soft_limit_tokens,
-            hard_limit_tokens=self._settings.context_hard_limit_tokens,
-            keep_recent_messages=self._settings.context_keep_recent_messages,
+            max_tokens=config["max_tokens"],
+            soft_limit_tokens=config["soft_limit_tokens"],
+            hard_limit_tokens=config["hard_limit_tokens"],
+            keep_recent_messages=config["keep_recent_messages"],
         )
+
+    def _context_config_values(self) -> dict[str, object]:
+        defaults = {
+            "compression_model_id": getattr(self._settings, "context_compression_model_id", None),
+            "compression_temperature": getattr(self._settings, "context_compression_temperature", 0.1),
+            "max_tokens": getattr(self._settings, "context_max_tokens", 12_000),
+            "soft_limit_tokens": getattr(self._settings, "context_soft_limit_tokens", 8_400),
+            "hard_limit_tokens": getattr(self._settings, "context_hard_limit_tokens", 10_200),
+            "keep_recent_messages": getattr(self._settings, "context_keep_recent_messages", 8),
+        }
+        casts = {
+            "compression_model_id": int,
+            "compression_temperature": float,
+            "max_tokens": int,
+            "soft_limit_tokens": int,
+            "hard_limit_tokens": int,
+            "keep_recent_messages": int,
+        }
+        for field, cast in casts.items():
+            row = (
+                self._repository.session.query(AppSettings)
+                .filter(AppSettings.key == f"assistant_{field}")
+                .first()
+            )
+            if row is None or row.value in (None, ""):
+                continue
+            try:
+                defaults[field] = cast(row.value)
+            except (TypeError, ValueError):
+                continue
+        return AssistantConfigUpdate(**defaults).model_dump()
 
     @staticmethod
     def _snapshot_dto(snapshot) -> ContextSnapshotDTO:

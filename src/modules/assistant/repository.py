@@ -170,6 +170,28 @@ class AssistantRepository:
         self._session.refresh(invocation)
         return invocation
 
+    def list_recent_tool_findings(
+        self, conversation_id: int, limit: int = 12
+    ) -> list[AssistantToolInvocation]:
+        """Return completed tool facts for context reconstruction.
+
+        Chat messages intentionally contain only the user-visible answer.  The
+        durable invocation rows are the trusted source for deciding whether a
+        previous tool action actually happened.
+        """
+        return (
+            self._session.query(AssistantToolInvocation)
+            .join(
+                AssistantTaskRun,
+                AssistantTaskRun.id == AssistantToolInvocation.task_run_id,
+            )
+            .filter(AssistantTaskRun.conversation_id == conversation_id)
+            .filter(AssistantToolInvocation.status == "completed")
+            .order_by(AssistantToolInvocation.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
     def save_checkpoint(self, task_run_id: int, checkpoint: AgentCheckpoint) -> None:
         """Persist enough provider-neutral state to resume after human input."""
         task = self._require_task(task_run_id)

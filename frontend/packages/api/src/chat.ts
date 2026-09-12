@@ -99,6 +99,25 @@ export interface AgentPermissions {
   }>
 }
 
+export interface AssistantConfigModel {
+  id: number
+  name: string
+  model: string
+  service_name: string
+}
+
+export interface AssistantConfig {
+  compression_model_id: number | null
+  compression_temperature: number
+  max_tokens: number
+  soft_limit_tokens: number
+  hard_limit_tokens: number
+  keep_recent_messages: number
+  models: AssistantConfigModel[]
+}
+
+export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
+
 export const chatApi = {
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>
     fetchAPI<ChatConversation>('/chat/conversations', {
@@ -153,6 +172,14 @@ export const chatApi = {
     method: 'PUT',
     body: JSON.stringify(change),
   }),
+
+  getAssistantConfig: () => fetchAPI<AssistantConfig>('/assistant/config'),
+
+  updateAssistantConfig: (config: AssistantConfigUpdate) =>
+    fetchAPI<AssistantConfig>('/assistant/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
 
   sendMessageStream,
   sendAssistantMessageStream: (conversationId: number, content: string, callbacks: ChatStreamCallbacks, signal?: AbortSignal) =>

@@ -63,6 +63,47 @@ class _CompletedRuntime:
         return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已完成")
 
 
+class _TracedRuntime:
+    async def run(self, _request, sink):
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.RUN_CREATED,
+                run_id="12",
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.STEP_UPDATED,
+                run_id="12",
+                data={"step": 1, "status": "running"},
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_STARTED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "get_price_alerts",
+                    "arguments": {"limit": 20},
+                },
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_COMPLETED,
+                run_id="12",
+                data={
+                    "call_id": "call-1",
+                    "tool": "get_price_alerts",
+                    "ok": True,
+                    "summary": "找到 1 条提醒",
+                },
+            )
+        )
+        return RunResult(run_id="12", status=RunStatus.COMPLETED, answer="已查询")
+
+
 class _TimedOutRuntime:
     async def run(self, _request, _sink):
         return RunResult(
@@ -252,20 +293,41 @@ def test_assistant_stream_exposes_context_usage_before_runtime_steps():
     )
 
 
-def test_assistant_message_does_not_force_tool_choice_from_text():
-    service = _FakeService(_CompletedRuntime())
+def test_assistant_stream_preserves_runtime_step_and_tool_trace_events():
+    service = _FakeService(_TracedRuntime())
 
     async def run():
         response = await assistant_api.stream_assistant_message(
             1,
-            assistant_api.SendAssistantMessageCommand(content="修改下标题"),
+            assistant_api.SendAssistantMessageCommand(content="查询提醒"),
             service,
         )
         return await _read_events(response)
 
     events = asyncio.run(run())
 
-    assert events[-1][0] == "done"
+    assert [(event, data) for event, data in events if event in {
+        "step_updated", "tool_call_start", "tool_result"
+    }] == [
+        ("step_updated", {"step": 1, "status": "running"}),
+        ("tool_call_start", {"name": "get_price_alerts", "arguments": {"limit": 20}}),
+        ("tool_result", {"name": "get_price_alerts", "ok": True, "preview": "找到 1 条提醒"}),
+    ]
+
+
+def test_assistant_message_leaves_tool_choice_optional_for_normal_chat():
+    service = _FakeService(_CompletedRuntime())
+
+    async def run():
+        response = await assistant_api.stream_assistant_message(
+            1,
+            assistant_api.SendAssistantMessageCommand(content="你好，介绍一下自己"),
+            service,
+        )
+        return await _read_events(response)
+
+    asyncio.run(run())
+
     assert service.runtime.request.context == {}
 
 
@@ -280,6 +342,7 @@ def test_assistant_messages_prepend_tool_first_instruction():
     assert "主动调用工具" in messages[0].content
     assert "相同工具和参数最多调用一次" in messages[0].content
     assert "没有成功工具结果时绝不能声称已创建、修改或删除" in messages[0].content
+    assert "历史助手文本可能只是计划或错误声明" in messages[0].content
     assert messages[1].content == "分析 600519"
 
 

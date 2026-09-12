@@ -28,7 +28,12 @@ from sqlalchemy.orm import Session
 from src.platform.persistence.database import get_db
 
 from .prompt import build_assistant_messages
-from .context_schemas import CompressContextCommand, ContextDetailDTO
+from .context_schemas import (
+    AssistantConfigDTO,
+    AssistantConfigUpdate,
+    CompressContextCommand,
+    ContextDetailDTO,
+)
 from .repository import AssistantRepository
 from .schemas import (
     ApprovalDecisionCommand,
@@ -139,11 +144,19 @@ class _SSEEventSink:
                         },
                     )
                 )
+        elif event.type is EventType.STEP_UPDATED:
+            await self._queue.put(("step_updated", data))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:
             await self._queue.put(
-                ("tool_call_start", {"name": data.get("tool", ""), "arguments": {}})
+                (
+                    "tool_call_start",
+                    {
+                        "name": data.get("tool", ""),
+                        "arguments": data.get("arguments") or {},
+                    },
+                )
             )
         elif event.type is EventType.TOOL_COMPLETED:
             self._service.record_tool_completion(self._task_id, data)
@@ -470,6 +483,24 @@ def get_tool_permissions(
     service: AssistantService = Depends(get_assistant_service),
 ) -> dict:
     return service.get_tool_permissions()
+
+
+@router.get("/config", response_model=AssistantConfigDTO)
+def get_assistant_config(
+    service: AssistantService = Depends(get_assistant_service),
+) -> AssistantConfigDTO:
+    return service.get_assistant_config()
+
+
+@router.put("/config", response_model=AssistantConfigDTO)
+def update_assistant_config(
+    body: AssistantConfigUpdate,
+    service: AssistantService = Depends(get_assistant_service),
+) -> AssistantConfigDTO:
+    try:
+        return service.update_assistant_config(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.put("/tool-permissions")
