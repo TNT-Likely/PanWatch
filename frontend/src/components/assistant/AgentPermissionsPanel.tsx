@@ -6,6 +6,7 @@ type AgentToolPermission = AgentPermissions['tools'][number]
 
 interface AgentPermissionsPanelProps {
   permissions: AgentPermissions
+  variant?: 'card' | 'drawer'
   onChange: (change: {
     selector_kind: 'tool' | 'risk'
     selector_value: string
@@ -37,9 +38,9 @@ function availableModesForRisk(risk: ToolRisk): PermissionMode[] {
   return risk === 'destructive' ? ['deny'] : ['allow', 'ask', 'deny']
 }
 
-export function AgentPermissionsPanel({ permissions, onChange }: AgentPermissionsPanelProps) {
-  return (
-    <section id="sec-agent-permissions" className="card p-4 md:p-6 lg:col-span-12">
+export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' }: AgentPermissionsPanelProps) {
+  const content = (
+    <>
       <div className="mb-4">
         <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">智能体工具权限</h3>
         <p className="mt-1 text-[11px] text-muted-foreground">
@@ -100,6 +101,16 @@ export function AgentPermissionsPanel({ permissions, onChange }: AgentPermission
           </div>
         ))}
       </div>
+    </>
+  )
+
+  if (variant === 'drawer') {
+    return <div>{content}</div>
+  }
+
+  return (
+    <section id="sec-agent-permissions" className="card p-4 md:p-6 lg:col-span-12">
+      {content}
     </section>
   )
 }

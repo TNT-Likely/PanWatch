@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, MessageCircle, X, Plus, Trash2, Send, ChevronLeft, XCircle } from 'lucide-react'
+import { ArrowDown, ChevronLeft, MessageCircle, Menu, Plus, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { chatApi, type AssistantApproval, type ChatConversation, type ChatMessage } from '@panwatch/api'
 import { ApprovalCard } from '@/components/assistant/ApprovalCard'
+import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
+import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
+import { AssistantWelcome } from '@/components/assistant/AssistantWelcome'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
 
 interface StockContext {
@@ -37,6 +40,9 @@ function approvalFromSnapshot(approval: {
 const TOOL_LABELS: Record<string, string> = {
   get_portfolio: '正在查询持仓…',
   get_stock_quote: '正在查询行情…',
+  get_kline_summary: '正在分析 K 线…',
+  get_stock_news: '正在检索相关新闻…',
+  create_price_alert: '正在创建价格提醒…',
   get_technical_analysis: '正在分析技术面…',
   get_stock_suggestions: '正在查询 AI 建议…',
   get_watchlist: '正在查询自选股…',
@@ -70,6 +76,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   const [taskId, setTaskId] = useState<number | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<AssistantApproval[]>([])
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null)
+  const [permissionsOpen, setPermissionsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   const {
@@ -222,8 +230,19 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
     }
   }, [resetFollowing])
 
-  const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const beginNewResearch = useCallback(() => {
+    resetFollowing()
+    setTaskId(null)
+    setPendingApprovals([])
+    setActiveConvId(null)
+    setMessages([])
+    setView('list')
+    setStockContext(null)
+    setSuggestedQuestions([])
+    setHistoryOpen(false)
+  }, [resetFollowing])
+
+  const removeConversation = useCallback(async (convId: number) => {
     try {
       await chatApi.deleteConversation(convId)
       setConversations((prev) => prev.filter((c) => c.id !== convId))
@@ -240,6 +259,11 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       // ignore
     }
   }, [activeConvId])
+
+  const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    await removeConversation(convId)
+  }, [removeConversation])
 
   const handleSend = useCallback(async (overrideContent?: string) => {
     const content = (overrideContent || input).trim()
@@ -500,16 +524,62 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
   }
 
   return (
-    <div className={embedded
-      ? 'relative w-full min-h-[calc(100vh-16rem)] md:h-[calc(100vh-12rem)] card border border-border/60 flex flex-col overflow-hidden'
-      : 'fixed bottom-0 right-0 z-50 w-full h-full md:w-[420px] md:h-[600px] md:bottom-5 md:right-5 md:rounded-xl bg-background border border-border/60 shadow-2xl flex flex-col overflow-hidden'}>
+    <>
+      {embedded && <AssistantPermissionsDrawer open={permissionsOpen} onOpenChange={setPermissionsOpen} />}
+      <div className={embedded
+        ? 'relative flex w-full min-h-[calc(100vh-12rem)] overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm'
+        : 'fixed bottom-0 right-0 z-50 flex h-full w-full flex-col overflow-hidden bg-background shadow-2xl md:bottom-5 md:right-5 md:h-[600px] md:w-[420px] md:rounded-xl md:border md:border-border/60'}>
+        {embedded && (
+          <div className="hidden w-64 shrink-0 md:flex">
+            <AssistantSidebar
+              conversations={conversations}
+              activeConversationId={activeConvId}
+              onOpen={openConversation}
+              onCreate={beginNewResearch}
+              onDelete={(conversationId) => { void removeConversation(conversationId) }}
+            />
+          </div>
+        )}
+        {embedded && historyOpen && (
+          <div className="absolute inset-0 z-30 flex md:hidden">
+            <div className="w-[min(19rem,88vw)] shadow-2xl">
+              <AssistantSidebar
+                conversations={conversations}
+                activeConversationId={activeConvId}
+                onOpen={(conversation) => { setHistoryOpen(false); void openConversation(conversation) }}
+                onCreate={beginNewResearch}
+                onDelete={(conversationId) => { void removeConversation(conversationId) }}
+              />
+            </div>
+            <button
+              type="button"
+              aria-label="关闭历史会话"
+              className="flex-1 bg-black/20"
+              onClick={() => setHistoryOpen(false)}
+            />
+          </div>
+        )}
+        <div className={embedded
+          ? 'relative flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden'
+          : 'relative flex h-full flex-col overflow-hidden'}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-accent/20">
         <div className="flex items-center gap-2">
+          {embedded && (
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground md:hidden"
+              aria-label="打开历史会话"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          )}
           {view === 'chat' && (
             <button
-              onClick={() => { setView('list'); setStockContext(null); setSuggestedQuestions([]); loadConversations() }}
+              onClick={beginNewResearch}
               className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="返回助手首页"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -531,11 +601,23 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
         <div className="flex items-center gap-1">
           {view === 'list' && (
             <button
-              onClick={createNewConversation}
+              onClick={embedded ? beginNewResearch : createNewConversation}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
               title="新建对话"
+              aria-label="新建对话"
             >
               <Plus className="w-4 h-4" />
+            </button>
+          )}
+          {embedded && (
+            <button
+              type="button"
+              onClick={() => setPermissionsOpen(true)}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              title="工具权限"
+              aria-label="工具权限"
+            >
+              <Settings2 className="h-4 w-4" />
             </button>
           )}
           {!embedded && (
@@ -550,7 +632,10 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
       </div>
 
       {/* List view */}
-      {view === 'list' && (
+      {view === 'list' && embedded && (
+        <AssistantWelcome onSubmit={(question) => { void handleSend(question) }} disabled={interactionLocked} />
+      )}
+      {view === 'list' && !embedded && (
         <div className="flex-1 overflow-y-auto scrollbar">
           {conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[13px] gap-3">
@@ -749,6 +834,8 @@ export default function ChatWidget({ embedded = false }: { embedded?: boolean })
           </div>
         </>
       )}
-    </div>
+        </div>
+      </div>
+    </>
   )
 }
