@@ -45,6 +45,15 @@
 runtime 不会直接连接数据库，也不会替宿主决定“谁可以执行什么”。默认策略只允许
 无须确认的读工具，写入和外部副作用必须由宿主显式注入策略。
 
+### 持久化与部署边界
+
+`pan-agent-runtime` 只产生 provider-neutral 的 `RunResult`、`AgentCheckpoint`
+和 `RuntimeEvent`，不内置 SQLite、Redis、队列、worker 进程或 SSE。宿主可以把这些
+对象映射到关系库、对象存储或其他任务系统，并自行决定是否需要跨进程执行。
+
+当前 PanWatch 的宿主适配使用 SQLite 保存任务快照、事件和审批 checkpoint；浏览器刷新
+通过数据库事件 replay/tail 恢复展示，不代表 runtime 自己拥有持久化能力。
+
 ## 安装
 
 ### 在 monorepo 中本地安装
@@ -241,9 +250,10 @@ if paused.status is RunStatus.WAITING_FOR_APPROVAL:
     resumed = await runtime.resume(request, checkpoint, decisions, sink)
 ~~~
 
-<code>resume</code> 不要求使用同一个 runtime 实例，因此宿主可以在进程重启后恢复。
-建议将 checkpoint 以 JSON 形式持久化，并使用任务 ID、用户 ID 和版本号做并发校验，
-避免同一张审批卡被重复消费。
+<code>resume</code> 不要求使用同一个 runtime 实例，因此只要宿主已经持久化了 checkpoint，
+就可以在新的 runtime 实例或进程中恢复。runtime 不负责启动任务、租约、重试或保证进程
+重启后自动续跑；这些属于宿主的 task runner/queue 层。建议将 checkpoint 以 JSON 形式
+持久化，并使用任务 ID、用户 ID 和版本号做并发校验，避免同一张审批卡被重复消费。
 
 ## 核心公开 API
 
@@ -341,9 +351,10 @@ runtime 还会检测连续重复的相同工具调用。达到阈值后返回
 | <code>run_completed</code> | 任务成功结束 |
 | <code>run_failed</code> | 任务以错误或部分结果结束 |
 
-runtime 本身不实现 SSE。FastAPI 宿主可以在 <code>EventSink.publish()</code> 中把事件
-写入 <code>asyncio.Queue</code>，接口层再将队列转换成 <code>text/event-stream</code>。
-这样浏览器传输格式和 runtime 的执行逻辑保持解耦。
+runtime 本身不实现 SSE。简单场景下，FastAPI 宿主可以在 <code>EventSink.publish()</code>
+中把事件写入 <code>asyncio.Queue</code>；需要刷新、断线重连或审计时，宿主应先将事件
+持久化到 Event Store，再由 SSE 层 replay/tail。这样浏览器传输格式、事件保存策略和
+runtime 的执行逻辑保持解耦。
 
 ## BeeCount-Cloud 接入建议
 

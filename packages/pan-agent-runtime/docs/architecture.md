@@ -60,7 +60,7 @@ An adapter becomes a separate installable package only when a second project
 actually reuses it. Logical plugin boundaries and PyPI package boundaries are
 intentionally different.
 
-## PanWatch M0 composition
+## PanWatch current composition
 
 PanWatch supplies the failover model adapter, the configurable context
 summarizer, SQLAlchemy snapshots, FastAPI/SSE mapping, and React context/trace
@@ -69,6 +69,16 @@ views. The compression model is selected by the host: an explicit
 failover chain; otherwise the default assistant model is used. The host also
 controls `CONTEXT_SUMMARY_MAX_TOKENS`, which bounds the structured summary
 before it can replace older history.
+
+For long-running assistant tasks, the current host stores task snapshots,
+events, approvals, and checkpoints in SQLite. The SSE endpoint replays and
+tails the persisted event table, so a browser refresh does not depend on the
+in-memory runner or Redis. The runner is still in-process; queued work can be
+rescanned on startup, while an interrupted running task is currently marked
+explicitly failed rather than resumed blindly.
+
+Redis, durable queues, leases, and separate worker processes remain optional
+host-side extensions for a future multi-instance or high-traffic deployment.
 
 The runtime package never sees a model ID or a database session.
 
