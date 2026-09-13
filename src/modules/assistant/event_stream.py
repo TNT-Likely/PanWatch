@@ -57,7 +57,7 @@ async def subscribe_task_events(
     heartbeat_sec: float = 15.0,
     poll_sec: float = 0.25,
 ):
-    """Replay persisted events, then tail until the task reaches a terminal state."""
+    """Replay persisted events, then tail until terminal or resumable wait state."""
     cursor = max(0, int(after_sequence))
     last_activity = time.monotonic()
     while True:
