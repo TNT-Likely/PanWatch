@@ -172,7 +172,8 @@ class AssistantTaskRunner:
         db = self._session_factory()
         service = AssistantService(AssistantRepository(db))
         try:
-            service._repository.mark_task_running(task_id)
+            if not service._repository.claim_task(task_id):
+                return
             if service._repository.is_task_cancelled(task_id):
                 return
             context_result = await service.prepare_context(conversation_id)
@@ -247,7 +248,8 @@ class AssistantTaskRunner:
         db = self._session_factory()
         service = AssistantService(AssistantRepository(db))
         try:
-            service._repository.mark_task_running(task_id)
+            if not service._repository.claim_task(task_id):
+                return
             if service._repository.is_task_cancelled(task_id):
                 return
             runtime = service.build_runtime(service.build_failover_client())
@@ -316,8 +318,7 @@ class AssistantTaskRunner:
         if result.status is not RunStatus.COMPLETED or not result.answer.strip():
             self._fail(service, task_id, result.error_code or "empty_answer")
             return
-        final = service.record_assistant_message(conversation_id, result.answer)
-        service.finish_task(task_id, result, final.id)
+        service.complete_task_with_message(task_id, conversation_id, result.answer)
 
     def _fail(self, service: AssistantService, task_id: int, error_code: str) -> None:
         service._repository.finish_task(

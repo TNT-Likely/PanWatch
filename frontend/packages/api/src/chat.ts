@@ -268,8 +268,8 @@ const CHAT_STREAM_MAX_RECONNECTS = 3
  * 流式发送消息（SSE）。
  *
  * - 首次连接 POST /chat/conversations/{id}/messages/stream；
- * - meta 事件携带 stream_id，之后若连接中断（生成仍在服务端继续），
- *   自动经 GET /chat/streams/{stream_id} + Last-Event-ID 续推；
+ * - 旧流通过 meta 事件携带 stream_id，新助手流通过 task_created 事件携带 task_id；
+ *   连接中断后分别从内存流或持久化任务事件流 + Last-Event-ID 续推；
  * - 若首次连接直接失败（未收到任何事件），抛异常，调用方降级到非流式 sendMessage。
  */
 async function sendMessageStream(
@@ -280,10 +280,12 @@ async function sendMessageStream(
   streamPath = `/chat/conversations/${conversationId}/messages/stream`
 ): Promise<void> {
   let streamId = ''
+  let taskEventPath = ''
   let lastEventId = 0
   let finished = false
   let paused = false
   let terminalError = ''
+  let primaryError: unknown = null
 
   const handleEvent = (ev: SSEEvent) => {
     if (ev.id > 0) lastEventId = ev.id
@@ -294,6 +296,12 @@ async function sendMessageStream(
     switch (ev.event) {
       case 'meta':
         streamId = d.stream_id || ''
+        break
+      case 'task_created':
+      case 'task_queued':
+        if (Number(d.task_id) > 0) {
+          taskEventPath = `/assistant/tasks/${Number(d.task_id)}/events`
+        }
         break
       case 'status':
         callbacks.onStatus?.(d.message || '思考中…')
@@ -364,12 +372,16 @@ async function sendMessageStream(
     }
   }
 
-  await readSSE(streamPath, {
-    method: 'POST',
-    body: { content },
-    signal,
-    onEvent: handleEvent,
-  })
+  try {
+    await readSSE(streamPath, {
+      method: 'POST',
+      body: { content },
+      signal,
+      onEvent: handleEvent,
+    })
+  } catch (error) {
+    primaryError = error
+  }
 
   // The legacy /api/chat endpoint intentionally emits `error` then persists a
   // fallback response as `done`.  Only a stream that ends without `done` is a
@@ -378,11 +390,12 @@ async function sendMessageStream(
 
   // 连接被中断但生成未结束 → 经续推端点接回（服务端缓冲全量事件）
   let reconnects = 0
-  while (!finished && !paused && streamId && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
+  const reconnectPath = taskEventPath || (streamId ? `/chat/streams/${streamId}` : '')
+  while (!finished && !paused && reconnectPath && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     reconnects += 1
     try {
-      await readSSE(`/chat/streams/${streamId}`, {
+      await readSSE(reconnectPath, {
         signal,
         lastEventId,
         onEvent: handleEvent,
@@ -393,7 +406,7 @@ async function sendMessageStream(
     }
   }
 
-  if (!finished && !paused) throw new Error('流式回复未完成')
+  if (!finished && !paused) throw primaryError || new Error('流式回复未完成')
 }
 
 async function decideAssistantApprovalStream(

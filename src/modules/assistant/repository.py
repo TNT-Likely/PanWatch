@@ -183,19 +183,41 @@ class AssistantRepository:
             return task
         if TaskStatus(task.status).is_terminal:
             return task
-        task.status = TaskStatus.RUNNING.value
-        task.started_at = task.started_at or datetime.now(timezone.utc)
-        task.finished_at = None
+        self.claim_task(task_run_id)
+        return self._require_task(task_run_id)
+
+    def claim_task(self, task_run_id: int) -> bool:
+        """Atomically claim queued or approval-resume work for one worker."""
+        now = datetime.now(timezone.utc)
+        claimed = (
+            self._session.query(AssistantTaskRun)
+            .filter(
+                AssistantTaskRun.id == task_run_id,
+                AssistantTaskRun.status.in_(
+                    [TaskStatus.QUEUED.value, TaskStatus.WAITING_APPROVAL.value]
+                ),
+            )
+            .update(
+                {
+                    "status": TaskStatus.RUNNING.value,
+                    "started_at": now,
+                    "finished_at": None,
+                },
+                synchronize_session=False,
+            )
+        )
+        if claimed != 1:
+            return False
+        self._session.expire_all()
         self.append_task_event(
-            task.id,
+            task_run_id,
             TaskEventType.TASK_STARTED,
             status=TaskStatus.RUNNING,
-            data={"task_id": task.id},
+            data={"task_id": task_run_id},
             commit=False,
         )
         self._session.commit()
-        self._session.refresh(task)
-        return task
+        return True
 
     def append_task_event(
         self,
@@ -210,6 +232,17 @@ class AssistantRepository:
         """Append one replayable fact and advance the task snapshot cursor."""
         task = self._require_task(task_run_id)
         event_type = TaskEventType(event_type)
+        # Lock the task row before reading MAX(sequence).  This serializes
+        # event allocation for one task on both PostgreSQL and SQLite, while
+        # keeping the per-task cursor stable for Last-Event-ID replay.
+        self._session.query(AssistantTaskRun).filter(
+            AssistantTaskRun.id == task_run_id
+        ).update(
+            {AssistantTaskRun.state_version: AssistantTaskRun.state_version},
+            synchronize_session=False,
+        )
+        self._session.expire(task)
+        task = self._require_task(task_run_id)
         next_sequence = (
             self._session.query(func.max(AssistantTaskEvent.sequence))
             .filter(AssistantTaskEvent.task_run_id == task_run_id)
@@ -293,7 +326,16 @@ class AssistantRepository:
     def retry_task(self, task_run_id: int) -> AssistantTaskRun:
         task = self._require_task(task_run_id)
         current = TaskStatus(task.status)
-        if not current.is_terminal:
+        if current not in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            return task
+        # A failed task may already have completed a tool call. Replaying it
+        # without a tool-level idempotency key could repeat a write side effect.
+        if (
+            self._session.query(AssistantToolInvocation.id)
+            .filter(AssistantToolInvocation.task_run_id == task_run_id)
+            .first()
+            is not None
+        ):
             return task
         task.status = TaskStatus.QUEUED.value
         task.cancel_requested = False
@@ -667,6 +709,58 @@ class AssistantRepository:
             commit=False,
         )
         self._session.commit()
+
+    def complete_task_with_message(
+        self, task_run_id: int, conversation_id: int, content: str
+    ) -> ChatMessage | None:
+        """Commit the final message and task transition as one cancellation-safe unit."""
+        task = self._require_task(task_run_id)
+        if task.status != TaskStatus.RUNNING.value or task.cancel_requested:
+            return None
+        conversation = self.get_conversation(conversation_id)
+        if conversation is None:
+            raise LookupError(f"conversation {conversation_id} not found")
+        conversation.updated_at = datetime.now(timezone.utc)
+        message = ChatMessage(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=content,
+        )
+        self._session.add(message)
+        self._session.flush()
+        updated = (
+            self._session.query(AssistantTaskRun)
+            .filter(
+                AssistantTaskRun.id == task_run_id,
+                AssistantTaskRun.status == TaskStatus.RUNNING.value,
+                AssistantTaskRun.cancel_requested.is_(False),
+            )
+            .update(
+                {
+                    "status": TaskStatus.COMPLETED.value,
+                    "final_message_id": message.id,
+                    "error_code": None,
+                    "checkpoint": None,
+                    "checkpoint_id": "",
+                    "finished_at": datetime.now(timezone.utc),
+                },
+                synchronize_session=False,
+            )
+        )
+        if updated != 1:
+            self._session.rollback()
+            return None
+        self._session.expire_all()
+        self.append_task_event(
+            task_run_id,
+            TaskEventType.TASK_COMPLETED,
+            status=TaskStatus.COMPLETED,
+            commit=False,
+            data={"message_id": message.id, "content": content},
+        )
+        self._session.commit()
+        self._session.refresh(message)
+        return message
 
     def get_task_snapshot(self, task_run_id: int) -> dict:
         task = self._require_task(task_run_id)

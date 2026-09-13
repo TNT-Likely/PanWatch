@@ -100,19 +100,11 @@ def test_runner_executes_from_queued_snapshot_and_persists_terminal_event(monkey
         def get_conversation(self, conversation_id):
             return SimpleNamespace(messages=[])
 
-        def record_assistant_message(self, conversation_id, content):
-            return self._repository.add_message(
-                self._repository.get_conversation(conversation_id),
-                role="assistant",
-                content=content,
-            )
-
-        def finish_task(self, task_id, result, final_message_id):
-            self._repository.finish_task(
+        def complete_task_with_message(self, task_id, conversation_id, content):
+            return self._repository.complete_task_with_message(
                 task_id,
-                status=result.status.value,
-                final_message_id=final_message_id,
-                event_data={"message_id": final_message_id, "content": result.answer},
+                conversation_id,
+                content,
             )
 
     monkeypatch.setattr(

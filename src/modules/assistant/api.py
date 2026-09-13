@@ -435,7 +435,7 @@ async def stream_assistant_message(
             assistant_task_runner.start_message(task.id, conversation_id)
             return _task_stream_response(
                 task.id,
-                after_sequence=int(task.last_event_id or 0),
+                after_sequence=0,
             )
         except AssistantNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

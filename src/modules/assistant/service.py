@@ -588,6 +588,14 @@ class AssistantService:
             )
         )
 
+    def complete_task_with_message(
+        self, task_id: int, conversation_id: int, content: str
+    ) -> MessageDTO | None:
+        message = self._repository.complete_task_with_message(
+            task_id, conversation_id, content
+        )
+        return self._message_dto(message) if message is not None else None
+
     def finish_task(self, task_id: int, result, final_message_id: int) -> None:
         self._repository.finish_task(
             task_id,
