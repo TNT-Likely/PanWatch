@@ -242,7 +242,7 @@ def test_assistant_stream_announces_a_durable_run_without_fake_status():
     assert all(event != "status" for event, _data in events)
     assert events[-1][0] == "done"
     assert events[-1][1]["content"] == "已完成"
-    assert service.runtime.request.limits.run_timeout_seconds == 45
+    assert service.runtime.request.limits.run_timeout_seconds == 180
     assert service.runtime.request.limits.max_steps == 12
     assert service.runtime.request.limits.max_tool_calls == 24
 

@@ -54,7 +54,10 @@ logger = logging.getLogger(__name__)
 
 # The runtime has its own deadline.  The HTTP boundary keeps the same bound so
 # a misbehaving adapter cannot leave a browser request and durable task open.
-ASSISTANT_RUN_TIMEOUT_SECONDS = 45
+# Research requests may fan out across several read-only tools. Keep the
+# transport and runtime deadlines aligned so a valid multi-tool run is not
+# cut off while the browser is still receiving events.
+ASSISTANT_RUN_TIMEOUT_SECONDS = 180
 ASSISTANT_TOOL_TIMEOUT_SECONDS = 15
 # 研究型请求可能需要行情、K 线、新闻和持仓多轮组合调用；同时由
 # PanAgent runtime 的重复调用保护避免小模型陷入同一工具循环。
