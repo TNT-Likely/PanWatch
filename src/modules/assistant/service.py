@@ -577,6 +577,14 @@ class AssistantService:
             ok=bool(data.get("ok", False)),
         )
 
+    def record_tool_started(self, task_id: int, data: dict) -> None:
+        self._repository.record_tool_started(
+            task_id,
+            call_id=data.get("call_id", ""),
+            tool_name=data.get("tool", ""),
+            arguments=data.get("arguments") or {},
+        )
+
     def record_assistant_message(
         self, conversation_id: int, content: str
     ) -> MessageDTO:

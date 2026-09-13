@@ -363,15 +363,25 @@ class AssistantRepository:
         summary: str,
         ok: bool = True,
     ) -> AssistantToolInvocation:
-        invocation = AssistantToolInvocation(
-            task_run_id=task_run_id,
-            call_id=call_id,
-            tool_name=tool_name,
-            status="completed" if ok else "failed",
-            summary=summary,
-            completed_at=datetime.now(timezone.utc),
+        invocation = (
+            self._session.query(AssistantToolInvocation)
+            .filter(
+                AssistantToolInvocation.task_run_id == task_run_id,
+                AssistantToolInvocation.call_id == call_id,
+            )
+            .first()
         )
-        self._session.add(invocation)
+        if invocation is None:
+            invocation = AssistantToolInvocation(
+                task_run_id=task_run_id,
+                call_id=call_id,
+                tool_name=tool_name,
+            )
+            self._session.add(invocation)
+        invocation.tool_name = tool_name
+        invocation.status = "completed" if ok else "failed"
+        invocation.summary = summary
+        invocation.completed_at = datetime.now(timezone.utc)
         self.append_task_event(
             task_run_id,
             TaskEventType.TOOL_COMPLETED,
@@ -383,6 +393,48 @@ class AssistantRepository:
                 "ok": ok,
                 "preview": summary,
                 "summary": summary,
+            },
+            commit=False,
+        )
+        self._session.commit()
+        self._session.refresh(invocation)
+        return invocation
+
+    def record_tool_started(
+        self,
+        task_run_id: int,
+        *,
+        call_id: str,
+        tool_name: str,
+        arguments: dict | None = None,
+    ) -> AssistantToolInvocation:
+        """Persist the intent before a tool can produce an external side effect."""
+        invocation = (
+            self._session.query(AssistantToolInvocation)
+            .filter(
+                AssistantToolInvocation.task_run_id == task_run_id,
+                AssistantToolInvocation.call_id == call_id,
+            )
+            .first()
+        )
+        if invocation is None:
+            invocation = AssistantToolInvocation(
+                task_run_id=task_run_id,
+                call_id=call_id,
+                tool_name=tool_name,
+                status="started",
+                arguments=arguments or {},
+            )
+            self._session.add(invocation)
+        self.append_task_event(
+            task_run_id,
+            TaskEventType.TOOL_STARTED,
+            status=TaskStatus.RUNNING,
+            data={
+                "call_id": call_id,
+                "tool": tool_name,
+                "name": tool_name,
+                "arguments": arguments or {},
             },
             commit=False,
         )
@@ -672,7 +724,7 @@ class AssistantRepository:
         event_data: dict | None = None,
     ) -> None:
         task = self._require_task(task_run_id)
-        if task.status == TaskStatus.CANCELLED.value and status == TaskStatus.COMPLETED.value:
+        if TaskStatus(task.status).is_terminal:
             return
         if status != "completed":
             # A failed/cancelled task must not leave actionable approval cards

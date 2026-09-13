@@ -72,7 +72,11 @@ async def subscribe_task_events(
             last_activity = time.monotonic()
             continue
 
-        if TaskStatus(snapshot["status"]).is_terminal:
+        if TaskStatus(snapshot["status"]) in {
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.WAITING_RETRY,
+            TaskStatus.WAITING_CALLBACK,
+        } or TaskStatus(snapshot["status"]).is_terminal:
             return
         if time.monotonic() - last_activity >= heartbeat_sec:
             last_activity = time.monotonic()

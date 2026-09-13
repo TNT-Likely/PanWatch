@@ -18,6 +18,14 @@ def test_durable_runtime_sink_persists_tool_and_answer_events():
     class Service:
         _repository = repository
 
+        def record_tool_started(self, _task_id, data):
+            repository.record_tool_started(
+                task.id,
+                call_id=data["call_id"],
+                tool_name=data["tool"],
+                arguments=data["arguments"],
+            )
+
         def record_tool_completion(self, _task_id, data):
             repository.record_tool_completed(
                 task.id,

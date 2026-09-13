@@ -148,6 +148,31 @@ def test_task_event_stream_replays_and_stops_at_terminal_state():
     engine.dispose()
 
 
+def test_task_event_stream_closes_after_approval_pause():
+    from src.modules.assistant.event_stream import subscribe_task_events
+
+    engine, session, repository, task = _repository()
+    task.status = TaskStatus.WAITING_APPROVAL.value
+    session.commit()
+    repository.append_task_event(
+        task.id,
+        TaskEventType.TASK_PAUSED,
+        status=TaskStatus.WAITING_APPROVAL,
+        data={"reason": "approval_required"},
+    )
+
+    async def collect():
+        return [item async for item in subscribe_task_events(
+            task.id, session_factory=sessionmaker(bind=engine)
+        )]
+
+    blocks = asyncio.run(collect())
+    assert blocks[-1].startswith("id: 3\nevent: paused\n")
+
+    session.close()
+    engine.dispose()
+
+
 def test_claim_task_only_allows_one_worker_to_start_queued_work():
     engine, session, repository, task = _repository()
 
@@ -168,6 +193,9 @@ def test_completion_does_not_leave_message_after_cancellation():
     engine, session, repository, task = _repository()
     repository.claim_task(task.id)
     repository.cancel_task(task.id)
+    repository.finish_task(
+        task.id, status=TaskStatus.FAILED.value, final_message_id=None, error_code="late"
+    )
 
     assert repository.complete_task_with_message(task.id, task.conversation_id, "完成") is None
     assert repository.list_messages(task.conversation_id) == []
@@ -192,6 +220,21 @@ def test_retry_does_not_replay_completed_or_tool_side_effect_tasks():
         failed.id, call_id="call-1", tool_name="write_tool", summary="已执行"
     )
     assert repository.retry_task(failed.id).status == TaskStatus.FAILED.value
+
+    crashed = repository.create_task(
+        conversation_id=task.conversation_id, user_message_id=None, context={}
+    )
+    repository.claim_task(crashed.id)
+    repository.record_tool_started(
+        crashed.id,
+        call_id="call-crashed",
+        tool_name="write_tool",
+        arguments={"rule_id": 1},
+    )
+    repository.finish_task(
+        crashed.id, status=TaskStatus.FAILED.value, final_message_id=None, error_code="x"
+    )
+    assert repository.retry_task(crashed.id).status == TaskStatus.FAILED.value
 
     session.close()
     engine.dispose()

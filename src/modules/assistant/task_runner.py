@@ -81,16 +81,7 @@ class DurableRuntimeEventSink:
             )
             return
         if event.type is EventType.TOOL_STARTED:
-            repository.append_task_event(
-                self._task_id,
-                TaskEventType.TOOL_STARTED,
-                status=TaskStatus.RUNNING,
-                data={
-                    "call_id": data.get("call_id", ""),
-                    "name": data.get("tool", ""),
-                    "arguments": data.get("arguments") or {},
-                },
-            )
+            self._service.record_tool_started(self._task_id, data)
             return
         if event.type is EventType.TOOL_COMPLETED:
             self._service.record_tool_completion(self._task_id, data)
