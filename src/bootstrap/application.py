@@ -19,8 +19,11 @@ from src.modules.administration.api import (
     providers,
     settings,
 )
+from src.modules.administration.api.auth import get_current_user
+from src.modules.administration.api.settings import get_app_version
 from src.modules.assistant import api as assistant_api
 from src.modules.assistant import chat_api
+from src.modules.assistant.task_runner import assistant_task_runner
 from src.modules.automation.api import agents, suggestions, templates
 from src.modules.market.api import (
     discovery,
@@ -33,10 +36,14 @@ from src.modules.market.api import (
 )
 from src.modules.paper_trading.api import paper_trading
 from src.modules.portfolio.api import accounts, dashboard, history
-from src.modules.research.api import context, evaluations, feedback, insights, recommendations
+from src.modules.research.api import (
+    context,
+    evaluations,
+    feedback,
+    insights,
+    recommendations,
+)
 from src.modules.strategy.api import factors
-from src.modules.administration.api.auth import get_current_user
-from src.modules.administration.api.settings import get_app_version
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
@@ -188,6 +195,9 @@ app.include_router(
     tags=["assistant"],
     dependencies=protected,
 )
+
+
+app.router.on_startup.append(assistant_task_runner.recover_pending)
 # PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌
 app.include_router(
     pats.router, prefix="/api/pats", tags=["pats"], dependencies=protected

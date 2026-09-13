@@ -12,7 +12,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pan_agent import (
     EventType,
@@ -26,14 +26,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
+from src.platform.tasking.contracts import TaskStatus
 
-from .prompt import build_assistant_messages
 from .context_schemas import (
     AssistantConfigDTO,
     AssistantConfigUpdate,
     CompressContextCommand,
     ContextDetailDTO,
 )
+from .event_stream import subscribe_task_events
+from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
     ApprovalDecisionCommand,
@@ -48,6 +50,7 @@ from .service import (
     AssistantNotFoundError,
     AssistantService,
 )
+from .task_runner import assistant_task_runner
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -325,6 +328,99 @@ def get_assistant_service(db: Session = Depends(get_db)) -> AssistantService:
     return AssistantService(AssistantRepository(db))
 
 
+def _task_stream_response(
+    task_id: int,
+    *,
+    request: Request | None = None,
+    after_sequence: int = 0,
+) -> StreamingResponse:
+    header_id = request.headers.get("last-event-id", "") if request else ""
+    cursor = int(header_id) if header_id.isdigit() else after_sequence
+    return StreamingResponse(
+        subscribe_task_events(task_id, after_sequence=cursor),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
+
+
+@router.post("/conversations/{conversation_id}/tasks", status_code=202)
+async def create_assistant_task(
+    conversation_id: int,
+    body: SendAssistantMessageCommand,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    """Persist a task and return immediately; execution happens in the worker."""
+    try:
+        user_message = service.record_user_message(conversation_id, body.content)
+        task = service.create_task(conversation_id, user_message.id)
+        assistant_task_runner.start_message(task.id, conversation_id)
+        return {
+            "task_id": task.id,
+            "status": task.status,
+            "event_url": f"/api/assistant/tasks/{task.id}/events",
+            "snapshot_url": f"/api/assistant/tasks/{task.id}",
+            "created_at": task.created_at,
+        }
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/tasks/{task_id}/events")
+async def stream_assistant_task_events(
+    task_id: int,
+    request: Request,
+    last_event_id: int = Query(0, ge=0),
+    service: AssistantService = Depends(get_assistant_service),
+) -> StreamingResponse:
+    try:
+        service.get_task_snapshot(task_id)
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _task_stream_response(
+        task_id,
+        request=request,
+        after_sequence=last_event_id,
+    )
+
+
+@router.get("/tasks/{task_id}")
+def get_assistant_task(
+    task_id: int,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    try:
+        return service.get_task_snapshot(task_id)
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_assistant_task(
+    task_id: int,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    try:
+        snapshot = service.cancel_task(task_id)
+        assistant_task_runner.cancel(task_id)
+        return snapshot
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tasks/{task_id}/retry")
+async def retry_assistant_task(
+    task_id: int,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict:
+    try:
+        snapshot = service.retry_task(task_id)
+        if snapshot["status"] == TaskStatus.QUEUED.value:
+            assistant_task_runner.start_message(task_id, snapshot["conversation_id"])
+        return snapshot
+    except AssistantNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/conversations/{conversation_id}/messages/stream")
 async def stream_assistant_message(
     conversation_id: int,
@@ -332,6 +428,18 @@ async def stream_assistant_message(
     service: AssistantService = Depends(get_assistant_service),
 ):
     """Run the navigation assistant through PanAgent and stream its portable events."""
+    if isinstance(service, AssistantService):
+        try:
+            user_message = service.record_user_message(conversation_id, body.content)
+            task = service.create_task(conversation_id, user_message.id)
+            assistant_task_runner.start_message(task.id, conversation_id)
+            return _task_stream_response(
+                task.id,
+                after_sequence=int(task.last_event_id or 0),
+            )
+        except AssistantNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     task = None
     context_result = None
     try:
@@ -418,6 +526,18 @@ async def stream_assistant_approval_decision(
 
         return StreamingResponse(
             events(), media_type="text/event-stream", headers=_SSE_HEADERS
+        )
+
+    if isinstance(service, AssistantService):
+        assistant_task_runner.start_resume(
+            outcome.task.id,
+            outcome.task.conversation_id,
+            outcome.checkpoint,
+            outcome.decisions,
+        )
+        return _task_stream_response(
+            outcome.task.id,
+            after_sequence=int(outcome.task.last_event_id or 0),
         )
 
     try:
@@ -558,14 +678,3 @@ def delete_conversation(
     except AssistantNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
-
-
-@router.get("/tasks/{task_run_id}")
-def get_task_snapshot(
-    task_run_id: int,
-    service: AssistantService = Depends(get_assistant_service),
-) -> dict:
-    try:
-        return service.get_task_snapshot(task_run_id)
-    except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc

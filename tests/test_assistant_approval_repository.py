@@ -100,7 +100,7 @@ def test_checkpoint_is_stored_as_a_versioned_envelope_with_task_metadata():
     assert task.checkpoint["schema_version"] == 1
     assert task.checkpoint["state"]["step_index"] == checkpoint.step_index
     assert task.checkpoint_id == envelope.checkpoint_id
-    assert snapshot["state_version"] == 1
+    assert snapshot["state_version"] == 3
     assert snapshot["current_step"] == checkpoint.step_index
 
     session.close()

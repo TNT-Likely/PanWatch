@@ -23,11 +23,13 @@ from pan_agent import (
     __version__ as PAN_AGENT_RUNTIME_VERSION,
 )
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
 # 助手表由共享持久化平台注册；repository 是其唯一的模块内访问边界，
 # 不需要再经由一个只做 re-export 的 ``assistant.models`` 转发层。
 from src.platform.persistence.models import (
     AssistantContextSnapshot,
+    AssistantTaskEvent,
     AssistantTaskRun,
     AssistantToolApproval,
     AssistantToolInvocation,
@@ -35,7 +37,7 @@ from src.platform.persistence.models import (
     ChatConversation,
     ChatMessage,
 )
-from src.platform.tasking.contracts import TaskStatus
+from src.platform.tasking.contracts import TaskEvent, TaskEventType, TaskStatus
 
 
 class AssistantRepository:
@@ -153,25 +155,195 @@ class AssistantRepository:
         task = AssistantTaskRun(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
-            status=TaskStatus.RUNNING.value,
+            status=TaskStatus.QUEUED.value,
             context=context,
-            started_at=datetime.now(timezone.utc),
         )
         self._session.add(task)
+        self._session.flush()
+        self.append_task_event(
+            task.id,
+            TaskEventType.TASK_CREATED,
+            data={"task_id": task.id, "conversation_id": conversation_id},
+            commit=False,
+        )
+        self.append_task_event(
+            task.id,
+            TaskEventType.TASK_QUEUED,
+            status=TaskStatus.QUEUED,
+            data={"task_id": task.id},
+            commit=False,
+        )
         self._session.commit()
         self._session.refresh(task)
         return task
 
-    def record_tool_completed(self, task_run_id: int, *, call_id: str, tool_name: str, summary: str) -> AssistantToolInvocation:
+    def mark_task_running(self, task_run_id: int) -> AssistantTaskRun:
+        task = self._require_task(task_run_id)
+        if task.status == TaskStatus.RUNNING.value:
+            return task
+        if TaskStatus(task.status).is_terminal:
+            return task
+        task.status = TaskStatus.RUNNING.value
+        task.started_at = task.started_at or datetime.now(timezone.utc)
+        task.finished_at = None
+        self.append_task_event(
+            task.id,
+            TaskEventType.TASK_STARTED,
+            status=TaskStatus.RUNNING,
+            data={"task_id": task.id},
+            commit=False,
+        )
+        self._session.commit()
+        self._session.refresh(task)
+        return task
+
+    def append_task_event(
+        self,
+        task_run_id: int,
+        event_type: TaskEventType,
+        *,
+        status: TaskStatus | None = None,
+        step_index: int | None = None,
+        data: dict | None = None,
+        commit: bool = True,
+    ) -> AssistantTaskEvent:
+        """Append one replayable fact and advance the task snapshot cursor."""
+        task = self._require_task(task_run_id)
+        event_type = TaskEventType(event_type)
+        next_sequence = (
+            self._session.query(func.max(AssistantTaskEvent.sequence))
+            .filter(AssistantTaskEvent.task_run_id == task_run_id)
+            .scalar()
+            or 0
+        ) + 1
+        protocol_event = TaskEvent(
+            task_id=str(task_run_id),
+            run_id=str(task_run_id),
+            event_type=event_type,
+            status=status,
+            step_index=step_index,
+            data=data or {},
+        )
+        row = AssistantTaskEvent(
+            task_run_id=task_run_id,
+            sequence=next_sequence,
+            event_id=protocol_event.event_id,
+            run_id=protocol_event.run_id,
+            event_type=protocol_event.event_type.value,
+            status=protocol_event.status.value if protocol_event.status else None,
+            step_index=protocol_event.step_index,
+            data=protocol_event.data,
+            occurred_at=protocol_event.occurred_at,
+        )
+        self._session.add(row)
+        task.last_event_id = str(next_sequence)
+        task.state_version = int(task.state_version or 0) + 1
+        if step_index is not None:
+            task.current_step = max(int(task.current_step or 0), step_index)
+        if commit:
+            self._session.commit()
+            self._session.refresh(row)
+        return row
+
+    def list_task_events(
+        self, task_run_id: int, *, after_sequence: int = 0, limit: int = 200
+    ) -> list[AssistantTaskEvent]:
+        self._require_task(task_run_id)
+        return (
+            self._session.query(AssistantTaskEvent)
+            .filter(
+                AssistantTaskEvent.task_run_id == task_run_id,
+                AssistantTaskEvent.sequence > max(0, int(after_sequence)),
+            )
+            .order_by(AssistantTaskEvent.sequence.asc())
+            .limit(max(1, min(int(limit), 1_000)))
+            .all()
+        )
+
+    def is_task_cancelled(self, task_run_id: int) -> bool:
+        task = self._require_task(task_run_id)
+        return bool(task.cancel_requested or task.status == TaskStatus.CANCELLED.value)
+
+    def cancel_task(self, task_run_id: int) -> AssistantTaskRun:
+        task = self._require_task(task_run_id)
+        if TaskStatus(task.status).is_terminal:
+            return task
+        task.cancel_requested = True
+        task.status = TaskStatus.CANCELLED.value
+        task.finished_at = datetime.now(timezone.utc)
+        task.checkpoint = None
+        task.checkpoint_id = ""
+        now = datetime.now(timezone.utc)
+        for approval in self.list_task_approvals(task_run_id):
+            if approval.status == "pending":
+                approval.status = "cancelled"
+                approval.decided_at = now
+                approval.decided_by = "system"
+        self.append_task_event(
+            task.id,
+            TaskEventType.TASK_CANCELLED,
+            status=TaskStatus.CANCELLED,
+            commit=False,
+            data={"reason": "user_requested"},
+        )
+        self._session.commit()
+        self._session.refresh(task)
+        return task
+
+    def retry_task(self, task_run_id: int) -> AssistantTaskRun:
+        task = self._require_task(task_run_id)
+        current = TaskStatus(task.status)
+        if not current.is_terminal:
+            return task
+        task.status = TaskStatus.QUEUED.value
+        task.cancel_requested = False
+        task.retry_count = int(task.retry_count or 0) + 1
+        task.error_code = None
+        task.final_message_id = None
+        task.finished_at = None
+        self.append_task_event(
+            task.id,
+            TaskEventType.TASK_RETRY_SCHEDULED,
+            status=TaskStatus.QUEUED,
+            commit=False,
+            data={"retry_count": task.retry_count},
+        )
+        self._session.commit()
+        self._session.refresh(task)
+        return task
+
+    def record_tool_completed(
+        self,
+        task_run_id: int,
+        *,
+        call_id: str,
+        tool_name: str,
+        summary: str,
+        ok: bool = True,
+    ) -> AssistantToolInvocation:
         invocation = AssistantToolInvocation(
             task_run_id=task_run_id,
             call_id=call_id,
             tool_name=tool_name,
-            status="completed",
+            status="completed" if ok else "failed",
             summary=summary,
             completed_at=datetime.now(timezone.utc),
         )
         self._session.add(invocation)
+        self.append_task_event(
+            task_run_id,
+            TaskEventType.TOOL_COMPLETED,
+            status=TaskStatus.RUNNING,
+            data={
+                "call_id": call_id,
+                "tool": tool_name,
+                "name": tool_name,
+                "ok": ok,
+                "preview": summary,
+                "summary": summary,
+            },
+            commit=False,
+        )
         self._session.commit()
         self._session.refresh(invocation)
         return invocation
@@ -219,8 +391,18 @@ class AssistantRepository:
         task.checkpoint = envelope.model_dump(mode="json")
         task.checkpoint_id = envelope.checkpoint_id
         task.current_step = checkpoint.step_index
-        task.state_version = int(task.state_version or 0) + 1
         task.finished_at = None
+        self.append_task_event(
+            task.id,
+            TaskEventType.CHECKPOINT_SAVED,
+            status=TaskStatus.WAITING_APPROVAL,
+            step_index=checkpoint.step_index,
+            data={
+                "checkpoint_id": envelope.checkpoint_id,
+                "reason": envelope.reason.value,
+            },
+            commit=False,
+        )
         self._session.commit()
         return envelope
 
@@ -249,6 +431,19 @@ class AssistantRepository:
     def get_task_run(self, task_run_id: int) -> AssistantTaskRun:
         """Return the durable task metadata needed to rebuild a runtime request."""
         return self._require_task(task_run_id)
+
+    def list_tasks_for_recovery(self) -> list[AssistantTaskRun]:
+        """Return tasks whose previous process may have stopped mid-run."""
+        return (
+            self._session.query(AssistantTaskRun)
+            .filter(
+                AssistantTaskRun.status.in_(
+                    [TaskStatus.QUEUED.value, TaskStatus.RUNNING.value]
+                )
+            )
+            .order_by(AssistantTaskRun.created_at.asc())
+            .all()
+        )
 
     def create_approvals(
         self,
@@ -432,8 +627,11 @@ class AssistantRepository:
         status: str,
         final_message_id: int | None,
         error_code: str | None = None,
+        event_data: dict | None = None,
     ) -> None:
         task = self._require_task(task_run_id)
+        if task.status == TaskStatus.CANCELLED.value and status == TaskStatus.COMPLETED.value:
+            return
         if status != "completed":
             # A failed/cancelled task must not leave actionable approval cards
             # behind.  Otherwise a browser reconnect can offer a decision for
@@ -449,8 +647,25 @@ class AssistantRepository:
         task.error_code = error_code
         task.checkpoint = None
         task.checkpoint_id = ""
-        task.state_version = int(task.state_version or 0) + 1
         task.finished_at = datetime.now(timezone.utc)
+        final_status = TaskStatus(status)
+        event_type = (
+            TaskEventType.TASK_COMPLETED
+            if final_status is TaskStatus.COMPLETED
+            else TaskEventType.TASK_CANCELLED
+            if final_status is TaskStatus.CANCELLED
+            else TaskEventType.TASK_FAILED
+        )
+        self.append_task_event(
+            task.id,
+            event_type,
+            status=final_status,
+            data={
+                **(event_data or {}),
+                **({"error_code": error_code} if error_code else {}),
+            },
+            commit=False,
+        )
         self._session.commit()
 
     def get_task_snapshot(self, task_run_id: int) -> dict:
@@ -469,6 +684,8 @@ class AssistantRepository:
             "current_step": task.current_step,
             "last_event_id": task.last_event_id or "",
             "checkpoint_id": task.checkpoint_id or "",
+            "cancel_requested": bool(task.cancel_requested),
+            "retry_count": int(task.retry_count or 0),
             "context": task.context or {},
             "error_code": task.error_code,
             "pending_approvals": [

@@ -574,6 +574,7 @@ class AssistantService:
             call_id=data.get("call_id", ""),
             tool_name=data.get("tool", ""),
             summary=data.get("summary", ""),
+            ok=bool(data.get("ok", False)),
         )
 
     def record_assistant_message(
@@ -593,6 +594,10 @@ class AssistantService:
             status=result.status.value,
             final_message_id=final_message_id,
             error_code=result.error_code,
+            event_data={
+                "message_id": final_message_id,
+                "content": result.answer or "",
+            },
         )
 
     def fail_task(self, task_id: int, error_code: str) -> None:
@@ -602,7 +607,22 @@ class AssistantService:
             status="failed",
             final_message_id=None,
             error_code=error_code,
+            event_data={"code": error_code, "message": error_code},
         )
+
+    def cancel_task(self, task_id: int) -> dict:
+        try:
+            self._repository.cancel_task(task_id)
+            return self._repository.get_task_snapshot(task_id)
+        except LookupError as exc:
+            raise AssistantNotFoundError(str(exc)) from exc
+
+    def retry_task(self, task_id: int) -> dict:
+        try:
+            task = self._repository.retry_task(task_id)
+            return self._repository.get_task_snapshot(task.id)
+        except LookupError as exc:
+            raise AssistantNotFoundError(str(exc)) from exc
 
     @staticmethod
     def _approval_presentation(pending) -> dict[str, str]:

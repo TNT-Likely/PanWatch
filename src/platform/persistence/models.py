@@ -1160,10 +1160,34 @@ class AssistantTaskRun(Base):
     current_step = Column(Integer, nullable=False, default=0)
     last_event_id = Column(String, nullable=False, default="")
     checkpoint_id = Column(String, nullable=False, default="")
+    cancel_requested = Column(Boolean, nullable=False, default=False)
+    retry_count = Column(Integer, nullable=False, default=0)
     error_code = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
+
+
+class AssistantTaskEvent(Base):
+    """Append-only facts used to replay a durable assistant task."""
+
+    __tablename__ = "assistant_task_events"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "sequence", name="ux_assistant_task_event_sequence"),
+        UniqueConstraint("event_id", name="ux_assistant_task_event_id"),
+        Index("ix_assistant_task_event_run_sequence", "task_run_id", "sequence"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, nullable=False)
+    sequence = Column(Integer, nullable=False)
+    event_id = Column(String, nullable=False)
+    run_id = Column(String, nullable=True)
+    event_type = Column(String, nullable=False)
+    status = Column(String, nullable=True)
+    step_index = Column(Integer, nullable=True)
+    data = Column(JSON, default={})
+    occurred_at = Column(DateTime, server_default=func.now())
 
 
 class AssistantTaskStep(Base):
