@@ -157,6 +157,26 @@ describe('ChatWidget layout', () => {
     expect(screen.getByRole('cell', { name: '+1.2%' })).toBeTruthy()
   })
 
+  it('attaches the completed trace to the assistant response and keeps it collapsed', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
+      callbacks.onRunStarted?.({ taskId: 46 })
+      callbacks.onTrace?.({ event: 'tool_call_start', data: { name: 'get_portfolio', arguments: { market: 'CN' } } })
+      callbacks.onTrace?.({ event: 'tool_result', data: { name: 'get_portfolio', ok: true, preview: '持仓查询完成' } })
+      callbacks.onDone?.({ message_id: 47, content: '已完成分析', created_at: '2026-09-12T00:00:00Z' })
+    })
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+
+    await screen.findByText('已完成分析')
+    expect(screen.getAllByTestId('assistant-trace')).toHaveLength(1)
+    expect(screen.queryByText('调用工具：get_portfolio')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    expect(screen.getByText('调用工具：get_portfolio')).toBeTruthy()
+  })
+
   it('does not render a generic retry card when a stream fails', async () => {
     const user = userEvent.setup()
     vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {

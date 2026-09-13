@@ -87,6 +87,9 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
         entry_range = f"{_format_candidate_price(entry_low) or '--'} ~ {_format_candidate_price(entry_high) or '--'}"
     else:
         entry_range = ""
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    source_meta = payload.get("source_meta") if isinstance(payload.get("source_meta"), dict) else {}
+    quote = source_meta.get("quote") if isinstance(source_meta.get("quote"), dict) else {}
     return {
         "symbol": str(item.get("stock_symbol") or ""),
         "market": str(item.get("stock_market") or "CN"),
@@ -101,6 +104,8 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "target_price": item.get("target_price"),
         "stop_loss": item.get("stop_loss"),
         "invalidation": item.get("invalidation") or "",
+        "current_price": quote.get("current_price"),
+        "change_pct": quote.get("change_pct"),
     }
 
 
@@ -152,7 +157,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 source_pool="all",
                 holding=holding,
                 risk_level=risk_level,
-                include_payload=False,
+                include_payload=True,
             )
         except Exception:  # noqa: BLE001 - provider/database failures become controlled tool results
             return ToolResult.failure(

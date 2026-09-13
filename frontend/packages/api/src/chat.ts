@@ -14,6 +14,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   created_at: string
+  /** Runtime facts captured while producing this assistant response. */
+  trace?: AssistantTraceEvent[]
 }
 
 export interface ConversationDetail {

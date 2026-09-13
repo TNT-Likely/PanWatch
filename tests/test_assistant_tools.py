@@ -138,6 +138,14 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
                     "target_price": 1950,
                     "stop_loss": 1710,
                     "invalidation": "跌破 1710",
+                    "payload": {
+                        "source_meta": {
+                            "quote": {
+                                "current_price": 1800,
+                                "change_pct": 1.2,
+                            }
+                        }
+                    },
                 }
             ],
         }
@@ -161,7 +169,7 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
         "source_pool": "all",
         "holding": "unheld",
         "risk_level": "",
-        "include_payload": False,
+        "include_payload": True,
     }
     assert result.data == {
         "snapshot_date": "2026-09-13",
@@ -181,6 +189,8 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
                 "target_price": 1950,
                 "stop_loss": 1710,
                 "invalidation": "跌破 1710",
+                "current_price": 1800,
+                "change_pct": 1.2,
             }
         ],
     }

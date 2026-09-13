@@ -116,6 +116,7 @@ export default function ChatWidget({
   const [contextCompressing, setContextCompressing] = useState(false)
   const [contextError, setContextError] = useState('')
   const [traceEvents, setTraceEvents] = useState<AssistantTraceEvent[]>([])
+  const traceEventsRef = useRef<AssistantTraceEvent[]>([])
   const tokenBufRef = useRef('')
   const rafRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -163,13 +164,11 @@ export default function ChatWidget({
   }, [])
 
   const appendTrace = useCallback((event: AssistantTraceEvent) => {
-    setTraceEvents((previous) => {
-      const fingerprint = `${event.id ?? ''}:${event.event}:${JSON.stringify(event.data)}`
-      if (previous.some((item) => `${item.id ?? ''}:${item.event}:${JSON.stringify(item.data)}` === fingerprint)) {
-        return previous
-      }
-      return [...previous, event].slice(-40)
-    })
+    const fingerprint = `${event.id ?? ''}:${event.event}:${JSON.stringify(event.data)}`
+    if (traceEventsRef.current.some((item) => `${item.id ?? ''}:${item.event}:${JSON.stringify(item.data)}` === fingerprint)) return
+    const next = [...traceEventsRef.current, event].slice(-40)
+    traceEventsRef.current = next
+    setTraceEvents(next)
   }, [])
 
   const loadConversations = useCallback(async () => {
@@ -476,6 +475,7 @@ export default function ChatWidget({
     setSuggestedQuestions([]) // hide after first send
     setTaskId(null)
     setPendingApprovals([])
+    traceEventsRef.current = []
     setTraceEvents([])
     sessionStorage.removeItem(taskStorageKey(convId))
 
@@ -562,12 +562,16 @@ export default function ChatWidget({
         },
         onDone: (m) => {
           receivedAny = true
+          const completedTrace = traceEventsRef.current
           setMessages((prev) => [...prev, {
             id: m.message_id || Date.now() + 1,
             role: 'assistant',
             content: m.content,
             created_at: m.created_at || new Date().toISOString(),
+            trace: completedTrace.length > 0 ? completedTrace : undefined,
           }])
+          traceEventsRef.current = []
+          setTraceEvents([])
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
@@ -671,12 +675,16 @@ export default function ChatWidget({
           }
         },
         onDone: (message) => {
+          const completedTrace = traceEventsRef.current
           setMessages((previous) => [...previous, {
             id: message.message_id || Date.now() + 1,
             role: 'assistant',
             content: message.content,
             created_at: message.created_at || new Date().toISOString(),
+            trace: completedTrace.length > 0 ? completedTrace : undefined,
           }])
+          traceEventsRef.current = []
+          setTraceEvents([])
           setTaskId(null)
           setPendingApprovals([])
           sessionStorage.removeItem(taskStorageKey(convId))
@@ -956,19 +964,24 @@ export default function ChatWidget({
                 key={msg.id}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-accent/60 text-foreground'
-                  }`}
-                >
-                  {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    msg.content
+                <div className="flex max-w-[85%] flex-col gap-2">
+                  <div
+                    className={`rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-accent/60 text-foreground'
+                    }`}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      msg.content
+                    )}
+                  </div>
+                  {msg.role === 'assistant' && msg.trace && msg.trace.length > 0 && (
+                    <TraceTimeline events={msg.trace} />
                   )}
                 </div>
               </div>
@@ -981,7 +994,13 @@ export default function ChatWidget({
                 />
               </div>
             ))}
-            <TraceTimeline events={traceEvents} />
+            {sending && traceEvents.length > 0 && (
+              <div className="flex justify-start">
+                <div className="w-full max-w-[85%]">
+                  <TraceTimeline events={traceEvents} live />
+                </div>
+              </div>
+            )}
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
