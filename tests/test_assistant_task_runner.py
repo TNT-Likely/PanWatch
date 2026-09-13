@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from src.platform.tasking.contracts import TaskEventType
 
 
-def test_durable_runtime_sink_persists_tool_and_answer_events():
+def test_durable_runtime_sink_batches_answer_and_preserves_event_order():
     from src.modules.assistant.task_runner import DurableRuntimeEventSink
     from tests.test_assistant_task_events import _repository
 
@@ -39,16 +39,16 @@ def test_durable_runtime_sink_persists_tool_and_answer_events():
     async def publish_events():
         await sink.publish(
             RuntimeEvent(
-                type=EventType.TOOL_STARTED,
+                type=EventType.ANSWER_TOKEN,
                 run_id=str(task.id),
-                data={"call_id": "call-1", "tool": "get_quote", "arguments": {"symbol": "600519"}},
+                data={"token": "完成"},
             )
         )
         await sink.publish(
             RuntimeEvent(
-                type=EventType.ANSWER_TOKEN,
+                type=EventType.TOOL_STARTED,
                 run_id=str(task.id),
-                data={"token": "完成"},
+                data={"call_id": "call-1", "tool": "get_quote", "arguments": {"symbol": "600519"}},
             )
         )
 
@@ -56,11 +56,45 @@ def test_durable_runtime_sink_persists_tool_and_answer_events():
     events = repository.list_task_events(task.id, after_sequence=2)
 
     assert [event.event_type for event in events] == [
-        TaskEventType.TOOL_STARTED.value,
         TaskEventType.ANSWER_TOKEN.value,
+        TaskEventType.TOOL_STARTED.value,
     ]
-    assert events[0].data["name"] == "get_quote"
-    assert events[1].data == {"text": "完成"}
+    assert events[0].data == {"text": "完成"}
+    assert events[1].data["name"] == "get_quote"
+
+    session.close()
+    engine.dispose()
+
+
+def test_durable_runtime_sink_does_not_write_each_answer_token():
+    from src.modules.assistant.task_runner import DurableRuntimeEventSink
+    from tests.test_assistant_task_events import _repository
+
+    engine, session, repository, task = _repository()
+
+    class Service:
+        _repository = repository
+
+    sink = DurableRuntimeEventSink(Service(), task.id)
+
+    async def publish_tokens():
+        for token in ("你", "好"):
+            await sink.publish(
+                RuntimeEvent(
+                    type=EventType.ANSWER_TOKEN,
+                    run_id=str(task.id),
+                    data={"token": token},
+                )
+            )
+
+    asyncio.run(publish_tokens())
+    assert repository.list_task_events(task.id, after_sequence=2) == []
+
+    asyncio.run(sink.flush())
+    events = repository.list_task_events(task.id, after_sequence=2)
+    assert len(events) == 1
+    assert events[0].event_type == TaskEventType.ANSWER_TOKEN.value
+    assert events[0].data == {"text": "你好"}
 
     session.close()
     engine.dispose()

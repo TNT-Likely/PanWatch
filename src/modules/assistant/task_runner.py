@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 
 from pan_agent import (
@@ -34,6 +35,8 @@ ASSISTANT_RUN_TIMEOUT_SECONDS = 180
 ASSISTANT_TOOL_TIMEOUT_SECONDS = 15
 ASSISTANT_MAX_STEPS = 12
 ASSISTANT_MAX_TOOL_CALLS = 24
+ANSWER_TOKEN_BATCH_CHARS = 128
+ANSWER_TOKEN_BATCH_INTERVAL_SECONDS = 0.1
 
 _ERROR_MESSAGES = {
     "run_timeout": "助手响应超时，请稍后重试。",
@@ -54,13 +57,31 @@ class DurableRuntimeEventSink:
         self._service = service
         self._task_id = task_id
         self._context_result = context_result
+        self._pending_answer_tokens: list[str] = []
+        self._pending_answer_chars = 0
+        self._last_answer_flush_at = time.monotonic()
 
     async def publish(self, event: RuntimeEvent) -> None:
+        data = dict(event.data)
+        repository = self._service._repository
+        if event.type is EventType.ANSWER_TOKEN:
+            token = str(data.get("token") or "")
+            if token:
+                self._pending_answer_tokens.append(token)
+                self._pending_answer_chars += len(token)
+            if (
+                self._pending_answer_chars >= ANSWER_TOKEN_BATCH_CHARS
+                or time.monotonic() - self._last_answer_flush_at
+                >= ANSWER_TOKEN_BATCH_INTERVAL_SECONDS
+            ):
+                await self.flush()
+            await asyncio.sleep(0)
+            return
+
         if self._service._repository.is_task_cancelled(self._task_id):
             raise TaskCancelledError("task cancelled")
 
-        data = dict(event.data)
-        repository = self._service._repository
+        await self.flush()
         if event.type is EventType.RUN_CREATED:
             return
         if event.type is EventType.STEP_UPDATED:
@@ -72,14 +93,6 @@ class DurableRuntimeEventSink:
                 data=data,
             )
             return
-        if event.type is EventType.ANSWER_TOKEN:
-            repository.append_task_event(
-                self._task_id,
-                TaskEventType.ANSWER_TOKEN,
-                status=TaskStatus.RUNNING,
-                data={"text": data.get("token", "")},
-            )
-            return
         if event.type is EventType.TOOL_STARTED:
             self._service.record_tool_started(self._task_id, data)
             return
@@ -88,6 +101,24 @@ class DurableRuntimeEventSink:
             return
         if event.type is EventType.APPROVAL_REQUIRED:
             return
+
+    async def flush(self, *, check_cancelled: bool = True) -> None:
+        """Persist buffered answer text without reordering surrounding events."""
+        if not self._pending_answer_tokens:
+            return
+        if check_cancelled and self._service._repository.is_task_cancelled(self._task_id):
+            raise TaskCancelledError("task cancelled")
+
+        text = "".join(self._pending_answer_tokens)
+        self._service._repository.append_task_event(
+            self._task_id,
+            TaskEventType.ANSWER_TOKEN,
+            status=TaskStatus.RUNNING,
+            data={"text": text},
+        )
+        self._pending_answer_tokens.clear()
+        self._pending_answer_chars = 0
+        self._last_answer_flush_at = time.monotonic()
 
 
 class AssistantTaskRunner:
@@ -162,6 +193,7 @@ class AssistantTaskRunner:
     async def _run_message(self, task_id: int, conversation_id: int) -> None:
         db = self._session_factory()
         service = AssistantService(AssistantRepository(db))
+        sink: DurableRuntimeEventSink | None = None
         try:
             if not service._repository.claim_task(task_id):
                 return
@@ -211,23 +243,29 @@ class AssistantTaskRunner:
                     tool_timeout_seconds=ASSISTANT_TOOL_TIMEOUT_SECONDS,
                 ),
             )
+            sink = DurableRuntimeEventSink(service, task_id, context_result)
             result = await asyncio.wait_for(
                 runtime.run(
                     request,
-                    DurableRuntimeEventSink(service, task_id, context_result),
+                    sink,
                 ),
                 timeout=ASSISTANT_RUN_TIMEOUT_SECONDS,
             )
+            await sink.flush()
             await self._finish_result(service, task_id, conversation_id, result)
         except TaskCancelledError:
+            await self._flush_sink(sink)
             self._cancel_if_needed(service, task_id)
         except asyncio.TimeoutError:
+            await self._flush_sink(sink)
             self._fail(service, task_id, "run_timeout")
         except asyncio.CancelledError:
+            await self._flush_sink(sink)
             if not service._repository.is_task_cancelled(task_id):
                 self._fail(service, task_id, "worker_cancelled")
             raise
         except Exception:
+            await self._flush_sink(sink)
             logger.exception("Assistant task failed: task_id=%s", task_id)
             self._fail(service, task_id, "transport_failed")
         finally:
@@ -238,6 +276,7 @@ class AssistantTaskRunner:
     ) -> None:
         db = self._session_factory()
         service = AssistantService(AssistantRepository(db))
+        sink: DurableRuntimeEventSink | None = None
         try:
             if not service._repository.claim_task(task_id):
                 return
@@ -254,25 +293,31 @@ class AssistantTaskRunner:
                     tool_timeout_seconds=ASSISTANT_TOOL_TIMEOUT_SECONDS,
                 ),
             )
+            sink = DurableRuntimeEventSink(service, task_id)
             result = await asyncio.wait_for(
                 runtime.resume(
                     request,
                     checkpoint,
                     decisions,
-                    DurableRuntimeEventSink(service, task_id),
+                    sink,
                 ),
                 timeout=ASSISTANT_RUN_TIMEOUT_SECONDS,
             )
+            await sink.flush()
             await self._finish_result(service, task_id, conversation_id, result)
         except TaskCancelledError:
+            await self._flush_sink(sink)
             self._cancel_if_needed(service, task_id)
         except asyncio.TimeoutError:
+            await self._flush_sink(sink)
             self._fail(service, task_id, "run_timeout")
         except asyncio.CancelledError:
+            await self._flush_sink(sink)
             if not service._repository.is_task_cancelled(task_id):
                 self._fail(service, task_id, "worker_cancelled")
             raise
         except Exception:
+            await self._flush_sink(sink)
             logger.exception("Assistant approval resume failed: task_id=%s", task_id)
             self._fail(service, task_id, "transport_failed")
         finally:
@@ -322,6 +367,14 @@ class AssistantTaskRunner:
                 "message": _ERROR_MESSAGES.get(error_code, _ERROR_MESSAGES["transport_failed"]),
             },
         )
+
+    async def _flush_sink(self, sink: DurableRuntimeEventSink | None) -> None:
+        if sink is None:
+            return
+        try:
+            await sink.flush(check_cancelled=False)
+        except Exception:
+            logger.exception("Failed to flush assistant answer tokens: task_id=%s", sink._task_id)
 
     def _cancel_if_needed(self, service: AssistantService, task_id: int) -> None:
         if not service._repository.is_task_cancelled(task_id):
