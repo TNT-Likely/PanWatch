@@ -10,7 +10,13 @@ from sqlalchemy.pool import StaticPool
 
 import src.modules.assistant.tools as assistant_tools
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import Account, Position, PriceAlertHit, PriceAlertRule, Stock
+from src.platform.persistence.models import (
+    Account,
+    Position,
+    PriceAlertHit,
+    PriceAlertRule,
+    Stock,
+)
 
 
 def _session():
@@ -100,6 +106,102 @@ def test_quote_tool_returns_controlled_failure_without_quote(monkeypatch):
 
     assert result.ok is False
     assert result.error_code == "quote_unavailable"
+    session.close()
+    engine.dispose()
+
+
+def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_candidates(monkeypatch):
+    engine, session = _session()
+    captured = {}
+
+    def _list_strategy_signals(**kwargs):
+        captured.update(kwargs)
+        return {
+            "snapshot_date": "2026-09-13",
+            "count": 1,
+            "items": [
+                {
+                    "stock_symbol": "600519",
+                    "stock_market": "CN",
+                    "stock_name": "贵州茅台",
+                    "rank_score": 88.5,
+                    "action": "buy",
+                    "action_label": "建仓",
+                    "risk_level": "medium",
+                    "risk_level_label": "中风险",
+                    "source_pool": "market_scan",
+                    "source_pool_label": "市场池",
+                    "signal": "趋势改善",
+                    "reason": "均线与量价结构同步改善",
+                    "entry_low": 1780,
+                    "entry_high": 1820,
+                    "target_price": 1950,
+                    "stop_loss": 1710,
+                    "invalidation": "跌破 1710",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(assistant_tools, "list_strategy_signals", _list_strategy_signals, raising=False)
+
+    result = asyncio.run(
+        assistant_tools.build_panwatch_tool_registry(session).execute(
+            "find_research_candidates",
+            _request(),
+            {"market": "CN", "holding": "unheld", "min_score": 80, "limit": 3},
+        )
+    )
+
+    assert result.ok is True
+    assert captured == {
+        "market": "CN",
+        "status": "active",
+        "min_score": 80.0,
+        "limit": 3,
+        "source_pool": "all",
+        "holding": "unheld",
+        "risk_level": "",
+        "include_payload": False,
+    }
+    assert result.data == {
+        "snapshot_date": "2026-09-13",
+        "count": 1,
+        "items": [
+            {
+                "symbol": "600519",
+                "market": "CN",
+                "name": "贵州茅台",
+                "score": 88.5,
+                "action": "建仓",
+                "risk": "中风险",
+                "source": "市场池",
+                "signal": "趋势改善",
+                "reason": "均线与量价结构同步改善",
+                "entry_range": "1780 ~ 1820",
+                "target_price": 1950,
+                "stop_loss": 1710,
+                "invalidation": "跌破 1710",
+            }
+        ],
+    }
+    assert "贵州茅台" in result.summary
+    session.close()
+    engine.dispose()
+
+
+def test_research_candidates_tool_rejects_invalid_filters():
+    engine, session = _session()
+
+    result = asyncio.run(
+        assistant_tools.build_panwatch_tool_registry(session).execute(
+            "find_research_candidates",
+            _request(),
+            {"market": "JP", "limit": 0},
+        )
+    )
+
+    assert result.ok is False
+    assert result.error_code == "candidate_filter_invalid"
     session.close()
     engine.dispose()
 
