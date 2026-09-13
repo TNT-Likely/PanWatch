@@ -24,7 +24,6 @@ pnpm-debug.log*
 
 # Claude
 .claude/
-AGENTS.md
 CLAUDE.md
 *.tsbuildinfo
 
