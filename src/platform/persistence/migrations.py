@@ -1889,6 +1889,34 @@ def _m124_assistant_context_snapshots(conn: Connection) -> None:
     )
 
 
+def _m125_assistant_task_protocol(conn: Connection) -> None:
+    """Add optimistic-version metadata for durable task snapshots."""
+    _add_column_if_missing(
+        conn,
+        "assistant_task_runs",
+        "state_version",
+        "ALTER TABLE assistant_task_runs ADD COLUMN state_version INTEGER NOT NULL DEFAULT 0",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_task_runs",
+        "current_step",
+        "ALTER TABLE assistant_task_runs ADD COLUMN current_step INTEGER NOT NULL DEFAULT 0",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_task_runs",
+        "last_event_id",
+        "ALTER TABLE assistant_task_runs ADD COLUMN last_event_id TEXT NOT NULL DEFAULT ''",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_task_runs",
+        "checkpoint_id",
+        "ALTER TABLE assistant_task_runs ADD COLUMN checkpoint_id TEXT NOT NULL DEFAULT ''",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1914,6 +1942,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(122, "assistant_task_snapshots", _m122_assistant_task_snapshots),
     Migration(123, "assistant_approval_workflow", _m123_assistant_approval_workflow),
     Migration(124, "assistant_context_snapshots", _m124_assistant_context_snapshots),
+    Migration(125, "assistant_task_protocol", _m125_assistant_task_protocol),
 )
 
 

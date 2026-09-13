@@ -87,6 +87,26 @@ def test_checkpoint_and_approval_decision_are_durable_and_exactly_once():
     engine.dispose()
 
 
+def test_checkpoint_is_stored_as_a_versioned_envelope_with_task_metadata():
+    engine, session, repository, task = _repository()
+    checkpoint = _checkpoint()
+
+    envelope = repository.save_checkpoint(task.id, checkpoint)
+    restored = repository.get_task_checkpoint_envelope(task.id)
+    snapshot = repository.get_task_snapshot(task.id)
+
+    assert envelope.checkpoint_id == restored.checkpoint_id
+    assert restored.to_checkpoint() == checkpoint
+    assert task.checkpoint["schema_version"] == 1
+    assert task.checkpoint["state"]["step_index"] == checkpoint.step_index
+    assert task.checkpoint_id == envelope.checkpoint_id
+    assert snapshot["state_version"] == 1
+    assert snapshot["current_step"] == checkpoint.step_index
+
+    session.close()
+    engine.dispose()
+
+
 def test_permission_resolution_uses_tool_then_risk_defaults_and_safety_floors():
     engine, session, repository, _task = _repository()
     write_tool = ToolSpec(

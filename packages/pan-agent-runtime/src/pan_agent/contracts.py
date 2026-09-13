@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -183,6 +184,58 @@ class AgentCheckpoint(BaseModel):
     pending_approvals: list[PendingApproval] = Field(default_factory=list)
 
 
+class CheckpointReason(StrEnum):
+    """The safe execution boundary that produced a persisted checkpoint."""
+
+    INITIALIZED = "initialized"
+    MODEL_TURN_COMPLETED = "model_turn_completed"
+    TOOL_STARTED = "tool_started"
+    TOOL_COMPLETED = "tool_completed"
+    APPROVAL_REQUIRED = "approval_required"
+    RETRY_SCHEDULED = "retry_scheduled"
+    TERMINAL = "terminal"
+
+
+class CheckpointEnvelope(BaseModel):
+    """Versioned storage envelope around provider-neutral checkpoint state.
+
+    ``AgentCheckpoint`` remains the runtime resume API.  Hosts persist this
+    envelope so future task workers can validate compatibility and identify
+    the exact snapshot used for recovery without changing the runtime model.
+    """
+
+    schema_version: int = Field(default=1, ge=1)
+    checkpoint_id: str = Field(default_factory=lambda: uuid4().hex, min_length=1)
+    run_id: str = Field(min_length=1)
+    runtime_version: str = Field(default="unknown", min_length=1)
+    reason: CheckpointReason = CheckpointReason.APPROVAL_REQUIRED
+    state: AgentCheckpoint
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        *,
+        run_id: str,
+        checkpoint: AgentCheckpoint,
+        reason: CheckpointReason = CheckpointReason.APPROVAL_REQUIRED,
+        runtime_version: str = "unknown",
+        metadata: dict[str, Any] | None = None,
+    ) -> CheckpointEnvelope:
+        return cls(
+            run_id=run_id,
+            runtime_version=runtime_version,
+            reason=reason,
+            state=checkpoint,
+            metadata=metadata or {},
+        )
+
+    def to_checkpoint(self) -> AgentCheckpoint:
+        """Return a deep copy so persistence callers cannot mutate the envelope."""
+        return self.state.model_copy(deep=True)
+
+
 class ModelTurn(BaseModel):
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
@@ -197,10 +250,14 @@ class RunRequest(BaseModel):
 
 
 class RuntimeEvent(BaseModel):
+    """Provider-neutral runtime event with replay metadata."""
+
+    schema_version: int = Field(default=1, ge=1)
+    event_id: str = Field(default_factory=lambda: uuid4().hex, min_length=1)
     type: EventType
     run_id: str
     data: dict[str, Any] = Field(default_factory=dict)
-    occurred_at: datetime = Field(default_factory=datetime.now)
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class RunResult(BaseModel):

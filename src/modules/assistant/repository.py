@@ -8,6 +8,8 @@ from uuid import uuid4
 from pan_agent import (
     AgentCheckpoint,
     ApprovalDecision,
+    CheckpointEnvelope,
+    CheckpointReason,
     ContextCompressionMode,
     ContextSummary,
     ContextUsage,
@@ -17,19 +19,23 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
+from pan_agent import (
+    __version__ as PAN_AGENT_RUNTIME_VERSION,
+)
 from sqlalchemy.orm import Session
 
 # 助手表由共享持久化平台注册；repository 是其唯一的模块内访问边界，
 # 不需要再经由一个只做 re-export 的 ``assistant.models`` 转发层。
 from src.platform.persistence.models import (
-    AssistantTaskRun,
     AssistantContextSnapshot,
+    AssistantTaskRun,
     AssistantToolApproval,
     AssistantToolInvocation,
     AssistantToolPermission,
     ChatConversation,
     ChatMessage,
 )
+from src.platform.tasking.contracts import TaskStatus
 
 
 class AssistantRepository:
@@ -147,7 +153,7 @@ class AssistantRepository:
         task = AssistantTaskRun(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
-            status="running",
+            status=TaskStatus.RUNNING.value,
             context=context,
             started_at=datetime.now(timezone.utc),
         )
@@ -192,19 +198,53 @@ class AssistantRepository:
             .all()
         )
 
-    def save_checkpoint(self, task_run_id: int, checkpoint: AgentCheckpoint) -> None:
-        """Persist enough provider-neutral state to resume after human input."""
+    def save_checkpoint(
+        self,
+        task_run_id: int,
+        checkpoint: AgentCheckpoint,
+        *,
+        reason: CheckpointReason = CheckpointReason.APPROVAL_REQUIRED,
+        metadata: dict | None = None,
+    ) -> CheckpointEnvelope:
+        """Persist a versioned envelope around provider-neutral resume state."""
         task = self._require_task(task_run_id)
-        task.status = "awaiting_approval"
-        task.checkpoint = checkpoint.model_dump(mode="json")
+        envelope = CheckpointEnvelope.from_checkpoint(
+            run_id=str(task_run_id),
+            checkpoint=checkpoint,
+            reason=reason,
+            runtime_version=f"pan-agent-runtime@{PAN_AGENT_RUNTIME_VERSION}",
+            metadata=metadata,
+        )
+        task.status = TaskStatus.WAITING_APPROVAL.value
+        task.checkpoint = envelope.model_dump(mode="json")
+        task.checkpoint_id = envelope.checkpoint_id
+        task.current_step = checkpoint.step_index
+        task.state_version = int(task.state_version or 0) + 1
         task.finished_at = None
         self._session.commit()
+        return envelope
 
-    def get_task_checkpoint(self, task_run_id: int) -> AgentCheckpoint | None:
+    def get_task_checkpoint_envelope(self, task_run_id: int) -> CheckpointEnvelope | None:
+        """Load a current or legacy checkpoint as the versioned envelope."""
         task = self._require_task(task_run_id)
         if task.checkpoint is None:
             return None
-        return AgentCheckpoint.model_validate(task.checkpoint)
+        raw = task.checkpoint
+        if isinstance(raw, dict) and "state" in raw and "schema_version" in raw:
+            return CheckpointEnvelope.model_validate(raw)
+        # Migrate the in-memory representation of pre-P0 approval checkpoints.
+        return CheckpointEnvelope.from_checkpoint(
+            run_id=str(task_run_id),
+            checkpoint=AgentCheckpoint.model_validate(raw),
+            reason=CheckpointReason.APPROVAL_REQUIRED,
+            runtime_version="legacy",
+        )
+
+    def get_task_checkpoint(self, task_run_id: int) -> AgentCheckpoint | None:
+        envelope = self.get_task_checkpoint_envelope(task_run_id)
+        if envelope is None:
+            return None
+        return envelope.to_checkpoint()
 
     def get_task_run(self, task_run_id: int) -> AssistantTaskRun:
         """Return the durable task metadata needed to rebuild a runtime request."""
@@ -408,6 +448,8 @@ class AssistantRepository:
         task.final_message_id = final_message_id
         task.error_code = error_code
         task.checkpoint = None
+        task.checkpoint_id = ""
+        task.state_version = int(task.state_version or 0) + 1
         task.finished_at = datetime.now(timezone.utc)
         self._session.commit()
 
@@ -423,6 +465,10 @@ class AssistantRepository:
             "id": task.id,
             "conversation_id": task.conversation_id,
             "status": task.status,
+            "state_version": task.state_version,
+            "current_step": task.current_step,
+            "last_event_id": task.last_event_id or "",
+            "checkpoint_id": task.checkpoint_id or "",
             "context": task.context or {},
             "error_code": task.error_code,
             "pending_approvals": [
