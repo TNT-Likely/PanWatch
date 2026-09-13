@@ -52,4 +52,44 @@ describe('assistant task stream', () => {
       created_at: '',
     })
   })
+
+  it('reconnects an approval decision without submitting it twice', async () => {
+    const calls: Array<{ path: string; method?: string; lastEventId?: number }> = []
+    let firstConnection = true
+    readSSE.mockImplementation(async (path: string, options: { method?: string; lastEventId?: number; onEvent: (event: any) => void }) => {
+      calls.push({ path, method: options.method, lastEventId: options.lastEventId })
+      if (firstConnection) {
+        firstConnection = false
+        options.onEvent({ id: 8, event: 'tool_result', data: { name: 'create_price_alert', ok: true } })
+        throw new Error('response disconnected after decision was accepted')
+      }
+      options.onEvent({
+        id: 9,
+        event: 'done',
+        data: { message_id: 10, content: '全部完成', created_at: '' },
+      })
+      return { lastEventId: 9 }
+    })
+
+    const onDone = vi.fn()
+    await chatApi.decideAssistantApprovalStream('approval-1', 'approved', { onDone }, 42)
+
+    expect(calls).toEqual([
+      {
+        path: '/assistant/approvals/approval-1/decision/stream',
+        method: 'POST',
+        lastEventId: undefined,
+      },
+      {
+        path: '/assistant/tasks/42/events',
+        method: undefined,
+        lastEventId: 8,
+      },
+    ])
+    expect(onDone).toHaveBeenCalledWith({
+      message_id: 10,
+      content: '全部完成',
+      created_at: '',
+    })
+  })
 })

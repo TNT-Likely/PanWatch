@@ -24,6 +24,7 @@ vi.mock('@panwatch/api', () => ({
       status: 'completed',
       pending_approvals: [],
     }),
+    subscribeAssistantTaskStream: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
     sendAssistantMessageStream: vi.fn().mockResolvedValue(undefined),
     decideAssistantApprovalStream: vi.fn().mockResolvedValue(undefined),
@@ -32,9 +33,45 @@ vi.mock('@panwatch/api', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  sessionStorage.clear()
 })
 
 describe('ChatWidget layout', () => {
+  it('reconnects a running durable task after a refresh', async () => {
+    sessionStorage.setItem('panwatch:assistant-task:1', '88')
+    vi.mocked(chatApi.getAssistantTask)
+      .mockResolvedValueOnce({
+        id: 88,
+        conversation_id: 1,
+        status: 'running',
+        pending_approvals: [],
+      })
+      .mockResolvedValueOnce({
+        id: 88,
+        conversation_id: 1,
+        status: 'completed',
+        pending_approvals: [],
+      })
+    vi.mocked(chatApi.getConversation).mockResolvedValue({
+      conversation: { id: 1, title: '恢复任务', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' },
+      messages: [{ id: 188, role: 'assistant', content: '后台任务已完成', created_at: '2026-09-12T00:00:00Z' }],
+    })
+    vi.mocked(chatApi.subscribeAssistantTaskStream).mockImplementation(async (_taskId, callbacks) => {
+      callbacks.onToolCallStart?.({ name: 'create_price_alert', arguments: {} })
+      callbacks.onDone?.({ message_id: 188, content: '后台任务已完成', created_at: '2026-09-12T00:00:00Z' })
+    })
+
+    render(<ChatWidget embedded conversationIdFromUrl={1} onConversationChange={vi.fn()} />)
+
+    await waitFor(() => expect(chatApi.subscribeAssistantTaskStream).toHaveBeenCalledWith(
+      88,
+      expect.any(Object),
+      expect.any(AbortSignal),
+    ))
+    await screen.findByText('后台任务已完成')
+    await waitFor(() => expect(sessionStorage.getItem('panwatch:assistant-task:1')).toBeNull())
+  })
+
   it('does not restore an approval from a conversation that was left before the response arrived', async () => {
     let resolveTask: ((value: unknown) => void) | undefined
     vi.mocked(chatApi.listConversations).mockResolvedValue([
@@ -249,6 +286,7 @@ describe('ChatWidget layout', () => {
       'approval-1',
       'approved',
       expect.any(Object),
+      42,
     )
   })
 })

@@ -288,35 +288,126 @@ export default function ChatWidget({
 
   useEffect(() => {
     if (!activeConvId) return
+    // The conversation id is assigned while the initial send is still in
+    // flight. Do not mistake the task created by this same render for a
+    // refresh recovery candidate and clear its live approval state.
+    if (sendingRef.current) return
     const conversationId = activeConvId
     const storageKey = taskStorageKey(conversationId)
     const storedTaskId = Number(sessionStorage.getItem(storageKey))
     if (!Number.isInteger(storedTaskId) || storedTaskId <= 0) return
 
     let cancelled = false
-    chatApi.getAssistantTask(storedTaskId).then((snapshot) => {
-      // The request can resolve after a route/session switch.  Both checks
-      // are required: the snapshot's owner and the currently selected owner.
-      if (cancelled || activeConvIdRef.current !== conversationId) return
-      if (snapshot.conversation_id !== conversationId || snapshot.status !== 'awaiting_approval') {
-        sessionStorage.removeItem(storageKey)
+    const controller = new AbortController()
+    const isCurrent = () => !cancelled && activeConvIdRef.current === conversationId
+    const clearTask = () => {
+      setTaskId(null)
+      setPendingApprovals([])
+      sessionStorage.removeItem(storageKey)
+    }
+    const restoreSnapshot = async (snapshot: Awaited<ReturnType<typeof chatApi.getAssistantTask>>) => {
+      if (!isCurrent() || snapshot.conversation_id !== conversationId) return
+
+      if (snapshot.status === 'awaiting_approval') {
+        const approvals = snapshot.pending_approvals.map(approvalFromSnapshot)
+        if (approvals.length === 0) {
+          clearTask()
+          return
+        }
+        setTaskId(snapshot.id)
+        setPendingApprovals(approvals)
+        setSending(false)
+        sendingRef.current = false
         return
       }
-      const approvals = snapshot.pending_approvals.map(approvalFromSnapshot)
-      if (approvals.length === 0) {
-        sessionStorage.removeItem(storageKey)
+
+      if (snapshot.status === 'queued' || snapshot.status === 'running') {
+        setTaskId(snapshot.id)
+        setSending(true)
+        sendingRef.current = true
+        resetStream()
+
+        try {
+          await chatApi.subscribeAssistantTaskStream(snapshot.id, {
+            onTaskCreated: (taskId) => {
+              if (isCurrent()) setTaskId(taskId)
+            },
+            onRunStarted: ({ taskId: nextTaskId }) => {
+              if (isCurrent() && nextTaskId > 0) setTaskId(nextTaskId)
+            },
+            onToken: (token) => {
+              if (isCurrent()) pushToken(token)
+            },
+            onToolCallStart: ({ name }) => {
+              if (!isCurrent()) return
+              tokenBufRef.current = ''
+              setStreamText('')
+              setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+            },
+            onToolResult: () => undefined,
+            onTrace: (event) => {
+              if (isCurrent()) appendTrace(event)
+            },
+            onApprovalRequired: (approval) => {
+              if (isCurrent()) {
+                setPendingApprovals((previous) => (
+                  previous.some((item) => item.id === approval.id) ? previous : [...previous, approval]
+                ))
+              }
+            },
+            onPaused: ({ taskId: pausedTaskId }) => {
+              if (isCurrent() && pausedTaskId > 0) setTaskId(pausedTaskId)
+            },
+            onDone: () => undefined,
+            onError: () => undefined,
+          }, controller.signal)
+        } catch {
+          // The durable task remains recoverable. Re-read its state below so a
+          // transient browser/proxy failure cannot discard the task marker.
+        }
+
+        if (!isCurrent()) return
+        const latest = await chatApi.getAssistantTask(snapshot.id).catch(() => null)
+        if (!latest || latest.conversation_id !== conversationId) return
+        if (latest.status === 'awaiting_approval') {
+          setPendingApprovals(latest.pending_approvals.map(approvalFromSnapshot))
+          setTaskId(latest.id)
+        } else if (latest.status === 'completed') {
+          await loadMessages(conversationId)
+          clearTask()
+        } else if (latest.status === 'failed' || latest.status === 'cancelled') {
+          clearTask()
+        }
+        if (isCurrent()) {
+          sendingRef.current = false
+          setSending(false)
+        }
         return
       }
-      setTaskId(snapshot.id)
-      setPendingApprovals(approvals)
-    }).catch(() => {
-      // A stale local task marker is harmless; a new message will create a new task.
-      if (!cancelled && activeConvIdRef.current === conversationId) {
-        sessionStorage.removeItem(storageKey)
+
+      if (snapshot.status === 'completed') {
+        await loadMessages(conversationId)
       }
-    })
-    return () => { cancelled = true }
-  }, [activeConvId])
+      clearTask()
+      setSending(false)
+      sendingRef.current = false
+    }
+
+    chatApi.getAssistantTask(storedTaskId)
+      .then((snapshot) => restoreSnapshot(snapshot))
+      .catch(() => {
+        // Keep the marker for a running task; a temporary GET failure should
+        // not turn a recoverable background task into a new submission.
+        if (!cancelled && activeConvIdRef.current === conversationId) {
+          setSending(false)
+          sendingRef.current = false
+        }
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [activeConvId, appendTrace, loadMessages, pushToken, resetStream])
 
   useEffect(() => {
     followNewContent()
@@ -510,6 +601,12 @@ export default function ChatWidget({
             } : previous)
           }
         },
+        onTaskCreated: (nextTaskId) => {
+          if (nextTaskId > 0) {
+            setTaskId(nextTaskId)
+            sessionStorage.setItem(taskStorageKey(convId), String(nextTaskId))
+          }
+        },
         onContextPrepared: ({ compressedMessageCount, compressionStatus, mode, usageAfter, usageBefore }) => {
           setContextDetail((previous) => previous ? {
             ...previous,
@@ -642,6 +739,12 @@ export default function ChatWidget({
 
     try {
       await chatApi.decideAssistantApprovalStream(approval.id, decision, {
+        onRunStarted: ({ taskId: resumedTaskId }) => {
+          if (resumedTaskId > 0) {
+            setTaskId(resumedTaskId)
+            sessionStorage.setItem(taskStorageKey(convId), String(resumedTaskId))
+          }
+        },
         onToken: (token) => {
           setStreamTool(null)
           pushToken(token)
@@ -693,7 +796,7 @@ export default function ChatWidget({
         onError: (message) => {
           streamError = message
         },
-      })
+      }, taskId)
 
       if (streamError) throw new Error(streamError)
       // New hosts return the resolved card status in `paused`; old hosts did
