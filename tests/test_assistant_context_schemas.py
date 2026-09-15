@@ -12,6 +12,7 @@ def test_context_settings_have_safe_defaults_and_can_be_overridden(monkeypatch):
     assert defaults.context_soft_limit_tokens == 8400
     assert defaults.context_hard_limit_tokens == 10200
     assert defaults.context_keep_recent_messages == 8
+    assert defaults.tool_research_enabled is True
 
     monkeypatch.setenv("CONTEXT_COMPRESSION_MODEL_ID", "7")
     monkeypatch.setenv("CONTEXT_COMPRESSION_TEMPERATURE", "0.2")

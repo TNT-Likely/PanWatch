@@ -24,6 +24,8 @@ from src.platform.marketdata.marketdata_client import md_news, md_quote_rows
 from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.models import Stock
 
+from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
+
 
 def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | None:
     """Validate the small symbol contract shared by all market tools."""
@@ -821,4 +823,6 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ),
         create_price_alert,
     )
+    for descriptor in PANWATCH_TOOL_DESCRIPTORS:
+        registry.register_descriptor(descriptor)
     return registry

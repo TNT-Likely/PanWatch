@@ -39,6 +39,17 @@ from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolExecutor, ToolPolicy
 from .registry import ToolRegistry
 from .runtime import AgentRuntime
+from .tool_research import (
+    KeywordToolRetriever,
+    ToolCandidate,
+    ToolCatalog,
+    ToolDataFreshness,
+    ToolDescriptor,
+    ToolResearchRequest,
+    ToolResearchResult,
+    ToolResearchService,
+    ToolSelectionPolicy,
+)
 
 __version__ = "0.1.0"
 
@@ -75,13 +86,22 @@ __all__ = [
     "RuntimeEvent",
     "Source",
     "ToolCall",
+    "ToolCandidate",
+    "ToolCatalog",
+    "ToolDataFreshness",
+    "ToolDescriptor",
     "ToolExecutor",
     "ToolPermissionDecision",
     "ToolPolicy",
     "ToolRegistry",
     "ToolResult",
+    "ToolResearchRequest",
+    "ToolResearchResult",
+    "ToolResearchService",
     "ToolRisk",
+    "ToolSelectionPolicy",
     "ToolSpec",
+    "KeywordToolRetriever",
     "UnknownTool",
     "__version__",
     "estimate_tokens",

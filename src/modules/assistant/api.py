@@ -83,6 +83,13 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 
+_TOOL_RESEARCH_EVENT_TYPES = {
+    EventType.TOOL_RESEARCH_STARTED,
+    EventType.TOOL_CANDIDATES_SCORED,
+    EventType.TOOL_RESEARCH_COMPLETED,
+    EventType.TOOL_RESEARCH_FALLBACK,
+}
+
 
 def _error_message(error_code: str) -> str:
     return _ERROR_MESSAGES.get(error_code, "助手暂时不可用，请稍后重试。")
@@ -153,6 +160,8 @@ class _SSEEventSink:
                 )
         elif event.type is EventType.STEP_UPDATED:
             await self._queue.put(("step_updated", data))
+        elif event.type in _TOOL_RESEARCH_EVENT_TYPES:
+            await self._queue.put((event.type.value, data))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:

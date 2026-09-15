@@ -18,6 +18,7 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
+from pan_agent.tool_research import ToolDescriptor, ToolResearchService
 
 
 class CollectingSink:
@@ -54,6 +55,15 @@ class DenyPolicy:
 
     async def decide(self, _request, _tool, _call):
         return ToolPermissionDecision.deny("not allowed")
+
+
+class CapturingModel:
+    def __init__(self):
+        self.received_tools = []
+
+    async def run_turn(self, _messages, tools, _emit_token, tool_choice=None):
+        self.received_tools.append([tool.name for tool in tools])
+        return ModelTurn(content="完成")
 
 
 def request(**kwargs):
@@ -616,3 +626,48 @@ def test_resume_rejects_decisions_for_unknown_pending_calls():
                 CollectingSink(),
             )
         )
+
+
+def test_shadow_tool_research_emits_facts_without_changing_model_tools():
+    tools = registry(lambda *_: None)
+    tools.register_descriptor(
+        ToolDescriptor(
+            tool_name="lookup",
+            title="查询",
+            summary="查询一个值。",
+            keywords=["查询"],
+        )
+    )
+    model = CapturingModel()
+    sink = CollectingSink()
+
+    result = asyncio.run(
+        AgentRuntime(
+            model,
+            tools,
+            tool_research=ToolResearchService(tools),
+        ).run(
+            RunRequest(
+                run_id="research-runtime",
+                messages=[{"role": "user", "content": "请查询这个值"}],
+                limits=RunLimits(max_steps=1),
+            ),
+            sink,
+        )
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert model.received_tools == [["lookup"]]
+    assert [event.type for event in sink.events] == [
+        EventType.RUN_CREATED,
+        EventType.TOOL_RESEARCH_STARTED,
+        EventType.TOOL_CANDIDATES_SCORED,
+        EventType.TOOL_RESEARCH_COMPLETED,
+        EventType.STEP_UPDATED,
+        EventType.ANSWER_TOKEN,
+        EventType.RUN_COMPLETED,
+    ]
+    completed = next(
+        event for event in sink.events if event.type is EventType.TOOL_RESEARCH_COMPLETED
+    )
+    assert completed.data["selected_tools"] == ["lookup"]

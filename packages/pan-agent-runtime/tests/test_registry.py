@@ -41,3 +41,13 @@ def test_registry_registers_write_tools_but_default_policy_hides_them_from_the_m
 
     assert registry.model_tools(request(), ReadOnlyToolPolicy()) == []
     assert registry.registered_tools()[0].name == "create_alert"
+
+
+def test_registry_can_limit_model_tools_by_names_without_changing_policy_checks():
+    registry = ToolRegistry()
+    registry.register(read_spec("lookup"), fake_executor)
+    registry.register(read_spec("search"), fake_executor)
+
+    assert [tool.name for tool in registry.model_tools(
+        request(), ReadOnlyToolPolicy(), names=["search"]
+    )] == ["search"]

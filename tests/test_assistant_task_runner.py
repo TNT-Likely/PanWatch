@@ -100,6 +100,46 @@ def test_durable_runtime_sink_does_not_write_each_answer_token():
     engine.dispose()
 
 
+def test_durable_runtime_sink_persists_tool_research_facts():
+    from src.modules.assistant.task_runner import DurableRuntimeEventSink
+    from tests.test_assistant_task_events import _repository
+
+    engine, session, repository, task = _repository()
+
+    class Service:
+        _repository = repository
+
+    sink = DurableRuntimeEventSink(Service(), task.id)
+
+    async def publish_research():
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_RESEARCH_STARTED,
+                run_id=str(task.id),
+                data={"mode": "shadow", "query_hash": "abc123"},
+            )
+        )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.TOOL_RESEARCH_COMPLETED,
+                run_id=str(task.id),
+                data={"selected_tools": ["get_stock_quote"]},
+            )
+        )
+
+    asyncio.run(publish_research())
+    events = repository.list_task_events(task.id, after_sequence=2)
+
+    assert [event.event_type for event in events] == [
+        TaskEventType.TOOL_RESEARCH_STARTED.value,
+        TaskEventType.TOOL_RESEARCH_COMPLETED.value,
+    ]
+    assert events[1].data["selected_tools"] == ["get_stock_quote"]
+
+    session.close()
+    engine.dispose()
+
+
 def test_runner_executes_from_queued_snapshot_and_persists_terminal_event(monkeypatch):
     from src.modules.assistant.task_runner import AssistantTaskRunner
     from tests.test_assistant_task_events import _repository

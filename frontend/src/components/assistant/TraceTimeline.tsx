@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, ChevronDown, FileClock, ListTree, PauseCircle, Wrench } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, FileClock, ListTree, PauseCircle, Search, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import type { AssistantTraceEvent } from '@panwatch/api'
 
@@ -12,6 +12,10 @@ function describe(event: AssistantTraceEvent): { label: string; icon: typeof Fil
   switch (event.event) {
     case 'context_prepared': return { label: event.data.compressed ? '上下文已压缩并准备' : '上下文已准备', icon: FileClock }
     case 'step_updated': return { label: `执行步骤 ${event.data.step || ''}`, icon: ListTree }
+    case 'tool_research_started': return { label: '研究可用工具', icon: Search }
+    case 'tool_candidates_scored': return { label: `筛选工具候选：${event.data.candidates?.length || 0} 个`, icon: Search }
+    case 'tool_research_completed': return { label: `工具研究完成：选出 ${event.data.selected_tools?.length || 0} 个`, icon: Search }
+    case 'tool_research_fallback': return { label: '工具研究回退，继续使用默认工具集', icon: AlertCircle }
     case 'tool_call_start': return { label: `调用工具：${name}`, icon: Wrench }
     case 'tool_result': return { label: event.data.ok ? `工具完成：${name}` : `工具失败：${name}`, icon: event.data.ok ? CheckCircle2 : AlertCircle }
     case 'approval_required': return { label: '等待用户审批', icon: PauseCircle }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 
@@ -24,6 +25,8 @@ from .errors import UnknownTool
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
+from .tool_research.contracts import ToolResearchRequest
+from .tool_research.service import ToolResearchService
 
 _MAX_IDENTICAL_TOOL_CALLS = 2
 _REQUIRED_TOOL_CHOICE = "required"
@@ -46,11 +49,17 @@ class AgentRuntime:
     """
 
     def __init__(
-        self, model: ModelPort, tools: ToolRegistry, policy: ToolPolicy | None = None
+        self,
+        model: ModelPort,
+        tools: ToolRegistry,
+        policy: ToolPolicy | None = None,
+        *,
+        tool_research: ToolResearchService | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
         self._policy = policy or ReadOnlyToolPolicy()
+        self._tool_research = tool_research
 
     async def run(self, request: RunRequest, sink: EventSink) -> RunResult:
         """Start a new run and publish the durable creation fact."""
@@ -204,6 +213,7 @@ class AgentRuntime:
         try:
             for current_step in range(step_index + 1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
+                await self._publish_tool_research(request, messages, sink, deadline)
                 await self._publish(
                     sink,
                     request,
@@ -388,6 +398,79 @@ class AgentRuntime:
                 model_tools,
                 emit_token,
                 tool_choice=tool_choice,
+            )
+
+    async def _publish_tool_research(
+        self,
+        request: RunRequest,
+        messages: list[ModelMessage],
+        sink: EventSink,
+        deadline: float,
+    ) -> None:
+        """Run discovery in shadow mode without changing model-visible tools."""
+        if self._tool_research is None:
+            return
+        query = next(
+            (
+                message.content.strip()
+                for message in reversed(messages)
+                if message.role == "user" and message.content.strip()
+            ),
+            "",
+        )
+        query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+        await self._publish(
+            sink,
+            request,
+            EventType.TOOL_RESEARCH_STARTED,
+            {"mode": "shadow", "query_hash": query_hash},
+        )
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            async with asyncio.timeout(remaining):
+                result = await self._tool_research.research(
+                    ToolResearchRequest(query=query, context=request.context),
+                    policy=self._policy,
+                    runtime_request=request,
+                )
+            await self._publish(
+                sink,
+                request,
+                EventType.TOOL_CANDIDATES_SCORED,
+                {
+                    "mode": "shadow",
+                    "candidates": [
+                        candidate.model_dump(mode="json")
+                        for candidate in result.candidates[:8]
+                    ],
+                },
+            )
+            await self._publish(
+                sink,
+                request,
+                EventType.TOOL_RESEARCH_COMPLETED,
+                {
+                    "mode": "shadow",
+                    "selected_tools": result.selected_tools,
+                    "candidate_count": len(result.candidates),
+                    "filters_applied": len(result.filters_applied),
+                    "registry_version": result.registry_version,
+                    "catalog_version": result.catalog_version,
+                    "latency_ms": result.latency_ms,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - shadow discovery cannot break a run
+            await self._publish(
+                sink,
+                request,
+                EventType.TOOL_RESEARCH_FALLBACK,
+                {
+                    "mode": "shadow",
+                    "reason": "research_failed",
+                    "error_type": type(exc).__name__,
+                },
             )
 
     @staticmethod

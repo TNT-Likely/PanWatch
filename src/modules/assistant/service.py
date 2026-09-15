@@ -21,6 +21,7 @@ from pan_agent import (
     ToolPermissionDecision,
     ToolRisk,
     ToolSpec,
+    ToolResearchService,
 )
 
 from src.platform.ai.ai_failover import (
@@ -348,10 +349,16 @@ class AssistantService:
 
     def build_runtime(self, failover_client) -> AgentRuntime:
         """Compose host adapters into the business-agnostic PanAgent runtime."""
+        tools = build_panwatch_tool_registry(self._repository.session)
         return AgentRuntime(
             FailoverModelAdapter(failover_client),
-            build_panwatch_tool_registry(self._repository.session),
+            tools,
             policy=self.build_tool_policy(),
+            tool_research=(
+                ToolResearchService(tools)
+                if self._settings.tool_research_enabled
+                else None
+            ),
         )
 
     def build_tool_policy(self) -> PanWatchToolPolicy:
