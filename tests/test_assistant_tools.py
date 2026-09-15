@@ -216,6 +216,141 @@ def test_research_candidates_tool_rejects_invalid_filters():
     engine.dispose()
 
 
+def test_market_discovery_tools_return_compact_read_only_data(monkeypatch):
+    engine, session = _session()
+
+    class _DiscoveryCollector:
+        def __init__(self, proxy=None):
+            self.proxy = proxy
+
+        async def fetch_hot_stocks(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    symbol="600519",
+                    market="CN",
+                    name="贵州茅台",
+                    price=1800.0,
+                    change_pct=1.2,
+                    turnover=123.0,
+                    volume=456.0,
+                )
+            ]
+
+        async def fetch_hot_boards(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    code="BK0500",
+                    name="白酒",
+                    change_pct=2.5,
+                    change_amount=1.1,
+                    turnover=888.0,
+                )
+            ]
+
+        async def fetch_board_stocks(self, **_kwargs):
+            return [
+                SimpleNamespace(
+                    symbol="000858",
+                    market="CN",
+                    name="五粮液",
+                    price=150.0,
+                    change_pct=3.3,
+                    turnover=555.0,
+                    volume=222.0,
+                )
+            ]
+
+    monkeypatch.setattr(assistant_tools, "EastMoneyDiscoveryCollector", _DiscoveryCollector)
+    monkeypatch.setattr(
+        assistant_tools,
+        "search_stocks",
+        lambda *_args: [{"symbol": "600519", "name": "贵州茅台", "market": "CN"}],
+    )
+    registry = assistant_tools.build_panwatch_tool_registry(session)
+
+    search = asyncio.run(
+        registry.execute("search_stocks", _request(), {"query": "茅台"})
+    )
+    hot_stocks = asyncio.run(
+        registry.execute("get_hot_stocks", _request(), {"market": "CN"})
+    )
+    hot_boards = asyncio.run(
+        registry.execute("get_hot_boards", _request(), {"market": "CN"})
+    )
+    board_stocks = asyncio.run(
+        registry.execute(
+            "get_board_stocks", _request(), {"board_code": "BK0500"}
+        )
+    )
+
+    assert search.data["items"] == [
+        {"symbol": "600519", "name": "贵州茅台", "market": "CN"}
+    ]
+    assert hot_stocks.data["items"][0]["symbol"] == "600519"
+    assert hot_boards.data["items"][0]["code"] == "BK0500"
+    assert board_stocks.data["items"][0]["symbol"] == "000858"
+    session.close()
+    engine.dispose()
+
+
+def test_market_research_tools_use_marketdata_contracts(monkeypatch):
+    from marketdata.types import CapitalFlow, DragonTigerItem, Fundamentals
+
+    engine, session = _session()
+
+    class _MarketData:
+        def fundamentals(self, _symbols, *, market):
+            assert market == "CN"
+            return [Fundamentals(symbol="600519", market="CN", name="贵州茅台", pe_ttm=20.5)]
+
+        def capital_flow(self, symbol, *, market):
+            assert (symbol, market) == ("600519", "CN")
+            return CapitalFlow(symbol="600519", name="贵州茅台", main_net_inflow=123.4)
+
+        def dragon_tiger(self, *, date, market):
+            assert (date, market) == ("2026-09-15", "CN")
+            return [
+                DragonTigerItem(
+                    trade_date=date,
+                    symbol="600519",
+                    name="贵州茅台",
+                    reason="日涨幅偏离值达 7%",
+                    net_buy=1000000,
+                )
+            ]
+
+    monkeypatch.setattr(assistant_tools, "get_market_data", lambda: _MarketData())
+    registry = assistant_tools.build_panwatch_tool_registry(session)
+
+    fundamentals = asyncio.run(
+        registry.execute(
+            "get_stock_fundamentals",
+            _request(),
+            {"symbol": "600519", "market": "CN"},
+        )
+    )
+    capital_flow = asyncio.run(
+        registry.execute(
+            "get_capital_flow",
+            _request(),
+            {"symbol": "600519", "market": "CN"},
+        )
+    )
+    dragon_tiger = asyncio.run(
+        registry.execute(
+            "get_dragon_tiger",
+            _request(),
+            {"date": "2026-09-15", "market": "CN"},
+        )
+    )
+
+    assert fundamentals.data["pe_ttm"] == 20.5
+    assert capital_flow.data["main_net_inflow"] == 123.4
+    assert dragon_tiger.data["items"][0]["net_buy"] == 1000000
+    session.close()
+    engine.dispose()
+
+
 def test_kline_summary_tool_returns_compact_summary(monkeypatch):
     class _Collector:
         def __init__(self, _market):

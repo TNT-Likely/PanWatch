@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,11 +20,19 @@ from src.modules.market.price_alert_service import (
 )
 from src.modules.portfolio import build_portfolio_service
 from src.modules.strategy.strategy_engine import list_strategy_signals
+from src.platform.marketdata.collectors.discovery_collector import (
+    EastMoneyDiscoveryCollector,
+)
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
-from src.platform.marketdata.marketdata_client import md_news, md_quote_rows
-from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.marketdata_client import (
+    get_market_data,
+    md_news,
+    md_quote_rows,
+)
+from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.persistence.models import Stock
-
+from src.platform.marketdata.stock_list import search_stocks
+from src.platform.runtime.config import Settings
 
 
 def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | None:
@@ -67,6 +76,52 @@ def _published_at(value: object) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value or "")
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if is_dataclass(value):
+        return {key: _json_safe(item) for key, item in asdict(value).items()}
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _market_argument(arguments: dict[str, Any]) -> MarketCode | None:
+    raw = str(arguments.get("market") or "CN").strip().upper()
+    try:
+        return MarketCode(raw)
+    except ValueError:
+        return None
+
+
+def _discovery_collector() -> EastMoneyDiscoveryCollector:
+    return EastMoneyDiscoveryCollector(proxy=Settings().http_proxy.strip() or None)
+
+
+def _hot_stock_payload(item: object) -> dict[str, object]:
+    return {
+        "symbol": str(getattr(item, "symbol", "") or ""),
+        "market": str(getattr(item, "market", "") or ""),
+        "name": str(getattr(item, "name", "") or ""),
+        "price": getattr(item, "price", None),
+        "change_pct": getattr(item, "change_pct", None),
+        "turnover": getattr(item, "turnover", None),
+        "volume": getattr(item, "volume", None),
+    }
+
+
+def _hot_board_payload(item: object) -> dict[str, object]:
+    return {
+        "code": str(getattr(item, "code", "") or ""),
+        "name": str(getattr(item, "name", "") or ""),
+        "change_pct": getattr(item, "change_pct", None),
+        "change_amount": getattr(item, "change_amount", None),
+        "turnover": getattr(item, "turnover", None),
+    }
 
 
 def _format_candidate_price(value: object) -> str:
@@ -293,6 +348,278 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             summary=f"{market.value}:{symbol} 近 7 天相关新闻 {len(items)} 条。",
             data={"symbol": symbol, "market": market.value, "items": items},
             sources=[{"name": "PanWatch 新闻数据"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def search_stocks_tool(_request: RunRequest, arguments: dict) -> ToolResult:
+        query = str(arguments.get("query") or "").strip()
+        if not query:
+            return ToolResult.failure(
+                summary="请提供股票代码或名称。", error_code="search_query_required"
+            )
+        raw_market = str(arguments.get("market") or "").strip().upper()
+        if raw_market:
+            try:
+                market = MarketCode(raw_market)
+            except ValueError:
+                return ToolResult.failure(
+                    summary="不支持的市场代码。", error_code="market_invalid"
+                )
+            market_value = market.value
+        else:
+            market_value = ""
+        try:
+            limit = max(1, min(int(arguments.get("limit") or 10), 20))
+        except (TypeError, ValueError):
+            return ToolResult.failure(
+                summary="搜索条数必须是数字。", error_code="limit_invalid"
+            )
+        try:
+            items = await asyncio.to_thread(search_stocks, query, market_value, limit)
+        except Exception:  # noqa: BLE001 - search providers become controlled results
+            return ToolResult.failure(
+                summary="股票搜索暂时不可用。", error_code="stock_search_unavailable"
+            )
+        data = [
+            {
+                "symbol": str(item.get("symbol") or ""),
+                "name": str(item.get("name") or ""),
+                "market": str(item.get("market") or ""),
+            }
+            for item in items
+        ]
+        return ToolResult.success(
+            summary=(f"找到 {len(data)} 个股票标的。" if data else "没有找到匹配的股票标的。"),
+            data={"query": query, "count": len(data), "items": data},
+            sources=[{"name": "PanWatch 股票清单"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_market_status(_request: RunRequest, _arguments: dict) -> ToolResult:
+        markets = []
+        for code, definition in MARKETS.items():
+            try:
+                is_trading = definition.is_trading_time()
+            except Exception:  # noqa: BLE001 - calendar failures stay in the result
+                is_trading = None
+            sessions = [
+                f"{item.start.strftime('%H:%M')}-{item.end.strftime('%H:%M')}"
+                for item in definition.sessions
+            ]
+            markets.append(
+                {
+                    "market": code.value,
+                    "name": definition.name,
+                    "timezone": definition.timezone,
+                    "status": (
+                        "trading"
+                        if is_trading is True
+                        else "closed"
+                        if is_trading is False
+                        else "unknown"
+                    ),
+                    "is_trading": is_trading,
+                    "sessions": sessions,
+                }
+            )
+        return ToolResult.success(
+            summary="；".join(
+                f"{item['name']}"
+                f"{'交易中' if item['is_trading'] is True else '已休市' if item['is_trading'] is False else '状态未知'}"
+                for item in markets
+            ),
+            data={"markets": markets},
+            sources=[{"name": "PanWatch 市场日历"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_hot_stocks(_request: RunRequest, arguments: dict) -> ToolResult:
+        market = _market_argument(arguments)
+        if market is None:
+            return ToolResult.failure(
+                summary="不支持的市场代码。", error_code="market_invalid"
+            )
+        mode = str(arguments.get("mode") or "turnover").strip().lower()
+        if mode not in {"turnover", "gainers"}:
+            return ToolResult.failure(
+                summary="热门股票排序只能是 turnover 或 gainers。",
+                error_code="discovery_mode_invalid",
+            )
+        try:
+            limit = max(1, min(int(arguments.get("limit") or 10), 30))
+        except (TypeError, ValueError):
+            return ToolResult.failure(
+                summary="热门股票条数必须是数字。", error_code="limit_invalid"
+            )
+        try:
+            items = await _discovery_collector().fetch_hot_stocks(
+                market=market.value, mode=mode, limit=limit
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="热门股票数据暂时不可用。", error_code="hot_stocks_unavailable"
+            )
+        data = [_hot_stock_payload(item) for item in items]
+        return ToolResult.success(
+            summary=f"找到 {len(data)} 个热门股票。",
+            data={"market": market.value, "mode": mode, "count": len(data), "items": data},
+            sources=[{"name": "PanWatch 热门股票"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_hot_boards(_request: RunRequest, arguments: dict) -> ToolResult:
+        market = _market_argument(arguments)
+        if market is None:
+            return ToolResult.failure(
+                summary="不支持的市场代码。", error_code="market_invalid"
+            )
+        mode = str(arguments.get("mode") or "gainers").strip().lower()
+        if mode not in {"gainers", "turnover", "hot"}:
+            return ToolResult.failure(
+                summary="热门板块排序只能是 gainers、turnover 或 hot。",
+                error_code="discovery_mode_invalid",
+            )
+        try:
+            limit = max(1, min(int(arguments.get("limit") or 10), 20))
+        except (TypeError, ValueError):
+            return ToolResult.failure(
+                summary="热门板块条数必须是数字。", error_code="limit_invalid"
+            )
+        try:
+            items = await _discovery_collector().fetch_hot_boards(
+                market=market.value, mode=mode, limit=limit
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="热门板块数据暂时不可用。", error_code="hot_boards_unavailable"
+            )
+        data = [_hot_board_payload(item) for item in items]
+        return ToolResult.success(
+            summary=f"找到 {len(data)} 个热门板块。",
+            data={"market": market.value, "mode": mode, "count": len(data), "items": data},
+            sources=[{"name": "PanWatch 热门板块"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_board_stocks(_request: RunRequest, arguments: dict) -> ToolResult:
+        board_code = str(arguments.get("board_code") or "").strip()
+        if not board_code:
+            return ToolResult.failure(
+                summary="请提供板块代码。", error_code="board_code_required"
+            )
+        mode = str(arguments.get("mode") or "gainers").strip().lower()
+        if mode not in {"gainers", "turnover", "hot"}:
+            return ToolResult.failure(
+                summary="板块股票排序只能是 gainers、turnover 或 hot。",
+                error_code="discovery_mode_invalid",
+            )
+        try:
+            limit = max(1, min(int(arguments.get("limit") or 10), 50))
+        except (TypeError, ValueError):
+            return ToolResult.failure(
+                summary="板块股票条数必须是数字。", error_code="limit_invalid"
+            )
+        try:
+            items = await _discovery_collector().fetch_board_stocks(
+                board_code=board_code, mode=mode, limit=limit
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="板块成分股数据暂时不可用。", error_code="board_stocks_unavailable"
+            )
+        data = [_hot_stock_payload(item) for item in items]
+        return ToolResult.success(
+            summary=f"找到 {len(data)} 个板块成分股。",
+            data={"board_code": board_code, "mode": mode, "count": len(data), "items": data},
+            sources=[{"name": "PanWatch 板块成分股"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_stock_fundamentals(_request: RunRequest, arguments: dict) -> ToolResult:
+        parsed = _symbol_and_market(arguments)
+        if parsed is None:
+            return _failure_for_symbol(arguments)
+        symbol, market = parsed
+        try:
+            items = await asyncio.to_thread(
+                lambda: get_market_data().fundamentals([symbol], market=market.value)
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="基本面数据暂时不可用。", error_code="fundamentals_unavailable"
+            )
+        if not items:
+            return ToolResult.failure(
+                summary=f"未找到 {market.value}:{symbol} 的基本面数据。",
+                error_code="fundamentals_unavailable",
+            )
+        data = _json_safe(items[0])
+        return ToolResult.success(
+            summary=f"已获取 {market.value}:{symbol} 的基本面摘要。",
+            data=data,
+            sources=[{"name": "PanWatch 基本面数据"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_capital_flow(_request: RunRequest, arguments: dict) -> ToolResult:
+        parsed = _symbol_and_market(arguments)
+        if parsed is None:
+            return _failure_for_symbol(arguments)
+        symbol, market = parsed
+        try:
+            item = await asyncio.to_thread(
+                lambda: get_market_data().capital_flow(symbol, market=market.value)
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="资金流向数据暂时不可用。", error_code="capital_flow_unavailable"
+            )
+        if item is None:
+            return ToolResult.failure(
+                summary=f"未找到 {market.value}:{symbol} 的资金流向数据。",
+                error_code="capital_flow_unavailable",
+            )
+        return ToolResult.success(
+            summary=f"已获取 {market.value}:{symbol} 的资金流向摘要。",
+            data=_json_safe(item),
+            sources=[{"name": "PanWatch 资金流向"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_dragon_tiger(_request: RunRequest, arguments: dict) -> ToolResult:
+        trade_date = str(arguments.get("date") or "").strip()
+        if not trade_date:
+            return ToolResult.failure(
+                summary="请提供龙虎榜日期，格式为 YYYY-MM-DD。",
+                error_code="trade_date_required",
+            )
+        try:
+            datetime.strptime(trade_date, "%Y-%m-%d")
+        except ValueError:
+            return ToolResult.failure(
+                summary="龙虎榜日期格式必须是 YYYY-MM-DD。",
+                error_code="trade_date_invalid",
+            )
+        market = _market_argument(arguments)
+        if market is None:
+            return ToolResult.failure(
+                summary="不支持的市场代码。", error_code="market_invalid"
+            )
+        try:
+            items = await asyncio.to_thread(
+                lambda: get_market_data().dragon_tiger(
+                    date=trade_date, market=market.value
+                )
+            )
+        except Exception:  # noqa: BLE001 - provider failures become controlled results
+            return ToolResult.failure(
+                summary="龙虎榜数据暂时不可用。", error_code="dragon_tiger_unavailable"
+            )
+        data = [_json_safe(item) for item in items]
+        return ToolResult.success(
+            summary=f"{trade_date} 找到 {len(data)} 条龙虎榜记录。",
+            data={"market": market.value, "date": trade_date, "count": len(data), "items": data},
+            sources=[{"name": "PanWatch 龙虎榜"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -677,6 +1004,184 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             },
         ),
         get_stock_news,
+    )
+    registry.register(
+        ToolSpec(
+            name="search_stocks",
+            title="搜索股票标的",
+            description="按股票代码或名称搜索 PanWatch 股票清单，用于确认标的代码和市场。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string", "description": "股票代码或名称"},
+                    "market": {
+                        "type": "string",
+                        "enum": ["CN", "HK", "US"],
+                        "description": "可选市场代码；不填表示全部市场",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 10,
+                    },
+                },
+            },
+        ),
+        search_stocks_tool,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_market_status",
+            title="查询市场状态",
+            description="查询 A 股、港股和美股当前是否处于交易时段及交易时间安排。",
+            risk=ToolRisk.READ,
+            input_schema={"type": "object", "properties": {}},
+        ),
+        get_market_status,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_hot_stocks",
+            title="查询热门股票",
+            description="按成交额或涨幅查询指定市场的热门股票榜单。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "market": {
+                        "type": "string",
+                        "enum": ["CN", "HK", "US"],
+                        "default": "CN",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["turnover", "gainers"],
+                        "default": "turnover",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 30,
+                        "default": 10,
+                    },
+                },
+            },
+        ),
+        get_hot_stocks,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_hot_boards",
+            title="查询热门板块",
+            description="按涨幅、成交额或热度查询指定市场的热门板块和主题。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "market": {
+                        "type": "string",
+                        "enum": ["CN", "HK", "US"],
+                        "default": "CN",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["gainers", "turnover", "hot"],
+                        "default": "gainers",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "default": 10,
+                    },
+                },
+            },
+        ),
+        get_hot_boards,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_board_stocks",
+            title="查询板块成分股",
+            description="查询指定板块中按涨幅、成交额或热度排序的成分股。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "required": ["board_code"],
+                "properties": {
+                    "board_code": {"type": "string", "description": "板块代码"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["gainers", "turnover", "hot"],
+                        "default": "gainers",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
+                },
+            },
+        ),
+        get_board_stocks,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_stock_fundamentals",
+            title="查询股票基本面",
+            description="查询一只股票的估值、盈利、成长和财报期等基本面摘要。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "required": ["symbol"],
+                "properties": {
+                    "symbol": {"type": "string", "description": "股票代码，例如 600519"},
+                    "market": {"type": "string", "default": "CN"},
+                },
+            },
+        ),
+        get_stock_fundamentals,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_capital_flow",
+            title="查询资金流向",
+            description="查询一只股票的主力、超大单和大单等资金流向摘要。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "required": ["symbol"],
+                "properties": {
+                    "symbol": {"type": "string", "description": "股票代码，例如 600519"},
+                    "market": {"type": "string", "default": "CN"},
+                },
+            },
+        ),
+        get_capital_flow,
+    )
+    registry.register(
+        ToolSpec(
+            name="get_dragon_tiger",
+            title="查询龙虎榜",
+            description="查询指定交易日的龙虎榜上榜股票、上榜原因和买卖金额。",
+            risk=ToolRisk.READ,
+            input_schema={
+                "type": "object",
+                "required": ["date"],
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "交易日期，格式 YYYY-MM-DD",
+                    },
+                    "market": {"type": "string", "default": "CN"},
+                },
+            },
+        ),
+        get_dragon_tiger,
     )
     registry.register(
         ToolSpec(
