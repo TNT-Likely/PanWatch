@@ -2,17 +2,21 @@ import asyncio
 
 import pytest
 from pan_agent import (
+    BeforeModelTurnContext,
     DuplicateToolName,
     ReadOnlyToolPolicy,
     RunRequest,
     ToolRegistry,
-    ToolResearchRequest,
-    ToolResearchService,
     ToolRisk,
     ToolSpec,
     UnknownTool,
 )
-from pan_agent.tool_research import ToolDescriptor
+from pan_agent_tool_research import (
+    ToolDescriptor,
+    ToolResearchRequest,
+    ToolResearchPlugin,
+    ToolResearchService,
+)
 
 
 async def fake_executor(_request, _arguments):
@@ -70,28 +74,33 @@ def build_registry() -> ToolRegistry:
         ),
         fake_executor,
     )
-    registry.register_descriptor(
+    return registry
+
+
+def descriptors() -> list[ToolDescriptor]:
+    return [
         descriptor(
             "find_research_candidates",
             title="发现研究候选",
             summary="从市场和持仓范围中筛选值得进一步研究的股票候选。",
             keywords=["发现机会", "研究", "候选", "筛选"],
-        )
-    )
-    registry.register_descriptor(
+        ),
         descriptor(
             "create_price_alert",
             title="创建价格提醒",
             summary="为股票创建价格触发提醒。",
             keywords=["提醒", "价格", "创建"],
             risk=ToolRisk.WRITE,
-        )
-    )
-    return registry
+        ),
+    ]
+
+
+def build_service() -> ToolResearchService:
+    return ToolResearchService(build_registry(), descriptors=descriptors())
 
 
 def test_tool_research_selects_relevant_tool_with_explainable_reason():
-    service = ToolResearchService(build_registry())
+    service = build_service()
 
     result = asyncio.run(
         service.research(
@@ -110,7 +119,7 @@ def test_tool_research_selects_relevant_tool_with_explainable_reason():
 
 
 def test_tool_research_hard_filters_write_tools_and_denied_tools():
-    service = ToolResearchService(build_registry())
+    service = build_service()
 
     result = asyncio.run(
         service.research(
@@ -125,7 +134,7 @@ def test_tool_research_hard_filters_write_tools_and_denied_tools():
 
 
 def test_tool_research_returns_empty_result_for_no_match_without_inventing_tools():
-    service = ToolResearchService(build_registry())
+    service = build_service()
 
     result = asyncio.run(
         service.research(
@@ -143,13 +152,16 @@ def test_tool_research_returns_empty_result_for_no_match_without_inventing_tools
 def test_registry_rejects_unknown_or_duplicate_descriptors():
     registry = ToolRegistry()
     with pytest.raises(UnknownTool):
-        registry.register_descriptor(
-            descriptor(
-                "unknown",
-                title="未知",
-                summary="未知工具",
-                keywords=["未知"],
-            )
+        ToolResearchService(
+            registry,
+            descriptors=[
+                descriptor(
+                    "unknown",
+                    title="未知",
+                    summary="未知工具",
+                    keywords=["未知"],
+                )
+            ],
         )
 
     registry.register(
@@ -164,6 +176,34 @@ def test_registry_rejects_unknown_or_duplicate_descriptors():
     item = descriptor(
         "lookup", title="查询", summary="查询值。", keywords=["查询"]
     )
-    registry.register_descriptor(item)
     with pytest.raises(DuplicateToolName):
-        registry.register_descriptor(item)
+        ToolResearchService(registry, descriptors=[item, item])
+
+
+def test_plugin_emits_generic_extension_events_and_can_select_in_active_mode():
+    events = []
+    service = build_service()
+    context = BeforeModelTurnContext(
+        request=request(),
+        messages=tuple(request().messages),
+        available_tools=tuple(build_registry().registered_tools()),
+        policy=ReadOnlyToolPolicy(),
+        emit_event=lambda name, data: _record_event(events, name, data),
+    )
+
+    shadow = ToolResearchPlugin(service, mode="shadow")
+    assert asyncio.run(shadow.before_model_turn(context)) is None
+    assert [name for name, _data in events] == [
+        "started",
+        "candidates_scored",
+        "completed",
+    ]
+
+    active = ToolResearchPlugin(service, mode="active")
+    decision = asyncio.run(active.before_model_turn(context))
+    assert decision is not None
+    assert list(decision.tool_names or []) == ["find_research_candidates"]
+
+
+async def _record_event(events, name, data):
+    events.append((name, data))

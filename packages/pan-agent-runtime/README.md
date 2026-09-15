@@ -199,41 +199,27 @@ RunRequest
    └─ RUN_COMPLETED / RUN_FAILED
 ~~~
 
-## Tool Research
+## Optional Runtime Extensions
 
-工具数量增长后，不应把全部工具描述无条件塞进每一轮模型上下文。runtime 提供一组
-与业务无关的 Tool Research 原语，但默认仍保持现有模型工具集合，便于宿主先观测再逐步
-切换：
-
-- `ToolDescriptor`：工具用途、关键词、别名、能力域、数据新鲜度、风险和副作用等检索元数据；
-- `ToolCatalog`：对描述元数据做版本化管理，不持有工具执行器；
-- `KeywordToolRetriever`：无网络、无模型调用的确定性关键词检索，返回命中字段和原因；
-- `ToolResearchService`：先应用工具启用状态、市场/能力过滤和 `ToolPolicy`，再返回候选与选择结果；
-- `AgentRuntime(tool_research=...)`：以 shadow 模式发出 `tool_research_*` 事件，不改变模型本轮
-  实际看到的 `ToolSpec` 列表，也不会执行工具。
-
-宿主可以这样接入：
+runtime 只定义通用的 `RuntimeExtension` 协议，不内置 Tool Research、记忆、MCP 或具体
+可观测性实现。扩展可以在每个模型回合前读取请求、消息和当前已通过策略的工具集合，
+并返回一个更小的工具名集合；它不能扩大权限边界。
 
 ~~~python
-from pan_agent import AgentRuntime, ToolResearchService
+from pan_agent import AgentRuntime
 
 runtime = AgentRuntime(
     model,
     tools,
     policy=policy,
-    tool_research=ToolResearchService(tools),
+    extensions=[my_extension],
 )
 ~~~
 
-shadow 事件包括 `tool_research_started`、`tool_candidates_scored`、
-`tool_research_completed` 和 `tool_research_fallback`。生产宿主可以把它们与其他
-`RuntimeEvent` 一起持久化，用于观测命中率、回退率、检索耗时和后续离线评估；不要把用户
-原文写进检索事件，runtime 只发查询哈希和候选元数据。真正的动态工具暴露属于后续版本，
-仍必须再次通过宿主权限策略校验。
-
-Tool Research 的实现位于 `pan_agent.tool_research`，不依赖向量数据库、Redis、模型供应商
-或 FastAPI。宿主只需为自己的 `ToolSpec` 注册对应 `ToolDescriptor`，业务描述和执行器仍
-留在宿主项目内。
+扩展通过 `emit_event()` 发送通用的 `extension_event`，事件数据包含扩展名、事件名和
+业务负载。扩展失败时 runtime 会发出 fallback 事件并继续使用默认工具集合。Tool Research
+是一个独立的可选包，PanWatch 通过显式组装接入；不安装它时，`pan-agent-runtime` 仍可
+单独运行。
 
 模型返回多个工具调用时，runtime 会按原顺序处理。只要有一个调用需要审批，当前
 任务就返回 <code>WAITING_FOR_APPROVAL</code>，尚未批准的调用不会执行。
@@ -344,6 +330,8 @@ runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapsh
 | <code>AgentCheckpoint</code> | 审批暂停后可持久化的恢复状态 |
 | <code>RunResult</code> | 运行状态、答案、错误码和 checkpoint |
 | <code>RuntimeEvent</code> | SSE/WebSocket 等传输使用的统一事件 |
+| <code>RuntimeExtension</code> | 可选的模型回合扩展协议 |
+| <code>ToolExposureDecision</code> | 扩展对策略已允许工具集合的可选收窄 |
 
 ### 风险与权限
 
@@ -381,10 +369,7 @@ runtime 还会检测连续重复的相同工具调用。达到阈值后返回
 | <code>run_created</code> | 创建前端任务状态 |
 | <code>plan_created</code> | 预留给宿主展示计划 |
 | <code>step_updated</code> | 显示当前 Agent 步骤 |
-| <code>tool_research_started</code> | 开始 shadow 工具检索 |
-| <code>tool_candidates_scored</code> | 记录候选工具和命中原因 |
-| <code>tool_research_completed</code> | 记录选择结果、版本和耗时 |
-| <code>tool_research_fallback</code> | 检索失败但继续使用默认工具集 |
+| <code>extension_event</code> | 持久化可选扩展的结构化事实 |
 | <code>tool_started</code> | 显示工具开始执行 |
 | <code>tool_completed</code> | 显示工具结果摘要和错误码 |
 | <code>answer_token</code> | 增量渲染模型答案 |

@@ -5,7 +5,8 @@ The runtime can use it for discovery, while the host still owns executable
 tool registration and permission decisions.
 """
 
-from pan_agent import ToolDataFreshness, ToolDescriptor, ToolRisk
+from pan_agent import ToolRisk
+from pan_agent_tool_research import ToolDataFreshness, ToolDescriptor
 
 
 PANWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (

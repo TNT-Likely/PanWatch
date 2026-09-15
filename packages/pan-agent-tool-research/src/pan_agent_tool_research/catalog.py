@@ -5,8 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from ..contracts import ToolRisk
-from ..errors import DuplicateToolName, UnknownTool
+from pan_agent import DuplicateToolName, ToolRisk, UnknownTool
 from .contracts import ToolDescriptor
 
 

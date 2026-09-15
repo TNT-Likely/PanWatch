@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ..contracts import ToolRisk
+from pan_agent import ToolRisk
 
 
 class ToolDataFreshness(StrEnum):

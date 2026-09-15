@@ -1,8 +1,4 @@
-"""Deterministic, policy-aware tool discovery primitives.
-
-The heavier catalog, retriever and service imports stay lazy so the registry
-can attach descriptor contracts without creating an import cycle.
-"""
+"""Optional, deterministic and policy-aware Tool Research plugin."""
 
 from .contracts import (
     ToolCandidate,
@@ -12,6 +8,7 @@ from .contracts import (
     ToolResearchResult,
     ToolSelectionPolicy,
 )
+from .plugin import ToolResearchMode, ToolResearchPlugin
 
 __all__ = [
     "KeywordToolRetriever",
@@ -23,6 +20,8 @@ __all__ = [
     "ToolResearchResult",
     "ToolResearchService",
     "ToolSelectionPolicy",
+    "ToolResearchMode",
+    "ToolResearchPlugin",
 ]
 
 

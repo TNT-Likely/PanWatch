@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import time
 
-from ..contracts import ModelMessage, RunRequest, ToolRisk
-from ..ports import ToolPolicy
-from ..registry import ToolRegistry
-from .catalog import ToolCatalog
+from pan_agent import ModelMessage, RunRequest, ToolPolicy, ToolRegistry, ToolRisk, UnknownTool
+
+from .catalog import ToolCatalog, risk_level
 from .contracts import (
+    ToolDescriptor,
     ToolResearchRequest,
     ToolResearchResult,
     ToolSelectionPolicy,
@@ -24,14 +24,29 @@ class ToolResearchService:
         self,
         registry: ToolRegistry,
         *,
+        descriptors: list["ToolDescriptor"] | None = None,
         catalog: ToolCatalog | None = None,
         retriever: KeywordToolRetriever | None = None,
         selection_policy: ToolSelectionPolicy | None = None,
     ) -> None:
         self._registry = registry
-        self._catalog = catalog or ToolCatalog(registry.registered_descriptors())
+        self._catalog = catalog or ToolCatalog(descriptors or [])
+        self._validate_descriptors()
         self._retriever = retriever or KeywordToolRetriever()
         self._selection_policy = selection_policy or ToolSelectionPolicy()
+
+    def _validate_descriptors(self) -> None:
+        registered = {tool.name: tool for tool in self._registry.registered_tools()}
+        for descriptor in self._catalog.descriptors():
+            spec = registered.get(descriptor.tool_name)
+            if spec is None:
+                raise UnknownTool(
+                    f"tool {descriptor.tool_name!r} is not registered"
+                )
+            if risk_level(descriptor.risk) < risk_level(spec.risk):
+                raise ValueError("tool descriptor risk cannot be weaker than ToolSpec risk")
+            if spec.confirmation_required and not descriptor.confirmation_required:
+                raise ValueError("tool descriptor must preserve confirmation_required")
 
     async def research(
         self,
@@ -50,10 +65,7 @@ class ToolResearchService:
             descriptor.tool_name: descriptor
             for descriptor in self._catalog.descriptors()
         }
-        registered = {
-            entry.spec.name: entry
-            for entry in self._registry.registered_entries()
-        }
+        registered = {tool.name: tool for tool in self._registry.registered_tools()}
         eligible = []
         filters: list[str] = []
         for name, descriptor in descriptors.items():
@@ -78,7 +90,7 @@ class ToolResearchService:
             if not request.include_write_tools and descriptor.risk is not ToolRisk.READ:
                 filters.append(f"write:{name}")
                 continue
-            if not policy.is_tool_visible(run_request, entry.spec):
+            if not policy.is_tool_visible(run_request, entry):
                 filters.append(f"policy:{name}")
                 continue
             eligible.append(descriptor)

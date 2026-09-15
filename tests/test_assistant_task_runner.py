@@ -100,7 +100,7 @@ def test_durable_runtime_sink_does_not_write_each_answer_token():
     engine.dispose()
 
 
-def test_durable_runtime_sink_persists_tool_research_facts():
+def test_durable_runtime_sink_persists_extension_facts():
     from src.modules.assistant.task_runner import DurableRuntimeEventSink
     from tests.test_assistant_task_events import _repository
 
@@ -114,16 +114,24 @@ def test_durable_runtime_sink_persists_tool_research_facts():
     async def publish_research():
         await sink.publish(
             RuntimeEvent(
-                type=EventType.TOOL_RESEARCH_STARTED,
+                type=EventType.EXTENSION_EVENT,
                 run_id=str(task.id),
-                data={"mode": "shadow", "query_hash": "abc123"},
+                data={
+                    "extension": "tool_research",
+                    "event": "started",
+                    "data": {"mode": "shadow", "query_hash": "abc123"},
+                },
             )
         )
         await sink.publish(
             RuntimeEvent(
-                type=EventType.TOOL_RESEARCH_COMPLETED,
+                type=EventType.EXTENSION_EVENT,
                 run_id=str(task.id),
-                data={"selected_tools": ["get_stock_quote"]},
+                data={
+                    "extension": "tool_research",
+                    "event": "completed",
+                    "data": {"selected_tools": ["get_stock_quote"]},
+                },
             )
         )
 
@@ -131,10 +139,10 @@ def test_durable_runtime_sink_persists_tool_research_facts():
     events = repository.list_task_events(task.id, after_sequence=2)
 
     assert [event.event_type for event in events] == [
-        TaskEventType.TOOL_RESEARCH_STARTED.value,
-        TaskEventType.TOOL_RESEARCH_COMPLETED.value,
+        TaskEventType.EXTENSION_EVENT.value,
+        TaskEventType.EXTENSION_EVENT.value,
     ]
-    assert events[1].data["selected_tools"] == ["get_stock_quote"]
+    assert events[1].data["data"]["selected_tools"] == ["get_stock_quote"]
 
     session.close()
     engine.dispose()

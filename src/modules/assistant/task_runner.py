@@ -38,13 +38,6 @@ ASSISTANT_MAX_TOOL_CALLS = 24
 ANSWER_TOKEN_BATCH_CHARS = 128
 ANSWER_TOKEN_BATCH_INTERVAL_SECONDS = 0.1
 
-_TOOL_RESEARCH_EVENT_TYPES = {
-    EventType.TOOL_RESEARCH_STARTED,
-    EventType.TOOL_CANDIDATES_SCORED,
-    EventType.TOOL_RESEARCH_COMPLETED,
-    EventType.TOOL_RESEARCH_FALLBACK,
-}
-
 _ERROR_MESSAGES = {
     "run_timeout": "助手响应超时，请稍后重试。",
     "empty_answer": "助手暂时不可用，请稍后重试。",
@@ -100,10 +93,10 @@ class DurableRuntimeEventSink:
                 data=data,
             )
             return
-        if event.type in _TOOL_RESEARCH_EVENT_TYPES:
+        if event.type is EventType.EXTENSION_EVENT:
             repository.append_task_event(
                 self._task_id,
-                TaskEventType(event.type.value),
+                TaskEventType.EXTENSION_EVENT,
                 status=TaskStatus.RUNNING,
                 data=data,
             )

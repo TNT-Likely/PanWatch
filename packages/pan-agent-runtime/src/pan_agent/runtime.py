@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import time
+from collections.abc import Sequence
 
 from .contracts import (
     AgentCheckpoint,
@@ -20,13 +20,13 @@ from .contracts import (
     RuntimeEvent,
     ToolCall,
     ToolResult,
+    ToolSpec,
 )
 from .errors import UnknownTool
+from .extensions import BeforeModelTurnContext, RuntimeExtension
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
-from .tool_research.contracts import ToolResearchRequest
-from .tool_research.service import ToolResearchService
 
 _MAX_IDENTICAL_TOOL_CALLS = 2
 _REQUIRED_TOOL_CHOICE = "required"
@@ -54,12 +54,12 @@ class AgentRuntime:
         tools: ToolRegistry,
         policy: ToolPolicy | None = None,
         *,
-        tool_research: ToolResearchService | None = None,
+        extensions: Sequence[RuntimeExtension] | None = None,
     ) -> None:
         self._model = model
         self._tools = tools
         self._policy = policy or ReadOnlyToolPolicy()
-        self._tool_research = tool_research
+        self._extensions = tuple(extensions or ())
 
     async def run(self, request: RunRequest, sink: EventSink) -> RunResult:
         """Start a new run and publish the durable creation fact."""
@@ -213,7 +213,9 @@ class AgentRuntime:
         try:
             for current_step in range(step_index + 1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
-                await self._publish_tool_research(request, messages, sink, deadline)
+                model_tools = await self._resolve_model_tools(
+                    request, messages, sink, deadline
+                )
                 await self._publish(
                     sink,
                     request,
@@ -222,7 +224,11 @@ class AgentRuntime:
                 )
                 current_tool_choice = self._tool_choice_for_turn(request, messages)
                 turn = await self._run_model_turn(
-                    request, messages, emit_model_token, deadline, current_tool_choice
+                    model_tools,
+                    messages,
+                    emit_model_token,
+                    deadline,
+                    current_tool_choice,
                 )
                 if turn.content and not answer and current_tool_choice != _REQUIRED_TOOL_CHOICE:
                     await emit_token(turn.content)
@@ -380,7 +386,7 @@ class AgentRuntime:
 
     async def _run_model_turn(
         self,
-        request: RunRequest,
+        model_tools: list[ToolSpec],
         messages,
         emit_token,
         deadline,
@@ -390,7 +396,6 @@ class AgentRuntime:
         if remaining <= 0:
             raise TimeoutError
         async with asyncio.timeout(remaining):
-            model_tools = self._tools.model_tools(request, self._policy)
             if tool_choice is None:
                 return await self._model.run_turn(messages, model_tools, emit_token)
             return await self._model.run_turn(
@@ -400,78 +405,59 @@ class AgentRuntime:
                 tool_choice=tool_choice,
             )
 
-    async def _publish_tool_research(
+    async def _resolve_model_tools(
         self,
         request: RunRequest,
         messages: list[ModelMessage],
         sink: EventSink,
         deadline: float,
-    ) -> None:
-        """Run discovery in shadow mode without changing model-visible tools."""
-        if self._tool_research is None:
-            return
-        query = next(
-            (
-                message.content.strip()
-                for message in reversed(messages)
-                if message.role == "user" and message.content.strip()
-            ),
-            "",
-        )
-        query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
-        await self._publish(
-            sink,
-            request,
-            EventType.TOOL_RESEARCH_STARTED,
-            {"mode": "shadow", "query_hash": query_hash},
-        )
-        try:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError
-            async with asyncio.timeout(remaining):
-                result = await self._tool_research.research(
-                    ToolResearchRequest(query=query, context=request.context),
-                    policy=self._policy,
-                    runtime_request=request,
+    ) -> list[ToolSpec]:
+        """Let optional extensions reduce, but never expand, visible tools."""
+        model_tools = self._tools.model_tools(request, self._policy)
+        for extension in self._extensions:
+            extension_name = getattr(extension, "name", extension.__class__.__name__)
+
+            async def emit_extension_event(event_name: str, data: dict) -> None:
+                await self._publish(
+                    sink,
+                    request,
+                    EventType.EXTENSION_EVENT,
+                    {
+                        "extension": extension_name,
+                        "event": event_name,
+                        "data": data,
+                    },
                 )
-            await self._publish(
-                sink,
-                request,
-                EventType.TOOL_CANDIDATES_SCORED,
-                {
-                    "mode": "shadow",
-                    "candidates": [
-                        candidate.model_dump(mode="json")
-                        for candidate in result.candidates[:8]
-                    ],
-                },
+
+            context = BeforeModelTurnContext(
+                request=request,
+                messages=tuple(message.model_copy(deep=True) for message in messages),
+                available_tools=tuple(model_tools),
+                policy=self._policy,
+                emit_event=emit_extension_event,
             )
-            await self._publish(
-                sink,
-                request,
-                EventType.TOOL_RESEARCH_COMPLETED,
-                {
-                    "mode": "shadow",
-                    "selected_tools": result.selected_tools,
-                    "candidate_count": len(result.candidates),
-                    "filters_applied": len(result.filters_applied),
-                    "registry_version": result.registry_version,
-                    "catalog_version": result.catalog_version,
-                    "latency_ms": result.latency_ms,
-                },
-            )
-        except Exception as exc:  # noqa: BLE001 - shadow discovery cannot break a run
-            await self._publish(
-                sink,
-                request,
-                EventType.TOOL_RESEARCH_FALLBACK,
-                {
-                    "mode": "shadow",
-                    "reason": "research_failed",
-                    "error_type": type(exc).__name__,
-                },
-            )
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                async with asyncio.timeout(remaining):
+                    decision = await extension.before_model_turn(context)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - extensions are optional boundaries
+                await emit_extension_event(
+                    "fallback",
+                    {"reason": "extension_failed", "error_type": type(exc).__name__},
+                )
+                continue
+            if decision is not None and decision.tool_names is not None:
+                visible_names = set(decision.tool_names)
+                model_tools = self._tools.model_tools(
+                    request,
+                    self._policy,
+                    names=[tool.name for tool in model_tools if tool.name in visible_names],
+                )
+        return model_tools
 
     @staticmethod
     def _tool_choice_for_turn(request: RunRequest, messages: list[ModelMessage]) -> str | None:

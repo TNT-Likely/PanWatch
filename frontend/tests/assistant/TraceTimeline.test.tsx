@@ -32,6 +32,14 @@ describe('TraceTimeline', () => {
         events={[
           { event: 'tool_call_start', data: { name: 'get_portfolio', arguments: { market: 'CN' } } },
           { event: 'tool_result', data: { name: 'get_portfolio', ok: true, preview: '持仓查询完成' } },
+          {
+            event: 'extension_event',
+            data: {
+              extension: 'tool_research',
+              event: 'completed',
+              data: { selected_tools: ['get_portfolio'] },
+            },
+          },
           { event: 'done', data: {} },
         ]}
       />,
@@ -42,5 +50,6 @@ describe('TraceTimeline', () => {
     expect(screen.getByText('调用工具：get_portfolio')).toBeTruthy()
     expect(screen.getByText('{"market":"CN"}')).toBeTruthy()
     expect(screen.getByText('持仓查询完成')).toBeTruthy()
+    expect(screen.getByText('工具研究完成：选出 1 个')).toBeTruthy()
   })
 })
