@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from datetime import datetime
 
 from sqlalchemy import create_engine, event, text
@@ -22,6 +23,7 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 # 将等待限制在数秒内，让上层事务可以回滚/重试或返回明确错误，而不是
 # 让浏览器请求长时间表现为“卡死”。
 SQLITE_BUSY_TIMEOUT_MS = 5_000
+SQLITE_INIT_RETRY_DELAYS = (0.5, 1.0, 2.0)
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",
@@ -60,6 +62,26 @@ def get_db():
 
 
 def init_db():
+    """初始化数据库，并容忍开发热重载期间的短暂跨进程锁。"""
+    for attempt in range(len(SQLITE_INIT_RETRY_DELAYS) + 1):
+        try:
+            _init_db_once()
+            return
+        except Exception as exc:
+            if not _is_sqlite_lock_error(exc) or attempt >= len(SQLITE_INIT_RETRY_DELAYS):
+                raise
+            delay = SQLITE_INIT_RETRY_DELAYS[attempt]
+            logger.warning(
+                "数据库初始化遇到锁，%ss 后重试 (%s/%s): %s",
+                delay,
+                attempt + 1,
+                len(SQLITE_INIT_RETRY_DELAYS),
+                exc,
+            )
+            time.sleep(delay)
+
+
+def _init_db_once() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate(engine)
     _migrate_old_providers(engine)
@@ -69,6 +91,19 @@ def init_db():
     if has_pending_migrations(engine):
         _backup_db_before_migration()
     run_versioned_migrations(engine)
+
+
+def _is_sqlite_lock_error(exc: BaseException) -> bool:
+    """识别 SQLAlchemy 包装后的 SQLite 锁异常。"""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = str(current).lower()
+        if "database is locked" in message or "database table is locked" in message:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _has_column(conn, table: str, column: str) -> bool:
@@ -85,6 +120,27 @@ def _has_table(conn, table: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _backfill_sort_order(conn, table: str) -> None:
+    """只在确有待回填数据时申请 SQLite 写锁。"""
+    if not _has_column(conn, table, "sort_order"):
+        return
+    pending = conn.execute(
+        text(
+            f"SELECT 1 FROM {table} "
+            "WHERE sort_order IS NULL OR sort_order = 0 LIMIT 1"
+        )
+    ).first()
+    if not pending:
+        return
+    conn.execute(
+        text(
+            f"UPDATE {table} SET sort_order = id "
+            "WHERE sort_order IS NULL OR sort_order = 0"
+        )
+    )
+    conn.commit()
 
 
 def _drop_dangling_ai_provider_fk(conn, table: str) -> None:
@@ -235,12 +291,8 @@ def _migrate(engine):
         _drop_dangling_ai_provider_fk(conn, "stock_agents")
 
         # 初始化排序字段（仅对未初始化数据）
-        if _has_column(conn, "stocks", "sort_order"):
-            conn.execute(text("UPDATE stocks SET sort_order = id WHERE sort_order IS NULL OR sort_order = 0"))
-            conn.commit()
-        if _has_column(conn, "positions", "sort_order"):
-            conn.execute(text("UPDATE positions SET sort_order = id WHERE sort_order IS NULL OR sort_order = 0"))
-            conn.commit()
+        _backfill_sort_order(conn, "stocks")
+        _backfill_sort_order(conn, "positions")
 
         # Create new tables if missing (SQLite)
         if not _has_table(conn, "suggestion_feedback"):
