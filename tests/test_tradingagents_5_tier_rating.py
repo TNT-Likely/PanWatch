@@ -43,6 +43,17 @@ def test_buy_rating_maps_to_buy():
     assert r.raw_data["suggestion"]["action_label"] == "买入"
 
 
+def test_result_records_market_snapshot_at_decision_time():
+    """映射器保留决策生成时的行情，供影子组合审计执行价格。"""
+    r = map_state_to_result(
+        stock=_stock(),
+        ta_result=_result("Sell"),
+        market_snapshot={"current_price": 12.34, "open_price": 12.1, "timestamp": "2026-09-16T14:30:00+08:00"},
+    )
+    assert r.raw_data["price_at_analysis"] == 12.34
+    assert r.raw_data["market_snapshot"] == {"current_price": 12.34, "open_price": 12.1, "timestamp": "2026-09-16T14:30:00+08:00"}
+
+
 def test_overweight_rating_maps_to_buy_with_zh_label():
     """Overweight(增持) → action=buy,但 label 显示"增持"区分于 buy"""
     r = map_state_to_result(stock=_stock(), ta_result=_result("Overweight"))
