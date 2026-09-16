@@ -93,6 +93,14 @@ class DurableRuntimeEventSink:
                 data=data,
             )
             return
+        if event.type is EventType.EXTENSION_EVENT:
+            repository.append_task_event(
+                self._task_id,
+                TaskEventType.EXTENSION_EVENT,
+                status=TaskStatus.RUNNING,
+                data=data,
+            )
+            return
         if event.type is EventType.TOOL_STARTED:
             self._service.record_tool_started(self._task_id, data)
             return

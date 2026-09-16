@@ -38,6 +38,9 @@ tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.4.0
 # 业务无关的受限智能体运行时(可单独发布)
 -e ./packages/pan-agent-runtime
 
+# 可选的工具检索插件；PanWatch 默认启用 shadow 模式。
+-e ./packages/pan-agent-tool-research
+
 # OpenTelemetry 导出为「可选依赖组」,不在主依赖内(默认关闭,未装即 no-op)。
 # 需要把 trace 导出到 Jaeger/Tempo/Langfuse 时:pip install -r requirements-otel.txt
 # 详见 requirements-otel.txt 与 README「OTel 导出」。

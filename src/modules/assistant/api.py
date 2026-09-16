@@ -83,7 +83,6 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 
-
 def _error_message(error_code: str) -> str:
     return _ERROR_MESSAGES.get(error_code, "助手暂时不可用，请稍后重试。")
 
@@ -153,6 +152,8 @@ class _SSEEventSink:
                 )
         elif event.type is EventType.STEP_UPDATED:
             await self._queue.put(("step_updated", data))
+        elif event.type is EventType.EXTENSION_EVENT:
+            await self._queue.put(("extension_event", data))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:

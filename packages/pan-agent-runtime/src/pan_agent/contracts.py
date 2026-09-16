@@ -67,6 +67,7 @@ class EventType(StrEnum):
     RUN_CREATED = "run_created"
     PLAN_CREATED = "plan_created"
     STEP_UPDATED = "step_updated"
+    EXTENSION_EVENT = "extension_event"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     ANSWER_TOKEN = "answer_token"

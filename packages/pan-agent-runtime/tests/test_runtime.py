@@ -4,6 +4,7 @@ import time
 from pan_agent import (
     AgentRuntime,
     ApprovalDecision,
+    BeforeModelTurnContext,
     EventType,
     ModelMessage,
     ModelTurn,
@@ -12,6 +13,7 @@ from pan_agent import (
     RunRequest,
     RunStatus,
     ToolCall,
+    ToolExposureDecision,
     ToolPermissionDecision,
     ToolRegistry,
     ToolResult,
@@ -54,6 +56,36 @@ class DenyPolicy:
 
     async def decide(self, _request, _tool, _call):
         return ToolPermissionDecision.deny("not allowed")
+
+
+class CapturingModel:
+    def __init__(self):
+        self.received_tools = []
+
+    async def run_turn(self, _messages, tools, _emit_token, tool_choice=None):
+        self.received_tools.append([tool.name for tool in tools])
+        return ModelTurn(content="完成")
+
+
+class ShadowExtension:
+    name = "tool_research"
+
+    async def before_model_turn(
+        self, context: BeforeModelTurnContext
+    ):
+        await context.emit_event("started", {"mode": "shadow"})
+        await context.emit_event(
+            "completed",
+            {"selected_tools": [tool.name for tool in context.available_tools]},
+        )
+        return None
+
+
+class SelectingExtension:
+    name = "selector"
+
+    async def before_model_turn(self, _context: BeforeModelTurnContext):
+        return ToolExposureDecision(tool_names=("lookup", "write_note"))
 
 
 def request(**kwargs):
@@ -616,3 +648,65 @@ def test_resume_rejects_decisions_for_unknown_pending_calls():
                 CollectingSink(),
             )
         )
+
+
+def test_optional_extension_emits_facts_without_changing_model_tools():
+    tools = registry(lambda *_: None)
+    model = CapturingModel()
+    sink = CollectingSink()
+
+    result = asyncio.run(
+        AgentRuntime(
+            model,
+            tools,
+            extensions=[ShadowExtension()],
+        ).run(
+            RunRequest(
+                run_id="research-runtime",
+                messages=[{"role": "user", "content": "请查询这个值"}],
+                limits=RunLimits(max_steps=1),
+            ),
+            sink,
+        )
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert model.received_tools == [["lookup"]]
+    assert [event.type for event in sink.events] == [
+        EventType.RUN_CREATED,
+        EventType.EXTENSION_EVENT,
+        EventType.EXTENSION_EVENT,
+        EventType.STEP_UPDATED,
+        EventType.ANSWER_TOKEN,
+        EventType.RUN_COMPLETED,
+    ]
+    completed = sink.events[2]
+    assert completed.data["event"] == "completed"
+    assert completed.data["data"]["selected_tools"] == ["lookup"]
+
+
+def test_extension_selection_cannot_bypass_the_core_policy():
+    tools = registry(lambda *_: None)
+    tools.register(
+        ToolSpec(
+            name="write_note",
+            title="写入备注",
+            description="write",
+            risk=ToolRisk.WRITE,
+            confirmation_required=True,
+            input_schema={"type": "object", "properties": {}},
+        ),
+        lambda *_: None,
+    )
+    model = CapturingModel()
+
+    result = asyncio.run(
+        AgentRuntime(
+            model,
+            tools,
+            extensions=[SelectingExtension()],
+        ).run(request(max_steps=1), CollectingSink())
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert model.received_tools == [["lookup"]]

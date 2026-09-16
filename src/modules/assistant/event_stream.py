@@ -21,6 +21,7 @@ _SSE_EVENT_NAMES = {
     TaskEventType.CONTEXT_PREPARED: "context_prepared",
     TaskEventType.STEP_STARTED: "step_started",
     TaskEventType.STEP_PROGRESS: "step_updated",
+    TaskEventType.EXTENSION_EVENT: "extension_event",
     TaskEventType.ANSWER_TOKEN: "token",
     TaskEventType.TOOL_STARTED: "tool_call_start",
     TaskEventType.TOOL_COMPLETED: "tool_result",

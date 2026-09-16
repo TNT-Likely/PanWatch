@@ -31,6 +31,7 @@
 - 工具可见性和每次调用的权限决策；
 - Human-in-the-loop 暂停、部分审批和恢复；
 - 工具超时、重试、总超时、最大步骤数和重复调用检测；
+- 工具目录描述、确定性检索和策略过滤（Tool Research）；
 - 将执行过程转换为稳定的结构化事件。
 
 ### 宿主项目负责
@@ -198,6 +199,28 @@ RunRequest
    └─ RUN_COMPLETED / RUN_FAILED
 ~~~
 
+## Optional Runtime Extensions
+
+runtime 只定义通用的 `RuntimeExtension` 协议，不内置 Tool Research、记忆、MCP 或具体
+可观测性实现。扩展可以在每个模型回合前读取请求、消息和当前已通过策略的工具集合，
+并返回一个更小的工具名集合；它不能扩大权限边界。
+
+~~~python
+from pan_agent import AgentRuntime
+
+runtime = AgentRuntime(
+    model,
+    tools,
+    policy=policy,
+    extensions=[my_extension],
+)
+~~~
+
+扩展通过 `emit_event()` 发送通用的 `extension_event`，事件数据包含扩展名、事件名和
+业务负载。扩展失败时 runtime 会发出 fallback 事件并继续使用默认工具集合。Tool Research
+是一个独立的可选包，PanWatch 通过显式组装接入；不安装它时，`pan-agent-runtime` 仍可
+单独运行。
+
 模型返回多个工具调用时，runtime 会按原顺序处理。只要有一个调用需要审批，当前
 任务就返回 <code>WAITING_FOR_APPROVAL</code>，尚未批准的调用不会执行。
 
@@ -307,6 +330,8 @@ runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapsh
 | <code>AgentCheckpoint</code> | 审批暂停后可持久化的恢复状态 |
 | <code>RunResult</code> | 运行状态、答案、错误码和 checkpoint |
 | <code>RuntimeEvent</code> | SSE/WebSocket 等传输使用的统一事件 |
+| <code>RuntimeExtension</code> | 可选的模型回合扩展协议 |
+| <code>ToolExposureDecision</code> | 扩展对策略已允许工具集合的可选收窄 |
 
 ### 风险与权限
 
@@ -344,6 +369,7 @@ runtime 还会检测连续重复的相同工具调用。达到阈值后返回
 | <code>run_created</code> | 创建前端任务状态 |
 | <code>plan_created</code> | 预留给宿主展示计划 |
 | <code>step_updated</code> | 显示当前 Agent 步骤 |
+| <code>extension_event</code> | 持久化可选扩展的结构化事实 |
 | <code>tool_started</code> | 显示工具开始执行 |
 | <code>tool_completed</code> | 显示工具结果摘要和错误码 |
 | <code>answer_token</code> | 增量渲染模型答案 |

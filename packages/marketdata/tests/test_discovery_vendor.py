@@ -11,8 +11,15 @@ def test_hot_stocks_maps_fcodes(monkeypatch):
             ]
         }
     }
-    monkeypatch.setattr(dv, "market_get", lambda *a, **k: payload)
+    captured = {}
+
+    def fake_market_get(*args, **kwargs):
+        captured["url"] = args[0]
+        return payload
+
+    monkeypatch.setattr(dv, "market_get", fake_market_get)
     out = dv.DiscoveryVendor().hot_stocks(market="CN", mode="turnover", limit=20)
+    assert captured["url"] == "https://push2delay.eastmoney.com/api/qt/clist/get"
     assert len(out) == 1 and isinstance(out[0], HotStock)
     hs = out[0]
     assert hs.symbol == "600519"

@@ -257,6 +257,7 @@ const TRACE_EVENTS = new Set([
   'run_started',
   'context_prepared',
   'step_updated',
+  'extension_event',
   'tool_call_start',
   'tool_result',
   'approval_required',

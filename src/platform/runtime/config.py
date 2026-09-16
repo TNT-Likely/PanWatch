@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     context_soft_limit_tokens: int = Field(default=8_400, ge=128)
     context_hard_limit_tokens: int = Field(default=10_200, ge=256)
     context_keep_recent_messages: int = Field(default=8, ge=1, le=100)
+    tool_research_enabled: bool = True
 
     # Telegram
     notify_telegram_bot_token: str = ""

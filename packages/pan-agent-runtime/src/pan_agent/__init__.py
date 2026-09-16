@@ -35,17 +35,18 @@ from .contracts import (
     ToolSpec,
 )
 from .errors import DisallowedTool, DuplicateToolName, PanAgentError, UnknownTool
+from .extensions import BeforeModelTurnContext, RuntimeExtension, ToolExposureDecision
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolExecutor, ToolPolicy
 from .registry import ToolRegistry
 from .runtime import AgentRuntime
-
 __version__ = "0.1.0"
 
 __all__ = [
     "AgentCheckpoint",
     "AgentRuntime",
     "ApprovalDecision",
+    "BeforeModelTurnContext",
     "CheckpointEnvelope",
     "CheckpointReason",
     "ContextBudget",
@@ -73,8 +74,10 @@ __all__ = [
     "RunResult",
     "RunStatus",
     "RuntimeEvent",
+    "RuntimeExtension",
     "Source",
     "ToolCall",
+    "ToolExposureDecision",
     "ToolExecutor",
     "ToolPermissionDecision",
     "ToolPolicy",

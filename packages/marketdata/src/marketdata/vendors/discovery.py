@@ -16,8 +16,11 @@ from typing import Any
 from marketdata.http import market_get
 from marketdata.types import HotBoard, HotStock
 
-_STOCKS_API = "https://push2.eastmoney.com/api/qt/clist/get"
-_BOARDS_API = "https://push2.eastmoney.com/api/qt/clist/get"
+# push2 occasionally accepts the TCP connection and closes it before sending
+# headers in desktop/NAS proxy environments. push2delay exposes the same clist
+# contract and is reachable both directly and through the configured proxy.
+_STOCKS_API = "https://push2delay.eastmoney.com/api/qt/clist/get"
+_BOARDS_API = "https://push2delay.eastmoney.com/api/qt/clist/get"
 _HOST_KEY = "push2.eastmoney.com"
 
 _HEADERS = {

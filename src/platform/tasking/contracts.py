@@ -50,6 +50,7 @@ class TaskEventType(StrEnum):
     CONTEXT_PREPARED = "context_prepared"
     STEP_STARTED = "step_started"
     STEP_PROGRESS = "step_progress"
+    EXTENSION_EVENT = "extension_event"
     ANSWER_TOKEN = "answer_token"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
