@@ -789,6 +789,23 @@ def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session
     return result
 
 
+def _gather_account_totals(db: Session, *, market_value: float) -> dict:
+    """Use the same enabled-account scope as holdings; cash is stored in CNY.
+
+    Reuse the already-valued holdings instead of fetching quotes a second time.
+    Non-positive equity has no meaningful exposure ratio (not zero exposure).
+    """
+    cash = float(db.query(func.sum(Account.available_funds)).filter(
+        Account.enabled == True  # noqa: E712
+    ).scalar() or 0.0)
+    total = market_value + cash
+    return {
+        "available_funds": round(cash, 2),
+        "total_assets": round(total, 2),
+        "equity_ratio": market_value / total if total > 0 else None,
+    }
+
+
 @router.post("/portfolio/ai-review")
 async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends(get_db)):
     """组合 AI 体检:诊断+基准+归因 → 叙述结论 + 调仓建议(只读,不下单)。"""
@@ -801,6 +818,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
         return {"empty": True, "reason": "no_holdings"}
 
     diag = diagnose_positions(holdings)
+    totals = _gather_account_totals(db, market_value=diag["total_market_value"])
     bench = build_portfolio_benchmark(holdings, days=60) or {}
     attr = build_attribution(holdings, days=60)
     top = attr[:3]
@@ -808,7 +826,10 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
 
     lines = [
         f"持仓 {diag['position_count']} 只,总市值 {diag['total_market_value']:.0f},浮盈 {diag['total_unrealized_pnl']:.0f}",
-        f"集中度 HHI {diag['hhi']},最大单仓 {diag['max_weight'] * 100:.0f}%",
+        f"持仓内部集中度 HHI {diag['hhi']},最大单仓占已投资金额 {diag['max_weight'] * 100:.0f}%",
+        f"启用账户总资产 {totals['total_assets']:.0f} CNY（现金/可用资金 {totals['available_funds']:.0f} CNY）",
+        (f"总资产敞口：权益类仓位占总资产 {totals['equity_ratio'] * 100:.1f}%"
+         if totals['equity_ratio'] is not None else "总资产敞口：总资产非正，比例不可计算"),
     ]
     if bench.get("excess_return") is not None:
         lines.append(
@@ -817,7 +838,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
             f"相对回撤 {bench.get('relative_drawdown')}%"
         )
     if diag.get("by_market"):
-        lines.append("市场分布:" + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
+        lines.append("持仓内部市场分布（市值 CNY）:" + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
     if diag.get("alerts"):
         lines.append("风险提示:" + "; ".join(diag["alerts"]))
     if top:
@@ -827,6 +848,9 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
 
     system_prompt = (
         "你是稳健的组合顾问。基于给定的组合诊断/基准对比/个股归因,给一段简短体检 + 可执行调仓建议,"
+        "务必区分持仓内部集中度（已投资金额中的分布）和相对总资产的实际权益敞口。"
+        "不得用持仓内部的集中度百分比形容总资产敞口。现金按启用账户已录入的可用资金计算，未核验券商余额。"
+        "总资产非正时不得编造敞口比例；输出必须包含‘持仓内部集中度’和‘总资产敞口’两项。"
         "只读分析、不下单、不承诺收益。严格格式:\n体检: 一句话总评\n建议:\n- (2~3 条具体可执行)\n风险: 一句话最大风险"
     )
     user_content = "组合概况:\n" + "\n".join(lines)
@@ -835,4 +859,4 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
     except Exception as e:
         raise HTTPException(502, f"AI 体检失败: {e}")
 
-    return {"content": content, "top": top, "worst": worst, "diagnostics": diag, "benchmark": bench}
+    return {"content": content, "top": top, "worst": worst, "diagnostics": diag, "benchmark": bench, "account_totals": totals}
