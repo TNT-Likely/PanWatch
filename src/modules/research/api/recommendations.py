@@ -28,6 +28,7 @@ from src.modules.strategy.strategy_engine import (
 )
 from src.modules.strategy.factor_eval import evaluate_factor_ic
 from src.modules.research.signal_explain import enrich_signal
+from src.modules.portfolio.opportunity_risk import risk_adjusted_opportunities
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import StrategySignalRun
 
@@ -244,9 +245,16 @@ def get_strategy_signal_list(
         risk_level=risk_level,
         include_payload=include_payload,
     )
-    # Phase 3: 注入 1-10 可解释评分 + 正负因子拆解
+    result["items"] = risk_adjusted_opportunities(result.get("items", []))
+    # 展示分与 1-10 分保持一致，底层因子不变，集中度单列解释。
     for _it in result.get("items", []):
         enrich_signal(_it)
+        if _it.get("concentration_flag"):
+            _it["factor_explain"]["negative"].append({
+                "factor": "portfolio_concentration", "label": "持仓市场集中度",
+                "contribution": round(_it["rank_score"] - _it["raw_rank_score"], 2),
+            })
+    result["items"].sort(key=lambda row: float(row.get("rank_score") or 0), reverse=True)
     return result
 
 
