@@ -16,12 +16,12 @@ __all__ = [
     "ToolCatalog",
     "ToolDataFreshness",
     "ToolDescriptor",
+    "ToolResearchMode",
+    "ToolResearchPlugin",
     "ToolResearchRequest",
     "ToolResearchResult",
     "ToolResearchService",
     "ToolSelectionPolicy",
-    "ToolResearchMode",
-    "ToolResearchPlugin",
 ]
 
 

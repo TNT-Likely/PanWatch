@@ -5,9 +5,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-
 from pan_agent import ToolRisk
+from pydantic import BaseModel, Field
 
 
 class ToolDataFreshness(StrEnum):

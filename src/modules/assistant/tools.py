@@ -7,7 +7,14 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pan_agent import RunRequest, ToolRegistry, ToolResult, ToolRisk, ToolSpec
+from pan_agent import (
+    RunRequest,
+    ToolExposure,
+    ToolRegistry,
+    ToolResult,
+    ToolRisk,
+    ToolSpec,
+)
 from sqlalchemy.orm import Session
 
 from src.modules.market.price_alert_service import (
@@ -30,8 +37,8 @@ from src.platform.marketdata.marketdata_client import (
     md_quote_rows,
 )
 from src.platform.marketdata.models import MARKETS, MarketCode
-from src.platform.persistence.models import Stock
 from src.platform.marketdata.stock_list import search_stocks
+from src.platform.persistence.models import Stock
 from src.platform.runtime.config import Settings
 
 
@@ -594,7 +601,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 error_code="trade_date_required",
             )
         try:
-            datetime.strptime(trade_date, "%Y-%m-%d")
+            datetime.strptime(trade_date, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             return ToolResult.failure(
                 summary="龙虎榜日期格式必须是 YYYY-MM-DD。",
@@ -1327,4 +1334,18 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ),
         create_price_alert,
     )
+    for name in (
+        "find_research_candidates",
+        "get_kline_summary",
+        "get_hot_stocks",
+        "get_hot_boards",
+        "get_board_stocks",
+        "get_stock_fundamentals",
+        "get_capital_flow",
+        "get_dragon_tiger",
+        "update_price_alert",
+        "delete_price_alert",
+        "create_price_alert",
+    ):
+        registry.set_exposure(name, ToolExposure.DEFERRED)
     return registry

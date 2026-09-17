@@ -22,7 +22,6 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
-
 from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService
 
 from src.platform.ai.ai_failover import (
@@ -50,8 +49,8 @@ from .schemas import (
     CreateConversationCommand,
     MessageDTO,
 )
-from .tools import build_panwatch_tool_registry
 from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
+from .tools import build_panwatch_tool_registry
 
 
 class AssistantNotFoundError(LookupError):
@@ -363,7 +362,7 @@ class AssistantService:
                             tools,
                             descriptors=list(PANWATCH_TOOL_DESCRIPTORS),
                         ),
-                        mode="shadow",
+                        mode="active",
                     )
                 ]
                 if self._settings.tool_research_enabled

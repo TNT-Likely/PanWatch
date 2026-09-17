@@ -203,7 +203,7 @@ RunRequest
 
 runtime 只定义通用的 `RuntimeExtension` 协议，不内置 Tool Research、记忆、MCP 或具体
 可观测性实现。扩展可以在每个模型回合前读取请求、消息和当前已通过策略的工具集合，
-并返回一个更小的工具名集合；它不能扩大权限边界。
+选择已注册工具、提供虚拟扩展工具，并在模型调用虚拟工具时处理它；它不能扩大权限边界。
 
 ~~~python
 from pan_agent import AgentRuntime
@@ -319,7 +319,7 @@ runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapsh
 | --- | --- |
 | <code>AgentRuntime</code> | 启动、暂停和恢复有界 Agent loop |
 | <code>ToolRegistry</code> | 注册工具、按策略暴露工具、执行工具 |
-| <code>ToolSpec</code> | 工具名称、描述、风险等级和 JSON Schema |
+| <code>ToolSpec</code> | 工具名称、描述、风险等级、暴露层级和 JSON Schema |
 | <code>ToolResult</code> | 工具成功/失败、摘要、结构化数据和来源 |
 | <code>ToolPolicy</code> | 宿主定义工具可见性和每次调用权限 |
 | <code>ReadOnlyToolPolicy</code> | 安全默认策略，只允许无确认读工具 |
@@ -331,7 +331,7 @@ runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapsh
 | <code>RunResult</code> | 运行状态、答案、错误码和 checkpoint |
 | <code>RuntimeEvent</code> | SSE/WebSocket 等传输使用的统一事件 |
 | <code>RuntimeExtension</code> | 可选的模型回合扩展协议 |
-| <code>ToolExposureDecision</code> | 扩展对策略已允许工具集合的可选收窄 |
+| <code>ToolExposureDecision</code> | 扩展选择已注册工具并提供虚拟工具 schema |
 
 ### 风险与权限
 
@@ -420,7 +420,12 @@ runtime 会在每一轮调用 <code>ToolRegistry.model_tools(request, policy)</c
 默认行为是“把策略允许的工具定义交给模型”。工具数量少时最直观；工具增长后，工具
 定义和工具结果都会成为上下文成本。
 
-建议按以下顺序优化：
+当前 runtime 已支持工具渐进式暴露：`ToolSpec.exposure` 可设置为
+`direct`、`deferred` 或 `hidden`。默认只把 Direct 工具交给模型；Tool Research 等
+可选扩展可以通过虚拟工具发现并加载 Deferred 工具。无论工具如何被发现，执行时仍然
+必须经过宿主 `ToolPolicy` 和 Registry。
+
+建议按以下顺序继续优化：
 
 ### 1. 按能力域动态暴露工具
 
@@ -430,8 +435,10 @@ runtime 会在每一轮调用 <code>ToolRegistry.model_tools(request, policy)</c
 - 用户问账单，只暴露交易和分类工具；
 - 用户要求修改数据，再临时暴露对应写工具。
 
-更大规模的系统可以只暴露一个“工具目录/搜索工具”，模型先检索能力，再由宿主把
-命中的工具加入后续回合。
+更大规模的系统可以只暴露一个“工具目录/搜索工具”，模型先检索能力，再由扩展把
+命中的 Deferred 工具加入后续回合。虚拟扩展工具通过 `ToolExposureDecision.additional_tools`
+提供 schema，并通过 `RuntimeExtension.handle_tool_call()` 处理，不需要把扩展执行器注册
+进业务 Tool Registry。
 
 ### 2. 工具结果摘要化
 

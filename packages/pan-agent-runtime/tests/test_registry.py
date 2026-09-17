@@ -3,6 +3,7 @@ from pan_agent import (
     DuplicateToolName,
     ReadOnlyToolPolicy,
     RunRequest,
+    ToolExposure,
     ToolRegistry,
     ToolRisk,
     ToolSpec,
@@ -13,8 +14,9 @@ async def fake_executor(_request, _arguments):  # pragma: no cover - registry po
     raise AssertionError("must not execute")
 
 
-def read_spec(name: str) -> ToolSpec:
+def read_spec(name: str, *, exposure: ToolExposure = ToolExposure.DIRECT) -> ToolSpec:
     return ToolSpec(name=name, title=name, description="read value", risk=ToolRisk.READ,
+                    exposure=exposure,
                     input_schema={"type": "object", "properties": {}})
 
 
@@ -51,3 +53,34 @@ def test_registry_can_limit_model_tools_by_names_without_changing_policy_checks(
     assert [tool.name for tool in registry.model_tools(
         request(), ReadOnlyToolPolicy(), names=["search"]
     )] == ["search"]
+
+
+def test_registry_hides_deferred_and_hidden_tools_until_explicitly_loaded():
+    registry = ToolRegistry()
+    registry.register(read_spec("direct"), fake_executor)
+    registry.register(read_spec("deferred", exposure=ToolExposure.DEFERRED), fake_executor)
+    registry.register(read_spec("hidden", exposure=ToolExposure.HIDDEN), fake_executor)
+
+    assert [tool.name for tool in registry.model_tools(request(), ReadOnlyToolPolicy())] == [
+        "direct"
+    ]
+    assert [tool.name for tool in registry.model_tools(
+        request(), ReadOnlyToolPolicy(), names=["deferred"], include_deferred=True
+    )] == ["deferred"]
+    assert registry.model_tools(
+        request(), ReadOnlyToolPolicy(), names=["hidden"], include_deferred=True
+    ) == []
+
+
+def test_registry_keeps_explicitly_allowlisted_deferred_tool_visible():
+    registry = ToolRegistry()
+    registry.register(read_spec("deferred", exposure=ToolExposure.DEFERRED), fake_executor)
+    allowed_request = RunRequest(
+        run_id="registry-action",
+        messages=[{"role": "user", "content": "执行指定操作"}],
+        context={"allowed_tool_names": ["deferred"]},
+    )
+
+    assert [tool.name for tool in registry.model_tools(
+        allowed_request, ReadOnlyToolPolicy()
+    )] == ["deferred"]

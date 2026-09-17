@@ -12,8 +12,13 @@ function describeExtensionEvent(event: AssistantTraceEvent): { label: string; ic
   const data = event.data.data || {}
   switch (event.data.event) {
     case 'started': return { label: '研究可用工具', icon: Search }
+    case 'exposure': return {
+      label: `工具目录已准备：${data.direct_tools?.length || 0} 个直达，${data.loaded_tools?.length || 0} 个已加载`,
+      icon: Search,
+    }
     case 'candidates_scored': return { label: `筛选工具候选：${data.candidates?.length || 0} 个`, icon: Search }
     case 'completed': return { label: `工具研究完成：选出 ${data.selected_tools?.length || 0} 个`, icon: Search }
+    case 'searched': return { label: `工具搜索完成：加载 ${data.selected_tools?.length || 0} 个`, icon: Search }
     case 'fallback': return { label: '工具研究回退，继续使用默认工具集', icon: AlertCircle }
     default: return { label: `扩展事件：${event.data.event || 'unknown'}`, icon: FileClock }
   }

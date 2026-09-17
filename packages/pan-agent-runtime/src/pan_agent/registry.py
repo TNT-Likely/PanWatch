@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from .contracts import RunRequest, ToolResult, ToolSpec
+from .contracts import RunRequest, ToolExposure, ToolResult, ToolSpec
 from .errors import DuplicateToolName, UnknownTool
 from .ports import ToolExecutor, ToolPolicy
 
@@ -41,19 +41,35 @@ class ToolRegistry:
         policy: ToolPolicy,
         *,
         names: list[str] | None = None,
+        include_deferred: bool = False,
     ) -> list[ToolSpec]:
         """Return only tools that the trusted policy lets the model discover."""
         allowed_names = set(names) if names is not None else None
+        explicitly_allowed = set(request.context.get("allowed_tool_names") or ())
         return [
             tool.spec
             for tool in self._tools.values()
             if (allowed_names is None or tool.spec.name in allowed_names)
+            and tool.spec.exposure is not ToolExposure.HIDDEN
+            and (
+                tool.spec.exposure is not ToolExposure.DEFERRED
+                or include_deferred
+                or tool.spec.name in explicitly_allowed
+            )
             and policy.is_tool_visible(request, tool.spec)
         ]
 
     def registered_tools(self) -> list[ToolSpec]:
         """Expose host metadata for settings UIs without exposing executors."""
         return [tool.spec for tool in self._tools.values()]
+
+    def set_exposure(self, name: str, exposure: ToolExposure) -> None:
+        """Change model exposure without replacing the registered executor."""
+        entry = self.get(name)
+        self._tools[name] = RegisteredTool(
+            spec=entry.spec.model_copy(update={"exposure": exposure}),
+            executor=entry.executor,
+        )
 
     @property
     def version(self) -> str:

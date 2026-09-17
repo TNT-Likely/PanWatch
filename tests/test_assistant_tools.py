@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from pan_agent import ModelMessage, RunRequest
+from pan_agent import ModelMessage, ReadOnlyToolPolicy, RunRequest, ToolExposure
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -31,6 +31,26 @@ def _request() -> RunRequest:
     return RunRequest(
         run_id="tools-test", messages=[ModelMessage(role="user", content="测试工具")]
     )
+
+
+def test_panwatch_registry_keeps_core_tools_direct_and_defers_specialized_tools():
+    engine, session = _session()
+    registry = assistant_tools.build_panwatch_tool_registry(session)
+    visible = {
+        tool.name
+        for tool in registry.model_tools(_request(), ReadOnlyToolPolicy())
+    }
+
+    assert {"get_stock_quote", "get_stock_news", "get_portfolio", "tool_search"} - visible == {
+        "tool_search"
+    }
+    assert registry.get("get_hot_stocks").spec.exposure is ToolExposure.DEFERRED
+    assert registry.get("create_price_alert").spec.exposure is ToolExposure.DEFERRED
+    assert registry.model_tools(
+        _request(), ReadOnlyToolPolicy(), names=["get_hot_stocks"], include_deferred=True
+    )[0].name == "get_hot_stocks"
+    session.close()
+    engine.dispose()
 
 
 def test_portfolio_tool_is_read_only_and_includes_provenance():

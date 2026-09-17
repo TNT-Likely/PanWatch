@@ -19,6 +19,14 @@ class ToolRisk(StrEnum):
     DESTRUCTIVE = "destructive"
 
 
+class ToolExposure(StrEnum):
+    """How a registered tool enters the model's initial tool space."""
+
+    DIRECT = "direct"
+    DEFERRED = "deferred"
+    HIDDEN = "hidden"
+
+
 class PermissionMode(StrEnum):
     """The host-owned outcome for one proposed tool call."""
 
@@ -87,6 +95,7 @@ class ToolSpec(BaseModel):
     description: str = Field(min_length=1, max_length=2_000)
     risk: ToolRisk = ToolRisk.READ
     confirmation_required: bool = False
+    exposure: ToolExposure = ToolExposure.DIRECT
     input_schema: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "properties": {}})
 
     @field_validator("input_schema")

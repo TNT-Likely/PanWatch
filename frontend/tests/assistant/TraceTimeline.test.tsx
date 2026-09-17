@@ -52,4 +52,38 @@ describe('TraceTimeline', () => {
     expect(screen.getByText('持仓查询完成')).toBeTruthy()
     expect(screen.getByText('工具研究完成：选出 1 个')).toBeTruthy()
   })
+
+  it('distinguishes tool exposure and model-side search from execution', async () => {
+    const user = userEvent.setup()
+    render(
+      <TraceTimeline
+        events={[
+          {
+            event: 'extension_event',
+            data: {
+              extension: 'tool_research',
+              event: 'exposure',
+              data: { direct_tools: ['get_quote'], loaded_tools: [] },
+            },
+          },
+          {
+            event: 'extension_event',
+            data: {
+              extension: 'tool_research',
+              event: 'searched',
+              data: { selected_tools: ['get_fundamentals'] },
+            },
+          },
+          { event: 'tool_call_start', data: { name: 'get_fundamentals', arguments: {} } },
+          { event: 'done', data: {} },
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+
+    expect(screen.getByText('工具目录已准备：1 个直达，0 个已加载')).toBeTruthy()
+    expect(screen.getByText('工具搜索完成：加载 1 个')).toBeTruthy()
+    expect(screen.getByText('调用工具：get_fundamentals')).toBeTruthy()
+  })
 })

@@ -6,6 +6,7 @@ import hashlib
 import json
 
 from pan_agent import DuplicateToolName, ToolRisk, UnknownTool
+
 from .contracts import ToolDescriptor
 
 

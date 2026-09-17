@@ -23,7 +23,7 @@ from .contracts import (
     ToolSpec,
 )
 from .errors import UnknownTool
-from .extensions import BeforeModelTurnContext, RuntimeExtension
+from .extensions import BeforeModelTurnContext, ExtensionToolContext, RuntimeExtension
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolPolicy
 from .registry import ToolRegistry
@@ -213,7 +213,7 @@ class AgentRuntime:
         try:
             for current_step in range(step_index + 1, request.limits.max_steps + 1):
                 self._ensure_before_deadline(deadline)
-                model_tools = await self._resolve_model_tools(
+                model_tools, extension_tools = await self._resolve_model_tools(
                     request, messages, sink, deadline
                 )
                 await self._publish(
@@ -279,9 +279,12 @@ class AgentRuntime:
                             "tool_call_limit",
                         )
                     tool_calls += 1
+                    extension_tool = extension_tools.get(call.name)
                     try:
-                        tool = self._tools.get(call.name)
+                        registered_tool = self._tools.get(call.name)
                     except UnknownTool:
+                        registered_tool = None
+                    if registered_tool is None and extension_tool is None:
                         return await self._finish(
                             sink,
                             request,
@@ -290,6 +293,11 @@ class AgentRuntime:
                             tool_calls,
                             "unknown_tool",
                         )
+                    tool_spec = (
+                        registered_tool.spec
+                        if registered_tool is not None
+                        else extension_tool[0]
+                    )
 
                     fingerprint = _tool_call_fingerprint(call)
                     if fingerprint == last_tool_fingerprint:
@@ -307,13 +315,13 @@ class AgentRuntime:
                             "repeated_tool_call",
                         )
 
-                    decision = await self._policy.decide(request, tool.spec, call)
+                    decision = await self._policy.decide(request, tool_spec, call)
                     if decision.mode is PermissionMode.ASK:
                         pending.append(
                             PendingApproval(
                                 call_id=call.id,
                                 tool_name=call.name,
-                                risk=tool.spec.risk,
+                                risk=tool_spec.risk,
                                 arguments=call.arguments,
                             )
                         )
@@ -326,9 +334,21 @@ class AgentRuntime:
                         self._append_tool_result(messages, call, result)
                         continue
 
-                    result, error_code = await self._execute_call(
-                        request, sink, call, deadline
-                    )
+                    if extension_tool is not None and registered_tool is None:
+                        result, error_code = await self._execute_extension_call(
+                            request,
+                            sink,
+                            call,
+                            tool_spec,
+                            extension_tool[1],
+                            messages,
+                            model_tools,
+                            deadline,
+                        )
+                    else:
+                        result, error_code = await self._execute_call(
+                            request, sink, call, deadline
+                        )
                     if error_code:
                         return await self._finish(
                             sink,
@@ -411,19 +431,22 @@ class AgentRuntime:
         messages: list[ModelMessage],
         sink: EventSink,
         deadline: float,
-    ) -> list[ToolSpec]:
-        """Let optional extensions reduce, but never expand, visible tools."""
+    ) -> tuple[list[ToolSpec], dict[str, tuple[ToolSpec, RuntimeExtension]]]:
+        """Resolve registered tools plus virtual tools owned by extensions."""
         model_tools = self._tools.model_tools(request, self._policy)
+        extension_tools: dict[str, tuple[ToolSpec, RuntimeExtension]] = {}
         for extension in self._extensions:
             extension_name = getattr(extension, "name", extension.__class__.__name__)
 
-            async def emit_extension_event(event_name: str, data: dict) -> None:
+            async def emit_extension_event(
+                event_name: str, data: dict, *, _extension_name=extension_name
+            ) -> None:
                 await self._publish(
                     sink,
                     request,
                     EventType.EXTENSION_EVENT,
                     {
-                        "extension": extension_name,
+                        "extension": _extension_name,
                         "event": event_name,
                         "data": data,
                     },
@@ -451,13 +474,90 @@ class AgentRuntime:
                 )
                 continue
             if decision is not None and decision.tool_names is not None:
-                visible_names = set(decision.tool_names)
                 model_tools = self._tools.model_tools(
                     request,
                     self._policy,
-                    names=[tool.name for tool in model_tools if tool.name in visible_names],
+                    names=list(decision.tool_names),
+                    include_deferred=True,
                 )
-        return model_tools
+            if decision is not None and decision.additional_tools:
+                for tool in decision.additional_tools:
+                    if tool.name in extension_tools or any(
+                        item.name == tool.name for item in model_tools
+                    ):
+                        continue
+                    if not self._policy.is_tool_visible(request, tool):
+                        continue
+                    extension_tools[tool.name] = (tool, extension)
+                    model_tools.append(tool)
+        return model_tools, extension_tools
+
+    async def _execute_extension_call(
+        self,
+        request: RunRequest,
+        sink: EventSink,
+        call: ToolCall,
+        tool: ToolSpec,
+        extension: RuntimeExtension,
+        messages: list[ModelMessage],
+        model_tools: list[ToolSpec],
+        deadline: float,
+    ) -> tuple[ToolResult, str | None]:
+        """Execute a virtual extension tool without giving it a host executor."""
+        handler = getattr(extension, "handle_tool_call", None)
+        if handler is None:
+            return ToolResult.failure(
+                summary="请求的扩展工具不可用", error_code="unknown_tool"
+            ), "unknown_tool"
+        await self._publish(
+            sink,
+            request,
+            EventType.TOOL_STARTED,
+            {"call_id": call.id, "tool": call.name, "arguments": call.arguments},
+        )
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            async with asyncio.timeout(min(request.limits.tool_timeout_seconds, remaining)):
+                result = await handler(
+                    ExtensionToolContext(
+                        request=request,
+                        messages=tuple(
+                            message.model_copy(deep=True) for message in messages
+                        ),
+                        call=call,
+                        tool=tool,
+                        available_tools=tuple(model_tools),
+                        policy=self._policy,
+                        emit_event=lambda event_name, data: self._publish(
+                            sink,
+                            request,
+                            EventType.EXTENSION_EVENT,
+                            {
+                                "extension": getattr(
+                                    extension,
+                                    "name",
+                                    extension.__class__.__name__,
+                                ),
+                                "event": event_name,
+                                "data": data,
+                            },
+                        ),
+                    )
+                )
+        except TimeoutError:
+            return ToolResult.failure(summary="扩展工具调用超时", error_code="tool_timeout"), "tool_timeout"
+        except Exception:  # noqa: BLE001 - extension is an optional boundary
+            return ToolResult.failure(summary="扩展工具调用失败", error_code="tool_failed"), "tool_failed"
+        if result is None:
+            return ToolResult.failure(
+                summary="请求的扩展工具不可用", error_code="unknown_tool"
+            ), "unknown_tool"
+        await self._publish_tool_completed(sink, request, call, result)
+        if not result.ok:
+            return result, result.error_code or "tool_failed"
+        return result, None
 
     @staticmethod
     def _tool_choice_for_turn(request: RunRequest, messages: list[ModelMessage]) -> str | None:

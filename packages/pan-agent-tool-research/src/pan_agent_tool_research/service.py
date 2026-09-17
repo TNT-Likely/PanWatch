@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import time
 
-from pan_agent import ModelMessage, RunRequest, ToolPolicy, ToolRegistry, ToolRisk, UnknownTool
+from pan_agent import (
+    ModelMessage,
+    RunRequest,
+    ToolPolicy,
+    ToolRegistry,
+    ToolRisk,
+    UnknownTool,
+)
 
 from .catalog import ToolCatalog, risk_level
 from .contracts import (
@@ -24,7 +31,7 @@ class ToolResearchService:
         self,
         registry: ToolRegistry,
         *,
-        descriptors: list["ToolDescriptor"] | None = None,
+        descriptors: list[ToolDescriptor] | None = None,
         catalog: ToolCatalog | None = None,
         retriever: KeywordToolRetriever | None = None,
         selection_policy: ToolSelectionPolicy | None = None,

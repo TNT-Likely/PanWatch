@@ -29,17 +29,24 @@ from .contracts import (
     RuntimeEvent,
     Source,
     ToolCall,
+    ToolExposure,
     ToolPermissionDecision,
     ToolResult,
     ToolRisk,
     ToolSpec,
 )
 from .errors import DisallowedTool, DuplicateToolName, PanAgentError, UnknownTool
-from .extensions import BeforeModelTurnContext, RuntimeExtension, ToolExposureDecision
+from .extensions import (
+    BeforeModelTurnContext,
+    ExtensionToolContext,
+    RuntimeExtension,
+    ToolExposureDecision,
+)
 from .policy import ReadOnlyToolPolicy
 from .ports import EventSink, ModelPort, ToolExecutor, ToolPolicy
 from .registry import ToolRegistry
 from .runtime import AgentRuntime
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -61,6 +68,7 @@ __all__ = [
     "DuplicateToolName",
     "EventSink",
     "EventType",
+    "ExtensionToolContext",
     "ExtractiveContextSummarizer",
     "ModelMessage",
     "ModelPort",
@@ -77,8 +85,9 @@ __all__ = [
     "RuntimeExtension",
     "Source",
     "ToolCall",
-    "ToolExposureDecision",
     "ToolExecutor",
+    "ToolExposure",
+    "ToolExposureDecision",
     "ToolPermissionDecision",
     "ToolPolicy",
     "ToolRegistry",
