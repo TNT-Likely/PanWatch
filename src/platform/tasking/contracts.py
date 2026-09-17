@@ -52,6 +52,7 @@ class TaskEventType(StrEnum):
     STEP_PROGRESS = "step_progress"
     EXTENSION_EVENT = "extension_event"
     ANSWER_TOKEN = "answer_token"
+    MODEL_USAGE = "model_usage"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     CHECKPOINT_SAVED = "checkpoint_saved"

@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from openai import AsyncOpenAI
+from pan_agent_token_meter import normalize_provider_usage
 
 from src.platform.observability import otel
 
@@ -26,6 +27,7 @@ class AIClient:
         self.api_key = api_key
         self.model = model
         self.total_tokens_used = 0
+        self.last_usage = None
 
     async def chat(
         self,
@@ -70,6 +72,7 @@ class AIClient:
                 response = await self.client.chat.completions.create(**create_kwargs)
                 # 记录 token 用量
                 if response.usage:
+                    self.last_usage = normalize_provider_usage(response.usage, model=self.model)
                     self.total_tokens_used += response.usage.total_tokens
                     _span.set_response(
                         model=getattr(response, "model", None) or self.model,
@@ -110,6 +113,7 @@ class AIClient:
             with otel.llm_span(self.model, operation="chat") as _span:
                 response = await self.client.chat.completions.create(**create_kwargs)
                 if response.usage:
+                    self.last_usage = normalize_provider_usage(response.usage, model=self.model)
                     self.total_tokens_used += response.usage.total_tokens
                     _span.set_response(
                         model=getattr(response, "model", None) or self.model,
@@ -146,6 +150,7 @@ class AIClient:
             with otel.llm_span(self.model, operation="chat") as _span:
                 response = await self.client.chat.completions.create(**create_kwargs)
                 if response.usage:
+                    self.last_usage = normalize_provider_usage(response.usage, model=self.model)
                     self.total_tokens_used += response.usage.total_tokens
                     _span.set_response(
                         model=getattr(response, "model", None) or self.model,
@@ -185,22 +190,42 @@ class AIClient:
             create_kwargs["tools"] = tools
         if tool_choice is not None:
             create_kwargs["tool_choice"] = tool_choice
+        # OpenAI-compatible providers that support streaming usage return a
+        # final usage-only chunk. Providers that reject this optional field
+        # are retried without it below.
+        create_kwargs["stream_options"] = {"include_usage": True}
 
         try:
             stream = await self.client.chat.completions.create(**create_kwargs)
         except Exception as e:
-            logger.error(f"AI 流式调用失败: {e}")
-            raise
+            message = str(e).lower()
+            unsupported_stream_options = any(
+                marker in message
+                for marker in ("stream_options", "unsupported parameter", "unknown parameter")
+            )
+            if "stream_options" in create_kwargs and unsupported_stream_options:
+                create_kwargs.pop("stream_options")
+                try:
+                    stream = await self.client.chat.completions.create(**create_kwargs)
+                except Exception:
+                    logger.error(f"AI 流式调用失败: {e}")
+                    raise
+            else:
+                logger.error(f"AI 流式调用失败: {e}")
+                raise
 
         content_parts: list[str] = []
         # OpenAI 流式协议下 tool_calls 按 index 分片下发（arguments 逐段拼接）
         tool_calls_acc: dict[int, dict] = {}
+        provider_usage = None
 
         async for chunk in stream:
             # 部分兼容服务会在末尾单发一个只含 usage 的 chunk
             usage = getattr(chunk, "usage", None)
             if usage:
                 self.total_tokens_used += usage.total_tokens
+                provider_usage = normalize_provider_usage(usage, model=self.model)
+                self.last_usage = provider_usage
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -226,6 +251,7 @@ class AIClient:
             {
                 "content": "".join(content_parts),
                 "tool_calls": [tool_calls_acc[i] for i in sorted(tool_calls_acc)],
+                "usage": provider_usage.model_dump(mode="json") if provider_usage else None,
             },
         )
 

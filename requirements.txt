@@ -38,6 +38,9 @@ tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.4.0
 # 业务无关的受限智能体运行时(可单独发布)
 -e ./packages/pan-agent-runtime
 
+# Optional provider usage normalization and token measurement plugin.
+-e ./packages/pan-agent-token-meter
+
 # 可选的工具检索插件；PanWatch 默认启用 shadow 模式。
 -e ./packages/pan-agent-tool-research
 

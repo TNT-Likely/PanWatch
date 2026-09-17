@@ -10,6 +10,8 @@ from .context import (
     ContextSummary,
     ContextUsage,
     ExtractiveContextSummarizer,
+    TokenMeasurement,
+    TokenMeter,
     estimate_tokens,
 )
 from .contracts import (
@@ -20,6 +22,7 @@ from .contracts import (
     EventType,
     ModelMessage,
     ModelTurn,
+    ModelUsage,
     PendingApproval,
     PermissionMode,
     RunLimits,
@@ -73,6 +76,7 @@ __all__ = [
     "ModelMessage",
     "ModelPort",
     "ModelTurn",
+    "ModelUsage",
     "PanAgentError",
     "PendingApproval",
     "PermissionMode",
@@ -94,6 +98,8 @@ __all__ = [
     "ToolResult",
     "ToolRisk",
     "ToolSpec",
+    "TokenMeasurement",
+    "TokenMeter",
     "UnknownTool",
     "__version__",
     "estimate_tokens",

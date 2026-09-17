@@ -113,11 +113,26 @@ def test_stream_forwards_required_tool_choice_to_provider():
 
 def test_stream_usage_and_empty_choices():
     """末尾只含 usage 的空 choices chunk 不报错，且累计 token 用量"""
-    usage = SimpleNamespace(total_tokens=42)
+    usage = SimpleNamespace(
+        prompt_tokens=30,
+        completion_tokens=12,
+        total_tokens=42,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=10),
+        completion_tokens_details=SimpleNamespace(reasoning_tokens=4),
+    )
     client = _make_client([
         _chunk(content="ok"),
         SimpleNamespace(choices=[], usage=usage),
     ])
     events = _collect(client)
     assert events[-1][1]["content"] == "ok"
+    assert events[-1][1]["usage"] == {
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "total_tokens": 42,
+        "cached_input_tokens": 10,
+        "reasoning_output_tokens": 4,
+        "model": "mock-model",
+        "source": "provider",
+    }
     assert client.total_tokens_used == 42

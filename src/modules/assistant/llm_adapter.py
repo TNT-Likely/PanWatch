@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from pan_agent import ModelMessage, ModelTurn, ToolCall, ToolSpec
+from pan_agent_token_meter import normalize_provider_usage
 
 
 class FailoverModelAdapter:
@@ -60,6 +61,7 @@ class FailoverModelAdapter:
         content_parts: list[str] = []
         final_content = ""
         raw_tool_calls: list[dict[str, Any]] = []
+        provider_usage = None
 
         stream_kwargs = {
             "tools": [tool.openai_schema() for tool in tools],
@@ -83,6 +85,10 @@ class FailoverModelAdapter:
             elif event_type == "message" and isinstance(payload, dict):
                 final_content = str(payload.get("content") or "")
                 raw_tool_calls = payload.get("tool_calls") or []
+                provider_usage = normalize_provider_usage(
+                    payload.get("usage"),
+                    model=payload.get("model") or getattr(self._client, "model", None),
+                )
 
         tool_calls: list[ToolCall] = []
         for call in raw_tool_calls:
@@ -98,4 +104,8 @@ class FailoverModelAdapter:
                     arguments=arguments,
                 )
             )
-        return ModelTurn(content=final_content or "".join(content_parts), tool_calls=tool_calls)
+        return ModelTurn(
+            content=final_content or "".join(content_parts),
+            tool_calls=tool_calls,
+            usage=provider_usage,
+        )

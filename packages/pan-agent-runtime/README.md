@@ -292,6 +292,14 @@ PanWatch 的数据库、FastAPI 或模型厂商。它包括：
 - `ContextSummarizer`：宿主接入任意摘要模型的协议；
 - `ExtractiveContextSummarizer`：模型不可用时的确定性 fallback。
 
+Token 统计也遵循可插拔边界：runtime 只定义 `TokenMeter` 和
+`TokenMeasurement` 协议，默认使用无依赖的粗略估算，不绑定 tokenizer。需要更准确的
+预估或 provider 用量归一化时，宿主可以安装可选的
+`pan-agent-token-meter` 包；其中 `TiktokenTokenMeter` 通过可选依赖提供 tokenizer
+计数，`normalize_provider_usage()` 将不同 provider 的响应转换为统一的
+`ModelUsage`。provider 返回的真实用量通过 `model_usage` 事件上报，但不会反向改变
+已经完成的上下文压缩决策。
+
 示例：
 
 ~~~python
@@ -332,6 +340,8 @@ runtime 只负责这组 provider-neutral contracts。摘要模型选择、snapsh
 | <code>RuntimeEvent</code> | SSE/WebSocket 等传输使用的统一事件 |
 | <code>RuntimeExtension</code> | 可选的模型回合扩展协议 |
 | <code>ToolExposureDecision</code> | 扩展选择已注册工具并提供虚拟工具 schema |
+| <code>TokenMeter</code> | 可选的上下文 token 预估协议 |
+| <code>ModelUsage</code> | provider 返回的单回合实际用量 |
 
 ### 风险与权限
 
@@ -372,6 +382,7 @@ runtime 还会检测连续重复的相同工具调用。达到阈值后返回
 | <code>extension_event</code> | 持久化可选扩展的结构化事实 |
 | <code>tool_started</code> | 显示工具开始执行 |
 | <code>tool_completed</code> | 显示工具结果摘要和错误码 |
+| <code>model_usage</code> | 记录 provider 返回的单回合实际用量 |
 | <code>answer_token</code> | 增量渲染模型答案 |
 | <code>approval_required</code> | 创建一张或多张审批卡 |
 | <code>run_completed</code> | 任务成功结束 |

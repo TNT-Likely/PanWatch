@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pan-agent-token-meter"
+version = "0.1.0"
+description = "Optional token measurement and provider usage normalization for PanAgent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0",
+    "pan-agent-runtime>=0.1.0",
+]
+
+[project.optional-dependencies]
+tiktoken = ["tiktoken>=0.7"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pan_agent_token_meter"]

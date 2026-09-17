@@ -154,6 +154,8 @@ class _SSEEventSink:
             await self._queue.put(("step_updated", data))
         elif event.type is EventType.EXTENSION_EVENT:
             await self._queue.put(("extension_event", data))
+        elif event.type is EventType.MODEL_USAGE:
+            await self._queue.put(("model_usage", data))
         elif event.type is EventType.ANSWER_TOKEN:
             await self._queue.put(("token", {"text": data.get("token", "")}))
         elif event.type is EventType.TOOL_STARTED:

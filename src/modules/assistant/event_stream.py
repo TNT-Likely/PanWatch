@@ -23,6 +23,7 @@ _SSE_EVENT_NAMES = {
     TaskEventType.STEP_PROGRESS: "step_updated",
     TaskEventType.EXTENSION_EVENT: "extension_event",
     TaskEventType.ANSWER_TOKEN: "token",
+    TaskEventType.MODEL_USAGE: "model_usage",
     TaskEventType.TOOL_STARTED: "tool_call_start",
     TaskEventType.TOOL_COMPLETED: "tool_result",
     TaskEventType.CHECKPOINT_SAVED: "checkpoint_saved",

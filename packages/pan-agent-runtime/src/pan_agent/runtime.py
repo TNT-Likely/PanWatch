@@ -230,6 +230,13 @@ class AgentRuntime:
                     deadline,
                     current_tool_choice,
                 )
+                if turn.usage is not None:
+                    await self._publish(
+                        sink,
+                        request,
+                        EventType.MODEL_USAGE,
+                        turn.usage.model_dump(mode="json"),
+                    )
                 if turn.content and not answer and current_tool_choice != _REQUIRED_TOOL_CHOICE:
                     await emit_token(turn.content)
 

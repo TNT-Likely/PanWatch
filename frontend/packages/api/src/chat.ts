@@ -51,6 +51,7 @@ export interface ContextSectionUsage {
   name: string
   tokens: number
   estimated: boolean
+  measurement?: 'estimated' | 'tokenizer' | 'provider'
 }
 
 export interface ContextUsage {
@@ -59,6 +60,9 @@ export interface ContextUsage {
   soft_limit_tokens: number
   hard_limit_tokens: number
   estimated: boolean
+  measurement?: 'estimated' | 'tokenizer' | 'provider'
+  model?: string | null
+  tokenizer?: string | null
   state: 'normal' | 'warning' | 'needs_compression'
   sections: ContextSectionUsage[]
 }
@@ -258,6 +262,7 @@ const TRACE_EVENTS = new Set([
   'context_prepared',
   'step_updated',
   'extension_event',
+  'model_usage',
   'tool_call_start',
   'tool_result',
   'approval_required',

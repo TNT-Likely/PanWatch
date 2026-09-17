@@ -23,6 +23,7 @@ from pan_agent import (
     ToolSpec,
 )
 from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService
+from pan_agent_token_meter import HeuristicTokenMeter
 
 from src.platform.ai.ai_failover import (
     build_failover_client,
@@ -134,7 +135,10 @@ class AssistantService:
         budget = self._context_budget()
         latest = self._repository.get_latest_context_snapshot(conversation_id)
         summary = ContextSummary.model_validate(latest.summary) if latest else None
-        usage = ContextEngine().measure(
+        usage = ContextEngine(
+            token_meter=HeuristicTokenMeter(),
+            model=self._context_model_name(),
+        ).measure(
             messages,
             summary=summary,
             page_context=conversation.initial_context,
@@ -229,6 +233,8 @@ class AssistantService:
         existing_summary = ContextSummary.model_validate(latest.summary) if latest else None
         engine = ContextEngine(
             self.build_context_summarizer(),
+            token_meter=HeuristicTokenMeter(),
+            model=self._context_model_name(),
         )
         result = await engine.prepare(
             messages,
@@ -256,6 +262,14 @@ class AssistantService:
                 usage_after=result.usage_after,
             )
         return result
+
+    def _context_model_name(self) -> str | None:
+        model = (
+            self._repository.session.query(AIModel)
+            .filter(AIModel.is_default == True)
+            .first()
+        )
+        return model.model if model is not None else None
 
     def _context_messages(self, conversation_id: int, *, rows=None) -> list[ModelMessage]:
         messages = build_assistant_messages(

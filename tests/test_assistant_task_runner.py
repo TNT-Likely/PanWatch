@@ -51,6 +51,13 @@ def test_durable_runtime_sink_batches_answer_and_preserves_event_order():
                 data={"call_id": "call-1", "tool": "get_quote", "arguments": {"symbol": "600519"}},
             )
         )
+        await sink.publish(
+            RuntimeEvent(
+                type=EventType.MODEL_USAGE,
+                run_id=str(task.id),
+                data={"input_tokens": 120, "output_tokens": 30, "source": "provider"},
+            )
+        )
 
     asyncio.run(publish_events())
     events = repository.list_task_events(task.id, after_sequence=2)
@@ -58,9 +65,11 @@ def test_durable_runtime_sink_batches_answer_and_preserves_event_order():
     assert [event.event_type for event in events] == [
         TaskEventType.ANSWER_TOKEN.value,
         TaskEventType.TOOL_STARTED.value,
+        TaskEventType.MODEL_USAGE.value,
     ]
     assert events[0].data == {"text": "完成"}
     assert events[1].data["name"] == "get_quote"
+    assert events[2].data["input_tokens"] == 120
 
     session.close()
     engine.dispose()

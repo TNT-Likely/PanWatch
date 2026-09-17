@@ -45,6 +45,17 @@ class ContextSectionUsage(BaseModel):
     name: str
     tokens: int = Field(ge=0)
     estimated: bool = True
+    measurement: Literal["estimated", "tokenizer", "provider"] = "estimated"
+
+
+class TokenMeasurement(BaseModel):
+    """One preflight token measurement supplied by an optional host plugin."""
+
+    tokens: int = Field(ge=0)
+    source: Literal["estimated", "tokenizer", "provider"] = "estimated"
+    estimated: bool = True
+    model: str | None = None
+    tokenizer: str | None = None
 
 
 class ContextUsage(BaseModel):
@@ -56,6 +67,9 @@ class ContextUsage(BaseModel):
     hard_limit_tokens: int = Field(ge=1)
     sections: list[ContextSectionUsage] = Field(default_factory=list)
     estimated: bool = True
+    measurement: Literal["estimated", "tokenizer", "provider"] = "estimated"
+    model: str | None = None
+    tokenizer: str | None = None
     state: Literal["normal", "warning", "needs_compression"] = "normal"
 
     @model_validator(mode="after")
@@ -104,6 +118,12 @@ class ContextSummarizer(Protocol):
     ) -> ContextSummary: ...
 
 
+class TokenMeter(Protocol):
+    """Optional provider/model-specific preflight token meter."""
+
+    def measure_text(self, text: str, *, model: str | None = None) -> TokenMeasurement: ...
+
+
 def estimate_tokens(text: str) -> int:
     """Return a conservative, dependency-free token estimate."""
 
@@ -121,7 +141,13 @@ def _message_tokens(message: ModelMessage) -> int:
     return estimate_tokens(payload)
 
 
-def _normalize_summary(summary: ContextSummary, *, max_tokens: int = 800) -> ContextSummary:
+def _normalize_summary(
+    summary: ContextSummary,
+    *,
+    max_tokens: int = 800,
+    token_meter: TokenMeter | None = None,
+    model: str | None = None,
+) -> ContextSummary:
     """Keep a provider response from replacing history with another giant prompt."""
 
     values = summary.model_dump(mode="python")
@@ -133,7 +159,13 @@ def _normalize_summary(summary: ContextSummary, *, max_tokens: int = 800) -> Con
     # Trim lower-priority list items until the serialized summary fits its own
     # budget, while retaining the goal and current state as long as possible.
     removable_fields = ("tool_findings", "facts", "decisions", "constraints", "open_items", "goal")
-    while estimate_tokens(json.dumps(values, ensure_ascii=False, sort_keys=True)) > max_tokens:
+    def summary_tokens() -> int:
+        payload = json.dumps(values, ensure_ascii=False, sort_keys=True)
+        if token_meter is not None:
+            return token_meter.measure_text(payload, model=model).tokens
+        return estimate_tokens(payload)
+
+    while summary_tokens() > max_tokens:
         removed = False
         for field in removable_fields:
             if values[field]:
@@ -183,8 +215,36 @@ class ExtractiveContextSummarizer:
 class ContextEngine:
     """Measure and compact a message list without owning persistence."""
 
-    def __init__(self, summarizer: ContextSummarizer | None = None) -> None:
+    def __init__(
+        self,
+        summarizer: ContextSummarizer | None = None,
+        *,
+        token_meter: TokenMeter | None = None,
+        model: str | None = None,
+    ) -> None:
         self._summarizer = summarizer or ExtractiveContextSummarizer()
+        self._token_meter = token_meter
+        self._model = model
+
+    def _measure_text(self, text: str) -> TokenMeasurement:
+        if self._token_meter is not None:
+            return self._token_meter.measure_text(text, model=self._model)
+        return TokenMeasurement(
+            tokens=estimate_tokens(text),
+            source="estimated",
+            estimated=True,
+            model=self._model,
+        )
+
+    def _message_measurement(self, message: ModelMessage) -> TokenMeasurement:
+        payload = message.content or ""
+        if message.tool_calls:
+            payload += json.dumps(
+                [call.model_dump(mode="json") for call in message.tool_calls],
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        return self._measure_text(payload)
 
     def measure(
         self,
@@ -197,6 +257,18 @@ class ContextEngine:
         budget: ContextBudget | None = None,
     ) -> ContextUsage:
         active_budget = budget or ContextBudget()
+        measurements: list[TokenMeasurement] = []
+
+        def add_text(text: str) -> int:
+            measurement = self._measure_text(text)
+            measurements.append(measurement)
+            return measurement.tokens
+
+        def add_message(message: ModelMessage) -> int:
+            measurement = self._message_measurement(message)
+            measurements.append(measurement)
+            return measurement.tokens
+
         system_tokens = 0
         embedded_summary_tokens = 0
         embedded_page_tokens = 0
@@ -204,19 +276,19 @@ class ContextEngine:
             if message.role != "system":
                 continue
             if message.content.startswith("以下是较早对话的结构化摘要"):
-                embedded_summary_tokens += _message_tokens(message)
+                embedded_summary_tokens += add_message(message)
             elif message.content.startswith("页面上下文:"):
-                embedded_page_tokens += _message_tokens(message)
+                embedded_page_tokens += add_message(message)
             else:
-                system_tokens += _message_tokens(message)
+                system_tokens += add_message(message)
         non_system = [message for message in messages if message.role != "system"]
         if compact_history:
             non_system = non_system[-active_budget.keep_recent_messages :]
         recent_start = max(0, len(non_system) - active_budget.keep_recent_messages)
-        older_tokens = sum(_message_tokens(message) for message in non_system[:recent_start])
-        recent_tokens = sum(_message_tokens(message) for message in non_system[recent_start:])
-        summary_tokens = embedded_summary_tokens or (estimate_tokens(summary.model_dump_json()) if summary else 0)
-        page_tokens = embedded_page_tokens or (estimate_tokens(page_context) if page_context else 0)
+        older_tokens = sum(add_message(message) for message in non_system[:recent_start])
+        recent_tokens = sum(add_message(message) for message in non_system[recent_start:])
+        summary_tokens = embedded_summary_tokens or (add_text(summary.model_dump_json()) if summary else 0)
+        page_tokens = embedded_page_tokens or (add_text(page_context) if page_context else 0)
         serialized_tools: list[object] = []
         for schema in tool_schemas or []:
             if hasattr(schema, "openai_schema"):
@@ -225,9 +297,19 @@ class ContextEngine:
                 schema = schema.model_dump(mode="json")
             serialized_tools.append(schema)
         tool_tokens = (
-            estimate_tokens(json.dumps(serialized_tools, ensure_ascii=False, sort_keys=True))
+            add_text(json.dumps(serialized_tools, ensure_ascii=False, sort_keys=True))
             if serialized_tools
             else 0
+        )
+        source_rank = {"estimated": 0, "tokenizer": 1, "provider": 2}
+        measurement = min(
+            (item.source for item in measurements),
+            key=lambda source: source_rank[source],
+            default="estimated",
+        )
+        representative = next(
+            (item for item in measurements if item.source == measurement),
+            None,
         )
         sections = [
             ContextSectionUsage(name="system", tokens=system_tokens),
@@ -237,12 +319,19 @@ class ContextEngine:
             ContextSectionUsage(name="history", tokens=older_tokens),
             ContextSectionUsage(name="recent_messages", tokens=recent_tokens),
         ]
+        for section in sections:
+            section.measurement = measurement
+            section.estimated = measurement == "estimated"
         return ContextUsage(
             total_tokens=sum(section.tokens for section in sections),
             budget_tokens=active_budget.max_tokens,
             soft_limit_tokens=active_budget.soft_limit_tokens,
             hard_limit_tokens=active_budget.hard_limit_tokens,
             sections=sections,
+            estimated=measurement == "estimated",
+            measurement=measurement,
+            model=representative.model if representative else self._model,
+            tokenizer=representative.tokenizer if representative else None,
         )
 
     async def prepare(
@@ -334,7 +423,12 @@ class ContextEngine:
             summary = await self._summarizer.summarize(summary_input, mode=mode)
         except Exception:
             summary = await ExtractiveContextSummarizer().summarize(summary_input, mode=mode)
-        summary = _normalize_summary(summary, max_tokens=active_budget.summary_max_tokens)
+        summary = _normalize_summary(
+            summary,
+            max_tokens=active_budget.summary_max_tokens,
+            token_meter=self._token_meter,
+            model=self._model,
+        )
         result_messages = build_messages(summary, compact_history=True)
         usage_after = self.measure(
             result_messages,

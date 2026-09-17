@@ -23,10 +23,36 @@ result = await engine.prepare(
 
 `result.usage_before` is the measured input before compaction and
 `result.usage_after` is the input that should be sent to the model. The
-measurement is an estimate unless the host replaces it with provider usage.
+measurement is a dependency-free estimate unless the host injects an optional
+`TokenMeter` implementation. The runtime does not import a tokenizer SDK.
 The breakdown includes system instructions, summaries, page context, tool
 definitions, older history, and recent messages. The UI can display
 `usage_after.state` as `normal`, `warning`, or `needs_compression`.
+
+## Optional token meter plugin
+
+The runtime exposes a small port rather than choosing a tokenizer:
+
+```python
+from pan_agent import ContextEngine
+from pan_agent_token_meter import TiktokenTokenMeter
+
+engine = ContextEngine(
+    summarizer=my_summarizer,
+    token_meter=TiktokenTokenMeter("cl100k_base"),
+    model="gpt-4o-mini",
+)
+```
+
+`ContextUsage.measurement` identifies the strongest claim that can be made
+about the report: `estimated`, `tokenizer`, or `provider`. A preflight meter
+is useful for deciding whether to compact, but it is not billing truth.
+Provider-reported usage belongs to `ModelTurn.usage` and is emitted as the
+provider-neutral `model_usage` runtime event after a model turn completes.
+The optional `pan-agent-token-meter` package supplies the default heuristic
+meter, the optional `tiktoken` implementation, and adapters for common
+provider usage payloads. A host can replace it with its own tokenizer or omit
+it entirely.
 
 ## Compression behavior
 
@@ -55,6 +81,11 @@ usage reports, and creation time.
 The host should keep original messages immutable and pass the prepared message
 list only into the next `RunRequest`. Approval checkpoints are already prepared
 runtime state and should resume directly without another compression pass.
+
+If the host needs accounting, persist provider usage events separately from
+preflight context reports. One model response may contain cached input tokens,
+reasoning output tokens, or provider-specific fields that cannot be inferred
+from the serialized message text.
 
 ## Model-backed summarizer contract
 

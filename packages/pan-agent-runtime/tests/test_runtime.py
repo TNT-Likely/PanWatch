@@ -8,6 +8,7 @@ from pan_agent import (
     EventType,
     ExtensionToolContext,
     ModelMessage,
+    ModelUsage,
     ModelTurn,
     PendingApproval,
     RunLimits,
@@ -198,6 +199,29 @@ def test_unknown_tool_is_never_executed_and_returns_partial_result():
     assert result.status is RunStatus.PARTIAL
     assert result.error_code == "unknown_tool"
     assert EventType.TOOL_STARTED not in [event.type for event in sink.events]
+
+
+def test_runtime_forwards_optional_model_usage_as_a_fact_event():
+    class UsageModel:
+        async def run_turn(self, _messages, _tools, _emit_token, tool_choice=None):
+            return ModelTurn(
+                content="完成",
+                usage=ModelUsage(
+                    input_tokens=120,
+                    output_tokens=30,
+                    total_tokens=150,
+                    model="test-model",
+                    source="provider",
+                ),
+            )
+
+    sink = CollectingSink()
+    result = asyncio.run(AgentRuntime(UsageModel(), registry(lambda *_: None)).run(request(), sink))
+
+    assert result.status is RunStatus.COMPLETED
+    usage_events = [event for event in sink.events if event.type is EventType.MODEL_USAGE]
+    assert len(usage_events) == 1
+    assert usage_events[0].data["input_tokens"] == 120
 
 
 def test_tool_failure_is_retried_once_and_answer_is_completed():

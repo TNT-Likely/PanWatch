@@ -156,6 +156,14 @@ class FailoverAIClient:
     def total_tokens_used(self) -> int:
         return sum(c.total_tokens_used for c, _ in self.candidates)
 
+    @property
+    def last_usage(self):
+        """Expose the latest provider usage from the model that last ran."""
+        for client, label in self.candidates:
+            if label == self.used_model_label:
+                return getattr(client, "last_usage", None)
+        return None
+
     async def list_models(self) -> list[str]:
         return await self._primary.list_models()
 

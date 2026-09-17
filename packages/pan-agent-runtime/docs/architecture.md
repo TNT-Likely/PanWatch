@@ -29,25 +29,30 @@ and persists checkpoints.
 
 ### Context extension
 
-`pan_agent.context` is the first built-in extension point. It contains token
-estimates, `ContextBudget`, section-level `ContextUsage`, inspectable
-`ContextSummary` fields, `ContextEngine`, the `ContextSummarizer` protocol, and
-the no-network `ExtractiveContextSummarizer` fallback.
+`pan_agent.context` is the first built-in extension point. It contains the
+provider-neutral `TokenMeter` port, `ContextBudget`, section-level
+`ContextUsage`, inspectable `ContextSummary` fields, `ContextEngine`, the
+`ContextSummarizer` protocol, and the no-network
+`ExtractiveContextSummarizer` fallback. The default measurement is a small
+heuristic so the runtime remains dependency-free.
 
 The context layer does not know how conversations are stored. A host decides
 whether snapshots live in SQL, Redis, object storage, or nowhere at all.
 
 ## Host composition
 
-The first release keeps one distribution package to avoid premature package
-fragmentation. Capabilities are still composed through explicit ports:
+The runtime keeps its kernel small and composes optional capabilities through
+explicit ports. Token measurement is the first separately installable plugin
+because it has optional tokenizer dependencies and is useful to hosts that do
+not use the PanWatch model adapter:
 
 ```text
 pan-agent-runtime
 |- core contracts and ports
 |- runtime loop and safety invariants
 |- context budgeting and compaction
-`- optional host adapters
+`- optional packages and host adapters
+   |- pan-agent-token-meter      # heuristic/tokenizer/provider usage plugin
    |- model provider adapter
    |- persistence/checkpoint adapter
    |- SSE/WebSocket event adapter
@@ -56,9 +61,10 @@ pan-agent-runtime
    `- A2UI/frontend adapter
 ```
 
-An adapter becomes a separate installable package only when a second project
-actually reuses it. Logical plugin boundaries and PyPI package boundaries are
-intentionally different.
+The package boundary is reserved for capabilities with their own dependencies,
+release cadence, or cross-project reuse. A host-specific adapter can remain in
+the application until a second project actually needs it; logical plugin
+boundaries and PyPI package boundaries do not have to be identical.
 
 ## PanWatch current composition
 
@@ -81,6 +87,13 @@ Redis, durable queues, leases, and separate worker processes remain optional
 host-side extensions for a future multi-instance or high-traffic deployment.
 
 The runtime package never sees a model ID or a database session.
+
+PanWatch installs `pan-agent-token-meter` and injects its heuristic meter into
+`ContextEngine` for preflight context reports. Its model adapter normalizes
+provider-returned usage into `ModelUsage`; the runtime forwards that fact to
+the task/SSE layer without knowing how the provider calculated it. A different
+host may inject a tokenizer-backed meter, a remote counting service, or no
+meter at all.
 
 ## Future plugin protocol
 

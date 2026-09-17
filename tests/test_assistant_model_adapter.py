@@ -26,6 +26,15 @@ def test_failover_model_adapter_forwards_each_model_stream_chunk_and_maps_tool_c
             yield ("message", {
                 "content": "已查询",
                 "tool_calls": [{"id": "call-1", "name": "get_portfolio", "arguments": "{}"}],
+                "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                    "cached_input_tokens": 80,
+                    "reasoning_output_tokens": 12,
+                    "model": "test-model",
+                    "source": "provider",
+                },
             })
 
     emitted: list[str] = []
@@ -42,6 +51,8 @@ def test_failover_model_adapter_forwards_each_model_stream_chunk_and_maps_tool_c
 
     assert turn.content == "已查询"
     assert turn.tool_calls[0].name == "get_portfolio"
+    assert turn.usage.input_tokens == 120
+    assert turn.usage.cached_input_tokens == 80
     assert emitted == ["已", "查询"]
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -79,6 +79,7 @@ class EventType(StrEnum):
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
     ANSWER_TOKEN = "answer_token"
+    MODEL_USAGE = "model_usage"
     APPROVAL_REQUIRED = "approval_required"
     RUN_COMPLETED = "run_completed"
     RUN_FAILED = "run_failed"
@@ -175,6 +176,18 @@ class ModelMessage(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
+class ModelUsage(BaseModel):
+    """Optional provider usage metadata returned after one model turn."""
+
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    reasoning_output_tokens: int = Field(default=0, ge=0)
+    model: str | None = None
+    source: Literal["provider", "tokenizer", "estimated"] = "provider"
+
+
 class PendingApproval(BaseModel):
     """A proposed call preserved until a trusted human decides it."""
 
@@ -250,6 +263,7 @@ class ModelTurn(BaseModel):
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
     finish_reason: str | None = None
+    usage: ModelUsage | None = None
 
 
 class RunRequest(BaseModel):

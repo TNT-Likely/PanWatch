@@ -35,6 +35,12 @@ function usagePercent(usage: ContextUsage): number {
   return Math.min(100, Math.round((usage.total_tokens / usage.budget_tokens) * 100))
 }
 
+function usageLabel(usage: ContextUsage): string {
+  if (usage.measurement === 'provider') return '实际输入 Token'
+  if (usage.measurement === 'tokenizer') return 'Tokenizer 输入 Token'
+  return '估算输入 Token'
+}
+
 export function ContextPanel({ detail, loading, compressing, error, onCompress, onClose }: ContextPanelProps) {
   return (
     <section data-testid="assistant-context-panel" className="border-b border-border/40 bg-background px-4 py-3 text-[12px]">
@@ -54,7 +60,7 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
       {!loading && detail && (
         <>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="font-medium tabular-nums">估算输入 Token：{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
+            <span className="font-medium tabular-nums">{usageLabel(detail.usage)}：{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
             <span className={detail.status === 'needs_compression' ? 'text-rose-600' : detail.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'}>
               {detail.status === 'needs_compression' ? '需要压缩' : detail.status === 'warning' ? '接近上限' : '正常'} · {usagePercent(detail.usage)}%
             </span>
