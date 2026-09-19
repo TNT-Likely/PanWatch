@@ -1,6 +1,11 @@
 import { fetchAPI } from './client'
 
 export interface EntryCandidateItem {
+  raw_score?: number
+  raw_rank_score?: number
+  concentration_flag?: boolean
+  concentration_note?: string
+
   id: number
   stock_symbol: string
   stock_market: string
@@ -117,6 +122,11 @@ export interface StrategyCatalogItem {
 }
 
 export interface StrategySignalItem {
+  raw_score?: number
+  raw_rank_score?: number
+  concentration_flag?: boolean
+  concentration_note?: string
+
   id: number
   snapshot_date: string
   stock_symbol: string

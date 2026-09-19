@@ -1619,8 +1619,10 @@ def list_entry_candidates(
     if tag:
         rows = [r for r in rows if tag in (r.strategy_tags or [])]
 
-    rows = rows[: max(1, int(limit))]
-    items = [_format_candidate_row(r) for r in rows]
+    from src.modules.portfolio.opportunity_risk import risk_adjusted_opportunities
+    items = risk_adjusted_opportunities([_format_candidate_row(r) for r in rows])
+    items.sort(key=lambda row: float(row.get("score") or 0), reverse=True)
+    items = items[: max(1, int(limit))]
     return {"snapshot_date": snapshot, "count": len(items), "items": items}
 
 
