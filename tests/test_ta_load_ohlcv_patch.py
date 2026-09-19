@@ -171,13 +171,40 @@ def test_load_ohlcv_a_share_no_klines_raises_not_fallback(monkeypatch):
     assert real_calls["n"] == 0, "A股拉空不应回退 yfinance"
 
 
-def test_route_to_vendor_degrades_on_upstream_error(monkeypatch):
-    """上游 vendor 失败(如 FRED 无 key、polymarket SSL)应降级返回空,不抛错中断整轮分析。"""
+def test_route_to_vendor_marks_expected_upstream_outage_as_data_unavailable(monkeypatch):
+    """已知外部数据不可用应给 LLM 明确信号，而不是吞成空字符串。"""
 
     def boom(method_name, *a, **k):
         raise RuntimeError("FRED_API_KEY environment variable is not set")
 
     monkeypatch.setattr(ta, "_real_route_to_vendor", boom)
-    # get_macro_indicators:首参是指标名(非 A股/港股) → 走上游 passthrough → boom → 降级空
+    # get_macro_indicators:首参是指标名(非 A股/港股) → 走上游 passthrough → 明确数据不可用
     out = ta._patched_route_to_vendor("get_macro_indicators", "fed_funds_rate", "2026-06-18", 30)
-    assert out == ""
+    assert "DATA_UNAVAILABLE" in out
+    assert "FRED_API_KEY" in out
+
+
+def test_route_to_vendor_propagates_programming_errors(monkeypatch):
+    """调用契约/实现错误不能伪装成数据缺失，否则会掩盖升级回归。"""
+
+    def boom(method_name, *a, **k):
+        raise TypeError("unexpected keyword argument 'vendor'")
+
+    monkeypatch.setattr(ta, "_real_route_to_vendor", boom)
+
+    import pytest
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        ta._patched_route_to_vendor("get_macro_indicators", "fed_funds_rate", "2026-06-18", 30)
+
+
+def test_route_to_vendor_does_not_misclassify_generic_not_set_error(monkeypatch):
+    """只有数据源配置缺失才可降级，内部状态未设置仍应暴露。"""
+
+    def boom(method_name, *a, **k):
+        raise RuntimeError("internal state not set")
+
+    monkeypatch.setattr(ta, "_real_route_to_vendor", boom)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="internal state not set"):
+        ta._patched_route_to_vendor("get_macro_indicators", "fed_funds_rate", "2026-06-18", 30)

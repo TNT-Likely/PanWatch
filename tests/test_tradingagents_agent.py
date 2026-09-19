@@ -80,6 +80,78 @@ class TestLLMAdapter(unittest.TestCase):
                 ai_client, selected_analysts=["market", "technical"]
             )
 
+    def test_build_ta_llm_config_uses_panwatch_runtime_and_opt_in_sec_edgar(self):
+        """美股显式启用时才把三张报表路由到 SEC EDGAR，并隔离上游运行文件。"""
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        ai_client = MagicMock(base_url="https://api.example.com", model="test-model", api_key="sk-test")
+        with TemporaryDirectory() as temp_dir:
+            runtime_dir = Path(temp_dir) / "tradingagents"
+            config = build_ta_llm_config(
+                ai_client,
+                market="US",
+                enable_sec_edgar=True,
+                runtime_dir=runtime_dir,
+            )
+            self.assertTrue((runtime_dir / "results").is_dir())
+            self.assertTrue((runtime_dir / "cache").is_dir())
+            self.assertTrue((runtime_dir / "memory").is_dir())
+
+        self.assertEqual(config["holding_period_days"], 5)
+        self.assertEqual(config["results_dir"], str(runtime_dir / "results"))
+        self.assertEqual(config["data_cache_dir"], str(runtime_dir / "cache"))
+        self.assertEqual(config["memory_log_path"], str(runtime_dir / "memory" / "trading_memory.md"))
+        self.assertEqual(
+            config["tool_vendors"],
+            {
+                "get_balance_sheet": "sec_edgar,yfinance",
+                "get_cashflow": "sec_edgar,yfinance",
+                "get_income_statement": "sec_edgar,yfinance",
+            },
+        )
+
+    def test_build_ta_llm_config_keeps_sec_edgar_disabled_for_non_us_market(self):
+        """SEC EDGAR 仅适用于美股；即使误启用也不能影响 A/HK 路由。"""
+        ai_client = MagicMock(base_url="https://api.example.com", model="test-model", api_key="sk-test")
+        config = build_ta_llm_config(ai_client, market="CN", enable_sec_edgar=True)
+        self.assertEqual(
+            config["tool_vendors"],
+            {
+                "get_balance_sheet": "yfinance",
+                "get_cashflow": "yfinance",
+                "get_income_statement": "yfinance",
+            },
+        )
+
+    def test_non_us_config_overrides_previous_global_sec_edgar_routes(self):
+        """上游合并嵌套 config 时，A/HK 运行必须清除前一美股运行的 EDGAR 覆盖。"""
+        from copy import deepcopy
+
+        from tradingagents.dataflows import config as upstream_config
+        from tradingagents.default_config import DEFAULT_CONFIG
+
+        ai_client = MagicMock(base_url="https://api.example.com", model="test-model", api_key="sk-test")
+        original_config = deepcopy(upstream_config.get_config())
+        try:
+            upstream_config._config = deepcopy(DEFAULT_CONFIG)
+            upstream_config.set_config(
+                build_ta_llm_config(ai_client, market="US", enable_sec_edgar=True)
+            )
+            upstream_config.set_config(
+                build_ta_llm_config(ai_client, market="HK", enable_sec_edgar=False)
+            )
+            self.assertEqual(
+                upstream_config.get_config()["tool_vendors"],
+                {
+                    "get_balance_sheet": "yfinance",
+                    "get_cashflow": "yfinance",
+                    "get_income_statement": "yfinance",
+                },
+            )
+        finally:
+            upstream_config._config = original_config
+
     def test_inject_api_key_env(self):
         """API key 注入到环境变量 — OPENAI_API_KEY 被设置"""
         import os
@@ -360,11 +432,15 @@ class TestPhaseBFeatures(unittest.TestCase):
             quick_model="claude-haiku",
             timeout_minutes=20,
             emit_paper_trading_signal=True,
+            enable_sec_edgar=True,
+            holding_period_days=10,
         )
         self.assertEqual(agent.deep_model, "claude-sonnet-4")
         self.assertEqual(agent.quick_model, "claude-haiku")
         self.assertEqual(agent.timeout_minutes, 20)
         self.assertTrue(agent.emit_paper_trading_signal)
+        self.assertTrue(agent.enable_sec_edgar)
+        self.assertEqual(agent.holding_period_days, 10)
 
     def test_paper_trading_bridge_disabled_skips(self):
         """模拟盘 bridge — enabled=False 直接 skip,不写库"""
@@ -422,89 +498,156 @@ class TestPhaseBFeatures(unittest.TestCase):
 
 
 class TestPortfolioContext(unittest.TestCase):
-    """Portfolio context 注入到 TradingAgents past_context — 上游官方扩展通道,跨版本稳定。"""
+    """0.5.0 持仓应走原生 PortfolioContext，而不是提示词注入。"""
 
-    def _mock_portfolio(self, with_position=True, with_cash=True):
-        portfolio = MagicMock()
-        if with_position:
-            p = MagicMock()
-            p.symbol = "600519"
-            p.name = "贵州茅台"
-            p.cost_price = 1280.0
-            p.quantity = 100
-            p.cost_value = 128000.0
-            p.trading_style = "long"
-            portfolio.get_positions_for_stock.return_value = [p]
-        else:
-            portfolio.get_positions_for_stock.return_value = []
-        portfolio.total_available_funds = 280000.0 if with_cash else 0.0
-        portfolio.total_cost = 128000.0 if with_position else 0.0
-        portfolio.all_positions = [MagicMock()] if with_position else []
-        return portfolio
+    def _portfolio(self):
+        from src.modules.automation.base import AccountInfo, PortfolioInfo, PositionInfo
+        from src.platform.marketdata.models import MarketCode
 
-    def test_empty_portfolio_returns_empty_string(self):
-        """无持仓且无账户 — 不注入(返回空串)"""
-        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
-        portfolio = self._mock_portfolio(with_position=False, with_cash=False)
-        result = build_portfolio_context(portfolio, "600519")
-        self.assertEqual(result, "")
+        return PortfolioInfo(accounts=[
+            AccountInfo(
+                id=1,
+                name="主账户",
+                available_funds=280000.0,
+                positions=[
+                    PositionInfo(
+                        account_id=1,
+                        account_name="主账户",
+                        stock_id=1,
+                        symbol="600519",
+                        name="贵州茅台",
+                        market=MarketCode.CN,
+                        cost_price=1280.0,
+                        quantity=100,
+                        trading_style="long",
+                    ),
+                    PositionInfo(
+                        account_id=1,
+                        account_name="主账户",
+                        stock_id=2,
+                        symbol="AAPL",
+                        name="Apple",
+                        market=MarketCode.US,
+                        cost_price=200.0,
+                        quantity=5,
+                    ),
+                ],
+            )
+        ])
 
-    def test_with_position_renders_holding_info(self):
-        """有持仓 — 文本含数量/成本/风格"""
-        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
-        portfolio = self._mock_portfolio()
-        text = build_portfolio_context(portfolio, "600519", current_price=1350.0)
-        self.assertIn("[User Portfolio Context]", text)
-        self.assertIn("600519", text)
-        self.assertIn("100 shares", text)
-        self.assertIn("1280", text)
-        self.assertIn("long", text)
-        self.assertIn("长线", text)  # 中文 style 翻译
-        # PnL: (1350 - 1280) * 100 = 7000, ratio = 5.47%
-        self.assertIn("7000.00", text)
-        self.assertIn("5.47%", text)
+    def test_to_tradingagents_portfolio_preserves_cash_and_positions(self):
+        """PanWatch 持仓聚合为 0.5.0 的结构化现金、标的、数量和均价。"""
+        from tradingagents.portfolio import PortfolioContext
+        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
 
-    def test_no_position_warns_new_entry(self):
-        """有账户但未持有该股票 — 提示这是新建仓决策"""
-        from src.modules.automation.tradingagents.portfolio_context import build_portfolio_context
-        portfolio = self._mock_portfolio(with_position=False, with_cash=True)
-        text = build_portfolio_context(portfolio, "BABA")
-        self.assertIn("does NOT currently hold", text)
-        self.assertIn("new entry", text)
+        result = to_tradingagents_portfolio(self._portfolio())
 
-    def test_patch_propagator_prepends_to_past_context(self):
-        """propagator.create_initial_state — portfolio context 拼到 past_context 前面"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_propagator
+        self.assertIsInstance(result, PortfolioContext)
+        self.assertEqual(result.cash, 280000.0)
+        self.assertEqual(
+            [(position.ticker, position.quantity, position.average_price) for position in result.positions],
+            [("600519", 100.0, 1280.0), ("AAPL", 5.0, 200.0)],
+        )
+
+    def test_to_tradingagents_portfolio_returns_none_without_accounts(self):
+        """没有账户快照时不伪造现金为零的用户持仓。"""
+        from src.modules.automation.base import PortfolioInfo
+        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
+
+        self.assertIsNone(to_tradingagents_portfolio(PortfolioInfo()))
+
+    def test_patch_past_context_preserves_portfolio_context_argument(self):
+        """元数据仍可注入 past_context，原生 portfolio_context 参数必须原样透传。"""
+        from src.modules.automation.tradingagents.portfolio_context import patch_past_context
 
         captured = {}
-        def original(company_name, trade_date, past_context=""):
-            captured["past_context"] = past_context
-            return {"past_context": past_context}
+
+        def original(company_name, trade_date, asset_type="stock", past_context="", portfolio_context=""):
+            captured.update({
+                "past_context": past_context,
+                "portfolio_context": portfolio_context,
+                "asset_type": asset_type,
+            })
+            return captured
 
         graph = MagicMock()
         graph.propagator.create_initial_state = original
+        patch_past_context(graph, "STOCK METADATA")
 
-        patch_propagator(graph, "USER PORTFOLIO INFO HERE")
-        # patch 后调用
-        graph.propagator.create_initial_state("AAPL", "2026-05-16", past_context="prior lesson X")
-
-        self.assertIn("USER PORTFOLIO INFO HERE", captured["past_context"])
-        self.assertIn("prior lesson X", captured["past_context"])
-        # portfolio 在前
-        self.assertTrue(
-            captured["past_context"].index("USER PORTFOLIO") <
-            captured["past_context"].index("prior lesson X")
+        graph.propagator.create_initial_state(
+            "AAPL",
+            "2026-05-16",
+            asset_type="stock",
+            past_context="prior lesson X",
+            portfolio_context="native holdings",
         )
 
-    def test_patch_propagator_no_context_skips(self):
-        """空 portfolio context — 不 patch,原函数行为不变"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_propagator
+        self.assertIn("STOCK METADATA", captured["past_context"])
+        self.assertIn("prior lesson X", captured["past_context"])
+        self.assertEqual(captured["portfolio_context"], "native holdings")
+
+    def test_patch_past_context_no_context_skips(self):
+        """没有元数据时不替换上游方法。"""
+        from src.modules.automation.tradingagents.portfolio_context import patch_past_context
 
         graph = MagicMock()
         original = graph.propagator.create_initial_state
-        patch_propagator(graph, "")
-        # 函数未被替换
+        patch_past_context(graph, "")
         self.assertEqual(graph.propagator.create_initial_state, original)
+
+    def test_run_sync_passes_native_portfolio_to_v050_propagate(self):
+        """运行入口必须把转换后的 portfolio 传给 0.5.0 propagate，而非提示词。"""
+        from contextlib import nullcontext
+
+        from tradingagents.graph import trading_graph
+        from src.modules.automation.tradingagents import agent as agent_module
+        from tradingagents.portfolio import PortfolioContext
+
+        captured = {}
+
+        class FakeGraph:
+            def __init__(self, **kwargs):
+                self.propagator = None
+                self.total_cost = 0.01
+
+            def propagate(self, company_name, trade_date, asset_type="stock", portfolio=None):
+                captured.update({
+                    "company_name": company_name,
+                    "trade_date": trade_date,
+                    "asset_type": asset_type,
+                    "portfolio": portfolio,
+                })
+                return {"final_trade_decision": "**Rating**: Hold"}, "HOLD"
+
+        agent = TradingAgentsAgent()
+        ai_client = MagicMock(api_key="key")
+        ta_config = {
+            "selected_analysts": ["market"],
+            "max_debate_rounds": 1,
+            "deep_think_llm": "test-model",
+        }
+        with (
+            patch.object(trading_graph, "TradingAgentsGraph", FakeGraph),
+            patch.object(agent_module, "apply_compat_patches"),
+            patch.object(agent_module, "inject_api_key_env"),
+            patch.object(agent_module, "patch_route_to_vendor", lambda: nullcontext()),
+            patch.object(agent_module, "panwatch_data_context", lambda *args, **kwargs: nullcontext()),
+        ):
+            result = agent._run_tradingagents_sync(
+                ai_client=ai_client,
+                symbol="600519",
+                market="CN",
+                ta_config=ta_config,
+                progress_handler=None,
+                panwatch_data={},
+                stock_metadata_context="",
+                portfolio=self._portfolio(),
+            )
+
+        self.assertEqual(result["decision"], "HOLD")
+        self.assertEqual(captured["company_name"], "600519")
+        self.assertIsInstance(captured["portfolio"], PortfolioContext)
+        self.assertEqual(captured["portfolio"].positions[0].ticker, "600519")
 
 
 class TestAgentCollect(unittest.IsolatedAsyncioTestCase):

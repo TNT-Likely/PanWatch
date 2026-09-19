@@ -16,6 +16,7 @@ from src.modules.automation.tradingagents.toolkit_adapter import (
     is_panwatch_routable,
     panwatch_data_context,
 )
+from src.modules.automation.tradingagents import toolkit_adapter as ta
 
 
 class _StockHK:
@@ -115,3 +116,16 @@ def test_yfinance_unavailable_sentinel_detected():
     assert _yfinance_response_has_data(
         "NO_DATA_AVAILABLE: No usable market data for '0700.HK' from any configured vendor"
     ) is False
+
+
+def test_hk_route_propagates_programming_errors(monkeypatch):
+    """港股 yfinance 调用的参数/实现错误不能被伪装成行情缺失。"""
+    import pytest
+
+    def boom(method_name, *args, **kwargs):
+        raise TypeError("unexpected keyword argument 'vendor'")
+
+    monkeypatch.setattr(ta, "_real_route_to_vendor", boom)
+    with panwatch_data_context({"stock": _StockHK(), "quote": {}, "klines": []}):
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            ta._patched_route_to_vendor("get_fundamentals", "00700", "2026-06-18")

@@ -154,6 +154,9 @@ export default function AnalysisDetailPage() {
 
   const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
   const sug = rawData.suggestion
+  const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
+  const decisionLabel = reviewRequired ? '待人工复核' : sug?.action_label
+  const decisionColor = reviewRequired ? 'text-orange-500' : (sug ? DECISION_COLOR[sug.action] || '' : '')
   const sections = buildAnalysisSections(rawData)
   const stats = history?.stats
   const items = history?.items || []
@@ -303,9 +306,10 @@ export default function AnalysisDetailPage() {
           {/* 决策摘要(移动端在正文顶部;桌面端移到右侧目录区,见下方 aside) */}
           {sug && (
             <div className="lg:hidden rounded-xl bg-accent/30 p-4 mb-6 flex items-center gap-3 flex-wrap">
-              <span className={`text-[24px] font-bold ${DECISION_COLOR[sug.action] || ''}`}>
-                {sug.action_label}
+              <span className={`text-[24px] font-bold ${decisionColor}`}>
+                {decisionLabel}
               </span>
+              {reviewRequired && <span className="text-[12px] text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
               <span className="text-[13px] text-muted-foreground">
                 置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
               </span>
@@ -432,13 +436,18 @@ export default function AnalysisDetailPage() {
             {sug && (
               <div className="p-3.5 border-b border-border">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[22px] font-bold leading-none ${DECISION_COLOR[sug.action] || ''}`}>
-                    {sug.action_label}
+                  <span className={`text-[22px] font-bold leading-none ${decisionColor}`}>
+                    {decisionLabel}
                   </span>
                   <span className="text-[11px] text-muted-foreground shrink-0">
                     ${rawData.cost_usd?.toFixed(4) ?? '-'}
                   </span>
                 </div>
+                {reviewRequired && (
+                  <p className="mt-2 text-[11px] leading-4 text-orange-600">
+                    上游无法安全生成可执行评级，请人工核验数据与报告。
+                  </p>
+                )}
                 {sug.confidence != null && (
                   <div className="mt-2.5">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">

@@ -239,6 +239,8 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
         try:
             upstream_result = _real_route_to_vendor(method_name, *new_args, **kwargs)
         except Exception as e:
+            if not _is_market_data_failure(e):
+                raise
             upstream_result = ""
             logger.warning(f"[TA toolkit] HK upstream {method_name}({yf_symbol}) 失败: {e}")
         upstream_str = str(upstream_result) if upstream_result is not None else ""
@@ -301,12 +303,15 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     try:
         upstream_result = _real_route_to_vendor(method_name, *args, **kwargs)
     except Exception as e:
-        logger.warning(f"[TA toolkit] 上游 {method_name} 失败,降级返回空(不中断分析): {e}")
+        if not _is_market_data_failure(e):
+            raise
+        result = _data_unavailable_message(method_name, symbol, e)
+        logger.warning(f"[TA toolkit] 上游 {method_name} 数据不可用: {e}")
         _emit_toolkit_log(
             "warning", "DEGRADE", method_name, symbol or "(none)",
             error=str(e)[:200], extra_args=_args_summary(args),
         )
-        return ""
+        return result
     upstream_str = str(upstream_result) if upstream_result is not None else ""
     action_label = "PASSTHROUGH" if not is_a_share(symbol) else "FALLTHROUGH"
     _emit_toolkit_log(
@@ -455,8 +460,16 @@ def _is_market_data_failure(error: Exception) -> bool:
     name = type(error).__name__.lower()
     detail = str(error).lower()
     return (
-        name in {"yfratelimiterror", "nomarketdataerror"}
+        name in {
+            "yfratelimiterror",
+            "nomarketdataerror",
+            "vendorratelimiterror",
+            "vendornotconfigurederror",
+        }
         or any(token in detail for token in (
+            "api_key",
+            "api key",
+            "not configured",
             "too many requests",
             "rate limited",
             "no market data",
@@ -471,6 +484,16 @@ def _is_market_data_failure(error: Exception) -> bool:
             "server error",
             "http error",
         ))
+    )
+
+
+def _data_unavailable_message(method_name: str, symbol: str, error: Exception) -> str:
+    """给上游 agent 的显式降级结果，禁止将不可用数据默认为中性数据。"""
+    return (
+        "DATA_UNAVAILABLE: "
+        f"method={method_name}; symbol={symbol or 'N/A'}; reason={str(error)[:300]}. "
+        "Do not infer missing values or treat this as neutral evidence. "
+        "State the data limitation and request manual review when it affects the decision."
     )
 
 
