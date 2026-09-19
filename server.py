@@ -1330,6 +1330,17 @@ async def trigger_agent_for_stock(
     agent_cls = AGENT_REGISTRY.get(agent_name)
     if not agent_cls:
         raise ValueError(f"Agent {agent_name} 未注册实际实现")
+    # 自动调度等不经过 stocks.trigger API 的入口也要拥有同样的生命周期记录；
+    # 手动入口已提前写入，这里幂等调用可避免重复 AgentRun。
+    try:
+        from src.modules.automation.agent_runs import start_agent_run
+        start_agent_run(
+            agent_name=agent_name,
+            trace_id=trace_id,
+            trigger_source="manual",
+        )
+    except Exception as e:
+        logger.warning(f"写 AgentRun running 状态失败,不影响主流程: {e}")
 
     settings = Settings()
     proxy = _get_proxy() or settings.http_proxy

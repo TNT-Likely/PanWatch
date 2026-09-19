@@ -70,6 +70,7 @@ class TradingAgentsAgent(BaseAgent):
         deep_model: str | None = None,    # 推理/辩论/PM 用的强模型 (留空走默认)
         quick_model: str | None = None,   # 分析师工具调用用的快模型 (留空 = deep_model)
         timeout_minutes: int = 30,        # 整个流程硬超时;0.3.0 工具链更重,默认提到 30 min
+        collection_timeout_seconds: int = 45,  # 单个外部数据源采集硬超时
         emit_paper_trading_signal: bool = False,  # 是否把 BUY 决策写入 StrategySignalRun 驱动模拟盘
         enable_sec_edgar: bool = False,   # 美股财报可显式优先使用 SEC EDGAR
         holding_period_days: int = 5,     # 上游决策质量回测/持仓期限语义
@@ -92,6 +93,7 @@ class TradingAgentsAgent(BaseAgent):
         self.deep_model = (deep_model or "").strip() or None
         self.quick_model = (quick_model or "").strip() or None
         self.timeout_minutes = max(1, int(timeout_minutes))
+        self.collection_timeout_seconds = max(5, int(collection_timeout_seconds))
         self.emit_paper_trading_signal = bool(emit_paper_trading_signal)
         self.enable_sec_edgar = bool(enable_sec_edgar)
         self.holding_period_days = max(1, int(holding_period_days))
@@ -110,19 +112,50 @@ class TradingAgentsAgent(BaseAgent):
 
         from src.platform.marketdata.marketdata_client import _quote_to_row
 
-        md = get_market_data()
-        sym, mkt = stock.symbol, stock.market.value
+        trace_id = getattr(context, "_trace_id", "")
+        if not isinstance(trace_id, str) or not trace_id:
+            trace_id = self._make_trace_id(stock.symbol)
+        progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        setattr(context, "_progress_handler", progress_handler)
+        progress_handler.emit("data_collection", "stage_start", symbol=stock.symbol)
+
+        async def _source(name: str, fn, fallback):
+            progress_handler.emit("data_collection", "source_start", source=name)
+            try:
+                value = await asyncio.wait_for(
+                    asyncio.to_thread(fn),
+                    timeout=self.collection_timeout_seconds,
+                )
+                progress_handler.emit("data_collection", "source_end", source=name)
+                return value
+            except Exception as e:
+                # 429、网络超时和单源解析错误都只影响该源，不阻塞整个分析。
+                logger.warning(f"[TA] 数据源 {name} 失败,使用空结果: {e}")
+                progress_handler.emit(
+                    "data_collection",
+                    "source_error",
+                    source=name,
+                    error=str(e)[:200],
+                )
+                return fallback
+
         try:
+            md = get_market_data()
+            sym, mkt = stock.symbol, stock.market.value
             quotes, klines_list, cf, events_list = await asyncio.gather(
-                asyncio.to_thread(md.quotes, [sym], market=mkt),
-                asyncio.to_thread(md.klines, sym, market=mkt, days=120),
-                asyncio.to_thread(md.capital_flow, sym, market=mkt),
-                asyncio.to_thread(md.events, [sym], market=mkt, since_days=30),
+                _source("quote", lambda: md.quotes([sym], market=mkt), []),
+                _source("klines", lambda: md.klines(sym, market=mkt, days=120), []),
+                _source("capital_flow", lambda: md.capital_flow(sym, market=mkt), None),
+                _source("events", lambda: md.events([sym], market=mkt, since_days=30), []),
             )
         except Exception as e:
-            logger.warning(f"[TA] 数据收集部分失败: {e}")
+            logger.warning(f"[TA] 初始化数据源失败,使用空结果: {e}")
             quotes, klines_list, cf, events_list = [], [], None, []
-        quote_dict = _quote_to_row(quotes[0]) if quotes else {}
+        try:
+            quote_dict = _quote_to_row(quotes[0]) if quotes else {}
+        except Exception as e:
+            logger.warning(f"[TA] 行情结果解析失败,使用空结果: {e}")
+            quote_dict = {}
         capital_list = [cf] if cf else []
 
         # A 股 fetch 真实财报(akshare),非 A 股留空
@@ -130,20 +163,26 @@ class TradingAgentsAgent(BaseAgent):
         if stock.market.value == "CN" and stock.symbol.isdigit() and len(stock.symbol) == 6:
             try:
                 from src.modules.automation.tradingagents.financial_data import fetch_financial_abstract
-                financial = await asyncio.to_thread(fetch_financial_abstract, stock.symbol)
+                financial = await _source(
+                    "financial",
+                    lambda: fetch_financial_abstract(stock.symbol),
+                    None,
+                )
             except Exception as e:
-                logger.warning(f"[TA] 拉财报失败: {e}")
-                financial = None
+                logger.debug(f"[TA] 财报模块不可用,跳过: {e}")
 
         # 预算技术指标(MA/MACD/RSI/KDJ/BOLL),给 get_indicators 工具用
         technical = None
         try:
             from src.platform.marketdata.collectors.kline_collector import KlineCollector
-            technical = await asyncio.to_thread(
-                KlineCollector(stock.market).get_technical_indicators, stock.symbol
+            technical = await _source(
+                "technical",
+                lambda: KlineCollector(stock.market).get_technical_indicators(stock.symbol),
+                None,
             )
         except Exception as e:
-            logger.debug(f"[TA] 技术指标预算失败,LLM 仍可从 K线 CSV 自行计算: {e}")
+            logger.debug(f"[TA] 技术指标模块不可用,跳过: {e}")
+        progress_handler.emit("data_collection", "stage_end", symbol=stock.symbol)
 
         return {
             "stock": stock,
@@ -237,7 +276,9 @@ class TradingAgentsAgent(BaseAgent):
         )
 
         # 3) 进度回调
-        progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        progress_handler = getattr(context, "_progress_handler", None)
+        if not isinstance(progress_handler, PanWatchProgressHandler):
+            progress_handler = PanWatchProgressHandler(trace_id, self.name)
 
         # 4) 标的元信息走 past_context；用户持仓走 TradingAgents 0.5.0 原生 portfolio。
         current_price = (data.get("quote") or {}).get("current_price")

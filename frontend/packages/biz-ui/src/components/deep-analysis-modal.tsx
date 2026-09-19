@@ -21,10 +21,16 @@ import {
   type BudgetInfo,
   type DeepAnalysisResult,
   type ProgressResponse,
+  type ProgressDataSource,
   type ProgressStage,
 } from '@panwatch/api'
+import {
+  isTerminalProgressStatus,
+  shouldContinueProgressWatch,
+} from '../../../../src/lib/tradingagents-progress'
 
 const STAGE_LABEL: Record<string, string> = {
+  data_collection: '数据准备',
   market_analyst: '技术分析师',
   social_analyst: '情绪分析师',
   news_analyst: '新闻分析师',
@@ -47,7 +53,7 @@ const POLL_INTERVAL_MS = 2000
 /** localStorage 里记录某只股票最近一次触发的 trace_id;关闭重开弹窗时恢复 polling */
 const STORAGE_KEY_PREFIX = 'panwatch:tradingagents:running:'
 /** trace_id 持续多久后认为可能已不再运行(避免显示过期 trace 的 idle) */
-const TRACE_MAX_AGE_MS = 20 * 60 * 1000  // 20 分钟
+const TRACE_MAX_AGE_MS = 60 * 60 * 1000  // 与后端 running 生命周期窗口保持一致并留出恢复余量
 
 function loadRunningTrace(stockSymbol: string): string | null {
   try {
@@ -112,9 +118,6 @@ export function DeepAnalysisModal({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
   const sseCloseRef = useRef<(() => void) | null>(null)
-  // trigger 时间戳:前 60s 内允许 not_found(后端日志还没来得及写),不重置
-  const triggerStartedRef = useRef<number>(0)
-  const NOT_FOUND_GRACE_MS = 60_000
 
   /** 停止一切进度监听(SSE + polling) */
   const stopWatching = useCallback(() => {
@@ -172,8 +175,7 @@ export function DeepAnalysisModal({
         const tid = runningInfo.trace_id
         setTraceId(tid)
         setStage('running')
-        // 后端确认在跑 → grace period 已过,不再保护 not_found
-        triggerStartedRef.current = Date.now() - NOT_FOUND_GRACE_MS - 1
+        // 后端确认在跑；即使采集阶段暂时没有日志，也继续由 SSE/polling 接力
         tradingAgentsApi.getProgress(tid).then(resp => setProgress(resp))
         startWatching(tid)
         return
@@ -191,7 +193,6 @@ export function DeepAnalysisModal({
         if (localTrace) {
           setTraceId(localTrace)
           setStage('running')
-          triggerStartedRef.current = Date.now()
           tradingAgentsApi.getProgress(localTrace).then(resp => setProgress(resp))
           startWatching(localTrace)
           return
@@ -217,7 +218,7 @@ export function DeepAnalysisModal({
   const handleProgressResponse = useCallback(
     async (resp: ProgressResponse) => {
       setProgress(resp)
-      if (resp.status === 'success' && resp.run) {
+      if (resp.status === 'success') {
         // 完成,拉历史结果
         stopWatching()
         clearRunningTrace(stockSymbol)
@@ -235,7 +236,7 @@ export function DeepAnalysisModal({
         setError(resp.run?.error || '分析失败')
         setStage('error')
       } else if (resp.status === 'stale') {
-        // 后端检测到僵尸 running(5 分钟无新进度,server 重启 / 进程死掉)
+        // 后端检测到僵尸 running（超过整个任务生命周期窗口）
         // → 自动重置到 idle,用户可以重新触发
         stopWatching()
         clearRunningTrace(stockSymbol)
@@ -243,16 +244,9 @@ export function DeepAnalysisModal({
         setProgress(null)
         setStage('idle')
       } else if (resp.status === 'not_found') {
-        // trigger 刚发出时后端可能还没写日志,前 60s 视为正常等待,
-        // 超过 grace 仍 not_found → 视作触发失败,reset 到 idle
-        const sinceTrigger = Date.now() - triggerStartedRef.current
-        if (triggerStartedRef.current > 0 && sinceTrigger > NOT_FOUND_GRACE_MS) {
-          stopWatching()
-          clearRunningTrace(stockSymbol)
-          setTraceId('')
-          setProgress(null)
-          setStage('idle')
-        }
+        // SSE/轮询暂时没有快照不等于任务不存在；后端 running 记录可能还在采集。
+        // 保留 trace，让下一轮 polling 或刷新页面继续接管。
+        return
       }
     },
     [stockSymbol, stopWatching],
@@ -290,10 +284,13 @@ export function DeepAnalysisModal({
         onEvent: (ev) => {
           if (ev.event === 'progress' && ev.data && typeof ev.data === 'object') {
             const resp = ev.data as ProgressResponse
-            if (['success', 'failed', 'stale'].includes(resp.status)) terminal = true
+            if (isTerminalProgressStatus(resp.status)) terminal = true
             void handleProgressResponse(resp)
           } else if (ev.event === 'done' && ev.data?.status && ev.data.status !== 'timeout') {
-            terminal = true
+            terminal = !shouldContinueProgressWatch(ev.data.status, 'done')
+            // done 事件只携带状态，不带完整 run/result；终态也要补拉一次快照，
+            // 避免最后一条 progress 被代理丢弃时弹窗停在 running。
+            if (terminal) void pollProgress(tid)
           }
         },
         onClosed: () => {
@@ -306,14 +303,13 @@ export function DeepAnalysisModal({
         },
       })
     },
-    [handleProgressResponse, startPolling, stopWatching],
+    [handleProgressResponse, pollProgress, startPolling, stopWatching],
   )
 
   const handleStart = useCallback(async (force = false) => {
     setStage('running')
     setError('')
     setProgress(null)
-    triggerStartedRef.current = Date.now()
     try {
       const triggerResp = await tradingAgentsApi.trigger(stockId, { force })
       const tid = triggerResp.trace_id || ''
@@ -486,10 +482,50 @@ function RunningView({
         recent={progress?.toolkit_recent || []}
       />
 
+      {progress?.data_sources && progress.data_sources.length > 0 && (
+        <DataCollectionDiagnostics sources={progress.data_sources} />
+      )}
+
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>
           后台运行 (完成时推送通知)
         </Button>
+      </div>
+    </div>
+  )
+}
+
+function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] }) {
+  const labels: Record<string, string> = {
+    quote: '行情',
+    klines: 'K 线',
+    capital_flow: '资金流',
+    events: '事件',
+    financial: '财报',
+    technical: '技术指标',
+  }
+  const statusLabels: Record<ProgressDataSource['status'], string> = {
+    pending: '等待',
+    running: '请求中',
+    done: '完成',
+    error: '失败降级',
+  }
+  const statusClasses: Record<ProgressDataSource['status'], string> = {
+    pending: 'text-muted-foreground',
+    running: 'text-sky-600 dark:text-sky-400',
+    done: 'text-emerald-600 dark:text-emerald-400',
+    error: 'text-amber-600 dark:text-amber-400',
+  }
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]">
+      <div className="font-medium mb-1">数据准备明细</div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        {sources.map((source) => (
+          <span key={source.name} className={statusClasses[source.status]} title={source.error}>
+            {labels[source.name] || source.name}: {statusLabels[source.status]}
+          </span>
+        ))}
       </div>
     </div>
   )

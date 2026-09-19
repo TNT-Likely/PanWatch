@@ -431,6 +431,18 @@ async def trigger_stock_agent(
     # 预生成 trace_id,返回给前端用于轮询进度
     trace_id = f"man-{agent_name}-{trigger_stock.symbol}-{int(_time.time() * 1000)}"
 
+    # 生命周期先落库，确保后台线程尚未写出第一条进度日志时，刷新页面仍能恢复任务。
+    if agent_name == "tradingagents":
+        try:
+            from src.modules.automation.agent_runs import start_agent_run
+            start_agent_run(
+                agent_name=agent_name,
+                trace_id=trace_id,
+                trigger_source="manual",
+            )
+        except Exception as e:
+            logger.warning(f"[TA] 写 running 生命周期失败,不影响主流程: {e}")
+
     # 立刻写一条"任务已触发"进度日志,保证前端 polling 第一拍就能看到 running。
     # 否则 trigger_agent_for_stock 内部要先 await agent.collect()(美股拉 yfinance 数据
     # 可能 30s+),期间没有任何 ta_progress 日志 → 前端 progress 接口返回 not_found

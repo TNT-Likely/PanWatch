@@ -86,6 +86,12 @@ export interface ProgressStage {
   cost_usd?: number
 }
 
+export interface ProgressDataSource {
+  name: string
+  status: 'pending' | 'running' | 'done' | 'error'
+  error?: string
+}
+
 export interface ToolkitHit {
   timestamp: string
   action: string  // HIT / MISS / PASSTHROUGH / ERROR
@@ -104,6 +110,7 @@ export interface ProgressResponse {
   elapsed_sec: number
   total_cost_usd: number
   stages: ProgressStage[]
+  data_sources?: ProgressDataSource[]
   toolkit_summary?: { hit: number; miss: number; passthrough: number; fallthrough?: number; error: number }
   toolkit_recent?: ToolkitHit[]
   run?: {

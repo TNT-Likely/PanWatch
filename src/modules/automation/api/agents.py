@@ -20,6 +20,7 @@ from src.modules.automation.agent_catalog import (
     AGENT_KIND_WORKFLOW,
     infer_agent_kind,
 )
+from src.modules.automation.agent_runs import ACTIVE_RUN_TTL_SEC, _as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -400,16 +401,28 @@ def find_running_for_stock(
     比 localStorage 更可靠(跨浏览器/无痕/换设备都能查到)。
 
     判断逻辑:
-    1. 查 log_entries 中 event=ta_progress + trace_id 含 -{symbol}- 的最新一条
-    2. 看对应 trace_id 在 agent_runs 表是否有完成记录
+    1. 优先查 agent_runs 中未过期的 running 记录（覆盖数据采集阶段）
+    2. 再查 log_entries 中 event=ta_progress + trace_id 含 -{symbol}- 的最新一条
+    3. 看对应 trace_id 在 agent_runs 表是否有完成记录
        - 有完成记录 + status=success → 已完成 (前端可拉 latest 结果显示)
        - 有完成记录 + status=failed → 已失败
        - 无完成记录 + 日志在 30 分钟内 → running
-       - 无任何日志 → none
+        - 无任何生命周期记录或日志 → none
 
     Returns:
         {"trace_id": str|None, "status": "running"|"success"|"failed"|"none"}
     """
+    # 先读持久化生命周期记录：采集阶段没有 ta_progress 时也能恢复。
+    from src.modules.automation.agent_runs import find_active_tradingagents_trace
+
+    active_trace = find_active_tradingagents_trace(db, stock_symbol)
+    if active_trace:
+        return {
+            "trace_id": active_trace,
+            "status": "running",
+            "last_activity_at": None,
+        }
+
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
 
     latest_log = (
@@ -441,10 +454,13 @@ def find_running_for_stock(
     # (server 重启 / 工作线程死掉),前端可据此 reset 到 idle 允许重新分析
     status = run.status if run else "running"
     if status == "running":
+        created_at = _as_utc(run.created_at) if run else None
+        if created_at and (datetime.now(timezone.utc) - created_at).total_seconds() > ACTIVE_RUN_TTL_SEC:
+            status = "stale"
         last_ts = latest_log.timestamp
-        if last_ts and last_ts.tzinfo is None:
+        if status == "running" and last_ts and last_ts.tzinfo is None:
             last_ts = last_ts.replace(tzinfo=timezone.utc)
-        if last_ts:
+        if status == "running" and last_ts:
             idle_sec = (datetime.now(timezone.utc) - last_ts).total_seconds()
             if idle_sec > 300:  # 5 分钟无新进度 → stale
                 status = "stale"
@@ -724,6 +740,16 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
             "model_label": run.model_label,
             "notify_sent": run.notify_sent,
         }
+        if status == "running":
+            created_at = _as_utc(run.created_at)
+            if created_at:
+                progress["started_at"] = _format_datetime(run.created_at)
+                progress["elapsed_sec"] = max(
+                    float(progress.get("elapsed_sec") or 0),
+                    (datetime.now(timezone.utc) - created_at).total_seconds(),
+                )
+                if progress["elapsed_sec"] > ACTIVE_RUN_TTL_SEC:
+                    status = "stale"
     elif log_dicts:
         # 检测"僵尸 running":server 重启 / 工作线程死掉时,日志还在但任务已不在跑。
         # 最后一条进度日志距今 > STALE_THRESHOLD 视为中断,前端可据此 reset 回 idle。

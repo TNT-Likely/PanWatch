@@ -184,7 +184,7 @@ class AgentRun(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     agent_name = Column(String, nullable=False)
-    status = Column(String, nullable=False)  # success / failed
+    status = Column(String, nullable=False)  # running / success / failed
     trace_id = Column(String, default="")
     trigger_source = Column(String, default="")  # schedule / manual / api
     notify_attempted = Column(Boolean, default=False)
