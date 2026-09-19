@@ -49,6 +49,7 @@ def map_state_to_result(
     stock: Any,
     ta_result: dict[str, Any],
     model_label: str = "",
+    market_snapshot: dict[str, Any] | None = None,
 ) -> AnalysisResult:
     """主入口:把 TradingAgents 的 final_state 映射成 AnalysisResult。
 
@@ -96,6 +97,15 @@ def map_state_to_result(
         "confidence": confidence,
     }
 
+    market_snapshot = market_snapshot if isinstance(market_snapshot, dict) else {}
+    price_at_analysis = market_snapshot.get("current_price")
+    try:
+        price_at_analysis = float(price_at_analysis)
+        if price_at_analysis <= 0:
+            price_at_analysis = None
+    except (TypeError, ValueError):
+        price_at_analysis = None
+
     content = _render_markdown(state, suggestion, model_label, cost_usd)
     # 详情页可点击链接(配了 panwatch_base_url 才出现)
     from datetime import date as _date
@@ -131,6 +141,13 @@ def map_state_to_result(
             },
             "final_decision": state.get("final_trade_decision") or "",
             "trader_plan": state.get("trader_investment_plan") or "",
+            # 为影子组合保留 AI 生成决策时可见的行情快照，供后续审计执行口径。
+            "price_at_analysis": price_at_analysis,
+            "market_snapshot": {
+                key: market_snapshot.get(key)
+                for key in ("current_price", "open_price", "high_price", "low_price", "change_pct", "timestamp")
+                if market_snapshot.get(key) is not None
+            },
         },
     )
 

@@ -1079,6 +1079,60 @@ class PaperTradingTrade(Base):
     meta = Column(JSON, default={})
 
 
+class ShadowPosition(Base):
+    """实盘持仓的只读影子仓位；仅用于复盘 AI 建议，绝不参与下单。"""
+
+    __tablename__ = "shadow_positions"
+    __table_args__ = (
+        UniqueConstraint("account_id", "stock_id", name="uq_shadow_account_stock"),
+        Index("ix_shadow_position_status", "status"),
+        Index("ix_shadow_position_symbol_market", "stock_symbol", "stock_market"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    stock_id = Column(Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    real_position_id = Column(Integer, ForeignKey("positions.id", ondelete="SET NULL"), nullable=True)
+    stock_symbol = Column(String, nullable=False)
+    stock_market = Column(String, nullable=False, default="CN")
+    stock_name = Column(String, default="")
+    initial_quantity = Column(Integer, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    avg_cost = Column(Float, nullable=False)
+    status = Column(String, nullable=False, default="open")  # open/partial/closed
+    opened_at = Column(DateTime, server_default=func.now(), nullable=False)
+    closed_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ShadowTrade(Base):
+    """影子组合的模拟成交审计记录，关联决策原文与成本明细。"""
+
+    __tablename__ = "shadow_trades"
+    __table_args__ = (
+        Index("ix_shadow_trade_position_time", "shadow_position_id", "executed_at"),
+        Index("ix_shadow_trade_decision", "decision_source_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    shadow_position_id = Column(Integer, ForeignKey("shadow_positions.id", ondelete="CASCADE"), nullable=False)
+    decision_source_id = Column(Integer, ForeignKey("analysis_history.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String, nullable=False)  # buy/add/reduce/exit/hold_noop
+    quantity = Column(Integer, nullable=False, default=0)
+    target_weight_pct = Column(Float, nullable=True)
+    signal_generated_at = Column(DateTime, nullable=True)
+    execution_price = Column(Float, nullable=True)
+    execution_rule = Column(String, nullable=False, default="next_tradable_price")
+    fill = Column(JSON, default={})  # CostModel Fill 序列化结果
+    status = Column(String, nullable=False, default="pending")  # pending/executed/skipped
+    skip_reason = Column(String, default="")
+    executed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    shadow_position = relationship("ShadowPosition")
+    decision_source = relationship("AnalysisHistory")
+
+
 class ChatConversation(Base):
     """AI 对话会话"""
 

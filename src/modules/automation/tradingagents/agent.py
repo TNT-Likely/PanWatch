@@ -286,13 +286,11 @@ class TradingAgentsAgent(BaseAgent):
             stock=stock,
             ta_result=ta_result,
             model_label=context.model_label,
+            market_snapshot=data.get("quote") or {},
         )
 
         # 存分析时实时价 → 历史决策表"分析价"立即显示(不必等当日 K线收盘回填)
         _quote = data.get("quote") or {}
-        _cp = _quote.get("current_price")
-        if isinstance(_cp, (int, float)):
-            result.raw_data["price_at_analysis"] = float(_cp)
 
         # 5b) 把本次 trace_id 的 toolkit 诊断聚合,持久化进 raw_data,
         # 让历史报告 DoneView 也能展示数据注入情况。
