@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from src.modules.automation.base import AgentContext, AnalysisResult, BaseAgent
@@ -27,9 +28,9 @@ from src.modules.automation.tradingagents.llm_adapter import (
     inject_api_key_env,
 )
 from src.modules.automation.tradingagents.portfolio_context import (
-    build_portfolio_context,
     build_stock_metadata_context,
-    patch_propagator,
+    patch_past_context,
+    to_tradingagents_portfolio,
 )
 from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
 from src.modules.automation.tradingagents.result_mapper import map_state_to_result
@@ -69,7 +70,10 @@ class TradingAgentsAgent(BaseAgent):
         deep_model: str | None = None,    # 推理/辩论/PM 用的强模型 (留空走默认)
         quick_model: str | None = None,   # 分析师工具调用用的快模型 (留空 = deep_model)
         timeout_minutes: int = 30,        # 整个流程硬超时;0.3.0 工具链更重,默认提到 30 min
+        collection_timeout_seconds: int = 45,  # 单个外部数据源采集硬超时
         emit_paper_trading_signal: bool = False,  # 是否把 BUY 决策写入 StrategySignalRun 驱动模拟盘
+        enable_sec_edgar: bool = False,   # 美股财报可显式优先使用 SEC EDGAR
+        holding_period_days: int = 5,     # 上游决策质量回测/持仓期限语义
     ):
         # 校验分析师配置
         analysts = list(analyst_types or sorted(VALID_ANALYSTS))
@@ -89,7 +93,10 @@ class TradingAgentsAgent(BaseAgent):
         self.deep_model = (deep_model or "").strip() or None
         self.quick_model = (quick_model or "").strip() or None
         self.timeout_minutes = max(1, int(timeout_minutes))
+        self.collection_timeout_seconds = max(5, int(collection_timeout_seconds))
         self.emit_paper_trading_signal = bool(emit_paper_trading_signal)
+        self.enable_sec_edgar = bool(enable_sec_edgar)
+        self.holding_period_days = max(1, int(holding_period_days))
 
         # 软依赖检测
         self._available, self._import_error = self._check_availability()
@@ -105,19 +112,50 @@ class TradingAgentsAgent(BaseAgent):
 
         from src.platform.marketdata.marketdata_client import _quote_to_row
 
-        md = get_market_data()
-        sym, mkt = stock.symbol, stock.market.value
+        trace_id = getattr(context, "_trace_id", "")
+        if not isinstance(trace_id, str) or not trace_id:
+            trace_id = self._make_trace_id(stock.symbol)
+        progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        setattr(context, "_progress_handler", progress_handler)
+        progress_handler.emit("data_collection", "stage_start", symbol=stock.symbol)
+
+        async def _source(name: str, fn, fallback):
+            progress_handler.emit("data_collection", "source_start", source=name)
+            try:
+                value = await asyncio.wait_for(
+                    asyncio.to_thread(fn),
+                    timeout=self.collection_timeout_seconds,
+                )
+                progress_handler.emit("data_collection", "source_end", source=name)
+                return value
+            except Exception as e:
+                # 429、网络超时和单源解析错误都只影响该源，不阻塞整个分析。
+                logger.warning(f"[TA] 数据源 {name} 失败,使用空结果: {e}")
+                progress_handler.emit(
+                    "data_collection",
+                    "source_error",
+                    source=name,
+                    error=str(e)[:200],
+                )
+                return fallback
+
         try:
+            md = get_market_data()
+            sym, mkt = stock.symbol, stock.market.value
             quotes, klines_list, cf, events_list = await asyncio.gather(
-                asyncio.to_thread(md.quotes, [sym], market=mkt),
-                asyncio.to_thread(md.klines, sym, market=mkt, days=120),
-                asyncio.to_thread(md.capital_flow, sym, market=mkt),
-                asyncio.to_thread(md.events, [sym], market=mkt, since_days=30),
+                _source("quote", lambda: md.quotes([sym], market=mkt), []),
+                _source("klines", lambda: md.klines(sym, market=mkt, days=120), []),
+                _source("capital_flow", lambda: md.capital_flow(sym, market=mkt), None),
+                _source("events", lambda: md.events([sym], market=mkt, since_days=30), []),
             )
         except Exception as e:
-            logger.warning(f"[TA] 数据收集部分失败: {e}")
+            logger.warning(f"[TA] 初始化数据源失败,使用空结果: {e}")
             quotes, klines_list, cf, events_list = [], [], None, []
-        quote_dict = _quote_to_row(quotes[0]) if quotes else {}
+        try:
+            quote_dict = _quote_to_row(quotes[0]) if quotes else {}
+        except Exception as e:
+            logger.warning(f"[TA] 行情结果解析失败,使用空结果: {e}")
+            quote_dict = {}
         capital_list = [cf] if cf else []
 
         # A 股 fetch 真实财报(akshare),非 A 股留空
@@ -125,20 +163,26 @@ class TradingAgentsAgent(BaseAgent):
         if stock.market.value == "CN" and stock.symbol.isdigit() and len(stock.symbol) == 6:
             try:
                 from src.modules.automation.tradingagents.financial_data import fetch_financial_abstract
-                financial = await asyncio.to_thread(fetch_financial_abstract, stock.symbol)
+                financial = await _source(
+                    "financial",
+                    lambda: fetch_financial_abstract(stock.symbol),
+                    None,
+                )
             except Exception as e:
-                logger.warning(f"[TA] 拉财报失败: {e}")
-                financial = None
+                logger.debug(f"[TA] 财报模块不可用,跳过: {e}")
 
         # 预算技术指标(MA/MACD/RSI/KDJ/BOLL),给 get_indicators 工具用
         technical = None
         try:
             from src.platform.marketdata.collectors.kline_collector import KlineCollector
-            technical = await asyncio.to_thread(
-                KlineCollector(stock.market).get_technical_indicators, stock.symbol
+            technical = await _source(
+                "technical",
+                lambda: KlineCollector(stock.market).get_technical_indicators(stock.symbol),
+                None,
             )
         except Exception as e:
-            logger.debug(f"[TA] 技术指标预算失败,LLM 仍可从 K线 CSV 自行计算: {e}")
+            logger.debug(f"[TA] 技术指标模块不可用,跳过: {e}")
+        progress_handler.emit("data_collection", "stage_end", symbol=stock.symbol)
 
         return {
             "stock": stock,
@@ -216,6 +260,8 @@ class TradingAgentsAgent(BaseAgent):
                 )
 
         # 2) 构造 TradingAgents config (支持 deep / quick 双模型)
+        from src.platform.persistence.database import DB_PATH
+        ta_runtime_dir = Path(DB_PATH).resolve().parent / "tradingagents"
         ta_config = build_ta_llm_config(
             context.ai_client,
             debate_rounds=self.debate_rounds,
@@ -223,12 +269,18 @@ class TradingAgentsAgent(BaseAgent):
             output_language=self.output_language,
             deep_model=self.deep_model,
             quick_model=self.quick_model,
+            market=stock.market.value,
+            enable_sec_edgar=self.enable_sec_edgar,
+            runtime_dir=ta_runtime_dir,
+            holding_period_days=self.holding_period_days,
         )
 
         # 3) 进度回调
-        progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        progress_handler = getattr(context, "_progress_handler", None)
+        if not isinstance(progress_handler, PanWatchProgressHandler):
+            progress_handler = PanWatchProgressHandler(trace_id, self.name)
 
-        # 4) 渲染上下文(标的元信息 + 用户持仓)注入到 TA 的 past_context 通道
+        # 4) 标的元信息走 past_context；用户持仓走 TradingAgents 0.5.0 原生 portfolio。
         current_price = (data.get("quote") or {}).get("current_price")
         cur_price_num = current_price if isinstance(current_price, (int, float)) else None
         quote_data = data.get("quote") or {}
@@ -240,16 +292,6 @@ class TradingAgentsAgent(BaseAgent):
             current_price=cur_price_num,
             industry=quote_data.get("industry", "") if isinstance(quote_data, dict) else "",
         )
-        portfolio_part = build_portfolio_context(
-            getattr(context, "portfolio", None),
-            stock_symbol=stock.symbol,
-            current_price=cur_price_num,
-        )
-        # 标的元信息永远放最前(即使没有持仓也注入)
-        portfolio_context_text = (
-            f"{meta_context}\n\n{portfolio_part}" if portfolio_part else meta_context
-        )
-
         # 5) 同步阻塞,丢到线程池;加硬超时防卡死
         try:
             ta_result = await asyncio.wait_for(
@@ -261,7 +303,8 @@ class TradingAgentsAgent(BaseAgent):
                     ta_config=ta_config,
                     progress_handler=progress_handler,
                     panwatch_data=data,
-                    portfolio_context_text=portfolio_context_text,
+                    stock_metadata_context=meta_context,
+                    portfolio=getattr(context, "portfolio", None),
                 ),
                 timeout=self.timeout_minutes * 60,
             )
@@ -428,7 +471,8 @@ class TradingAgentsAgent(BaseAgent):
         ta_config: dict,
         progress_handler,
         panwatch_data: dict,
-        portfolio_context_text: str = "",
+        stock_metadata_context: str = "",
+        portfolio: Any | None = None,
     ) -> dict[str, Any]:
         """在 worker 线程跑同步 TradingAgents 流程。
 
@@ -462,18 +506,16 @@ class TradingAgentsAgent(BaseAgent):
             if progress_handler is not None:
                 self._inject_graph_callbacks(graph, progress_handler)
 
-            # 注入用户持仓上下文到 past_context(上游官方扩展通道,PM 节点会读)
-            if portfolio_context_text:
-                patch_propagator(graph, portfolio_context_text)
+            # past_context 只保留标的元数据。用户仓位由上游 0.5.0 原生接口结构化传入。
+            if stock_metadata_context:
+                patch_past_context(graph, stock_metadata_context)
 
             date_str = datetime.now().strftime("%Y-%m-%d")
-            try:
-                final_state, decision = graph.propagate(symbol, date_str)
-            except TypeError:
-                # 上游版本可能签名不同(propagate(symbol, date) vs propagate(company_name, trade_date))
-                final_state, decision = graph.propagate(
-                    company_name=symbol, trade_date=date_str
-                )
+            final_state, decision = graph.propagate(
+                symbol,
+                date_str,
+                portfolio=to_tradingagents_portfolio(portfolio),
+            )
 
         # 成本提取(TradingAgents 内部 token 统计;若上游未暴露,fallback 用 estimate)
         cost_usd = self._extract_cost_from_graph(graph) or self._fallback_cost_estimate(

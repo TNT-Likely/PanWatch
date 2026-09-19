@@ -9,6 +9,55 @@ from src.platform.persistence.models import AgentRun, LogEntry
 
 logger = logging.getLogger(__name__)
 
+# 采集阶段可能在外部数据源限流/重试时暂时没有进度日志，不能沿用
+# “5 分钟无日志即 stale”的规则；但服务重启后也不能无限恢复旧任务。
+ACTIVE_RUN_TTL_SEC = 45 * 60
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def start_agent_run(
+    agent_name: str,
+    trace_id: str,
+    trigger_source: str = "",
+    model_label: str = "",
+) -> None:
+    """在任务真正开始前写入 running 生命周期记录。
+
+    同一 trace 可能同时从 API 包装器和执行入口调用，因此写入是幂等的。
+    """
+    if not trace_id:
+        return
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(AgentRun)
+            .filter(AgentRun.trace_id == trace_id, AgentRun.status == "running")
+            .order_by(AgentRun.id.desc())
+            .first()
+        )
+        if existing:
+            return
+        db.add(AgentRun(
+            agent_name=agent_name,
+            status="running",
+            trace_id=trace_id[:64],
+            trigger_source=(trigger_source or "")[:32],
+            model_label=(model_label or "")[:255],
+        ))
+        db.commit()
+    except Exception as e:
+        logger.warning(f"写入 AgentRun running 状态失败: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 def record_agent_run(
     agent_name: str,
@@ -40,19 +89,32 @@ def record_agent_run(
     """
     db = SessionLocal()
     try:
-        db.add(AgentRun(
-            agent_name=agent_name,
-            status=status,
-            trace_id=(trace_id or "")[:64],
-            trigger_source=(trigger_source or "")[:32],
-            notify_attempted=bool(notify_attempted),
-            notify_sent=bool(notify_sent),
-            context_chars=max(0, int(context_chars or 0)),
-            model_label=(model_label or "")[:255],
-            result=(result or "")[:2000],
-            error=(error or "")[:2000],
-            duration_ms=duration_ms,
-        ))
+        existing = None
+        if trace_id:
+            existing = (
+                db.query(AgentRun)
+                .filter(AgentRun.trace_id == trace_id, AgentRun.status == "running")
+                .order_by(AgentRun.id.desc())
+                .first()
+            )
+        values = {
+            "agent_name": agent_name,
+            "status": status,
+            "trace_id": (trace_id or "")[:64],
+            "trigger_source": (trigger_source or "")[:32],
+            "notify_attempted": bool(notify_attempted),
+            "notify_sent": bool(notify_sent),
+            "context_chars": max(0, int(context_chars or 0)),
+            "model_label": (model_label or "")[:255],
+            "result": (result or "")[:2000],
+            "error": (error or "")[:2000],
+            "duration_ms": duration_ms,
+        }
+        if existing:
+            for key, value in values.items():
+                setattr(existing, key, value)
+        else:
+            db.add(AgentRun(**values))
         db.commit()
     except Exception as e:
         logger.warning(f"写入 AgentRun 失败: {e}")
@@ -67,7 +129,28 @@ def find_active_tradingagents_trace(db: Session, stock_symbol: str) -> str | Non
     运行状态属于自动化模块，市场模块只能通过这个公开查询判断是否需要创建新任务，
     不应导入自动化 HTTP router 或直接查询其内部实现。
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+    now = datetime.now(timezone.utc)
+
+    # 生命周期记录是首选数据源：采集阶段还没有 ta_progress 时也能恢复，
+    # 且不会因为某个外部源 5 分钟没有日志就重复触发任务。
+    active_run = (
+        db.query(AgentRun)
+        .filter(
+            AgentRun.agent_name == "tradingagents",
+            AgentRun.status == "running",
+            AgentRun.trace_id.like(f"%-{stock_symbol}-%"),
+        )
+        .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+        .first()
+    )
+    if active_run and active_run.trace_id:
+        created_at = _as_utc(active_run.created_at)
+        if created_at is None or (now - created_at).total_seconds() <= ACTIVE_RUN_TTL_SEC:
+            return active_run.trace_id
+        # 已超过整个任务安全窗口时，不能再被旧日志重新判成 running。
+        return None
+
+    cutoff = now - timedelta(minutes=30)
     latest_log = (
         db.query(LogEntry)
         .filter(
@@ -92,9 +175,7 @@ def find_active_tradingagents_trace(db: Session, stock_symbol: str) -> str | Non
     if run and run.status in ("success", "failed"):
         return None
 
-    last_ts = latest_log.timestamp
-    if last_ts and last_ts.tzinfo is None:
-        last_ts = last_ts.replace(tzinfo=timezone.utc)
-    if last_ts and (datetime.now(timezone.utc) - last_ts).total_seconds() > 300:
+    last_ts = _as_utc(latest_log.timestamp)
+    if last_ts and (now - last_ts).total_seconds() > 300:
         return None
     return trace_id

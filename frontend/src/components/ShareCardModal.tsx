@@ -35,6 +35,13 @@ const RATING_FALLBACK = {
   gradFrom: '#94a3b8',
   gradTo: '#475569',
 }
+const REVIEW_VISUAL = {
+  label: '待人工复核',
+  color: '#c2410c',
+  soft: '#fff7ed',
+  gradFrom: '#fb923c',
+  gradTo: '#c2410c',
+}
 
 /** 把后端可能存在的五档原值(overweight/underweight)映射到归一化器认得的词。 */
 function mapRatingRaw(raw?: string): string | undefined {
@@ -70,10 +77,11 @@ function cleanConclusion(text: string): string {
 
 export default function ShareCardModal({ open, onClose, result, symbol, date }: ShareCardModalProps) {
   const sug = result.raw_data?.suggestion
-  // 评级来源:优先后端五档原值 rating_raw(类型未声明,运行时可能有),否则用 action,再叠加中文 action_label 兜底
-  const ratingRaw = mapRatingRaw((sug as { rating_raw?: string } | undefined)?.rating_raw)
+  // 评级来源:优先后端五档原值，否则用 action，再叠加中文 action_label 兜底。
+  const ratingRaw = mapRatingRaw(sug?.rating_raw)
   const normalized = normalizeSuggestionAction(ratingRaw || sug?.action, sug?.action_label)
-  const visual = (normalized && RATING_VISUAL[normalized]) || RATING_FALLBACK
+  const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
+  const visual = reviewRequired ? REVIEW_VISUAL : (normalized && RATING_VISUAL[normalized]) || RATING_FALLBACK
 
   const stockName = parseStockName(result.title || '', symbol)
   const confidence = sug?.confidence

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from src.platform.ai.ai_client import AIClient
@@ -28,6 +29,10 @@ def build_ta_llm_config(
     output_language: str = "Chinese",
     deep_model: str | None = None,
     quick_model: str | None = None,
+    market: str = "",
+    enable_sec_edgar: bool = False,
+    runtime_dir: str | Path | None = None,
+    holding_period_days: int = 5,
 ) -> dict[str, Any]:
     """生成 TradingAgents 期望的 config dict。
 
@@ -61,6 +66,34 @@ def build_ta_llm_config(
     except ImportError:
         config = {}
 
+    # 上游 config 含嵌套 vendor 配置；先复制，避免单次运行污染 DEFAULT_CONFIG。
+    config["data_vendors"] = dict(config.get("data_vendors") or {})
+    config["tool_vendors"] = dict(config.get("tool_vendors") or {})
+
+    if runtime_dir is not None:
+        root = Path(runtime_dir).expanduser().resolve()
+        results_dir = root / "results"
+        data_cache_dir = root / "cache"
+        memory_dir = root / "memory"
+        for directory in (results_dir, data_cache_dir, memory_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+        config.update({
+            "results_dir": str(results_dir),
+            "data_cache_dir": str(data_cache_dir),
+            "memory_log_path": str(memory_dir / "trading_memory.md"),
+        })
+
+    # SEC EDGAR 的三张财务报表具备 filing-date 语义，只在美股且用户显式启用时
+    # 作为首选；非 SEC 标的或暂时不可用时回退 yfinance。
+    statement_vendor = "sec_edgar,yfinance" if enable_sec_edgar and market.upper() == "US" else "yfinance"
+    # set_config() 对嵌套 dict 做 merge。即使本次不启用 EDGAR，也必须显式写回
+    # yfinance，避免前一次美股运行留下的 tool_vendors 泄漏到 A/HK 分析。
+    config["tool_vendors"].update({
+        "get_balance_sheet": statement_vendor,
+        "get_cashflow": statement_vendor,
+        "get_income_statement": statement_vendor,
+    })
+
     # PanWatch 覆盖。
     # ⚠️ llm_provider 故意不用 "openai":TA 检测到 openai 会强制开 use_responses_api=True
     # (OpenAI Responses API,/v1/responses 端点),硅基流动/智谱/Ollama 等第三方 OpenAI 兼容
@@ -84,6 +117,7 @@ def build_ta_llm_config(
         "output_language": output_language,
         "online_tools": True,
         "checkpoint_enabled": False,  # 避免 sqlite checkpoint 文件污染
+        "holding_period_days": max(1, int(holding_period_days)),
     })
     return config
 

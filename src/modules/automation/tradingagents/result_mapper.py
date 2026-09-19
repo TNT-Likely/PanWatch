@@ -88,6 +88,7 @@ def map_state_to_result(
         "action_label": action_label,
         "rating_raw": rating_raw or "hold",  # 保留原始 5 档,前端/历史可查
         "review_required": review_required,
+        "upstream_decision": upstream_rating,
         "signal": _truncate(state.get("trader_investment_plan", ""), 200),
         "reason": state.get("final_trade_decision") or short_reason,
         "should_alert": review_required or rating_raw in ("buy", "overweight", "underweight", "sell"),
@@ -118,6 +119,7 @@ def map_state_to_result(
             "should_alert": suggestion["should_alert"],
             "decision": action,           # 兼容旧字段(3 档)
             "rating": rating_raw or "hold",  # 新字段(5 档原始)
+            "upstream_decision": upstream_rating,
             "confidence": confidence,
             "debate_history": _extract_debate(state),
             "risk_judgment": _risk_judgment(state),

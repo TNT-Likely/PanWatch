@@ -27,17 +27,21 @@ def _fake_log(timestamp, trace_id="man-tradingagents-601127-1234"):
 def _fake_run(status: str):
     r = MagicMock()
     r.status = status
+    r.trace_id = "man-tradingagents-601127-1234"
+    r.created_at = datetime.now(timezone.utc) - timedelta(seconds=30)
     return r
 
 
 def _setup_db(latest_log, run=None):
-    """构造 db.query(LogEntry) → latest_log, db.query(AgentRun) → run 的 mock"""
+    """构造 running AgentRun → 最新日志 → trace 最终记录的 mock。"""
     db = MagicMock()
+    active_query = MagicMock()
+    active_query.filter.return_value.order_by.return_value.first.return_value = None
     log_query = MagicMock()
     log_query.filter.return_value.order_by.return_value.first.return_value = latest_log
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = run
-    db.query.side_effect = [log_query, run_query]
+    db.query.side_effect = [active_query, log_query, run_query]
     return db
 
 

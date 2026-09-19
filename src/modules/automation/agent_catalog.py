@@ -150,7 +150,8 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "timeout_minutes": 15,
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
+            "enable_sec_edgar": False,  # 仅美股：优先使用有 filing-date 语义的 SEC EDGAR 财报
+            "holding_period_days": 5,   # 上游决策质量回测使用的默认持仓期限
         },
     ),
 )
-

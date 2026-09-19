@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # 默认阶段映射:TradingAgents 4 个 analyst + 辩论 + 风控 + PM
 STAGES_ORDER = [
+    "data_collection",
     "market_analyst",
     "social_analyst",
     "news_analyst",
@@ -97,6 +98,10 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             },
         ):
             logger.info(f"[TA进度] stage={stage} action={action} {extra}")
+
+    def emit(self, stage: str, action: str, **extra) -> None:
+        """向采集等非 LangChain 阶段发出同一格式的进度事件。"""
+        self._emit(stage, action, **extra)
 
     # ---- LangChain callbacks 接口 ----
 
@@ -246,17 +251,33 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
     total_cost = 0.0
     current_stage = None
     started_at = None
+    collection_sources: dict[str, dict] = {}
 
     for entry in log_entries:
         tags = entry.get("tags") or {}
         stage = tags.get("stage")
         action = tags.get("action")
+        source = tags.get("source")
         ts = entry.get("timestamp")
         if started_at is None and ts:
             started_at = ts
 
         if not stage or stage not in stage_state:
             continue
+
+        if stage == "data_collection" and source:
+            source_state = collection_sources.setdefault(
+                source,
+                {"name": source, "status": "pending"},
+            )
+            if action == "source_start":
+                source_state["status"] = "running"
+            elif action == "source_end":
+                source_state["status"] = "done"
+            elif action == "source_error":
+                source_state["status"] = "error"
+                if tags.get("error"):
+                    source_state["error"] = str(tags["error"])[:200]
 
         # cost 累积取最后一条的 total_cost_usd
         cost = tags.get("total_cost_usd")
@@ -282,4 +303,5 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
         else 0,
         "total_cost_usd": round(total_cost, 6),
         "stages": [stage_state[s] for s in STAGES_ORDER],
+        "data_sources": list(collection_sources.values()),
     }
