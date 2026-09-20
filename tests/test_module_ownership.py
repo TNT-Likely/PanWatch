@@ -116,9 +116,9 @@ def test_automation_and_platform_own_remaining_core_implementations():
 
 
 def test_automation_module_owns_tradingagents_package():
-    from src.modules.automation.tradingagents import agent, auto_trigger, result_mapper
+    from src.modules.automation.tradingagents import agent, decision, operations
 
-    for module in (agent, auto_trigger, result_mapper):
+    for module in (agent, decision, operations):
         assert "/src/modules/automation/tradingagents/" in module.__file__.replace("\\", "/")
 
 

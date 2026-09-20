@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.modules.automation.tradingagents.portfolio_context import build_stock_metadata_context
+from src.modules.automation.tradingagents.data_context import build_stock_metadata_context
 from src.modules.automation.tradingagents.toolkit_adapter import (
     _stock_meta_header,
     _serve_from_panwatch,

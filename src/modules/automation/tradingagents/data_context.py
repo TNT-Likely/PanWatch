@@ -1,4 +1,9 @@
-"""A 股财务数据采集 — 用 akshare 拉真实财务报表给 TradingAgents 分析师用。
+"""TradingAgents 数据上下文适配。
+
+本文件同时负责 A 股财务摘要、PortfolioContext、instrument_context 和标的元数据，
+把 PanWatch 的业务数据转换成 TradingAgents 可消费的结构化上下文。
+
+A 股财务数据采集 — 用 akshare 拉真实财务报表给 TradingAgents 分析师用。
 
 之前 PanWatch 没采集财报,fundamentals/balance/cashflow/income 工具都返回占位文本,
 LLM 没法做真正的基本面分析。本模块用 akshare 的 stock_financial_abstract 拉最近 2 期
@@ -11,9 +16,23 @@ LLM 没法做真正的基本面分析。本模块用 akshare 的 stock_financial
 from __future__ import annotations
 
 import logging
+import math
+from collections.abc import Iterable
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# 统一导出“业务数据 → TradingAgents 上下文”的入口，避免调用方关心内部渲染函数。
+__all__ = [
+    "build_stock_metadata_context",
+    "fetch_financial_abstract",
+    "patch_instrument_context",
+    "render_balance_sheet",
+    "render_cashflow",
+    "render_fundamentals_summary",
+    "render_income_statement",
+    "to_tradingagents_portfolio",
+]
 
 
 def fetch_financial_abstract(symbol: str) -> dict | None:
@@ -219,3 +238,148 @@ def render_cashflow(data: dict) -> str:
         row = " | ".join(fmt(vals.get(p)) for p in periods)
         lines.append(f"- {name}: {row}")
     return "\n".join(lines)
+
+
+# ============================================================================
+# Portfolio and instrument context
+# ============================================================================
+
+def build_stock_metadata_context(
+    stock_symbol: str,
+    stock_name: str = "",
+    market: str = "CN",
+    current_price: float | None = None,
+    industry: str = "",
+) -> str:
+    """渲染标的元信息，避免模型从 A/HK ticker 反查并臆测公司。"""
+    if not stock_symbol:
+        return ""
+
+    market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
+    lines = [
+        "[Stock Metadata]",
+        f"- Ticker: {stock_symbol}",
+        f"- Company name: {stock_name or 'N/A'}",
+        f"- Market: {market_label}",
+    ]
+    if industry:
+        lines.append(f"- Industry: {industry}")
+    if current_price and current_price > 0:
+        lines.append(f"- Current price: {current_price:.2f}")
+    lines.append(
+        "- IMPORTANT: This is an A-share / HK / cross-market ticker. DO NOT guess the "
+        "company from the ticker code; always use the company name above."
+    )
+    return "\n".join(lines)
+
+
+def _finite_number(value: Any) -> float | None:
+    """把可能来自数据库的数值安全转换为有限 float。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def to_tradingagents_portfolio(portfolio: Any):
+    """把 ``PortfolioInfo`` 转为 TradingAgents 0.5.0 的 ``PortfolioContext``。
+
+    多账户中同一 ticker 的仓位按数量加权平均成本价聚合。没有账户快照时返回
+    ``None``，让上游明确区分“用户未提供组合”与“组合现金/仓位均为零”。
+    """
+    accounts: Iterable[Any] = getattr(portfolio, "accounts", ()) or ()
+    accounts = list(accounts)
+    if not accounts:
+        return None
+
+    from tradingagents.portfolio import PortfolioContext, Position
+
+    cash = 0.0
+    by_ticker: dict[str, list[tuple[float, float | None]]] = {}
+    for account in accounts:
+        available_funds = _finite_number(getattr(account, "available_funds", 0))
+        if available_funds is not None:
+            cash += available_funds
+
+        for position in getattr(account, "positions", ()) or ():
+            ticker = str(getattr(position, "symbol", "") or "").strip().upper()
+            quantity = _finite_number(getattr(position, "quantity", None))
+            # TradingAgents 0.5.0 用正数表示多头、负数表示空头；这里只过滤
+            # 零数量和脏数据，不能把空头当成“无持仓”丢掉。
+            if not ticker or quantity is None or quantity == 0:
+                continue
+            average_price = _finite_number(getattr(position, "cost_price", None))
+            by_ticker.setdefault(ticker, []).append((quantity, average_price))
+
+    positions = []
+    for ticker, lots in by_ticker.items():
+        quantity = sum(lot_quantity for lot_quantity, _ in lots)
+        priced_lots = [
+            (lot_quantity, average_price)
+            for lot_quantity, average_price in lots
+            if average_price is not None
+        ]
+        # 用数量绝对值做成本价权重：同方向仓位与旧逻辑一致，混合多空时
+        # 也不会因净数量接近 0 而产生无意义的极端均价；quantity 仍保留净符号。
+        total_abs_quantity = sum(abs(lot_quantity) for lot_quantity, _ in priced_lots)
+        average_price = (
+            sum(abs(lot_quantity) * price for lot_quantity, price in priced_lots)
+            / total_abs_quantity
+            if len(priced_lots) == len(lots) and total_abs_quantity > 0
+            else None
+        )
+        positions.append(
+            Position(ticker=ticker, quantity=quantity, average_price=average_price)
+        )
+
+    return PortfolioContext(cash=cash, positions=positions)
+
+
+def patch_instrument_context(graph: Any, metadata_context: str) -> None:
+    """把 PanWatch 标的元数据注入 TradingAgents 0.5.0 的 ``instrument_context``。
+
+    ``past_context`` 是上游用于历史研究记忆的扩展点，业务标的元数据放进去会
+    混淆提示词语义，也会让后续研究回放把本次股票信息当成历史经验。0.5.0 的
+    ``Propagator.create_initial_state`` 已公开 ``instrument_context``，因此只在
+    这个入口做一次实例级包装，并完整透传 portfolio/future kwargs。
+    """
+    if not metadata_context:
+        return
+
+    propagator = getattr(graph, "propagator", None)
+    if propagator is None or not hasattr(propagator, "create_initial_state"):
+        logger.warning("[TA context] propagator.create_initial_state 不存在，跳过元数据注入")
+        return
+
+    original = propagator.create_initial_state
+
+    def _patched(
+        company_name: str,
+        trade_date: str,
+        asset_type: str = "stock",
+        past_context: str = "",
+        instrument_context: str = "",
+        portfolio_context: str = "",
+        **kwargs: Any,
+    ):
+        merged = metadata_context
+        if instrument_context:
+            merged = f"{merged}\n\n---\n\n{instrument_context}"
+        return original(
+            company_name,
+            trade_date,
+            asset_type=asset_type,
+            past_context=past_context,
+            instrument_context=merged,
+            portfolio_context=portfolio_context,
+            **kwargs,
+        )
+
+    propagator.create_initial_state = _patched  # type: ignore[method-assign]
+    logger.info("[TA context] 已注入 %s 字符标的元数据到 instrument_context", len(metadata_context))
+
+
+def patch_past_context(graph: Any, metadata_context: str) -> None:
+    """兼容旧调用方的别名；新代码应使用 :func:`patch_instrument_context`。"""
+    patch_instrument_context(graph, metadata_context)

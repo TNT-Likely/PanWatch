@@ -47,6 +47,17 @@ _CANCEL_EVENT: contextvars.ContextVar[threading.Event | None] = contextvars.Cont
     "_TA_CANCEL_EVENT", default=None
 )
 
+# 所有上游 monkeypatch 和 PanWatch 数据注入都集中在本文件；其它模块只依赖这些入口。
+__all__ = [
+    "TradingAgentsCancelled",
+    "hk_symbol_to_yfinance",
+    "is_a_share",
+    "is_hk_share",
+    "is_panwatch_routable",
+    "panwatch_data_context",
+    "patch_route_to_vendor",
+]
+
 
 class TradingAgentsCancelled(RuntimeError):
     """TradingAgents 任务已进入终态，禁止残留 worker 再发起外部请求。"""
@@ -825,12 +836,12 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
     financial = _cache().get("financial")
     if "fundamental" in method or "financial" in method:
         if financial:
-            from src.modules.automation.tradingagents.financial_data import render_fundamentals_summary
+            from src.modules.automation.tradingagents.data_context import render_fundamentals_summary
             return f"{header}\n\n{render_fundamentals_summary(financial)}"
         return f"{header}\n\n{_quote_to_lightweight_fundamentals(symbol)}"
     if "income" in method:
         if financial:
-            from src.modules.automation.tradingagents.financial_data import render_income_statement
+            from src.modules.automation.tradingagents.data_context import render_income_statement
             return f"{header}\n\n{render_income_statement(financial)}"
         return (
             f"{header}\n\n[Income statement not available for {symbol}. "
@@ -838,7 +849,7 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         )
     if "balance" in method or "sheet" in method:
         if financial:
-            from src.modules.automation.tradingagents.financial_data import render_balance_sheet
+            from src.modules.automation.tradingagents.data_context import render_balance_sheet
             return f"{header}\n\n{render_balance_sheet(financial)}"
         return (
             f"{header}\n\n[Balance sheet not available for {symbol}. "
@@ -846,7 +857,7 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         )
     if "cashflow" in method or "cash_flow" in method:
         if financial:
-            from src.modules.automation.tradingagents.financial_data import render_cashflow
+            from src.modules.automation.tradingagents.data_context import render_cashflow
             return f"{header}\n\n{render_cashflow(financial)}"
         return (
             f"{header}\n\n[Cash flow statement not available for {symbol}. "

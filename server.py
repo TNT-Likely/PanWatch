@@ -1494,7 +1494,7 @@ async def lifespan(app):
     # 早期 TA 运行没写建议池,这次启动一次性补齐,让「AI 建议」面板能看到。
     # 幂等:已存在不重复写;每次启动重跑代价极低(只查最近 7 天 + dedupe)。
     try:
-        from src.modules.automation.tradingagents.backfill import backfill_tradingagents_suggestions
+        from src.modules.automation.tradingagents.operations import backfill_tradingagents_suggestions
         backfill_tradingagents_suggestions(days=7)
     except Exception as e:
         logger.warning(f"TradingAgents 建议回填失败,跳过: {e}")

@@ -1,12 +1,12 @@
 """OpenTelemetry 导出层(可选,默认关闭)。
 
 在**不改动** PanWatch 自建可观测体系(``log_context`` / ``agent_runs`` /
-``tradingagents.progress``)的前提下,额外挂一层标准 OTel 导出,让"自建 + 标准栈"
+``tradingagents.observability``)的前提下,额外挂一层标准 OTel 导出,让"自建 + 标准栈"
 都能拿到实证。三类桥接:
 
 - Agent 一次运行        -> root span(复用 ``agent_runs`` 的 ``trace_id`` 作关联)
 - 单次 LLM 调用         -> gen_ai 子 span(复用 ``ai_client`` 已有的 token 用量)
-- TradingAgents 节点    -> 子 span(复用 ``progress.py`` 的节点/LLM 事件)
+- TradingAgents 节点    -> 子 span(复用 ``observability.py`` 的节点/LLM 事件)
 
 设计原则(生产项目,增量可回退):
 

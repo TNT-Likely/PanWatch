@@ -17,22 +17,22 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime
 
 from src.modules.automation.tradingagents.agent import TradingAgentsAgent, TradingAgentsUnavailable
-from src.modules.automation.tradingagents.cost_tracker import (
+from src.modules.automation.tradingagents.observability import (
     check_budget,
     estimate_cost,
     get_today_cache_key,
 )
-from src.modules.automation.tradingagents.llm_adapter import (
+from src.modules.automation.tradingagents.runtime_support import (
     VALID_ANALYSTS,
     build_ta_llm_config,
     inject_api_key_env,
 )
-from src.modules.automation.tradingagents.progress import (
+from src.modules.automation.tradingagents.observability import (
     PanWatchProgressHandler,
     aggregate_progress,
     STAGES_ORDER,
 )
-from src.modules.automation.tradingagents.result_mapper import (
+from src.modules.automation.tradingagents.decision import (
     DECISION_LABEL_MAP,
     map_state_to_result,
 )
@@ -490,7 +490,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_disabled_skips(self):
         """模拟盘 bridge — enabled=False 直接 skip,不写库"""
-        from src.modules.automation.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.decision import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -508,7 +508,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_sell_skipped(self):
         """模拟盘 bridge — SELL 不开新仓 (不会写 buy 信号)"""
-        from src.modules.automation.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.decision import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -526,7 +526,7 @@ class TestPhaseBFeatures(unittest.TestCase):
 
     def test_paper_trading_bridge_no_price_skipped(self):
         """模拟盘 bridge — 当前价缺失时不写信号(避免错价)"""
-        from src.modules.automation.tradingagents.paper_trading_bridge import (
+        from src.modules.automation.tradingagents.decision import (
             maybe_emit_paper_trading_signal,
         )
         result = maybe_emit_paper_trading_signal(
@@ -584,7 +584,7 @@ class TestPortfolioContext(unittest.TestCase):
     def test_to_tradingagents_portfolio_preserves_cash_and_positions(self):
         """PanWatch 持仓聚合为 0.5.0 的结构化现金、标的、数量和均价。"""
         from tradingagents.portfolio import PortfolioContext
-        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
+        from src.modules.automation.tradingagents.data_context import to_tradingagents_portfolio
 
         result = to_tradingagents_portfolio(self._portfolio())
 
@@ -598,7 +598,7 @@ class TestPortfolioContext(unittest.TestCase):
     def test_to_tradingagents_portfolio_returns_none_without_accounts(self):
         """没有账户快照时不伪造现金为零的用户持仓。"""
         from src.modules.automation.base import PortfolioInfo
-        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
+        from src.modules.automation.tradingagents.data_context import to_tradingagents_portfolio
 
         self.assertIsNone(to_tradingagents_portfolio(PortfolioInfo()))
 
@@ -606,7 +606,7 @@ class TestPortfolioContext(unittest.TestCase):
         """0.5.0 Position.quantity 允许负数，空头不能在适配层被静默丢弃。"""
         from src.modules.automation.base import AccountInfo, PortfolioInfo, PositionInfo
         from src.platform.marketdata.models import MarketCode
-        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
+        from src.modules.automation.tradingagents.data_context import to_tradingagents_portfolio
 
         portfolio = PortfolioInfo(accounts=[
             AccountInfo(
@@ -634,7 +634,7 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_patch_instrument_context_preserves_past_and_portfolio_context(self):
         """标的元数据进入 0.5.0 instrument_context，不污染历史上下文和持仓上下文。"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_instrument_context
+        from src.modules.automation.tradingagents.data_context import patch_instrument_context
 
         captured = {}
 
@@ -674,7 +674,7 @@ class TestPortfolioContext(unittest.TestCase):
 
     def test_patch_instrument_context_no_context_skips(self):
         """没有元数据时不替换上游方法。"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_instrument_context
+        from src.modules.automation.tradingagents.data_context import patch_instrument_context
 
         graph = MagicMock()
         original = graph.propagator.create_initial_state

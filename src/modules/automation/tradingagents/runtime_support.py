@@ -1,4 +1,6 @@
-"""桥接 PanWatch AIClient 配置 → TradingAgents LLM config。
+"""TradingAgents 运行时适配：LLM 配置、密钥注入和 LangChain 兼容补丁。
+
+桥接 PanWatch AIClient 配置 → TradingAgents LLM config。
 
 TradingAgents 通过 langchain-openai / langchain-anthropic 等驱动 LLM,
 读取 config 字典 + 环境变量(`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 等)。
@@ -7,6 +9,7 @@ TradingAgents 通过 langchain-openai / langchain-anthropic 等驱动 LLM,
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -15,6 +18,14 @@ from typing import Any
 from src.platform.ai.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
+
+# 这是 Agent 入口允许依赖的稳定运行时接口；兼容补丁实现留在本文件下半部。
+__all__ = [
+    "VALID_ANALYSTS",
+    "apply_compat_patches",
+    "build_ta_llm_config",
+    "inject_api_key_env",
+]
 
 
 # TradingAgents selected_analysts 字段的合法值(见上游 graph/trading_graph.py)
@@ -148,3 +159,140 @@ def inject_api_key_env(ai_client: AIClient) -> None:
     os.environ["OPENROUTER_API_KEY"] = ai_client.api_key
     os.environ["OPENAI_API_KEY"] = ai_client.api_key
     os.environ["DEEPSEEK_API_KEY"] = ai_client.api_key
+
+
+# ============================================================================
+# LangChain compatibility patches
+# ============================================================================
+
+_PATCH_APPLIED = False
+
+
+def apply_compat_patches() -> None:
+    """应用所有 LangChain 兼容性补丁。幂等。"""
+    global _PATCH_APPLIED
+    if _PATCH_APPLIED:
+        return
+
+    _patch_tool_call_args_coercion()
+    _patch_ai_message_init()
+    _PATCH_APPLIED = True
+
+
+def _coerce_tool_calls_args(tool_calls: Any) -> Any:
+    """把 tool_calls 列表中每项的 args 字段(若是 JSON 字符串)转成 dict。"""
+    if not isinstance(tool_calls, list):
+        return tool_calls
+    fixed = []
+    for tc in tool_calls:
+        if isinstance(tc, dict) and "args" in tc:
+            raw = tc.get("args")
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        tc = {**tc, "args": parsed}
+                    else:
+                        tc = {**tc, "args": {}}
+                except (json.JSONDecodeError, TypeError):
+                    tc = {**tc, "args": {}}
+        fixed.append(tc)
+    return fixed
+
+
+def _patch_ai_message_init() -> None:
+    """Patch AIMessage.__init__ 让 tool_calls 字段在校验前自动 coerce str args → dict。
+
+    这是直接拦截 AIMessage 构造的可靠路径,不论 tool_calls 走的哪个上游函数。
+    """
+    try:
+        from langchain_core.messages.ai import AIMessage
+    except ImportError:
+        return
+
+    if getattr(AIMessage, "_panwatch_patched", False):
+        return
+
+    original_init = AIMessage.__init__
+
+    def _patched_init(self, *args, **kwargs):
+        if "tool_calls" in kwargs:
+            kwargs["tool_calls"] = _coerce_tool_calls_args(kwargs["tool_calls"])
+        return original_init(self, *args, **kwargs)
+
+    AIMessage.__init__ = _patched_init  # type: ignore[method-assign]
+    AIMessage._panwatch_patched = True  # type: ignore[attr-defined]
+    logger.info("[TA compat] 已 patch AIMessage.__init__ 容忍 tool_calls.args 字符串")
+
+
+def _patch_tool_call_args_coercion() -> None:
+    """让 ToolCall / AIMessage 接受 string 类型的 args 并自动 json.loads。"""
+    try:
+        from langchain_core.messages import tool as _tool_module
+    except ImportError:
+        logger.debug("[TA compat] langchain_core 未装,跳过 tool_call 补丁")
+        return
+
+    # 找到 create_tool_call 工厂函数(langchain 1.x);旧版可能叫 ToolCall 类直接构造
+    create_func = getattr(_tool_module, "create_tool_call", None)
+    if create_func is None:
+        logger.debug("[TA compat] create_tool_call 未找到,跳过")
+        return
+
+    if getattr(create_func, "_panwatch_patched", False):
+        return  # 已经 patched
+
+    original = create_func
+
+    def _patched_create_tool_call(*args, **kwargs):
+        # 取出 args 参数(可能位置或关键字)
+        raw_args = kwargs.get("args")
+        if raw_args is None and len(args) >= 2:
+            # 位置参数:create_tool_call(name, args, ...) 顺序假设
+            # 实际签名见 langchain_core.messages.tool 源码,这里宽松处理
+            try:
+                # 重新构造 kwargs 让上游严格 validator 拿到 dict
+                pass
+            except Exception:
+                pass
+
+        # 修正 args 类型
+        if isinstance(raw_args, str):
+            try:
+                parsed = json.loads(raw_args)
+                if isinstance(parsed, dict):
+                    kwargs["args"] = parsed
+                    logger.debug(
+                        f"[TA compat] tool_call.args 字符串已自动 parse 成 dict "
+                        f"(原始长度 {len(raw_args)})"
+                    )
+                else:
+                    kwargs["args"] = {}
+            except (json.JSONDecodeError, TypeError):
+                kwargs["args"] = {}
+                logger.debug("[TA compat] tool_call.args 不是合法 JSON,降级为 {}")
+
+        return original(*args, **kwargs)
+
+    _patched_create_tool_call._panwatch_patched = True  # type: ignore[attr-defined]
+
+    # 替换模块级符号 + 替换内部 import
+    _tool_module.create_tool_call = _patched_create_tool_call
+    try:
+        # langchain_core.output_parsers.openai_tools 在文件顶部 from . import create_tool_call
+        # 但 import 语义是把对象绑定到本地,所以需要也替换那边
+        from langchain_core.output_parsers import openai_tools as _ot
+        if hasattr(_ot, "create_tool_call"):
+            _ot.create_tool_call = _patched_create_tool_call
+    except ImportError:
+        pass
+
+    logger.info("[TA compat] 已 patch langchain_core.messages.tool.create_tool_call")
+
+
+def _patch_ai_message_validator() -> None:
+    """备用方案:直接 patch AIMessage.model_validate 在 args 是 str 时降级清洗。
+
+    目前不启用,只在 tool_call_coercion 不够用时启用。
+    """
+    pass
