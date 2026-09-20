@@ -1,28 +1,34 @@
-import { useState, useEffect, useRef } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
 import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
-import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
-import DashboardPage from '@/pages/Dashboard'
-import OpportunitiesPage from '@/pages/Opportunities'
-import StocksPage from '@/pages/Stocks'
-import AgentsPage from '@/pages/Agents'
-import SettingsPage from '@/pages/Settings'
-import DataSourcesPage from '@/pages/DataSources'
-import HistoryPage from '@/pages/History'
-import AnalysisDetailPage from '@/pages/AnalysisDetail'
-import PriceAlertsPage from '@/pages/PriceAlerts'
-import PaperTradingPage from '@/pages/PaperTrading'
-import EvaluationsPage from '@/pages/Evaluations'
-import AssistantPage from '@/pages/Assistant'
-import LoginPage from '@/pages/Login'
+import { appApi } from '@panwatch/api/app'
+import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import AccountMenu from '@/components/AccountMenu'
 import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
+import { RouteErrorBoundary, RouteLoadingFallback } from '@/components/RouteBoundary'
+import { preloadRoute, routePages } from '@/router/page-loaders'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+
+const {
+  LoginPage,
+  DashboardPage,
+  OpportunitiesPage,
+  StocksPage,
+  AgentsPage,
+  SettingsPage,
+  DataSourcesPage,
+  HistoryPage,
+  AnalysisDetailPage,
+  PriceAlertsPage,
+  PaperTradingPage,
+  EvaluationsPage,
+  AssistantPage,
+} = routePages
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '首页' },
@@ -114,9 +120,13 @@ function App() {
   // 登录页面不显示导航
   if (location.pathname === '/login') {
     return (
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-      </Routes>
+      <RouteErrorBoundary>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+          </Routes>
+        </Suspense>
+      </RouteErrorBoundary>
     )
   }
 
@@ -150,6 +160,8 @@ function App() {
                     key={to}
                     to={to}
                     className="relative"
+                    onMouseEnter={() => preloadRoute(to)}
+                    onFocus={() => preloadRoute(to)}
                   >
                     <span
                       className={`absolute inset-0 rounded-xl transition-all ${
@@ -247,6 +259,8 @@ function App() {
               <NavLink
                 key={to}
                 to={to}
+                onMouseEnter={() => preloadRoute(to)}
+                onFocus={() => preloadRoute(to)}
                 className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-xl transition-all min-w-[56px] ${
                   isActive
                     ? 'text-primary bg-primary/8 ring-1 ring-primary/15'
@@ -266,21 +280,25 @@ function App() {
         className={`${isAssistantRoute ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''} px-4 md:px-6 py-4 md:py-6 w-full`}
       >
         <AssistantOpenBridge />
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/opportunities" element={<OpportunitiesPage />} />
-          <Route path="/portfolio" element={<StocksPage />} />
-          <Route path="/agents" element={<AgentsPage />} />
-          <Route path="/evaluations" element={<EvaluationsPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/paper-trading" element={<PaperTradingPage />} />
-          <Route path="/alerts" element={<PriceAlertsPage />} />
-          <Route path="/assistant" element={<AssistantPage />} />
-          <Route path="/assistant/:conversationId" element={<AssistantPage />} />
-          <Route path="/datasources" element={<DataSourcesPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
-        </Routes>
+        <RouteErrorBoundary>
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/opportunities" element={<OpportunitiesPage />} />
+              <Route path="/portfolio" element={<StocksPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/evaluations" element={<EvaluationsPage />} />
+              <Route path="/history" element={<HistoryPage />} />
+              <Route path="/paper-trading" element={<PaperTradingPage />} />
+              <Route path="/alerts" element={<PriceAlertsPage />} />
+              <Route path="/assistant" element={<AssistantPage />} />
+              <Route path="/assistant/:conversationId" element={<AssistantPage />} />
+              <Route path="/datasources" element={<DataSourcesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
       <LogsModal open={logsOpen} onOpenChange={setLogsOpen} />
       <SelfCheckModal open={selfCheckOpen} onClose={() => setSelfCheckOpen(false)} />
