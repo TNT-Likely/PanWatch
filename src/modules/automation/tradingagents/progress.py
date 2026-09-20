@@ -125,6 +125,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             "llm_start",
             call_n=self._llm_call_count,
             model=model,
+            operation_id=str(kwargs.get("run_id") or f"llm:{self._llm_call_count}"),
         )
         # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
         self._otel_llm_span = otel.start_detached_span(
@@ -158,6 +159,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             call_cost=round(cost, 6),
+            operation_id=str(kwargs.get("run_id") or ""),
         )
         # OTel:回填 token 用量并结束 gen_ai span。
         if self._otel_llm_span is not None:
@@ -208,7 +210,12 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
                 otel.end_span(span)
 
     def on_llm_error(self, error, **kwargs):
-        self._emit("llm_call", "llm_error", error=str(error)[:200])
+        self._emit(
+            "llm_call",
+            "llm_error",
+            error=str(error)[:200],
+            operation_id=str(kwargs.get("run_id") or ""),
+        )
         self._emit("error", "llm_error", error=str(error)[:200])
 
     def on_chain_error(self, error, **kwargs):
@@ -221,11 +228,21 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             name = kwargs.get("name") or (serialized or {}).get("name") or "unknown"
         except Exception:
             name = kwargs.get("name") or "unknown"
-        self._emit("llm_call", "tool_start", tool=str(name))
+        self._emit(
+            "llm_call",
+            "tool_start",
+            tool=str(name),
+            operation_id=str(kwargs.get("run_id") or f"tool:{name}"),
+        )
 
     def on_tool_end(self, output, **kwargs):
         name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
-        self._emit("llm_call", "tool_end", tool=str(name))
+        self._emit(
+            "llm_call",
+            "tool_end",
+            tool=str(name),
+            operation_id=str(kwargs.get("run_id") or ""),
+        )
 
     def on_tool_error(self, error, **kwargs):
         name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
@@ -234,6 +251,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             "tool_error",
             tool=str(name),
             error=str(error)[:200],
+            operation_id=str(kwargs.get("run_id") or ""),
         )
 
     # ---- 公共方法 ----
@@ -278,14 +296,14 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
     stage_state: dict[str, dict] = {s: {"name": s, "status": "pending"} for s in STAGES_ORDER}
     total_cost = 0.0
     current_stage = None
-    active_operation = None
+    active_operations: dict[str, dict] = {}
     started_at = None
     collection_sources: dict[str, dict] = {}
 
     for entry in log_entries:
         tags = entry.get("tags") or {}
         stage = tags.get("stage")
-        action = tags.get("action")
+        action = tags.get("action") or ""
         source = tags.get("source")
         ts = entry.get("timestamp")
         if started_at is None and ts:
@@ -295,12 +313,28 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
             # LLM/工具事件不属于独立阶段，但需要保留当前活动操作，
             # 这样外部数据请求卡住时 UI 能显示具体工具名。
             if stage == "llm_call":
+                kind = "tool" if action.startswith("tool_") else "llm"
+                name = tags.get("tool") if kind == "tool" else tags.get("model")
+                operation_id = str(tags.get("operation_id") or f"{kind}:{name or action}")
                 if action == "llm_start":
-                    active_operation = {"kind": "llm", "name": tags.get("model") or "LLM 调用"}
+                    active_operations[operation_id] = {
+                        "kind": "llm", "name": tags.get("model") or "LLM 调用"
+                    }
                 elif action == "tool_start":
-                    active_operation = {"kind": "tool", "name": tags.get("tool") or "工具调用"}
+                    active_operations[operation_id] = {
+                        "kind": "tool", "name": tags.get("tool") or "工具调用"
+                    }
                 elif action in {"llm_end", "tool_end", "llm_error", "tool_error"}:
-                    active_operation = None
+                    if tags.get("operation_id"):
+                        active_operations.pop(operation_id, None)
+                    else:
+                        # 兼容旧日志/上游未传 run_id 的回调：只移除同类型同名称
+                        # 的一个操作，不影响并行执行的其它工具。
+                        expected_name = name or ("工具调用" if kind == "tool" else "LLM 调用")
+                        for key, operation in list(active_operations.items()):
+                            if operation["kind"] == kind and operation["name"] == expected_name:
+                                active_operations.pop(key, None)
+                                break
             continue
 
         if stage == "data_collection" and source:
@@ -340,7 +374,9 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
         if log_entries
         else 0,
         "total_cost_usd": round(total_cost, 6),
-        "active_operation": active_operation,
+        "active_operation": next(reversed(active_operations.values()), None)
+        if active_operations
+        else None,
         "stages": [stage_state[s] for s in STAGES_ORDER],
         "data_sources": list(collection_sources.values()),
     }

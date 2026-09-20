@@ -740,6 +740,7 @@ class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["capital_flow"][0], fake_flow)
         self.assertIsInstance(data["klines"], list)
         self.assertEqual(data["klines"], [fake_bar])
+        fake_md.klines.assert_called_once_with("600519", market="CN", days=750)
         self.assertIsInstance(data["events"], list)
         self.assertEqual(data["events"], [fake_event])
         self.assertIn("fetched_at", data)

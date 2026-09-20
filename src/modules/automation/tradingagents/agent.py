@@ -173,7 +173,9 @@ class TradingAgentsAgent(BaseAgent):
             sym, mkt = stock.symbol, stock.market.value
             quotes, klines_list, cf, events_list = await asyncio.gather(
                 _source("quote", lambda: md.quotes([sym], market=mkt), []),
-                _source("klines", lambda: md.klines(sym, market=mkt, days=120), []),
+                # 一次准备足够验证快照和 200 日均线使用的历史，后续 analyst
+                # 直接复用这份缓存，不再重复请求 750 日 K 线。
+                _source("klines", lambda: md.klines(sym, market=mkt, days=750), []),
                 _source("capital_flow", lambda: md.capital_flow(sym, market=mkt), None),
                 _source("events", lambda: md.events([sym], market=mkt, since_days=30), []),
             )
@@ -206,7 +208,10 @@ class TradingAgentsAgent(BaseAgent):
             from src.platform.marketdata.collectors.kline_collector import KlineCollector
             technical = await _source(
                 "technical",
-                lambda: KlineCollector(stock.market).get_technical_indicators(stock.symbol),
+                lambda: KlineCollector(stock.market).get_technical_indicators(
+                    stock.symbol,
+                    klines=klines_list or None,
+                ),
                 None,
             )
         except Exception as e:

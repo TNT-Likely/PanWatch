@@ -206,6 +206,28 @@ def test_progress_exposes_active_llm_tool_operation():
     }
 
 
+def test_progress_keeps_other_parallel_tool_active_after_one_finishes():
+    """并行工具中一个完成时，另一个长请求仍要显示为当前活动操作。"""
+    from src.modules.automation.tradingagents.progress import aggregate_progress
+
+    result = aggregate_progress([
+        {"timestamp": "2026-09-19T10:00:00+00:00", "tags": {
+            "stage": "llm_call", "action": "tool_start", "tool": "get_stock_data", "operation_id": "a",
+        }},
+        {"timestamp": "2026-09-19T10:00:00+00:00", "tags": {
+            "stage": "llm_call", "action": "tool_start", "tool": "get_verified_market_snapshot", "operation_id": "b",
+        }},
+        {"timestamp": "2026-09-19T10:00:01+00:00", "tags": {
+            "stage": "llm_call", "action": "tool_end", "tool": "get_stock_data", "operation_id": "a",
+        }},
+    ])
+
+    assert result["active_operation"] == {
+        "kind": "tool",
+        "name": "get_verified_market_snapshot",
+    }
+
+
 def test_one_market_source_failure_does_not_zero_other_sources():
     import asyncio
 
