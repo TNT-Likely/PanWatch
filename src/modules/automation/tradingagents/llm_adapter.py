@@ -33,6 +33,9 @@ def build_ta_llm_config(
     enable_sec_edgar: bool = False,
     runtime_dir: str | Path | None = None,
     holding_period_days: int = 5,
+    llm_timeout_seconds: int = 120,
+    llm_max_retries: int = 0,
+    llm_max_tokens: int = 4096,
 ) -> dict[str, Any]:
     """生成 TradingAgents 期望的 config dict。
 
@@ -118,6 +121,11 @@ def build_ta_llm_config(
         "online_tools": True,
         "checkpoint_enabled": False,  # 避免 sqlite checkpoint 文件污染
         "holding_period_days": max(1, int(holding_period_days)),
+        # TradingAgents 0.5.0 默认把这些交给底层 SDK；不设边界时，供应商
+        # 连接断开或模型持续输出会让整个 LangGraph 永久停在当前 analyst。
+        "llm_timeout_seconds": max(1, int(llm_timeout_seconds)),
+        "llm_max_retries": max(0, int(llm_max_retries)),
+        "max_tokens": max(256, int(llm_max_tokens)),
     })
     return config
 

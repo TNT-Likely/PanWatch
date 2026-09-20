@@ -148,6 +148,9 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "deep_model": "",       # 留空走默认 AI Service 的 model;可填如 "claude-sonnet-4"
             "quick_model": "",      # 留空 = deep_model;可填便宜模型如 "deepseek-chat"
             "timeout_minutes": 15,
+            "llm_timeout_seconds": 120,  # 单次 LLM 请求超时，防止 analyst 永久阻塞
+            "llm_max_retries": 0,         # 深度分析失败快速落终态，不在图内重复重试
+            "llm_max_tokens": 4096,       # 限制模型输出，避免网关空闲超时
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
             "enable_sec_edgar": False,  # 仅美股：优先使用有 filing-date 语义的 SEC EDGAR 财报

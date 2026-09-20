@@ -429,7 +429,13 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
 
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
     market = _market_for_symbol(symbol)
-    klines = KlineCollector(market).get_klines(symbol, days=750)
+    # collect() 已经为本次分析准备了 K 线；验证快照只需要同一份数据，
+    # 不应因为上游默认 lookback=750 再向东财发起一轮可能阻塞的请求。
+    cached_klines = _cache().get("klines")
+    if isinstance(cached_klines, (list, tuple)) and cached_klines:
+        klines = list(cached_klines)
+    else:
+        klines = KlineCollector(market).get_klines(symbol, days=750)
     if not klines:
         return None
     df = pd.DataFrame(

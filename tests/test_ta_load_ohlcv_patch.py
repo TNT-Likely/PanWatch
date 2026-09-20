@@ -39,6 +39,20 @@ def test_build_df_columns_and_date_filter(monkeypatch):
     assert len(df) == 20  # 04-01..04-20
 
 
+def test_build_df_reuses_injected_klines_before_fetching_again(monkeypatch):
+    """验证快照应复用采集阶段的 K 线，避免 analyst 再发一轮外部请求。"""
+    cached = _sample_klines(12)
+
+    def unexpected_fetch(*args, **kwargs):
+        raise AssertionError("should reuse PanWatch K-lines already in context")
+
+    monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
+    with ta.panwatch_data_context({"klines": cached}):
+        df = ta._build_panwatch_ohlcv_df("601238", "2026-04-20")
+
+    assert len(df) == 12
+
+
 def test_load_ohlcv_routes_a_share_to_panwatch(monkeypatch):
     """A股调用走 PanWatch,不触发原生 yfinance load_ohlcv。"""
     monkeypatch.setattr(KlineCollector, "get_klines", lambda self, symbol, days=60: _sample_klines(10))

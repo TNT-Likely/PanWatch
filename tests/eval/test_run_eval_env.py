@@ -13,7 +13,7 @@ def test_load_local_eval_env_reads_unset_eval_variables(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(run_eval, "REPO_ROOT", tmp_path)
-    for key in ("EVAL_AI_BASE_URL", "EVAL_AI_API_KEY", "EVAL_AI_MODEL"):
+    for key in ("EVAL_AI_BASE_URL", "EVAL_AI_API_KEY", "EVAL_AI_MODEL", "AI_API_KEY"):
         monkeypatch.delenv(key, raising=False)
 
     run_eval.load_local_eval_env()

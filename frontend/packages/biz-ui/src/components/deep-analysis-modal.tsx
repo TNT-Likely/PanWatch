@@ -465,6 +465,12 @@ function RunningView({
             已用 {formatElapsed(elapsed)} · ${cost.toFixed(4)}
           </span>
         </div>
+        {progress?.active_operation && (
+          <div className="text-[11px] text-muted-foreground">
+            当前操作：{progress.active_operation.kind === 'tool' ? '数据工具 ' : ''}
+            <span className="font-mono">{progress.active_operation.name}</span>
+          </div>
+        )}
         <div className="space-y-1 mt-3">
           {stages.length > 0 ? stages.map((s) => (
             <StageRow key={s.name} stage={s} />

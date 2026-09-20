@@ -111,8 +111,6 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
 
     def on_llm_start(self, serialized, prompts, **kwargs):
         self._llm_call_count = getattr(self, "_llm_call_count", 0) + 1
-        self._emit("llm_call", "llm_start", call_n=self._llm_call_count)
-        # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
         model = ""
         try:
             model = (
@@ -122,6 +120,13 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             )
         except Exception:
             model = ""
+        self._emit(
+            "llm_call",
+            "llm_start",
+            call_n=self._llm_call_count,
+            model=model,
+        )
+        # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
         self._otel_llm_span = otel.start_detached_span(
             f"chat {model}".strip() if model else "chat",
             parent_context=self._otel_parent,
@@ -203,10 +208,33 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
                 otel.end_span(span)
 
     def on_llm_error(self, error, **kwargs):
+        self._emit("llm_call", "llm_error", error=str(error)[:200])
         self._emit("error", "llm_error", error=str(error)[:200])
 
     def on_chain_error(self, error, **kwargs):
         self._emit("error", "chain_error", error=str(error)[:200])
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        """记录 LangGraph ToolNode 当前正在执行的工具。"""
+        name = ""
+        try:
+            name = kwargs.get("name") or (serialized or {}).get("name") or "unknown"
+        except Exception:
+            name = kwargs.get("name") or "unknown"
+        self._emit("llm_call", "tool_start", tool=str(name))
+
+    def on_tool_end(self, output, **kwargs):
+        name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
+        self._emit("llm_call", "tool_end", tool=str(name))
+
+    def on_tool_error(self, error, **kwargs):
+        name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
+        self._emit(
+            "llm_call",
+            "tool_error",
+            tool=str(name),
+            error=str(error)[:200],
+        )
 
     # ---- 公共方法 ----
 
@@ -250,6 +278,7 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
     stage_state: dict[str, dict] = {s: {"name": s, "status": "pending"} for s in STAGES_ORDER}
     total_cost = 0.0
     current_stage = None
+    active_operation = None
     started_at = None
     collection_sources: dict[str, dict] = {}
 
@@ -263,6 +292,15 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
             started_at = ts
 
         if not stage or stage not in stage_state:
+            # LLM/工具事件不属于独立阶段，但需要保留当前活动操作，
+            # 这样外部数据请求卡住时 UI 能显示具体工具名。
+            if stage == "llm_call":
+                if action == "llm_start":
+                    active_operation = {"kind": "llm", "name": tags.get("model") or "LLM 调用"}
+                elif action == "tool_start":
+                    active_operation = {"kind": "tool", "name": tags.get("tool") or "工具调用"}
+                elif action in {"llm_end", "tool_end", "llm_error", "tool_error"}:
+                    active_operation = None
             continue
 
         if stage == "data_collection" and source:
@@ -302,6 +340,7 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
         if log_entries
         else 0,
         "total_cost_usd": round(total_cost, 6),
+        "active_operation": active_operation,
         "stages": [stage_state[s] for s in STAGES_ORDER],
         "data_sources": list(collection_sources.values()),
     }

@@ -181,6 +181,31 @@ def test_data_collection_source_error_is_visible_in_progress_snapshot():
     ]
 
 
+def test_progress_exposes_active_llm_tool_operation():
+    """LLM/工具未结束时，快照要告诉前端具体卡在哪个操作。"""
+    from src.modules.automation.tradingagents.progress import aggregate_progress
+
+    result = aggregate_progress([
+        {
+            "timestamp": "2026-09-19T10:00:00+00:00",
+            "tags": {"stage": "market_analyst", "action": "stage_start"},
+        },
+        {
+            "timestamp": "2026-09-19T10:00:01+00:00",
+            "tags": {
+                "stage": "llm_call",
+                "action": "tool_start",
+                "tool": "get_verified_market_snapshot",
+            },
+        },
+    ])
+
+    assert result["active_operation"] == {
+        "kind": "tool",
+        "name": "get_verified_market_snapshot",
+    }
+
+
 def test_one_market_source_failure_does_not_zero_other_sources():
     import asyncio
 

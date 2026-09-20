@@ -92,6 +92,11 @@ export interface ProgressDataSource {
   error?: string
 }
 
+export interface ProgressActiveOperation {
+  kind: 'llm' | 'tool'
+  name: string
+}
+
 export interface ToolkitHit {
   timestamp: string
   action: string  // HIT / MISS / PASSTHROUGH / ERROR
@@ -109,6 +114,7 @@ export interface ProgressResponse {
   started_at?: string | null
   elapsed_sec: number
   total_cost_usd: number
+  active_operation?: ProgressActiveOperation | null
   stages: ProgressStage[]
   data_sources?: ProgressDataSource[]
   toolkit_summary?: { hit: number; miss: number; passthrough: number; fallthrough?: number; error: number }

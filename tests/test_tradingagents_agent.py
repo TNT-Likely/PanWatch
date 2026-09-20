@@ -72,6 +72,19 @@ class TestLLMAdapter(unittest.TestCase):
         self.assertEqual(config["output_language"], "Chinese")
         self.assertFalse(config["checkpoint_enabled"])
 
+    def test_build_ta_llm_config_bounds_provider_calls(self):
+        """LLM 请求必须有明确超时、重试和输出上限，避免图永远卡在单次调用。"""
+        ai_client = MagicMock()
+        ai_client.base_url = "https://api.example.com"
+        ai_client.model = "test-model"
+        ai_client.api_key = "sk-test"
+
+        config = build_ta_llm_config(ai_client)
+
+        self.assertEqual(config["llm_timeout_seconds"], 120)
+        self.assertEqual(config["llm_max_retries"], 0)
+        self.assertEqual(config["max_tokens"], 4096)
+
     def test_build_ta_llm_config_rejects_invalid_analyst(self):
         """非法分析师名 — 抛 ValueError"""
         ai_client = MagicMock()
@@ -156,8 +169,19 @@ class TestLLMAdapter(unittest.TestCase):
         """API key 注入到环境变量 — OPENAI_API_KEY 被设置"""
         import os
         ai_client = MagicMock(api_key="sk-test-key")
-        inject_api_key_env(ai_client)
-        self.assertEqual(os.environ.get("OPENAI_API_KEY"), "sk-test-key")
+        previous = {
+            key: os.environ.get(key)
+            for key in ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY")
+        }
+        try:
+            inject_api_key_env(ai_client)
+            self.assertEqual(os.environ.get("OPENAI_API_KEY"), "sk-test-key")
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 # ============================================================================
@@ -441,6 +465,28 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertTrue(agent.emit_paper_trading_signal)
         self.assertTrue(agent.enable_sec_edgar)
         self.assertEqual(agent.holding_period_days, 10)
+
+    def test_agent_init_has_bounded_llm_defaults(self):
+        """TradingAgents 默认不能把供应商请求无限期挂起。"""
+        agent = TradingAgentsAgent()
+        self.assertEqual(agent.llm_timeout_seconds, 120)
+        self.assertEqual(agent.llm_max_retries, 0)
+        self.assertEqual(agent.llm_max_tokens, 4096)
+
+    def test_graph_class_forwards_request_timeout_to_langchain(self):
+        """上游未读取 timeout 配置时，适配类仍需把它传给 ChatOpenAI。"""
+        from src.modules.automation.tradingagents.agent import _bounded_graph_class
+
+        class BaseGraph:
+            def __init__(self, config):
+                self.config = config
+
+            def _get_provider_kwargs(self):
+                return {"max_retries": 0}
+
+        graph_cls = _bounded_graph_class(BaseGraph)
+        graph = graph_cls(config={"llm_timeout_seconds": 7})
+        self.assertEqual(graph._get_provider_kwargs(), {"max_retries": 0, "timeout": 7.0})
 
     def test_paper_trading_bridge_disabled_skips(self):
         """模拟盘 bridge — enabled=False 直接 skip,不写库"""
