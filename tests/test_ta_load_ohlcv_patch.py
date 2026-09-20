@@ -251,6 +251,37 @@ def test_load_ohlcv_a_share_no_klines_raises_not_fallback(monkeypatch):
     assert real_calls["n"] == 0, "A股拉空不应回退 yfinance"
 
 
+def test_route_to_vendor_keeps_numeric_requested_symbol(monkeypatch):
+    """数字股票代码也是合法 ticker，不能因全是数字而复用缓存标的。"""
+    stock = type("Stock", (), {"symbol": "300624"})()
+    monkeypatch.setattr(
+        ta,
+        "_serve_from_panwatch",
+        lambda method_name, symbol, kwargs, args=(): f"served:{symbol}",
+    )
+
+    with ta.panwatch_data_context({"stock": stock, "klines": _sample_klines(4)}):
+        out = ta._patched_route_to_vendor("get_stock_data", "300624", "2026-06-18")
+
+    assert out == "served:300624"
+
+
+def test_route_to_vendor_rejects_cached_snapshot_for_different_numeric_symbol(monkeypatch):
+    """缓存快照与请求标的不一致时，不能静默把万兴科技数据当成其它股票。"""
+    stock = type("Stock", (), {"symbol": "601238"})()
+    monkeypatch.setattr(
+        ta,
+        "_serve_from_panwatch",
+        lambda method_name, symbol, kwargs, args=(): "wrong cached data",
+    )
+
+    with ta.panwatch_data_context({"stock": stock, "klines": _sample_klines(4)}):
+        out = ta._patched_route_to_vendor("get_stock_data", "300624", "2026-06-18")
+
+    assert "DATA_UNAVAILABLE" in out
+    assert "300624" in out
+
+
 def test_route_to_vendor_marks_expected_upstream_outage_as_data_unavailable(monkeypatch):
     """已知外部数据不可用应给 LLM 明确信号，而不是吞成空字符串。"""
 

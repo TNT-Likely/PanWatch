@@ -1,8 +1,8 @@
 """TradingAgents 进度回调。
 
-走两个机制:
-1. LangChain `BaseCallbackHandler`:LLM 每次调用前后的 hook
-2. LangGraph 节点切换:通过 debug=True 流式输出捕获(可选)
+走一个统一回调链:
+1. LangChain `BaseCallbackHandler`:捕获 LangGraph 节点、LLM 和工具的真实生命周期
+2. `agent.py` 将同一个 handler 注入 `Propagator.get_graph_args(callbacks=...)`，不依赖 debug 文本解析
 
 进度写入 PanWatch 的 `log_context`,前端轮询 `/api/agents/runs/{trace_id}/progress`
 聚合返回阶段。
@@ -15,8 +15,8 @@ import threading
 import time
 from typing import Any
 
-from src.platform.observability.log_context import log_context
 from src.platform.observability import otel
+from src.platform.observability.log_context import log_context
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,26 @@ STAGES_ORDER = [
     "risk_judge",
     "final_decision",
 ]
+
+# TradingAgents 0.5.0 的 LangGraph 节点名不是界面阶段名的一一映射。
+# 这里集中维护别名，而不是在每个 callback 分支里散落字符串判断；上游节点改名时只需改这一张表。
+NODE_STAGE_ALIASES = {
+    "market_analyst": "market_analyst",
+    "sentiment_analyst": "social_analyst",
+    "social_analyst": "social_analyst",
+    "news_analyst": "news_analyst",
+    "fundamentals_analyst": "fundamentals_analyst",
+    "bull_researcher": "bull_bear_debate",
+    "bear_researcher": "bull_bear_debate",
+    "research_manager": "research_manager",
+    "trader": "trader",
+    "aggressive_analyst": "risk_judge",
+    "conservative_analyst": "risk_judge",
+    "neutral_analyst": "risk_judge",
+    "risk_judge": "risk_judge",
+    "portfolio_manager": "final_decision",
+    "final_decision": "final_decision",
+}
 
 
 try:
@@ -80,6 +100,11 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._started_at = time.monotonic()
         self._total_cost = 0.0
         self._completed_stages: set[str] = set()
+        # LangChain 1.x 的 on_chain_end 不保证携带 name/metadata，因此必须保存
+        # start 时的 run_id -> 节点信息，才能把结束事件关回正确阶段。
+        self._chain_runs: dict[str, dict[str, str]] = {}
+        self._llm_runs: dict[str, dict[str, str]] = {}
+        self._tool_runs: dict[str, dict[str, str]] = {}
         # OTel 桥接:handler 在异步侧构造(to_thread 之前),此处捕获当前上下文,
         # 供工作线程里的 callback 把节点/LLM 子 span 挂到 root span 下(关闭时为 None)。
         self._otel_parent = otel.capture_context()
@@ -106,7 +131,9 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
                 **extra,
             },
         ):
-            logger.info(f"[TA进度] stage={stage} action={action} {extra}")
+            agent = extra.get("agent") or extra.get("langgraph_node") or ""
+            detail = f" agent={agent}" if agent else ""
+            logger.info(f"[TA进度] stage={stage} action={action}{detail} {extra}")
 
     def emit(self, stage: str, action: str, **extra) -> None:
         """向采集等非 LangChain 阶段发出同一格式的进度事件。"""
@@ -129,12 +156,16 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             )
         except Exception:
             model = ""
+        agent = _callback_agent(kwargs, self._chain_runs)
+        operation_id = str(kwargs.get("run_id") or f"llm:{self._llm_call_count}")
+        self._llm_runs[operation_id] = {"agent": agent, "model": model}
         self._emit(
             "llm_call",
             "llm_start",
             call_n=self._llm_call_count,
             model=model,
-            operation_id=str(kwargs.get("run_id") or f"llm:{self._llm_call_count}"),
+            operation_id=operation_id,
+            **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
         # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
         self._otel_llm_span = otel.start_detached_span(
@@ -162,13 +193,17 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             + completion_tokens / 1_000_000 * self._PRICE_PER_M_COMPLETION
         )
         self.record_cost(cost)
+        operation_id = str(kwargs.get("run_id") or "")
+        operation = self._llm_runs.pop(operation_id, {})
+        agent = operation.get("agent") or _callback_agent(kwargs, self._chain_runs)
         self._emit(
             "llm_call",
             "llm_end",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             call_cost=round(cost, 6),
-            operation_id=str(kwargs.get("run_id") or ""),
+            operation_id=operation_id,
+            **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
         # OTel:回填 token 用量并结束 gen_ai span。
         if self._otel_llm_span is not None:
@@ -183,40 +218,42 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             self._otel_llm_span = None
 
     def on_chain_start(self, serialized, inputs, **kwargs):
-        # LangGraph 节点切换;name 形如 "Market Analyst" / "Bull Researcher" 等
-        name = (
-            (kwargs.get("name") or "")
-            or (serialized or {}).get("name", "")
-            or "unknown"
-        )
+        # LangGraph 节点切换。节点名优先取 kwargs.name/metadata.langgraph_node，
+        # 因为 serialized 在不同 LangChain 版本里可能只有 runnable 类型名称。
+        name = _callback_name(serialized, kwargs)
         stage = _normalize_stage(name)
         if not stage:
             return
-        if stage not in self._completed_stages:
-            self._emit(stage, "stage_start", langgraph_node=name)
-            # OTel:TradingAgents 节点 -> 子 span(挂到 root span 下)。
-            if stage not in self._otel_stage_spans:
-                span = otel.start_detached_span(
-                    f"tradingagents.stage {stage}",
-                    parent_context=self._otel_parent,
-                    attributes={
-                        otel.ATTR_TA_STAGE: stage,
-                        otel.ATTR_AGENT_NAME: self.agent_name,
-                    },
-                )
-                if span is not None:
-                    self._otel_stage_spans[stage] = span
+        run_id = _run_id(kwargs)
+        if run_id:
+            self._chain_runs[run_id] = {
+                "name": name,
+                "stage": stage,
+                "parent_run_id": _parent_run_id(kwargs),
+            }
+        self._emit(
+            stage,
+            "stage_start",
+            langgraph_node=name,
+            run_id=run_id,
+            parent_run_id=_parent_run_id(kwargs),
+        )
+        # OTel 节点 span 只保留一个当前阶段，重复的并行/重试节点仍会产生进度事件，
+        # 但不会因为重复 span 让追踪树无限膨胀。
+        if stage not in self._otel_stage_spans:
+            span = otel.start_detached_span(
+                f"tradingagents.stage {stage}",
+                parent_context=self._otel_parent,
+                attributes={
+                    otel.ATTR_TA_STAGE: stage,
+                    otel.ATTR_AGENT_NAME: self.agent_name,
+                },
+            )
+            if span is not None:
+                self._otel_stage_spans[stage] = span
 
     def on_chain_end(self, outputs, **kwargs):
-        name = (kwargs.get("name") or "").strip()
-        stage = _normalize_stage(name)
-        if stage:
-            self._completed_stages.add(stage)
-            self._emit(stage, "stage_end", langgraph_node=name)
-            # OTel:结束该节点 span。
-            span = self._otel_stage_spans.pop(stage, None)
-            if span is not None:
-                otel.end_span(span)
+        self._finish_chain("stage_end", kwargs)
 
     def on_llm_error(self, error, **kwargs):
         self._emit(
@@ -228,7 +265,8 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._emit("error", "llm_error", error=str(error)[:200])
 
     def on_chain_error(self, error, **kwargs):
-        self._emit("error", "chain_error", error=str(error)[:200])
+        self._finish_chain("stage_error", kwargs, error=str(error)[:200])
+        self._emit("error", "chain_error", error=str(error)[:200], run_id=_run_id(kwargs))
 
     def on_tool_start(self, serialized, input_str, **kwargs):
         """记录 LangGraph ToolNode 当前正在执行的工具。"""
@@ -237,30 +275,42 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             name = kwargs.get("name") or (serialized or {}).get("name") or "unknown"
         except Exception:
             name = kwargs.get("name") or "unknown"
+        operation_id = str(kwargs.get("run_id") or f"tool:{name}")
+        agent = _callback_agent(kwargs, self._chain_runs)
+        self._tool_runs[operation_id] = {"agent": agent, "tool": str(name)}
         self._emit(
             "llm_call",
             "tool_start",
             tool=str(name),
-            operation_id=str(kwargs.get("run_id") or f"tool:{name}"),
+            operation_id=operation_id,
+            **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
 
     def on_tool_end(self, output, **kwargs):
-        name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
+        operation_id = str(kwargs.get("run_id") or "")
+        operation = self._tool_runs.pop(operation_id, {})
+        name = kwargs.get("name") or kwargs.get("tool_name") or operation.get("tool") or "unknown"
+        agent = operation.get("agent") or _callback_agent(kwargs, self._chain_runs)
         self._emit(
             "llm_call",
             "tool_end",
             tool=str(name),
-            operation_id=str(kwargs.get("run_id") or ""),
+            operation_id=operation_id,
+            **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
 
     def on_tool_error(self, error, **kwargs):
-        name = kwargs.get("name") or kwargs.get("tool_name") or "unknown"
+        operation_id = str(kwargs.get("run_id") or "")
+        operation = self._tool_runs.pop(operation_id, {})
+        name = kwargs.get("name") or kwargs.get("tool_name") or operation.get("tool") or "unknown"
+        agent = operation.get("agent") or _callback_agent(kwargs, self._chain_runs)
         self._emit(
             "llm_call",
             "tool_error",
             tool=str(name),
             error=str(error)[:200],
-            operation_id=str(kwargs.get("run_id") or ""),
+            operation_id=operation_id,
+            **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
 
     # ---- 公共方法 ----
@@ -269,17 +319,71 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._total_cost += usd
 
     def _guess_stage(self, serialized: dict, kwargs: dict) -> str:
-        name = (serialized.get("name") or kwargs.get("name") or "unknown").lower()
+        name = _callback_name(serialized, kwargs) or "unknown"
         return _normalize_stage(name) or "unknown"
+
+    def _finish_chain(self, action: str, kwargs: dict, **extra: Any) -> None:
+        """按 run_id 找回节点并发出结束事件；上游未携带节点名时也能正确闭环。"""
+        run_id = _run_id(kwargs)
+        record = self._chain_runs.pop(run_id, None) if run_id else None
+        name = (record or {}).get("name") or _callback_name(None, kwargs)
+        stage = (record or {}).get("stage") or _normalize_stage(name)
+        if not stage:
+            return
+        self._completed_stages.add(stage)
+        self._emit(
+            stage,
+            action,
+            langgraph_node=name,
+            run_id=run_id,
+            parent_run_id=(record or {}).get("parent_run_id") or _parent_run_id(kwargs),
+            **extra,
+        )
+        if action in {"stage_end", "stage_error"}:
+            span = self._otel_stage_spans.pop(stage, None)
+            if span is not None:
+                otel.end_span(span)
 
 
 def _normalize_stage(name: str) -> str:
     """把 LangGraph 节点名标准化到 STAGES_ORDER 里的一个值。"""
-    n = (name or "").lower().replace(" ", "_")
+    n = "_".join(str(name or "").strip().lower().replace("-", " ").split())
+    if not n:
+        return ""
+    if n in NODE_STAGE_ALIASES:
+        return NODE_STAGE_ALIASES[n]
     for stage in STAGES_ORDER:
-        if stage in n or n in stage:
+        if stage in n:
             return stage
     return ""
+
+
+def _callback_name(serialized: Any, kwargs: dict[str, Any]) -> str:
+    """兼容 LangChain callback 的 name/metadata/serialized 三种节点来源。"""
+    metadata = kwargs.get("metadata") or {}
+    return str(
+        kwargs.get("name")
+        or metadata.get("langgraph_node")
+        or (serialized or {}).get("name", "")
+        or ""
+    ).strip()
+
+
+def _run_id(kwargs: dict[str, Any]) -> str:
+    return str(kwargs.get("run_id") or "")
+
+
+def _parent_run_id(kwargs: dict[str, Any]) -> str:
+    return str(kwargs.get("parent_run_id") or "")
+
+
+def _callback_agent(kwargs: dict[str, Any], chain_runs: dict[str, dict[str, str]]) -> str:
+    metadata = kwargs.get("metadata") or {}
+    agent = str(metadata.get("langgraph_node") or kwargs.get("name") or "").strip()
+    if agent:
+        return agent
+    parent = chain_runs.get(_parent_run_id(kwargs))
+    return str((parent or {}).get("name") or "")
 
 
 def aggregate_progress(log_entries: list[dict]) -> dict:
@@ -325,14 +429,17 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
                 kind = "tool" if action.startswith("tool_") else "llm"
                 name = tags.get("tool") if kind == "tool" else tags.get("model")
                 operation_id = str(tags.get("operation_id") or f"{kind}:{name or action}")
+                agent = str(tags.get("agent") or tags.get("langgraph_node") or "")
                 if action == "llm_start":
-                    active_operations[operation_id] = {
-                        "kind": "llm", "name": tags.get("model") or "LLM 调用"
-                    }
+                    operation = {"kind": "llm", "name": tags.get("model") or "LLM 调用"}
+                    if agent:
+                        operation["agent"] = agent
+                    active_operations[operation_id] = operation
                 elif action == "tool_start":
-                    active_operations[operation_id] = {
-                        "kind": "tool", "name": tags.get("tool") or "工具调用"
-                    }
+                    operation = {"kind": "tool", "name": tags.get("tool") or "工具调用"}
+                    if agent:
+                        operation["agent"] = agent
+                    active_operations[operation_id] = operation
                 elif action in {"llm_end", "tool_end", "llm_error", "tool_error"}:
                     if tags.get("operation_id"):
                         active_operations.pop(operation_id, None)

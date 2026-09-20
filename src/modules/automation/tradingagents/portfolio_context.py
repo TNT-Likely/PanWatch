@@ -76,7 +76,9 @@ def to_tradingagents_portfolio(portfolio: Any):
         for position in getattr(account, "positions", ()) or ():
             ticker = str(getattr(position, "symbol", "") or "").strip().upper()
             quantity = _finite_number(getattr(position, "quantity", None))
-            if not ticker or quantity is None or quantity <= 0:
+            # TradingAgents 0.5.0 用正数表示多头、负数表示空头；这里只过滤
+            # 零数量和脏数据，不能把空头当成“无持仓”丢掉。
+            if not ticker or quantity is None or quantity == 0:
                 continue
             average_price = _finite_number(getattr(position, "cost_price", None))
             by_ticker.setdefault(ticker, []).append((quantity, average_price))
@@ -89,9 +91,13 @@ def to_tradingagents_portfolio(portfolio: Any):
             for lot_quantity, average_price in lots
             if average_price is not None
         ]
+        # 用数量绝对值做成本价权重：同方向仓位与旧逻辑一致，混合多空时
+        # 也不会因净数量接近 0 而产生无意义的极端均价；quantity 仍保留净符号。
+        total_abs_quantity = sum(abs(lot_quantity) for lot_quantity, _ in priced_lots)
         average_price = (
-            sum(lot_quantity * price for lot_quantity, price in priced_lots) / quantity
-            if len(priced_lots) == len(lots) and quantity > 0
+            sum(abs(lot_quantity) * price for lot_quantity, price in priced_lots)
+            / total_abs_quantity
+            if len(priced_lots) == len(lots) and total_abs_quantity > 0
             else None
         )
         positions.append(
@@ -101,11 +107,13 @@ def to_tradingagents_portfolio(portfolio: Any):
     return PortfolioContext(cash=cash, positions=positions)
 
 
-def patch_past_context(graph: Any, metadata_context: str) -> None:
-    """把 PanWatch 标的元数据附加到上游公开的 ``past_context`` 扩展点。
+def patch_instrument_context(graph: Any, metadata_context: str) -> None:
+    """把 PanWatch 标的元数据注入 TradingAgents 0.5.0 的 ``instrument_context``。
 
-    该补丁不处理 portfolio；0.5.0 会由 ``propagate(..., portfolio=...)``
-    生成并传入 ``portfolio_context``，这里必须完整透传该参数。
+    ``past_context`` 是上游用于历史研究记忆的扩展点，业务标的元数据放进去会
+    混淆提示词语义，也会让后续研究回放把本次股票信息当成历史经验。0.5.0 的
+    ``Propagator.create_initial_state`` 已公开 ``instrument_context``，因此只在
+    这个入口做一次实例级包装，并完整透传 portfolio/future kwargs。
     """
     if not metadata_context:
         return
@@ -122,18 +130,27 @@ def patch_past_context(graph: Any, metadata_context: str) -> None:
         trade_date: str,
         asset_type: str = "stock",
         past_context: str = "",
+        instrument_context: str = "",
+        portfolio_context: str = "",
         **kwargs: Any,
     ):
         merged = metadata_context
-        if past_context:
-            merged = f"{merged}\n\n---\n\n{past_context}"
+        if instrument_context:
+            merged = f"{merged}\n\n---\n\n{instrument_context}"
         return original(
             company_name,
             trade_date,
             asset_type=asset_type,
-            past_context=merged,
+            past_context=past_context,
+            instrument_context=merged,
+            portfolio_context=portfolio_context,
             **kwargs,
         )
 
     propagator.create_initial_state = _patched  # type: ignore[method-assign]
-    logger.info("[TA context] 已注入 %s 字符标的元数据到 past_context", len(metadata_context))
+    logger.info("[TA context] 已注入 %s 字符标的元数据到 instrument_context", len(metadata_context))
+
+
+def patch_past_context(graph: Any, metadata_context: str) -> None:
+    """兼容旧调用方的别名；新代码应使用 :func:`patch_instrument_context`。"""
+    patch_instrument_context(graph, metadata_context)

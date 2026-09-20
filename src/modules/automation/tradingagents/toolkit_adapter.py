@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextvars
 import logging
+import re
 import threading
 from contextlib import contextmanager
 from typing import Any
@@ -193,6 +194,31 @@ _patch_saved_sites: list[tuple[Any, str, Any]] = []  # (module, attr_name, origi
 _real_route_to_vendor = None  # 真 route_to_vendor(走上游 vendor 时用)
 
 
+_DATE_ARGUMENT = re.compile(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$")
+
+
+def _looks_like_date(value: Any) -> bool:
+    """判断 route_to_vendor 的字符串参数是不是日期，而不是用数字前缀误判 ticker。
+
+    A/HK 股票代码本身就是纯数字（如 300624、00700），因此不能再用
+    ``value[:4].isdigit()`` 之类的启发式过滤；只有明确匹配日期格式才跳过。
+    """
+    return isinstance(value, str) and bool(_DATE_ARGUMENT.fullmatch(value.strip()))
+
+
+def _extract_requested_symbol(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    """从上游工具参数提取 ticker，兼容 get_global_news 的日期首参。"""
+    for value in args:
+        if isinstance(value, str) and value.strip() and not _looks_like_date(value):
+            return value.strip()
+    return str(kwargs.get("symbol") or kwargs.get("ticker") or "").strip()
+
+
+def _cached_symbol() -> str:
+    stock = _cache().get("stock")
+    return str(getattr(stock, "symbol", "") or "").strip()
+
+
 def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     """模块级无状态 patch:A 股走 PanWatch(读 _cache()),港股先试上游再兜底,其余放行。
 
@@ -207,23 +233,41 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     所以多个并发任务共享同一个 _patched 也不会串台。
     """
     _raise_if_cancelled()
-    symbol = ""
-    # 大多数 method 第一个 positional 就是 ticker/symbol(get_global_news 等例外)
-    if args and isinstance(args[0], str) and not args[0][:4].isdigit():
-        # 第一个参数是 ticker(601127)而非日期(2026-...)
-        if not (len(args[0]) >= 8 and args[0][4] in "-/"):
-            symbol = args[0]
-    # 兜底:再看 kwargs
-    if not symbol:
-        symbol = kwargs.get("symbol") or kwargs.get("ticker") or ""
+    # 不过滤纯数字：A/HK ticker 合法地由数字组成；仅跳过明确的日期参数。
+    symbol = _extract_requested_symbol(args, kwargs)
 
     # 没拿到 symbol 时(如 get_global_news),用 cache 里的标的兜底,
     # 拦截"全局新闻"类调用避免拉到无关 Yahoo 鞋类/汽油新闻。
     if not symbol:
-        cached_stock = _cache().get("stock")
-        cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock else ""
+        cached_symbol = _cached_symbol()
         if is_panwatch_routable(cached_symbol):
             symbol = cached_symbol
+
+    # 工具请求了另一个 A/HK 标的时，禁止拿当前任务的快照冒充它。
+    # 这条边界比“尽量返回数据”更重要：错误标的数据会让后续 LLM 生成看似完整但完全错误的报告。
+    cached_symbol = _cached_symbol()
+    snapshot_symbol_mismatch = bool(
+        symbol
+        and is_panwatch_routable(symbol)
+        and cached_symbol
+        and symbol != cached_symbol
+        and _cache()
+    )
+    if snapshot_symbol_mismatch and is_a_share(symbol):
+        message = _data_unavailable_message(
+            method_name,
+            symbol,
+            RuntimeError(f"PanWatch snapshot is for {cached_symbol}, not {symbol}"),
+        )
+        _emit_toolkit_log(
+            "warning",
+            "DEGRADE",
+            method_name,
+            symbol,
+            reason=f"snapshot symbol mismatch: cached={cached_symbol}",
+            extra_args=_args_summary(args),
+        )
+        return message
 
     # A 股:yfinance/finnhub 拉不到,直接走 PanWatch
     if is_a_share(symbol) and _cache():
@@ -277,7 +321,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
             return upstream_result
 
         # yfinance 没数据 → fallback 到 PanWatch = HIT(PanWatch 兜底提供数据)
-        if _cache():
+        if _cache() and not snapshot_symbol_mismatch:
             try:
                 result = _serve_from_panwatch(method_name, symbol, kwargs, args=args)
                 _emit_toolkit_log(

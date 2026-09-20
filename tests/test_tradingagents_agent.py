@@ -602,15 +602,53 @@ class TestPortfolioContext(unittest.TestCase):
 
         self.assertIsNone(to_tradingagents_portfolio(PortfolioInfo()))
 
-    def test_patch_past_context_preserves_portfolio_context_argument(self):
-        """元数据仍可注入 past_context，原生 portfolio_context 参数必须原样透传。"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_past_context
+    def test_to_tradingagents_portfolio_preserves_short_positions(self):
+        """0.5.0 Position.quantity 允许负数，空头不能在适配层被静默丢弃。"""
+        from src.modules.automation.base import AccountInfo, PortfolioInfo, PositionInfo
+        from src.platform.marketdata.models import MarketCode
+        from src.modules.automation.tradingagents.portfolio_context import to_tradingagents_portfolio
+
+        portfolio = PortfolioInfo(accounts=[
+            AccountInfo(
+                id=1,
+                name="主账户",
+                available_funds=1000.0,
+                positions=[PositionInfo(
+                    account_id=1,
+                    account_name="主账户",
+                    stock_id=1,
+                    symbol="AAPL",
+                    name="Apple",
+                    market=MarketCode.US,
+                    cost_price=200.0,
+                    quantity=-5,
+                )],
+            )
+        ])
+
+        result = to_tradingagents_portfolio(portfolio)
+
+        assert [(position.ticker, position.quantity) for position in result.positions] == [
+            ("AAPL", -5.0),
+        ]
+
+    def test_patch_instrument_context_preserves_past_and_portfolio_context(self):
+        """标的元数据进入 0.5.0 instrument_context，不污染历史上下文和持仓上下文。"""
+        from src.modules.automation.tradingagents.portfolio_context import patch_instrument_context
 
         captured = {}
 
-        def original(company_name, trade_date, asset_type="stock", past_context="", portfolio_context=""):
+        def original(
+            company_name,
+            trade_date,
+            asset_type="stock",
+            past_context="",
+            instrument_context="",
+            portfolio_context="",
+        ):
             captured.update({
                 "past_context": past_context,
+                "instrument_context": instrument_context,
                 "portfolio_context": portfolio_context,
                 "asset_type": asset_type,
             })
@@ -618,27 +656,29 @@ class TestPortfolioContext(unittest.TestCase):
 
         graph = MagicMock()
         graph.propagator.create_initial_state = original
-        patch_past_context(graph, "STOCK METADATA")
+        patch_instrument_context(graph, "STOCK METADATA")
 
         graph.propagator.create_initial_state(
             "AAPL",
             "2026-05-16",
             asset_type="stock",
             past_context="prior lesson X",
+            instrument_context="upstream instrument facts",
             portfolio_context="native holdings",
         )
 
-        self.assertIn("STOCK METADATA", captured["past_context"])
-        self.assertIn("prior lesson X", captured["past_context"])
+        self.assertEqual(captured["past_context"], "prior lesson X")
+        self.assertIn("STOCK METADATA", captured["instrument_context"])
+        self.assertIn("upstream instrument facts", captured["instrument_context"])
         self.assertEqual(captured["portfolio_context"], "native holdings")
 
-    def test_patch_past_context_no_context_skips(self):
+    def test_patch_instrument_context_no_context_skips(self):
         """没有元数据时不替换上游方法。"""
-        from src.modules.automation.tradingagents.portfolio_context import patch_past_context
+        from src.modules.automation.tradingagents.portfolio_context import patch_instrument_context
 
         graph = MagicMock()
         original = graph.propagator.create_initial_state
-        patch_past_context(graph, "")
+        patch_instrument_context(graph, "")
         self.assertEqual(graph.propagator.create_initial_state, original)
 
     def test_run_sync_passes_native_portfolio_to_v050_propagate(self):

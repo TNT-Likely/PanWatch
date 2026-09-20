@@ -95,6 +95,8 @@ export interface ProgressDataSource {
 export interface ProgressActiveOperation {
   kind: 'llm' | 'tool'
   name: string
+  /** TradingAgents LangGraph 节点名；旧后端快照可能没有该字段。 */
+  agent?: string
 }
 
 export interface ToolkitHit {

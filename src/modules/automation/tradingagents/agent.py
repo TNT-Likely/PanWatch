@@ -30,7 +30,7 @@ from src.modules.automation.tradingagents.llm_adapter import (
 )
 from src.modules.automation.tradingagents.portfolio_context import (
     build_stock_metadata_context,
-    patch_past_context,
+    patch_instrument_context,
     to_tradingagents_portfolio,
 )
 from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
@@ -331,7 +331,7 @@ class TradingAgentsAgent(BaseAgent):
         cancel_event = threading.Event()
         progress_handler.cancel_event = cancel_event
 
-        # 4) 标的元信息走 past_context；用户持仓走 TradingAgents 0.5.0 原生 portfolio。
+        # 4) 标的元信息走 instrument_context；用户持仓走 TradingAgents 0.5.0 原生 portfolio。
         current_price = (data.get("quote") or {}).get("current_price")
         cur_price_num = current_price if isinstance(current_price, (int, float)) else None
         quote_data = data.get("quote") or {}
@@ -570,9 +570,9 @@ class TradingAgentsAgent(BaseAgent):
             if progress_handler is not None:
                 self._inject_graph_callbacks(graph, progress_handler)
 
-            # past_context 只保留标的元数据。用户仓位由上游 0.5.0 原生接口结构化传入。
+            # 0.5.0 原生提供 instrument_context；标的元数据不应污染 past_context。
             if stock_metadata_context:
-                patch_past_context(graph, stock_metadata_context)
+                patch_instrument_context(graph, stock_metadata_context)
 
             date_str = datetime.now().strftime("%Y-%m-%d")
             final_state, decision = graph.propagate(

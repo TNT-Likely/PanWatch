@@ -467,6 +467,11 @@ function RunningView({
         </div>
         {progress?.active_operation && (
           <div className="text-[11px] text-muted-foreground">
+            {progress.active_operation.agent && (
+              <>
+                当前 Agent：<span className="font-mono">{progress.active_operation.agent}</span> ·{' '}
+              </>
+            )}
             当前操作：{progress.active_operation.kind === 'tool' ? '数据工具 ' : ''}
             <span className="font-mono">{progress.active_operation.name}</span>
           </div>

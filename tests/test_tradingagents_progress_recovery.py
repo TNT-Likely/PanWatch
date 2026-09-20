@@ -206,6 +206,26 @@ def test_progress_exposes_active_llm_tool_operation():
     }
 
 
+def test_progress_active_operation_includes_agent_when_callback_provides_it():
+    from src.modules.automation.tradingagents.progress import aggregate_progress
+
+    result = aggregate_progress([{
+        "timestamp": "2026-09-19T10:00:01+00:00",
+        "tags": {
+            "stage": "llm_call",
+            "action": "tool_start",
+            "tool": "get_stock_data",
+            "agent": "Market Analyst",
+        },
+    }])
+
+    assert result["active_operation"] == {
+        "kind": "tool",
+        "name": "get_stock_data",
+        "agent": "Market Analyst",
+    }
+
+
 def test_progress_keeps_other_parallel_tool_active_after_one_finishes():
     """并行工具中一个完成时，另一个长请求仍要显示为当前活动操作。"""
     from src.modules.automation.tradingagents.progress import aggregate_progress
@@ -226,6 +246,81 @@ def test_progress_keeps_other_parallel_tool_active_after_one_finishes():
         "kind": "tool",
         "name": "get_verified_market_snapshot",
     }
+
+
+def test_progress_handler_uses_run_id_to_close_the_same_langgraph_node():
+    """LangChain 1.x 的 on_chain_end 不再稳定提供 name，必须按 run_id 关联。"""
+    from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
+
+    handler = PanWatchProgressHandler(trace_id="trace-1")
+    emitted = []
+    handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
+
+    handler.on_chain_start(
+        {"name": "Market Analyst"},
+        {},
+        name="Market Analyst",
+        run_id="node-1",
+        metadata={"langgraph_node": "Market Analyst"},
+    )
+    # 真实 LangChain 1.x 回调这里只有 run_id/parent_run_id，没有 name。
+    handler.on_chain_end({}, run_id="node-1", parent_run_id="root-1")
+
+    assert [(stage, action) for stage, action, _ in emitted] == [
+        ("market_analyst", "stage_start"),
+        ("market_analyst", "stage_end"),
+    ]
+    assert emitted[-1][2]["langgraph_node"] == "Market Analyst"
+    assert emitted[-1][2]["run_id"] == "node-1"
+
+
+def test_progress_handler_drops_empty_node_name_instead_of_data_collection():
+    """空名称不能命中 `n in stage`，否则所有未知结束事件都会变成数据采集完成。"""
+    from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
+
+    handler = PanWatchProgressHandler(trace_id="trace-2")
+    emitted = []
+    handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
+
+    handler.on_chain_end({}, run_id="unknown-1")
+
+    assert emitted == []
+
+
+def test_progress_handler_exposes_agent_for_llm_and_tool_operations():
+    """活动操作必须能解释是哪个子 Agent 发起的，避免 UI 只显示一个泛化工具名。"""
+    from src.modules.automation.tradingagents.progress import PanWatchProgressHandler
+
+    handler = PanWatchProgressHandler(trace_id="trace-3")
+    emitted = []
+    handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
+
+    handler.on_llm_start(
+        {"name": "ChatOpenAI"},
+        ["prompt"],
+        run_id="llm-1",
+        parent_run_id="node-1",
+        metadata={"langgraph_node": "Market Analyst"},
+    )
+    handler.on_tool_start(
+        {"name": "get_stock_data"},
+        "601238",
+        run_id="tool-1",
+        parent_run_id="node-1",
+        metadata={"langgraph_node": "Market Analyst"},
+    )
+
+    assert emitted[0][2]["agent"] == "Market Analyst"
+    assert emitted[1][2]["agent"] == "Market Analyst"
+
+
+def test_progress_handler_maps_upstream_researcher_aliases():
+    from src.modules.automation.tradingagents.progress import _normalize_stage
+
+    assert _normalize_stage("Sentiment Analyst") == "social_analyst"
+    assert _normalize_stage("Bull Researcher") == "bull_bear_debate"
+    assert _normalize_stage("Conservative Analyst") == "risk_judge"
+    assert _normalize_stage("Portfolio Manager") == "final_decision"
 
 
 def test_one_market_source_failure_does_not_zero_other_sources():
