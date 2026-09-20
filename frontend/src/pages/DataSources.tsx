@@ -242,12 +242,12 @@ export default function DataSourcesPage() {
   }
 
   const resetToSeed = async () => {
-    if (!window.confirm('将删除无对应数据源的孤儿行、补齐缺失的默认源,并保留你的自定义配置与凭证。是否继续?')) return
+    if (!window.confirm('将删除孤儿源、补齐缺失默认源，并把内置数据源测试股票恢复为 A/HK/US 各两条；自定义配置与凭证会保留。是否继续?')) return
     setResetting(true)
     try {
       const result = await resetDataSourcesToSeed()
       load()
-      toast(`已清理 ${result.deleted.length} 个孤儿源,补齐 ${result.seeded_missing.length} 个默认源`, 'success')
+      toast(`已恢复默认测试股票，清理 ${result.deleted.length} 个孤儿源,补齐 ${result.seeded_missing.length} 个默认源`, 'success')
     } catch (e) {
       toast(e instanceof Error ? e.message : '恢复默认失败', 'error')
     } finally {

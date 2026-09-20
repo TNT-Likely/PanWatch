@@ -94,3 +94,42 @@ def test_reconcile_deletes_orphans_keeps_user_custom_and_fills_missing_defaults(
     assert ("quote", "tencent") not in deleted_pairs
 
     db.close()
+
+
+def test_reconcile_refreshes_legacy_seed_test_symbols_but_keeps_custom_values():
+    """升级默认测试股票时,旧种子/旧 APPL 拼写应迁移,真正自定义值不能被覆盖。"""
+    db = _make_session()
+    db.add(
+        DataSource(
+            name="腾讯K线",
+            type="kline",
+            provider="tencent",
+            config={},
+            enabled=True,
+            priority=0,
+            supports_batch=False,
+            test_symbols=["601127", "600519", "300750", "APPL"],
+        )
+    )
+    db.add(
+        DataSource(
+            name="自定义 K线",
+            type="kline",
+            provider="tencent",
+            config={"custom": True},
+            enabled=True,
+            priority=99,
+            supports_batch=False,
+            test_symbols=["688981"],
+        )
+    )
+    db.commit()
+
+    server.reconcile_data_sources(db, reset_test_symbols=True)
+    rows = db.query(DataSource).filter(DataSource.type == "kline").all()
+    seeded = next(row for row in rows if row.name == "腾讯K线")
+    custom = next(row for row in rows if row.name == "自定义 K线")
+
+    assert seeded.test_symbols == ["600519", "601127", "00700", "00386", "AAPL", "NVDA"]
+    assert custom.test_symbols == ["688981"]
+    db.close()

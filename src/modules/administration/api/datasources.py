@@ -138,10 +138,10 @@ def get_datasource_types():
 
 @router.post("/reset-to-seed")
 def reset_datasources_to_seed(db: Session = Depends(get_db)):
-    """数据源表温和对账:补齐缺失的预置默认 + 删除孤儿行,保留用户有效自定义/凭证。"""
+    """恢复内置数据源默认值:补齐/删除孤儿并重置测试股票,保留用户配置与凭证。"""
     from server import reconcile_data_sources
 
-    summary = reconcile_data_sources(db)
+    summary = reconcile_data_sources(db, reset_test_symbols=True)
     logger.info(f"数据源手动对账完成: {summary}")
     return summary
 

@@ -26,15 +26,6 @@ DEFAULT_TEST_SYMBOLS: tuple[str, ...] = tuple(
     for symbol in symbols
 )
 
-# K 线 provider 的市场能力不同，默认测试代码按能力裁剪：
-# 腾讯/东财覆盖 A 股+港股；Stooq 只覆盖美股；Yahoo 覆盖港股+美股。
-DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER: dict[str, tuple[str, ...]] = {
-    "tencent": DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"],
-    "eastmoney": DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"],
-    "stooq": DEFAULT_TEST_SYMBOLS_BY_MARKET["US"],
-    "yahoo": DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["US"],
-}
-
 logger = logging.getLogger(__name__)
 
 # 数据源"测试"最多测多少个配置的 test_symbols(上限,防用户贴一大串把源打爆)。
