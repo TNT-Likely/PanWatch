@@ -229,10 +229,11 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
         "type_label": TYPE_LABELS.get(source.type, source.type),
         "provider": source.provider,
         "supports_batch": source.supports_batch or False,
-        "test_symbols": source.test_symbols or [],
+        "test_symbols": result.test_symbols or source.test_symbols or [],
         "count": result.count,
         "duration_ms": result.duration_ms,
         "error": result.error,
         "items": result.data,
+        "errors": result.errors,
         "logs": manager.get_logs(),
     }

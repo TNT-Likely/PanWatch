@@ -43,6 +43,7 @@ from src.modules.automation.chart_analyst import ChartAnalystAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 from src.modules.automation.premarket_outlook import PremarketOutlookAgent
 from src.modules.automation.tradingagents import TradingAgentsAgent
+from src.modules.market.data_collector import DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +398,7 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": True,
             "priority": 0,
             "supports_batch": False,
-            "test_symbols": ["601127", "600519", "300750"],
+            "test_symbols": list(DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER["tencent"]),
         },
         {
             "name": "东方财富 K线",
@@ -407,7 +408,7 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": True,
             "priority": 5,   # 腾讯(0)之后、Tushare(10)之前 → CN/HK 兜底
             "supports_batch": False,
-            "test_symbols": ["600519", "00700"],
+            "test_symbols": list(DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER["eastmoney"]),
         },
         {
             "name": "Stooq K线",
@@ -417,7 +418,7 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": True,
             "priority": 15,  # US 兜底(腾讯 0 之后)
             "supports_batch": False,
-            "test_symbols": ["AAPL"],
+            "test_symbols": list(DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER["stooq"]),
         },
         {
             "name": "Yahoo K线",
@@ -431,7 +432,7 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "enabled": False,  # 需代理,默认关(同 YFinance 口径),用户配好 proxy 再开
             "priority": 20,  # US/HK 最后兜底
             "supports_batch": False,
-            "test_symbols": ["AAPL", "00700"],
+            "test_symbols": list(DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER["yahoo"]),
         },
         # 资金流向数据源
         {

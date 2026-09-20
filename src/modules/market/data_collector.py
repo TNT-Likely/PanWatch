@@ -13,6 +13,28 @@ from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import DataSource
 from src.platform.marketdata.models import MarketCode
 
+# 数据源测试的统一样本。每个市场固定两个稳定、容易识别的代码，避免新建数据源
+# 时只测到 A 股，导致港股/美股 provider 的市场路由问题直到生产才暴露。
+DEFAULT_TEST_SYMBOLS_BY_MARKET: dict[str, tuple[str, str]] = {
+    "CN": ("600519", "601127"),
+    "HK": ("00700", "00386"),
+    "US": ("AAPL", "NVDA"),
+}
+DEFAULT_TEST_SYMBOLS: tuple[str, ...] = tuple(
+    symbol
+    for symbols in DEFAULT_TEST_SYMBOLS_BY_MARKET.values()
+    for symbol in symbols
+)
+
+# K 线 provider 的市场能力不同，默认测试代码按能力裁剪：
+# 腾讯/东财覆盖 A 股+港股；Stooq 只覆盖美股；Yahoo 覆盖港股+美股。
+DEFAULT_KLINE_TEST_SYMBOLS_BY_PROVIDER: dict[str, tuple[str, ...]] = {
+    "tencent": DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"],
+    "eastmoney": DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"],
+    "stooq": DEFAULT_TEST_SYMBOLS_BY_MARKET["US"],
+    "yahoo": DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"] + DEFAULT_TEST_SYMBOLS_BY_MARKET["US"],
+}
+
 logger = logging.getLogger(__name__)
 
 # 数据源"测试"最多测多少个配置的 test_symbols(上限,防用户贴一大串把源打爆)。
@@ -32,6 +54,10 @@ class CollectorResult:
     error: str = ""
     source_name: str = ""
     source_provider: str = ""
+    # 本次实际执行的代码(包含未返回的数据),用于测试弹窗回显配置/默认值。
+    test_symbols: list[str] = field(default_factory=list)
+    # 部分成功时保留逐代码失败原因，避免无数据代码(如 APPL)静默消失。
+    errors: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -346,10 +372,7 @@ class DataCollectorManager:
 
     async def test_source(self, source: DataSource) -> CollectorResult:
         """测试单个数据源"""
-        test_symbols = source.test_symbols or [
-            "601127",
-            "600519",
-        ]  # 默认测试赛力斯和茅台
+        test_symbols = source.test_symbols or list(DEFAULT_TEST_SYMBOLS)
 
         start_time = datetime.now()
         self._log(
@@ -363,6 +386,7 @@ class DataCollectorManager:
             # 收集 vendor/market_get 的真实失败原因,失败时透到 UI(而不是笼统的"无数据")
             with capture_errors() as errs:
                 result = await self._test_source_impl(source, test_symbols)
+            result.test_symbols = list(test_symbols)
             if not result.success and errs:
                 # 去重保序 + 截断,拼成真因;若原本已有更具体的 error(如"provider 无对应 vendor")保留在前
                 seen: dict[str, None] = {}
@@ -410,6 +434,7 @@ class DataCollectorManager:
                 duration_ms=duration_ms,
                 source_name=source.name,
                 source_provider=source.provider,
+                test_symbols=list(test_symbols),
             )
 
     async def _test_source_impl(
@@ -586,6 +611,7 @@ class DataCollectorManager:
         )
 
         results = []
+        errors: list[dict[str, str]] = []
         first_error = ""
         for symbol in test_symbols[:_TEST_SYMBOL_LIMIT]:
             market = Symbol.parse(symbol).market.value
@@ -603,7 +629,10 @@ class DataCollectorManager:
                     )
                 elif not first_error:
                     first_error = "无数据"
+                if not bars:
+                    errors.append({"symbol": symbol, "market": market, "error": "无数据"})
             except Exception as e:
+                errors.append({"symbol": symbol, "market": market, "error": str(e)})
                 if not first_error:
                     first_error = str(e)
 
@@ -612,6 +641,7 @@ class DataCollectorManager:
             data=results,
             count=len(results),
             error="" if results else (first_error or "获取 K 线数据失败"),
+            errors=errors,
         )
 
     async def _test_quote_source(

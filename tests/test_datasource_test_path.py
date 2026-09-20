@@ -65,6 +65,54 @@ class TestQuoteSourceTestPath(unittest.IsolatedAsyncioTestCase):
 
 
 class TestKlineSourceTestPath(unittest.IsolatedAsyncioTestCase):
+    async def test_partial_results_include_symbol_level_errors(self):
+        """kline 测试应保留无数据代码的原因,不能静默丢掉(例如 APPL 拼写错误)。"""
+        fixed_bar = Bar(
+            date="2026-07-16", open=1.1, close=1.2, high=1.3, low=1.0, volume=110.0
+        )
+
+        def fake_klines(self, symbol, *, market, days=120, min_count=1):
+            return [fixed_bar] if symbol == "AAPL" else []
+
+        with mock.patch("marketdata.MarketData.klines", fake_klines):
+            manager = DataCollectorManager()
+            source = _make_source(
+                type="kline", provider="stooq", test_symbols=["AAPL", "APPL"]
+            )
+            result = await manager._test_kline_source(source, source.test_symbols)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.count, 1)
+        self.assertEqual(
+            result.errors,
+            [{"symbol": "APPL", "market": "US", "error": "无数据"}],
+        )
+
+    def test_default_kline_symbols_cover_each_market_twice(self):
+        """默认 K 线测试样本应覆盖 A/HK/US,每个市场两个代码。"""
+        from src.modules.market.data_collector import DEFAULT_TEST_SYMBOLS_BY_MARKET, DEFAULT_TEST_SYMBOLS
+
+        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"], ("600519", "601127"))
+        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"], ("00700", "00386"))
+        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["US"], ("AAPL", "NVDA"))
+        self.assertEqual(DEFAULT_TEST_SYMBOLS, ("600519", "601127", "00700", "00386", "AAPL", "NVDA"))
+
+    async def test_empty_symbols_report_effective_defaults(self):
+        """未配置 test_symbols 时,测试结果应返回实际使用的六个默认代码。"""
+        fixed_bar = Bar(
+            date="2026-07-16", open=1.1, close=1.2, high=1.3, low=1.0, volume=110.0
+        )
+
+        with mock.patch("marketdata.MarketData.klines", lambda *args, **kwargs: [fixed_bar]):
+            manager = DataCollectorManager()
+            source = _make_source(type="kline", provider="stooq", test_symbols=[])
+            result = await manager.test_source(source)
+
+        self.assertEqual(
+            result.test_symbols,
+            ["600519", "601127", "00700", "00386", "AAPL", "NVDA"],
+        )
+
     async def test_success_returns_items_and_count(self):
         """kline 测试:monkeypatch MarketData.klines 返回固定数据,断言 count>0/items/无 error"""
         fixed_bars = [

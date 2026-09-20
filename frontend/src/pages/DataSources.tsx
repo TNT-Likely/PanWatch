@@ -19,6 +19,29 @@ interface TestLogItem {
   count: number
 }
 
+export interface TestErrorItem {
+  symbol: string
+  market?: string
+  error: string
+}
+
+export function TestErrorList({ errors }: { errors: TestErrorItem[] }) {
+  if (errors.length === 0) return null
+
+  return (
+    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+      <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mb-1">未返回明细</div>
+      <div className="space-y-1">
+        {errors.map((item, i) => (
+          <div key={`${item.symbol}-${i}`} className="text-[12px] text-amber-700 dark:text-amber-300">
+            {item.symbol}{item.market ? ` (${item.market})` : ''}: {item.error}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface TestResult {
   test_passed: boolean
   source_name: string
@@ -30,6 +53,7 @@ interface TestResult {
   count: number
   duration_ms: number
   error?: string
+  errors?: TestErrorItem[]
   items?: unknown[] | { image?: string }  // array for most types, object for chart
   logs: TestLogItem[]
 }
@@ -526,6 +550,8 @@ export default function DataSourcesPage() {
                 <div className="text-[12px] text-red-600 dark:text-red-400 break-words whitespace-pre-wrap">{testResult.error}</div>
               </div>
             )}
+
+            {testResult?.errors && <TestErrorList errors={testResult.errors} />}
 
             {/* Execution Logs */}
             {testResult?.logs && testResult.logs.length > 0 && (
