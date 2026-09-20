@@ -3,6 +3,7 @@ import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wall
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { klinesApi } from '@panwatch/api/klines'
 import { useLocalStorage } from '@/lib/utils'
+import { loadPortfolioPageData } from '@/lib/portfolio-page-data'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
@@ -222,6 +223,45 @@ interface PriceAlertRuleSummary {
 const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
+const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
+  const items: QuoteRequestItem[] = []
+  const seen = new Set<string>()
+  const add = (symbol: string, market: string) => {
+    const key = `${market}:${symbol}`
+    if (seen.has(key)) return
+    seen.add(key)
+    items.push({ symbol, market })
+  }
+
+  for (const stock of stockList) add(stock.symbol, stock.market)
+  for (const account of portfolio?.accounts || []) {
+    for (const pos of account.positions) add(pos.symbol, pos.market)
+  }
+  return items
+}
+
+const toQuoteMap = (rows: QuoteResponse[]): Record<string, { current_price: number | null; change_pct: number | null }> => {
+  const map: Record<string, { current_price: number | null; change_pct: number | null }> = {}
+  for (const item of rows || []) {
+    map[`${item.market}:${item.symbol}`] = {
+      current_price: item.current_price ?? null,
+      change_pct: item.change_pct ?? null,
+    }
+  }
+  return map
+}
+
+const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, { total: number; enabled: number }> => {
+  const map: Record<string, { total: number; enabled: number }> = {}
+  for (const row of rows || []) {
+    const key = `${String(row.market || 'CN').toUpperCase()}:${String(row.stock_symbol || '').toUpperCase()}`
+    if (!map[key]) map[key] = { total: 0, enabled: 0 }
+    map[key].total += 1
+    if (row.enabled) map[key].enabled += 1
+  }
+  return map
+}
+
 const round2 = (value: number) => Math.round(value * 100) / 100
 
 const mergePortfolioQuotes = (
@@ -393,6 +433,9 @@ export default function StocksPage() {
   const [marketStatus, setMarketStatus] = useState<MarketStatus[]>([])
   // Guard to prevent overlapping K线刷新任务导致实际并发超限
   const klineRefreshInFlight = useRef<Promise<void> | null>(null)
+  const initialLoadPromiseRef = useRef<Promise<void> | null>(null)
+  const configLoadPromiseRef = useRef<Promise<void> | null>(null)
+  const configLoadedRef = useRef(false)
 
   // Stock form
   const [showStockForm, setShowStockForm] = useState(false)
@@ -538,95 +581,64 @@ export default function StocksPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout>>()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // 非核心数据后台加载（不阻塞 UI）
-  const loadConfigAsync = async () => {
-    try {
-      const [agentData, servicesData, channelsData] = await Promise.all([
-        fetchAPI<AgentConfig[]>('/agents'),
-        fetchAPI<AIService[]>('/providers/services'),
-        fetchAPI<NotifyChannel[]>('/channels'),
-      ])
-      setAgents(agentData)
-      setServices(servicesData)
-      setChannels(channelsData)
-    } catch (e) {
-      console.warn('加载配置数据失败:', e)
-    }
-  }
-
-  const load = async () => {
-    try {
-      // 核心数据（立即需要）
-      const [stockData, accountData] = await Promise.all([
-        fetchAPI<Stock[]>('/stocks'),
-        fetchAPI<Account[]>('/accounts'),
-      ])
-      setStocks(stockData)
-      setAccounts(accountData)
-      // 默认展开所有账户
-      setExpandedAccounts(new Set(accountData.map((a: Account) => a.id)))
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)  // 提前解除阻塞
-    }
-
-    // 非核心数据（后台加载，不阻塞 UI）
-    loadConfigAsync()
-
-    // 市场状态（非核心，失败不影响页面）
-    try {
-      const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
-      setMarketStatus(marketStatusData)
-    } catch (e) {
-      console.warn('获取市场状态失败:', e)
-    }
-  }
-
-  const loadPortfolio = async () => {
-    setPortfolioLoading(true)
-    try {
-      // 核心数据：仅本地账户/持仓
-      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false')
-      setPortfolioRaw(portfolioData)
-      setPortfolio(mergePortfolioQuotes(portfolioData, quotes))
-
-      // 市场状态（非核心，失败不影响页面）
-      try {
-        const marketStatusData = await fetchAPI<MarketStatus[]>('/stocks/markets/status')
-        setMarketStatus(marketStatusData)
-      } catch (e) {
-        console.warn('获取市场状态失败:', e)
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setPortfolioLoading(false)
-    }
-  }
-
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
-    const items: QuoteRequestItem[] = []
-    const seen = new Set<string>()
-
-    for (const stock of stocks) {
-      const key = `${stock.market}:${stock.symbol}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      items.push({ symbol: stock.symbol, market: stock.market })
-    }
-
-    for (const account of portfolioRaw?.accounts || []) {
-      for (const pos of account.positions) {
-        const key = `${pos.market}:${pos.symbol}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        items.push({ symbol: pos.symbol, market: pos.market })
-      }
-    }
-
-    return items
+    return buildQuoteItemsFrom(stocks, portfolioRaw)
   }, [stocks, portfolioRaw])
+
+  const requestQuotes = useCallback(async (items: QuoteRequestItem[], signal?: AbortSignal): Promise<QuoteResponse[]> => {
+    if (items.length === 0) return []
+    try {
+      return await fetchAPI<QuoteResponse[]>('/quotes/batch', {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+        signal,
+      })
+    } catch (e) {
+      console.warn('刷新行情失败:', e)
+      return []
+    }
+  }, [])
+
+  const requestSuggestions = useCallback(async (items: QuoteRequestItem[], signal?: AbortSignal): Promise<Record<string, PoolSuggestion>> => {
+    if (items.length === 0) return {}
+    try {
+      const params = new URLSearchParams({
+        include_expired: 'true',
+        stock_keys: items.map(item => `${item.symbol}:${item.market}`).join(','),
+      })
+      return await fetchAPI<Record<string, PoolSuggestion>>(`/suggestions?${params.toString()}`, { signal })
+    } catch (e) {
+      console.warn('加载建议池失败:', e)
+      return {}
+    }
+  }, [])
+
+  const requestPriceAlerts = useCallback(async (items: QuoteRequestItem[], signal?: AbortSignal): Promise<PriceAlertRuleSummary[]> => {
+    if (items.length === 0) return []
+    try {
+      return await fetchAPI<PriceAlertRuleSummary[]>('/price-alerts', { signal })
+    } catch (e) {
+      console.warn('加载提醒摘要失败:', e)
+      return []
+    }
+  }, [])
+
+  const requestKlineSummaries = useCallback(async (items: QuoteRequestItem[], signal?: AbortSignal): Promise<Record<string, KlineSummary>> => {
+    if (items.length === 0) return {}
+    try {
+      const data = await klinesApi.summaryBatch(items, signal)
+      const map: Record<string, KlineSummary> = {}
+      for (const item of data || []) {
+        if (item && item.summary && !('error' in item.summary)) {
+          map[`${item.market}:${item.symbol}`] = item.summary as unknown as KlineSummary
+        }
+      }
+      return map
+    } catch {
+      // 批量请求失败时保留旧摘要，避免技术徽章整体闪断。
+      return {}
+    }
+  }, [])
 
   const refreshQuotes = useCallback(async () => {
     const items = buildQuoteItems()
@@ -634,39 +646,20 @@ export default function StocksPage() {
 
     setQuotesLoading(true)
     try {
-      const data = await fetchAPI<QuoteResponse[]>('/quotes/batch', {
-        method: 'POST',
-        body: JSON.stringify({ items }),
-      })
-      const map: Record<string, { current_price: number | null; change_pct: number | null }> = {}
-      for (const item of data) {
-        map[`${item.market}:${item.symbol}`] = {
-          current_price: item.current_price ?? null,
-          change_pct: item.change_pct ?? null,
-        }
+      const data = await requestQuotes(items)
+      if (data.length > 0) {
+        setQuotes(toQuoteMap(data))
+        setLastRefreshTime(new Date())
       }
-      setQuotes(map)
-      setLastRefreshTime(new Date())
-    } catch (e) {
-      console.warn('刷新行情失败:', e)
     } finally {
       setQuotesLoading(false)
     }
-  }, [buildQuoteItems])
+  }, [buildQuoteItems, requestQuotes])
 
   useEffect(() => {
     if (!portfolioRaw) return
     setPortfolio(mergePortfolioQuotes(portfolioRaw, quotes))
   }, [portfolioRaw, quotes])
-
-  useEffect(() => {
-    if (stocks.length === 0 && (!portfolioRaw || portfolioRaw.accounts.length === 0)) return
-    refreshQuotes()
-    // 刷新 K 线摘要（用于常驻评分徽章）
-    ;(async () => {
-      try { await refreshKlines() } catch {}
-    })()
-  }, [stocks, portfolioRaw, refreshQuotes])
 
   // 刷新 K 线摘要（批量接口）；并防止重入
   const refreshKlines = useCallback(async () => {
@@ -674,52 +667,150 @@ export default function StocksPage() {
     const run = (async () => {
       const items = buildQuoteItems()
       if (items.length === 0) return
-      const map: Record<string, KlineSummary> = {}
-      try {
-        const data = await klinesApi.summaryBatch(items)
-        for (const item of data || []) {
-          if (item && item.summary && !('error' in item.summary)) {
-            map[`${item.market}:${item.symbol}`] = item.summary as unknown as KlineSummary
-          }
-        }
-      } catch {
-        // 批量请求失败时保留旧摘要，避免技术徽章整体闪断。
-      }
+      const map = await requestKlineSummaries(items)
       // 增量合并：本轮单只失败时保留旧值，避免技术徽章闪断/消失
       setKlineSummaries(prev => ({ ...prev, ...map }))
     })()
     klineRefreshInFlight.current = run
     try { await run } finally { klineRefreshInFlight.current = null }
-  }, [buildQuoteItems])
+  }, [buildQuoteItems, requestKlineSummaries])
 
   // 从建议池加载建议（包含历史建议和多来源建议）
-  const loadPoolSuggestions = useCallback(async () => {
+  const loadPoolSuggestions = useCallback(async (itemsOverride?: QuoteRequestItem[]) => {
     setPoolSuggestionsLoading(true)
     try {
-      const data = await fetchAPI<Record<string, PoolSuggestion>>('/suggestions?include_expired=true')
+      const data = await requestSuggestions(itemsOverride || buildQuoteItems())
       setPoolSuggestions(data)
-    } catch (e) {
-      console.warn('加载建议池失败:', e)
     } finally {
       setPoolSuggestionsLoading(false)
     }
-  }, [])
+  }, [buildQuoteItems, requestSuggestions])
 
   const loadPriceAlertSummaries = useCallback(async () => {
-    try {
-      const rows = await fetchAPI<PriceAlertRuleSummary[]>('/price-alerts')
-      const map: Record<string, { total: number; enabled: number }> = {}
-      for (const r of rows || []) {
-        const key = `${String(r.market || 'CN').toUpperCase()}:${String(r.stock_symbol || '').toUpperCase()}`
-        if (!map[key]) map[key] = { total: 0, enabled: 0 }
-        map[key].total += 1
-        if (r.enabled) map[key].enabled += 1
+    const rows = await requestPriceAlerts(buildQuoteItems())
+    setPriceAlertSummaryMap(toPriceAlertSummaryMap(rows))
+  }, [buildQuoteItems, requestPriceAlerts])
+
+  const loadConfigAsync = useCallback((signal?: AbortSignal): Promise<void> => {
+    if (configLoadedRef.current) return Promise.resolve()
+    if (configLoadPromiseRef.current) return configLoadPromiseRef.current
+
+    const run = (async () => {
+      try {
+        const [agentData, servicesData, channelsData] = await Promise.all([
+          fetchAPI<AgentConfig[]>('/agents', { signal }),
+          fetchAPI<AIService[]>('/providers/services', { signal }),
+          fetchAPI<NotifyChannel[]>('/channels', { signal }),
+        ])
+        setAgents(agentData)
+        setServices(servicesData)
+        setChannels(channelsData)
+        configLoadedRef.current = true
+      } catch (e) {
+        console.warn('加载配置数据失败:', e)
       }
-      setPriceAlertSummaryMap(map)
+    })()
+    configLoadPromiseRef.current = run
+    void run.finally(() => {
+      configLoadPromiseRef.current = null
+    })
+    return run
+  }, [])
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const stockData = await fetchAPI<Stock[]>('/stocks', { signal })
+      setStocks(stockData)
     } catch (e) {
-      console.warn('加载提醒摘要失败:', e)
+      if (!signal?.aborted) console.error(e)
+    } finally {
+      if (!signal?.aborted) setLoading(false)
     }
   }, [])
+
+  const loadPortfolio = useCallback(async () => {
+    setPortfolioLoading(true)
+    try {
+      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false')
+      const items = buildQuoteItemsFrom(stocks, portfolioData)
+      const [quoteRows, klineMap] = await Promise.all([
+        requestQuotes(items),
+        requestKlineSummaries(items),
+      ])
+      const quoteMap = toQuoteMap(quoteRows)
+      setPortfolioRaw(portfolioData)
+      setAccounts(portfolioData.accounts.map(account => ({
+        id: account.id,
+        name: account.name,
+        available_funds: account.available_funds,
+        enabled: true,
+      })))
+      setExpandedAccounts(new Set(portfolioData.accounts.map(account => account.id)))
+      setQuotes(prev => ({ ...prev, ...quoteMap }))
+      setKlineSummaries(prev => ({ ...prev, ...klineMap }))
+      setPortfolio(mergePortfolioQuotes(portfolioData, { ...quotes, ...quoteMap }))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setPortfolioLoading(false)
+    }
+  }, [requestKlineSummaries, requestQuotes, quotes, stocks])
+
+  const loadInitialData = useCallback((signal: AbortSignal): Promise<void> => {
+    if (initialLoadPromiseRef.current) return initialLoadPromiseRef.current
+    setLoading(true)
+    setPortfolioLoading(true)
+
+    const run = (async () => {
+      const data = await loadPortfolioPageData({
+        loadStocks: requestSignal => fetchAPI<Stock[]>('/stocks', { signal: requestSignal }),
+        loadPortfolio: requestSignal => fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal: requestSignal }),
+        loadMarketStatus: async requestSignal => {
+          try {
+            return await fetchAPI<MarketStatus[]>('/stocks/markets/status', { signal: requestSignal })
+          } catch (e) {
+            console.warn('获取市场状态失败:', e)
+            return []
+          }
+        },
+        buildQuoteItems: buildQuoteItemsFrom,
+        loadQuotes: requestQuotes,
+        loadSuggestions: requestSuggestions,
+        loadPriceAlerts: requestPriceAlerts,
+        loadKlines: requestKlineSummaries,
+      }, signal)
+
+      const quoteMap = toQuoteMap(data.quotes)
+      setStocks(data.stocks)
+      setPortfolioRaw(data.portfolio)
+      setMarketStatus(data.marketStatus)
+      setQuotes(quoteMap)
+      setKlineSummaries(data.klines)
+      setPoolSuggestions(data.suggestions)
+      setPriceAlertSummaryMap(toPriceAlertSummaryMap(data.priceAlerts))
+      setPortfolio(mergePortfolioQuotes(data.portfolio, quoteMap))
+      const nextAccounts = data.portfolio.accounts.map(account => ({
+        id: account.id,
+        name: account.name,
+        available_funds: account.available_funds,
+        enabled: true,
+      }))
+      setAccounts(nextAccounts)
+      setExpandedAccounts(new Set(nextAccounts.map(account => account.id)))
+      if (data.quotes.length > 0) setLastRefreshTime(new Date())
+    })().catch(error => {
+      if (!signal.aborted) console.error('加载持仓页面数据失败:', error)
+    }).finally(() => {
+      if (!signal.aborted) {
+        setLoading(false)
+        setPortfolioLoading(false)
+      }
+      initialLoadPromiseRef.current = null
+    })
+
+    initialLoadPromiseRef.current = run
+    return run
+  }, [requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
 
   // Load news for specific stock or all watchlist
   const loadNews = useCallback(async (stockName?: string) => {
@@ -792,40 +883,23 @@ export default function StocksPage() {
     await Promise.all([
       refreshQuotes(),
       loadPoolSuggestions(),
+      loadPriceAlertSummaries(),
       refreshKlines(),
     ])
-  }, [refreshQuotes, loadPoolSuggestions, refreshKlines])
+  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshQuotes])
 
-  useEffect(() => { load(); loadPortfolio(); loadPoolSuggestions(); loadPriceAlertSummaries(); refreshKlines() }, [])
-
-  // 仅关注列表场景（无持仓）也要在列表加载后预取 K 线摘要，保证技术指标徽章可见
-  const watchlistKlineInitDone = useRef(false)
-  const klineMissingRetryRef = useRef<Record<string, number>>({})
   useEffect(() => {
-    if (watchlistKlineInitDone.current) return
-    if (!stocks || stocks.length === 0) return
-    watchlistKlineInitDone.current = true
-    refreshKlines()
-  }, [stocks, refreshKlines])
-
-  // 关注列表变更后，自动补齐缺失的 K 线摘要（避免未配置 agent 时没有技术指标徽章）
-  useEffect(() => {
-    if (!stocks || stocks.length === 0) return
-    const now = Date.now()
-    const retryGapMs = 2 * 60 * 1000
-    const missing = stocks.filter(s => {
-      const key = `${s.market || 'CN'}:${s.symbol}`
-      if (klineSummaries[key]) return false
-      const lastTry = klineMissingRetryRef.current[key] || 0
-      return (now - lastTry) > retryGapMs
-    })
-    if (missing.length === 0) return
-    for (const s of missing) {
-      const key = `${s.market || 'CN'}:${s.symbol}`
-      klineMissingRetryRef.current[key] = now
+    const controller = new AbortController()
+    void loadInitialData(controller.signal)
+    return () => {
+      controller.abort()
+      initialLoadPromiseRef.current = null
     }
-    refreshKlines()
-  }, [stocks, klineSummaries, refreshKlines])
+  }, [loadInitialData])
+
+  useEffect(() => {
+    if (agentDialogStock) void loadConfigAsync()
+  }, [agentDialogStock, loadConfigAsync])
 
   // Agent 配置弹窗：预览未来触发时间（用于自检工作日/周末语义）
   useEffect(() => {
@@ -895,26 +969,12 @@ export default function StocksPage() {
     }
   }, [loadPoolSuggestions, refreshKlines, toast])
 
-  // 首次加载后，按需刷新 K 线摘要与建议池
-  const initialKlineDone = useRef(false)
-  useEffect(() => {
-    if (portfolio && portfolio.accounts.length > 0 && !initialKlineDone.current) {
-      initialKlineDone.current = true
-      refreshKlines()
-      loadPoolSuggestions()
-    }
-  }, [portfolio, refreshKlines, loadPoolSuggestions])
-
   // Auto-refresh timer
   useEffect(() => {
     if (autoRefresh) {
       refreshQuotes()
-      refreshKlines()
-      loadPoolSuggestions()
       refreshTimerRef.current = setInterval(() => {
         refreshQuotes()
-        refreshKlines()
-        loadPoolSuggestions()
       }, refreshInterval * 1000)
     } else {
       // Clear interval when disabled
@@ -929,7 +989,7 @@ export default function StocksPage() {
         clearInterval(refreshTimerRef.current)
       }
     }
-  }, [autoRefresh, refreshInterval, refreshQuotes, refreshKlines])
+  }, [autoRefresh, refreshInterval, refreshQuotes])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
