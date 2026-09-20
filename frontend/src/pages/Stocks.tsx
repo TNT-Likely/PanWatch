@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
+import { klinesApi } from '@panwatch/api/klines'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
@@ -667,30 +668,23 @@ export default function StocksPage() {
     })()
   }, [stocks, portfolioRaw, refreshQuotes])
 
-  // 刷新 K 线摘要（并发受限的单个请求，避免批量接口慢）；并防止重入
+  // 刷新 K 线摘要（批量接口）；并防止重入
   const refreshKlines = useCallback(async () => {
     if (klineRefreshInFlight.current) return klineRefreshInFlight.current
     const run = (async () => {
       const items = buildQuoteItems()
       if (items.length === 0) return
-      const limit = 5
       const map: Record<string, KlineSummary> = {}
-      let idx = 0
-      const worker = async () => {
-        while (idx < items.length) {
-          const i = idx++
-          const it = items[i]
-          try {
-            const res = await fetchAPI<{ symbol: string; market: string; summary: KlineSummary }>(`/klines/${encodeURIComponent(it.symbol)}/summary?market=${encodeURIComponent(it.market)}`)
-            if (res && (res as any).summary) {
-              map[`${it.market}:${it.symbol}`] = (res as any).summary as KlineSummary
-            }
-          } catch {
-            // ignore single failure
+      try {
+        const data = await klinesApi.summaryBatch(items)
+        for (const item of data || []) {
+          if (item && item.summary && !('error' in item.summary)) {
+            map[`${item.market}:${item.symbol}`] = item.summary as unknown as KlineSummary
           }
         }
+      } catch {
+        // 批量请求失败时保留旧摘要，避免技术徽章整体闪断。
       }
-      await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
       // 增量合并：本轮单只失败时保留旧值，避免技术徽章闪断/消失
       setKlineSummaries(prev => ({ ...prev, ...map }))
     })()

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 
@@ -161,17 +162,22 @@ def get_kline_summary_batch(payload: KlineSummaryBatchRequest):
     if not payload.items:
         return []
 
-    results = []
-    for item in payload.items:
-        market_code = _parse_market(item.market)
-        collector = KlineCollector(market_code)
-        summary = collector.get_kline_summary(item.symbol)
-        results.append(
-            {
-                "symbol": item.symbol,
-                "market": market_code.value,
-                "summary": summary,
-            }
-        )
+    market_codes = [_parse_market(item.market) for item in payload.items]
 
-    return results
+    def load_one(index: int):
+        item = payload.items[index]
+        market_code = market_codes[index]
+        try:
+            summary = KlineCollector(market_code).get_kline_summary(item.symbol)
+        except Exception as exc:
+            summary = {"error": str(exc)}
+        return {
+            "symbol": item.symbol,
+            "market": market_code.value,
+            "summary": summary,
+        }
+
+    # 与前端原先的并发上限保持一致，减少批量接口对数据源的瞬时压力。
+    with ThreadPoolExecutor(max_workers=min(5, len(payload.items))) as executor:
+        futures = [executor.submit(load_one, index) for index in range(len(payload.items))]
+        return [future.result() for future in futures]
