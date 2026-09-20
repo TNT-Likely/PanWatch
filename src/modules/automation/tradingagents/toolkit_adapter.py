@@ -432,7 +432,10 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     # collect() 已经为本次分析准备了 K 线；验证快照只需要同一份数据，
     # 不应因为上游默认 lookback=750 再向东财发起一轮可能阻塞的请求。
     cached_klines = _cache().get("klines")
-    if isinstance(cached_klines, (list, tuple)) and cached_klines:
+    cached_stock = _cache().get("stock")
+    cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock is not None else ""
+    cache_matches_symbol = not cached_symbol or str(cached_symbol) == str(symbol)
+    if cache_matches_symbol and isinstance(cached_klines, (list, tuple)) and cached_klines:
         klines = list(cached_klines)
     else:
         klines = KlineCollector(market).get_klines(symbol, days=750)

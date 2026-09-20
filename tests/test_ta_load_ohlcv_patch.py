@@ -53,6 +53,25 @@ def test_build_df_reuses_injected_klines_before_fetching_again(monkeypatch):
     assert len(df) == 12
 
 
+def test_build_df_does_not_reuse_klines_for_another_symbol(monkeypatch):
+    """模型误传其它代码时，不能把当前标的缓存冒充成对方行情。"""
+    cached = _sample_klines(12)
+    fetched = _sample_klines(8)
+    calls = []
+
+    def fetch(self, symbol, days=60):
+        calls.append((symbol, days))
+        return fetched
+
+    monkeypatch.setattr(KlineCollector, "get_klines", fetch)
+    stock = type("Stock", (), {"symbol": "601238"})()
+    with ta.panwatch_data_context({"stock": stock, "klines": cached}):
+        df = ta._build_panwatch_ohlcv_df("300624", "2026-04-20")
+
+    assert len(df) == 8
+    assert calls == [("300624", 750)]
+
+
 def test_load_ohlcv_routes_a_share_to_panwatch(monkeypatch):
     """A股调用走 PanWatch,不触发原生 yfinance load_ohlcv。"""
     monkeypatch.setattr(KlineCollector, "get_klines", lambda self, symbol, days=60: _sample_klines(10))
