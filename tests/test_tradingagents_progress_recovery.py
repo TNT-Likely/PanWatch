@@ -266,3 +266,50 @@ def test_one_market_source_failure_does_not_zero_other_sources():
         assert result["technical"] == {"rsi": 52}
 
     asyncio.run(_run())
+
+
+def test_empty_required_market_source_is_visible_as_error(monkeypatch):
+    """行情源返回空列表时，进度不能伪装成 source_end。"""
+    import asyncio
+
+    from src.modules.automation.tradingagents import agent as agent_module
+    from src.modules.automation.tradingagents.agent import TradingAgentsAgent
+
+    class _Handler:
+        events = []
+
+        def __init__(self, *args, **kwargs):
+            self.trace_id = args[0] if args else ""
+            self.events = []
+
+        def emit(self, stage, action, **extra):
+            self.events.append((stage, action, extra))
+
+    async def _run():
+        agent = TradingAgentsAgent(collection_timeout_seconds=5)
+        stock = MagicMock(symbol="300624", name="万兴科技")
+        stock.market.value = "CN"
+        context = MagicMock()
+        context.watchlist = [stock]
+        context._trace_id = "man-tradingagents-300624-empty"
+
+        market_data = MagicMock()
+        market_data.quotes.return_value = []
+        market_data.klines.return_value = []
+        market_data.capital_flow.return_value = None
+        market_data.events.return_value = []
+        monkeypatch.setattr(agent_module, "PanWatchProgressHandler", _Handler)
+        monkeypatch.setattr(agent_module, "get_market_data", lambda: market_data)
+        monkeypatch.setattr(
+            "src.platform.marketdata.collectors.kline_collector.KlineCollector.get_technical_indicators",
+            lambda self, symbol, klines=None: {},
+        )
+
+        await agent.collect(context)
+        events = context._progress_handler.events
+        assert any(
+            action == "source_error" and extra.get("source") == "klines"
+            for _, action, extra in events
+        )
+
+    asyncio.run(_run())

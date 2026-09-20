@@ -18,7 +18,7 @@ import logging
 import random
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any
 
 import httpx
@@ -34,11 +34,24 @@ _FETCH_SOURCE: contextvars.ContextVar[str] = contextvars.ContextVar(
 
 @contextmanager
 def fetch_source(name: str):
-    """标注当前取数的调用来源,写入失败日志便于定位触发方。"""
+    """标注当前取数的调用来源,写入失败日志便于定位触发方。
+
+    同步透传到 marketdata 包自己的 HTTP contextvar；否则宿主调度器虽然
+    已经标记了 ``outcome_eval``，包内腾讯/Stooq 日志仍会显示为空来源。
+    """
     token = _FETCH_SOURCE.set(name or "")
+    stack = ExitStack()
     try:
+        try:
+            from marketdata.http import fetch_source as package_fetch_source
+
+            stack.enter_context(package_fetch_source(name))
+        except Exception:
+            # marketdata 是可选依赖；宿主采集器本身仍应能独立工作。
+            pass
         yield
     finally:
+        stack.close()
         _FETCH_SOURCE.reset(token)
 
 

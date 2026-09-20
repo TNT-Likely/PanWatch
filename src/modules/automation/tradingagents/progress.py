@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -61,7 +62,12 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
     前端通过过滤 log_entries 表的 trace_id + event=ta_progress 拿到时间线。
     """
 
-    def __init__(self, trace_id: str, agent_name: str = "tradingagents"):
+    def __init__(
+        self,
+        trace_id: str,
+        agent_name: str = "tradingagents",
+        cancel_event: threading.Event | None = None,
+    ):
         # langchain_core BaseCallbackHandler 没有 __init__ 参数,直接 super 安全
         try:
             super().__init__()
@@ -70,6 +76,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             pass
         self.trace_id = trace_id
         self.agent_name = agent_name
+        self.cancel_event = cancel_event
         self._started_at = time.monotonic()
         self._total_cost = 0.0
         self._completed_stages: set[str] = set()
@@ -85,6 +92,8 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
 
     def _emit(self, stage: str, action: str, **extra):
         """写一条进度日志。前端按 trace_id + event=ta_progress 拉。"""
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            return
         with log_context(
             trace_id=self.trace_id,
             agent_name=self.agent_name,

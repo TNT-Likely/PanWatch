@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from src.platform.marketdata.collectors.market_http import fetch_source
 from src.platform.marketdata.collectors import kline_collector
 from src.platform.marketdata.models import MarketCode
 
@@ -99,3 +100,11 @@ def test_get_kline_summary_fetches_klines_once(monkeypatch):
 
     assert calls["n"] == 1, f"摘要应只取一次 K线,实际 {calls['n']} 次"
     assert summary.get("ma5") is not None, "指标应基于复用的 K线算出"
+
+
+def test_fetch_source_is_visible_to_marketdata_package(monkeypatch):
+    """宿主调度器标注的来源应透传到 marketdata 包的失败日志。"""
+    from marketdata.http import source_suffix
+
+    with fetch_source("outcome_eval"):
+        assert source_suffix() == " [src=outcome_eval]"

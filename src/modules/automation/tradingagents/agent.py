@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -155,7 +156,15 @@ class TradingAgentsAgent(BaseAgent):
                     asyncio.to_thread(fn),
                     timeout=self.collection_timeout_seconds,
                 )
-                progress_handler.emit("data_collection", "source_end", source=name)
+                if name in {"quote", "klines"} and not value:
+                    progress_handler.emit(
+                        "data_collection",
+                        "source_error",
+                        source=name,
+                        error="empty result",
+                    )
+                else:
+                    progress_handler.emit("data_collection", "source_end", source=name)
                 return value
             except Exception as e:
                 # 429、网络超时和单源解析错误都只影响该源，不阻塞整个分析。
@@ -171,14 +180,17 @@ class TradingAgentsAgent(BaseAgent):
         try:
             md = get_market_data()
             sym, mkt = stock.symbol, stock.market.value
-            quotes, klines_list, cf, events_list = await asyncio.gather(
-                _source("quote", lambda: md.quotes([sym], market=mkt), []),
-                # 一次准备足够验证快照和 200 日均线使用的历史，后续 analyst
-                # 直接复用这份缓存，不再重复请求 750 日 K 线。
-                _source("klines", lambda: md.klines(sym, market=mkt, days=750), []),
-                _source("capital_flow", lambda: md.capital_flow(sym, market=mkt), None),
-                _source("events", lambda: md.events([sym], market=mkt, since_days=30), []),
-            )
+            from src.platform.marketdata.collectors.kline_collector import kline_source
+
+            with kline_source(f"tradingagents:{trace_id}"):
+                quotes, klines_list, cf, events_list = await asyncio.gather(
+                    _source("quote", lambda: md.quotes([sym], market=mkt), []),
+                    # 一次准备足够验证快照和 200 日均线使用的历史，后续 analyst
+                    # 直接复用这份缓存，不再重复请求 750 日 K 线。
+                    _source("klines", lambda: md.klines(sym, market=mkt, days=750), []),
+                    _source("capital_flow", lambda: md.capital_flow(sym, market=mkt), None),
+                    _source("events", lambda: md.events([sym], market=mkt, since_days=30), []),
+                )
         except Exception as e:
             logger.warning(f"[TA] 初始化数据源失败,使用空结果: {e}")
             quotes, klines_list, cf, events_list = [], [], None, []
@@ -316,6 +328,8 @@ class TradingAgentsAgent(BaseAgent):
         progress_handler = getattr(context, "_progress_handler", None)
         if not isinstance(progress_handler, PanWatchProgressHandler):
             progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        cancel_event = threading.Event()
+        progress_handler.cancel_event = cancel_event
 
         # 4) 标的元信息走 past_context；用户持仓走 TradingAgents 0.5.0 原生 portfolio。
         current_price = (data.get("quote") or {}).get("current_price")
@@ -342,10 +356,12 @@ class TradingAgentsAgent(BaseAgent):
                     panwatch_data=data,
                     stock_metadata_context=meta_context,
                     portfolio=getattr(context, "portfolio", None),
+                    cancel_event=cancel_event,
                 ),
                 timeout=self.timeout_minutes * 60,
             )
         except asyncio.TimeoutError:
+            cancel_event.set()
             # 超时:尝试落库部分进度供后续查看
             partial_cost = getattr(progress_handler, "_total_cost", 0.0)
             partial_stages = list(getattr(progress_handler, "_completed_stages", set()))
@@ -360,6 +376,12 @@ class TradingAgentsAgent(BaseAgent):
                 f"③ 调高 timeout_minutes。"
             )
             raise RuntimeError(partial_msg)
+        except asyncio.CancelledError:
+            cancel_event.set()
+            raise
+        except Exception:
+            cancel_event.set()
+            raise
 
         # 5) 映射成 AnalysisResult
         result = map_state_to_result(
@@ -510,6 +532,7 @@ class TradingAgentsAgent(BaseAgent):
         panwatch_data: dict,
         stock_metadata_context: str = "",
         portfolio: Any | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         """在 worker 线程跑同步 TradingAgents 流程。
 
@@ -529,7 +552,11 @@ class TradingAgentsAgent(BaseAgent):
 
         # patch + 数据上下文,确保 TradingAgents 调 route_to_vendor 时拿到 PanWatch 数据
         trace_id_for_ctx = getattr(progress_handler, "trace_id", "") if progress_handler else ""
-        with patch_route_to_vendor(), panwatch_data_context(panwatch_data, trace_id=trace_id_for_ctx):
+        with patch_route_to_vendor(), panwatch_data_context(
+            panwatch_data,
+            trace_id=trace_id_for_ctx,
+            cancel_event=cancel_event,
+        ):
             graph = _bounded_graph_class(TradingAgentsGraph)(
                 selected_analysts=ta_config["selected_analysts"],
                 debug=False,

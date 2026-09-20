@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import threading
 
 import pandas as pd
+import pytest
 
 from src.modules.automation.tradingagents import toolkit_adapter as ta
 from src.platform.marketdata.collectors.kline_collector import KlineCollector, KlineData
@@ -54,6 +56,22 @@ def test_build_df_reuses_injected_klines_before_fetching_again(monkeypatch):
     assert len(df) == 12
 
 
+def test_build_df_reuses_empty_injected_klines_without_retrying(monkeypatch):
+    """采集阶段已确认无 K 线时，后续工具不应再次联网重试同一标的。"""
+    calls = []
+
+    def unexpected_fetch(self, symbol, days=60):
+        calls.append((symbol, days))
+        raise AssertionError("known empty snapshot must not trigger another fetch")
+
+    monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
+    stock = type("Stock", (), {"symbol": "601238"})()
+    with ta.panwatch_data_context({"stock": stock, "klines": []}):
+        assert ta._build_panwatch_ohlcv_df("601238", "2026-04-20") is None
+
+    assert calls == []
+
+
 def test_build_df_does_not_reuse_klines_for_another_symbol(monkeypatch):
     """模型误传其它代码时，不能把当前标的缓存冒充成对方行情。"""
     cached = _sample_klines(12)
@@ -71,6 +89,34 @@ def test_build_df_does_not_reuse_klines_for_another_symbol(monkeypatch):
 
     assert len(df) == 8
     assert calls == [("300624", 750)]
+
+
+def test_cancelled_ta_context_does_not_fetch_another_symbol(monkeypatch):
+    """任务超时后，残留 worker 再调用行情工具时必须立即停止。"""
+    calls = []
+
+    def unexpected_fetch(self, symbol, days=60):
+        calls.append((symbol, days))
+        raise AssertionError("cancelled task must not fetch another symbol")
+
+    monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
+    stock = type("Stock", (), {"symbol": "300624"})()
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    from src.modules.automation.tradingagents.toolkit_adapter import (
+        TradingAgentsCancelled,
+        panwatch_data_context,
+    )
+
+    with panwatch_data_context(
+        {"stock": stock, "klines": _sample_klines(12)},
+        cancel_event=cancel_event,
+    ):
+        with pytest.raises(TradingAgentsCancelled):
+            ta._build_panwatch_ohlcv_df("300624", "2026-04-20")
+
+    assert calls == []
 
 
 def test_load_ohlcv_routes_a_share_to_panwatch(monkeypatch):

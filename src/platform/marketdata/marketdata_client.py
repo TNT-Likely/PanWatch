@@ -34,16 +34,31 @@ class DbConfigProvider:
             db.close()
 
     def sources_for(self, datatype: str, market: str | None) -> list[SourceConfig]:
-        return [
-            SourceConfig(
-                vendor=r.provider,
-                priority=r.priority,
-                enabled=True,
-                config=r.config or {},
-                supports_batch=bool(r.supports_batch),
+        market_code = (market or "").strip().upper()
+        rows = self._query_rows(datatype)
+        has_us_fallback = any(
+            row.provider in {"stooq", "yahoo"} for row in rows
+        )
+        sources = []
+        for row in rows:
+            # 腾讯美股接口在当前网络出口稳定返回 501；A/HK 仍保留腾讯作为主源。
+            if (
+                datatype == "kline"
+                and market_code == "US"
+                and row.provider == "tencent"
+                and has_us_fallback
+            ):
+                continue
+            sources.append(
+                SourceConfig(
+                    vendor=row.provider,
+                    priority=row.priority,
+                    enabled=True,
+                    config=row.config or {},
+                    supports_batch=bool(row.supports_batch),
+                )
             )
-            for r in self._query_rows(datatype)
-        ]
+        return sources
 
 
 _md: MarketData | None = None

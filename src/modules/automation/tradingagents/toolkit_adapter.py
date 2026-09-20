@@ -42,6 +42,19 @@ _PANWATCH_DATA: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
 _CURRENT_TRACE_ID: contextvars.ContextVar[str] = contextvars.ContextVar(
     "_TA_TRACE_ID", default=""
 )
+_CANCEL_EVENT: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
+    "_TA_CANCEL_EVENT", default=None
+)
+
+
+class TradingAgentsCancelled(RuntimeError):
+    """TradingAgents 任务已进入终态，禁止残留 worker 再发起外部请求。"""
+
+
+def _raise_if_cancelled() -> None:
+    event = _CANCEL_EVENT.get()
+    if event is not None and event.is_set():
+        raise TradingAgentsCancelled("TradingAgents task cancelled")
 
 
 def _cache() -> dict[str, Any]:
@@ -50,7 +63,11 @@ def _cache() -> dict[str, Any]:
 
 
 @contextmanager
-def panwatch_data_context(data: dict[str, Any], trace_id: str = ""):
+def panwatch_data_context(
+    data: dict[str, Any],
+    trace_id: str = "",
+    cancel_event: threading.Event | None = None,
+):
     """在调用 TradingAgents 的代码块周围用本 context manager 注入数据。
 
     Args:
@@ -62,9 +79,11 @@ def panwatch_data_context(data: dict[str, Any], trace_id: str = ""):
     """
     token = _PANWATCH_DATA.set(dict(data))
     tid_token = _CURRENT_TRACE_ID.set(trace_id or "")
+    cancel_token = _CANCEL_EVENT.set(cancel_event)
     try:
         yield
     finally:
+        _CANCEL_EVENT.reset(cancel_token)
         _PANWATCH_DATA.reset(token)
         _CURRENT_TRACE_ID.reset(tid_token)
 
@@ -187,6 +206,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     无任何实例状态:symbol 来自调用参数,数据来自 _cache()(当前 context),
     所以多个并发任务共享同一个 _patched 也不会串台。
     """
+    _raise_if_cancelled()
     symbol = ""
     # 大多数 method 第一个 positional 就是 ticker/symbol(get_global_news 等例外)
     if args and isinstance(args[0], str) and not args[0][:4].isdigit():
@@ -425,6 +445,7 @@ def _market_for_symbol(symbol: str):
 
 def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     """用 PanWatch K线构建与原生 load_ohlcv 同结构的 DataFrame(Date/Open/High/Low/Close/Volume)。"""
+    _raise_if_cancelled()
     import pandas as pd
 
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
@@ -435,7 +456,7 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     cached_stock = _cache().get("stock")
     cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock is not None else ""
     cache_matches_symbol = bool(cached_symbol) and str(cached_symbol) == str(symbol)
-    if cache_matches_symbol and isinstance(cached_klines, (list, tuple)) and cached_klines:
+    if cache_matches_symbol and isinstance(cached_klines, (list, tuple)):
         klines = list(cached_klines)
     else:
         klines = KlineCollector(market).get_klines(symbol, days=750)
@@ -535,6 +556,7 @@ def _load_panwatch_ohlcv_or_raise(symbol: str, curr_date: str, *, fallback: bool
 
 def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
     """A/HK 直接走 MarketData；美股优先 Yahoo，失败时再降级 MarketData。"""
+    _raise_if_cancelled()
     if is_panwatch_routable(symbol):
         return _load_panwatch_ohlcv_or_raise(symbol, curr_date)
 
@@ -549,6 +571,7 @@ def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
             raise
         logger.warning(f"[TA toolkit] Yahoo OHLCV 不可用，降级 MarketData symbol={symbol}: {exc}")
         _emit_toolkit_log("warning", "DEGRADE", "load_ohlcv", symbol, source="yfinance", error=str(exc)[:200])
+    _raise_if_cancelled()
     return _load_panwatch_ohlcv_or_raise(symbol, curr_date, fallback=True)
 
 

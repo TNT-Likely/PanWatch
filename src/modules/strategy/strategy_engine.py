@@ -1539,6 +1539,28 @@ def list_strategy_signals(
         db.close()
 
 
+def _pending_due_horizons(
+    *,
+    signal_id: int,
+    snapshot_day: date,
+    today: date,
+    horizons: tuple[int, ...] | list[int],
+    existing: set[tuple[int, int]],
+) -> tuple[list[int], int]:
+    """筛出尚未落库且已经到期的 horizon，避免无意义加载 K 线。"""
+    pending: list[int] = []
+    skipped_not_due = 0
+    for horizon in horizons:
+        h = max(1, int(horizon))
+        if (signal_id, h) in existing:
+            continue
+        if snapshot_day + timedelta(days=h) > today:
+            skipped_not_due += 1
+            continue
+        pending.append(h)
+    return pending, skipped_not_due
+
+
 def evaluate_strategy_outcomes(
     *,
     horizons: tuple[int, ...] = (1, 3, 5, 10),
@@ -1590,6 +1612,17 @@ def evaluate_strategy_outcomes(
             snap_day = _parse_day(s.snapshot_date)
             if snap_day is None:
                 continue
+            pending_horizons, skipped_not_due = _pending_due_horizons(
+                signal_id=int(s.id),
+                snapshot_day=snap_day,
+                today=today,
+                horizons=safe_horizons,
+                existing=existing,
+            )
+            stats["skipped_not_due"] += skipped_not_due
+            # 所有 horizon 都已评估或尚未到期时，不需要联网取该标的 K 线。
+            if not pending_horizons:
+                continue
             key = (
                 (s.stock_symbol or "").strip(),
                 (s.stock_market or "CN").strip().upper(),
@@ -1604,13 +1637,8 @@ def evaluate_strategy_outcomes(
                     kline_cache[key] = []
             klines = kline_cache[key]
 
-            for horizon in safe_horizons:
-                if (s.id, horizon) in existing:
-                    continue
+            for horizon in pending_horizons:
                 target_day = snap_day + timedelta(days=horizon)
-                if target_day > today:
-                    stats["skipped_not_due"] += 1
-                    continue
                 stats["eligible"] += 1
                 outcome_price = _pick_close_on_or_before(klines, target_day)
                 if outcome_price is None:

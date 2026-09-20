@@ -42,3 +42,17 @@ def test_db_config_provider_maps_rows(monkeypatch):
         ("tencent", 1, True, {"k": "v"}),
         ("yfinance", 2, True, {}),
     ]
+
+
+def test_db_config_provider_skips_tencent_us_kline(monkeypatch):
+    """美股 K 线跳过腾讯探测，避免每只股票固定产生 501 后再回退。"""
+    rows = [
+        SimpleNamespace(provider="tencent", priority=0, config={}, supports_batch=False),
+        SimpleNamespace(provider="stooq", priority=15, config={}, supports_batch=False),
+    ]
+    cp = mc.DbConfigProvider()
+    monkeypatch.setattr(cp, "_query_rows", lambda datatype: rows)
+
+    got = cp.sources_for("kline", "US")
+
+    assert [s.vendor for s in got] == ["stooq"]
