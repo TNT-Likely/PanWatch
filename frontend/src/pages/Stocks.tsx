@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
+import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain, Settings } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { useLocalStorage } from '@/lib/utils'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
@@ -14,6 +14,7 @@ import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { AgentReportLinks, type ReportDestination } from '@/components/AgentReportLinks'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
@@ -386,6 +387,7 @@ export default function StocksPage() {
   const [insightSymbol, setInsightSymbol] = useState('')
   const [insightMarket, setInsightMarket] = useState('CN')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
+  const [insightDestination, setInsightDestination] = useState<ReportDestination>({ tab: 'overview' })
   const [insightHasPosition, setInsightHasPosition] = useState(false)
 
   // Market status
@@ -762,7 +764,8 @@ export default function StocksPage() {
     loadNews(stockName)
   }, [loadNews])
 
-  const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
+  const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean, destination: ReportDestination = { tab: 'overview' }) => {
+    setInsightDestination(destination)
     setInsightSymbol(stockSymbol)
     setInsightMarket(stockMarket || 'CN')
     setInsightName(stockName)
@@ -2050,29 +2053,7 @@ export default function StocksPage() {
                                   </td>
                                   <td className="px-4 py-2.5">
                                     {stock && (
-                                      <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
-                                        {stock.agents && stock.agents.length > 0 ? (
-                                          <div className="flex items-center gap-1.5 flex-wrap">
-                                            {stock.agents.map(sa => {
-                                              const agent = agents.find(a => a.name === sa.agent_name)
-                                              const isRunning = runningAgents[stock.id] === sa.agent_name
-                                              return (
-                                                <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                                  <Badge variant="default" className="text-[10px]">{agent?.display_name || sa.agent_name}</Badge>
-                                                  {isRunning && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                                                      <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                                                      执行中
-                                                    </span>
-                                                  )}
-                                                </span>
-                                              )
-                                            })}
-                                          </div>
-                                        ) : (
-                                          <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1"><Bot className="w-3 h-3" /> 未配置</span>
-                                        )}
-                                      </button>
+                                      <AgentReportLinks agents={stock.agents || []} labels={agents} running={runningAgents[stock.id]} onOpen={destination => openStockDetail(pos.symbol, pos.market, pos.name, true, destination)} />
                                     )}
                                   </td>
                                   <td className="px-4 py-2.5 text-center">
@@ -2092,6 +2073,7 @@ export default function StocksPage() {
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title="相关资讯"><Newspaper className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      {stock && <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="配置 Agent" aria-label="配置 Agent" onClick={() => setAgentDialogStock(stock)}><Settings className="w-3 h-3" /></Button>}
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2218,29 +2200,7 @@ export default function StocksPage() {
                               {/* Row 4: Actions */}
                               <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/20">
                                 <div>
-                                  {stock && stock.agents && stock.agents.length > 0 ? (
-                                    <button onClick={() => setAgentDialogStock(stock)} className="flex items-center gap-1">
-                                      {stock.agents.slice(0, 2).map(sa => {
-                                        const agent = agents.find(a => a.name === sa.agent_name)
-                                        const isRunning = runningAgents[stock.id] === sa.agent_name
-                                        return (
-                                          <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                            <Badge variant="secondary" className="text-[9px]">{agent?.display_name || sa.agent_name}</Badge>
-                                            {isRunning && (
-                                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                                                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                                                执行中
-                                              </span>
-                                            )}
-                                          </span>
-                                        )
-                                      })}
-                                    </button>
-                                  ) : (
-                                    <button onClick={() => stock && setAgentDialogStock(stock)} className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
-                                      <Bot className="w-3 h-3" /> Agent
-                                    </button>
-                                  )}
+                                  {stock && <AgentReportLinks agents={stock.agents || []} labels={agents} running={runningAgents[stock.id]} onOpen={destination => openStockDetail(pos.symbol, pos.market, pos.name, true, destination)} />}
                                 </div>
                                 <div className="flex items-center gap-1">
                                   {(() => { const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market, true); return (!suggestion && !kline) ? (
@@ -2258,7 +2218,8 @@ export default function StocksPage() {
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title="深度分析(TradingAgents)" onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
+                                  {stock && <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="配置 Agent" aria-label="配置 Agent" onClick={() => setAgentDialogStock(stock)}><Settings className="w-3 h-3" /></Button>}
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
                               </div>
@@ -2372,7 +2333,7 @@ export default function StocksPage() {
                     className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
-                      setAgentDialogStock(stock)
+                      openStockDetail(stock.symbol, stock.market, stock.name, false)
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -2422,17 +2383,7 @@ export default function StocksPage() {
 
                     <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1 flex-wrap">
-                        {stock.agents && stock.agents.length > 0 ? (
-                          <Badge variant="secondary" className="text-[10px]">{stock.agents.length} Agent</Badge>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground/60">未配置 Agent</span>
-                        )}
-                        {runningAgents[stock.id] && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
-                            <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                            {agents.find(a => a.name === runningAgents[stock.id])?.display_name || runningAgents[stock.id]}
-                          </span>
-                        )}
+                        <AgentReportLinks agents={stock.agents || []} labels={agents} running={runningAgents[stock.id]} onOpen={destination => openStockDetail(stock.symbol, stock.market, stock.name, false, destination)} />
                       </div>
                       <div
                         className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
@@ -2484,6 +2435,7 @@ export default function StocksPage() {
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground" title="配置 Agent" aria-label="配置 Agent" onClick={() => setAgentDialogStock(stock)}><Settings className="w-3 h-3" /></Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -2521,6 +2473,8 @@ export default function StocksPage() {
         market={insightMarket}
         stockName={insightName}
         hasPosition={insightHasPosition}
+        initialTab={insightDestination.tab}
+        initialReportTab={insightDestination.reportTab}
       />
 
       {/* TradingAgents 深度分析弹窗 */}

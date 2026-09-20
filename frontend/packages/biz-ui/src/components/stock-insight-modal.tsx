@@ -110,7 +110,9 @@ interface PortfolioSummaryResponse {
   }>
 }
 
-type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+export type InsightTab = 'overview' | 'kline' | 'suggestions' | 'news' | 'announcements' | 'reports' | 'deep'
+
+export type ReportTab = 'premarket_outlook' | 'daily_report' | 'news_digest'
 
 interface StockAgentInfo {
   agent_name: string
@@ -337,6 +339,8 @@ export default function StockInsightModal(props: {
   market: string
   stockName?: string
   hasPosition?: boolean
+  initialTab?: InsightTab
+  initialReportTab?: ReportTab
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
@@ -366,6 +370,8 @@ export default function StockInsightModal(props: {
   const [news, setNews] = useState<NewsItem[]>([])
   const [announcements, setAnnouncements] = useState<NewsItem[]>([])
   const [reports, setReports] = useState<HistoryRecord[]>([])
+  const [reportRunning, setReportRunning] = useState(false)
+  const [reportStatus, setReportStatus] = useState('')
   const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report' | 'news_digest'>('premarket_outlook')
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
@@ -671,6 +677,28 @@ export default function StockInsightModal(props: {
     }
   }, [symbol, loadQuote, loadKline, loadMiniKline, loadHoldingAgg, toast])
 
+  const runReport = async () => {
+    setReportRunning(true)
+    setReportStatus('')
+    try {
+      const stocks = await stocksApi.list()
+      const stock = stocks.find(item => item.symbol === symbol && item.market === market)
+      if (!stock) {
+        setReportStatus('请先将股票加入自选，再生成报告')
+        return
+      }
+      await stocksApi.triggerAgent(stock.id, reportTab, { allow_unbound: true, bypass_throttle: true, bypass_market_hours: true })
+      setReportStatus('分析已提交，请稍后刷新查看报告')
+      await loadReports()
+    } catch (error) {
+      setReportStatus(error instanceof Error ? error.message : '分析提交失败，请重试')
+    } finally {
+      setReportRunning(false)
+    }
+  }
+
+  useEffect(() => { setReportStatus('') }, [props.open, symbol, market, reportTab])
+
   const handleRefreshAll = useCallback(async () => {
     if (!symbol) return
     setLoading(true)
@@ -727,7 +755,8 @@ export default function StockInsightModal(props: {
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    setTab('overview')
+    setTab(props.initialTab || 'overview')
+    setReportTab(props.initialReportTab || 'premarket_outlook')
     setSuggestions([])
     setNews([])
     setAnnouncements([])
@@ -738,7 +767,7 @@ export default function StockInsightModal(props: {
     setDeepLoaded(false)
     setDeepHistory(null)
     loadCore()
-  }, [props.open, symbol, market, loadCore])
+  }, [props.open, symbol, market, loadCore, props.initialTab, props.initialReportTab])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -1689,7 +1718,12 @@ export default function StockInsightModal(props: {
                   </div>
                 </div>
                 {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center space-y-3">
+                    <div>尚未生成报告</div>
+                    <Button size="sm" disabled={reportRunning} onClick={runReport}>{reportRunning ? '提交中…' : '立即分析'}</Button>
+                    <Button size="sm" variant="ghost" onClick={loadReports}>刷新报告</Button>
+                    {reportStatus && <div role="status">{reportStatus}</div>}
+                  </div>
                 ) : (
                   <div className="card p-4 space-y-3">
                     <div className="text-[11px] text-muted-foreground">
