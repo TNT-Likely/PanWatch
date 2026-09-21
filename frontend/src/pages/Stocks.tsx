@@ -3,7 +3,12 @@ import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wall
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { klinesApi } from '@panwatch/api/klines'
 import { useLocalStorage } from '@/lib/utils'
-import { loadPortfolioPageBackgroundData, loadPortfolioPageCoreData } from '@/lib/portfolio-page-data'
+import {
+  buildPortfolioStockKeys,
+  loadPortfolioPageBackgroundData,
+  loadPortfolioPageCoreData,
+  loadPortfolioPageQuoteData,
+} from '@/lib/portfolio-page-data'
 import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
@@ -605,7 +610,7 @@ export default function StocksPage() {
     try {
       const params = new URLSearchParams({
         include_expired: 'true',
-        stock_keys: items.map(item => `${item.symbol}:${item.market}`).join(','),
+        stock_keys: buildPortfolioStockKeys(items),
       })
       return await fetchAPI<Record<string, PoolSuggestion>>(`/suggestions?${params.toString()}`, { signal })
     } catch (e) {
@@ -770,7 +775,14 @@ export default function StocksPage() {
 
       if (signal.aborted) return
 
-      const quoteMap = {}
+      const quoteData = await loadPortfolioPageQuoteData({
+        buildQuoteItems: buildQuoteItemsFrom,
+        loadQuotes: requestQuotes,
+      }, coreData.stocks, coreData.portfolio, signal)
+
+      if (signal.aborted) return
+
+      const quoteMap = toQuoteMap(quoteData.quotes)
       setStocks(coreData.stocks)
       setPortfolioRaw(coreData.portfolio)
       setQuotes(quoteMap)
@@ -786,6 +798,7 @@ export default function StocksPage() {
       }))
       setAccounts(nextAccounts)
       setExpandedAccounts(new Set(nextAccounts.map(account => account.id)))
+      if (quoteData.quotes.length > 0) setLastRefreshTime(new Date())
       setLoading(false)
       setPortfolioLoading(false)
 
@@ -799,20 +812,15 @@ export default function StocksPage() {
           }
         },
         buildQuoteItems: buildQuoteItemsFrom,
-        loadQuotes: requestQuotes,
         loadSuggestions: requestSuggestions,
         loadPriceAlerts: requestPriceAlerts,
         loadKlines: requestKlineSummaries,
       }, coreData.stocks, coreData.portfolio, signal).then(data => {
         if (signal.aborted) return
-        const quoteMap = toQuoteMap(data.quotes)
         setMarketStatus(data.marketStatus)
-        setQuotes(quoteMap)
         setKlineSummaries(data.klines)
         setPoolSuggestions(data.suggestions)
         setPriceAlertSummaryMap(toPriceAlertSummaryMap(data.priceAlerts))
-        setPortfolio(mergePortfolioQuotes(coreData.portfolio, quoteMap))
-        if (data.quotes.length > 0) setLastRefreshTime(new Date())
       }).catch(error => {
         if (!signal.aborted) console.warn('加载持仓页后台数据失败:', error)
       })
