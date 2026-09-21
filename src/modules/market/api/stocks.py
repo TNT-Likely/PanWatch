@@ -38,6 +38,7 @@ class StockUpdate(BaseModel):
 
 class StockAgentInfo(BaseModel):
     agent_name: str
+    display_name: str = ""
     schedule: str = ""
     ai_model_id: int | None = None
     notify_channel_ids: list[int] = []
@@ -75,7 +76,26 @@ class StockReorderRequest(BaseModel):
     items: list[StockReorderItem]
 
 
-def _stock_to_response(stock: Stock) -> dict:
+def _agent_display_names(db: Session, stocks: list[Stock]) -> dict[str, str]:
+    agent_names = {
+        sa.agent_name
+        for stock in stocks
+        for sa in stock.agents
+        if infer_agent_kind(sa.agent_name) == AGENT_KIND_WORKFLOW
+    }
+    if not agent_names:
+        return {}
+
+    rows = (
+        db.query(AgentConfig.name, AgentConfig.display_name)
+        .filter(AgentConfig.name.in_(agent_names))
+        .all()
+    )
+    return {name: display_name or name for name, display_name in rows}
+
+
+def _stock_to_response(stock: Stock, agent_display_names: dict[str, str] | None = None) -> dict:
+    display_names = agent_display_names or {}
     return {
         "id": stock.id,
         "symbol": stock.symbol,
@@ -85,6 +105,7 @@ def _stock_to_response(stock: Stock) -> dict:
         "agents": [
             {
                 "agent_name": sa.agent_name,
+                "display_name": display_names.get(sa.agent_name, sa.agent_name),
                 "schedule": sa.schedule or "",
                 "ai_model_id": sa.ai_model_id,
                 "notify_channel_ids": sa.notify_channel_ids or [],
@@ -179,7 +200,8 @@ def refresh_list():
 @router.get("", response_model=list[StockResponse])
 def list_stocks(db: Session = Depends(get_db)):
     stocks = db.query(Stock).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
-    return [_stock_to_response(s) for s in stocks]
+    agent_display_names = _agent_display_names(db, stocks)
+    return [_stock_to_response(s, agent_display_names) for s in stocks]
 
 
 @router.get("/quotes")
@@ -230,7 +252,7 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
     db.add(db_stock)
     db.commit()
     db.refresh(db_stock)
-    return _stock_to_response(db_stock)
+    return _stock_to_response(db_stock, _agent_display_names(db, [db_stock]))
 
 
 @router.put("/reorder")
@@ -262,7 +284,7 @@ def update_stock(stock_id: int, stock: StockUpdate, db: Session = Depends(get_db
 
     db.commit()
     db.refresh(db_stock)
-    return _stock_to_response(db_stock)
+    return _stock_to_response(db_stock, _agent_display_names(db, [db_stock]))
 
 
 @router.delete("/{stock_id}")
@@ -330,7 +352,7 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(db_stock)
-    return _stock_to_response(db_stock)
+    return _stock_to_response(db_stock, _agent_display_names(db, [db_stock]))
 
 
 @router.post("/{stock_id}/agents/{agent_name}/trigger")

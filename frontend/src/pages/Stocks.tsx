@@ -32,6 +32,7 @@ interface AgentResult {
 
 interface StockAgentInfo {
   agent_name: string
+  display_name?: string
   schedule: string
   ai_model_id: number | null
   notify_channel_ids: number[]
@@ -2125,7 +2126,7 @@ export default function StocksPage() {
                                               const isRunning = runningAgents[stock.id] === sa.agent_name
                                               return (
                                                 <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                                  <Badge variant="default" className="text-[10px]">{agent?.display_name || sa.agent_name}</Badge>
+                                                  <Badge variant="default" className="text-[10px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
                                                   {isRunning && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                                                       <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -2292,7 +2293,7 @@ export default function StocksPage() {
                                         const isRunning = runningAgents[stock.id] === sa.agent_name
                                         return (
                                           <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                            <Badge variant="secondary" className="text-[9px]">{agent?.display_name || sa.agent_name}</Badge>
+                                          <Badge variant="secondary" className="text-[9px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
                                             {isRunning && (
                                               <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                                                 <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
