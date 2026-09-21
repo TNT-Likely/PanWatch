@@ -1,6 +1,9 @@
-export interface PortfolioPageLoaderApi<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData> {
+export interface PortfolioPageCoreLoaderApi<StockData, PortfolioData> {
   loadStocks: (signal: AbortSignal) => Promise<StockData>
   loadPortfolio: (signal: AbortSignal) => Promise<PortfolioData>
+}
+
+export interface PortfolioPageBackgroundLoaderApi<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData> {
   loadMarketStatus: (signal: AbortSignal) => Promise<MarketStatusData>
   buildQuoteItems: (stocks: StockData, portfolio: PortfolioData) => Array<{ symbol: string; market: string }>
   loadQuotes: (items: Array<{ symbol: string; market: string }>, signal: AbortSignal) => Promise<QuoteData>
@@ -9,9 +12,7 @@ export interface PortfolioPageLoaderApi<StockData, PortfolioData, MarketStatusDa
   loadKlines: (items: Array<{ symbol: string; market: string }>, signal: AbortSignal) => Promise<KlineData>
 }
 
-export interface PortfolioPageData<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData> {
-  stocks: StockData
-  portfolio: PortfolioData
+export interface PortfolioPageBackgroundData<MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData> {
   marketStatus: MarketStatusData
   quotes: QuoteData
   suggestions: SuggestionData
@@ -19,7 +20,19 @@ export interface PortfolioPageData<StockData, PortfolioData, MarketStatusData, Q
   klines: KlineData
 }
 
-export async function loadPortfolioPageData<
+export async function loadPortfolioPageCoreData<StockData, PortfolioData>(
+  api: PortfolioPageCoreLoaderApi<StockData, PortfolioData>,
+  signal: AbortSignal,
+): Promise<{ stocks: StockData; portfolio: PortfolioData }> {
+  const [stocks, portfolio] = await Promise.all([
+    api.loadStocks(signal),
+    api.loadPortfolio(signal),
+  ])
+
+  return { stocks, portfolio }
+}
+
+export async function loadPortfolioPageBackgroundData<
   StockData,
   PortfolioData,
   MarketStatusData,
@@ -28,21 +41,19 @@ export async function loadPortfolioPageData<
   AlertData,
   KlineData,
 >(
-  api: PortfolioPageLoaderApi<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData>,
+  api: PortfolioPageBackgroundLoaderApi<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData>,
+  stocks: StockData,
+  portfolio: PortfolioData,
   signal: AbortSignal,
-): Promise<PortfolioPageData<StockData, PortfolioData, MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData>> {
-  const [stocks, portfolio, marketStatus] = await Promise.all([
-    api.loadStocks(signal),
-    api.loadPortfolio(signal),
-    api.loadMarketStatus(signal),
-  ])
+): Promise<PortfolioPageBackgroundData<MarketStatusData, QuoteData, SuggestionData, AlertData, KlineData>> {
   const items = api.buildQuoteItems(stocks, portfolio)
-  const [quotes, suggestions, priceAlerts, klines] = await Promise.all([
+  const [marketStatus, quotes, suggestions, priceAlerts, klines] = await Promise.all([
+    api.loadMarketStatus(signal),
     api.loadQuotes(items, signal),
     api.loadSuggestions(items, signal),
     api.loadPriceAlerts(items, signal),
     api.loadKlines(items, signal),
   ])
 
-  return { stocks, portfolio, marketStatus, quotes, suggestions, priceAlerts, klines }
+  return { marketStatus, quotes, suggestions, priceAlerts, klines }
 }

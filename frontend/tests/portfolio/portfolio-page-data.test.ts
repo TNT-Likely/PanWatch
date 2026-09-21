@@ -1,55 +1,63 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { loadPortfolioPageData } from '@/lib/portfolio-page-data'
+import {
+  loadPortfolioPageBackgroundData,
+  loadPortfolioPageCoreData,
+} from '@/lib/portfolio-page-data'
 
-describe('loadPortfolioPageData', () => {
-  it('loads core data once and runs each follow-up lane once', async () => {
+describe('portfolio page loading', () => {
+  it('resolves core data without waiting for background lanes', async () => {
     const signal = new AbortController().signal
     const api = {
       loadStocks: vi.fn().mockResolvedValue([{ symbol: '600519', market: 'CN' }]),
       loadPortfolio: vi.fn().mockResolvedValue({ accounts: [{ positions: [] }] }),
+      loadMarketStatus: vi.fn(),
+      buildQuoteItems: vi.fn(),
+      loadQuotes: vi.fn(),
+      loadSuggestions: vi.fn(),
+      loadPriceAlerts: vi.fn(),
+      loadKlines: vi.fn(),
+    }
+
+    const result = await loadPortfolioPageCoreData(api, signal)
+
+    expect(result).toEqual({
+      stocks: [{ symbol: '600519', market: 'CN' }],
+      portfolio: { accounts: [{ positions: [] }] },
+    })
+    expect(api.loadMarketStatus).not.toHaveBeenCalled()
+    expect(api.loadQuotes).not.toHaveBeenCalled()
+    expect(api.loadKlines).not.toHaveBeenCalled()
+  })
+
+  it('runs background lanes after core data and passes the same signal', async () => {
+    const signal = new AbortController().signal
+    const items = [{ symbol: '600519', market: 'CN' }]
+    const api = {
       loadMarketStatus: vi.fn().mockResolvedValue([{ code: 'CN' }]),
-      buildQuoteItems: vi.fn().mockReturnValue([{ symbol: '600519', market: 'CN' }]),
+      buildQuoteItems: vi.fn().mockReturnValue(items),
       loadQuotes: vi.fn().mockResolvedValue([{ symbol: '600519', market: 'CN' }]),
       loadSuggestions: vi.fn().mockResolvedValue({}),
       loadPriceAlerts: vi.fn().mockResolvedValue({}),
       loadKlines: vi.fn().mockResolvedValue({ 'CN:600519': { trend: '多头排列' } }),
     }
+    const stocks = [{ symbol: '600519', market: 'CN' }]
+    const portfolio = { accounts: [{ positions: [] }] }
 
-    const result = await loadPortfolioPageData(api, signal)
+    const result = await loadPortfolioPageBackgroundData(api, stocks, portfolio, signal)
 
-    expect(api.loadStocks).toHaveBeenCalledTimes(1)
-    expect(api.loadPortfolio).toHaveBeenCalledTimes(1)
-    expect(api.loadMarketStatus).toHaveBeenCalledTimes(1)
-    expect(api.loadQuotes).toHaveBeenCalledTimes(1)
-    expect(api.loadSuggestions).toHaveBeenCalledTimes(1)
-    expect(api.loadPriceAlerts).toHaveBeenCalledTimes(1)
-    expect(api.loadKlines).toHaveBeenCalledTimes(1)
-    expect(api.loadPriceAlerts).toHaveBeenCalledWith([{ symbol: '600519', market: 'CN' }], signal)
-    expect(result.stocks).toEqual([{ symbol: '600519', market: 'CN' }])
-  })
-
-  it('passes the same abort signal through every request lane', async () => {
-    const signal = new AbortController().signal
-    const api = {
-      loadStocks: vi.fn().mockResolvedValue([]),
-      loadPortfolio: vi.fn().mockResolvedValue({ accounts: [] }),
-      loadMarketStatus: vi.fn().mockResolvedValue([]),
-      buildQuoteItems: vi.fn().mockReturnValue([]),
-      loadQuotes: vi.fn().mockResolvedValue([]),
-      loadSuggestions: vi.fn().mockResolvedValue({}),
-      loadPriceAlerts: vi.fn().mockResolvedValue({}),
-      loadKlines: vi.fn().mockResolvedValue({}),
-    }
-
-    await loadPortfolioPageData(api, signal)
-
-    expect(api.loadStocks).toHaveBeenCalledWith(signal)
-    expect(api.loadPortfolio).toHaveBeenCalledWith(signal)
+    expect(api.buildQuoteItems).toHaveBeenCalledWith(stocks, portfolio)
     expect(api.loadMarketStatus).toHaveBeenCalledWith(signal)
-    expect(api.loadQuotes).toHaveBeenCalledWith([], signal)
-    expect(api.loadSuggestions).toHaveBeenCalledWith([], signal)
-    expect(api.loadPriceAlerts).toHaveBeenCalledWith([], signal)
-    expect(api.loadKlines).toHaveBeenCalledWith([], signal)
+    expect(api.loadQuotes).toHaveBeenCalledWith(items, signal)
+    expect(api.loadSuggestions).toHaveBeenCalledWith(items, signal)
+    expect(api.loadPriceAlerts).toHaveBeenCalledWith(items, signal)
+    expect(api.loadKlines).toHaveBeenCalledWith(items, signal)
+    expect(result).toEqual({
+      marketStatus: [{ code: 'CN' }],
+      quotes: [{ symbol: '600519', market: 'CN' }],
+      suggestions: {},
+      priceAlerts: {},
+      klines: { 'CN:600519': { trend: '多头排列' } },
+    })
   })
 })
