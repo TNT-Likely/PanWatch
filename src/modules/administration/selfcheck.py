@@ -17,7 +17,7 @@ from src.platform.persistence.database import SessionLocal
 logger = logging.getLogger(__name__)
 
 SLOW_MS = 4000          # 超过算「慢」
-PROBE_TIMEOUT_S = 20    # 单项探测超时
+PROBE_TIMEOUT_S = 35    # 单项探测超时（给首次冷启动截图预留足够时间）
 
 
 def classify_hint(category: str, error: str | None) -> str:

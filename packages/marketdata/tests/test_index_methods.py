@@ -69,7 +69,7 @@ def test_index_klines_us_via_tencent_fallback(monkeypatch):
 def test_index_klines_eastmoney_empty_falls_back_to_tencent(monkeypatch):
     """CN 指数东财空(如被代理/风控掐)→ 腾讯兜底出数。"""
     def _fake(url, **k):
-        if "push2his" in url:
+        if "push2" in url:
             return {"data": {"klines": []}}
         return _tencent_kline_text("sh000001")
     monkeypatch.setattr(kv, "market_get", _fake)
@@ -81,7 +81,7 @@ def test_index_klines_eastmoney_ok_skips_tencent(monkeypatch):
     """东财主源有数 → 不再调腾讯兜底(主备语义,不是聚合)。"""
     calls = {"tencent": 0}
     def _fake(url, **k):
-        if "push2his" in url:
+        if "push2" in url:
             return {"data": {"klines": ["2026-07-01,3180,3200,3210,3170,100000"]}}
         calls["tencent"] += 1
         return _tencent_kline_text("sh000001")
