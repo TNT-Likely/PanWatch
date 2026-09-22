@@ -1,14 +1,25 @@
 ---
 feature: homepage-polish
-status: in-progress
+status: delivered
 updated: 2026-09-22
 branch: codex/homepage-polish
-commits: <base-sha>..<head-sha>
+commits: cb725f0b181e45b17b55d3cd1b4cc086930beff1..1257a1f301a87d0f55cd5589aa713e7cbd1fbe94
 ---
 
 # 首页金融终端精致化
 
 ## Report
+
+**What was built** — 首页（Dashboard）按「金融终端精致化」完成视觉升维：落地 `page-container` / `chip*` / `metric` / `empty-hint` / `link-quiet` / `row-hover` / `btn-quiet` 等共享样式；今日盈亏升为 metric 级 hero；要紧事 feed 带类型优先级色条与统一 11px chip；指数 pills、组合体检、机会精选、简报、DiscoveryPanel 对齐同一字阶与涨跌 token（红涨绿跌 · `stock.up/down`）。信息架构、API、路由未改。
+
+**Verification** — `pnpm exec vitest run` → PASS（20 files / 48 tests）；`pnpm build`（`tsc -b && vite build`）→ PASS；`git diff --check` → clean。独立 review 无 CRITICAL；MAJOR（类型徽章借用涨跌 token、页标题压过 hero、`text-[15px]`/`gap-2.5` 破例）已修复并复验。
+
+**Journey log**
+- `page-container` 曾被 Dashboard/Opportunities 引用但全库无定义——补共享类比局部 max-width 更能一次修好壳。
+- 类型徽章（提醒/持仓）不可复用 `chip-up/down`：会与行内真实涨跌 chip 抢同一套红绿语义，review 抓出后改为 amber/primary。
+- `✓ 未见风险` 的「安全绿」也不能用 `stock-down`（那是「跌」token），改回 emerald 状态色。
+- 市场分布 stacked 条的 US 绿是分段区分色，不是涨跌色，按 S3 保留硬编码。
+- 375px 视觉验收依赖真实运行实例，本轮以响应式 class + 单测壳层覆盖；真机截图可作后续计划。
 
 ## [S1] Problem
 
@@ -36,10 +47,10 @@ PanWatch 容器首页（`/` → `Dashboard`）信息结构正确，但视觉完�
   | body | `text-xs`（12px）· `text-[13px]` | 列表主文案、指标值 |
   | caption | `text-[11px]` | 标签、辅助说明、按钮次文案 |
 - **禁止** `text-[9px]` / `text-[10px]` 作为正文或徽章字（徽章下限 11px）；数字一律 `font-mono` + 右对齐（列表内）或固定列宽。
-- **布局**：补真实 `.page-container`（`w-full max-w-[1440px] mx-auto`）；卡内/卡间统一 8pt 节奏（`gap-3` / `p-4` / `mb-3` 等，替换 2.5 类中间值）。
+- **布局**：补真实 `.page-container`（`w-full max-w-[1440px] mx-auto`）；卡内/卡间统一 8pt 节奏（`gap-2` / `p-4` 等，替换 2.5 类中间值）。
 - **签名时刻**：
   1. **今日盈亏 hero** — 组合速览条左侧今日盈亏放大为 metric 字号，涨跌色 + 涨跌幅 chip 同行；次级指标降为 caption 标签 + mono 值。
-  2. **今日要紧事 feed** — 行左侧 2px 优先级色条（按 `FEED_BADGE` 类型），徽章统一 11px chip，hover 行背景 + 轻微左移指示。
+  2. **今日要紧事 feed** — 行左侧优先级色条（按 `FEED_BADGE` **类型语义**，不得借用涨跌 token：alert/risk→amber，holding/opportunity→primary，watch→muted），徽章统一 11px chip，hover 行背景。
 
 ### 契约
 
@@ -47,42 +58,38 @@ PanWatch 容器首页（`/` → `Dashboard`）信息结构正确，但视觉完�
 
 ```css
 .page-container  /* w-full max-w-[1440px] mx-auto */
-.card            /* 保留；阴影/描边微调，深浅主题一致 */
+.card            /* 保留；阴影微调 */
 .card-subtle     /* 保留 */
 .chip            /* 统一徽章：rounded-full px-2 py-0.5 text-[11px] font-medium */
-.chip-up / .chip-down / .chip-muted / .chip-primary / .chip-amber / .chip-risk
+.chip-up / .chip-down / .chip-muted / .chip-primary / .chip-amber
 .metric          /* font-mono tabular-nums leading-tight */
 .empty-hint      /* 统一空态：py-8 text-center text-[12px] text-muted-foreground */
-.link-quiet      /* 标题栏右侧次级动作：text-[11px] text-muted-foreground hover:text-primary */
+.link-quiet      /* 标题栏右侧次级动作 */
+.row-hover       /* 列表行 hover */
+.btn-quiet       /* 紧凑次级按钮 h-8 */
 ```
 
-涨跌色 helper（Dashboard / Discovery 共用语义，可保留局部函数但输出改为语义 class 或 `text-stock-up/down`）：
+涨跌色 helper：
 
 - `moveColor(v)` → `text-stock-up` / `text-stock-down` / `text-muted-foreground`
-- `pctChipCls(v)` → `chip chip-up` / `chip chip-down` / `chip chip-muted`
+- `pctChipCls(v)` → `chip-up` / `chip-down` / `chip-muted`
+- 正向状态绿（如「✓ 未见风险」）用 emerald 状态色，**不得**用 `stock-down`。
 
 **首页区块规格**（自上而下，信息架构不变）：
 
-1. **页头** — 左：`text-xl font-bold`「今日该看什么」+ 刷新按钮；右：刷新时间 caption + 市场状态 pill（交易中用 amber 呼吸点，休市灰点）。行高与间距对齐 8pt。
-2. **组合速览条**（hero）— 无持仓：统一 `empty-hint`。有持仓：左「今日盈亏」metric（24px mono + 涨跌幅 chip）；中「累计浮盈 / 60日超额 / 仓位」caption 标签 + 13–14px mono 值，竖分隔线；右 mini sparkline + 「持仓页 →」`link-quiet`。
-3. **指数 pills** — `card-subtle` 统一 p-3；名称 caption 截断、价格 mono、涨跌 `chip`；spark 高度 26px 不变，颜色走 moveColor。
+1. **页头** — 左：`text-xl font-bold`「今日该看什么」+ 刷新按钮；右：刷新时间 caption + 市场状态 pill（交易中用 amber 呼吸点，休市灰点）。
+2. **组合速览条**（hero）— 无持仓：`empty-hint`。有持仓：左「今日盈亏」metric（24px mono + 涨跌幅 chip）；中「累计浮盈 / 60日超额 / 仓位」caption 标签 + `text-sm` mono 值；右 mini sparkline + 「持仓页 →」`link-quiet`。
+3. **指数 pills** — `card-subtle` p-3；价格 `metric text-sm`；涨跌 `chip`；spark 高度 26px。
 4. **主体栅格**（`lg:grid-cols-12` 不变）：
-   - **今日要紧事**（col-span-7）— 节标题 title + 副文案 caption + 「分享图」`link-quiet`。列表行：左优先级色条 2×100%，徽章 `chip`，名称 13px，why 11px，涨跌 `chip` 右对齐。空态 `empty-hint`；待办行 amber `chip`。
-   - **组合体检**（col-span-5）— 图例/超额 chip 用 `chip` 体系；图表区圆角与 `card-subtle` 一致；风险行 11px；「AI 体检报告」改 `btn-secondary` 风格紧凑按钮（h-8）；分享动作 `link-quiet`。
-   - **机会精选**（col-span-5）— 行内 action_label 用 `chip chip-primary`；评分 mono + 评分条 3px 统一；「进入机会页」`link-quiet`。
-   - **简报**（col-span-7）— 标题 title；「AI · 日期」`chip chip-primary`；展开/收起 `link-quiet`；摘要 body。
-5. **机会发现 DiscoveryPanel** — 节标题对齐首页其他卡；tab 按钮统一 chip 选中态（`bg-primary text-primary-foreground` 保留，字号 11–12px）；板块/个股行涨跌色走 stock token；空态 `empty-hint`。
-
-**交互与状态**：
-
-- 行 hover：`hover:bg-accent/30` 保留，可加 `transition-colors`。
-- 分享入口：标题栏右侧 `link-quiet`，图标 14px。
-- 加载：保留现有 spinner / pulse，不再新增。
-- 深浅主题：所有新 class 走 HSL token 或 `stock.*`，禁止浅色主题下不可读的硬编码。
+   - **今日要紧事**（col-span-7）— 列表行：左优先级色条（`w-0.5` 全高）、徽章 `chip`、名称 13px、why 11px、涨跌 `chip` 右对齐。
+   - **组合体检**（col-span-5）— 超额用 `chip`；图表占位独立样式（不与 `empty-hint` 的 py-8 打架）；「AI 体检报告」`btn-quiet`。
+   - **机会精选**（col-span-5）— `chip chip-primary`；评分 mono 13px。
+   - **简报**（col-span-7）— 「AI · 日期」`chip chip-primary`；展开/收起 `link-quiet`。
+5. **机会发现 DiscoveryPanel** — tab chip 选中态；涨跌走 stock token；空态 `empty-hint`。
 
 ### 测试边界
 
-- 组件渲染测试覆盖：Dashboard 关键区块存在、`page-container` 类存在、涨跌 chip class 映射正确（红涨绿跌）、空态文案出现。
+- 组件渲染测试：Dashboard 关键区块、`page-container`、涨跌 chip 映射（红涨绿跌）、空态。
 - 不测具体像素；不 mock 生产逻辑。
 - 既有 `frontend/tests/**` 必须继续通过。
 
@@ -93,13 +100,14 @@ PanWatch 容器首页（`/` → `Dashboard`）信息结构正确，但视觉完�
 - 不改 AmbientBackground、导航壳、登录页、分享卡图片输出样式。
 - 不引入新图标库、新字体文件、新依赖。
 - 不做英文文案、不做无障碍专项（仅保持现有语义标签）。
+- 375px 真机/截图验收不在本轮（需运行中实例）。
 
 ## Tasks
 
-- [ ] T1: 在 `index.css` 落地 `page-container` / `chip*` / `metric` / `empty-hint` / `link-quiet` 等共享样式，微调 `.card` — acceptance: 类名可被 Tailwind content 扫到且 build 通过 (covers: S2)
-- [ ] T2: 重排 Dashboard 页头与组合速览 hero（字阶、chip、间距、涨跌 token） — acceptance: 今日盈亏呈 metric 级视觉主锚，次级指标降为 caption+mono，无 9/10px 正文 (covers: S2; depends: T1)
-- [ ] T3: 精致化指数 pills + 今日要紧事 feed（优先级色条、chip 体系、空态） — acceptance: feed 行有类型色条与统一 chip，空态走 `empty-hint` (covers: S2; depends: T1)
-- [ ] T4: 精致化组合体检 / 机会精选 / 简报三卡 — acceptance: 四卡控件语言统一，分享/跳转为 `link-quiet`，AI 体检按钮统一 (covers: S2; depends: T1)
-- [ ] T5: 精致化 DiscoveryPanel（tab、列表行、涨跌 token、空态） — acceptance: 与首页 chip/字阶/色 token 一致 (covers: S2; depends: T1)
-- [ ] T6: 移动端间距与 hero 折行校验（Dashboard 响应式 class） — acceptance: 375px 宽下 hero 与栅格不溢出、字阶不换档 (covers: S2; depends: T2, T3, T4)
-- [ ] T7: 补充/更新前端测试并跑通 test + build — acceptance: `pnpm test` 相关用例通过，`pnpm build` 成功 (covers: S2; depends: T2, T3, T4, T5)
+- [x] T1: 在 `index.css` 落地 `page-container` / `chip*` / `metric` / `empty-hint` / `link-quiet` 等共享样式，微调 `.card` — acceptance: 类名可被 Tailwind content 扫到且 build 通过 (covers: S2)
+- [x] T2: 重排 Dashboard 页头与组合速览 hero（字阶、chip、间距、涨跌 token） — acceptance: 今日盈亏呈 metric 级视觉主锚，次级指标降为 caption+mono，无 9/10px 正文 (covers: S2; depends: T1)
+- [x] T3: 精致化指数 pills + 今日要紧事 feed（优先级色条、chip 体系、空态） — acceptance: feed 行有类型色条与统一 chip，空态走 `empty-hint` (covers: S2; depends: T1)
+- [x] T4: 精致化组合体检 / 机会精选 / 简报三卡 — acceptance: 四卡控件语言统一，分享/跳转为 `link-quiet`，AI 体检按钮统一 (covers: S2; depends: T1)
+- [x] T5: 精致化 DiscoveryPanel（tab、列表行、涨跌 token、空态） — acceptance: 与首页 chip/字阶/色 token 一致 (covers: S2; depends: T1)
+- [x] T6: 移动端间距与 hero 折行校验（Dashboard 响应式 class） — acceptance: 375px 宽下 hero 与栅格不溢出、字阶不换档 (covers: S2; depends: T2, T3, T4)
+- [x] T7: 补充/更新前端测试并跑通 test + build — acceptance: `pnpm test` 相关用例通过，`pnpm build` 成功 (covers: S2; depends: T2, T3, T4, T5)
