@@ -68,6 +68,9 @@
 }
 
 @layer components {
+  .page-container {
+    @apply mx-auto w-full max-w-[1440px];
+  }
   .card {
     @apply bg-card rounded-xl border border-border/60 shadow-[0_1px_0_hsl(var(--border)/0.35)];
   }
@@ -85,6 +88,54 @@
   }
   .input-field {
     @apply w-full h-10 px-3 rounded-lg border border-border bg-background text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
+  }
+
+  /* 统一 11px 徽章/标签 */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none;
+  }
+  .chip-up {
+    @apply chip bg-stock-up/10 text-stock-up;
+  }
+  .chip-down {
+    @apply chip bg-stock-down/10 text-stock-down;
+  }
+  .chip-muted {
+    @apply chip bg-accent text-muted-foreground;
+  }
+  .chip-primary {
+    @apply chip bg-primary/10 text-primary;
+  }
+  .chip-amber {
+    @apply chip bg-amber-500/15 text-amber-600 dark:text-amber-500;
+  }
+  .chip-risk {
+    @apply chip bg-amber-500/15 text-amber-600 dark:text-amber-500;
+  }
+
+  /* 关键指标数字 */
+  .metric {
+    @apply font-mono tabular-nums leading-tight tracking-tight;
+  }
+
+  /* 统一空态 */
+  .empty-hint {
+    @apply py-8 text-center text-[12px] text-muted-foreground;
+  }
+
+  /* 标题栏右侧次级动作 */
+  .link-quiet {
+    @apply inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-primary;
+  }
+
+  /* 列表行 hover */
+  .row-hover {
+    @apply transition-colors hover:bg-accent/30;
+  }
+
+  /* 紧凑次级按钮 */
+  .btn-quiet {
+    @apply inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border/60 px-3 text-[12px] font-medium text-primary transition-colors hover:bg-accent/30 disabled:opacity-60;
   }
 }
 

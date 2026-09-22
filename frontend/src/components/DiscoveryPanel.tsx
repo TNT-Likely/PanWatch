@@ -212,14 +212,18 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
           </div>
         </div>
 
-        <div className="card p-4">
+        <div className="card p-4 md:p-5">
           <div className="mb-3 flex items-center gap-1.5">
             <button
               onClick={() => {
                 setDiscoverTab('boards')
                 loadDiscovery('boards')
               }}
-              className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'boards' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
+              className={`chip transition-colors ${
+                discoverTab === 'boards'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+              }`}
             >
               热门板块
             </button>
@@ -228,7 +232,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                 setDiscoverTab('stocks')
                 loadDiscovery('stocks')
               }}
-              className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'stocks' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
+              className={`chip transition-colors ${
+                discoverTab === 'stocks'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-accent/50 text-muted-foreground hover:bg-accent'
+              }`}
             >
               热门股票
             </button>
@@ -269,7 +277,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             </div>
           ) : discoverTab === 'boards' ? (
             hotBoards.length === 0 ? (
-              <div className="py-6 text-center text-[12px] text-muted-foreground">
+              <div className="empty-hint">
                 {discoverError || (discoverMarket === 'CN' ? '暂无数据' : `${discoverMarket === 'HK' ? '港股' : '美股'}暂不提供板块榜，已支持热门股票`)}
                 {discoverMarket !== 'CN' && (
                   <div className="mt-2">
@@ -283,51 +291,61 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {hotBoards.slice(0, 6).map((b) => {
                   const pct = b.change_pct ?? 0
-                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  const color = pct > 0 ? 'text-stock-up' : pct < 0 ? 'text-stock-down' : 'text-muted-foreground'
                   return (
                     <button
                       key={b.code}
                       onClick={() => openBoard(b)}
-                      className="flex items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
+                      className="row-hover flex items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left"
                       title="查看板块成分股"
                     >
                       <div className="min-w-0">
                         <div className="truncate text-[13px] font-medium text-foreground">{b.name}</div>
-                        <div className="truncate font-mono text-[11px] text-muted-foreground">{b.code}</div>
+                        <div className="metric mt-0.5 text-[11px] text-muted-foreground">{b.code}</div>
                       </div>
-                      <div className={`font-mono text-[12px] font-semibold ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                      <div className={`metric text-[12px] font-semibold ${color}`}>
+                        {pct >= 0 ? '+' : ''}
+                        {pct.toFixed(2)}%
+                      </div>
                     </button>
                   )
                 })}
               </div>
             )
           ) : hotStocks.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">{discoverError || '暂无数据'}</div>
+            <div className="empty-hint">{discoverError || '暂无数据'}</div>
           ) : (
             <div className="space-y-2">
-              {stocksMode === 'for_you' && <div className="px-1 text-[11px] text-muted-foreground">根据持仓/自选/监控信号/风格偏好排序</div>}
+              {stocksMode === 'for_you' && (
+                <div className="px-1 text-[11px] text-muted-foreground">根据持仓/自选/监控信号/风格偏好排序</div>
+              )}
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {visibleHotStocks.slice(0, 6).map((s) => {
                   const pct = s.change_pct ?? 0
-                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  const color = pct > 0 ? 'text-stock-up' : pct < 0 ? 'text-stock-down' : 'text-muted-foreground'
                   const reasons = (s as HotStockItem & { _reasons?: string[] })._reasons
                   return (
                     <div
                       key={`${s.market || discoverMarket}:${s.symbol}`}
                       onClick={() => onOpenStock(s.symbol, s.market || discoverMarket, s.name, false)}
-                      className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
+                      className="row-hover flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left"
                       title="打开股票详情弹窗"
                     >
                       <div className="min-w-0">
                         <div className="truncate text-[13px] font-medium text-foreground">{s.name}</div>
-                        <div className="font-mono text-[11px] text-muted-foreground">{s.market || discoverMarket}:{s.symbol}</div>
+                        <div className="metric mt-0.5 text-[11px] text-muted-foreground">
+                          {s.market || discoverMarket}:{s.symbol}
+                        </div>
                         {reasons && reasons.length > 0 && (
-                          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{reasons.join(' · ')}</div>
+                          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{reasons.join(' · ')}</div>
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="font-mono text-[12px] text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
-                        <div className={`font-mono text-[11px] ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                        <div className="metric text-[12px] text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                        <div className={`metric mt-0.5 text-[11px] ${color}`}>
+                          {pct >= 0 ? '+' : ''}
+                          {pct.toFixed(2)}%
+                        </div>
                       </div>
                     </div>
                   )
@@ -345,12 +363,12 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             <DialogDescription>点击个股打开统一详情弹窗（含概览、K线、建议、新闻、历史）</DialogDescription>
           </DialogHeader>
           {boardStocks.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">暂无数据</div>
+            <div className="empty-hint">暂无数据</div>
           ) : (
             <div className="scrollbar grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
               {boardStocks.map((s) => {
                 const pct = s.change_pct ?? 0
-                const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                const color = pct > 0 ? 'text-stock-up' : pct < 0 ? 'text-stock-down' : 'text-muted-foreground'
                 return (
                   <div
                     key={s.symbol}
@@ -358,15 +376,18 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                       setBoardDialogOpen(false)
                       onOpenStock(s.symbol, s.market || 'CN', s.name, false)
                     }}
-                    className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
+                    className="row-hover flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left"
                   >
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-medium text-foreground">{s.name}</div>
-                      <div className="font-mono text-[11px] text-muted-foreground">{s.symbol}</div>
+                      <div className="metric mt-0.5 text-[11px] text-muted-foreground">{s.symbol}</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-mono text-[12px] text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
-                      <div className={`font-mono text-[11px] ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                      <div className="metric text-[12px] text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                      <div className={`metric mt-0.5 text-[11px] ${color}`}>
+                        {pct >= 0 ? '+' : ''}
+                        {pct.toFixed(2)}%
+                      </div>
                     </div>
                   </div>
                 )
