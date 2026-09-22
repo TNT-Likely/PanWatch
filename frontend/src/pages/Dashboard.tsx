@@ -85,8 +85,8 @@ const ALERT_LABEL: Record<string, string> = {
 }
 
 const FEED_BADGE: Record<string, { label: string; cls: string; bar: string }> = {
-  alert: { label: '提醒命中', cls: 'chip-up', bar: 'bg-stock-up' },
-  holding: { label: '持仓', cls: 'chip-down', bar: 'bg-stock-down' },
+  alert: { label: '提醒命中', cls: 'chip-amber', bar: 'bg-amber-500' },
+  holding: { label: '持仓', cls: 'chip-primary', bar: 'bg-primary' },
   watch: { label: '自选', cls: 'chip-muted', bar: 'bg-muted-foreground/40' },
   risk: { label: '风险', cls: 'chip-amber', bar: 'bg-amber-500' },
   opportunity: { label: '机会', cls: 'chip-primary', bar: 'bg-primary' },
@@ -334,7 +334,7 @@ export default function DashboardPage() {
       {/* 顶部:标题 + 刷新 + 日期/市场状态 pills */}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold tracking-tight text-foreground md:text-2xl">今日该看什么</h1>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">今日该看什么</h1>
           <Button onClick={load} disabled={loading} size="sm" variant="ghost" className="h-7 w-7 px-0" title="刷新">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
@@ -375,7 +375,7 @@ export default function DashboardPage() {
             <div className="hidden h-10 w-px bg-border/60 sm:block" />
             <div>
               <div className="text-[11px] text-muted-foreground">累计浮盈</div>
-              <div className={`metric mt-1 text-[14px] ${moveColor(diag!.total_unrealized_pnl)}`}>
+              <div className={`metric mt-1 text-sm ${moveColor(diag!.total_unrealized_pnl)}`}>
                 {fmtMoney(diag!.total_unrealized_pnl)}{' '}
                 <span className="text-[11px] font-normal opacity-90">{pct(portfolioPnlPct)}</span>
               </div>
@@ -383,14 +383,14 @@ export default function DashboardPage() {
             <div>
               <div className="text-[11px] text-muted-foreground">60日超额</div>
               <div
-                className={`metric mt-1 text-[14px] ${benchReady ? moveColor(bench!.excess_return) : 'text-muted-foreground'}`}
+                className={`metric mt-1 text-sm ${benchReady ? moveColor(bench!.excess_return) : 'text-muted-foreground'}`}
               >
                 {benchReady ? pct(bench!.excess_return) : '--'}
               </div>
             </div>
             <div>
               <div className="text-[11px] text-muted-foreground">仓位</div>
-              <div className="metric mt-1 text-[14px]">
+              <div className="metric mt-1 text-sm">
                 {positionRatioPct != null ? `${positionRatioPct.toFixed(0)}%` : '--'}
               </div>
             </div>
@@ -407,13 +407,13 @@ export default function DashboardPage() {
       </div>
 
       {/* 指数走势 pills */}
-      <div className="mb-3 grid grid-cols-2 gap-2.5 md:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
         {indices.slice(0, 5).map((ix) => (
           <div key={`${ix.market}:${ix.symbol}`} className="card-subtle relative p-3">
             <div className="flex items-start justify-between gap-1.5">
               <div className="min-w-0">
                 <div className="truncate text-[11px] text-muted-foreground">{ix.name}</div>
-                <div className="metric mt-0.5 text-[15px] text-foreground">
+                <div className="metric mt-0.5 text-sm text-foreground">
                   {ix.current_price != null ? ix.current_price.toFixed(2) : '--'}
                 </div>
               </div>
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                 {todos.map((t, i) => (
                   <div
                     key={i}
-                    className={`row-hover flex items-center gap-2.5 rounded-lg px-1 py-1.5 text-[12px] ${
+                    className={`row-hover flex items-center gap-2 rounded-lg px-1 py-1.5 text-[12px] ${
                       t.symbol ? 'cursor-pointer' : ''
                     }`}
                     onClick={() => t.symbol && openStock(t.symbol, t.market || 'CN', '')}
@@ -486,7 +486,7 @@ export default function DashboardPage() {
                     }`}
                     onClick={() => it.symbol && openStock(it.symbol, it.market || 'CN', it.name || '')}
                   >
-                    <span className={`absolute inset-y-2 left-0 w-0.5 rounded-full ${badge.bar}`} aria-hidden />
+                    <span className={`absolute inset-y-0 left-0 w-0.5 rounded-full ${badge.bar}`} aria-hidden />
                     <span className={`shrink-0 ${badge.cls}`}>{badge.label}</span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-medium">{it.name || it.symbol}</div>
@@ -639,7 +639,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : (
-                <div className="pt-1 text-[11px] text-stock-down">✓ 集中度/分布未见明显风险</div>
+                <div className="pt-1 text-[11px] text-emerald-600 dark:text-emerald-500">✓ 集中度/分布未见明显风险</div>
               )}
               <button type="button" onClick={runAiReview} disabled={aiReviewLoading} className="btn-quiet mt-1">
                 {aiReviewLoading ? 'AI 体检中…' : 'AI 体检报告'}
@@ -673,7 +673,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={`${o.stock_market}:${o.stock_symbol}`}
-                    className="row-hover flex cursor-pointer items-center gap-2.5 rounded-lg px-1 py-2.5"
+                    className="row-hover flex cursor-pointer items-center gap-2 rounded-lg px-1 py-2.5"
                     onClick={() => openStock(o.stock_symbol, o.stock_market, o.stock_name || o.stock_symbol)}
                   >
                     <div className="min-w-0 flex-1">
@@ -686,7 +686,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="metric text-[14px] text-foreground">{score.toFixed(0)}</div>
+                      <div className="metric text-[13px] text-foreground">{score.toFixed(0)}</div>
                       <div className="text-[11px] text-muted-foreground">评分</div>
                       <div className="mt-1.5 h-[3px] w-10 overflow-hidden rounded bg-accent/40">
                         <div className="h-full rounded bg-primary/70" style={{ width: `${score}%` }} />

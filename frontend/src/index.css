@@ -72,7 +72,7 @@
     @apply mx-auto w-full max-w-[1440px];
   }
   .card {
-    @apply bg-card rounded-xl border border-border/60 shadow-[0_1px_0_hsl(var(--border)/0.35)];
+    @apply bg-card rounded-xl border border-border/60 shadow-[0_1px_2px_hsl(var(--border)/0.25)];
   }
   .card-hover {
     @apply bg-card rounded-xl border border-border/60 hover:border-primary/30 hover:shadow-[0_10px_30px_-26px_hsl(var(--primary)/0.55)] transition-all;
@@ -107,9 +107,6 @@
     @apply chip bg-primary/10 text-primary;
   }
   .chip-amber {
-    @apply chip bg-amber-500/15 text-amber-600 dark:text-amber-500;
-  }
-  .chip-risk {
     @apply chip bg-amber-500/15 text-amber-600 dark:text-amber-500;
   }
 
