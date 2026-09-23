@@ -1063,6 +1063,45 @@ def _sync_factor_and_risk_snapshots(
         row.updated_at = utc_now()
 
 
+def _extract_earnings_verification(payload: dict | None) -> dict | None:
+    """从信号 payload 提取财报核验摘要(盘前流水线阶段4 写入);无核验数据返回 None。
+
+    兼容两种形态:
+    - 直接键: payload.earnings_verification.{status, report_date, single_quarter_yoy};
+    - 流水线现形: payload.verification.{passed, warnings, checks, ...},此时 status
+      由 passed/warnings 推导(通过且无告警=passed;通过但带告警=warn;未通过=failed),
+      report_date/single_quarter_yoy 缺失时按规格置 None。
+    任何形态都 fail-soft:非 dict/空 dict 一律返回 None,绝不臆造字段。
+    """
+    raw = payload if isinstance(payload, dict) else {}
+    ver = raw.get("earnings_verification")
+    if not isinstance(ver, dict):
+        ver = raw.get("verification")
+    if not isinstance(ver, dict) or not ver:
+        return None
+
+    status = str(ver.get("status") or "").strip().lower()
+    if status not in ("passed", "warn", "failed"):
+        passed = ver.get("passed")
+        if not isinstance(passed, bool):
+            return None
+        warnings = ver.get("warnings")
+        has_warn = isinstance(warnings, list) and len(warnings) > 0
+        status = ("warn" if has_warn else "passed") if passed else "failed"
+
+    report_date = str(ver.get("report_date") or ver.get("report_period") or "").strip() or None
+    yoy = ver.get("single_quarter_yoy")
+    if yoy is None:
+        yoy = ver.get("single_quarter_profit_yoy")
+    if isinstance(yoy, bool) or not isinstance(yoy, (int, float)):
+        yoy = None
+    return {
+        "status": status,
+        "report_date": report_date,
+        "single_quarter_yoy": yoy,
+    }
+
+
 def _format_signal(
     row: StrategySignalRun,
     *,
@@ -1187,6 +1226,8 @@ def _format_signal(
         "news_metric": news_metric,
         "constrained": constrained,
         "constraint_reasons": [str(x) for x in constraint_reasons if str(x).strip()],
+        # 财报核验徽章数据:始终从原始行 payload 提取(与 include_payload 无关)
+        "earnings_verification": _extract_earnings_verification(payload_raw),
         "payload": payload if include_payload else {},
         "created_at": _iso(row.created_at),
         "updated_at": _iso(row.updated_at),

@@ -36,6 +36,7 @@ const marketLabel = (m?: string) => {
 }
 
 const sourceAgentLabelMap: Record<string, string> = {
+  premarket_pipeline: '盘前决策',
   premarket_outlook: '盘前分析',
   intraday_monitor: '盘中监测',
   daily_report: '收盘复盘',
@@ -112,6 +113,18 @@ const displayActionLabel = (item: StrategySignalItem) => {
   if (!item.is_holding_snapshot && action === 'hold') return '观望'
   if (!item.is_holding_snapshot && action === 'add') return '建仓'
   return item.action_label || item.action
+}
+
+/** 财报核验徽章:passed=已核验(绿) warn=存疑(橙);无数据/其余状态不渲染 */
+const verificationBadge = (ev: StrategySignalItem['earnings_verification']) => {
+  const status = (ev?.status || '').toLowerCase()
+  if (status === 'passed') {
+    return { label: '财报已核验', cls: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' }
+  }
+  if (status === 'warn') {
+    return { label: '财报存疑', cls: 'bg-orange-500/15 text-orange-600 border border-orange-500/30' }
+  }
+  return null
 }
 
 const scoreOf = (item: StrategySignalItem) => Number(item.rank_score || item.score || 0)
@@ -719,6 +732,7 @@ export default function OpportunitiesPage() {
           const sourceAgentTailCount = Math.max(0, group.sourceAgents.length - 1)
           const eventScore = toNumberOrNull(newsMetric.event_score)
           const eventCount = Number(newsMetric.news_count || 0)
+          const verification = verificationBadge(item.earnings_verification)
           const sourceFlags: string[] = []
           if (group.hasMarketScan) sourceFlags.push('市场候选')
           if (inWatchlist) sourceFlags.push('已关注标的')
@@ -735,10 +749,15 @@ export default function OpportunitiesPage() {
                     <div className="text-[11px] text-muted-foreground font-mono">{item.stock_market}:{item.stock_symbol}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[12px]">
+                    <div className="flex items-center justify-end gap-1">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${actionBadgeClass(item.action)}`}>
                         {displayActionLabel(item)}
                       </span>
+                      {verification && (
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] ${verification.cls}`}>
+                          {verification.label}
+                        </span>
+                      )}
                     </div>
                     <div className={`text-[12px] font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
                       评分 {Math.round(item.rank_score || item.score || 0)}

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2 } from 'lucide-react'
+import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
 import {
   dashboardApi,
   portfolioApi,
   recommendationsApi,
   homeApi,
+  sectorsApi,
   type DashboardMarketIndex,
   type DashboardMarketStatus,
   type DashboardMonitorStock,
@@ -22,6 +23,7 @@ import {
   type AttributionItem,
   type PortfolioAiReview,
   type DashboardBrief,
+  type SectorPredictionItem,
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
@@ -98,6 +100,23 @@ const MARKET_BAR_CLS: Record<string, string> = {
   HK: 'bg-orange-500',
 }
 
+/** 板块方向徽章配色(A股口径红涨绿跌):bullish 红 / bearish 绿 / 其余中性灰 */
+function sectorDirectionBadge(direction?: string): { label: string; cls: string } {
+  const key = (direction || '').toLowerCase()
+  if (key === 'bullish') return { label: '看多', cls: 'bg-rose-500/15 text-rose-500' }
+  if (key === 'bearish') return { label: '看空', cls: 'bg-emerald-500/15 text-emerald-500' }
+  return { label: '中性', cls: 'bg-accent text-muted-foreground' }
+}
+
+/** 取 rationale 首行纯文本(去 markdown 标记,空行跳过) */
+function rationaleFirstLine(rationale?: string): string {
+  for (const line of (rationale || '').split('\n')) {
+    const text = stripMarkdown(line)
+    if (text) return text
+  }
+  return ''
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -116,6 +135,10 @@ export default function DashboardPage() {
   const [aiReviewLoading, setAiReviewLoading] = useState(false)
   const [brief, setBrief] = useState<DashboardBrief | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
+  // 今日板块预判:独立加载(不阻塞首屏),loading/ready/empty 三态优雅降级
+  const [sectorForecast, setSectorForecast] = useState<SectorPredictionItem[]>([])
+  const [sectorDate, setSectorDate] = useState('')
+  const [sectorState, setSectorState] = useState<'loading' | 'ready' | 'empty'>('loading')
   const [portfolioSummary, setPortfolioSummary] = useState<DashboardPortfolioSummary | null>(null)
   const [marketStatus, setMarketStatus] = useState<DashboardMarketStatus[]>([])
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null)
@@ -189,6 +212,19 @@ export default function DashboardPage() {
       briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
       setBrief(briefs[0] || null)
     })
+
+    // 今日板块预判:独立加载不阻塞首屏(失败 fail-soft,已有数据保持展示)
+    sectorsApi
+      .getSectorPredictions()
+      .then((r) => {
+        const rows = r.predictions || []
+        setSectorForecast(rows)
+        setSectorDate(r.requested_date || '')
+        setSectorState(rows.length > 0 ? 'ready' : 'empty')
+      })
+      .catch(() => {
+        setSectorState((prev) => (prev === 'ready' ? 'ready' : 'empty'))
+      })
   }, [loadBench])
 
   useEffect(() => {
@@ -327,6 +363,13 @@ export default function DashboardPage() {
     const stripped = stripMarkdown(brief.content)
     return stripped.length > 120 ? `${stripped.slice(0, 120)}…` : stripped
   }, [brief])
+
+  // 板块预判展示行:置信度降序(缺失置底),最多 6 条
+  const sectorRows = useMemo(() => {
+    return [...sectorForecast]
+      .sort((a, b) => (b.confidence ?? -1) - (a.confidence ?? -1))
+      .slice(0, 6)
+  }, [sectorForecast])
 
   return (
     <div className="page-container pb-10">
@@ -686,6 +729,49 @@ export default function DashboardPage() {
                       <div className="mt-1 h-[3px] w-10 rounded bg-accent/40">
                         <div className="h-[3px] rounded bg-primary/70" style={{ width: `${score}%` }} />
                       </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 今日板块预判(盘前决策引擎产出;独立加载,空/失败优雅降级) */}
+        <div className="card p-4 lg:col-span-5">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              今日板块预判
+            </h2>
+            {sectorDate && <span className="text-[10px] text-muted-foreground">{sectorDate}</span>}
+          </div>
+          {sectorState === 'loading' ? (
+            <div className="py-6 text-center text-[12px] text-muted-foreground">加载中…</div>
+          ) : sectorRows.length === 0 ? (
+            <div className="py-6 text-center text-[12px] text-muted-foreground">今日暂无板块预判</div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {sectorRows.map((s) => {
+                const badge = sectorDirectionBadge(s.direction)
+                const rationale = rationaleFirstLine(s.rationale)
+                return (
+                  <div key={s.board_code || s.board_name} className="flex items-center gap-2 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-[13px] font-medium">{s.board_name || s.board_code}</span>
+                        <span className={`shrink-0 rounded px-1 text-[9px] ${badge.cls}`}>{badge.label}</span>
+                        {s.stage && (
+                          <span className="shrink-0 rounded bg-accent px-1 text-[9px] text-muted-foreground">{s.stage}</span>
+                        )}
+                      </div>
+                      {rationale && <div className="truncate text-[11px] text-muted-foreground">{rationale}</div>}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-mono text-[13px] text-foreground">
+                        {s.confidence != null && isFinite(s.confidence) ? `${Math.round(s.confidence * 100)}%` : '--'}
+                      </div>
+                      <div className="text-[9px] text-muted-foreground">置信度</div>
                     </div>
                   </div>
                 )
