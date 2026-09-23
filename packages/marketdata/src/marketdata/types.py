@@ -242,6 +242,32 @@ class NewsArticle:
 
 
 @dataclass
+class MacroIndicator:
+    """宏观指标最新一期快照(PMI/CPI/PPI/LPR/社融/M2/汇率等,市场级,symbols 恒空)。
+    单项取不到则不产出该条(fail-soft),绝不编造;period/publish_date 原样字符串不做日期解析。"""
+
+    name: str                     # 指标名(如 "制造业PMI" / "CPI同比" / "LPR(1Y)")
+    value: float | None = None    # 最新值(取不到则该条不产出,保留 None 以容错)
+    period: str = ""              # 数据所属期(源侧原样,如 "2026年08月")
+    publish_date: str = ""        # 发布日期(源侧原样,可空)
+    unit: str = ""                # 单位(% / 亿元 / CNY / 点)
+    source: str = ""              # 来源标识(如 akshare 接口名)
+
+
+@dataclass
+class GlobalIndexQuote:
+    """全球指数快照(市场级,symbols 恒空)。symbol 用跨源统一键(DJI/N225/HSI/USDX…),
+    便于多源间交叉比对;source_tag 标记来源 provider(如 tencent_global)。"""
+
+    symbol: str
+    name: str = ""
+    price: float | None = None       # 最新价
+    change_pct: float | None = None  # 涨跌幅(%)
+    close: float | None = None       # 昨收
+    source_tag: str = ""
+
+
+@dataclass
 class Response:
     """Engine 返回:承载 payload + 命中的 vendor/延迟。"""
 

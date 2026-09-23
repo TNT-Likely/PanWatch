@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
+import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight, Globe, Activity } from 'lucide-react'
 import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -82,6 +82,8 @@ const DATASOURCE_TYPES = {
   shareholders: { label: '股东户数', icon: Users, color: 'text-teal-500' },
   dividend: { label: '分红', icon: Gift, color: 'text-pink-500' },
   northbound: { label: '北向资金', icon: ArrowLeftRight, color: 'text-sky-500' },
+  global_markets: { label: '全球指数', icon: Globe, color: 'text-fuchsia-500' },
+  macro: { label: '宏观指标', icon: Activity, color: 'text-lime-500' },
 }
 
 // 数据源分类分组:仅用于页面展示时的二级归组,不影响数据结构与后端
@@ -90,6 +92,7 @@ const DATASOURCE_CATEGORIES: { key: string; label: string; types: string[] }[] =
   { key: 'news', label: '资讯 & 快讯', types: ['news', 'flash_news', 'events'] },
   { key: 'fundamentals', label: '基本面 & 财务', types: ['fundamentals'] },
   { key: 'capital', label: '资金 & 市场面', types: ['capital_flow', 'dragon_tiger', 'margin', 'shareholders', 'northbound', 'dividend'] },
+  { key: 'global', label: '全球 & 宏观', types: ['global_markets', 'macro'] },
   { key: 'chart', label: '图表', types: ['chart'] },
 ]
 
@@ -777,6 +780,42 @@ export default function DataSourcesPage() {
                             沪股通 {((nbItem.hgt_net ?? 0) / 10000).toFixed(2)}万
                           </span>
                         </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Global markets type */}
+                  {testResult.source_type === 'global_markets' && testResult.items.map((item, i) => {
+                    const gmItem = item as { symbol?: string; name?: string; price?: number; change_pct?: number }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <span className="text-[12px] font-medium text-foreground">{gmItem.name || gmItem.symbol}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[12px] font-mono">{gmItem.price?.toFixed(2)}</span>
+                          <span className={`text-[11px] font-mono ${
+                            (gmItem.change_pct ?? 0) > 0 ? 'text-red-500' : (gmItem.change_pct ?? 0) < 0 ? 'text-green-500' : 'text-muted-foreground'
+                          }`}>
+                            {(gmItem.change_pct ?? 0) > 0 ? '+' : ''}{gmItem.change_pct?.toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Macro type */}
+                  {testResult.source_type === 'macro' && testResult.items.map((item, i) => {
+                    const macroItem = item as { name?: string; value?: number; period?: string; unit?: string }
+                    return (
+                      <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-accent/30">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[12px] font-medium text-foreground">{macroItem.name}</span>
+                          {macroItem.period && (
+                            <span className="text-[11px] text-muted-foreground ml-2">{macroItem.period}</span>
+                          )}
+                        </div>
+                        <span className="text-[12px] font-mono">
+                          {macroItem.value ?? '-'}{macroItem.unit ? ` ${macroItem.unit}` : ''}
+                        </span>
                       </div>
                     )
                   })}

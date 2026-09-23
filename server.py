@@ -622,6 +622,58 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": False,
             "test_symbols": [],
         },
+        # 全球指数数据源（市场级：美股三大/恒生/恒生科技/美元指数/日经/KOSPI）
+        {
+            "name": "腾讯全球指数",
+            "type": "global_markets",
+            "provider": "tencent_global",
+            "config": {
+                "description": "腾讯 qt.gtimg 全球指数快照(美股三大/恒生/恒生科技/美元指数,免 key)。"
+            },
+            "enabled": True,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "Yahoo 全球指数",
+            "type": "global_markets",
+            "provider": "yahoo_global",
+            "config": {
+                "description": "Yahoo Finance 全球指数(^N225/^KS11/^HSI 等),需 pip install yfinance,"
+                "国内访问通常需代理,在 config.proxy 填写代理地址后启用。",
+                "proxy": "",
+            },
+            "enabled": False,  # 需代理,默认关(同 YFinance 口径)
+            "priority": 20,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "东财全球指数",
+            "type": "global_markets",
+            "provider": "akshare_global",
+            "config": {
+                "description": "东财全球指数实时(akshare index_global_spot_em,覆盖亚太/欧美主要指数)。"
+            },
+            "enabled": True,
+            "priority": 30,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        # 宏观指标数据源（市场级：PMI/CPI/PPI/LPR/社融/M2/USDCNY，月频低频）
+        {
+            "name": "akshare宏观指标",
+            "type": "macro",
+            "provider": "akshare",
+            "config": {
+                "description": "akshare 宏观接口(PMI/CPI/PPI/LPR/社融/M2/USDCNY),逐项 fail-soft。"
+            },
+            "enabled": True,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
         # K线截图数据源
         {
             "name": "雪球K线截图",
@@ -1616,5 +1668,5 @@ if __name__ == "__main__":
         port=8000,
         reload=_dev_reload,
         reload_dirs=["src", "."] if _dev_reload else None,
-        reload_excludes=["data/*", "frontend/*", ".claude/*"] if _dev_reload else None,
+        reload_excludes=["data/*", "frontend/*"] if _dev_reload else None,
     )

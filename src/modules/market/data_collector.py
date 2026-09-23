@@ -561,6 +561,12 @@ class DataCollectorManager:
         elif source.type == "northbound":
             return await self._test_northbound_source(source)
 
+        elif source.type == "global_markets":
+            return await self._test_global_markets_source(source)
+
+        elif source.type == "macro":
+            return await self._test_macro_source(source)
+
         return CollectorResult(
             success=False, error=f"不支持的数据源类型: {source.type}"
         )
@@ -577,6 +583,8 @@ class DataCollectorManager:
     _SHAREHOLDERS_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["shareholders"]
     _DIVIDEND_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["dividend"]
     _NORTHBOUND_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["northbound"]
+    _GLOBAL_MARKETS_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["global_markets"]
+    _MACRO_PACKAGE_VENDORS = PACKAGE_VENDORS_BY_TYPE["macro"]
 
     async def _test_kline_source(
         self, source: DataSource, test_symbols: list[str]
@@ -1035,6 +1043,101 @@ class DataCollectorManager:
             ],
             count=len(items),
             error="" if items else "未获取到北向资金数据",
+        )
+
+    async def _test_global_markets_source(self, source: DataSource) -> CollectorResult:
+        """测试全球指数源:走 marketdata 包的单源 Engine(仅该 vendor,不串备份链)。
+
+        全球指数是市场级数据(盘前海外参照),不按 symbols 过滤,所以不传 test_symbols。
+        包内 global_markets() 返回 Response(全源失败 ok=False 不抛异常),
+        失败真因从 resp.error 透出(capture_errors 外层仍会收 vendor 内层错误)。
+        """
+        from marketdata import MarketData, SourceConfig, StaticConfigProvider
+
+        if source.provider not in self._GLOBAL_MARKETS_PACKAGE_VENDORS:
+            return CollectorResult(
+                success=False,
+                error=f"provider {source.provider} 无对应 vendor，包内未实现该全球指数源",
+            )
+
+        cfg = source.config or {}
+        md = MarketData(
+            config=StaticConfigProvider(
+                {
+                    "global_markets": [
+                        SourceConfig(vendor=source.provider, config=cfg, enabled=True)
+                    ]
+                }
+            )
+        )
+
+        try:
+            resp = md.global_markets()
+        except Exception as e:
+            return CollectorResult(success=False, error=str(e))
+
+        items = resp.data or []
+        return CollectorResult(
+            success=resp.ok and len(items) > 0,
+            data=[
+                {
+                    "symbol": i.symbol,
+                    "name": i.name,
+                    "price": i.price,
+                    "change_pct": i.change_pct,
+                }
+                for i in items[:10]
+            ],
+            count=len(items),
+            error="" if items else (resp.error or "未获取到全球指数数据"),
+        )
+
+    async def _test_macro_source(self, source: DataSource) -> CollectorResult:
+        """测试宏观指标源:走 marketdata 包的单源 Engine(仅该 vendor,不串备份链)。
+
+        宏观指标是市场级月频数据(PMI/CPI/PPI/LPR/社融/M2/USDCNY),
+        不按 symbols 过滤,所以不传 test_symbols。
+        包内 macro() 返回 Response(全源失败 ok=False 不抛异常),
+        失败真因从 resp.error 透出(capture_errors 外层仍会收 vendor 内层错误)。
+        """
+        from marketdata import MarketData, SourceConfig, StaticConfigProvider
+
+        if source.provider not in self._MACRO_PACKAGE_VENDORS:
+            return CollectorResult(
+                success=False,
+                error=f"provider {source.provider} 无对应 vendor，包内未实现该宏观指标源",
+            )
+
+        cfg = source.config or {}
+        md = MarketData(
+            config=StaticConfigProvider(
+                {
+                    "macro": [
+                        SourceConfig(vendor=source.provider, config=cfg, enabled=True)
+                    ]
+                }
+            )
+        )
+
+        try:
+            resp = md.macro()
+        except Exception as e:
+            return CollectorResult(success=False, error=str(e))
+
+        items = resp.data or []
+        return CollectorResult(
+            success=resp.ok and len(items) > 0,
+            data=[
+                {
+                    "name": i.name,
+                    "value": i.value,
+                    "period": i.period,
+                    "unit": i.unit,
+                }
+                for i in items[:10]
+            ],
+            count=len(items),
+            error="" if items else (resp.error or "未获取到宏观指标数据"),
         )
 
 
