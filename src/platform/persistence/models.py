@@ -2,6 +2,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -1330,3 +1331,142 @@ class MCPCallLog(Base):
     duration_ms = Column(Integer, default=0)
     client_ip = Column(String, nullable=True)
     called_at = Column(DateTime, server_default=func.now())
+
+
+class EventCalendarItem(Base):
+    """大中型财经事件日历条目(FOMC/数据发布/财报/地缘等,复盘对表与操盘前瞻共用)。"""
+
+    __tablename__ = "event_calendar_items"
+    __table_args__ = (
+        Index("ix_event_calendar_date", "event_date"),
+        Index("ix_event_calendar_level_date", "level", "event_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_date = Column(Date, nullable=False, index=True)  # 事件日期
+    level = Column(String, nullable=False, default="medium")  # high / medium / low
+    name = Column(String, nullable=False)  # 事件名,如 "美联储FOMC决议"
+    scope = Column(String, default="")  # 影响范围,如 "全球" / "中国" / "行业:半导体"
+    expected = Column(String, default="")  # 预期值(字符串,兼容 "7.1%/前值6.8" 这类写法)
+    actual = Column(String, default="")  # 实际值(未公布留空)
+    direction = Column(String, default="")  # 方向倾向: bullish / bearish / neutral
+    impact_boards = Column(JSON, default=[])  # 受影响板块代码/名称列表
+    meta = Column(JSON, default={})  # 扩展信息(来源、备注等)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SectorPrediction(Base):
+    """行业方向预测(盘前决策引擎产出,按日/行业唯一)。"""
+
+    __tablename__ = "sector_predictions"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_date", "board_code", name="uq_sector_prediction_board_day"
+        ),
+        Index("ix_sector_prediction_date", "snapshot_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(String, nullable=False)  # YYYY-MM-DD
+    board_code = Column(String, nullable=False)  # 行业板块代码(东财口径)
+    market = Column(String, nullable=False, default="CN")  # CN / HK / US
+    board_name = Column(String, default="")
+    direction = Column(String, default="")  # bullish / bearish / neutral
+    confidence = Column(Float, nullable=True)  # [0, 1]
+    stage = Column(String, default="")  # 所处阶段,如 启动/延续/高潮/退潮
+    momentum_score = Column(Float, nullable=True)  # 动量得分(可负)
+    rationale = Column(Text, default="")  # 推理依据
+    catalysts = Column(JSON, default=[])  # 催化剂列表
+    meta = Column(JSON, default={})
+    source_agent = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class SectorSnapshot(Base):
+    """行业板块每日快照(多源采集交叉校验后落地,按日/行业唯一)。"""
+
+    __tablename__ = "sector_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_date", "board_code", name="uq_sector_snapshot_board_day"
+        ),
+        Index("ix_sector_snapshot_date", "snapshot_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(String, nullable=False)  # YYYY-MM-DD
+    board_code = Column(String, nullable=False)
+    board_name = Column(String, default="")
+    change_pct = Column(Float, nullable=True)  # 板块涨跌幅 %
+    turnover = Column(Float, nullable=True)  # 板块成交额
+    limit_up_count = Column(Integer, nullable=True)  # 板块内涨停家数
+    limit_up_caliber = Column(String, default="")  # official=涨停池口径 / self_counted=自算口径
+    main_net_inflow = Column(Float, nullable=True)  # 主力净流入
+    small_net_inflow = Column(Float, nullable=True)  # 小单净流入
+    rank = Column(Integer, nullable=True)  # 当日主力净流入排名(1 起)
+    # meta 内含各字段 provenance(source/as_of/caliber/degrade_level)与交叉校验结论
+    meta = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class MacroIndicatorValue(Base):
+    """宏观指标缓存(按指标+所属期唯一,幂等刷新)。"""
+
+    __tablename__ = "macro_indicator_values"
+    __table_args__ = (
+        UniqueConstraint("indicator", "period", name="uq_macro_indicator_period"),
+        Index("ix_macro_indicator_indicator", "indicator"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    indicator = Column(String, nullable=False)  # 指标名,如 "制造业PMI" / "CPI同比"
+    period = Column(String, nullable=False)  # 数据所属期(源侧原样,如 "2026年08月")
+    value = Column(Float, nullable=True)  # 指标值
+    publish_date = Column(String, default="")  # 发布日期(源侧原样,可空)
+    source = Column(String, default="")  # 来源标识(如 akshare 接口名)
+    as_of = Column(String, default="")  # 本地取数时间 ISO 字符串
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class FundamentalsCache(Base):
+    """财报摘要缓存(按标的+报告期唯一)。"""
+
+    __tablename__ = "fundamentals_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "report_period", name="uq_fundamentals_symbol_period"
+        ),
+        Index("ix_fundamentals_symbol", "symbol"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    report_period = Column(String, nullable=False)  # 报告期,如 "2026H1" / "2026Q2"
+    summary = Column(JSON, default={})  # 财报摘要(营收/净利/单季拆分等)
+    sources = Column(JSON, default=[])  # 来源清单([{source, as_of, url?}, ...])
+    verified_at = Column(DateTime, nullable=True)  # 数据核验时间(双源交叉后写入)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ValuationSeries(Base):
+    """个股估值时间序列(PE-TTM/PB,按标的+交易日唯一,增量补齐)。"""
+
+    __tablename__ = "valuation_series"
+    __table_args__ = (
+        UniqueConstraint("symbol", "trade_date", name="uq_valuation_symbol_date"),
+        Index("ix_valuation_series_symbol_date", "symbol", "trade_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    trade_date = Column(String, nullable=False)  # YYYY-MM-DD
+    pe_ttm = Column(Float, nullable=True)
+    pb = Column(Float, nullable=True)
+    source = Column(String, default="")  # 来源标识
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

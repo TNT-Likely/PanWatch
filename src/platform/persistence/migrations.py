@@ -1965,6 +1965,172 @@ def _m126_assistant_task_events(conn: Connection) -> None:
     )
 
 
+def _m127_premarket_data_foundation(conn: Connection) -> None:
+    """盘前决策引擎的数据地基:事件日历/行业预测/行业快照/宏观缓存/财报缓存/估值序列。
+
+    全部 CREATE TABLE IF NOT EXISTS + 索引,幂等可重跑(仿 _m111 模式)。
+    """
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS event_calendar_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_date DATE NOT NULL,
+  level TEXT NOT NULL DEFAULT 'medium',
+  name TEXT NOT NULL,
+  scope TEXT DEFAULT '',
+  expected TEXT DEFAULT '',
+  actual TEXT DEFAULT '',
+  direction TEXT DEFAULT '',
+  impact_boards TEXT DEFAULT '[]',
+  meta TEXT DEFAULT '{}',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_event_calendar_date",
+        "CREATE INDEX ix_event_calendar_date ON event_calendar_items(event_date)",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_event_calendar_level_date",
+        "CREATE INDEX ix_event_calendar_level_date ON event_calendar_items(level, event_date)",
+    )
+
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS sector_predictions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_date TEXT NOT NULL,
+  board_code TEXT NOT NULL,
+  market TEXT NOT NULL DEFAULT 'CN',
+  board_name TEXT DEFAULT '',
+  direction TEXT DEFAULT '',
+  confidence REAL,
+  stage TEXT DEFAULT '',
+  momentum_score REAL,
+  rationale TEXT DEFAULT '',
+  catalysts TEXT DEFAULT '[]',
+  meta TEXT DEFAULT '{}',
+  source_agent TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_sector_prediction_board_day UNIQUE(snapshot_date, board_code)
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_sector_prediction_date",
+        "CREATE INDEX ix_sector_prediction_date ON sector_predictions(snapshot_date)",
+    )
+
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS sector_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_date TEXT NOT NULL,
+  board_code TEXT NOT NULL,
+  board_name TEXT DEFAULT '',
+  change_pct REAL,
+  turnover REAL,
+  limit_up_count INTEGER,
+  limit_up_caliber TEXT DEFAULT '',
+  main_net_inflow REAL,
+  small_net_inflow REAL,
+  rank INTEGER,
+  meta TEXT DEFAULT '{}',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_sector_snapshot_board_day UNIQUE(snapshot_date, board_code)
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_sector_snapshot_date",
+        "CREATE INDEX ix_sector_snapshot_date ON sector_snapshots(snapshot_date)",
+    )
+
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS macro_indicator_values (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  indicator TEXT NOT NULL,
+  period TEXT NOT NULL,
+  value REAL,
+  publish_date TEXT DEFAULT '',
+  source TEXT DEFAULT '',
+  as_of TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_macro_indicator_period UNIQUE(indicator, period)
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_macro_indicator_indicator",
+        "CREATE INDEX ix_macro_indicator_indicator ON macro_indicator_values(indicator)",
+    )
+
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS fundamentals_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  report_period TEXT NOT NULL,
+  summary TEXT DEFAULT '{}',
+  sources TEXT DEFAULT '[]',
+  verified_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_fundamentals_symbol_period UNIQUE(symbol, report_period)
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_fundamentals_symbol",
+        "CREATE INDEX ix_fundamentals_symbol ON fundamentals_cache(symbol)",
+    )
+
+    conn.execute(
+        text(
+            """
+CREATE TABLE IF NOT EXISTS valuation_series (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  trade_date TEXT NOT NULL,
+  pe_ttm REAL,
+  pb REAL,
+  source TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_valuation_symbol_date UNIQUE(symbol, trade_date)
+)
+"""
+        )
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_valuation_series_symbol_date",
+        "CREATE INDEX ix_valuation_series_symbol_date ON valuation_series(symbol, trade_date)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1992,6 +2158,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(124, "assistant_context_snapshots", _m124_assistant_context_snapshots),
     Migration(125, "assistant_task_protocol", _m125_assistant_task_protocol),
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
+    Migration(127, "premarket_data_foundation", _m127_premarket_data_foundation),
 )
 
 
