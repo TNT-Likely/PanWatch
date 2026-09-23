@@ -14,6 +14,7 @@ AGENT_KIND_CAPABILITY = "capability"
 
 WORKFLOW_AGENT_NAMES: tuple[str, ...] = (
     "premarket_outlook",
+    "premarket_pipeline",
     "intraday_monitor",
     "daily_report",
 )
@@ -66,6 +67,28 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
         kind=AGENT_KIND_WORKFLOW,
         visible=True,
         display_order=10,
+    ),
+    AgentSeedSpec(
+        name="premarket_pipeline",
+        display_name="盘前决策流水线",
+        description="盘前五阶段流水线:宏观三卡 → 板块预测 → 选股三价 → 财报核验 → 落库推送。"
+        "交易日 08:15 自动运行,产出三价候选、提醒规则与全量数据声明。",
+        enabled=True,
+        schedule="15 8 * * 1-5",
+        execution_mode="batch",
+        kind=AGENT_KIND_WORKFLOW,
+        visible=True,
+        display_order=15,
+        config={
+            "pipeline_timeout_minutes": 20,
+            "llm_timeout_seconds": 120,
+            "emit_paper_trading_signal": False,
+            "auto_create_alerts": True,
+            "max_candidates": 5,
+            "board_top_n": 6,
+            "mv_min_e8": 50,
+            "mv_max_e8": 3000,
+        },
     ),
     AgentSeedSpec(
         name="intraday_monitor",
@@ -148,7 +171,7 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "deep_model": "",       # 留空走默认 AI Service 的 model;可填如 "claude-sonnet-4"
             "quick_model": "",      # 留空 = deep_model;可填便宜模型如 "deepseek-chat"
             "timeout_minutes": 15,
-            "llm_timeout_seconds": 120,  # 单次 LLM 请求超时，防止 analyst 永久阻塞
+            "llm_timeout_seconds": 380,  # 单次 LLM 请求超时：思考型模型非流式调用单轮常超 2 分钟，120 会误杀
             "llm_max_retries": 0,         # 深度分析失败快速落终态，不在图内重复重试
             "llm_max_tokens": 4096,       # 限制模型输出，避免网关空闲超时
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun

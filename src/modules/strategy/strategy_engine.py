@@ -1256,7 +1256,10 @@ def refresh_strategy_signals(
         for row in existing_rows:
             cand_id = row.source_candidate_id
             code = row.strategy_code
-            if cand_id is None:
+            # None 与 0 都视为"空候选归属":0 是直写 agent(盘前流水线/深度分析)
+            # 的哨兵 source_candidate_id,不进索引 → 刷新既不覆盖它们,
+            # 也不会在 stale 清理时把它们误删。
+            if cand_id is None or int(cand_id) == 0:
                 continue
             existing[(int(cand_id), str(code or ""))] = row
 
