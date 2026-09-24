@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as LW from 'lightweight-charts'
 import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
+import { useStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 
 type BusinessDay = { year: number; month: number; day: number }
@@ -130,10 +132,6 @@ function computeRsi(closes: number[], period = 6): Array<number | null> {
   return out
 }
 
-function getLW() {
-  return (window as any)?.LightweightCharts || null
-}
-
 function addCandles(chart: any, LW: any, options: any) {
   if (typeof chart?.addCandlestickSeries === 'function') return chart.addCandlestickSeries(options)
   if (typeof chart?.addSeries === 'function' && LW?.CandlestickSeries) return chart.addSeries(LW.CandlestickSeries, options)
@@ -158,8 +156,6 @@ export default function InteractiveKline(props: {
   initialInterval?: '1d' | '1w' | '1m'
   initialDays?: '60' | '120' | '250'
 }) {
-  const [lwReady, setLwReady] = useState(!!getLW())
-  const [libError, setLibError] = useState(false)
   const [interval, setIntervalValue] = useState<'1d' | '1w' | '1m'>(props.initialInterval || '1d')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
@@ -179,6 +175,14 @@ export default function InteractiveKline(props: {
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
+
+  // 涨跌语义色（hsl 片段，来自 --stock-up/--stock-down，随主题亮暗与口径切换重建图表）
+  const stockMode = useStockColorMode()
+  const stockHsl = useMemo(() => {
+    const s = getComputedStyle(document.documentElement)
+    const raw = (name: string, fb: string) => (s.getPropertyValue(name) || '').trim() || fb
+    return { up: raw('--stock-up', '0 72% 51%'), down: raw('--stock-down', '152 70% 29%') }
+  }, [stockMode])
 
   const load = async () => {
     if (!props.symbol) return
@@ -220,28 +224,6 @@ export default function InteractiveKline(props: {
     if (props.initialInterval) setIntervalValue(props.initialInterval)
   }, [props.initialInterval, props.symbol, props.market])
 
-  useEffect(() => {
-    if (lwReady) return
-    let cancelled = false
-    const start = Date.now()
-    const t = window.setInterval(() => {
-      if (cancelled) return
-      if (getLW()) {
-        setLwReady(true)
-        clearInterval(t)
-        return
-      }
-      if (Date.now() - start > 3500) {
-        setLibError(true)
-        clearInterval(t)
-      }
-    }, 200)
-    return () => {
-      cancelled = true
-      clearInterval(t)
-    }
-  }, [lwReady])
-
   const series = useMemo(() => {
     const klines = (data || []).slice().filter(k => !!parseBusinessDay(k.date))
     const candles = klines.map(k => ({
@@ -254,7 +236,7 @@ export default function InteractiveKline(props: {
     const volumes = klines.map(k => ({
       time: parseBusinessDay(k.date) as BusinessDay,
       value: k.volume,
-      color: k.close >= k.open ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
+      color: k.close >= k.open ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`,
     }))
     const closes = klines.map(k => k.close)
     const ma5 = sma(closes, 5)
@@ -290,8 +272,6 @@ export default function InteractiveKline(props: {
   const showSkeleton = loading && !series.klines.length
 
   useEffect(() => {
-    const LW = getLW()
-    if (!LW || !lwReady) return
     if (!containerRef.current) return
     if (!series.candles.length) return
 
@@ -333,12 +313,12 @@ export default function InteractiveKline(props: {
     })
 
     const candleSeries = addCandles(chart, LW, {
-      upColor: '#ef4444',
-      downColor: '#10b981',
-      borderUpColor: '#ef4444',
-      borderDownColor: '#10b981',
-      wickUpColor: '#ef4444',
-      wickDownColor: '#10b981',
+      upColor: `hsl(${stockHsl.up})`,
+      downColor: `hsl(${stockHsl.down})`,
+      borderUpColor: `hsl(${stockHsl.up})`,
+      borderDownColor: `hsl(${stockHsl.down})`,
+      wickUpColor: `hsl(${stockHsl.up})`,
+      wickDownColor: `hsl(${stockHsl.down})`,
     })
     candleSeries.setData(series.candles)
 
@@ -413,7 +393,7 @@ export default function InteractiveKline(props: {
           return {
             time: parseBusinessDay(k.date) as BusinessDay,
             value: v,
-            color: v >= 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
+            color: v >= 0 ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`,
           }
         })
         .filter(Boolean)
@@ -450,8 +430,8 @@ export default function InteractiveKline(props: {
         })
         .filter(Boolean)
       rsiLine.setData(rsiData as any)
-      rsiLine.createPriceLine?.({ price: 70, color: 'rgba(239,68,68,0.45)', lineWidth: 1, lineStyle: 2, title: '70' })
-      rsiLine.createPriceLine?.({ price: 30, color: 'rgba(16,185,129,0.45)', lineWidth: 1, lineStyle: 2, title: '30' })
+      rsiLine.createPriceLine?.({ price: 70, color: `hsl(${stockHsl.up} / 0.45)`, lineWidth: 1, lineStyle: 2, title: '70' })
+      rsiLine.createPriceLine?.({ price: 30, color: `hsl(${stockHsl.down} / 0.45)`, lineWidth: 1, lineStyle: 2, title: '30' })
     }
 
     const sync = (range: any) => {
@@ -545,12 +525,12 @@ export default function InteractiveKline(props: {
         // ignore
       }
     }
-  }, [series, lwReady, showRsi, indexByDate, interval])
+  }, [series, stockHsl, showRsi, indexByDate, interval])
 
   return (
     <div className="card p-4 md:p-5">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
-        <div className="text-[13px] font-semibold text-foreground">K线图</div>
+        <div className="text-body font-semibold text-foreground">K线图</div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant={showRsi ? 'default' : 'secondary'} size="sm" className="h-8 px-2.5" onClick={() => setShowRsi(v => !v)}>
             强弱线
@@ -564,7 +544,7 @@ export default function InteractiveKline(props: {
               <button
                 key={item.value}
                 type="button"
-                className={`h-7 min-w-[44px] rounded-md px-2.5 text-[12px] transition-colors ${
+                className={`h-7 min-w-[44px] rounded-md px-2.5 text-body-sm transition-colors ${
                   interval === item.value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
@@ -583,14 +563,8 @@ export default function InteractiveKline(props: {
       </div>
 
       {error ? (
-        <div className="text-[12px] text-rose-600 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2 mb-3">
+        <div className="text-body-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 mb-3">
           {error}
-        </div>
-      ) : null}
-
-      {!lwReady && libError ? (
-        <div className="text-[12px] text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
-          图表库加载失败（网络受限时可能发生）。可稍后重试或检查网络/代理。
         </div>
       ) : null}
 
@@ -605,11 +579,11 @@ export default function InteractiveKline(props: {
         </div>
       ) : latestMetrics ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">最新价</span> <span className="font-mono ml-1">{latestMetrics.last.close.toFixed(2)}</span></div>
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">涨跌</span> <span className={`font-mono ml-1 ${latestMetrics.changePct >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{latestMetrics.changePct >= 0 ? '+' : ''}{latestMetrics.changePct.toFixed(2)}%</span></div>
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">振幅</span> <span className="font-mono ml-1">{latestMetrics.ampPct.toFixed(2)}%</span></div>
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">区间高低</span> <span className="font-mono ml-1">{latestMetrics.maxHigh.toFixed(2)}/{latestMetrics.minLow.toFixed(2)}</span></div>
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">均量</span> <span className="font-mono ml-1">{(latestMetrics.avgVol / 10000).toFixed(1)}万</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-caption"><span className="text-muted-foreground">最新价</span> <span className="font-mono ml-1">{latestMetrics.last.close.toFixed(2)}</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-caption"><span className="text-muted-foreground">涨跌</span> <span className={`font-mono ml-1 ${latestMetrics.changePct >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>{latestMetrics.changePct >= 0 ? '+' : ''}{latestMetrics.changePct.toFixed(2)}%</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-caption"><span className="text-muted-foreground">振幅</span> <span className="font-mono ml-1">{latestMetrics.ampPct.toFixed(2)}%</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-caption"><span className="text-muted-foreground">区间高低</span> <span className="font-mono ml-1">{latestMetrics.maxHigh.toFixed(2)}/{latestMetrics.minLow.toFixed(2)}</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-caption"><span className="text-muted-foreground">均量</span> <span className="font-mono ml-1">{(latestMetrics.avgVol / 10000).toFixed(1)}万</span></div>
         </div>
       ) : null}
       <div className="relative">
@@ -625,8 +599,8 @@ export default function InteractiveKline(props: {
             className="pointer-events-none absolute z-10 w-[280px] rounded-lg border border-border/60 bg-card/95 px-3 py-2 shadow-lg backdrop-blur-[2px]"
             style={{ left: `${hoverTip.x}px`, top: `${hoverTip.y}px` }}
           >
-            <div className="text-[11px] text-foreground font-medium mb-1.5">{hoverTip.row.date}</div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="text-caption text-foreground font-medium mb-1.5">{hoverTip.row.date}</div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-caption text-muted-foreground">
               <span>开盘价 <span className="font-mono text-foreground">{hoverTip.row.open.toFixed(2)}</span></span>
               <span>收盘价 <span className="font-mono text-foreground">{hoverTip.row.close.toFixed(2)}</span></span>
               <span>最高价 <span className="font-mono text-foreground">{hoverTip.row.high.toFixed(2)}</span></span>
@@ -643,8 +617,8 @@ export default function InteractiveKline(props: {
       </div>
       <div className="mt-3 grid grid-cols-1 gap-3">
         <div>
-          <div className="text-[11px] text-muted-foreground mb-1">动能指标（MACD{showRsi ? ' + RSI强弱线' : ''}）</div>
-          <div className="text-[11px] text-muted-foreground mb-2 rounded-lg bg-accent/15 border border-border/40 px-2.5 py-1.5">
+          <div className="text-caption text-muted-foreground mb-1">动能指标（MACD{showRsi ? ' + RSI强弱线' : ''}）</div>
+          <div className="text-caption text-muted-foreground mb-2 rounded-lg bg-accent/15 border border-border/40 px-2.5 py-1.5">
             MACD 用来看趋势动能和拐点；RSI 用来看是否偏热/偏弱（一般 70 以上偏热，30 以下偏弱）。
           </div>
           {showSkeleton ? (

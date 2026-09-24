@@ -42,6 +42,7 @@ from src.modules.automation.news_digest import NewsDigestAgent
 from src.modules.automation.chart_analyst import ChartAnalystAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 from src.modules.automation.premarket_outlook import PremarketOutlookAgent
+from src.modules.automation.premarket_pipeline import PremarketPipelineAgent
 from src.modules.automation.tradingagents import TradingAgentsAgent
 from src.modules.market.data_collector import DEFAULT_TEST_SYMBOLS
 
@@ -401,6 +402,16 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "test_symbols": list(DEFAULT_TEST_SYMBOLS),
         },
         {
+            "name": "新浪K线",
+            "type": "kline",
+            "provider": "sina",
+            "config": {"description": "新浪日K(仅CN,不复权),腾讯/东财被风控时的境内兜底(免 key)。"},
+            "enabled": True,
+            "priority": 3,   # 腾讯(0)之后、东财(5)之前 → CN 第二源
+            "supports_batch": False,
+            "test_symbols": list(DEFAULT_TEST_SYMBOLS),
+        },
+        {
             "name": "东方财富 K线",
             "type": "kline",
             "provider": "eastmoney",
@@ -619,6 +630,58 @@ DATA_SOURCE_SEEDS: list[dict] = [
             },
             "enabled": True,
             "priority": 0,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        # 全球指数数据源（市场级：美股三大/恒生/恒生科技/美元指数/日经/KOSPI）
+        {
+            "name": "腾讯全球指数",
+            "type": "global_markets",
+            "provider": "tencent_global",
+            "config": {
+                "description": "腾讯 qt.gtimg 全球指数快照(美股三大/恒生/恒生科技/美元指数,免 key)。"
+            },
+            "enabled": True,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "Yahoo 全球指数",
+            "type": "global_markets",
+            "provider": "yahoo_global",
+            "config": {
+                "description": "Yahoo Finance 全球指数(^N225/^KS11/^HSI 等),需 pip install yfinance,"
+                "国内访问通常需代理,在 config.proxy 填写代理地址后启用。",
+                "proxy": "",
+            },
+            "enabled": False,  # 需代理,默认关(同 YFinance 口径)
+            "priority": 20,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        {
+            "name": "东财全球指数",
+            "type": "global_markets",
+            "provider": "akshare_global",
+            "config": {
+                "description": "东财全球指数实时(akshare index_global_spot_em,覆盖亚太/欧美主要指数)。"
+            },
+            "enabled": True,
+            "priority": 30,
+            "supports_batch": False,
+            "test_symbols": [],
+        },
+        # 宏观指标数据源（市场级：PMI/CPI/PPI/LPR/社融/M2/USDCNY，月频低频）
+        {
+            "name": "akshare宏观指标",
+            "type": "macro",
+            "provider": "akshare",
+            "config": {
+                "description": "akshare 宏观接口(PMI/CPI/PPI/LPR/社融/M2/USDCNY),逐项 fail-soft。"
+            },
+            "enabled": True,
+            "priority": 10,
             "supports_batch": False,
             "test_symbols": [],
         },
@@ -1102,6 +1165,7 @@ def build_context(agent_name: str, stock_agent_id: int | None = None) -> AgentCo
 AGENT_REGISTRY: dict[str, type] = {
     "daily_report": DailyReportAgent,
     "premarket_outlook": PremarketOutlookAgent,
+    "premarket_pipeline": PremarketPipelineAgent,
     "news_digest": NewsDigestAgent,
     "chart_analyst": ChartAnalystAgent,
     "intraday_monitor": IntradayMonitorAgent,
@@ -1616,5 +1680,5 @@ if __name__ == "__main__":
         port=8000,
         reload=_dev_reload,
         reload_dirs=["src", "."] if _dev_reload else None,
-        reload_excludes=["data/*", "frontend/*", ".claude/*"] if _dev_reload else None,
+        reload_excludes=["data/*", "frontend/*"] if _dev_reload else None,
     )

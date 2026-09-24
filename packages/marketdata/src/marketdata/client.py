@@ -19,8 +19,10 @@ from marketdata.types import (
     EventItem,
     FlashNews,
     Fundamentals,
+    GlobalIndexQuote,
     HotBoard,
     HotStock,
+    MacroIndicator,
     MarginItem,
     NewsArticle,
     NorthboundItem,
@@ -139,6 +141,20 @@ class MarketData:
             vendors=build_vendors("northbound"),
             config=config, metrics=self.metrics,
             cache=TTLCache(default_ttl_sec=60.0), default_ttl=60.0,
+        )
+        # 全球指数快照(腾讯/Yahoo/东财三源主备):盘前海外参照用,行情级新鲜度,300s TTL。
+        self._global_markets_engine = Engine(
+            datatype="global_markets",
+            vendors=build_vendors("global_markets"),
+            config=config, metrics=self.metrics,
+            cache=TTLCache(default_ttl_sec=300.0), default_ttl=300.0,
+        )
+        # 宏观指标(PMI/CPI/PPI/LPR/社融/M2/汇率):月频/日频低频数据,一天一取足够,86400s TTL。
+        self._macro_engine = Engine(
+            datatype="macro",
+            vendors=build_vendors("macro"),
+            config=config, metrics=self.metrics,
+            cache=TTLCache(default_ttl_sec=86400.0), default_ttl=86400.0,
         )
 
     def klines(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> list:
@@ -369,6 +385,25 @@ class MarketData:
         req = Request(symbols=(), market=market)
         resp = self._northbound_engine.fetch(req)
         return resp.data or []
+
+    def global_markets(self, *, symbols: list[str] | None = None, market: str = "CN") -> Response:
+        """全球指数快照(市场级,symbols 恒空)。按 priority 主备取数,Engine 默认 300s TTL。
+
+        与既有方法返回裸 list 不同,本方法按规格返回 Response:全源失败时
+        resp.ok=False(resp.data=None),不抛异常;调用方用 resp.data or [] 兜底。
+        symbols 可选:传统一键子集(如 ["N225","KS11"])会透传进 vendor 只取这些指数。
+        """
+        extra = (("symbols", tuple(symbols)),) if symbols else ()
+        req = Request(symbols=(), market=market, extra=extra)
+        return self._global_markets_engine.fetch(req)
+
+    def macro(self, *, market: str = "CN") -> Response:
+        """宏观指标最新一期(PMI/CPI/PPI/LPR/社融/M2/USDCNY,市场级)。Engine 默认 86400s TTL。
+
+        返回 Response(同 global_markets):全源失败/akshare 缺库时 resp.ok=False,不抛异常。
+        """
+        req = Request(symbols=(), market=market)
+        return self._macro_engine.fetch(req)
 
     def health(self) -> dict[str, dict]:
         """每个 vendor 的内存健康度快照(成功率 / p50 延迟 / 最近错误)。"""

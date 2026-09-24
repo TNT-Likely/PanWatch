@@ -12,7 +12,7 @@ def test_package_vendors_by_type_content():
     """内容必须与 client.py 现状(quote/kline/capital_flow/events 各 vendor)完全一致。"""
     assert PACKAGE_VENDORS_BY_TYPE == {
         "quote": frozenset({"tencent", "sina", "eastmoney", "yfinance"}),
-        "kline": frozenset({"tencent", "stooq", "eastmoney", "yahoo"}),
+        "kline": frozenset({"tencent", "stooq", "eastmoney", "yahoo", "sina"}),
         "capital_flow": frozenset({"eastmoney", "sina"}),
         "events": frozenset({"eastmoney"}),
         "flash_news": frozenset({"cls", "sina", "eastmoney"}),
@@ -23,6 +23,8 @@ def test_package_vendors_by_type_content():
         "shareholders": frozenset({"eastmoney"}),
         "dividend": frozenset({"eastmoney"}),
         "northbound": frozenset({"ths"}),
+        "global_markets": frozenset({"tencent_global", "yahoo_global", "akshare_global"}),
+        "macro": frozenset({"akshare"}),
     }
 
 
@@ -41,6 +43,8 @@ def test_package_vendors_by_type_matches_actual_engine_registration():
         "shareholders": md._shareholders_engine,
         "dividend": md._dividend_engine,
         "northbound": md._northbound_engine,
+        "global_markets": md._global_markets_engine,
+        "macro": md._macro_engine,
     }
     for datatype, engine in engines.items():
         assert set(engine.vendors.keys()) == PACKAGE_VENDORS_BY_TYPE[datatype]

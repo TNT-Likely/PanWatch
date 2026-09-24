@@ -28,6 +28,8 @@ TYPE_LABELS = {
     "shareholders": "股东户数",
     "dividend": "分红",
     "northbound": "北向资金",
+    "global_markets": "全球指数",
+    "macro": "宏观指标",
 }
 
 
@@ -83,6 +85,8 @@ _ENGINE_ATTACHED_TYPES = {
     "shareholders",
     "dividend",
     "northbound",
+    "global_markets",
+    "macro",
 }
 
 

@@ -1,3 +1,4 @@
+import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 /** digest 单条:与 Dashboard 的 feed(CurateCandidate & { why }）同构。 */
@@ -16,14 +17,11 @@ interface DigestShareCardProps {
   items: DigestItem[]
 }
 
-const UP = '#e11d48'
-const DOWN = '#059669'
-
-function moveColor(v?: number | null): string {
-  if (v == null || !isFinite(v)) return '#94a3b8'
-  if (v > 0) return UP
-  if (v < 0) return DOWN
-  return '#94a3b8'
+function moveColor(v: number | null | undefined, palette: { up: string; down: string; neutral: string }): string {
+  if (v == null || !isFinite(v)) return palette.neutral
+  if (v > 0) return palette.up
+  if (v < 0) return palette.down
+  return palette.neutral
 }
 function pct(v?: number | null): string {
   if (v == null || !isFinite(v)) return ''
@@ -31,13 +29,13 @@ function pct(v?: number | null): string {
 }
 
 /** 各类型的徽标:文字 + 配色(emoji 作图标,纯文本可被 PNG 正确渲染,无外部图片)。 */
-const TYPE_BADGE: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-  alert: { label: '提醒命中', icon: '🔔', color: '#e11d48', bg: '#fff1f2' },
-  holding: { label: '持仓', icon: '📊', color: '#059669', bg: '#ecfdf5' },
+const typeBadge = (up: string, upSoft: string, down: string, downSoft: string): Record<string, { label: string; icon: string; color: string; bg: string }> => ({
+  alert: { label: '提醒命中', icon: '🔔', color: up, bg: upSoft },
+  holding: { label: '持仓', icon: '📊', color: down, bg: downSoft },
   watch: { label: '自选', icon: '👀', color: '#475569', bg: '#f1f5f9' },
   risk: { label: '风险', icon: '⚠️', color: '#d97706', bg: '#fffbeb' },
   opportunity: { label: '机会', icon: '✨', color: '#6366f1', bg: '#eef2ff' },
-}
+})
 const FALLBACK_BADGE = { label: '要点', icon: '•', color: '#475569', bg: '#f1f5f9' }
 
 /**
@@ -45,6 +43,9 @@ const FALLBACK_BADGE = { label: '要点', icon: '•', color: '#475569', bg: '#f
  */
 export default function DigestShareCard({ open, onClose, date, items }: DigestShareCardProps) {
   const list = (items || []).slice(0, 8)
+  const palette = shareStockPalette()
+  const TYPE_BADGE = typeBadge(palette.up, palette.upSoft, palette.down, palette.downSoft)
+  const colorOf = (v?: number | null) => moveColor(v, palette)
 
   return (
     <ShareCardDialog open={open} onClose={onClose} filename={`今日盯盘-${date}`}>
@@ -140,7 +141,7 @@ export default function DigestShareCard({ open, onClose, date, items }: DigestSh
                       flexShrink: 0,
                       fontSize: 14,
                       fontWeight: 800,
-                      color: moveColor(it.change_pct),
+                      color: colorOf(it.change_pct),
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >

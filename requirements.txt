@@ -3,6 +3,9 @@ apprise>=1.6.0
 openai>=1.0.0
 efinance>=0.4.0
 akshare>=1.10.0
+# 个股估值序列的备源(PE-TTM/pbMRQ 日线);主源为 akshare stock_value_em。
+# 备源缺库时 fail-soft 降级,不影响主流程。
+baostock
 apscheduler>=3.10.0
 httpx>=0.25.0
 pydantic>=2.0.0

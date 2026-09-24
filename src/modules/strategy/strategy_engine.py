@@ -1063,6 +1063,45 @@ def _sync_factor_and_risk_snapshots(
         row.updated_at = utc_now()
 
 
+def _extract_earnings_verification(payload: dict | None) -> dict | None:
+    """从信号 payload 提取财报核验摘要(盘前流水线阶段4 写入);无核验数据返回 None。
+
+    兼容两种形态:
+    - 直接键: payload.earnings_verification.{status, report_date, single_quarter_yoy};
+    - 流水线现形: payload.verification.{passed, warnings, checks, ...},此时 status
+      由 passed/warnings 推导(通过且无告警=passed;通过但带告警=warn;未通过=failed),
+      report_date/single_quarter_yoy 缺失时按规格置 None。
+    任何形态都 fail-soft:非 dict/空 dict 一律返回 None,绝不臆造字段。
+    """
+    raw = payload if isinstance(payload, dict) else {}
+    ver = raw.get("earnings_verification")
+    if not isinstance(ver, dict):
+        ver = raw.get("verification")
+    if not isinstance(ver, dict) or not ver:
+        return None
+
+    status = str(ver.get("status") or "").strip().lower()
+    if status not in ("passed", "warn", "failed"):
+        passed = ver.get("passed")
+        if not isinstance(passed, bool):
+            return None
+        warnings = ver.get("warnings")
+        has_warn = isinstance(warnings, list) and len(warnings) > 0
+        status = ("warn" if has_warn else "passed") if passed else "failed"
+
+    report_date = str(ver.get("report_date") or ver.get("report_period") or "").strip() or None
+    yoy = ver.get("single_quarter_yoy")
+    if yoy is None:
+        yoy = ver.get("single_quarter_profit_yoy")
+    if isinstance(yoy, bool) or not isinstance(yoy, (int, float)):
+        yoy = None
+    return {
+        "status": status,
+        "report_date": report_date,
+        "single_quarter_yoy": yoy,
+    }
+
+
 def _format_signal(
     row: StrategySignalRun,
     *,
@@ -1187,6 +1226,8 @@ def _format_signal(
         "news_metric": news_metric,
         "constrained": constrained,
         "constraint_reasons": [str(x) for x in constraint_reasons if str(x).strip()],
+        # 财报核验徽章数据:始终从原始行 payload 提取(与 include_payload 无关)
+        "earnings_verification": _extract_earnings_verification(payload_raw),
         "payload": payload if include_payload else {},
         "created_at": _iso(row.created_at),
         "updated_at": _iso(row.updated_at),
@@ -1240,6 +1281,9 @@ def refresh_strategy_signals(
             snapshot=snapshot,
             candidates=candidates,
         )
+        # regime 快照独立短事务立即提交:若留待评分循环结束才 commit,
+        # autoflush 会在循环首查时提前拿住写锁并横跨整个 CPU 评分段(实测数十秒)
+        db.commit()
         cross_features = _build_cross_section_features(candidates)
         news_metrics = _load_news_metrics(
             db=db,
@@ -1256,7 +1300,10 @@ def refresh_strategy_signals(
         for row in existing_rows:
             cand_id = row.source_candidate_id
             code = row.strategy_code
-            if cand_id is None:
+            # None 与 0 都视为"空候选归属":0 是直写 agent(盘前流水线/深度分析)
+            # 的哨兵 source_candidate_id,不进索引 → 刷新既不覆盖它们,
+            # 也不会在 stale 清理时把它们误删。
+            if cand_id is None or int(cand_id) == 0:
                 continue
             existing[(int(cand_id), str(code or ""))] = row
 
@@ -1265,121 +1312,122 @@ def refresh_strategy_signals(
         touched_keys: set[tuple[int, str]] = set()
         touched_rows: list[StrategySignalRun] = []
 
-        for c in candidates:
-            market = (c.stock_market or "CN").strip().upper() or "CN"
-            weights = weight_cache.get(market)
-            if weights is None:
-                weights = get_effective_weight_map(market=market, regime="default")
-                weight_cache[market] = weights
-            factor_weights = factor_weight_cache.get(market)
-            if factor_weights is None:
-                factor_weights = get_factor_weights(market, db=db)
-                factor_weight_cache[market] = factor_weights
-            codes = _strategy_codes_for_candidate(c)
-            for code in codes:
-                profile = profile_map.get(code) or profile_map.get("watchlist_agent") or {}
-                weight = float(weights.get(code, profile.get("default_weight", 1.0)))
-                risk_level = (profile.get("risk_level") or "medium").strip() or "medium"
-                strategy_name = profile.get("name") or code
-                strategy_version = profile.get("version") or "v1"
-                horizon_days = 3
-                params = profile.get("params") or {}
-                if isinstance(params, dict):
-                    horizon_days = max(1, int(params.get("horizon_days", 3) or 3))
+        with db.no_autoflush:
+            for c in candidates:
+                market = (c.stock_market or "CN").strip().upper() or "CN"
+                weights = weight_cache.get(market)
+                if weights is None:
+                    weights = get_effective_weight_map(market=market, regime="default")
+                    weight_cache[market] = weights
+                factor_weights = factor_weight_cache.get(market)
+                if factor_weights is None:
+                    factor_weights = get_factor_weights(market, db=db)
+                    factor_weight_cache[market] = factor_weights
+                codes = _strategy_codes_for_candidate(c)
+                for code in codes:
+                    profile = profile_map.get(code) or profile_map.get("watchlist_agent") or {}
+                    weight = float(weights.get(code, profile.get("default_weight", 1.0)))
+                    risk_level = (profile.get("risk_level") or "medium").strip() or "medium"
+                    strategy_name = profile.get("name") or code
+                    strategy_version = profile.get("version") or "v1"
+                    horizon_days = 3
+                    params = profile.get("params") or {}
+                    if isinstance(params, dict):
+                        horizon_days = max(1, int(params.get("horizon_days", 3) or 3))
 
-                regime_info = regime_rows.get(market) or {
-                    "regime": "neutral",
-                    "confidence": 0.0,
-                }
-                symbol_key = (c.stock_symbol or "").strip().upper()
-                normalized_news_metric = _normalize_news_metric(news_metrics.get(symbol_key))
-                score_breakdown = _compute_factor_breakdown(
-                    row=c,
-                    strategy_code=code,
-                    weight=weight,
-                    risk_level=risk_level,
-                    regime_info=regime_info,
-                    cross_feature=cross_features.get(int(c.id)) if c.id is not None else None,
-                    news_metric=normalized_news_metric,
-                    factor_weights=factor_weights,
-                )
-                rank_score = float(score_breakdown.get("weighted_score") or 0.0)
-                confidence = c.confidence if c.confidence is not None else round(rank_score / 100.0, 3)
-                cmeta = c.meta if isinstance(c.meta, dict) else {}
-                source_meta = cmeta.get("source_meta") if isinstance(cmeta.get("source_meta"), dict) else {}
-                context_quality_score = _safe_float(source_meta.get("context_quality_score"))
-                compact_source_meta = _compact_source_meta(source_meta)
-                action = (c.action or "watch").strip().lower() or "watch"
-                action_label = (c.action_label or "观望").strip() or "观望"
-                if bool(c.is_holding_snapshot):
-                    if action == "buy":
-                        action = "add"
-                        action_label = "准备加仓"
-                else:
-                    if action == "add":
-                        action = "buy"
-                        action_label = "建仓"
-                    elif action == "hold":
-                        action_label = "观望"
-                payload = {
-                    "entry_candidate_id": c.id,
-                    "entry_candidate_snapshot": c.snapshot_date,
-                    "strategy_tags": c.strategy_tags or [],
-                    "strategy_weight": weight,
-                    "source_meta": compact_source_meta,
-                    "score_breakdown": score_breakdown,
-                    "market_regime": {
-                        "regime": regime_info.get("regime") or "neutral",
-                        "regime_label": regime_info.get("regime_label") or _regime_label(regime_info.get("regime") or "neutral"),
-                        "confidence": regime_info.get("confidence") or 0.0,
-                        "regime_score": regime_info.get("regime_score") or 0.0,
-                    },
-                    "cross_feature": cross_features.get(int(c.id)) if c.id is not None else {},
-                    "news_metric": normalized_news_metric,
-                }
-                key = (int(c.id), str(code))
-                row = existing.get(key)
-                if not row:
-                    row = StrategySignalRun(
-                        snapshot_date=snapshot,
-                        stock_symbol=c.stock_symbol,
-                        stock_market=market,
-                        stock_name=c.stock_name or c.stock_symbol,
+                    regime_info = regime_rows.get(market) or {
+                        "regime": "neutral",
+                        "confidence": 0.0,
+                    }
+                    symbol_key = (c.stock_symbol or "").strip().upper()
+                    normalized_news_metric = _normalize_news_metric(news_metrics.get(symbol_key))
+                    score_breakdown = _compute_factor_breakdown(
+                        row=c,
                         strategy_code=code,
-                        source_candidate_id=c.id,
+                        weight=weight,
+                        risk_level=risk_level,
+                        regime_info=regime_info,
+                        cross_feature=cross_features.get(int(c.id)) if c.id is not None else None,
+                        news_metric=normalized_news_metric,
+                        factor_weights=factor_weights,
                     )
-                    db.add(row)
-                    existing[key] = row
+                    rank_score = float(score_breakdown.get("weighted_score") or 0.0)
+                    confidence = c.confidence if c.confidence is not None else round(rank_score / 100.0, 3)
+                    cmeta = c.meta if isinstance(c.meta, dict) else {}
+                    source_meta = cmeta.get("source_meta") if isinstance(cmeta.get("source_meta"), dict) else {}
+                    context_quality_score = _safe_float(source_meta.get("context_quality_score"))
+                    compact_source_meta = _compact_source_meta(source_meta)
+                    action = (c.action or "watch").strip().lower() or "watch"
+                    action_label = (c.action_label or "观望").strip() or "观望"
+                    if bool(c.is_holding_snapshot):
+                        if action == "buy":
+                            action = "add"
+                            action_label = "准备加仓"
+                    else:
+                        if action == "add":
+                            action = "buy"
+                            action_label = "建仓"
+                        elif action == "hold":
+                            action_label = "观望"
+                    payload = {
+                        "entry_candidate_id": c.id,
+                        "entry_candidate_snapshot": c.snapshot_date,
+                        "strategy_tags": c.strategy_tags or [],
+                        "strategy_weight": weight,
+                        "source_meta": compact_source_meta,
+                        "score_breakdown": score_breakdown,
+                        "market_regime": {
+                            "regime": regime_info.get("regime") or "neutral",
+                            "regime_label": regime_info.get("regime_label") or _regime_label(regime_info.get("regime") or "neutral"),
+                            "confidence": regime_info.get("confidence") or 0.0,
+                            "regime_score": regime_info.get("regime_score") or 0.0,
+                        },
+                        "cross_feature": cross_features.get(int(c.id)) if c.id is not None else {},
+                        "news_metric": normalized_news_metric,
+                    }
+                    key = (int(c.id), str(code))
+                    row = existing.get(key)
+                    if not row:
+                        row = StrategySignalRun(
+                            snapshot_date=snapshot,
+                            stock_symbol=c.stock_symbol,
+                            stock_market=market,
+                            stock_name=c.stock_name or c.stock_symbol,
+                            strategy_code=code,
+                            source_candidate_id=c.id,
+                        )
+                        db.add(row)
+                        existing[key] = row
 
-                row.strategy_name = strategy_name
-                row.strategy_version = strategy_version
-                row.risk_level = risk_level
-                row.source_pool = c.candidate_source or "watchlist"
-                row.score = float(c.score or 0)
-                row.rank_score = float(rank_score)
-                row.confidence = float(confidence or 0)
-                row.status = c.status or "inactive"
-                row.action = action
-                row.action_label = action_label
-                row.signal = c.signal or ""
-                row.reason = c.reason or ""
-                row.evidence = to_jsonable(c.evidence or [])
-                row.holding_days = int(horizon_days)
-                row.entry_low = c.entry_low
-                row.entry_high = c.entry_high
-                row.stop_loss = c.stop_loss
-                row.target_price = c.target_price
-                row.invalidation = c.invalidation or ""
-                row.plan_quality = int(c.plan_quality or 0)
-                row.source_agent = c.source_agent or ""
-                row.source_suggestion_id = c.source_suggestion_id
-                row.trace_id = c.source_trace_id or ""
-                row.is_holding_snapshot = bool(c.is_holding_snapshot)
-                row.context_quality_score = context_quality_score
-                row.payload = to_jsonable(payload)
-                row.updated_at = utc_now()
-                touched_keys.add(key)
-                touched_rows.append(row)
+                    row.strategy_name = strategy_name
+                    row.strategy_version = strategy_version
+                    row.risk_level = risk_level
+                    row.source_pool = c.candidate_source or "watchlist"
+                    row.score = float(c.score or 0)
+                    row.rank_score = float(rank_score)
+                    row.confidence = float(confidence or 0)
+                    row.status = c.status or "inactive"
+                    row.action = action
+                    row.action_label = action_label
+                    row.signal = c.signal or ""
+                    row.reason = c.reason or ""
+                    row.evidence = to_jsonable(c.evidence or [])
+                    row.holding_days = int(horizon_days)
+                    row.entry_low = c.entry_low
+                    row.entry_high = c.entry_high
+                    row.stop_loss = c.stop_loss
+                    row.target_price = c.target_price
+                    row.invalidation = c.invalidation or ""
+                    row.plan_quality = int(c.plan_quality or 0)
+                    row.source_agent = c.source_agent or ""
+                    row.source_suggestion_id = c.source_suggestion_id
+                    row.trace_id = c.source_trace_id or ""
+                    row.is_holding_snapshot = bool(c.is_holding_snapshot)
+                    row.context_quality_score = context_quality_score
+                    row.payload = to_jsonable(payload)
+                    row.updated_at = utc_now()
+                    touched_keys.add(key)
+                    touched_rows.append(row)
 
         constraint_stats = _apply_portfolio_constraints(rows=touched_rows)
         if constraint_stats.get("demoted", 0) > 0:

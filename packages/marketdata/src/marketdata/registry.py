@@ -20,8 +20,15 @@ from marketdata.vendors.flash_news import (
     EastmoneyFlashNewsVendor,
     SinaFlashNewsVendor,
 )
+from marketdata.vendors.global_markets import (
+    AkshareGlobalVendor,
+    TencentGlobalVendor,
+    YahooGlobalVendor,
+)
+from marketdata.vendors.macro import AkshareMacroVendor
 from marketdata.vendors.kline import (
     EastmoneyKlineVendor,
+    SinaKlineVendor,
     StooqKlineVendor,
     TencentKlineVendor,
     YahooKlineVendor,
@@ -56,6 +63,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "stooq": StooqKlineVendor,
         "eastmoney": EastmoneyKlineVendor,
         "yahoo": YahooKlineVendor,
+        "sina": SinaKlineVendor,
     },
     "capital_flow": {
         "eastmoney": EastmoneyCapitalFlowVendor,
@@ -92,6 +100,14 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
     },
     "northbound": {
         "ths": HexinNorthboundVendor,
+    },
+    "global_markets": {
+        "tencent_global": TencentGlobalVendor,
+        "yahoo_global": YahooGlobalVendor,
+        "akshare_global": AkshareGlobalVendor,
+    },
+    "macro": {
+        "akshare": AkshareMacroVendor,
     },
 }
 

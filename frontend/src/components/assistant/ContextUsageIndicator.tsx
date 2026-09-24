@@ -15,7 +15,7 @@ const STATE_LABELS: Record<ContextUsage['state'], string> = {
 export function ContextUsageIndicator({ usage, onClick }: ContextUsageIndicatorProps) {
   if (!usage) return null
   const stateClass = usage.state === 'needs_compression'
-    ? 'text-rose-600 dark:text-rose-400'
+    ? 'text-destructive'
     : usage.state === 'warning'
       ? 'text-amber-600 dark:text-amber-400'
       : 'text-muted-foreground'
@@ -24,7 +24,7 @@ export function ContextUsageIndicator({ usage, onClick }: ContextUsageIndicatorP
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors hover:bg-accent/60 ${stateClass}`}
+      className={`inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-caption transition-colors hover:bg-accent/60 ${stateClass}`}
       aria-label="查看上下文用量"
       title={`${STATE_LABELS[usage.state]}，估算输入 Token ${usage.total_tokens.toLocaleString()} / ${usage.budget_tokens.toLocaleString()}`}
     >

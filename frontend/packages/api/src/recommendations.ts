@@ -116,6 +116,13 @@ export interface StrategyCatalogItem {
   default_weight: number
 }
 
+export interface EarningsVerificationSummary {
+  /** passed=财报已核验 warn=财报存疑 failed=核验未过(前端不渲染徽章) */
+  status?: string
+  report_date?: string | null
+  single_quarter_yoy?: number | null
+}
+
 export interface StrategySignalItem {
   id: number
   snapshot_date: string
@@ -199,6 +206,7 @@ export interface StrategySignalItem {
   }
   constrained?: boolean
   constraint_reasons?: string[]
+  earnings_verification?: EarningsVerificationSummary | null
   payload?: Record<string, any>
   created_at?: string
   updated_at?: string

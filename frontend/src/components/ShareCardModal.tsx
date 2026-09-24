@@ -1,5 +1,6 @@
 import { type DeepAnalysisResult } from '@panwatch/api'
 import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
+import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface ShareCardModalProps {
@@ -15,18 +16,22 @@ interface ShareCardModalProps {
  * 复用 technical-badge / suggestion-action 的归一化:买入/增持=红(看多)、卖出/减持=绿(看空)、持有=琥珀(中性)。
  * 这里用自包含的显式十六进制色,保证导出 PNG 在任何主题(亮/暗)下都正确。
  */
-const RATING_VISUAL: Record<
+// 看多/看空渐变取当前口径下的涨跌色（导出时读取，随「涨跌颜色」设置与主题联动）
+const ratingVisual = (): Record<
   string,
   { label: string; color: string; soft: string; gradFrom: string; gradTo: string }
-> = {
-  // 看多(红)
-  buy: { label: '买入', color: '#e11d48', soft: '#fff1f2', gradFrom: '#fb7185', gradTo: '#e11d48' },
-  add: { label: '增持', color: '#e11d48', soft: '#fff1f2', gradFrom: '#fda4af', gradTo: '#e11d48' },
-  // 中性(琥珀)
-  hold: { label: '持有', color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
-  // 看空(绿)
-  reduce: { label: '减持', color: '#059669', soft: '#ecfdf5', gradFrom: '#34d399', gradTo: '#059669' },
-  sell: { label: '卖出', color: '#059669', soft: '#ecfdf5', gradFrom: '#6ee7b7', gradTo: '#059669' },
+> => {
+  const { up, down, upSoft, downSoft } = shareStockPalette()
+  return {
+    // 看多
+    buy: { label: '买入', color: up, soft: upSoft, gradFrom: up, gradTo: up },
+    add: { label: '增持', color: up, soft: upSoft, gradFrom: up, gradTo: up },
+    // 中性(琥珀)
+    hold: { label: '持有', color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
+    // 看空
+    reduce: { label: '减持', color: down, soft: downSoft, gradFrom: down, gradTo: down },
+    sell: { label: '卖出', color: down, soft: downSoft, gradFrom: down, gradTo: down },
+  }
 }
 const RATING_FALLBACK = {
   label: '观望',
@@ -81,7 +86,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
   const ratingRaw = mapRatingRaw(sug?.rating_raw)
   const normalized = normalizeSuggestionAction(ratingRaw || sug?.action, sug?.action_label)
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
-  const visual = reviewRequired ? REVIEW_VISUAL : (normalized && RATING_VISUAL[normalized]) || RATING_FALLBACK
+  const visual = reviewRequired ? REVIEW_VISUAL : (normalized && ratingVisual()[normalized]) || RATING_FALLBACK
 
   const stockName = parseStockName(result.title || '', symbol)
   const confidence = sug?.confidence

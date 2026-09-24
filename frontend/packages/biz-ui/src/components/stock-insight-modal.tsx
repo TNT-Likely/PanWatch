@@ -17,11 +17,31 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
-import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
-import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
+import {
+  formatNumber,
+  formatCompactNumber,
+  formatMarketCap,
+  formatTime,
+  parseToMs,
+  parseSuggestionJson,
+  normalizeSuggestionAction,
+  pickSuggestionText,
+  normalizeTextList,
+  markdownToPlainText,
+  firstNonEmptyText,
+  buildShareTechnicalRisks,
+  TechnicalIndicatorStrip,
+  DeepAnalysisSection,
+} from './stock-insight-parts'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+
+function stockHslRaw(which: 'up' | 'down'): string {
+  const s = getComputedStyle(document.documentElement)
+  return (s.getPropertyValue(which === 'up' ? '--stock-up' : '--stock-down') || '').trim()
+    || (which === 'up' ? '0 72% 51%' : '152 70% 29%')
+}
 
 interface QuoteResponse {
   symbol: string
@@ -133,202 +153,7 @@ const AGENT_LABELS: Record<string, string> = {
   news_digest: '新闻速递',
 }
 
-function formatNumber(value: number | null | undefined, digits = 2): string {
-  if (value == null) return '--'
-  return value.toFixed(digits)
-}
 
-function formatCompactNumber(value: number | null | undefined): string {
-  if (value == null) return '--'
-  const n = Number(value)
-  if (!isFinite(n)) return '--'
-  const abs = Math.abs(n)
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万`
-  return n.toFixed(0)
-}
-
-function formatMarketCap(value: number | null | undefined, market?: string): string {
-  if (value == null) return '--'
-  const n = Number(value)
-  if (!isFinite(n)) return '--'
-  const m = String(market || '').toUpperCase()
-  const abs = Math.abs(n)
-
-  // 腾讯 A 股字段常见为“亿元”口径（如 808 表示 808 亿元）
-  if (m === 'CN' && abs > 0 && abs < 100000) {
-    return `${n.toFixed(2)}亿元`
-  }
-
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
-  return `${n.toFixed(0)}元`
-}
-
-function formatTime(isoTime?: string): string {
-  if (!isoTime) return ''
-  const d = new Date(isoTime)
-  if (isNaN(d.getTime())) return ''
-  return d.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-}
-
-function parseToMs(input?: string): number | null {
-  if (!input) return null
-  const d = new Date(input)
-  if (!isNaN(d.getTime())) return d.getTime()
-  const m = input.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return null
-  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0)
-  return isNaN(dt.getTime()) ? null : dt.getTime()
-}
-
-function parseSuggestionJson(raw: unknown): Record<string, any> | null {
-  if (typeof raw !== 'string') return null
-  const s = raw.trim()
-  if (!s) return null
-  const candidates: string[] = [s]
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fence?.[1]) candidates.unshift(fence[1].trim())
-  if (/^json\s*[\r\n]/i.test(s)) candidates.unshift(s.replace(/^json\s*[\r\n]/i, '').trim())
-  for (const c of candidates) {
-    if (!c) continue
-    const direct = c
-    const sliceStart = c.indexOf('{')
-    const sliceEnd = c.lastIndexOf('}')
-    const sliced = sliceStart >= 0 && sliceEnd > sliceStart ? c.slice(sliceStart, sliceEnd + 1) : ''
-    for (const text of [direct, sliced]) {
-      if (!text || !text.startsWith('{') || !text.endsWith('}')) continue
-      try {
-        const obj = JSON.parse(text)
-        if (obj && typeof obj === 'object') return obj as Record<string, any>
-      } catch {
-        // try next candidate
-      }
-    }
-  }
-  return null
-}
-
-function normalizeSuggestionAction(action?: string, actionLabel?: string): string {
-  const a = String(action || '').trim().toLowerCase()
-  const l = String(actionLabel || '').trim()
-  if (a === 'buy/add' || a === 'add/buy') return /加仓|增持|补仓/.test(l) ? 'add' : 'buy'
-  if (a === 'sell/reduce' || a === 'reduce/sell') return /减仓|减持/.test(l) ? 'reduce' : 'sell'
-  return a || 'watch'
-}
-
-function pickSuggestionText(raw: unknown, field: 'signal' | 'reason'): string {
-  const plain = String(raw || '').trim()
-  const obj = parseSuggestionJson(plain)
-  if (obj) {
-    const v = String(obj[field] || '').trim()
-    if (v) return v
-    if (field === 'reason') {
-      const rv = String(obj['raw'] || '').trim()
-      if (rv) return rv
-    }
-    return ''
-  }
-  return plain
-}
-
-function normalizeTextList(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map(x => String(x || '').trim()).filter(Boolean)
-  const s = String(raw || '').trim()
-  if (!s) return []
-  const bySep = s.split(/[；;、|]/).map(x => x.trim()).filter(Boolean)
-  return bySep.length > 1 ? bySep : [s]
-}
-
-function markdownToPlainText(input?: string): string {
-  const raw = String(input || '').trim()
-  if (!raw) return ''
-  return raw
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*>\s?/gm, '')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/^\s*\d+\.\s+/gm, '')
-    .replace(/\*\*|__|\*|_/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function firstNonEmptyText(...vals: unknown[]): string {
-  for (const v of vals) {
-    const s = String(v || '').trim()
-    if (s) return s
-  }
-  return ''
-}
-
-function buildShareTechnicalRisks(kline: KlineSummary | null): string[] {
-  if (!kline) return []
-  const out: string[] = []
-  const rsi = String(kline.rsi_status || '')
-  const macd = `${kline.macd_cross || ''} ${kline.macd_status || ''}`
-  const vol = String(kline.volume_trend || '')
-  if (rsi.includes('超买')) out.push('短线过热回撤风险')
-  if (rsi.includes('超卖')) out.push('弱势延续风险')
-  if (macd.includes('死叉')) out.push('趋势转弱风险')
-  if (macd.includes('顶背离')) out.push('动能背离风险')
-  if (vol.includes('放量')) out.push('波动放大风险')
-  return out.slice(0, 3)
-}
-
-function TechnicalIndicatorStrip(props: {
-  klineSummary: KlineSummary | null
-  technicalSuggestion: SuggestionInfo | null
-  stockName: string
-  stockSymbol: string
-  market: string
-  hasPosition: boolean
-  score?: number
-  evidence?: Array<{ text: string; delta: number }>
-}) {
-  const { klineSummary, technicalSuggestion, stockName, stockSymbol, market, hasPosition, score, evidence = [] } = props
-  if (!klineSummary) {
-    return <div className="text-[12px] text-muted-foreground py-3">暂无技术指标</div>
-  }
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[12px] text-muted-foreground">技术指标建议</span>
-        <SuggestionBadge
-          suggestion={technicalSuggestion}
-          stockName={stockName}
-          stockSymbol={stockSymbol}
-          market={market}
-          kline={klineSummary}
-          hasPosition={hasPosition}
-        />
-        <TechnicalBadge label={`评分 ${Number(score ?? 0).toFixed(1)}`} tone="neutral" size="xs" className="text-foreground" />
-      </div>
-      {evidence.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 text-[10px]">
-          {evidence.slice(0, 6).map((item, idx) => (
-            <TechnicalBadge
-              key={`${item.text}-${idx}`}
-              label={`${item.text} ${item.delta > 0 ? `+${item.delta}` : item.delta}`}
-              tone={item.delta > 0 ? 'bullish' : item.delta < 0 ? 'bearish' : 'neutral'}
-              size="xs"
-            />
-          ))}
-        </div>
-      )}
-      <KlineIndicators summary={klineSummary as any} />
-    </div>
-  )
-}
 
 export default function StockInsightModal(props: {
   open: boolean
@@ -867,12 +692,12 @@ export default function StockInsightModal(props: {
 
   const quoteUp = (quote?.change_pct || 0) > 0
   const quoteDown = (quote?.change_pct || 0) < 0
-  const changeColor = quoteUp ? 'text-rose-500' : quoteDown ? 'text-emerald-500' : 'text-foreground'
-  const priceColor = quoteUp ? 'text-rose-500' : quoteDown ? 'text-emerald-500' : 'text-foreground'
+  const changeColor = quoteUp ? 'text-stock-up' : quoteDown ? 'text-stock-down' : 'text-foreground'
+  const priceColor = quoteUp ? 'text-stock-up' : quoteDown ? 'text-stock-down' : 'text-foreground'
   const levelColor = (value: number | null | undefined) => {
     if (value == null || quote?.prev_close == null) return 'text-foreground'
-    if (value > quote.prev_close) return 'text-rose-500'
-    if (value < quote.prev_close) return 'text-emerald-500'
+    if (value > quote.prev_close) return 'text-stock-up'
+    if (value < quote.prev_close) return 'text-stock-down'
     return 'text-foreground'
   }
   const badge = getMarketBadge(market)
@@ -1008,7 +833,7 @@ export default function StockInsightModal(props: {
     try {
       const { marketLabel, price, chg, action, signal, reason, risks, technicalBrief, levelsBrief, source, ts } = shareCardPayload
       const up = (quote?.change_pct || 0) >= 0
-      const changeColor = up ? '#ef4444' : '#10b981'
+      const changeColor = up ? `hsl(${stockHslRaw('up')})` : `hsl(${stockHslRaw('down')})`
       const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
@@ -1283,9 +1108,9 @@ export default function StockInsightModal(props: {
             <div className="flex items-start justify-between gap-3 pr-10 md:pr-8">
               <div className="shrink-0">
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                  <span className={`text-mini px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
                   <span className="break-all">{resolvedName}</span>
-                  <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
+                  <span className="font-mono text-body-sm text-muted-foreground">({symbol})</span>
                 </DialogTitle>
                 <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
               </div>
@@ -1390,7 +1215,7 @@ export default function StockInsightModal(props: {
                 <button
                   key={item.id}
                   onClick={() => setTab(item.id as InsightTab)}
-                  className={`text-[11px] px-2.5 py-1 rounded transition-colors ${
+                  className={`text-caption px-2.5 py-1 rounded transition-colors ${
                     tab === item.id ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'
                   }`}
                 >
@@ -1399,14 +1224,14 @@ export default function StockInsightModal(props: {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">自动刷新</span>
+              <span className="text-caption text-muted-foreground">自动刷新</span>
               <Switch
                 checked={autoRefreshEnabled}
                 onCheckedChange={setAutoRefreshEnabled}
                 aria-label="自动刷新"
               />
               <Select value={String(autoRefreshSec)} onValueChange={(v) => setAutoRefreshSec(Number(v))}>
-                <SelectTrigger className="h-7 w-[84px] text-[11px]">
+                <SelectTrigger className="h-7 w-[84px] text-caption">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1425,41 +1250,41 @@ export default function StockInsightModal(props: {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
                   <div className="card p-4 h-full">
                     <div className="mt-1 flex items-end justify-between gap-3">
-                      <div className={`text-[34px] leading-none font-bold font-mono ${priceColor}`}>
+                      <div className={`text-display-lg leading-none font-bold font-mono ${priceColor}`}>
                         {quote?.current_price != null ? formatNumber(quote.current_price) : '--'}
                       </div>
-                      <div className={`text-[16px] font-mono ${changeColor}`}>
+                      <div className={`text-title font-mono ${changeColor}`}>
                         {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                       </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">今开</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">最高</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">最低</div><div className={`font-mono ${levelColor(quote?.low_price)}`}>{formatNumber(quote?.low_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">成交量</div><div className="font-mono">{formatCompactNumber(quote?.volume)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">成交额</div><div className="font-mono">{formatCompactNumber(quote?.turnover)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">振幅</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">换手率</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">市盈率</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-body-sm">
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">今开</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">最高</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">最低</div><div className={`font-mono ${levelColor(quote?.low_price)}`}>{formatNumber(quote?.low_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">成交量</div><div className="font-mono">{formatCompactNumber(quote?.volume)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">成交额</div><div className="font-mono">{formatCompactNumber(quote?.turnover)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">振幅</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">换手率</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">市盈率</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
-                      <div className="text-[11px] text-muted-foreground mb-2">持仓信息</div>
+                      <div className="text-caption text-muted-foreground mb-2">持仓信息</div>
                       {holdingAgg ? (
-                        <div className="grid grid-cols-2 gap-2 text-[12px]">
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓数量</div>
+                        <div className="grid grid-cols-2 gap-2 text-body-sm">
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
+                            <div className="text-mini text-muted-foreground">持仓数量</div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓成本(单价)</div>
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
+                            <div className="text-mini text-muted-foreground">持仓成本(单价)</div>
                             <div
                               className={`font-mono ${
                                 quote?.current_price != null
                                   ? quote.current_price > holdingAgg.unitCost
-                                    ? 'text-rose-500'
+                                    ? 'text-stock-up'
                                     : quote.current_price < holdingAgg.unitCost
-                                      ? 'text-emerald-500'
+                                      ? 'text-stock-down'
                                       : 'text-foreground'
                                   : 'text-foreground'
                               }`}
@@ -1467,19 +1292,19 @@ export default function StockInsightModal(props: {
                               {formatNumber(holdingAgg.unitCost)}
                             </div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓市值</div>
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
+                            <div className="text-mini text-muted-foreground">持仓市值</div>
                             <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue)}</div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">总盈亏</div>
-                            <div className={`font-mono ${holdingAgg.pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
+                            <div className="text-mini text-muted-foreground">总盈亏</div>
+                            <div className={`font-mono ${holdingAgg.pnl >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>
                               {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl)}
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-muted-foreground">未在持仓中</div>
+                        <div className="text-caption text-muted-foreground">未在持仓中</div>
                       )}
                       <AddPositionCalculator
                         symbol={symbol}
@@ -1492,9 +1317,9 @@ export default function StockInsightModal(props: {
                   </div>
 
                   <div className="card p-4 h-full">
-                    <div className="text-[12px] text-muted-foreground mb-2">迷你K线</div>
+                    <div className="text-body-sm text-muted-foreground mb-2">迷你K线</div>
                     {!klineSummary ? (
-                      <div className="text-[12px] text-muted-foreground py-8">暂无K线摘要</div>
+                      <div className="text-body-sm text-muted-foreground py-8">暂无K线摘要</div>
                     ) : (
                       <>
                         {miniKlineLoading ? (
@@ -1524,21 +1349,21 @@ export default function StockInsightModal(props: {
                               const yHigh = toY(Number(k.high))
                               const yLow = toY(Number(k.low))
                               const up = Number(k.close) >= Number(k.open)
-                              const color = up ? '#ef4444' : '#10b981'
+                              const color = up ? 'hsl(var(--stock-up))' : 'hsl(var(--stock-down))'
                               const bodyTop = Math.min(yOpen, yClose)
                               const bodyH = Math.max(1.4, Math.abs(yOpen - yClose))
                               const active = miniHoverIdx === idx
                               return (
                                 <g key={`${k.date}-${idx}`}>
                                   {active && <rect x={x - xStep / 2} y={6} width={xStep} height={108} fill="rgba(59,130,246,0.10)" />}
-                                  <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={color} strokeWidth="1" />
-                                  <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} rx="0.6" />
+                                  <line x1={x} y1={yHigh} x2={x} y2={yLow} style={{ stroke: color }} strokeWidth="1" />
+                                  <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} style={{ fill: color }} rx="0.6" />
                                 </g>
                               )
                             })}
                           </svg>
                         ) : (
-                          <div className="h-32 text-[11px] text-muted-foreground flex items-center justify-center">暂无迷你K线</div>
+                          <div className="h-32 text-caption text-muted-foreground flex items-center justify-center">暂无迷你K线</div>
                         )}
                         <div className="mt-2 rounded bg-accent/10 p-2.5">
                           <TechnicalIndicatorStrip
@@ -1560,12 +1385,12 @@ export default function StockInsightModal(props: {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[12px] text-muted-foreground">AI建议</div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('suggestions')}>
+                      <div className="text-body-sm text-muted-foreground">AI建议</div>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('suggestions')}>
                         更多
                       </Button>
                       {autoSuggesting && suggestions.length > 0 && (
-                        <div className="text-[10px] text-primary">更新中...</div>
+                        <div className="text-mini text-primary">更新中...</div>
                       )}
                     </div>
                     {suggestions.length > 0 ? (
@@ -1578,7 +1403,7 @@ export default function StockInsightModal(props: {
                           hasPosition={!!props.hasPosition}
                           showTechnicalCompanion={false}
                         />
-                        <div className="rounded bg-accent/10 p-2 text-[11px]">
+                        <div className="rounded bg-accent/10 p-2 text-caption">
                           <div className="text-muted-foreground">核心判断</div>
                           <div className="mt-1 text-foreground line-clamp-2">{suggestions[0].signal || suggestions[0].reason || '暂无说明'}</div>
                           <div className="mt-1 text-muted-foreground">动作: {suggestions[0].action_label || suggestions[0].action || '--'}</div>
@@ -1588,7 +1413,7 @@ export default function StockInsightModal(props: {
                           </div>
                         </div>
                         {suggestions.length > 1 && (
-                          <div className="rounded bg-accent/10 p-2 text-[11px]">
+                          <div className="rounded bg-accent/10 p-2 text-caption">
                             <div className="text-muted-foreground mb-1">近期补充建议</div>
                             {suggestions.slice(1, 3).map((item, idx) => (
                               <div key={`${item.created_at || 'extra'}-${idx}`} className="line-clamp-1 text-foreground">
@@ -1597,10 +1422,10 @@ export default function StockInsightModal(props: {
                             ))}
                           </div>
                         )}
-                        <div className="text-[10px] text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? '正在自动生成 AI 建议...' : ''}</div>
+                        <div className="text-mini text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? '正在自动生成 AI 建议...' : ''}</div>
                       </div>
                     ) : (
-                      <div className="text-[12px] text-muted-foreground py-6">
+                      <div className="text-body-sm text-muted-foreground py-6">
                         {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无 AI 建议'}
                       </div>
                     )}
@@ -1608,14 +1433,14 @@ export default function StockInsightModal(props: {
 
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[12px] text-muted-foreground">新闻</div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('news')}>
+                      <div className="text-body-sm text-muted-foreground">新闻</div>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('news')}>
                         更多
                       </Button>
                     </div>
                     <div className="flex-1 space-y-2">
                       {news.length === 0 ? (
-                        <div className="text-[12px] text-muted-foreground py-6">暂无相关新闻</div>
+                        <div className="text-body-sm text-muted-foreground py-6">暂无相关新闻</div>
                       ) : (
                         news.slice(0, 3).map((item, idx) => (
                           <a
@@ -1625,8 +1450,8 @@ export default function StockInsightModal(props: {
                             rel="noreferrer"
                             className="block rounded-lg border border-border/30 bg-accent/10 p-2.5 hover:bg-accent/20 transition-colors"
                           >
-                            <div className="text-[12px] text-foreground line-clamp-2">{item.title}</div>
-                            <div className="mt-1 text-[10px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                            <div className="text-body-sm text-foreground line-clamp-2">{item.title}</div>
+                            <div className="mt-1 text-mini text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
                           </a>
                         ))
                       )}
@@ -1634,20 +1459,20 @@ export default function StockInsightModal(props: {
                   </div>
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="text-[12px] text-muted-foreground">AI报告</div>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('reports')}>
+                      <div className="text-body-sm text-muted-foreground">AI报告</div>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('reports')}>
                         更多
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="text-[12px] text-muted-foreground py-3">暂无报告</div>
+                      <div className="text-body-sm text-muted-foreground py-3">暂无报告</div>
                     ) : (
                       <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-caption text-muted-foreground">
                           {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
                         </div>
-                        <div className="mt-1 text-[13px] font-medium line-clamp-1">{latestReport.title || '报告摘要'}</div>
-                        <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">
+                        <div className="mt-1 text-body font-medium line-clamp-1">{latestReport.title || '报告摘要'}</div>
+                        <div className="mt-1 text-body-sm text-foreground line-clamp-3">
                           {markdownToPlainText(latestReport.content) || '暂无报告内容'}
                         </div>
                       </div>
@@ -1679,7 +1504,7 @@ export default function StockInsightModal(props: {
                       <button
                         key={item.key}
                         onClick={() => setReportTab(item.key)}
-                        className={`text-[11px] px-2.5 py-1 rounded ${
+                        className={`text-caption px-2.5 py-1 rounded ${
                           reportTab === item.key ? 'bg-primary text-primary-foreground' : 'bg-accent/60 text-muted-foreground hover:bg-accent'
                         }`}
                       >
@@ -1689,48 +1514,48 @@ export default function StockInsightModal(props: {
                   </div>
                 </div>
                 {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无报告</div>
                 ) : (
                   <div className="card p-4 space-y-3">
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-caption text-muted-foreground">
                       {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
                     </div>
-                    <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
+                    <div className="text-title font-medium">{activeReport.title || '报告摘要'}</div>
                     {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
-                      <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
+                      <div className="text-caption inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
                         {(activeReport.suggestions as any)[symbol].action_label}
                       </div>
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground break-words">
                         <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
                       </div>
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
                       <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
+                        <summary className="cursor-pointer text-body-sm text-muted-foreground select-none">查看分析上下文</summary>
                         {activeReport.prompt_stats ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                            <div className="text-caption text-muted-foreground mb-1">Prompt统计</div>
+                            <pre className="text-caption text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.news_debug ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
+                            <div className="text-caption text-muted-foreground mb-1">新闻注入明细</div>
+                            <pre className="text-caption text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.context_payload ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
+                            <div className="text-caption text-muted-foreground mb-1">上下文快照</div>
+                            <pre className="text-caption text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.prompt_context ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
+                            <div className="text-caption text-muted-foreground mb-1">Prompt原文</div>
+                            <pre className="text-caption text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
                           </div>
                         ) : null}
                       </details>
@@ -1777,9 +1602,9 @@ export default function StockInsightModal(props: {
             {tab === 'suggestions' && (
               <div className="space-y-3">
                 <div className="card p-3 flex items-center justify-between gap-3">
-                  <div className="text-[12px] text-muted-foreground">显示过期建议</div>
+                  <div className="text-body-sm text-muted-foreground">显示过期建议</div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
+                    <span className="text-caption text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
                     <Switch
                       checked={includeExpiredSuggestions}
                       onCheckedChange={setIncludeExpiredSuggestions}
@@ -1791,12 +1616,12 @@ export default function StockInsightModal(props: {
                   technicalFallbackSuggestion ? (
                     <div className="card p-4">
                       <SuggestionBadge suggestion={technicalFallbackSuggestion} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
-                      <div className="mt-2 text-[10px] text-muted-foreground">
+                      <div className="mt-2 text-mini text-muted-foreground">
                         {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '当前显示技术指标基础建议'}
                       </div>
                     </div>
                   ) : (
-                    <div className="card p-6 text-[12px] text-muted-foreground text-center">
+                    <div className="card p-6 text-body-sm text-muted-foreground text-center">
                       {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无建议'}
                     </div>
                   )
@@ -1816,7 +1641,7 @@ export default function StockInsightModal(props: {
               <div className="space-y-3">
                 <div className="flex items-center justify-end">
                   <Select value={newsHours} onValueChange={setNewsHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-[12px]">
+                    <SelectTrigger className="h-8 w-[110px] text-body-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1829,7 +1654,7 @@ export default function StockInsightModal(props: {
                   </Select>
                 </div>
                 {news.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无相关新闻</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无相关新闻</div>
                 ) : (
                   news.map((item, idx) => (
                     <a
@@ -1840,10 +1665,10 @@ export default function StockInsightModal(props: {
                       className="card block p-4 hover:bg-accent/20 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
+                        <div className="text-body font-medium text-foreground line-clamp-2">{item.title}</div>
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      <div className="mt-2 text-caption text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
                     </a>
                   ))
                 )}
@@ -1854,7 +1679,7 @@ export default function StockInsightModal(props: {
               <div className="space-y-3">
                 <div className="flex items-center justify-end">
                   <Select value={announcementHours} onValueChange={setAnnouncementHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-[12px]">
+                    <SelectTrigger className="h-8 w-[110px] text-body-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1870,7 +1695,7 @@ export default function StockInsightModal(props: {
                   </Select>
                 </div>
                 {announcements.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无公告</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无公告</div>
                 ) : (
                   announcements.map((item, idx) => (
                     <a
@@ -1881,10 +1706,10 @@ export default function StockInsightModal(props: {
                       className="card block p-4 hover:bg-accent/20 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
+                        <div className="text-body font-medium text-foreground line-clamp-2">{item.title}</div>
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      <div className="mt-2 text-caption text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
                     </a>
                   ))
                 )}
@@ -1897,248 +1722,5 @@ export default function StockInsightModal(props: {
       </Dialog>
 
     </>
-  )
-}
-
-const DEEP_DECISION_COLOR: Record<string, string> = {
-  buy: 'text-emerald-600 dark:text-emerald-400',
-  hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-rose-600 dark:text-rose-400',
-}
-
-const DEEP_STAGE_LABEL: Record<string, string> = {
-  market: '技术分析师',
-  social: '情绪分析师',
-  news: '新闻分析师',
-  fundamentals: '基本面分析师',
-}
-
-function DeepAnalysisSection({
-  loading,
-  loaded,
-  result,
-  history,
-  historyLoading,
-  showAnalyst,
-  setShowAnalyst,
-  showDebate,
-  setShowDebate,
-  onRefresh,
-}: {
-  loading: boolean
-  loaded: boolean
-  result: DeepAnalysisResult | null
-  history: HistoryComparisonResponse | null
-  historyLoading: boolean
-  showAnalyst: boolean
-  setShowAnalyst: (v: boolean) => void
-  showDebate: boolean
-  setShowDebate: (v: boolean) => void
-  onRefresh: () => void
-}) {
-  if (loading && !loaded) {
-    return (
-      <div className="card p-6 text-center text-[12px] text-muted-foreground">
-        <span className="inline-block w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2 align-middle" />
-        正在加载深度分析报告...
-      </div>
-    )
-  }
-  if (!result && !history?.items?.length) {
-    return (
-      <div className="card p-6 text-center text-[12px] text-muted-foreground space-y-2">
-        <div>暂无深度分析报告</div>
-        <div className="text-[11px] text-muted-foreground/70">
-          可在持仓 / 自选页点击 🧠 深度分析按钮触发
-        </div>
-      </div>
-    )
-  }
-
-  const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
-  const sug = rawData.suggestion
-  const reports = rawData.analyst_reports || { market: '', social: '', news: '', fundamentals: '' }
-  const debate = rawData.debate_history
-  const costUsd = rawData.cost_usd
-
-  return (
-    <div className="space-y-3 text-[13px]">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] text-muted-foreground">
-          TradingAgents 深度{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
-        </div>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
-          <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
-
-      {sug && (
-        <div className="rounded-lg bg-accent/30 p-4 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className={`text-[20px] font-bold ${DEEP_DECISION_COLOR[sug.action] || ''}`}>
-              {sug.action_label}
-            </span>
-            {typeof sug.confidence === 'number' && (
-              <span className="text-[12px] text-muted-foreground">
-                置信度 {sug.confidence.toFixed(1)} / 10
-              </span>
-            )}
-          </div>
-          {sug.reason && <div className="text-[12px] text-foreground/80">{sug.reason.slice(0, 240)}</div>}
-          {typeof costUsd === 'number' && (
-            <div className="text-[10px] text-muted-foreground mt-2">成本:${costUsd.toFixed(4)}</div>
-          )}
-        </div>
-      )}
-
-      <DeepHistoryComparison history={history} loading={historyLoading} />
-
-      {result?.content && (
-        <div className="rounded-lg border border-border/50 p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <ReactMarkdown>{result.content}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-
-      {result && (
-        <div>
-          <button
-            className="text-[12px] text-muted-foreground hover:text-foreground flex items-center gap-1"
-            onClick={() => setShowAnalyst(!showAnalyst)}
-          >
-            {showAnalyst ? '▼' : '▶'} 4 位分析师报告
-          </button>
-          {showAnalyst && (
-            <div className="space-y-3 mt-2 pl-3 border-l-2 border-border/40">
-              {(['market', 'social', 'news', 'fundamentals'] as const).map((k) => {
-                const text = (reports as unknown as Record<string, string>)[k] || ''
-                if (!text) return null
-                return (
-                  <details key={k} open className="text-[12px]">
-                    <summary className="font-medium cursor-pointer">{DEEP_STAGE_LABEL[k] || k}</summary>
-                    <div className="mt-2 text-[11px] text-foreground/80 whitespace-pre-wrap">
-                      {text.slice(0, 1500)}
-                      {text.length > 1500 && '... (截断)'}
-                    </div>
-                  </details>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {debate && debate.history && (
-        <div>
-          <button
-            className="text-[12px] text-muted-foreground hover:text-foreground flex items-center gap-1"
-            onClick={() => setShowDebate(!showDebate)}
-          >
-            {showDebate ? '▼' : '▶'} 看多看空辩论
-          </button>
-          {showDebate && (
-            <div className="mt-2 pl-3 border-l-2 border-border/40 text-[11px] text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {debate.history}
-              {debate.judge_decision && (
-                <>
-                  <div className="font-medium mt-3 mb-1">研究主管裁决:</div>
-                  <div>{debate.judge_decision}</div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
-        本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
-      </div>
-    </div>
-  )
-}
-
-function DeepHistoryComparison({
-  history,
-  loading,
-}: {
-  history: HistoryComparisonResponse | null
-  loading: boolean
-}) {
-  if (loading && !history) {
-    return (
-      <div className="rounded-lg border border-border/40 p-3 text-[11px] text-muted-foreground text-center">
-        历史对比加载中...
-      </div>
-    )
-  }
-  if (!history || history.items.length === 0) return null
-
-  const stats = history.stats
-  const fmtPct = (v: number | null): string => (v == null ? '-' : `${(v * 100).toFixed(0)}%`)
-  const fmtRet = (v: number | null): string => (v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
-  const retCls = (v: number | null): string =>
-    v == null ? 'text-muted-foreground' : v > 0 ? 'text-emerald-600 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
-
-  return (
-    <div className="rounded-lg border border-border/50 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[12px] font-medium">历史决策 vs 实际涨跌</div>
-        <div className="text-[10px] text-muted-foreground">仅基于满 20 个交易日的决策统计</div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-        <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">总命中率</div>
-          <div className="font-semibold">{fmtPct(stats.overall_hit_rate)}</div>
-        </div>
-        <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">买入 ({stats.buy_count})</div>
-          <div className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(stats.buy_hit_rate)}</div>
-        </div>
-        <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">卖出 ({stats.sell_count})</div>
-          <div className="font-semibold text-rose-600 dark:text-rose-400">{fmtPct(stats.sell_hit_rate)}</div>
-        </div>
-        <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">平均 20 日收益</div>
-          <div className={`font-semibold ${retCls(stats.avg_return_20d_pct)}`}>{fmtRet(stats.avg_return_20d_pct)}</div>
-        </div>
-      </div>
-      <div className="overflow-x-auto -mx-1 mt-2">
-        <table className="w-full text-[11px]">
-          <thead className="text-muted-foreground">
-            <tr className="border-b border-border/40">
-              <th className="text-left px-1 py-1 font-normal">日期</th>
-              <th className="text-left px-1 py-1 font-normal">决策</th>
-              <th className="text-right px-1 py-1 font-normal">分析价</th>
-              <th className="text-right px-1 py-1 font-normal">1日</th>
-              <th className="text-right px-1 py-1 font-normal">5日</th>
-              <th className="text-right px-1 py-1 font-normal">20日</th>
-              <th className="text-center px-1 py-1 font-normal">命中</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.items.map((item, i) => (
-              <tr key={`${item.analysis_date}-${i}`} className="border-b border-border/20 hover:bg-accent/10">
-                <td className="px-1 py-1 text-muted-foreground whitespace-nowrap">{item.analysis_date}</td>
-                <td className="px-1 py-1">
-                  <span className={DEEP_DECISION_COLOR[item.action] || ''}>{item.action_label}</span>
-                  {typeof item.confidence === 'number' && (
-                    <span className="text-muted-foreground text-[10px] ml-1">({item.confidence.toFixed(1)})</span>
-                  )}
-                </td>
-                <td className="px-1 py-1 text-right text-foreground/80">{item.price_at_analysis ?? '-'}</td>
-                <td className={`px-1 py-1 text-right ${retCls(item.return_1d_pct)}`}>{fmtRet(item.return_1d_pct)}</td>
-                <td className={`px-1 py-1 text-right ${retCls(item.return_5d_pct)}`}>{fmtRet(item.return_5d_pct)}</td>
-                <td className={`px-1 py-1 text-right ${retCls(item.return_20d_pct)}`}>{fmtRet(item.return_20d_pct)}</td>
-                <td className="px-1 py-1 text-center">
-                  {item.hit_20d == null ? <span className="text-muted-foreground">-</span> : item.hit_20d ? '✓' : '✗'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   )
 }

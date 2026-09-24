@@ -10,7 +10,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
   return (
     <div className="space-y-3">
       {/* 趋势与形态（带说明）*/}
-      <div className="flex flex-wrap gap-2 text-[11px]">
+      <div className="flex flex-wrap gap-2 text-caption">
         {s.trend && (
           <HoverPopover
             title="趋势（均线排列）"
@@ -132,7 +132,7 @@ export function KlineIndicators({ summary: s }: KlineIndicatorsProps) {
       </div>
 
       {/* 支撑压力（带说明）*/}
-      <div className="flex flex-wrap gap-2 text-[11px]">
+      <div className="flex flex-wrap gap-2 text-caption">
         {s.support != null && (
           <HoverPopover
             title="支撑位（关键支撑区）"
