@@ -41,6 +41,11 @@ def _tool_call_fingerprint(call: ToolCall) -> str:
     return f"{call.name}:{json.dumps(call.arguments, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
 
 
+def _duration_ms(started_at: float) -> int:
+    """Convert a monotonic interval into a non-negative display duration."""
+    return max(0, round((time.monotonic() - started_at) * 1000))
+
+
 class AgentRuntime:
     """A serial tool loop with hard limits and durable approval pauses.
 
@@ -223,20 +228,71 @@ class AgentRuntime:
                     {"step": current_step, "status": "running"},
                 )
                 current_tool_choice = self._tool_choice_for_turn(request, messages)
-                turn = await self._run_model_turn(
-                    model_tools,
-                    messages,
-                    emit_model_token,
-                    deadline,
-                    current_tool_choice,
-                )
-                if turn.usage is not None:
+                model_started_at = time.monotonic()
+                try:
+                    turn = await self._run_model_turn(
+                        model_tools,
+                        messages,
+                        emit_model_token,
+                        deadline,
+                        current_tool_choice,
+                    )
+                except TimeoutError:
                     await self._publish(
                         sink,
                         request,
                         EventType.MODEL_USAGE,
-                        turn.usage.model_dump(mode="json"),
+                        {
+                            "source": "estimated",
+                            "duration_ms": _duration_ms(model_started_at),
+                            "usage_available": False,
+                            "error_code": "run_timeout",
+                        },
                     )
+                    raise
+                except asyncio.CancelledError:
+                    await self._publish(
+                        sink,
+                        request,
+                        EventType.MODEL_USAGE,
+                        {
+                            "source": "estimated",
+                            "duration_ms": _duration_ms(model_started_at),
+                            "usage_available": False,
+                            "error_code": "cancelled",
+                        },
+                    )
+                    raise
+                except Exception:
+                    await self._publish(
+                        sink,
+                        request,
+                        EventType.MODEL_USAGE,
+                        {
+                            "source": "estimated",
+                            "duration_ms": _duration_ms(model_started_at),
+                            "usage_available": False,
+                            "error_code": "model_failed",
+                        },
+                    )
+                    raise
+                usage_data = (
+                    turn.usage.model_dump(mode="json")
+                    if turn.usage is not None
+                    else {"source": "estimated"}
+                )
+                usage_data.update(
+                    {
+                        "duration_ms": _duration_ms(model_started_at),
+                        "usage_available": turn.usage is not None,
+                    }
+                )
+                await self._publish(
+                    sink,
+                    request,
+                    EventType.MODEL_USAGE,
+                    usage_data,
+                )
                 if turn.content and not answer and current_tool_choice != _REQUIRED_TOOL_CHOICE:
                     await emit_token(turn.content)
 
@@ -516,6 +572,7 @@ class AgentRuntime:
             return ToolResult.failure(
                 summary="请求的扩展工具不可用", error_code="unknown_tool"
             ), "unknown_tool"
+        started_at = time.monotonic()
         await self._publish(
             sink,
             request,
@@ -554,14 +611,20 @@ class AgentRuntime:
                     )
                 )
         except TimeoutError:
-            return ToolResult.failure(summary="扩展工具调用超时", error_code="tool_timeout"), "tool_timeout"
+            result = ToolResult.failure(summary="扩展工具调用超时", error_code="tool_timeout")
         except Exception:  # noqa: BLE001 - extension is an optional boundary
-            return ToolResult.failure(summary="扩展工具调用失败", error_code="tool_failed"), "tool_failed"
+            result = ToolResult.failure(summary="扩展工具调用失败", error_code="tool_failed")
         if result is None:
-            return ToolResult.failure(
+            result = ToolResult.failure(
                 summary="请求的扩展工具不可用", error_code="unknown_tool"
-            ), "unknown_tool"
-        await self._publish_tool_completed(sink, request, call, result)
+            )
+        await self._publish_tool_completed(
+            sink,
+            request,
+            call,
+            result,
+            duration_ms=_duration_ms(started_at),
+        )
         if not result.ok:
             return result, result.error_code or "tool_failed"
         return result, None
@@ -594,6 +657,7 @@ class AgentRuntime:
                 summary="请求的工具不可用", error_code="unknown_tool"
             ), "unknown_tool"
 
+        started_at = time.monotonic()
         await self._publish(
             sink,
             request,
@@ -601,7 +665,9 @@ class AgentRuntime:
             {"call_id": call.id, "tool": call.name, "arguments": call.arguments},
         )
         result: ToolResult | None = None
+        attempt_count = 0
         for attempt in range(request.limits.step_retry_count + 1):
+            attempt_count = attempt + 1
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -616,17 +682,24 @@ class AgentRuntime:
                 if time.monotonic() >= deadline:
                     raise
                 if attempt == request.limits.step_retry_count:
-                    return ToolResult.failure(
+                    result = ToolResult.failure(
                         summary="工具调用超时", error_code="tool_timeout"
-                    ), "tool_timeout"
+                    )
             except Exception:  # noqa: BLE001 - tool adapters are untrusted host boundaries
                 if attempt == request.limits.step_retry_count:
-                    return ToolResult.failure(
+                    result = ToolResult.failure(
                         summary="工具调用失败", error_code="tool_failed"
-                    ), "tool_failed"
+                    )
 
         assert result is not None
-        await self._publish_tool_completed(sink, request, call, result)
+        await self._publish_tool_completed(
+            sink,
+            request,
+            call,
+            result,
+            duration_ms=_duration_ms(started_at),
+            attempt_count=attempt_count,
+        )
         if not result.ok:
             return result, result.error_code or "tool_failed"
         return result, None
@@ -645,7 +718,14 @@ class AgentRuntime:
         )
 
     async def _publish_tool_completed(
-        self, sink: EventSink, request: RunRequest, call: ToolCall, result: ToolResult
+        self,
+        sink: EventSink,
+        request: RunRequest,
+        call: ToolCall,
+        result: ToolResult,
+        *,
+        duration_ms: int = 0,
+        attempt_count: int = 1,
     ) -> None:
         await self._publish(
             sink,
@@ -657,6 +737,8 @@ class AgentRuntime:
                 "ok": result.ok,
                 "summary": result.summary,
                 "error_code": result.error_code,
+                "duration_ms": duration_ms,
+                "attempt_count": attempt_count,
             },
         )
 

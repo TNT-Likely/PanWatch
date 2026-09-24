@@ -41,6 +41,25 @@ describe('TraceTimeline', () => {
     expect(screen.getByText('模型用量：输入 120，输出 30')).toBeTruthy()
   })
 
+  it('shows task duration and token totals in the trace summary', async () => {
+    const user = userEvent.setup()
+    render(
+      <TraceTimeline
+        events={[
+          { event: 'model_usage', data: { input_tokens: 120, output_tokens: 30, duration_ms: 800 } },
+          { event: 'tool_call_start', data: { name: 'get_portfolio' } },
+          { event: 'tool_result', data: { name: 'get_portfolio', ok: true, duration_ms: 420 } },
+          { event: 'done', data: { duration_ms: 1240 } },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('已完成 · 1.2s · 1 次工具调用 · 150 tokens')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    expect(screen.getByText('模型用量：输入 120，输出 30 · 800ms')).toBeTruthy()
+    expect(screen.getByText('工具完成：get_portfolio · 420ms')).toBeTruthy()
+  })
+
   it('expands the factual steps from the compact summary', async () => {
     const user = userEvent.setup()
     render(

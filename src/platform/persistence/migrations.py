@@ -1965,6 +1965,53 @@ def _m126_assistant_task_events(conn: Connection) -> None:
     )
 
 
+def _m127_assistant_trace_metrics(conn: Connection) -> None:
+    """Store lightweight assistant timing and provider usage summaries."""
+    for name, statement in (
+        ("model", "ALTER TABLE assistant_task_runs ADD COLUMN model TEXT"),
+        (
+            "usage_source",
+            "ALTER TABLE assistant_task_runs ADD COLUMN usage_source TEXT NOT NULL DEFAULT 'unknown'",
+        ),
+        (
+            "input_tokens",
+            "ALTER TABLE assistant_task_runs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "output_tokens",
+            "ALTER TABLE assistant_task_runs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "total_tokens",
+            "ALTER TABLE assistant_task_runs ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "cached_input_tokens",
+            "ALTER TABLE assistant_task_runs ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "reasoning_output_tokens",
+            "ALTER TABLE assistant_task_runs ADD COLUMN reasoning_output_tokens INTEGER NOT NULL DEFAULT 0",
+        ),
+    ):
+        _add_column_if_missing(conn, "assistant_task_runs", name, statement)
+    for name, statement in (
+        (
+            "duration_ms",
+            "ALTER TABLE assistant_tool_invocations ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "attempt_count",
+            "ALTER TABLE assistant_tool_invocations ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 1",
+        ),
+        (
+            "error_code",
+            "ALTER TABLE assistant_tool_invocations ADD COLUMN error_code TEXT",
+        ),
+    ):
+        _add_column_if_missing(conn, "assistant_tool_invocations", name, statement)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -1992,6 +2039,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(124, "assistant_context_snapshots", _m124_assistant_context_snapshots),
     Migration(125, "assistant_task_protocol", _m125_assistant_task_protocol),
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
+    Migration(127, "assistant_trace_metrics", _m127_assistant_trace_metrics),
 )
 
 

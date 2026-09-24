@@ -658,6 +658,9 @@ class AssistantService:
             tool_name=data.get("tool", ""),
             summary=data.get("summary", ""),
             ok=bool(data.get("ok", False)),
+            duration_ms=int(data.get("duration_ms") or 0),
+            attempt_count=int(data.get("attempt_count") or 1),
+            error_code=data.get("error_code"),
         )
 
     def record_tool_started(self, task_id: int, data: dict) -> None:

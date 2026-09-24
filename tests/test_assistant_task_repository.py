@@ -23,7 +23,15 @@ def test_task_snapshot_contains_completed_tool_after_stream_expiry():
 
     snapshot = repo.get_task_snapshot(task.id)
     assert snapshot["status"] == "completed"
-    assert snapshot["tools"] == [{"call_id": "call-1", "tool": "get_portfolio", "status": "completed", "summary": "2 个持仓"}]
+    assert snapshot["tools"] == [{
+        "call_id": "call-1",
+        "tool": "get_portfolio",
+        "status": "completed",
+        "summary": "2 个持仓",
+        "duration_ms": 0,
+        "attempt_count": 1,
+        "error_code": None,
+    }]
     session.close()
 
 

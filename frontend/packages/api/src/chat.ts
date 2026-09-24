@@ -36,6 +36,26 @@ export interface AssistantTaskSnapshot {
   id: number
   conversation_id: number
   status: string
+  model?: string | null
+  duration_ms?: number
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+    cached_input_tokens: number
+    reasoning_output_tokens: number
+    source: 'provider' | 'tokenizer' | 'estimated' | 'unknown' | 'mixed'
+    model?: string | null
+  }
+  tools?: Array<{
+    call_id: string
+    tool: string
+    status: string
+    summary: string
+    duration_ms: number
+    attempt_count: number
+    error_code?: string | null
+  }>
   pending_approvals: Array<{
     id: string
     call_id: string

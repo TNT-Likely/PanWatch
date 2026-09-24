@@ -317,7 +317,7 @@ class AssistantRepository:
             TaskEventType.TASK_CANCELLED,
             status=TaskStatus.CANCELLED,
             commit=False,
-            data={"reason": "user_requested"},
+            data={"reason": "user_requested", **self._task_metrics(task)},
         )
         self._session.commit()
         self._session.refresh(task)
@@ -362,6 +362,9 @@ class AssistantRepository:
         tool_name: str,
         summary: str,
         ok: bool = True,
+        duration_ms: int = 0,
+        attempt_count: int = 1,
+        error_code: str | None = None,
     ) -> AssistantToolInvocation:
         invocation = (
             self._session.query(AssistantToolInvocation)
@@ -381,6 +384,9 @@ class AssistantRepository:
         invocation.tool_name = tool_name
         invocation.status = "completed" if ok else "failed"
         invocation.summary = summary
+        invocation.duration_ms = max(0, int(duration_ms or 0))
+        invocation.attempt_count = max(1, int(attempt_count or 1))
+        invocation.error_code = error_code
         invocation.completed_at = datetime.now(timezone.utc)
         self.append_task_event(
             task_run_id,
@@ -393,12 +399,45 @@ class AssistantRepository:
                 "ok": ok,
                 "preview": summary,
                 "summary": summary,
+                "duration_ms": invocation.duration_ms,
+                "attempt_count": invocation.attempt_count,
+                "error_code": error_code,
             },
             commit=False,
         )
         self._session.commit()
         self._session.refresh(invocation)
         return invocation
+
+    def record_model_usage(self, task_run_id: int, data: dict) -> AssistantTaskRun:
+        """Accumulate one model turn's provider or estimated usage."""
+        task = self._require_task(task_run_id)
+        input_tokens = max(0, int(data.get("input_tokens") or 0))
+        output_tokens = max(0, int(data.get("output_tokens") or 0))
+        total_tokens = max(
+            0,
+            int(data.get("total_tokens") or input_tokens + output_tokens),
+        )
+        task.input_tokens = int(task.input_tokens or 0) + input_tokens
+        task.output_tokens = int(task.output_tokens or 0) + output_tokens
+        task.total_tokens = int(task.total_tokens or 0) + total_tokens
+        task.cached_input_tokens = int(task.cached_input_tokens or 0) + max(
+            0, int(data.get("cached_input_tokens") or 0)
+        )
+        task.reasoning_output_tokens = int(task.reasoning_output_tokens or 0) + max(
+            0, int(data.get("reasoning_output_tokens") or 0)
+        )
+        model = data.get("model")
+        if model:
+            task.model = str(model)
+        source = str(data.get("source") or "unknown")
+        current_source = task.usage_source or "unknown"
+        task.usage_source = (
+            source
+            if current_source in {"", "unknown", source}
+            else "mixed"
+        )
+        return task
 
     def record_tool_started(
         self,
@@ -742,6 +781,7 @@ class AssistantRepository:
         task.checkpoint = None
         task.checkpoint_id = ""
         task.finished_at = datetime.now(timezone.utc)
+        metrics = self._task_metrics(task)
         final_status = TaskStatus(status)
         event_type = (
             TaskEventType.TASK_COMPLETED
@@ -756,6 +796,7 @@ class AssistantRepository:
             status=final_status,
             data={
                 **(event_data or {}),
+                **metrics,
                 **({"error_code": error_code} if error_code else {}),
             },
             commit=False,
@@ -803,12 +844,17 @@ class AssistantRepository:
             self._session.rollback()
             return None
         self._session.expire_all()
+        completed_task = self._require_task(task_run_id)
         self.append_task_event(
             task_run_id,
             TaskEventType.TASK_COMPLETED,
             status=TaskStatus.COMPLETED,
             commit=False,
-            data={"message_id": message.id, "content": content},
+            data={
+                "message_id": message.id,
+                "content": content,
+                **self._task_metrics(completed_task),
+            },
         )
         self._session.commit()
         self._session.refresh(message)
@@ -834,6 +880,17 @@ class AssistantRepository:
             "retry_count": int(task.retry_count or 0),
             "context": task.context or {},
             "error_code": task.error_code,
+            "model": task.model,
+            "duration_ms": self._task_duration_ms(task),
+            "usage": {
+                "input_tokens": int(task.input_tokens or 0),
+                "output_tokens": int(task.output_tokens or 0),
+                "total_tokens": int(task.total_tokens or 0),
+                "cached_input_tokens": int(task.cached_input_tokens or 0),
+                "reasoning_output_tokens": int(task.reasoning_output_tokens or 0),
+                "source": task.usage_source or "unknown",
+                "model": task.model,
+            },
             "pending_approvals": [
                 {
                     "id": approval.id,
@@ -856,6 +913,9 @@ class AssistantRepository:
                     "tool": tool.tool_name,
                     "status": tool.status,
                     "summary": tool.summary,
+                    "duration_ms": int(tool.duration_ms or 0),
+                    "attempt_count": int(tool.attempt_count or 1),
+                    "error_code": tool.error_code,
                 }
                 for tool in tools
             ],
@@ -866,6 +926,30 @@ class AssistantRepository:
         if task is None:
             raise LookupError("助手任务不存在")
         return task
+
+    @staticmethod
+    def _task_duration_ms(task: AssistantTaskRun) -> int:
+        if task.started_at is None:
+            return 0
+        finished_at = task.finished_at or datetime.now(timezone.utc)
+        started_at = task.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=timezone.utc)
+        return max(0, round((finished_at - started_at).total_seconds() * 1000))
+
+    def _task_metrics(self, task: AssistantTaskRun) -> dict:
+        return {
+            "duration_ms": self._task_duration_ms(task),
+            "input_tokens": int(task.input_tokens or 0),
+            "output_tokens": int(task.output_tokens or 0),
+            "total_tokens": int(task.total_tokens or 0),
+            "cached_input_tokens": int(task.cached_input_tokens or 0),
+            "reasoning_output_tokens": int(task.reasoning_output_tokens or 0),
+            "usage_source": task.usage_source or "unknown",
+            "model": task.model,
+        }
 
     @staticmethod
     def _default_permission_mode(risk: ToolRisk) -> PermissionMode:
