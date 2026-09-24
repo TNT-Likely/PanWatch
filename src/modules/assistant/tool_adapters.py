@@ -1,9 +1,9 @@
-"""Shared read-only tools used by the legacy chat endpoint and MCP adapter.
+"""Shared business tool adapters used by the assistant and MCP adapter.
 
-The old ``/api/chat`` route and the MCP transport expose the same assistant
-capabilities.  Their schema and dispatch therefore live in this module instead
-of either HTTP router, so another module can use the assistant boundary without
-depending on a router implementation.
+The MCP transport and assistant integrations expose the same business
+capabilities. Their schema and dispatch live here instead of in an HTTP router,
+so another host can reuse the adapters without depending on the assistant
+transport.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from src.platform.persistence.models import AnalysisHistory, Stock, StockSuggest
 
 logger = logging.getLogger(__name__)
 
-CHAT_TOOLS = [
+ASSISTANT_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -173,7 +173,7 @@ async def fetch_technical_context(symbol: str, market: str) -> str:
         return ""
 
 
-async def execute_chat_tool(db: Session, name: str, arguments: dict) -> str:
+async def execute_tool(db: Session, name: str, arguments: dict) -> str:
     """Dispatch one declared read-only assistant tool."""
     try:
         if name == "get_portfolio":
@@ -190,6 +190,6 @@ async def execute_chat_tool(db: Session, name: str, arguments: dict) -> str:
         if name == "get_watchlist":
             return build_watchlist_context(db)
         return f"未知工具: {name}"
-    except Exception as exc:  # noqa: BLE001 - preserve the legacy user-facing error contract
+    except Exception as exc:  # noqa: BLE001 - preserve the user-facing error contract
         logger.error("工具执行失败 %s: %s", name, exc)
         return f"工具执行出错: {exc}"

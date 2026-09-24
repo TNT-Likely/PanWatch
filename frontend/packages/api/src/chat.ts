@@ -138,32 +138,25 @@ export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
 
 export const chatApi = {
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>
-    fetchAPI<ChatConversation>('/chat/conversations', {
+    fetchAPI<ChatConversation>('/assistant/conversations', {
       method: 'POST',
       body: JSON.stringify(params || {}),
     }),
 
   listConversations: (limit = 30) =>
-    fetchAPI<ChatConversation[]>(`/chat/conversations?limit=${limit}`),
+    fetchAPI<ChatConversation[]>(`/assistant/conversations?limit=${limit}`),
 
   getConversation: (id: number) =>
-    fetchAPI<ConversationDetail>(`/chat/conversations/${id}`),
+    fetchAPI<ConversationDetail>(`/assistant/conversations/${id}`),
 
   deleteConversation: (id: number) =>
-    fetchAPI<{ ok: boolean }>(`/chat/conversations/${id}`, {
+    fetchAPI<{ ok: boolean }>(`/assistant/conversations/${id}`, {
       method: 'DELETE',
-    }),
-
-  sendMessage: (conversationId: number, content: string) =>
-    fetchAPI<ChatMessage>(`/chat/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content }),
-      timeoutMs: 120000,
     }),
 
   getSuggestedQuestions: (symbol: string, market: string) =>
     fetchAPI<{ questions: string[] }>(
-      `/chat/suggested-questions?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}`
+      `/assistant/suggested-questions?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}`
     ),
 
   getAssistantTask: (taskId: number) =>
@@ -200,8 +193,7 @@ export const chatApi = {
     }),
 
   sendMessageStream,
-  sendAssistantMessageStream: (conversationId: number, content: string, callbacks: ChatStreamCallbacks, signal?: AbortSignal) =>
-    sendMessageStream(conversationId, content, callbacks, signal, '/assistant/conversations/' + conversationId + '/messages/stream'),
+  sendAssistantMessageStream: sendMessageStream,
   subscribeAssistantTaskStream,
   decideAssistantApprovalStream,
 }
@@ -316,6 +308,18 @@ function dispatchAssistantEvent(
         compressedMessageCount: Number(d.compressed_message_count) || 0,
       })
       break
+    case 'extension_event': {
+      const nestedEvent = d.event
+      const nestedData = d.data || {}
+      if (nestedEvent === 'plan') {
+        callbacks.onPlan?.({
+          status: nestedData.status || '',
+          steps: nestedData.steps || [],
+          current: nestedData.current,
+        })
+      }
+      break
+    }
     case 'token':
       callbacks.onToken?.(d.text || d.token || '')
       break
@@ -369,19 +373,16 @@ function dispatchAssistantEvent(
 /**
  * 流式发送消息（SSE）。
  *
- * - 首次连接 POST /chat/conversations/{id}/messages/stream；
- * - 旧流通过 meta 事件携带 stream_id，新助手流通过 task_created 事件携带 task_id；
- *   连接中断后分别从内存流或持久化任务事件流 + Last-Event-ID 续推；
- * - 若首次连接直接失败（未收到任何事件），抛异常，调用方降级到非流式 sendMessage。
+ * - 首次连接 POST /assistant/conversations/{id}/messages/stream；
+ * - 连接中断后从持久化任务事件流 + Last-Event-ID 续推；
+ * - 若首次连接直接失败，抛异常，由调用方展示失败状态。
  */
 async function sendMessageStream(
   conversationId: number,
   content: string,
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
-  streamPath = `/chat/conversations/${conversationId}/messages/stream`
 ): Promise<void> {
-  let streamId = ''
   let taskEventPath = ''
   const state: AssistantStreamState = {
     lastEventId: 0,
@@ -393,9 +394,6 @@ async function sendMessageStream(
 
   const handleEvent = (ev: SSEEvent) => {
     const d = ev.data || {}
-    if (ev.event === 'meta') {
-      streamId = d.stream_id || ''
-    }
     if (ev.event === 'task_created' || ev.event === 'task_queued') {
       const taskId = Number(d.task_id) || 0
       if (taskId > 0) taskEventPath = `/assistant/tasks/${taskId}/events`
@@ -404,7 +402,7 @@ async function sendMessageStream(
   }
 
   try {
-    await readSSE(streamPath, {
+    await readSSE(`/assistant/conversations/${conversationId}/messages/stream`, {
       method: 'POST',
       body: { content },
       signal,
@@ -414,14 +412,11 @@ async function sendMessageStream(
     primaryError = error
   }
 
-  // The legacy /api/chat endpoint intentionally emits `error` then persists a
-  // fallback response as `done`.  Only a stream that ends without `done` is a
-  // terminal failure for the caller.
   if (state.terminalError && !state.finished) throw new Error(state.terminalError)
 
-  // 连接被中断但生成未结束 → 经续推端点接回（服务端缓冲全量事件）
+  // 连接被中断但生成未结束，经持久化任务事件流接回。
   let reconnects = 0
-  const reconnectPath = taskEventPath || (streamId ? `/chat/streams/${streamId}` : '')
+  const reconnectPath = taskEventPath
   while (!state.finished && !state.paused && reconnectPath && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     reconnects += 1

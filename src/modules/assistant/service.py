@@ -29,7 +29,14 @@ from src.platform.ai.ai_failover import (
     build_failover_client,
     get_configured_failover_client,
 )
-from src.platform.persistence.models import AIModel, AIService, AppSettings
+from src.platform.persistence.models import (
+    AIModel,
+    AIService,
+    AppSettings,
+    Position,
+    Stock,
+    StockSuggestion,
+)
 from src.platform.runtime.config import Settings
 
 from .context_schemas import (
@@ -43,6 +50,7 @@ from .context_schemas import (
 from .context_summarizer import FailoverContextSummarizer
 from .llm_adapter import FailoverModelAdapter
 from .prompt import build_assistant_messages
+from .portfolio_diagnosis import PortfolioDiagnosisExtension
 from .repository import AssistantRepository
 from .schemas import (
     ConversationDetailDTO,
@@ -51,6 +59,7 @@ from .schemas import (
     MessageDTO,
 )
 from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
+from .tool_adapters import execute_tool
 from .tools import build_panwatch_tool_registry
 
 
@@ -116,6 +125,45 @@ class AssistantService:
             self._conversation_dto(row)
             for row in self._repository.list_conversations(limit)
         ]
+
+    def get_suggested_questions(self, symbol: str, market: str = "CN") -> list[str]:
+        """Build deterministic prompts from the current local stock context."""
+        questions: list[str] = []
+        latest_suggestion = (
+            self._repository.session.query(StockSuggestion)
+            .filter(
+                StockSuggestion.stock_symbol == symbol,
+                StockSuggestion.stock_market == market,
+            )
+            .order_by(StockSuggestion.created_at.desc())
+            .first()
+        )
+        if latest_suggestion:
+            action = (latest_suggestion.action or "").lower()
+            label = latest_suggestion.action_label or latest_suggestion.action or ""
+            if action in ("buy", "add"):
+                questions.append(f"最新的「{label}」信号可靠吗？入场时机如何？")
+            elif action in ("sell", "reduce"):
+                questions.append(f"最新给出了「{label}」建议，现在该操作吗？")
+            elif action == "alert":
+                questions.append("最近的异动提醒是什么情况？需要关注吗？")
+
+        has_position = (
+            self._repository.session.query(Position)
+            .join(Stock, Position.stock_id == Stock.id)
+            .filter(Stock.symbol == symbol, Stock.market == market)
+            .first()
+        ) is not None
+        questions.append(
+            "当前持仓该继续持有还是考虑减仓？"
+            if has_position
+            else "现在适合建仓吗？"
+        )
+        questions.extend([
+            "分析近期走势和关键支撑压力位",
+            "有什么值得关注的消息或事件？",
+        ])
+        return questions[:5]
 
     def get_conversation(self, conversation_id: int) -> ConversationDetailDTO:
         conversation = self._require_conversation(conversation_id)
@@ -371,6 +419,11 @@ class AssistantService:
             policy=self.build_tool_policy(),
             extensions=(
                 [
+                    PortfolioDiagnosisExtension(
+                        self._repository.session,
+                        failover_client,
+                        execute_tool,
+                    ),
                     ToolResearchPlugin(
                         ToolResearchService(
                             tools,

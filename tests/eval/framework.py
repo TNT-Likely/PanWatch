@@ -3,7 +3,7 @@
 用例 = 固定输入（问题 + mock 工具数据）→ 规则断言：
 - 工具选择正确（该调的调了、不该调的没调、闲聊不调）；
 - 工具参数正确；
-- 动作在白名单内（只允许 CHAT_TOOLS 注册的只读工具）；
+- 动作在白名单内（只允许 ASSISTANT_TOOLS 注册的只读工具）；
 - 答案引用了工具结果（有据性：mock 数据里的关键值必须出现在答案中）；
 - 工具失败时优雅降级（不编造无据数值）。
 
@@ -16,11 +16,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from src.modules.assistant.chat_api import SYSTEM_PROMPT
-from src.modules.assistant.legacy_chat_tools import CHAT_TOOLS
+from src.modules.assistant.prompt import ASSISTANT_SYSTEM_PROMPT as SYSTEM_PROMPT
+from src.modules.assistant.tool_adapters import ASSISTANT_TOOLS
 
 # 动作白名单：chat agent 只允许调用这些只读工具
-TOOL_WHITELIST = {t["function"]["name"] for t in CHAT_TOOLS}
+TOOL_WHITELIST = {t["function"]["name"] for t in ASSISTANT_TOOLS}
 MAX_TOOL_ROUNDS = 5
 
 # 用例未提供某工具 mock 数据时的默认返回（模拟工具失败）
@@ -85,7 +85,7 @@ class ChatEvalRunner:
         try:
             for _round in range(MAX_TOOL_ROUNDS):
                 msg = await self.ai_client.chat_with_tools(
-                    messages, tools=CHAT_TOOLS, temperature=self.temperature
+                    messages, tools=ASSISTANT_TOOLS, temperature=self.temperature
                 )
                 tool_calls = getattr(msg, "tool_calls", None)
                 if not tool_calls:

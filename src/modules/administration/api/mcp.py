@@ -1,4 +1,4 @@
-"""MCP Server —— 把 chat 的 5 个只读工具暴露为 Model Context Protocol 端点。
+"""MCP Server —— 把助手的只读工具暴露为 Model Context Protocol 端点。
 
 设计选择(在报告中说明):
 - **手写轻量 JSON-RPC**(Streamable HTTP 的 JSON 响应模式),不引入 mcp SDK ——
@@ -25,7 +25,7 @@ from src.modules.administration.pat import (
     looks_like_pat,
     verify_pat_hash,
 )
-from src.modules.assistant.legacy_chat_tools import CHAT_TOOLS, execute_chat_tool
+from src.modules.assistant.tool_adapters import ASSISTANT_TOOLS, execute_tool
 from src.platform.persistence.database import SessionLocal, get_db
 from src.platform.persistence.models import MCPCallLog, PersonalAccessToken
 
@@ -36,8 +36,8 @@ router = APIRouter()
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "PanWatch", "version": "0.1.0"}
 
-# 只读工具白名单(复用 chat 的工具定义,新增工具自动纳入)
-READ_TOOL_NAMES = {t["function"]["name"] for t in CHAT_TOOLS}
+# 只读工具白名单(复用助手工具定义,新增工具自动纳入)
+READ_TOOL_NAMES = {t["function"]["name"] for t in ASSISTANT_TOOLS}
 
 # last_used 写入节流窗口(秒),避免每次 tool call 都写库
 _LAST_USED_THROTTLE_S = 60
@@ -188,9 +188,9 @@ def prune_mcp_logs(retention_days: int = MCP_LOG_RETENTION_DAYS) -> int:
 
 
 def _mcp_tools() -> list[dict]:
-    """CHAT_TOOLS(OpenAI function schema)→ MCP tool 列表。"""
+    """ASSISTANT_TOOLS(OpenAI function schema)→ MCP tool 列表。"""
     tools = []
-    for t in CHAT_TOOLS:
+    for t in ASSISTANT_TOOLS:
         fn = t["function"]
         tools.append(
             {
@@ -226,7 +226,7 @@ async def _handle_tools_call(params: dict, db: Session, pat: dict, req_id) -> JS
     start = time.perf_counter()
     err: str | None = None
     try:
-        text = await execute_chat_tool(db, name, args if isinstance(args, dict) else {})
+        text = await execute_tool(db, name, args if isinstance(args, dict) else {})
         is_error = text.startswith("工具执行出错")
         if is_error:
             err = text

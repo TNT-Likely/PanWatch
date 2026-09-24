@@ -22,7 +22,6 @@ from src.modules.administration.api import (
 from src.modules.administration.api.auth import get_current_user
 from src.modules.administration.api.settings import get_app_version
 from src.modules.assistant import api as assistant_api
-from src.modules.assistant import chat_api
 from src.modules.assistant.task_runner import assistant_task_runner
 from src.modules.automation.api import agents, suggestions, templates
 from src.modules.market.api import (
@@ -181,12 +180,6 @@ app.include_router(
     paper_trading.router,
     prefix="/api/paper-trading",
     tags=["paper-trading"],
-    dependencies=protected,
-)
-app.include_router(
-    chat_api.router,
-    prefix="/api/chat",
-    tags=["chat"],
     dependencies=protected,
 )
 app.include_router(

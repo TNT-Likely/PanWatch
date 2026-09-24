@@ -9,7 +9,7 @@ from src.platform.persistence.database import Base
 from src.platform.persistence.models import ChatConversation, ChatMessage  # noqa: F401 - registers metadata
 
 
-def test_assistant_service_creates_reads_and_deletes_legacy_chat_history():
+def test_assistant_service_creates_reads_and_deletes_conversation_history():
     from src.modules.assistant.repository import AssistantRepository
     from src.modules.assistant.schemas import CreateConversationCommand
     from src.modules.assistant.service import AssistantService

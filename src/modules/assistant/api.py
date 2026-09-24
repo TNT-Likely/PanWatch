@@ -1,9 +1,4 @@
-"""HTTP boundary for the navigation-level assistant.
-
-The legacy ``/api/chat`` streaming endpoint remains available while clients
-move to this module-owned surface.  Conversation state is already served here
-so new integrations do not need to import or call router internals.
-"""
+"""HTTP boundary for the navigation-level assistant."""
 
 from __future__ import annotations
 
@@ -606,6 +601,15 @@ async def compress_context(
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "runtime": "pan-agent-runtime"}
+
+
+@router.get("/suggested-questions")
+def suggested_questions(
+    symbol: str = Query(..., description="股票代码"),
+    market: str = Query("CN", description="市场"),
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict[str, list[str]]:
+    return {"questions": service.get_suggested_questions(symbol, market)}
 
 
 @router.get("/tool-permissions")

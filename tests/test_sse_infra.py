@@ -81,7 +81,7 @@ def test_hub_create_get_prune():
     assert hub2.get(s2.stream_id) is s2
 
 
-def _make_scope(path="/api/chat/x"):
+def _make_scope(path="/api/test/x"):
     return {"type": "http", "path": path}
 
 
