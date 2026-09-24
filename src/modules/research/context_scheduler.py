@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,12 +24,14 @@ class ContextMaintenanceScheduler:
     def __init__(
         self,
         timezone: str = "UTC",
-        eval_interval_hours: int = 6,
+        evaluation_hour: int = 4,
+        evaluation_minute: int = 30,
         snapshot_retention_days: int = 180,
         outcome_retention_days: int = 365,
     ):
         self.scheduler = AsyncIOScheduler(timezone=timezone)
-        self.eval_interval_hours = max(1, int(eval_interval_hours))
+        self.evaluation_hour = max(0, min(23, int(evaluation_hour)))
+        self.evaluation_minute = max(0, min(59, int(evaluation_minute)))
         self.snapshot_retention_days = max(30, int(snapshot_retention_days))
         self.outcome_retention_days = max(60, int(outcome_retention_days))
         self._evaluating = False
@@ -255,8 +256,9 @@ class ContextMaintenanceScheduler:
     def start(self):
         self.scheduler.add_job(
             self._evaluate_job,
-            "interval",
-            hours=self.eval_interval_hours,
+            "cron",
+            hour=self.evaluation_hour,
+            minute=self.evaluation_minute,
             jitter=120,  # 错峰,避免与 price_alert/paper_trading(60s)同刻写 SQLite
             id="context_maintenance_evaluate",
             replace_existing=True,
@@ -300,22 +302,13 @@ class ContextMaintenanceScheduler:
                 coalesce=True,
                 max_instances=1,
             )
-        # Run a bootstrap evaluation shortly after startup to warm up outcome stats.
-        self.scheduler.add_job(
-            self._evaluate_job,
-            "date",
-            run_date=datetime.now(self.scheduler.timezone) + timedelta(seconds=15),
-            id="context_maintenance_bootstrap_evaluate",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-        )
         self.scheduler.start()
         from src.platform.scheduling.scheduler_registry import register
         register("context", self.scheduler)
         logger.info(
-            "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00）",
-            self.eval_interval_hours,
+            "上下文维护调度器已启动（后验评估 %02d:%02d，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00）",
+            self.evaluation_hour,
+            self.evaluation_minute,
             self.snapshot_retention_days,
             self.outcome_retention_days,
         )

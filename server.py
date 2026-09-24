@@ -1553,7 +1553,8 @@ async def lifespan(app):
         settings = Settings()
         context_maintenance_scheduler = ContextMaintenanceScheduler(
             timezone=settings.app_timezone,
-            eval_interval_hours=6,
+            evaluation_hour=4,
+            evaluation_minute=30,
             snapshot_retention_days=180,
             outcome_retention_days=365,
         )
