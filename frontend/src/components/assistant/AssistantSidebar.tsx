@@ -33,7 +33,7 @@ export function AssistantSidebar({
       </div>
       <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 scrollbar">
         {conversations.length === 0 ? (
-          <p className="px-2 py-4 text-secondary leading-5 text-muted-foreground">你的研究记录会显示在这里。</p>
+          <p className="px-2 py-4 text-body-sm leading-5 text-muted-foreground">你的研究记录会显示在这里。</p>
         ) : conversations.map((conversation) => {
           const title = conversation.title || '新研究'
           const active = conversation.id === activeConversationId
@@ -50,7 +50,7 @@ export function AssistantSidebar({
                 className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left"
                 aria-label={title}
               >
-                <p className="truncate text-secondary font-medium">{title}</p>
+                <p className="truncate text-body-sm font-medium">{title}</p>
                 <p className="mt-0.5 truncate text-mini text-muted-foreground">
                   {conversation.stock_symbol ? `${conversation.stock_market}:${conversation.stock_symbol} · ` : ''}
                   {new Date(conversation.created_at).toLocaleDateString()}
@@ -59,7 +59,7 @@ export function AssistantSidebar({
               <button
                 type="button"
                 onClick={() => onDelete(conversation.id)}
-                className="mr-1 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-all hover:bg-stock-up/10 hover:text-stock-up group-hover:opacity-100 focus:opacity-100"
+                className="mr-1 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-stock-up/10 hover:text-stock-up group-hover:opacity-100 focus:opacity-100"
                 aria-label={`删除 ${title}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />

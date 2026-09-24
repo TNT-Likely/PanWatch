@@ -229,7 +229,7 @@ export default function AnalysisDetailPage() {
   // 目录头(标题 + 二级目录开关),桌面右栏 / 移动下拉共用
   const tocHeader = (
     <div className="flex items-center justify-between gap-2 mb-2 px-2">
-      <span className="text-caption font-medium text-muted-foreground/70">目录</span>
+      <span className="text-caption font-medium text-muted-foreground">目录</span>
       <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
         <span className="cursor-pointer select-none" onClick={() => setShowSub((v) => !v)}>
           二级目录
@@ -250,7 +250,7 @@ export default function AnalysisDetailPage() {
             onAfter?.()
           }}
           className={`block w-full text-left py-1 rounded-md transition-colors truncate ${
-            t.level === 1 ? 'pl-5 pr-2 text-secondary' : 'px-2'
+            t.level === 1 ? 'pl-5 pr-2 text-body-sm' : 'px-2'
           } ${
             activeId === t.id
               ? 'bg-accent text-foreground font-medium'
@@ -278,10 +278,10 @@ export default function AnalysisDetailPage() {
               <ArrowLeft className="w-4 h-4" />
             </button>
             <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} 深度分析`}</h1>
-            <span className="text-secondary text-muted-foreground shrink-0">{date}</span>
+            <span className="text-body-sm text-muted-foreground shrink-0">{date}</span>
             <button
               onClick={() => setShareOpen(true)}
-              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-body-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
               title="生成可分享的结论卡片图"
             >
               <ImageDown className="w-3.5 h-3.5" />
@@ -290,7 +290,7 @@ export default function AnalysisDetailPage() {
             <button
               onClick={handleExportPdf}
               disabled={pdfBusy}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-body-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
               title="导出 PDF 文件"
             >
               <FileDown className="w-3.5 h-3.5" />
@@ -306,7 +306,7 @@ export default function AnalysisDetailPage() {
               <span className={`text-display font-bold ${decisionColor}`}>
                 {decisionLabel}
               </span>
-              {reviewRequired && <span className="text-secondary text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
+              {reviewRequired && <span className="text-body-sm text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
               <span className="text-body text-muted-foreground">
                 置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
               </span>
@@ -350,7 +350,7 @@ export default function AnalysisDetailPage() {
                   {Icon && <Icon className="w-[18px] h-[18px] text-primary/70 shrink-0" />}
                   {s.title}
                 </h2>
-                <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-title prose-h3:text-title prose-h4:text-body-lg prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground/90 prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
+                <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-title prose-h3:text-title prose-h4:text-body-lg prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={headingComponents(s.id)}>
                     {s.markdown}
                   </ReactMarkdown>
@@ -389,7 +389,7 @@ export default function AnalysisDetailPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-body">
                   <thead>
-                    <tr className="border-b border-border text-muted-foreground text-secondary">
+                    <tr className="border-b border-border text-muted-foreground text-body-sm">
                       <th className="text-left py-2 pr-3">日期</th>
                       <th className="text-left py-2 px-2">决策</th>
                       <th className="text-right py-2 px-2">分析价</th>
@@ -420,7 +420,7 @@ export default function AnalysisDetailPage() {
           </section>
 
           {/* 免责 */}
-          <div className="text-caption text-muted-foreground/70 italic border-t border-border/30 pt-4">
+          <div className="text-caption text-muted-foreground italic border-t border-border/30 pt-4">
             本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。投资有风险,决策需自主判断。
           </div>
           </article>

@@ -34,7 +34,7 @@ import BenchChart from '@/components/BenchChart'
 import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
-import { moveColor, pctChipCls, fmtMoney, fmtPct as pct } from '@panwatch/base-ui/components/patterns'
+import { moveColor, pctChipCls, fmtMoney, fmtPct as pct, PageHeader, PnlText } from '@panwatch/base-ui/components/patterns'
 
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
 function stripMarkdown(s: string): string {
@@ -354,35 +354,36 @@ export default function DashboardPage() {
   return (
     <div className="page-container pb-10">
       {/* 顶部:标题 + 刷新 + 日期/市场状态 pills */}
-      <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-headline font-bold tracking-tight text-foreground md:text-display">今日该看什么</h1>
-          <Button onClick={load} disabled={loading} size="sm" variant="ghost" className="h-7 px-2">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-caption">
-          {refreshedAt && <span className="text-muted-foreground">{formatHeaderTime(refreshedAt)}</span>}
-          {marketStatus.map((m) => (
-            <span key={m.code} className="inline-flex items-center gap-1.5 rounded-full bg-accent/40 px-2 py-0.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${m.is_trading ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
-              <span className="text-muted-foreground">{m.name}</span>
-            </span>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        className="mb-3"
+        title="今日该看什么"
+        actions={
+          <>
+            <Button onClick={load} disabled={loading} size="sm" variant="ghost" className="h-7 px-2" aria-label="刷新首页数据">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+            {refreshedAt && <span className="text-caption text-muted-foreground">{formatHeaderTime(refreshedAt)}</span>}
+            {marketStatus.map((m) => (
+              <span key={m.code} className="inline-flex items-center gap-1.5 rounded-full bg-accent/40 px-2 py-0.5 text-caption">
+                <span className={`h-1.5 w-1.5 rounded-full ${m.is_trading ? 'bg-warning' : 'bg-muted-foreground/40'}`} />
+                <span className="text-muted-foreground">{m.name}</span>
+              </span>
+            ))}
+          </>
+        }
+      />
 
       {/* 组合速览条:今日盈亏 hero + 累计浮盈 + 60日超额 + 仓位% + mini 净值走势 */}
       <div className="card mb-3 p-4">
         {!hasHoldings ? (
-          <div className="py-4 text-center text-secondary text-muted-foreground">
+          <div className="py-4 text-center text-body-sm text-muted-foreground">
             {loading ? '加载中…' : '暂无持仓,添加持仓后这里展示今日盈亏与组合走势'}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <div>
               <div className="text-caption text-muted-foreground">今日盈亏</div>
-              <div className={`font-mono text-display font-bold leading-tight ${moveColor(dailyPnl)}`}>{fmtMoney(dailyPnl)}</div>
+              <PnlText value={dailyPnl} format={fmtMoney} showSign={false} className="font-mono text-display font-bold leading-tight" />
               {dailyPnlPct != null && <div className={`font-mono text-caption ${moveColor(dailyPnlPct)}`}>{pct(dailyPnlPct)}</div>}
             </div>
             <div className="hidden h-9 w-px bg-border/60 sm:block" />
@@ -463,7 +464,7 @@ export default function DashboardPage() {
             )}
           </div>
           {loading && candidates.length === 0 ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">扫描中…</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">扫描中…</div>
           ) : candidates.length === 0 ? (
             todos.length > 0 ? (
               <div className="space-y-1.5 py-1">
@@ -471,7 +472,7 @@ export default function DashboardPage() {
                 {todos.map((t, i) => (
                   <div
                     key={i}
-                    className={`flex items-center gap-2 py-1 text-secondary ${t.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
+                    className={`flex items-center gap-2 py-1 text-body-sm ${t.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
                     onClick={() => t.symbol && openStock(t.symbol, t.market || 'CN', '')}
                   >
                     <span className="shrink-0 rounded bg-amber-500/15 px-1 text-mini text-amber-600">
@@ -482,7 +483,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="py-6 text-center text-secondary text-muted-foreground">今日暂无明显异动或触发信号 ✓</div>
+              <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无明显异动或触发信号 ✓</div>
             )
           ) : (
             <div className="divide-y divide-border/40">
@@ -538,11 +539,11 @@ export default function DashboardPage() {
             )}
           </div>
           {!hasHoldings ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">
+            <div className="py-6 text-center text-body-sm text-muted-foreground">
               {loading ? '加载中…' : '暂无持仓,添加持仓后这里给风险与相对大盘表现'}
             </div>
           ) : (
-            <div className="space-y-3 text-secondary">
+            <div className="space-y-3 text-body-sm">
               {/* 图例行:色块 + 我的组合/基准收益 + 超额 chip */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-caption">
                 <div className="flex items-center gap-3">
@@ -636,12 +637,15 @@ export default function DashboardPage() {
                           }
                         />
                       </div>
-                      <span className="w-44 shrink-0 truncate text-right text-caption">
-                        {item.name}{' '}
-                        <span className={`font-mono ${moveColor(item.return_pct)}`} title="近60日区间收益">
+                      <span
+                        className="flex w-56 shrink-0 items-baseline justify-end gap-1 text-right text-caption"
+                        title={`${item.name} · 近60日${pct(item.return_pct)} · 贡献${pct(item.contribution_pct)}`}
+                      >
+                        <span className="min-w-0 truncate">{item.name}</span>
+                        <span className={`shrink-0 font-mono ${moveColor(item.return_pct)}`} title="近60日区间收益">
                           60日{pct(item.return_pct)}
                         </span>
-                        <span className="text-muted-foreground" title="对组合收益的贡献:权重×区间收益">
+                        <span className="shrink-0 text-muted-foreground" title="对组合收益的贡献:权重×区间收益">
                           ｜贡献 {pct(item.contribution_pct)}
                         </span>
                       </span>
@@ -670,7 +674,7 @@ export default function DashboardPage() {
                 {aiReviewLoading ? 'AI 体检中…' : 'AI 体检报告'}
               </button>
               {aiReview?.content && (
-                <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-secondary [&_p]:my-1 [&_ul]:my-1">
+                <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-body-sm [&_p]:my-1 [&_ul]:my-1">
                   <ReactMarkdown>{aiReview.content}</ReactMarkdown>
                 </div>
               )}
@@ -694,7 +698,7 @@ export default function DashboardPage() {
             </button>
           </div>
           {opportunities.length === 0 ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">{loading ? '加载中…' : '暂无活跃机会信号'}</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">{loading ? '加载中…' : '暂无活跃机会信号'}</div>
           ) : (
             <div className="divide-y divide-border/40">
               {opportunities.slice(0, 3).map((o) => {
@@ -736,9 +740,9 @@ export default function DashboardPage() {
             {sectorDate && <span className="text-mini text-muted-foreground">{sectorDate}</span>}
           </div>
           {sectorState === 'loading' ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">加载中…</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">加载中…</div>
           ) : sectorRows.length === 0 ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">今日暂无板块预判</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无板块预判</div>
           ) : (
             <div className="divide-y divide-border/40">
               {sectorRows.map((s) => {
@@ -793,9 +797,9 @@ export default function DashboardPage() {
               </div>
             </div>
             {brief.title && <div className="text-body-lg font-semibold text-foreground">{brief.title}</div>}
-            {!briefOpen && briefSummary && <div className="mt-1 text-secondary text-muted-foreground">{briefSummary}</div>}
+            {!briefOpen && briefSummary && <div className="mt-1 text-body-sm text-muted-foreground">{briefSummary}</div>}
             {briefOpen && brief.content && (
-              <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-secondary [&_p]:my-1 [&_ul]:my-1">
+              <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-body-sm [&_p]:my-1 [&_ul]:my-1">
                 <ReactMarkdown>{brief.content}</ReactMarkdown>
               </div>
             )}

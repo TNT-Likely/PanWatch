@@ -278,12 +278,12 @@ export default function PriceAlertsPage() {
   return (
     <div>
       <div className="mb-4 md:mb-8">
-        <h1 className="text-headline md:text-display font-bold text-foreground tracking-tight">价格提醒</h1>
-        <p className="text-secondary md:text-body text-muted-foreground mt-0.5 md:mt-1">到价/量能触发，支持冷却、每日上限与交易时段门禁</p>
+        <h1 className="text-headline font-bold text-foreground tracking-tight">价格提醒</h1>
+        <p className="text-body-sm md:text-body text-muted-foreground mt-0.5 md:mt-1">到价/量能触发，支持冷却、每日上限与交易时段门禁</p>
       </div>
 
       <div className="card p-4 mb-4 flex items-center justify-between gap-2">
-        <div className="text-secondary text-muted-foreground">规则数：{rules.length}</div>
+        <div className="text-body-sm text-muted-foreground">规则数：{rules.length}</div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" className="h-8" onClick={runScan} disabled={scanRunning}>
             {scanRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -302,7 +302,7 @@ export default function PriceAlertsPage() {
         <div className="card p-8 text-center">
           <BellRing className="w-6 h-6 mx-auto text-muted-foreground" />
           <div className="mt-2 text-body-lg text-foreground">暂无价格提醒规则</div>
-          <div className="mt-1 text-secondary text-muted-foreground">创建规则后，系统会每分钟自动扫描并触发通知</div>
+          <div className="mt-1 text-body-sm text-muted-foreground">创建规则后，系统会每分钟自动扫描并触发通知</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -315,10 +315,10 @@ export default function PriceAlertsPage() {
                     <span className="text-caption px-2 py-0.5 rounded bg-accent/50 text-muted-foreground">{r.market}:{r.stock_symbol}</span>
                     <span className={`text-caption px-2 py-0.5 rounded ${r.enabled ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>{r.enabled ? '启用' : '暂停'}</span>
                   </div>
-                  <div className="mt-2 text-secondary text-muted-foreground">
+                  <div className="mt-2 text-body-sm text-muted-foreground">
                     {(r.condition_group?.items || []).map(conditionText).join(r.condition_group?.op === 'or' ? ' 或 ' : ' 且 ')}
                   </div>
-                  <div className="mt-1 text-caption text-muted-foreground/80">
+                  <div className="mt-1 text-caption text-muted-foreground">
                     冷却 {r.cooldown_minutes} 分钟 · 日上限 {r.max_triggers_per_day} 次 · 最近触发 {fmt(r.last_trigger_at)}
                   </div>
                 </div>
@@ -366,11 +366,11 @@ export default function PriceAlertsPage() {
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto scrollbar space-y-2">
             {hits.length === 0 ? (
-              <div className="text-secondary text-muted-foreground text-center py-6">暂无命中记录</div>
+              <div className="text-body-sm text-muted-foreground text-center py-6">暂无命中记录</div>
             ) : hits.map(h => (
               <div key={h.id} className="rounded border border-border/40 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-secondary text-muted-foreground">{fmt(h.trigger_time)}</div>
+                  <div className="text-body-sm text-muted-foreground">{fmt(h.trigger_time)}</div>
                   <div className={`text-caption ${h.notify_success ? 'text-success' : 'text-destructive'}`}>
                     {h.notify_success ? '通知成功' : `通知失败 ${h.notify_error || ''}`}
                   </div>

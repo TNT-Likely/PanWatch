@@ -152,7 +152,7 @@ export default function AddPositionCalculator({
       </button>
 
       {open && (
-        <div className="mt-2 space-y-2 text-secondary">
+        <div className="mt-2 space-y-2 text-body-sm">
           <div className="flex gap-1">
             {(['shares', 'amount'] as const).map((m) => (
               <button
@@ -279,7 +279,7 @@ export default function AddPositionCalculator({
                 </span>
                 <span className="text-mini text-muted-foreground">AI 结论 · 仅供参考</span>
               </div>
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-secondary leading-relaxed [&_p]:my-1 [&_ul]:my-1">
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-body-sm leading-relaxed [&_p]:my-1 [&_ul]:my-1">
                 <ReactMarkdown>{aiResult.content}</ReactMarkdown>
               </div>
             </div>

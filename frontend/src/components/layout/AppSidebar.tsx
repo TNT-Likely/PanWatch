@@ -67,7 +67,7 @@ export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpe
         {!collapsed && (
           <span className="flex items-baseline gap-1.5 overflow-hidden">
             <span className="text-body font-bold tracking-tight text-foreground">PanWatch</span>
-            {version && <span className="text-mini text-muted-foreground/60">v{version}</span>}
+            {version && <span className="text-mini text-muted-foreground">v{version}</span>}
           </span>
         )}
       </NavLink>
@@ -79,7 +79,7 @@ export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpe
             {collapsed ? (
               <div className="mx-2 my-2 h-px bg-border/50" role="presentation" />
             ) : (
-              <div className="px-2.5 pb-1 pt-3 text-mini font-medium text-muted-foreground/70">{group.label}</div>
+              <div className="px-2.5 pb-1 pt-3 text-mini font-medium text-muted-foreground">{group.label}</div>
             )}
             <div className="space-y-0.5">
               {group.items.map(({ to, icon: Icon, label }) => {

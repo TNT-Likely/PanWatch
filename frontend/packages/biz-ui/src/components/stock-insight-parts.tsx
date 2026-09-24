@@ -170,12 +170,12 @@ export function TechnicalIndicatorStrip(props: {
 }) {
   const { klineSummary, technicalSuggestion, stockName, stockSymbol, market, hasPosition, score, evidence = [] } = props
   if (!klineSummary) {
-    return <div className="text-secondary text-muted-foreground py-3">暂无技术指标</div>
+    return <div className="text-body-sm text-muted-foreground py-3">暂无技术指标</div>
   }
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-secondary text-muted-foreground">技术指标建议</span>
+        <span className="text-body-sm text-muted-foreground">技术指标建议</span>
         <SuggestionBadge
           suggestion={technicalSuggestion}
           stockName={stockName}
@@ -241,7 +241,7 @@ export function DeepAnalysisSection({
 }) {
   if (loading && !loaded) {
     return (
-      <div className="card p-6 text-center text-secondary text-muted-foreground">
+      <div className="card p-6 text-center text-body-sm text-muted-foreground">
         <span className="inline-block w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2 align-middle" />
         正在加载深度分析报告...
       </div>
@@ -249,9 +249,9 @@ export function DeepAnalysisSection({
   }
   if (!result && !history?.items?.length) {
     return (
-      <div className="card p-6 text-center text-secondary text-muted-foreground space-y-2">
+      <div className="card p-6 text-center text-body-sm text-muted-foreground space-y-2">
         <div>暂无深度分析报告</div>
-        <div className="text-caption text-muted-foreground/70">
+        <div className="text-caption text-muted-foreground">
           可在持仓 / 自选页点击 🧠 深度分析按钮触发
         </div>
       </div>
@@ -282,12 +282,12 @@ export function DeepAnalysisSection({
               {sug.action_label}
             </span>
             {typeof sug.confidence === 'number' && (
-              <span className="text-secondary text-muted-foreground">
+              <span className="text-body-sm text-muted-foreground">
                 置信度 {sug.confidence.toFixed(1)} / 10
               </span>
             )}
           </div>
-          {sug.reason && <div className="text-secondary text-foreground/80">{sug.reason.slice(0, 240)}</div>}
+          {sug.reason && <div className="text-body-sm text-foreground/80">{sug.reason.slice(0, 240)}</div>}
           {typeof costUsd === 'number' && (
             <div className="text-mini text-muted-foreground mt-2">成本:${costUsd.toFixed(4)}</div>
           )}
@@ -307,7 +307,7 @@ export function DeepAnalysisSection({
       {result && (
         <div>
           <button
-            className="text-secondary text-muted-foreground hover:text-foreground flex items-center gap-1"
+            className="text-body-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
             onClick={() => setShowAnalyst(!showAnalyst)}
           >
             {showAnalyst ? '▼' : '▶'} 4 位分析师报告
@@ -318,7 +318,7 @@ export function DeepAnalysisSection({
                 const text = (reports as unknown as Record<string, string>)[k] || ''
                 if (!text) return null
                 return (
-                  <details key={k} open className="text-secondary">
+                  <details key={k} open className="text-body-sm">
                     <summary className="font-medium cursor-pointer">{DEEP_STAGE_LABEL[k] || k}</summary>
                     <div className="mt-2 text-caption text-foreground/80 whitespace-pre-wrap">
                       {text.slice(0, 1500)}
@@ -335,7 +335,7 @@ export function DeepAnalysisSection({
       {debate && debate.history && (
         <div>
           <button
-            className="text-secondary text-muted-foreground hover:text-foreground flex items-center gap-1"
+            className="text-body-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
             onClick={() => setShowDebate(!showDebate)}
           >
             {showDebate ? '▼' : '▶'} 看多看空辩论
@@ -354,7 +354,7 @@ export function DeepAnalysisSection({
         </div>
       )}
 
-      <div className="text-mini text-muted-foreground/70 italic border-t border-border/30 pt-2">
+      <div className="text-mini text-muted-foreground italic border-t border-border/30 pt-2">
         本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
       </div>
     </div>
@@ -386,7 +386,7 @@ export function DeepHistoryComparison({
   return (
     <div className="rounded-lg border border-border/50 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-secondary font-medium">历史决策 vs 实际涨跌</div>
+        <div className="text-body-sm font-medium">历史决策 vs 实际涨跌</div>
         <div className="text-mini text-muted-foreground">仅基于满 20 个交易日的决策统计</div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-caption">

@@ -542,7 +542,7 @@ export default function InteractiveKline(props: {
               <button
                 key={item.value}
                 type="button"
-                className={`h-7 min-w-[44px] rounded-md px-2.5 text-secondary transition-colors ${
+                className={`h-7 min-w-[44px] rounded-md px-2.5 text-body-sm transition-colors ${
                   interval === item.value
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
@@ -561,7 +561,7 @@ export default function InteractiveKline(props: {
       </div>
 
       {error ? (
-        <div className="text-secondary text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 mb-3">
+        <div className="text-body-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 mb-3">
           {error}
         </div>
       ) : null}

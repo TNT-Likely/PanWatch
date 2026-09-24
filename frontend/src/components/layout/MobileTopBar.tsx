@@ -34,7 +34,7 @@ export default function MobileTopBar({
             <TrendingUp className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
           <span className="text-body font-bold tracking-tight text-foreground">PanWatch</span>
-          {version && <span className="text-mini text-muted-foreground/60">v{version}</span>}
+          {version && <span className="text-mini text-muted-foreground">v{version}</span>}
         </NavLink>
 
         <div className="flex items-center gap-0.5">

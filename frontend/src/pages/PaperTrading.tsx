@@ -64,13 +64,25 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
   const areaD = pathD + ` L${points[points.length - 1].x},${pad.top + h} L${points[0].x},${pad.top + h} Z`
 
   const isPositive = values[values.length - 1] >= values[0]
-  const strokeColor = isPositive ? '#f43f5e' : '#10b981'
-  const fillColor = isPositive ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)'
+  const rootStyle = getComputedStyle(document.documentElement)
+  const stockVar = (name: string, fallback: string) => (rootStyle.getPropertyValue(name) || '').trim() || fallback
+  const up = stockVar('--stock-up', '0 72% 51%')
+  const down = stockVar('--stock-down', '152 70% 29%')
+  const strokeColor = isPositive ? `hsl(${up})` : `hsl(${down})`
+  const fillColor = isPositive ? `hsl(${up} / 0.1)` : `hsl(${down} / 0.1)`
 
-  // Y axis ticks
+  // Y axis ticks（刻度文本按步长自适应精度，避免小范围内四舍五入成相同标签）
   const yTicks = 4
+  const step = range / yTicks
+  const fmtY = (v: number): string => {
+    if (Math.abs(v) >= 100000 || Math.abs(step) >= 10000) return `${(v / 10000).toFixed(1)}万`
+    if (Math.abs(step) >= 1000) return `${(v / 1000).toFixed(1)}千`
+    if (Math.abs(step) >= 10) return Math.round(v).toLocaleString('zh-CN')
+    if (Math.abs(step) >= 1) return v.toFixed(1)
+    return v.toFixed(2)
+  }
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
-    const v = minV + (range / yTicks) * i
+    const v = minV + step * i
     return { v, y: pad.top + h - (i / yTicks) * h }
   })
 
@@ -85,7 +97,7 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
         <g key={i}>
           <line x1={pad.left} x2={width - pad.right} y1={t.y} y2={t.y} stroke="hsl(var(--border))" strokeWidth={0.5} />
           <text x={pad.left - 6} y={t.y + 4} textAnchor="end" fill="hsl(var(--muted-foreground))" fontSize={10}>
-            {(t.v / 10000).toFixed(1)}万
+            {fmtY(t.v)}
           </text>
         </g>
       ))}

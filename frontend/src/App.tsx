@@ -120,7 +120,7 @@ function App() {
     <RequireAuth>
       <div
         className={`relative bg-background ${
-          isAssistantRoute ? 'flex h-dvh flex-col overflow-hidden pb-14 md:pb-0' : 'min-h-dvh pb-14 md:pb-0'
+          isAssistantRoute ? 'flex h-dvh flex-col overflow-hidden pb-16 md:pb-0' : 'min-h-dvh pb-16 md:pb-0'
         }`}
       >
         <AmbientBackground />

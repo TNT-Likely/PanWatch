@@ -182,11 +182,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             机会发现
           </h2>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate('/opportunities')} className="h-7 text-secondary">
+            <Button variant="outline" size="sm" onClick={() => navigate('/opportunities')} className="h-7 text-body-sm">
               进入机会页
             </Button>
             <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'CN' | 'HK' | 'US')}>
-              <SelectTrigger className="h-7 w-[90px] text-secondary">
+              <SelectTrigger className="h-7 w-[90px] text-body-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -200,7 +200,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               size="sm"
               onClick={() => loadDiscovery(undefined, { force: true })}
               disabled={discoverLoading}
-              className="h-7 text-secondary"
+              className="h-7 text-body-sm"
               title="刷新"
             >
               {discoverLoading ? (
@@ -235,7 +235,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             <div className="ml-auto flex items-center gap-2">
               {discoverTab === 'boards' ? (
                 <Select value={boardsMode} onValueChange={(v) => { setBoardsMode(v as 'gainers' | 'turnover'); setTimeout(() => loadDiscovery('boards'), 0) }}>
-                  <SelectTrigger className="h-7 w-[110px] text-secondary">
+                  <SelectTrigger className="h-7 w-[110px] text-body-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -245,7 +245,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                 </Select>
               ) : (
                 <Select value={stocksMode} onValueChange={(v) => { setStocksMode(v as 'turnover' | 'gainers' | 'for_you'); setTimeout(() => loadDiscovery('stocks'), 0) }}>
-                  <SelectTrigger className="h-7 w-[110px] text-secondary">
+                  <SelectTrigger className="h-7 w-[110px] text-body-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -269,7 +269,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             </div>
           ) : discoverTab === 'boards' ? (
             hotBoards.length === 0 ? (
-              <div className="py-6 text-center text-secondary text-muted-foreground">
+              <div className="py-6 text-center text-body-sm text-muted-foreground">
                 {discoverError || (discoverMarket === 'CN' ? '暂无数据' : `${discoverMarket === 'HK' ? '港股' : '美股'}暂不提供板块榜，已支持热门股票`)}
                 {discoverMarket !== 'CN' && (
                   <div className="mt-2">
@@ -295,14 +295,14 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                         <div className="truncate text-body font-medium text-foreground">{b.name}</div>
                         <div className="truncate font-mono text-caption text-muted-foreground">{b.code}</div>
                       </div>
-                      <div className={`font-mono text-secondary font-semibold ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
+                      <div className={`font-mono text-body-sm font-semibold ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
                     </button>
                   )
                 })}
               </div>
             )
           ) : hotStocks.length === 0 ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">{discoverError || '暂无数据'}</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">{discoverError || '暂无数据'}</div>
           ) : (
             <div className="space-y-2">
               {stocksMode === 'for_you' && <div className="px-1 text-caption text-muted-foreground">根据持仓/自选/监控信号/风格偏好排序</div>}
@@ -326,7 +326,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="font-mono text-secondary text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                        <div className="font-mono text-body-sm text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
                         <div className={`font-mono text-caption ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
                       </div>
                     </div>
@@ -345,7 +345,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             <DialogDescription>点击个股打开统一详情弹窗（含概览、K线、建议、新闻、历史）</DialogDescription>
           </DialogHeader>
           {boardStocks.length === 0 ? (
-            <div className="py-6 text-center text-secondary text-muted-foreground">暂无数据</div>
+            <div className="py-6 text-center text-body-sm text-muted-foreground">暂无数据</div>
           ) : (
             <div className="scrollbar grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
               {boardStocks.map((s) => {
@@ -365,7 +365,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                       <div className="font-mono text-caption text-muted-foreground">{s.symbol}</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-mono text-secondary text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
+                      <div className="font-mono text-body-sm text-foreground">{s.price != null ? s.price.toFixed(2) : '--'}</div>
                       <div className={`font-mono text-caption ${color}`}>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</div>
                     </div>
                   </div>

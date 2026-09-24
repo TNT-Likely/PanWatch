@@ -1008,7 +1008,7 @@ export default function ChatWidget({
               <p>暂无对话</p>
               <button
                 onClick={createNewConversation}
-                className="text-secondary px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="text-body-sm px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 开始新对话
               </button>
@@ -1031,7 +1031,7 @@ export default function ChatWidget({
                 </div>
                 <button
                   onClick={(e) => deleteConversation(conv.id, e)}
-                  className="p-1 rounded text-muted-foreground/50 hover:text-stock-up transition-colors shrink-0"
+                  className="p-1 rounded text-muted-foreground hover:text-stock-up transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1088,7 +1088,7 @@ export default function ChatWidget({
                     }`}
                   >
                     {msg.role === 'assistant' ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-secondary [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
+                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-body-sm [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                       </div>
                     ) : (
@@ -1119,7 +1119,7 @@ export default function ChatWidget({
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
-                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-secondary bg-accent/40 border border-border/40">
+                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-body-sm bg-accent/40 border border-border/40">
                   <div className="font-medium text-foreground mb-1.5">
                     诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
                   </div>
@@ -1158,7 +1158,7 @@ export default function ChatWidget({
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">
                 <div className="max-w-[85%] rounded-xl px-3 py-2 text-body leading-relaxed bg-accent/60 text-foreground">
-                  <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-secondary [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
+                  <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-body-sm [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeStreamMarkdown(streamText)}</ReactMarkdown>
                   </div>
                 </div>

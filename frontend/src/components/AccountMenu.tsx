@@ -102,7 +102,7 @@ export default function AccountMenu({
                 key={to}
                 to={to}
                 onClick={() => setOpen(false)}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary transition-colors ${
+                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-body-sm transition-colors ${
                   isActive
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
@@ -124,7 +124,7 @@ export default function AccountMenu({
               <button
                 key={value}
                 onClick={() => onSetMode(value)}
-                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary transition-colors ${
+                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-body-sm transition-colors ${
                   active
                     ? 'text-foreground bg-accent/40'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
@@ -144,7 +144,7 @@ export default function AccountMenu({
               setOpen(false)
               onOpenSelfCheck()
             }}
-            className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+            className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-body-sm text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
           >
             <Stethoscope className="w-3.5 h-3.5" />
             系统自检
@@ -155,7 +155,7 @@ export default function AccountMenu({
               <div className="my-1 h-px bg-border/50" />
               <button
                 onClick={logout}
-                className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-body-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 退出登录

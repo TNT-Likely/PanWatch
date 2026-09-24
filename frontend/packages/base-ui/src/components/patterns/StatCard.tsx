@@ -19,7 +19,7 @@ interface StatCardProps {
 export function StatCard({ label, value, sub, icon: Icon, loading, className }: StatCardProps) {
   return (
     <div className={cn('card min-w-0 px-4 py-3.5', className)}>
-      <div className="flex items-center gap-1.5 text-secondary text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-body-sm text-muted-foreground">
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
         <span className="truncate">{label}</span>
       </div>

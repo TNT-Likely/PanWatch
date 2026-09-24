@@ -25,7 +25,7 @@ export function AssistantWelcome({ onSubmit, disabled = false }: AssistantWelcom
 
   return (
     <section className="flex min-h-[calc(100vh-12rem)] flex-1 flex-col items-center justify-center px-5 py-12 text-center md:px-10">
-      <p className="mb-4 text-caption font-semibold tracking-[0.16em] text-primary sm:text-secondary">
+      <p className="mb-4 text-caption font-semibold tracking-[0.16em] text-primary sm:text-body-sm">
         PANWATCH · AI INVESTING RESEARCH
       </p>
       <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
@@ -47,7 +47,7 @@ export function AssistantWelcome({ onSubmit, disabled = false }: AssistantWelcom
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           disabled={disabled}
-          className="h-12 min-w-0 flex-1 bg-transparent text-title text-foreground outline-none placeholder:text-muted-foreground/80"
+          className="h-12 min-w-0 flex-1 bg-transparent text-title text-foreground outline-none placeholder:text-muted-foreground"
           placeholder="搜索股票，或问：我的持仓风险怎么样？"
           aria-label="开始一项研究"
         />
@@ -83,9 +83,9 @@ export function AssistantWelcome({ onSubmit, disabled = false }: AssistantWelcom
           ['03', '从问题开始', '让助手串联行情、K 线和新闻，给出下一步研究方向。'],
         ].map(([index, title, description]) => (
           <div key={index} className="rounded-2xl border border-border/60 bg-card/70 p-5">
-            <span className="inline-flex rounded-lg bg-primary/10 px-2 py-1 text-secondary font-semibold text-primary">{index}</span>
+            <span className="inline-flex rounded-lg bg-primary/10 px-2 py-1 text-body-sm font-semibold text-primary">{index}</span>
             <h2 className="mt-5 text-title font-semibold text-foreground">{title}</h2>
-            <p className="mt-2 text-secondary leading-5 text-muted-foreground">{description}</p>
+            <p className="mt-2 text-body-sm leading-5 text-muted-foreground">{description}</p>
           </div>
         ))}
       </div>

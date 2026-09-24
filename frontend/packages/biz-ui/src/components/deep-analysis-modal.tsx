@@ -372,7 +372,7 @@ export function DeepAnalysisModal({
           <div className="space-y-3 text-body">
             <div className="rounded-lg bg-stock-up/10 border border-stock-up/30 p-3 text-stock-up">
               <div className="font-semibold mb-1">分析失败</div>
-              <div className="text-secondary">{error}</div>
+              <div className="text-body-sm">{error}</div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>关闭</Button>
@@ -418,7 +418,7 @@ function IdleView({
 
       {/* 本月预算 */}
       {budget && (
-        <div className={`rounded-lg p-3 text-secondary ${overBudget ? 'bg-stock-up/10 border border-stock-up/30' : 'bg-accent/20'}`}>
+        <div className={`rounded-lg p-3 text-body-sm ${overBudget ? 'bg-stock-up/10 border border-stock-up/30' : 'bg-accent/20'}`}>
           <div className="flex items-center justify-between">
             <span className="font-medium">本月预算</span>
             <span className={overBudget ? 'text-stock-up' : 'text-muted-foreground'}>
@@ -480,10 +480,10 @@ function RunningView({
           {stages.length > 0 ? stages.map((s) => (
             <StageRow key={s.name} stage={s} />
           )) : (
-            <div className="text-secondary text-muted-foreground">准备中...</div>
+            <div className="text-body-sm text-muted-foreground">准备中...</div>
           )}
         </div>
-        <div className="text-mini text-muted-foreground/70 mt-3 font-mono">
+        <div className="text-mini text-muted-foreground mt-3 font-mono">
           trace_id: {traceId.slice(0, 16)}...
         </div>
       </div>
@@ -529,7 +529,7 @@ function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] 
   }
 
   return (
-    <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-secondary">
+    <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-body-sm">
       <div className="font-medium mb-1">数据准备明细</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {sources.map((source) => (
@@ -586,7 +586,7 @@ export function ToolkitDiagnostics({
   }
 
   return (
-    <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-secondary" open={defaultOpen}>
+    <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-body-sm" open={defaultOpen}>
       <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
         <span className="font-medium">数据注入诊断</span>
         <span className="text-caption text-muted-foreground">
@@ -600,7 +600,7 @@ export function ToolkitDiagnostics({
           {err > 0 && <span className="text-destructive"> · 错误 {err}</span>}
         </span>
       </summary>
-      <div className="text-mini text-muted-foreground/80 mt-2 leading-relaxed">
+      <div className="text-mini text-muted-foreground mt-2 leading-relaxed">
         <span className={ACTION_CLS.HIT}>HIT</span>: 用 PanWatch 数据 ·{' '}
         <span className={ACTION_CLS.MISS}>MISS</span>: 命中但 PanWatch 未实现 ·{' '}
         <span className={ACTION_CLS.PASSTHROUGH}>透传</span>: 非 A 股直接走上游 vendor ·{' '}
@@ -623,7 +623,7 @@ export function ToolkitDiagnostics({
                   {h.method} ({h.symbol || '-'})
                   {h.reason && <span className="text-muted-foreground"> · {h.reason}</span>}
                   {h.chars != null && <span className="text-muted-foreground"> · {h.chars} 字符</span>}
-                  {h.source && <span className="text-muted-foreground/70"> · {h.source}</span>}
+                  {h.source && <span className="text-muted-foreground"> · {h.source}</span>}
                 </span>
               </div>
             )
@@ -639,7 +639,7 @@ export function ToolkitDiagnostics({
                     <span className={ACTION_CLS[action] || 'text-muted-foreground'}>{action}</span>
                     <span className="text-muted-foreground"> · {h.method}({h.symbol || '-'})</span>
                     {h.source && (
-                      <span className="text-muted-foreground/70"> · {h.source}</span>
+                      <span className="text-muted-foreground"> · {h.source}</span>
                     )}
                   </span>
                 }
@@ -651,10 +651,10 @@ export function ToolkitDiagnostics({
                       </div>
                     )}
                     {h.snippet && (
-                      <pre className="whitespace-pre-wrap break-words font-mono text-mini leading-snug bg-accent/30 rounded p-2 text-foreground/85 max-h-[60vh] overflow-y-auto">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-mini leading-snug bg-accent/30 rounded p-2 text-foreground max-h-[60vh] overflow-y-auto">
                         {h.snippet}
                         {h.chars != null && h.chars > h.snippet.length && (
-                          <span className="text-muted-foreground/60">
+                          <span className="text-muted-foreground">
                             {'\n\n'}...(共 {h.chars} 字符,仅展示前 {h.snippet.length})
                           </span>
                         )}
@@ -683,9 +683,9 @@ function StageRow({ stage }: { stage: ProgressStage }) {
       ? 'text-stock-down dark:text-stock-down'
       : stage.status === 'running'
       ? 'text-primary'
-      : 'text-muted-foreground/60'
+      : 'text-muted-foreground'
   return (
-    <div className={`flex items-center gap-2 text-secondary ${cls}`}>
+    <div className={`flex items-center gap-2 text-body-sm ${cls}`}>
       <span className="w-4">{icon}</span>
       <span>{label}</span>
       {stage.cost_usd ? (
@@ -728,7 +728,7 @@ function DoneView({
   return (
     <div className="space-y-4 text-body">
       {fromCache && (
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-secondary text-amber-700 dark:text-amber-400 flex items-center justify-between">
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-body-sm text-amber-700 dark:text-amber-400 flex items-center justify-between">
           <span>ℹ️ 当日缓存:今天已经分析过这只股票,展示缓存结果(无新成本)</span>
           <Button variant="outline" size="sm" onClick={onRerun} className="ml-3 h-7 text-caption">
             忽略缓存重新分析
@@ -741,7 +741,7 @@ function DoneView({
         <span className={`text-heading font-bold ${DECISION_COLOR[sug.action] || ''}`}>
           {sug.action_label}
         </span>
-        <span className="text-secondary text-muted-foreground">
+        <span className="text-body-sm text-muted-foreground">
           置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
         </span>
         <Button
@@ -769,7 +769,7 @@ function DoneView({
       )}
 
       {/* 免责声明 */}
-      <div className="text-mini text-muted-foreground/70 italic border-t border-border/30 pt-2">
+      <div className="text-mini text-muted-foreground italic border-t border-border/30 pt-2">
         本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
         投资有风险,决策需自主判断。
       </div>
@@ -792,7 +792,7 @@ function AnalysisTabs({ sections }: { sections: AnalysisSection[] }) {
         </TabsList>
         {sections.map((s) => (
           <TabsContent key={s.id} value={s.id}>
-            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-secondary prose-strong:text-foreground">
+            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-body-sm prose-strong:text-foreground">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.markdown}</ReactMarkdown>
             </div>
           </TabsContent>

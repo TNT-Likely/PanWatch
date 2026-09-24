@@ -6,7 +6,7 @@ export type BadgeChipSize = 'xs' | 'sm' | 'md' | 'lg'
 const sizeClassMap: Record<BadgeChipSize, string> = {
   xs: 'text-mini px-1.5 py-0.5',
   sm: 'text-caption px-2 py-0.5',
-  md: 'text-secondary px-2.5 py-1',
+  md: 'text-body-sm px-2.5 py-1',
   lg: 'text-body px-3 py-1.5',
 }
 

@@ -104,7 +104,7 @@ export function AssistantConfigPanel() {
 
       {error && <p className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-caption text-destructive">{error}</p>}
       {loading ? (
-        <div className="flex items-center gap-2 py-6 text-secondary text-muted-foreground">
+        <div className="flex items-center gap-2 py-6 text-body-sm text-muted-foreground">
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" />
           正在加载上下文配置…
         </div>
@@ -116,7 +116,7 @@ export function AssistantConfigPanel() {
               aria-label="上下文压缩模型"
               value={form.compression_model_id}
               onChange={(event) => update('compression_model_id', event.target.value)}
-              className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-secondary text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-body-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             >
               <option value="">跟随系统默认模型</option>
               {config.models.map((model) => (
@@ -137,7 +137,7 @@ export function AssistantConfigPanel() {
               step="0.1"
               value={form.compression_temperature}
               onChange={(event) => update('compression_temperature', event.target.value)}
-              className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 font-mono text-secondary text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 font-mono text-body-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             />
           </label>
 
@@ -157,7 +157,7 @@ export function AssistantConfigPanel() {
                   min="1"
                   value={form[key]}
                   onChange={(event) => update(key, event.target.value)}
-                  className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 font-mono text-secondary text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+                  className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 font-mono text-body-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
                 />
               </label>
             ))}
@@ -167,7 +167,7 @@ export function AssistantConfigPanel() {
             type="button"
             onClick={() => { void save() }}
             disabled={saving}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-secondary font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-body-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Check className="h-3.5 w-3.5" />
             {saving ? '保存中…' : saved ? '已保存' : '保存上下文配置'}

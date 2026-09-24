@@ -71,7 +71,7 @@ export default function PatSection() {
     <section id="sec-pat" className="card p-4 md:p-6 lg:col-span-12">
       <div className="flex items-start justify-between mb-4 gap-3">
         <div>
-          <h3 className="text-secondary md:text-body font-semibold text-foreground flex items-center gap-1.5">
+          <h3 className="text-body-sm md:text-body font-semibold text-foreground flex items-center gap-1.5">
             <KeyRound className="w-3.5 h-3.5" /> MCP 访问令牌
           </h3>
           <p className="text-caption text-muted-foreground mt-1">
@@ -100,7 +100,7 @@ export default function PatSection() {
             请立即复制并妥善保存,关闭后无法再次查看:
           </div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate rounded bg-background/70 px-2 py-1 font-mono text-secondary">{newToken}</code>
+            <code className="flex-1 min-w-0 truncate rounded bg-background/70 px-2 py-1 font-mono text-body-sm">{newToken}</code>
             <Button variant="secondary" size="sm" className="h-8" onClick={() => copy(newToken)}>
               <Copy className="w-3.5 h-3.5" /> 复制
             </Button>
@@ -111,9 +111,9 @@ export default function PatSection() {
 
       {/* 列表 */}
       {loading ? (
-        <div className="text-secondary text-muted-foreground">加载中…</div>
+        <div className="text-body-sm text-muted-foreground">加载中…</div>
       ) : items.length === 0 ? (
-        <div className="text-secondary text-muted-foreground">还没有令牌。</div>
+        <div className="text-body-sm text-muted-foreground">还没有令牌。</div>
       ) : (
         <div className="space-y-2">
           {items.map(it => (
@@ -123,7 +123,7 @@ export default function PatSection() {
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-secondary font-medium text-foreground truncate">{it.name || '未命名'}</span>
+                  <span className="text-body-sm font-medium text-foreground truncate">{it.name || '未命名'}</span>
                   <code className="font-mono text-caption text-muted-foreground">{it.prefix}…</code>
                   {it.revoked ? (
                     <span className="text-mini px-1.5 py-0.5 rounded-full bg-stock-up/15 text-stock-up">已吊销</span>

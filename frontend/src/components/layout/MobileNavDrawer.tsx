@@ -37,7 +37,7 @@ export default function MobileNavDrawer({ open, onOpenChange, mode, onSetMode, o
         <nav className="scrollbar -mx-1 max-h-[52vh] overflow-y-auto px-1" aria-label="全部页面">
           {NAV_GROUPS.map(group => (
             <div key={group.key} className="mb-3">
-              <div className="px-1 pb-1 text-mini font-medium text-muted-foreground/70">{group.label}</div>
+              <div className="px-1 pb-1 text-mini font-medium text-muted-foreground">{group.label}</div>
               <div className="grid grid-cols-2 gap-1">
                 {group.items.map(({ to, icon: Icon, label }) => {
                   const active = isNavItemActive(location.pathname, to)

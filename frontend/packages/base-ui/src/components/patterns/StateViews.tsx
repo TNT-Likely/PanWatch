@@ -24,7 +24,7 @@ export function EmptyState({ icon: Icon, title, description, action, className }
         </div>
       )}
       <div className="text-body font-medium text-foreground">{title}</div>
-      {description && <div className="max-w-sm text-secondary text-muted-foreground">{description}</div>}
+      {description && <div className="max-w-sm text-body-sm text-muted-foreground">{description}</div>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   )
@@ -46,7 +46,7 @@ export function ErrorState({ message, onRetry, retryLabel = '重试', className 
       role="alert"
     >
       <div className="text-body font-medium text-destructive">加载失败</div>
-      {message && <div className="max-w-sm text-secondary text-muted-foreground">{message}</div>}
+      {message && <div className="max-w-sm text-body-sm text-muted-foreground">{message}</div>}
       {onRetry && (
         <Button variant="secondary" size="sm" className="mt-2" onClick={onRetry}>
           <RefreshCw className="h-3.5 w-3.5" />
@@ -65,7 +65,7 @@ interface LoadingStateProps {
 /** 行内加载态：转圈 + 文案（路由级与区块内通用）。 */
 export function LoadingState({ label = '加载中…', className }: LoadingStateProps) {
   return (
-    <div className={cn('flex items-center justify-center gap-2 px-6 py-10 text-secondary text-muted-foreground', className)}>
+    <div className={cn('flex items-center justify-center gap-2 px-6 py-10 text-body-sm text-muted-foreground', className)}>
       <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" aria-hidden="true" />
       <span role="status">{label}</span>
     </div>

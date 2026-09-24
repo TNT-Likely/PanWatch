@@ -43,7 +43,7 @@ function usageLabel(usage: ContextUsage): string {
 
 export function ContextPanel({ detail, loading, compressing, error, onCompress, onClose }: ContextPanelProps) {
   return (
-    <section data-testid="assistant-context-panel" className="border-b border-border/40 bg-background px-4 py-3 text-secondary">
+    <section data-testid="assistant-context-panel" className="border-b border-border/40 bg-background px-4 py-3 text-body-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium text-foreground">上下文用量</h3>

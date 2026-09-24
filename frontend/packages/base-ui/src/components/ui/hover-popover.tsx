@@ -73,7 +73,7 @@ export function HoverPopover({
         )}
       >
         {title && (
-          <div className="text-secondary font-semibold text-foreground mb-1">
+          <div className="text-body-sm font-semibold text-foreground mb-1">
             {title}
           </div>
         )}

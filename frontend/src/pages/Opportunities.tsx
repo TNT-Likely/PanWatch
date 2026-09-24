@@ -536,11 +536,11 @@ export default function OpportunitiesPage() {
     <div className="page-container pb-10">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div>
-          <h1 className="text-headline md:text-display font-bold text-foreground tracking-tight flex items-center gap-2">
+          <h1 className="text-headline font-bold text-foreground tracking-tight flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
             机会页
           </h1>
-          <p className="text-secondary text-muted-foreground mt-1">
+          <p className="text-body-sm text-muted-foreground mt-1">
             市场池优先，候选必须具备可执行入场计划
           </p>
         </div>
@@ -549,7 +549,7 @@ export default function OpportunitiesPage() {
           <Button
             variant="secondary"
             size="sm"
-            className="h-8 text-secondary"
+            className="h-8 text-body-sm"
             onClick={handleRefresh}
             disabled={refreshing}
           >
@@ -640,7 +640,7 @@ export default function OpportunitiesPage() {
       <div className="card p-3 md:p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
           <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US')}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">全部市场</SelectItem>
               <SelectItem value="CN">A股</SelectItem>
@@ -649,7 +649,7 @@ export default function OpportunitiesPage() {
             </SelectContent>
           </Select>
           <Select value={source} onValueChange={(v) => setSource(v as SourceFilter)}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部来源</SelectItem>
               <SelectItem value="market_scan">市场池</SelectItem>
@@ -658,7 +658,7 @@ export default function OpportunitiesPage() {
             </SelectContent>
           </Select>
           <Select value={holding} onValueChange={(v) => setHolding(v as HoldingFilter)}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部持仓状态</SelectItem>
               <SelectItem value="unheld">仅未持仓</SelectItem>
@@ -666,7 +666,7 @@ export default function OpportunitiesPage() {
             </SelectContent>
           </Select>
           <Select value={strategy} onValueChange={setStrategy}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部策略</SelectItem>
               {strategyOptions.map((op) => (
@@ -675,7 +675,7 @@ export default function OpportunitiesPage() {
             </SelectContent>
           </Select>
           <Select value={risk} onValueChange={(v) => setRisk(v as RiskFilter)}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部风险等级</SelectItem>
               <SelectItem value="low">低风险</SelectItem>
@@ -684,7 +684,7 @@ export default function OpportunitiesPage() {
             </SelectContent>
           </Select>
           <Select value={minScore} onValueChange={setMinScore}>
-            <SelectTrigger className="h-8 text-secondary"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 text-body-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="90">评分90+</SelectItem>
               <SelectItem value="80">评分80+</SelectItem>
@@ -694,17 +694,17 @@ export default function OpportunitiesPage() {
               <SelectItem value="0">评分不过滤</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-8 text-secondary" onClick={load} disabled={loading}>
+          <Button size="sm" className="h-8 text-body-sm" onClick={load} disabled={loading}>
             {loading ? '加载中...' : '应用筛选'}
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 text-secondary" onClick={resetFilters}>
+          <Button variant="ghost" size="sm" className="h-8 text-body-sm" onClick={resetFilters}>
             清空筛选
           </Button>
         </div>
       </div>
 
       {error && (
-        <div className="card p-3 mb-4 text-secondary text-amber-500 flex items-center gap-2">
+        <div className="card p-3 mb-4 text-body-sm text-amber-500 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4" />
           {error}
         </div>
@@ -759,7 +759,7 @@ export default function OpportunitiesPage() {
                         </span>
                       )}
                     </div>
-                    <div className={`text-secondary font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
+                    <div className={`text-body-sm font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
                       评分 {Math.round(item.rank_score || item.score || 0)}
                     </div>
                     {item.ai_score != null && (
@@ -772,7 +772,7 @@ export default function OpportunitiesPage() {
                     )}
                   </div>
                 </div>
-                <div className="mt-2 text-secondary text-foreground line-clamp-2">{item.signal || item.reason || '--'}</div>
+                <div className="mt-2 text-body-sm text-foreground line-clamp-2">{item.signal || item.reason || '--'}</div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-caption text-muted-foreground">
                   <div>入场: {formatEntryDisplay(item.action, entryLow, entryHigh)}</div>
                   <div>止损: {formatPlanPrice(stopLoss)}</div>
@@ -844,11 +844,11 @@ export default function OpportunitiesPage() {
       </div>
 
       {!loading && groupedItems.length === 0 && (
-        <div className="card p-8 text-center text-secondary text-muted-foreground mt-4">暂无满足条件的机会</div>
+        <div className="card p-8 text-center text-body-sm text-muted-foreground mt-4">暂无满足条件的机会</div>
       )}
 
       <details className="mt-6 group">
-        <summary className="cursor-pointer list-none flex items-center gap-2 text-secondary font-medium text-muted-foreground hover:text-foreground transition-colors">
+        <summary className="cursor-pointer list-none flex items-center gap-2 text-body-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <span className="text-caption opacity-60 transition-transform group-open:rotate-90">▶</span>
           因子权重与战绩
         </summary>

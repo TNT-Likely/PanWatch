@@ -288,9 +288,9 @@ export default function StockPriceAlertPanel(props: {
               </Button>
             </div>
             {loading ? (
-              <div className="text-secondary text-muted-foreground py-6 text-center">加载中...</div>
+              <div className="text-body-sm text-muted-foreground py-6 text-center">加载中...</div>
             ) : rules.length === 0 ? (
-              <div className="text-secondary text-muted-foreground py-6 text-center">该股票暂无提醒规则</div>
+              <div className="text-body-sm text-muted-foreground py-6 text-center">该股票暂无提醒规则</div>
             ) : (
               <div className="space-y-2 max-h-[48vh] overflow-y-auto scrollbar">
                 {rules.map(r => (

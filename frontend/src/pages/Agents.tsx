@@ -492,8 +492,8 @@ export default function AgentsPage() {
   return (
     <div>
       <div className="mb-4 md:mb-8">
-        <h1 className="text-headline md:text-display font-bold text-foreground tracking-tight">Agent</h1>
-        <p className="text-secondary md:text-body text-muted-foreground mt-0.5 md:mt-1">自动化任务管理与调度</p>
+        <h1 className="text-headline font-bold text-foreground tracking-tight">Agent</h1>
+        <p className="text-body-sm md:text-body text-muted-foreground mt-0.5 md:mt-1">自动化任务管理与调度</p>
       </div>
 
       {/* Scheduler Health */}
@@ -504,20 +504,20 @@ export default function AgentsPage() {
             {healthLoading ? (
               <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
             ) : (
-              <span className="text-secondary">刷新</span>
+              <span className="text-body-sm">刷新</span>
             )}
           </Button>
         </div>
         {health ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-secondary text-muted-foreground">
-            <span>时区: <span className="font-mono text-foreground/90">{health.timezone}</span></span>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
+            <span>时区: <span className="font-mono text-foreground">{health.timezone}</span></span>
             <span className="opacity-50">|</span>
-            <span>未来 24h 将触发: <span className="font-mono text-foreground/90">{health.summary.next_24h_count}</span></span>
+            <span>未来 24h 将触发: <span className="font-mono text-foreground">{health.summary.next_24h_count}</span></span>
             <span className="opacity-50">|</span>
-            <span>最近失败: <span className={`font-mono ${health.summary.recent_failed_count > 0 ? 'text-destructive' : 'text-foreground/90'}`}>{health.summary.recent_failed_count}</span></span>
+            <span>最近失败: <span className={`font-mono ${health.summary.recent_failed_count > 0 ? 'text-destructive' : 'text-foreground'}`}>{health.summary.recent_failed_count}</span></span>
           </div>
         ) : (
-          <div className="mt-2 text-secondary text-muted-foreground">—</div>
+          <div className="mt-2 text-body-sm text-muted-foreground">—</div>
         )}
       </div>
 
@@ -568,8 +568,8 @@ export default function AgentsPage() {
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/50 hover:bg-accent transition-colors"
                       >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-secondary text-foreground">{formatSchedule(agent.schedule)}</span>
-                        <Settings2 className="w-3 h-3 text-muted-foreground/50" />
+                        <span className="text-body-sm text-foreground">{formatSchedule(agent.schedule)}</span>
+                        <Settings2 className="w-3 h-3 text-muted-foreground" />
                       </button>
                       {agent.name === 'tradingagents' && (
                         <button
@@ -578,7 +578,7 @@ export default function AgentsPage() {
                           title="编辑 TradingAgents 双模型/预算/超时/模拟盘等高级配置"
                         >
                           <Settings2 className="w-3.5 h-3.5" />
-                          <span className="text-secondary">深度配置</span>
+                          <span className="text-body-sm">深度配置</span>
                         </button>
                       )}
                     </div>
@@ -614,7 +614,7 @@ export default function AgentsPage() {
                           value={agent.ai_model_id?.toString() ?? '__default__'}
                           onValueChange={val => updateAgentModel(agent, val === '__default__' ? null : parseInt(val))}
                         >
-                          <SelectTrigger className="h-7 text-secondary w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
+                          <SelectTrigger className="h-7 text-body-sm w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -681,7 +681,7 @@ export default function AgentsPage() {
                       className="h-8"
                       onClick={() => toggleRuns(agent.name)}
                     >
-                      <span className="text-secondary">最近运行</span>
+                      <span className="text-body-sm">最近运行</span>
                     </Button>
                     <Button
                       variant={agent.enabled ? 'destructive' : 'default'}
@@ -698,7 +698,7 @@ export default function AgentsPage() {
                 {runsOpen[agent.name] && (
                   <div className="mt-4 ml-[22px] sm:ml-0 rounded-lg border border-border/40 bg-accent/20 p-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-secondary font-medium text-foreground">最近 5 次运行</div>
+                      <div className="text-body-sm font-medium text-foreground">最近 5 次运行</div>
                       {runsLoading[agent.name] && (
                         <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                       )}
@@ -728,7 +728,7 @@ export default function AgentsPage() {
                                   <div className="mt-0.5 text-caption text-destructive break-words">{r.error}</div>
                                 ) : null}
                               </div>
-                              <div className="text-mini text-muted-foreground/70 font-mono">{r.status}</div>
+                              <div className="text-mini text-muted-foreground font-mono">{r.status}</div>
                             </div>
                           ))}
                         </div>
@@ -821,7 +821,7 @@ export default function AgentsPage() {
             {/* Preview */}
             <div className="rounded-lg border border-border/50 bg-accent/20 p-3">
               <div className="flex items-center justify-between">
-                <div className="text-secondary font-medium text-foreground">未来触发时间预览</div>
+                <div className="text-body-sm font-medium text-foreground">未来触发时间预览</div>
                 {schedulePreviewLoading && (
                   <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 )}
@@ -848,7 +848,7 @@ export default function AgentsPage() {
               ) : (
                 <div className="mt-2 text-caption text-muted-foreground">—</div>
               )}
-              <div className="mt-2 text-caption text-muted-foreground/70 font-mono">
+              <div className="mt-2 text-caption text-muted-foreground font-mono">
                 schedule: {configToCron(scheduleConfig)}
               </div>
             </div>
@@ -893,7 +893,7 @@ export default function AgentsPage() {
 
             <div className="max-h-[40vh] overflow-y-auto rounded border border-border/50 p-3">
               {filteredBindStocks.length === 0 ? (
-                <div className="p-4 text-secondary text-muted-foreground text-center">无可选股票</div>
+                <div className="p-4 text-body-sm text-muted-foreground text-center">无可选股票</div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {filteredBindStocks.map((s) => {
@@ -905,7 +905,7 @@ export default function AgentsPage() {
                         type="button"
                         disabled={!bindDialogAgent || saving}
                         onClick={() => bindDialogAgent && toggleStockBindingForAgent(s, bindDialogAgent.name)}
-                        className={`h-8 px-3 rounded-full text-secondary border transition-colors disabled:opacity-60 ${
+                        className={`h-8 px-3 rounded-full text-body-sm border transition-colors disabled:opacity-60 ${
                           bound
                             ? 'bg-primary/12 border-primary/35 text-primary hover:bg-primary/18'
                             : 'bg-accent/30 border-border/60 text-muted-foreground hover:border-primary/30'
@@ -971,14 +971,14 @@ export default function AgentsPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-secondary">
-                        深度思考模型 <span className="text-muted-foreground/70 font-normal">(辩论/风控/PM)</span>
+                      <Label className="text-body-sm">
+                        深度思考模型 <span className="text-muted-foreground font-normal">(辩论/风控/PM)</span>
                       </Label>
                       <Select
                         value={(taConfigForm.deep_model as string) || '__default__'}
                         onValueChange={val => setTaConfigForm({ ...taConfigForm, deep_model: val === '__default__' ? '' : val })}
                       >
-                        <SelectTrigger className="h-9 text-secondary">
+                        <SelectTrigger className="h-9 text-body-sm">
                           <SelectValue placeholder="使用 Agent 默认" />
                         </SelectTrigger>
                         <SelectContent>
@@ -992,14 +992,14 @@ export default function AgentsPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-secondary">
-                        快速思考模型 <span className="text-muted-foreground/70 font-normal">(分析师/工具)</span>
+                      <Label className="text-body-sm">
+                        快速思考模型 <span className="text-muted-foreground font-normal">(分析师/工具)</span>
                       </Label>
                       <Select
                         value={(taConfigForm.quick_model as string) || '__default__'}
                         onValueChange={val => setTaConfigForm({ ...taConfigForm, quick_model: val === '__default__' ? '' : val })}
                       >
-                        <SelectTrigger className="h-9 text-secondary">
+                        <SelectTrigger className="h-9 text-body-sm">
                           <SelectValue placeholder="= 深度模型" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1027,7 +1027,7 @@ export default function AgentsPage() {
               <div className="font-medium mb-2">预算与策略</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-secondary">月度预算(美元)</Label>
+                  <Label className="text-body-sm">月度预算(美元)</Label>
                   <Input
                     type="number"
                     step="0.5"
@@ -1036,7 +1036,7 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-secondary">超预算行为</Label>
+                  <Label className="text-body-sm">超预算行为</Label>
                   <select
                     className="w-full h-9 rounded-md border border-border bg-background px-3 text-body"
                     value={(taConfigForm.over_budget_action as string) || 'reject'}
@@ -1048,7 +1048,7 @@ export default function AgentsPage() {
                   </select>
                 </div>
                 <div>
-                  <Label className="text-secondary">辩论轮次</Label>
+                  <Label className="text-body-sm">辩论轮次</Label>
                   <Input
                     type="number"
                     min={1}
@@ -1058,7 +1058,7 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-secondary">超时(分钟)</Label>
+                  <Label className="text-body-sm">超时(分钟)</Label>
                   <Input
                     type="number"
                     min={1}
@@ -1109,7 +1109,7 @@ export default function AgentsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 mb-2">
                     <div>
-                      <Label className="text-secondary">涨跌幅阈值(%)</Label>
+                      <Label className="text-body-sm">涨跌幅阈值(%)</Label>
                       <Input
                         type="number"
                         step="0.5"
@@ -1120,7 +1120,7 @@ export default function AgentsPage() {
                       />
                     </div>
                     <div>
-                      <Label className="text-secondary">冷却时间(小时)</Label>
+                      <Label className="text-body-sm">冷却时间(小时)</Label>
                       <Input
                         type="number"
                         min={1}
@@ -1139,7 +1139,7 @@ export default function AgentsPage() {
             })()}
 
             {/* 高级 JSON */}
-            <details className="text-secondary">
+            <details className="text-body-sm">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                 高级:完整 config JSON
               </summary>

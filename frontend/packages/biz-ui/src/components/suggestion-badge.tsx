@@ -214,7 +214,7 @@ export function SuggestionBadge({
             </div>
             <div className="flex-1 min-w-0">
               {suggestion.signal && (
-                <p className="text-secondary font-medium text-foreground mb-0.5">{suggestion.signal}</p>
+                <p className="text-body-sm font-medium text-foreground mb-0.5">{suggestion.signal}</p>
               )}
               {suggestion.reason ? (
                 <p className="text-caption text-muted-foreground">{suggestion.reason}</p>
@@ -223,7 +223,7 @@ export function SuggestionBadge({
               ) : null}
 
               {(suggestion.agent_label || timeStr) && (
-                <div className="mt-1 text-mini text-muted-foreground/70">
+                <div className="mt-1 text-mini text-muted-foreground">
                   来源: {suggestion.agent_label || (isAI ? 'AI' : '未知')}
                   {timeStr && ` · ${timeStr}`}
                   {suggestion.is_expired && <span className="ml-1 text-amber-600">(已过期)</span>}
@@ -231,7 +231,7 @@ export function SuggestionBadge({
               )}
 
               {klineMetaStr && (
-                <div className="mt-1 text-mini text-muted-foreground/70">
+                <div className="mt-1 text-mini text-muted-foreground">
                   {klineMetaStr}
                 </div>
               )}
@@ -264,7 +264,7 @@ export function SuggestionBadge({
               </DialogTitle>
               {/* 来源信息 */}
               {(suggestion.agent_label || suggestion.created_at) && (
-                <div className="text-caption text-muted-foreground/70 mt-1">
+                <div className="text-caption text-muted-foreground mt-1">
                   来源: {suggestion.agent_label || '未知'}
                   {suggestion.created_at && ` · ${formatSuggestionDateTime(suggestion.created_at)}`}
                   {suggestion.is_expired && <span className="ml-2 text-amber-500">(已过期)</span>}
@@ -281,7 +281,7 @@ export function SuggestionBadge({
                     <button
                       onClick={() => submitFeedback(true)}
                       disabled={feedback !== null}
-                      className={`text-secondary px-3 py-1.5 rounded-md border transition-colors ${
+                      className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                         feedback === 'useful'
                           ? 'bg-stock-down/10 border-stock-down/30 text-stock-down'
                           : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
@@ -292,7 +292,7 @@ export function SuggestionBadge({
                     <button
                       onClick={() => submitFeedback(false)}
                       disabled={feedback !== null}
-                      className={`text-secondary px-3 py-1.5 rounded-md border transition-colors ${
+                      className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                         feedback === 'useless'
                           ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
                           : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
@@ -337,7 +337,7 @@ export function SuggestionBadge({
               {suggestion.ai_response && (
                 <div>
                   <div className="text-caption text-muted-foreground mb-1">AI 响应</div>
-                  <div className="text-secondary text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto scrollbar">
+                  <div className="text-body-sm text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto scrollbar">
                     {suggestion.ai_response}
                   </div>
                 </div>
@@ -441,7 +441,7 @@ export function SuggestionBadge({
         </div>
         {/* 来源和时间（显示在徽章下方，仅 AI 建议以增强区分）*/}
         {isAI && (
-          <div className="mt-1 text-mini text-muted-foreground/70">
+          <div className="mt-1 text-mini text-muted-foreground">
             来源: {suggestion.agent_label || 'AI'}{timeStr && ` · ${timeStr}`}
             {suggestion.is_expired && <span className="ml-1 text-amber-600">(已过期)</span>}
           </div>
@@ -472,7 +472,7 @@ export function SuggestionBadge({
             </DialogTitle>
             {/* 来源信息 */}
             {(suggestion.agent_label || suggestion.created_at) && (
-              <div className="text-caption text-muted-foreground/70 mt-1">
+              <div className="text-caption text-muted-foreground mt-1">
                 来源: {suggestion.agent_label || '未知'}
                 {suggestion.created_at && ` · ${formatSuggestionDateTime(suggestion.created_at)}`}
                 {suggestion.is_expired && <span className="ml-2 text-amber-500">(已过期)</span>}
@@ -489,7 +489,7 @@ export function SuggestionBadge({
                   <button
                     onClick={() => submitFeedback(true)}
                     disabled={feedback !== null}
-                    className={`text-secondary px-3 py-1.5 rounded-md border transition-colors ${
+                    className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                       feedback === 'useful'
                         ? 'bg-stock-down/10 border-stock-down/30 text-stock-down'
                         : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
@@ -500,7 +500,7 @@ export function SuggestionBadge({
                   <button
                     onClick={() => submitFeedback(false)}
                     disabled={feedback !== null}
-                    className={`text-secondary px-3 py-1.5 rounded-md border transition-colors ${
+                    className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                       feedback === 'useless'
                         ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
                         : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
@@ -545,7 +545,7 @@ export function SuggestionBadge({
             {suggestion.ai_response && (
               <div>
                 <div className="text-caption text-muted-foreground mb-1">AI 响应</div>
-                <div className="text-secondary text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto">
+                <div className="text-body-sm text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto">
                   {suggestion.ai_response}
                 </div>
               </div>

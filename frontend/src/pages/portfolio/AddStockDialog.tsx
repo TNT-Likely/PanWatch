@@ -192,7 +192,7 @@ export default function AddStockDialog({ open, onOpenChange, onAdded }: AddStock
               </button>
             </div>
             <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={searchQuery}
                 onChange={e => handleSearchInput(e.target.value)}
@@ -220,7 +220,7 @@ export default function AddStockDialog({ open, onOpenChange, onAdded }: AddStock
                     onClick={() => selectStock(item)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-body hover:bg-accent/50 text-left transition-colors"
                   >
-                    <span className="font-mono text-muted-foreground text-secondary w-14">{item.symbol}</span>
+                    <span className="font-mono text-muted-foreground text-body-sm w-14">{item.symbol}</span>
                     <span className="flex-1 font-medium text-foreground">{item.name}</span>
                     <Badge variant="secondary">{marketLabel(item.market)}</Badge>
                   </button>

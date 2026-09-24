@@ -84,7 +84,7 @@ export default function FactorWeightsPanel() {
     <section id="sec-factors" className="card p-4 md:p-6 lg:col-span-12">
       <div className="flex items-start justify-between mb-4 gap-3">
         <div>
-          <h3 className="text-secondary md:text-body font-semibold text-foreground flex items-center gap-1.5">
+          <h3 className="text-body-sm md:text-body font-semibold text-foreground flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-muted-foreground" />
             因子权重自校准
           </h3>
@@ -95,7 +95,7 @@ export default function FactorWeightsPanel() {
       </div>
 
       {error && (
-        <div className="mb-3 text-secondary text-amber-500">{error}</div>
+        <div className="mb-3 text-body-sm text-amber-500">{error}</div>
       )}
 
       {loading ? (
@@ -103,10 +103,10 @@ export default function FactorWeightsPanel() {
           <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       ) : sortedItems.length === 0 ? (
-        <div className="text-secondary text-muted-foreground text-center py-6">暂无因子权重数据</div>
+        <div className="text-body-sm text-muted-foreground text-center py-6">暂无因子权重数据</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-secondary">
+          <table className="w-full text-body-sm">
             <thead>
               <tr className="text-left text-caption text-muted-foreground border-b border-border/50">
                 <th className="py-2 pr-3 font-medium">因子</th>

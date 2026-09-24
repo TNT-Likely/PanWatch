@@ -691,22 +691,22 @@ export default function SettingsPage() {
               </button>
               <span className="mx-1 hidden h-4 w-px bg-border/50 sm:block" />
               <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
-                <span className="font-mono text-foreground/90">{services.length}</span> 服务商
+                <span className="font-mono text-foreground">{services.length}</span> 服务商
               </div>
               <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
-                <span className="font-mono text-foreground/90">{allModels.length}</span> 模型
+                <span className="font-mono text-foreground">{allModels.length}</span> 模型
               </div>
               <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
-                <span className="font-mono text-foreground/90">{enabledChannels.length}</span>/<span className="font-mono">{channels.length}</span> 渠道启用
+                <span className="font-mono text-foreground">{enabledChannels.length}</span>/<span className="font-mono">{channels.length}</span> 渠道启用
               </div>
               {defaultModel ? (
                 <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
-                  默认模型 <span className="font-mono text-foreground/90">{defaultModel.model}</span>
+                  默认模型 <span className="font-mono text-foreground">{defaultModel.model}</span>
                 </div>
               ) : null}
               {defaultChannel ? (
                 <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
-                  默认通知 <span className="text-foreground/90">{defaultChannel.name}</span>
+                  默认通知 <span className="text-foreground">{defaultChannel.name}</span>
                 </div>
               ) : null}
             </div>
@@ -730,7 +730,7 @@ export default function SettingsPage() {
               onClick={() => scrollTo(it.id)}
               className="group flex items-center gap-2 rounded-full border border-border/50 bg-background/70 px-3 py-1.5 text-caption text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
             >
-              <span className="font-medium text-foreground/90 group-hover:text-foreground">{it.label}</span>
+              <span className="font-medium text-foreground group-hover:text-foreground">{it.label}</span>
               {it.hint ? <span className="opacity-60">{it.hint}</span> : null}
             </button>
           ))}
@@ -742,7 +742,7 @@ export default function SettingsPage() {
         <section id="sec-ai" className="card p-4 md:p-6 lg:col-span-7">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
             <div>
-              <h3 className="text-secondary md:text-body font-semibold text-foreground">AI 服务商 & 模型</h3>
+              <h3 className="text-body-sm md:text-body font-semibold text-foreground">AI 服务商 & 模型</h3>
               <p className="text-caption text-muted-foreground mt-1">连接你的 AI 服务并设置默认模型</p>
             </div>
             <Button size="sm" className="h-8" onClick={() => openServiceDialog()}>
@@ -790,7 +790,7 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-2">
                             {m.is_default && <Star className="w-3 h-3 text-amber-500" />}
                             <Cpu className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-secondary font-medium text-foreground">{m.name}</span>
+                            <span className="text-body-sm font-medium text-foreground">{m.name}</span>
                             <span className="text-caption text-muted-foreground font-mono">{m.model}</span>
                           </div>
                           <div className="flex items-center gap-0.5">
@@ -832,7 +832,7 @@ export default function SettingsPage() {
         <section id="sec-notify" className="card p-4 md:p-6 lg:col-span-5">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
             <div>
-              <h3 className="text-secondary md:text-body font-semibold text-foreground">通知渠道</h3>
+              <h3 className="text-body-sm md:text-body font-semibold text-foreground">通知渠道</h3>
               <p className="text-caption text-muted-foreground mt-1">推送到 Telegram/Bark 等渠道</p>
             </div>
             <Button size="sm" className="h-8" onClick={() => openChannelDialog()}>
@@ -890,7 +890,7 @@ export default function SettingsPage() {
           <section id="sec-system" className="card p-4 md:p-6 lg:col-span-12">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 md:mb-5">
               <div>
-                <h3 className="text-secondary md:text-body font-semibold text-foreground">系统</h3>
+                <h3 className="text-body-sm md:text-body font-semibold text-foreground">系统</h3>
                 <p className="text-caption text-muted-foreground mt-1">偏好与高级选项。修改后立即生效。</p>
               </div>
               <div className="flex items-center gap-2">
@@ -902,7 +902,7 @@ export default function SettingsPage() {
                 />
                 {health?.timezone ? (
                   <div className="hidden md:flex px-2.5 h-9 items-center rounded-lg border border-border/50 bg-accent/20 text-caption text-muted-foreground">
-                    TZ <span className="ml-1 font-mono text-foreground/90">{health.timezone}</span>
+                    TZ <span className="ml-1 font-mono text-foreground">{health.timezone}</span>
                   </div>
                 ) : null}
               </div>
@@ -947,7 +947,7 @@ export default function SettingsPage() {
                             ? 'bg-stock-down/10 text-stock-down'
                             : isChanged
                               ? 'bg-primary text-white'
-                              : 'text-muted-foreground/30'
+                              : 'text-muted-foreground'
                         }`}
                       >
                         {saving === setting.key ? (
@@ -968,7 +968,7 @@ export default function SettingsPage() {
         <section id="sec-pack" className="card p-4 md:p-6 lg:col-span-7">
           <div className="flex items-start justify-between mb-4 gap-3">
             <div>
-              <h3 className="text-secondary md:text-body font-semibold text-foreground">配置包</h3>
+              <h3 className="text-body-sm md:text-body font-semibold text-foreground">配置包</h3>
               <p className="text-caption text-muted-foreground mt-1">一键导入/导出 Agent、关注列表与系统设置</p>
             </div>
             <div className="flex items-center gap-2">
@@ -992,7 +992,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2 mb-4">
             <div className="text-caption text-muted-foreground">导入模式</div>
             <Select value={importMode} onValueChange={(v) => setImportMode(v as any)}>
-              <SelectTrigger className="h-8 w-[160px] text-secondary">
+              <SelectTrigger className="h-8 w-[160px] text-body-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1022,7 +1022,7 @@ export default function SettingsPage() {
           />
 
           <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-            <div className="flex items-center gap-2 text-secondary font-semibold text-foreground">
+            <div className="flex items-center gap-2 text-body-sm font-semibold text-foreground">
               <FileJson className="w-4 h-4 text-muted-foreground" />
               官方模板
             </div>
@@ -1030,14 +1030,14 @@ export default function SettingsPage() {
               {builtinTemplates.map(t => (
                 <div key={t.name} className="rounded-lg border border-border/40 bg-background/30 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-secondary font-semibold text-foreground">{t.name}</div>
+                    <div className="text-body-sm font-semibold text-foreground">{t.name}</div>
                     <Button
                       size="sm"
                       className="h-7"
                       onClick={() => importTemplate(t.payload)}
                       disabled={importing}
                     >
-                      <span className="text-secondary">应用</span>
+                      <span className="text-body-sm">应用</span>
                     </Button>
                   </div>
                   <div className="mt-1 text-caption text-muted-foreground">{t.desc}</div>
@@ -1051,7 +1051,7 @@ export default function SettingsPage() {
         <section id="sec-feedback" className="card p-4 md:p-6 lg:col-span-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-secondary md:text-body font-semibold text-foreground">建议反馈</h3>
+              <h3 className="text-body-sm md:text-body font-semibold text-foreground">建议反馈</h3>
               <p className="text-caption text-muted-foreground mt-1">用于评估推送质量与策略迭代</p>
             </div>
             <Button variant="secondary" size="sm" className="h-8" onClick={loadFeedbackStats} disabled={fbLoading}>
@@ -1062,21 +1062,21 @@ export default function SettingsPage() {
 
           {fbStats ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-secondary text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
                 <span>近 {fbStats.range_days} 天</span>
                 <span className="opacity-50">|</span>
-                <span>反馈: <span className="font-mono text-foreground/90">{fbStats.total}</span></span>
+                <span>反馈: <span className="font-mono text-foreground">{fbStats.total}</span></span>
                 <span className="opacity-50">|</span>
                 <span>有用: <span className="font-mono text-stock-down">{fbStats.useful}</span></span>
                 <span className="opacity-50">|</span>
                 <span>没用: <span className="font-mono text-stock-up">{fbStats.useless}</span></span>
                 <span className="opacity-50">|</span>
-                <span>有用率: <span className="font-mono text-foreground/90">{Math.round(fbStats.useful_rate * 100)}%</span></span>
+                <span>有用率: <span className="font-mono text-foreground">{Math.round(fbStats.useful_rate * 100)}%</span></span>
               </div>
 
               {fbStats.by_agent?.length ? (
                 <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-                  <div className="text-secondary font-semibold text-foreground">按 Agent</div>
+                  <div className="text-body-sm font-semibold text-foreground">按 Agent</div>
                   <div className="mt-2 space-y-1">
                     {fbStats.by_agent.slice(0, 6).map(a => (
                       <div key={a.agent_name} className="flex items-center justify-between text-caption">
@@ -1089,11 +1089,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="text-secondary text-muted-foreground">暂无反馈数据</div>
+                <div className="text-body-sm text-muted-foreground">暂无反馈数据</div>
               )}
             </div>
           ) : (
-            <div className="text-secondary text-muted-foreground">暂无反馈数据</div>
+            <div className="text-body-sm text-muted-foreground">暂无反馈数据</div>
           )}
         </section>
 
@@ -1352,7 +1352,7 @@ export default function SettingsPage() {
 
       {/* Version Footer */}
       {version && (
-        <div className="mt-8 text-center text-caption text-muted-foreground/60">
+        <div className="mt-8 text-center text-caption text-muted-foreground">
           PanWatch v{version}
         </div>
       )}

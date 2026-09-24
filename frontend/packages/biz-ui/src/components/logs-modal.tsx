@@ -287,7 +287,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
 
         <div className="card p-3 md:p-4 mb-3 space-y-3">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input value={query} onChange={e => handleSearchInput(e.target.value)} placeholder="搜索日志内容 / trace_id / logger..." className="pl-10" />
           </div>
 
@@ -388,7 +388,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
           ) : (
             <div className="card overflow-hidden h-full flex flex-col">
               <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 relative scrollbar">
-                <table className="w-full text-secondary font-mono">
+                <table className="w-full text-body-sm font-mono">
                   <thead className="sticky top-0 bg-card z-10 border-b border-border/50">
                     <tr>
                       <th className="text-left px-4 py-3 text-caption font-semibold text-muted-foreground uppercase tracking-wider w-32">时间</th>
@@ -426,7 +426,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
               </div>
 
               <div className="flex items-center justify-between px-5 py-3 border-t border-border/30">
-                <span className="text-secondary text-muted-foreground">已加载 {logs.length} / {total}</span>
+                <span className="text-body-sm text-muted-foreground">已加载 {logs.length} / {total}</span>
                 <Button
                   variant="ghost"
                   size="sm"

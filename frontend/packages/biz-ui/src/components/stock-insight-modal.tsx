@@ -1104,7 +1104,7 @@ export default function StockInsightModal(props: {
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
                   <span className={`text-mini px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
                   <span className="break-all">{resolvedName}</span>
-                  <span className="font-mono text-secondary text-muted-foreground">({symbol})</span>
+                  <span className="font-mono text-body-sm text-muted-foreground">({symbol})</span>
                 </DialogTitle>
                 <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
               </div>
@@ -1251,7 +1251,7 @@ export default function StockInsightModal(props: {
                         {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                       </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-secondary">
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-body-sm">
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">今开</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">最高</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-mini text-muted-foreground">最低</div><div className={`font-mono ${levelColor(quote?.low_price)}`}>{formatNumber(quote?.low_price)}</div></div>
@@ -1265,7 +1265,7 @@ export default function StockInsightModal(props: {
                     <div className="mt-3 border-t border-border/50 pt-3">
                       <div className="text-caption text-muted-foreground mb-2">持仓信息</div>
                       {holdingAgg ? (
-                        <div className="grid grid-cols-2 gap-2 text-secondary">
+                        <div className="grid grid-cols-2 gap-2 text-body-sm">
                           <div className="rounded bg-stock-down/10 px-2 py-1.5">
                             <div className="text-mini text-muted-foreground">持仓数量</div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
@@ -1311,9 +1311,9 @@ export default function StockInsightModal(props: {
                   </div>
 
                   <div className="card p-4 h-full">
-                    <div className="text-secondary text-muted-foreground mb-2">迷你K线</div>
+                    <div className="text-body-sm text-muted-foreground mb-2">迷你K线</div>
                     {!klineSummary ? (
-                      <div className="text-secondary text-muted-foreground py-8">暂无K线摘要</div>
+                      <div className="text-body-sm text-muted-foreground py-8">暂无K线摘要</div>
                     ) : (
                       <>
                         {miniKlineLoading ? (
@@ -1379,7 +1379,7 @@ export default function StockInsightModal(props: {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-secondary text-muted-foreground">AI建议</div>
+                      <div className="text-body-sm text-muted-foreground">AI建议</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('suggestions')}>
                         更多
                       </Button>
@@ -1419,7 +1419,7 @@ export default function StockInsightModal(props: {
                         <div className="text-mini text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? '正在自动生成 AI 建议...' : ''}</div>
                       </div>
                     ) : (
-                      <div className="text-secondary text-muted-foreground py-6">
+                      <div className="text-body-sm text-muted-foreground py-6">
                         {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无 AI 建议'}
                       </div>
                     )}
@@ -1427,14 +1427,14 @@ export default function StockInsightModal(props: {
 
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-secondary text-muted-foreground">新闻</div>
+                      <div className="text-body-sm text-muted-foreground">新闻</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('news')}>
                         更多
                       </Button>
                     </div>
                     <div className="flex-1 space-y-2">
                       {news.length === 0 ? (
-                        <div className="text-secondary text-muted-foreground py-6">暂无相关新闻</div>
+                        <div className="text-body-sm text-muted-foreground py-6">暂无相关新闻</div>
                       ) : (
                         news.slice(0, 3).map((item, idx) => (
                           <a
@@ -1444,7 +1444,7 @@ export default function StockInsightModal(props: {
                             rel="noreferrer"
                             className="block rounded-lg border border-border/30 bg-accent/10 p-2.5 hover:bg-accent/20 transition-colors"
                           >
-                            <div className="text-secondary text-foreground line-clamp-2">{item.title}</div>
+                            <div className="text-body-sm text-foreground line-clamp-2">{item.title}</div>
                             <div className="mt-1 text-mini text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
                           </a>
                         ))
@@ -1453,20 +1453,20 @@ export default function StockInsightModal(props: {
                   </div>
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="text-secondary text-muted-foreground">AI报告</div>
+                      <div className="text-body-sm text-muted-foreground">AI报告</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-caption text-muted-foreground" onClick={() => setTab('reports')}>
                         更多
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="text-secondary text-muted-foreground py-3">暂无报告</div>
+                      <div className="text-body-sm text-muted-foreground py-3">暂无报告</div>
                     ) : (
                       <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
                         <div className="text-caption text-muted-foreground">
                           {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
                         </div>
                         <div className="mt-1 text-body font-medium line-clamp-1">{latestReport.title || '报告摘要'}</div>
-                        <div className="mt-1 text-secondary text-foreground/90 line-clamp-3">
+                        <div className="mt-1 text-body-sm text-foreground line-clamp-3">
                           {markdownToPlainText(latestReport.content) || '暂无报告内容'}
                         </div>
                       </div>
@@ -1508,7 +1508,7 @@ export default function StockInsightModal(props: {
                   </div>
                 </div>
                 {!activeReport ? (
-                  <div className="card p-6 text-secondary text-muted-foreground text-center">暂无报告</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无报告</div>
                 ) : (
                   <div className="card p-4 space-y-3">
                     <div className="text-caption text-muted-foreground">
@@ -1521,13 +1521,13 @@ export default function StockInsightModal(props: {
                       </div>
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground break-words">
                         <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
                       </div>
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
                       <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-secondary text-muted-foreground select-none">查看分析上下文</summary>
+                        <summary className="cursor-pointer text-body-sm text-muted-foreground select-none">查看分析上下文</summary>
                         {activeReport.prompt_stats ? (
                           <div className="mt-2">
                             <div className="text-caption text-muted-foreground mb-1">Prompt统计</div>
@@ -1596,7 +1596,7 @@ export default function StockInsightModal(props: {
             {tab === 'suggestions' && (
               <div className="space-y-3">
                 <div className="card p-3 flex items-center justify-between gap-3">
-                  <div className="text-secondary text-muted-foreground">显示过期建议</div>
+                  <div className="text-body-sm text-muted-foreground">显示过期建议</div>
                   <div className="flex items-center gap-2">
                     <span className="text-caption text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
                     <Switch
@@ -1615,7 +1615,7 @@ export default function StockInsightModal(props: {
                       </div>
                     </div>
                   ) : (
-                    <div className="card p-6 text-secondary text-muted-foreground text-center">
+                    <div className="card p-6 text-body-sm text-muted-foreground text-center">
                       {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无建议'}
                     </div>
                   )
@@ -1635,7 +1635,7 @@ export default function StockInsightModal(props: {
               <div className="space-y-3">
                 <div className="flex items-center justify-end">
                   <Select value={newsHours} onValueChange={setNewsHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-secondary">
+                    <SelectTrigger className="h-8 w-[110px] text-body-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1648,7 +1648,7 @@ export default function StockInsightModal(props: {
                   </Select>
                 </div>
                 {news.length === 0 ? (
-                  <div className="card p-6 text-secondary text-muted-foreground text-center">暂无相关新闻</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无相关新闻</div>
                 ) : (
                   news.map((item, idx) => (
                     <a
@@ -1673,7 +1673,7 @@ export default function StockInsightModal(props: {
               <div className="space-y-3">
                 <div className="flex items-center justify-end">
                   <Select value={announcementHours} onValueChange={setAnnouncementHours}>
-                    <SelectTrigger className="h-8 w-[110px] text-secondary">
+                    <SelectTrigger className="h-8 w-[110px] text-body-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1689,7 +1689,7 @@ export default function StockInsightModal(props: {
                   </Select>
                 </div>
                 {announcements.length === 0 ? (
-                  <div className="card p-6 text-secondary text-muted-foreground text-center">暂无公告</div>
+                  <div className="card p-6 text-body-sm text-muted-foreground text-center">暂无公告</div>
                 ) : (
                   announcements.map((item, idx) => (
                     <a

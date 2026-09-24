@@ -52,11 +52,11 @@ export default {
           down: 'hsl(var(--stock-down) / <alpha-value>)',
         },
       },
-      // 字阶（不绑定行高，与原任意值等价替换）：mini10 / caption11 / secondary12 / body13 / body-lg14 / title16 / heading18 / headline20 / display24
+      // 字阶（不绑定行高，与原任意值等价替换）：mini10 / caption11 / body-sm12 / body13 / body-lg14 / title16 / heading18 / headline20 / display24
       fontSize: {
         mini: '10px',
         caption: '11px',
-        secondary: '12px',
+        'body-sm': '12px',
         body: '13px',
         'body-lg': '14px',
         title: '16px',

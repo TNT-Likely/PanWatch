@@ -59,7 +59,7 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
               {decisionStatus}
             </p>
           ) : approval.expires_at && (
-            <p className="mt-1.5 text-caption text-muted-foreground/80">
+            <p className="mt-1.5 text-caption text-muted-foreground">
               请在 {new Date(approval.expires_at).toLocaleString()} 前决定
             </p>
           )}
@@ -70,7 +70,7 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
                 type="button"
                 onClick={() => void decide('approved')}
                 disabled={disabled}
-                className="rounded-lg bg-primary px-2.5 py-1.5 text-secondary font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-primary px-2.5 py-1.5 text-body-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {decision === 'approved' ? '提交中…' : '本次允许'}
               </button>
@@ -78,7 +78,7 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
                 type="button"
                 onClick={() => void decide('rejected')}
                 disabled={disabled}
-                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-secondary font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-body-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {decision === 'rejected' ? '提交中…' : '拒绝'}
               </button>

@@ -73,7 +73,7 @@ function ItemRow({ item }: { item: CheckRow }) {
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <StatusBadge status={item.status} />
-          <span className="truncate text-secondary font-medium text-foreground">{item.name}</span>
+          <span className="truncate text-body-sm font-medium text-foreground">{item.name}</span>
         </div>
         <span className="flex-shrink-0 font-mono text-caption text-muted-foreground">
           {item.status === 'checking' ? '…' : `${item.latency_ms}ms`}
@@ -82,7 +82,7 @@ function ItemRow({ item }: { item: CheckRow }) {
       {item.status === 'fail' && (
         <div className="mt-1.5 space-y-1">
           {item.error && (
-            <p className="truncate text-caption text-muted-foreground/70" title={item.error}>
+            <p className="truncate text-caption text-muted-foreground" title={item.error}>
               {item.error}
             </p>
           )}
@@ -90,7 +90,7 @@ function ItemRow({ item }: { item: CheckRow }) {
         </div>
       )}
       {item.status !== 'fail' && item.status !== 'checking' && item.note && (
-        <p className="mt-1.5 text-caption text-muted-foreground/70">{item.note}</p>
+        <p className="mt-1.5 text-caption text-muted-foreground">{item.note}</p>
       )}
     </div>
   )
@@ -192,7 +192,7 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
     if (catRows.length === 0) return null
     return (
       <div key={cat} className="rounded-xl border border-border/40 bg-accent/20 p-3">
-        <div className="mb-2 text-secondary font-semibold text-foreground">
+        <div className="mb-2 text-body-sm font-semibold text-foreground">
           {CATEGORY_LABELS[cat] ?? cat}
         </div>
         {cat === 'ai' ? (
@@ -231,7 +231,7 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
             <div className="text-body font-semibold">
               {running ? '正在检查…' : finished ? '检查完成' : '准备检查'}
             </div>
-            <div className="text-secondary font-mono opacity-90">{progress}%</div>
+            <div className="text-body-sm font-mono opacity-90">{progress}%</div>
           </div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/25">
             <div
@@ -262,7 +262,7 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
 
         {/* 操作区 */}
         <div className="mt-4 flex items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-secondary text-muted-foreground cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-body-sm text-muted-foreground cursor-pointer select-none">
             <Switch checked={notifySend} disabled={running} onCheckedChange={setNotifySend} />
             含真实发送通知
           </label>
@@ -272,9 +272,9 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
           </Button>
         </div>
 
-        {listError && <div className="mt-3 text-secondary text-stock-up">{listError}</div>}
+        {listError && <div className="mt-3 text-body-sm text-stock-up">{listError}</div>}
         {!listError && total === 0 && !running && (
-          <div className="mt-4 rounded-xl border border-border/40 bg-accent/20 p-4 text-center text-secondary text-muted-foreground">
+          <div className="mt-4 rounded-xl border border-border/40 bg-accent/20 p-4 text-center text-body-sm text-muted-foreground">
             未配置 数据源 / AI / 通知,先去设置里配置后再自检。
           </div>
         )}

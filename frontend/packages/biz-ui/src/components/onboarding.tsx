@@ -82,7 +82,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                   </div>
                   <div>
                     <p className="text-body font-medium text-foreground">实时行情监控</p>
-                    <p className="text-secondary text-muted-foreground">跟踪自选股价格变动，快速发现异动</p>
+                    <p className="text-body-sm text-muted-foreground">跟踪自选股价格变动，快速发现异动</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -91,7 +91,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                   </div>
                   <div>
                     <p className="text-body font-medium text-foreground">AI 智能分析</p>
-                    <p className="text-secondary text-muted-foreground">盘后日报、异动建议、技术分析</p>
+                    <p className="text-body-sm text-muted-foreground">盘后日报、异动建议、技术分析</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -100,7 +100,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                   </div>
                   <div>
                     <p className="text-body font-medium text-foreground">智能通知推送</p>
-                    <p className="text-secondary text-muted-foreground">Telegram、企业微信等多渠道推送</p>
+                    <p className="text-body-sm text-muted-foreground">Telegram、企业微信等多渠道推送</p>
                   </div>
                 </div>
               </div>
@@ -112,7 +112,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
               </div>
               <button
                 onClick={handleSkip}
-                className="mt-3 text-secondary text-muted-foreground hover:text-foreground transition-colors"
+                className="mt-3 text-body-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 跳过引导
               </button>
@@ -146,7 +146,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 </div>
               </div>
 
-              <p className="text-secondary text-muted-foreground mb-4">
+              <p className="text-body-sm text-muted-foreground mb-4">
                 支持 OpenAI、智谱、DeepSeek 等服务商
               </p>
 
@@ -188,7 +188,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 </div>
               </div>
 
-              <p className="text-secondary text-muted-foreground mb-4">
+              <p className="text-body-sm text-muted-foreground mb-4">
                 支持 Telegram、企业微信等渠道
               </p>
 
