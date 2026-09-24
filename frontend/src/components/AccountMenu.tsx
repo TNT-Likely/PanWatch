@@ -18,8 +18,8 @@ const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; label: string }[] = [
 ]
 
 interface AccountMenuProps {
-  /** 原“更多”里折叠的导航项(Agent / 历史 / 数据源 / 设置)。 */
-  navItems: AccountNavItem[]
+  /** 可选导航项（导航已由桌面侧边栏 / 移动抽屉接管，保留参数兼容旧用法）。 */
+  navItems?: AccountNavItem[]
   mode: ThemeMode
   onSetMode: (m: ThemeMode) => void
   /** 打开「系统自检」弹窗(状态由上层 App 托管,避免桌面/移动两个实例重复)。 */
@@ -94,8 +94,8 @@ export default function AccountMenu({
         // top-full + pt-2:用透明内边距桥接头像与菜单,hover 移入不断开
         <div className="absolute right-0 top-full pt-2 z-50">
           <div className="w-48 rounded-xl border border-border/60 bg-card/95 backdrop-blur p-1.5 shadow-xl">
-          {/* 原“更多”导航 */}
-          {navItems.map(({ to, icon: Icon, label }) => {
+          {/* 可选导航项（导航已由侧边栏/抽屉接管时为空） */}
+          {(navItems ?? []).map(({ to, icon: Icon, label }) => {
             const isActive = location.pathname.startsWith(to)
             return (
               <NavLink
@@ -114,7 +114,7 @@ export default function AccountMenu({
             )
           })}
 
-          <div className="my-1 h-px bg-border/50" />
+          {(navItems?.length ?? 0) > 0 && <div className="my-1 h-px bg-border/50" />}
 
           {/* 主题色:亮 / 暗 / 跟随系统 */}
           <div className="px-2.5 pt-0.5 pb-1 text-caption text-muted-foreground">主题</div>
