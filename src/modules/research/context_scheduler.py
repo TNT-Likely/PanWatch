@@ -36,6 +36,7 @@ class ContextMaintenanceScheduler:
         self._evaluating = False
         self._cleaning = False
         self._refreshing = False
+        self._sector_collecting = False
 
     async def _evaluate_job(self):
         if self._evaluating:
@@ -252,6 +253,71 @@ class ContextMaintenanceScheduler:
         except Exception as e:  # refresh 内部已兜异常,这里只防意外
             logger.exception(f"[上下文维护] 交易日历刷新异常: {e}")
 
+    async def _premarket_sector_collect_job(self):
+        """每日 15:35 盘后预采集:行业快照 + 宏观指标缓存。
+
+        - 交易日守卫:A 股休市日直接跳过(快照没有新数据可采);
+        - 幂等:collect/refresh 均按业务键 upsert,重跑不产生重复行;
+        - 失败重试:指数退避(2s/4s),共 3 次尝试,全部失败只记日志不抛出
+          (下一交易日仍会重试,当日可手动补偿)。
+        """
+        import asyncio as _aio
+
+        from src.platform.scheduling.trading_calendar import is_trading_day
+
+        if not is_trading_day("CN"):
+            logger.debug("[上下文维护] 非A股交易日，跳过行业预采集")
+            return
+        if self._sector_collecting:
+            logger.debug("[上下文维护] 上一轮行业预采集仍在执行，跳过本轮")
+            return
+        self._sector_collecting = True
+
+        from src.modules.market import sector_data_service
+
+        delays = (2.0, 4.0)  # 指数退避:第2次前2s、第3次前4s
+        snapshot_summary: dict | None = None
+        macro_summary: dict | None = None
+        try:
+            for attempt in range(3):
+                try:
+                    def _collect_once():
+                        from src.platform.persistence.database import SessionLocal
+
+                        db = SessionLocal()
+                        try:
+                            snap = sector_data_service.collect_daily_snapshot(db)
+                            macro = sector_data_service.refresh_macro_cache(db)
+                            return snap, macro
+                        finally:
+                            db.close()
+
+                    snapshot_summary, macro_summary = await _aio.to_thread(_collect_once)
+                    break
+                except Exception as e:
+                    if attempt >= 2:
+                        logger.exception(
+                            "[上下文维护] 行业预采集连续 3 次失败，放弃本轮: %s", e
+                        )
+                        return
+                    wait = delays[attempt]
+                    logger.warning(
+                        "[上下文维护] 行业预采集第 %s 次失败，%ss 后重试: %s",
+                        attempt + 1,
+                        wait,
+                        e,
+                    )
+                    await _aio.sleep(wait)
+            if snapshot_summary or macro_summary:
+                logger.info(
+                    "[上下文维护] 行业预采集完成: boards=%s degraded=%s macro_upserted=%s",
+                    (snapshot_summary or {}).get("upserted", 0),
+                    (snapshot_summary or {}).get("degraded"),
+                    (macro_summary or {}).get("upserted", 0),
+                )
+        finally:
+            self._sector_collecting = False
+
     def start(self):
         self.scheduler.add_job(
             self._evaluate_job,
@@ -300,6 +366,19 @@ class ContextMaintenanceScheduler:
                 coalesce=True,
                 max_instances=1,
             )
+        # 盘后预采集 —— 每日 15:35(收盘后):行业快照 + 宏观指标缓存,
+        # 为次日盘前决策引擎预热数据。A股交易日守卫,失败指数退避重试,幂等可重跑。
+        self.scheduler.add_job(
+            self._premarket_sector_collect_job,
+            "cron",
+            hour=15,
+            minute=35,
+            jitter=120,  # 错峰,避免与其它调度同刻写 SQLite
+            id="context_maintenance_premarket_sector_collect",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
         # Run a bootstrap evaluation shortly after startup to warm up outcome stats.
         self.scheduler.add_job(
             self._evaluate_job,
@@ -314,7 +393,7 @@ class ContextMaintenanceScheduler:
         from src.platform.scheduling.scheduler_registry import register
         register("context", self.scheduler)
         logger.info(
-            "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00）",
+            "上下文维护调度器已启动（后验评估间隔 %sh，启动补跑 +15s，快照保留 %s 天，后验保留 %s 天，机会自动刷新 09:15/13:30/22:00，交易日历刷新 03:00，盘后预采集 15:35）",
             self.eval_interval_hours,
             self.snapshot_retention_days,
             self.outcome_retention_days,

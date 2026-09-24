@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
@@ -32,6 +33,11 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>
 }
 
+function StateProbe() {
+  const location = useLocation()
+  return <output data-testid="location-state">{JSON.stringify(location.state)}</output>
+}
+
 function BackButton() {
   const navigate = useNavigate()
   return <button onClick={() => navigate(-1)}>后退</button>
@@ -46,8 +52,26 @@ function renderAssistant(initialEntry: string | { pathname: string; state?: unkn
         <Route path="/assistant/:conversationId" element={<AssistantPage />} />
       </Routes>
       <LocationProbe />
+      <StateProbe />
       <BackButton />
     </MemoryRouter>
+    ),
+  )
+}
+
+function renderAssistantStrict(initialEntry: string | { pathname: string; state?: unknown }) {
+  return render(
+    (
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/assistant/:conversationId" element={<AssistantPage />} />
+        </Routes>
+        <LocationProbe />
+        <StateProbe />
+      </MemoryRouter>
+    </StrictMode>
     ),
   )
 }
@@ -129,5 +153,62 @@ describe('assistant conversation routing', () => {
       initial_context: '行情上下文',
     }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/assistant/3'))
+  })
+
+  it('creates only one conversation under StrictMode double-invoked effects', async () => {
+    // 回归:StrictMode 对挂载 effect 执行「跑→cleanup→再跑」,旧实现无防重入守卫,
+    // 会一次点击建出两个会话(第一个因 cleanup 丢弃响应沦为孤儿)。
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 3,
+      title: '',
+      stock_symbol: '600519',
+      stock_market: 'CN',
+      created_at: '2026-09-12T00:00:00Z',
+    })
+
+    renderAssistantStrict({
+      pathname: '/assistant',
+      state: {
+        assistantContext: {
+          symbol: '600519',
+          market: 'CN',
+          stockName: '贵州茅台',
+          pageContext: '行情上下文',
+        },
+      },
+    })
+
+    await waitFor(() => expect(chatApi.createConversation).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/assistant/3'))
+    // 让所有微任务排空后,严格断言只创建了一次
+    await new Promise((r) => setTimeout(r, 0))
+    expect(chatApi.createConversation).toHaveBeenCalledTimes(1)
+  })
+
+  it('strips the handoff state after consumption so remounts cannot re-create', async () => {
+    vi.mocked(chatApi.createConversation).mockResolvedValue({
+      id: 3,
+      title: '',
+      stock_symbol: '600519',
+      stock_market: 'CN',
+      created_at: '2026-09-12T00:00:00Z',
+    })
+
+    renderAssistant({
+      pathname: '/assistant',
+      state: {
+        assistantContext: {
+          symbol: '600519',
+          market: 'CN',
+          stockName: '贵州茅台',
+          pageContext: '行情上下文',
+        },
+      },
+    })
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/assistant/3'))
+    await waitFor(() =>
+      expect(screen.getByTestId('location-state').textContent).toBe('null'),
+    )
   })
 })

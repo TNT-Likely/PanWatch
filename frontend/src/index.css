@@ -4,51 +4,64 @@
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 220 20% 10%;
+    /* 中性色板：明亮效率风（Linear 质感）· 亮色 */
+    --background: 0 0% 100%;
+    --foreground: 240 6% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 240 6% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
+    --popover-foreground: 240 6% 7%;
     --primary: 234 85% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 94%;
-    --secondary-foreground: 220 15% 40%;
-    --muted: 220 15% 94%;
-    --muted-foreground: 220 10% 50%;
-    --accent: 220 15% 92%;
-    --accent-foreground: 220 20% 10%;
+    --secondary: 240 6% 96%;
+    --secondary-foreground: 240 6% 30%;
+    --muted: 240 6% 96%;
+    --muted-foreground: 240 4% 40%;
+    --accent: 240 6% 94%;
+    --accent-foreground: 240 6% 7%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --success: 152 60% 42%;
     --success-foreground: 0 0% 100%;
-    --border: 220 15% 90%;
-    --input: 220 15% 90%;
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+    /* 涨跌语义色：A股口径 红涨绿跌（与 destructive/success 语义解耦，港美股口径切换预留） */
+    --stock-up: 0 72% 51%;
+    --stock-down: 152 70% 29%;
+    --border: 240 6% 91%;
+    --border-strong: 240 6% 84%;
+    --input: 240 6% 91%;
     --ring: 234 85% 55%;
-    --radius: 0.75rem;
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 224 20% 6%;
-    --foreground: 220 15% 90%;
-    --card: 224 20% 10%;
-    --card-foreground: 220 15% 90%;
-    --popover: 224 20% 10%;
-    --popover-foreground: 220 15% 90%;
+    /* Linear 深灰 · 按语义令牌重调（非反色） */
+    --background: 240 6% 8%;
+    --foreground: 240 6% 93%;
+    --card: 240 5% 10%;
+    --card-foreground: 240 6% 93%;
+    --popover: 240 5% 11%;
+    --popover-foreground: 240 6% 93%;
     --primary: 234 85% 62%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 224 15% 15%;
-    --secondary-foreground: 220 15% 70%;
-    --muted: 224 15% 15%;
-    --muted-foreground: 220 10% 50%;
-    --accent: 224 15% 18%;
-    --accent-foreground: 220 15% 90%;
-    --destructive: 0 60% 45%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 240 6% 75%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 58%;
+    --accent: 240 5% 17%;
+    --accent-foreground: 240 6% 93%;
+    --destructive: 0 65% 55%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 50% 38%;
+    --success: 152 55% 45%;
     --success-foreground: 0 0% 100%;
-    --border: 224 15% 16%;
-    --input: 224 15% 18%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 6% 8%;
+    --stock-up: 0 100% 71%;
+    --stock-down: 142 69% 58%;
+    --border: 240 5% 16%;
+    --border-strong: 240 5% 24%;
+    --input: 240 5% 18%;
     --ring: 234 85% 62%;
   }
 }
@@ -65,11 +78,15 @@
   code, .font-mono {
     font-family: "SF Mono", "Cascadia Code", "Source Code Pro", ui-monospace, monospace;
   }
+  /* 数字排版：等宽数字，行情/金额场景统一使用 */
+  .tabular-nums, .font-mono, code {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer components {
   .card {
-    @apply bg-card rounded-xl border border-border/60 shadow-[0_1px_0_hsl(var(--border)/0.35)];
+    @apply bg-card rounded-xl border border-border/60 shadow-[0_1px_2px_rgba(16,17,20,0.04)];
   }
   .card-hover {
     @apply bg-card rounded-xl border border-border/60 hover:border-primary/30 hover:shadow-[0_10px_30px_-26px_hsl(var(--primary)/0.55)] transition-all;
@@ -78,13 +95,13 @@
     @apply rounded-xl border border-border/40 bg-accent/20;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-[13px] font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-body font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground border border-border rounded-lg text-[13px] font-medium hover:bg-secondary/80 active:scale-[0.98] transition-all;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground border border-border rounded-lg text-body font-medium hover:bg-secondary/80 active:scale-[0.98] transition-all;
   }
   .input-field {
-    @apply w-full h-10 px-3 rounded-lg border border-border bg-background text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
+    @apply w-full h-10 px-3 rounded-lg border border-border bg-background text-body placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
   }
 }
 

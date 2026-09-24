@@ -457,24 +457,37 @@ async def curate_today(req: CurateRequest, db: Session = Depends(get_db)):
 
 @router.get("/brief")
 def get_brief(type: str = Query("eod", description="premarket | eod"), db: Session = Depends(get_db)):
-    """盘前/盘后 AI 简报(复用 premarket_outlook / daily_report agent 的最新报告)。"""
-    agent = "premarket_outlook" if type == "premarket" else "daily_report"
-    label = "盘前分析" if type == "premarket" else "收盘复盘"
-    row = (
-        db.query(AnalysisHistory)
-        .filter(AnalysisHistory.agent_name == agent)
-        .order_by(
-            AnalysisHistory.analysis_date.desc(),
-            AnalysisHistory.updated_at.desc(),
-            AnalysisHistory.id.desc(),
+    """盘前/盘后 AI 简报。
+
+    premarket 优先取盘前决策流水线(premarket_pipeline)的最新报告,
+    无该 agent 记录时回退 premarket_outlook;eod 仍取 daily_report。
+    """
+    if type == "premarket":
+        agents = ("premarket_pipeline", "premarket_outlook")
+        labels = {"premarket_pipeline": "盘前决策", "premarket_outlook": "盘前分析"}
+    else:
+        agents = ("daily_report",)
+        labels = {"daily_report": "收盘复盘"}
+    row = None
+    for agent in agents:  # 严格优先级:前一个 agent 无记录才回退下一个
+        row = (
+            db.query(AnalysisHistory)
+            .filter(AnalysisHistory.agent_name == agent)
+            .order_by(
+                AnalysisHistory.analysis_date.desc(),
+                AnalysisHistory.updated_at.desc(),
+                AnalysisHistory.id.desc(),
+            )
+            .first()
         )
-        .first()
-    )
+        if row:
+            break
     if not row:
-        return {"empty": True, "type": type, "agent_label": label}
+        return {"empty": True, "type": type, "agent_label": labels[agents[0]]}
     return {
         "type": type,
-        "agent_label": label,
+        "agent_name": row.agent_name or "",
+        "agent_label": labels.get(row.agent_name) or labels[agents[0]],
         "title": row.title or "",
         "content": row.content or "",
         "date": row.analysis_date or "",

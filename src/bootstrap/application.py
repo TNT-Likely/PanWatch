@@ -27,11 +27,13 @@ from src.modules.assistant.task_runner import assistant_task_runner
 from src.modules.automation.api import agents, suggestions, templates
 from src.modules.market.api import (
     discovery,
+    event_calendar,
     klines,
     market,
     news,
     price_alerts,
     quotes,
+    sectors,
     stocks,
 )
 from src.modules.paper_trading.api import paper_trading
@@ -151,6 +153,18 @@ app.include_router(
     price_alerts.router,
     prefix="/api/price-alerts",
     tags=["price-alerts"],
+    dependencies=protected,
+)
+app.include_router(
+    event_calendar.router,
+    prefix="/api/event-calendar",
+    tags=["event-calendar"],
+    dependencies=protected,
+)
+app.include_router(
+    sectors.router,
+    prefix="/api/sectors",
+    tags=["sectors"],
     dependencies=protected,
 )
 app.include_router(

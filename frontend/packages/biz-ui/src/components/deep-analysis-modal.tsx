@@ -43,9 +43,9 @@ const STAGE_LABEL: Record<string, string> = {
 }
 
 const DECISION_COLOR: Record<string, string> = {
-  buy: 'text-emerald-600 dark:text-emerald-400',
+  buy: 'text-stock-down dark:text-stock-down',
   hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-rose-600 dark:text-rose-400',
+  sell: 'text-stock-up dark:text-stock-up',
 }
 
 const POLL_INTERVAL_MS = 2000
@@ -369,10 +369,10 @@ export function DeepAnalysisModal({
         />}
 
         {stage === 'error' && (
-          <div className="space-y-3 text-[13px]">
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-rose-600">
+          <div className="space-y-3 text-body">
+            <div className="rounded-lg bg-stock-up/10 border border-stock-up/30 p-3 text-stock-up">
               <div className="font-semibold mb-1">分析失败</div>
-              <div className="text-[12px]">{error}</div>
+              <div className="text-body-sm">{error}</div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>关闭</Button>
@@ -399,13 +399,13 @@ function IdleView({
   const overBudget = budget?.exceeded && budget.over_budget_action === 'reject'
   const est = budget?.estimate_next_run
   return (
-    <div className="space-y-4 text-[13px]">
+    <div className="space-y-4 text-body">
       <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
         <div className="font-medium">即将分析:{stockSymbol}</div>
         <div className="text-muted-foreground">
           调用 4 类分析师(技术 / 情绪 / 新闻 / 基本面) + 看多看空辩论 + 风控 + PM 整合
         </div>
-        <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
+        <div className="text-caption text-muted-foreground mt-2 space-y-0.5">
           <div>⏱ 预计耗时:3-8 分钟</div>
           {est ? (
             <div>💰 预估成本:${est.cost_low_usd.toFixed(2)} - ${est.cost_high_usd.toFixed(2)} ({est.model})</div>
@@ -418,16 +418,16 @@ function IdleView({
 
       {/* 本月预算 */}
       {budget && (
-        <div className={`rounded-lg p-3 text-[12px] ${overBudget ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-accent/20'}`}>
+        <div className={`rounded-lg p-3 text-body-sm ${overBudget ? 'bg-stock-up/10 border border-stock-up/30' : 'bg-accent/20'}`}>
           <div className="flex items-center justify-between">
             <span className="font-medium">本月预算</span>
-            <span className={overBudget ? 'text-rose-600' : 'text-muted-foreground'}>
+            <span className={overBudget ? 'text-stock-up' : 'text-muted-foreground'}>
               ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
               {budget.runs_this_month > 0 && ` · ${budget.runs_this_month} 次`}
             </span>
           </div>
           {overBudget && (
-            <div className="text-[11px] text-rose-600 mt-1">
+            <div className="text-caption text-stock-up mt-1">
               ⚠️ 本月预算已用尽。如需继续,请到「设置 → Agent → TradingAgents」调高 `monthly_budget_usd`。
             </div>
           )}
@@ -456,17 +456,17 @@ function RunningView({
   const stages = progress?.stages ?? []
 
   return (
-    <div className="space-y-4 text-[13px]">
+    <div className="space-y-4 text-body">
       <div className="rounded-lg bg-accent/30 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="inline-block w-3 h-3 rounded-full bg-primary animate-pulse" />
           <span className="font-medium">分析进行中...</span>
-          <span className="ml-auto text-[11px] text-muted-foreground">
+          <span className="ml-auto text-caption text-muted-foreground">
             已用 {formatElapsed(elapsed)} · ${cost.toFixed(4)}
           </span>
         </div>
         {progress?.active_operation && (
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-caption text-muted-foreground">
             {progress.active_operation.agent && (
               <>
                 当前 Agent：<span className="font-mono">{progress.active_operation.agent}</span> ·{' '}
@@ -480,10 +480,10 @@ function RunningView({
           {stages.length > 0 ? stages.map((s) => (
             <StageRow key={s.name} stage={s} />
           )) : (
-            <div className="text-[12px] text-muted-foreground">准备中...</div>
+            <div className="text-body-sm text-muted-foreground">准备中...</div>
           )}
         </div>
-        <div className="text-[10px] text-muted-foreground/70 mt-3 font-mono">
+        <div className="text-mini text-muted-foreground mt-3 font-mono">
           trace_id: {traceId.slice(0, 16)}...
         </div>
       </div>
@@ -524,12 +524,12 @@ function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] 
   const statusClasses: Record<ProgressDataSource['status'], string> = {
     pending: 'text-muted-foreground',
     running: 'text-sky-600 dark:text-sky-400',
-    done: 'text-emerald-600 dark:text-emerald-400',
+    done: 'text-stock-down dark:text-stock-down',
     error: 'text-amber-600 dark:text-amber-400',
   }
 
   return (
-    <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]">
+    <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-body-sm">
       <div className="font-medium mb-1">数据准备明细</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {sources.map((source) => (
@@ -578,36 +578,36 @@ export function ToolkitDiagnostics({
   const total = hit + miss + pass + fall + err
 
   const ACTION_CLS: Record<string, string> = {
-    HIT: 'text-emerald-600 dark:text-emerald-400',
+    HIT: 'text-stock-down dark:text-stock-down',
     MISS: 'text-amber-600 dark:text-amber-400',
     PASSTHROUGH: 'text-sky-600 dark:text-sky-400',
     FALLTHROUGH: 'text-orange-600 dark:text-orange-400',
-    ERROR: 'text-rose-600',
+    ERROR: 'text-stock-up',
   }
 
   return (
-    <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]" open={defaultOpen}>
+    <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-body-sm" open={defaultOpen}>
       <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
         <span className="font-medium">数据注入诊断</span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           (PanWatch 数据 → TradingAgents 工具)
         </span>
-        <span className="ml-auto text-[11px] whitespace-nowrap">
+        <span className="ml-auto text-caption whitespace-nowrap">
           <span className={ACTION_CLS.HIT}>HIT {hit}</span>
           <span className="text-muted-foreground"> · MISS {miss}</span>
           <span className={ACTION_CLS.PASSTHROUGH}> · 透传 {pass}</span>
           {fall > 0 && <span className={ACTION_CLS.FALLTHROUGH}> · 兜底 {fall}</span>}
-          {err > 0 && <span className="text-rose-600"> · 错误 {err}</span>}
+          {err > 0 && <span className="text-destructive"> · 错误 {err}</span>}
         </span>
       </summary>
-      <div className="text-[10.5px] text-muted-foreground/80 mt-2 leading-relaxed">
+      <div className="text-mini text-muted-foreground mt-2 leading-relaxed">
         <span className={ACTION_CLS.HIT}>HIT</span>: 用 PanWatch 数据 ·{' '}
         <span className={ACTION_CLS.MISS}>MISS</span>: 命中但 PanWatch 未实现 ·{' '}
         <span className={ACTION_CLS.PASSTHROUGH}>透传</span>: 非 A 股直接走上游 vendor ·{' '}
         <span className={ACTION_CLS.FALLTHROUGH}>兜底</span>: A 股但 cache 为空,走了上游
       </div>
       {total === 0 ? (
-        <div className="text-[11px] text-muted-foreground mt-2">
+        <div className="text-caption text-muted-foreground mt-2">
           ⚠️ 还没有任何工具调用记录(可能 TradingAgents 还在准备阶段)。
         </div>
       ) : (
@@ -615,7 +615,7 @@ export function ToolkitDiagnostics({
           {recent.map((h, i) => {
             const action = (h.action || '').toUpperCase()
             const row = (
-              <div className="font-mono text-[10.5px] flex items-center gap-2 hover:bg-accent/30 px-1 rounded cursor-help w-full">
+              <div className="font-mono text-mini flex items-center gap-2 hover:bg-accent/30 px-1 rounded cursor-help w-full">
                 <span className={`${ACTION_CLS[action] || 'text-muted-foreground'} w-20 shrink-0`}>
                   {action}
                 </span>
@@ -623,7 +623,7 @@ export function ToolkitDiagnostics({
                   {h.method} ({h.symbol || '-'})
                   {h.reason && <span className="text-muted-foreground"> · {h.reason}</span>}
                   {h.chars != null && <span className="text-muted-foreground"> · {h.chars} 字符</span>}
-                  {h.source && <span className="text-muted-foreground/70"> · {h.source}</span>}
+                  {h.source && <span className="text-muted-foreground"> · {h.source}</span>}
                 </span>
               </div>
             )
@@ -639,22 +639,22 @@ export function ToolkitDiagnostics({
                     <span className={ACTION_CLS[action] || 'text-muted-foreground'}>{action}</span>
                     <span className="text-muted-foreground"> · {h.method}({h.symbol || '-'})</span>
                     {h.source && (
-                      <span className="text-muted-foreground/70"> · {h.source}</span>
+                      <span className="text-muted-foreground"> · {h.source}</span>
                     )}
                   </span>
                 }
                 content={
                   <div className="space-y-2">
                     {h.reason && (
-                      <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                      <div className="text-caption text-amber-600 dark:text-amber-400">
                         {h.reason}
                       </div>
                     )}
                     {h.snippet && (
-                      <pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] leading-snug bg-accent/30 rounded p-2 text-foreground/85 max-h-[60vh] overflow-y-auto">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-mini leading-snug bg-accent/30 rounded p-2 text-foreground max-h-[60vh] overflow-y-auto">
                         {h.snippet}
                         {h.chars != null && h.chars > h.snippet.length && (
-                          <span className="text-muted-foreground/60">
+                          <span className="text-muted-foreground">
                             {'\n\n'}...(共 {h.chars} 字符,仅展示前 {h.snippet.length})
                           </span>
                         )}
@@ -680,16 +680,16 @@ function StageRow({ stage }: { stage: ProgressStage }) {
     stage.status === 'done' ? '✓' : stage.status === 'running' ? '🔄' : '⏸'
   const cls =
     stage.status === 'done'
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-stock-down dark:text-stock-down'
       : stage.status === 'running'
       ? 'text-primary'
-      : 'text-muted-foreground/60'
+      : 'text-muted-foreground'
   return (
-    <div className={`flex items-center gap-2 text-[12px] ${cls}`}>
+    <div className={`flex items-center gap-2 text-body-sm ${cls}`}>
       <span className="w-4">{icon}</span>
       <span>{label}</span>
       {stage.cost_usd ? (
-        <span className="ml-auto text-[10px] opacity-70 font-mono">
+        <span className="ml-auto text-mini opacity-70 font-mono">
           ${stage.cost_usd.toFixed(4)}
         </span>
       ) : null}
@@ -726,11 +726,11 @@ function DoneView({
     : new Date().toISOString().slice(0, 10)
 
   return (
-    <div className="space-y-4 text-[13px]">
+    <div className="space-y-4 text-body">
       {fromCache && (
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[12px] text-amber-700 dark:text-amber-400 flex items-center justify-between">
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-body-sm text-amber-700 dark:text-amber-400 flex items-center justify-between">
           <span>ℹ️ 当日缓存:今天已经分析过这只股票,展示缓存结果(无新成本)</span>
-          <Button variant="outline" size="sm" onClick={onRerun} className="ml-3 h-7 text-[11px]">
+          <Button variant="outline" size="sm" onClick={onRerun} className="ml-3 h-7 text-caption">
             忽略缓存重新分析
           </Button>
         </div>
@@ -738,21 +738,21 @@ function DoneView({
 
       {/* 顶层摘要(精简成一行:决策 + 置信度 + 成本;完整理由在"最终决策" tab) */}
       <div className="rounded-lg bg-accent/30 px-4 py-2.5 flex items-center gap-3 flex-wrap">
-        <span className={`text-[18px] font-bold ${DECISION_COLOR[sug.action] || ''}`}>
+        <span className={`text-heading font-bold ${DECISION_COLOR[sug.action] || ''}`}>
           {sug.action_label}
         </span>
-        <span className="text-[12px] text-muted-foreground">
+        <span className="text-body-sm text-muted-foreground">
           置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
         </span>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 text-[11px] ml-auto"
+          className="h-7 text-caption ml-auto"
           onClick={() => window.open(`/analysis/${stockSymbol}/${analysisDate}`, '_blank')}
         >
           查看详细页
         </Button>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-mini text-muted-foreground">
           成本:${costUsd?.toFixed(4) ?? '-'}
         </span>
       </div>
@@ -769,7 +769,7 @@ function DoneView({
       )}
 
       {/* 免责声明 */}
-      <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
+      <div className="text-mini text-muted-foreground italic border-t border-border/30 pt-2">
         本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
         投资有风险,决策需自主判断。
       </div>
@@ -792,7 +792,7 @@ function AnalysisTabs({ sections }: { sections: AnalysisSection[] }) {
         </TabsList>
         {sections.map((s) => (
           <TabsContent key={s.id} value={s.id}>
-            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-[12px] prose-strong:text-foreground">
+            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-body-sm prose-strong:text-foreground">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.markdown}</ReactMarkdown>
             </div>
           </TabsContent>

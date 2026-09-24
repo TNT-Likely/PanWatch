@@ -51,14 +51,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 const ICONS: Record<ToastType, React.ReactNode> = {
-  success: <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />,
-  error: <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />,
+  success: <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />,
+  error: <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />,
   info: <Info className="w-4 h-4 text-primary flex-shrink-0" />,
 }
 
 const BG: Record<ToastType, string> = {
-  success: 'border-emerald-500/20',
-  error: 'border-red-500/20',
+  success: 'border-success/20',
+  error: 'border-destructive/20',
   info: 'border-primary/20',
 }
 
@@ -74,7 +74,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border bg-card shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-all duration-300 max-w-sm ${BG[toast.type]} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
     >
       {ICONS[toast.type]}
-      <span className="text-[13px] text-foreground flex-1">{toast.message}</span>
+      <span className="text-body text-foreground flex-1">{toast.message}</span>
       <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
         <X className="w-3.5 h-3.5" />
       </button>

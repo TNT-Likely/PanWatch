@@ -373,7 +373,7 @@ async def trigger_agent_endpoint(
         # Batch agents can take long; allow caller to choose wait mode.
         if (
             agent_kind == AGENT_KIND_WORKFLOW
-            and agent_name in {"daily_report", "premarket_outlook"}
+            and agent_name in {"daily_report", "premarket_outlook", "premarket_pipeline"}
             and not wait
         ):
             _spawn_async_run(

@@ -89,3 +89,15 @@ class NorthboundVendor(Vendor):
     """北向资金 vendor:fetch 返回 list[NorthboundItem]。市场级(symbols 可空)。"""
 
     pass
+
+
+class GlobalMarketsVendor(Vendor):
+    """全球指数 vendor:fetch 返回 list[GlobalIndexQuote]。市场级(symbols 恒空)。"""
+
+    pass
+
+
+class MacroVendor(Vendor):
+    """宏观指标 vendor:fetch 返回 list[MacroIndicator]。市场级(symbols 恒空)。"""
+
+    pass

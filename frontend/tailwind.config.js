@@ -38,10 +38,32 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        stock: {
-          up: '#E53935',
-          down: '#43A047',
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
         },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--warning-foreground))',
+        },
+        // 涨跌语义色（红涨绿跌，随主题切换亮暗档）：价格/盈亏一律用 stock-up / stock-down
+        stock: {
+          up: 'hsl(var(--stock-up) / <alpha-value>)',
+          down: 'hsl(var(--stock-down) / <alpha-value>)',
+        },
+      },
+      // 字阶（不绑定行高，与原任意值等价替换）：mini10 / caption11 / body-sm12 / body13 / body-lg14 / title16 / heading18 / headline20 / display24
+      fontSize: {
+        mini: '10px',
+        caption: '11px',
+        'body-sm': '12px',
+        body: '13px',
+        'body-lg': '14px',
+        title: '16px',
+        heading: '18px',
+        headline: '20px',
+        display: '24px',
+        'display-lg': '34px',
       },
       borderRadius: {
         lg: 'var(--radius)',

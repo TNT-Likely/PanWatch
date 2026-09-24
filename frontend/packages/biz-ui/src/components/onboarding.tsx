@@ -65,10 +65,10 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
               <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-4">
                 <TrendingUp className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-[20px] font-bold text-foreground mb-2">
+              <h2 className="text-headline font-bold text-foreground mb-2">
                 欢迎使用盯盘侠
               </h2>
-              <p className="text-[14px] text-muted-foreground mb-6">
+              <p className="text-body-lg text-muted-foreground mb-6">
                 {hasStocks
                   ? '你的自选股已就绪，可以开始使用了'
                   : '我们已为你添加了 5 只热门股票作为示例，你可以立即查看实时行情'
@@ -81,8 +81,8 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <TrendingUp className="w-4 h-4 text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">实时行情监控</p>
-                    <p className="text-[12px] text-muted-foreground">跟踪自选股价格变动，快速发现异动</p>
+                    <p className="text-body font-medium text-foreground">实时行情监控</p>
+                    <p className="text-body-sm text-muted-foreground">跟踪自选股价格变动，快速发现异动</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -90,8 +90,8 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <Bot className="w-4 h-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">AI 智能分析</p>
-                    <p className="text-[12px] text-muted-foreground">盘后日报、异动建议、技术分析</p>
+                    <p className="text-body font-medium text-foreground">AI 智能分析</p>
+                    <p className="text-body-sm text-muted-foreground">盘后日报、异动建议、技术分析</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -99,8 +99,8 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <Bell className="w-4 h-4 text-amber-500" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">智能通知推送</p>
-                    <p className="text-[12px] text-muted-foreground">Telegram、企业微信等多渠道推送</p>
+                    <p className="text-body font-medium text-foreground">智能通知推送</p>
+                    <p className="text-body-sm text-muted-foreground">Telegram、企业微信等多渠道推送</p>
                   </div>
                 </div>
               </div>
@@ -112,7 +112,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
               </div>
               <button
                 onClick={handleSkip}
-                className="mt-3 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                className="mt-3 text-body-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 跳过引导
               </button>
@@ -124,29 +124,29 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
               <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto mb-4">
                 <Bot className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-[20px] font-bold text-foreground mb-2">
+              <h2 className="text-headline font-bold text-foreground mb-2">
                 配置 AI 分析
               </h2>
-              <p className="text-[14px] text-muted-foreground mb-4">
+              <p className="text-body-lg text-muted-foreground mb-4">
                 连接 AI 服务后，可获得智能分析功能
               </p>
 
               <div className="space-y-2 text-left mb-6 p-4 rounded-xl bg-accent/30">
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Sparkles className="w-4 h-4 text-primary" />
                   <span className="text-foreground">盘后日报自动分析</span>
                 </div>
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Sparkles className="w-4 h-4 text-primary" />
                   <span className="text-foreground">异动 AI 建议</span>
                 </div>
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Sparkles className="w-4 h-4 text-primary" />
                   <span className="text-foreground">技术图表分析</span>
                 </div>
               </div>
 
-              <p className="text-[12px] text-muted-foreground mb-4">
+              <p className="text-body-sm text-muted-foreground mb-4">
                 支持 OpenAI、智谱、DeepSeek 等服务商
               </p>
 
@@ -166,29 +166,29 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
               <div className="w-16 h-16 rounded-2xl bg-amber-500 flex items-center justify-center mx-auto mb-4">
                 <Bell className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-[20px] font-bold text-foreground mb-2">
+              <h2 className="text-headline font-bold text-foreground mb-2">
                 配置通知渠道
               </h2>
-              <p className="text-[14px] text-muted-foreground mb-4">
+              <p className="text-body-lg text-muted-foreground mb-4">
                 配置后可收到实时推送通知
               </p>
 
               <div className="space-y-2 text-left mb-6 p-4 rounded-xl bg-accent/30">
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Bell className="w-4 h-4 text-amber-500" />
                   <span className="text-foreground">盘中异动提醒</span>
                 </div>
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Bell className="w-4 h-4 text-amber-500" />
                   <span className="text-foreground">AI 分析报告推送</span>
                 </div>
-                <div className="flex items-center gap-2 text-[13px]">
+                <div className="flex items-center gap-2 text-body">
                   <Bell className="w-4 h-4 text-amber-500" />
                   <span className="text-foreground">止盈止损预警</span>
                 </div>
               </div>
 
-              <p className="text-[12px] text-muted-foreground mb-4">
+              <p className="text-body-sm text-muted-foreground mb-4">
                 支持 Telegram、企业微信等渠道
               </p>
 
@@ -205,13 +205,13 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
 
           {step === 'complete' && (
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-stock-down flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-[20px] font-bold text-foreground mb-2">
+              <h2 className="text-headline font-bold text-foreground mb-2">
                 设置完成
               </h2>
-              <p className="text-[14px] text-muted-foreground mb-6">
+              <p className="text-body-lg text-muted-foreground mb-6">
                 你可以随时在「设置」页面修改配置
               </p>
 

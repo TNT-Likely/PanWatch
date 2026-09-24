@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "lightweight-charts": "^4.2.3"
+  },
   "exports": {
     ".": "./src/index.ts"
   }

@@ -22,212 +22,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import AddStockDialog from './portfolio/AddStockDialog'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 
-interface AgentResult {
-  success?: boolean
-  message?: string
-  title: string
-  content: string
-  should_alert: boolean
-  notified: boolean
-  skipped?: boolean
-}
+import {
+  AgentResult,
+  StockAgentInfo,
+  Stock,
+  Account,
+  Position,
+  PortfolioSummary,
+  AgentConfig,
+  SchedulePreview,
+  SearchResult,
+  QuoteRequestItem,
+  QuoteResponse,
+  AccountForm,
+  PositionForm,
+  StockSuggestionData,
+  PoolSuggestion,
+  MarketStatus,
+  NewsItem,
+  PriceAlertRuleSummary,
+  emptyAccountForm,
+} from './portfolio/types'
 
-interface StockAgentInfo {
-  agent_name: string
-  display_name?: string
-  schedule: string
-  ai_model_id: number | null
-  notify_channel_ids: number[]
-}
-
-interface Stock {
-  id: number
-  symbol: string
-  name: string
-  market: string
-  sort_order?: number
-  agents: StockAgentInfo[]
-}
-
-interface Account {
-  id: number
-  name: string
-  available_funds: number
-  enabled: boolean
-}
-
-interface Position {
-  id: number
-  stock_id: number
-  sort_order?: number
-  symbol: string
-  name: string
-  market: string
-  cost_price: number
-  quantity: number
-  invested_amount: number | null
-  trading_style: string  // short: 短线, swing: 波段, long: 长线
-  current_price: number | null
-  current_price_cny: number | null  // 人民币价格（港股换算后）
-  change_pct: number | null
-  market_value: number | null
-  market_value_cny: number | null  // 人民币市值
-  pnl: number | null
-  pnl_pct: number | null
-  daily_pnl: number | null
-  daily_pnl_pct: number | null
-  exchange_rate: number | null  // 汇率（仅港股）
-}
-
-interface AccountSummary {
-  id: number
-  name: string
-  available_funds: number
-  total_market_value: number
-  total_cost: number
-  total_pnl: number
-  total_pnl_pct: number
-  total_daily_pnl: number
-  total_assets: number
-  positions: Position[]
-}
-
-interface PortfolioSummary {
-  accounts: AccountSummary[]
-  total: {
-    total_market_value: number
-    total_cost: number
-    total_pnl: number
-    total_pnl_pct: number
-    total_daily_pnl: number
-    available_funds: number
-    total_assets: number
-  }
-  exchange_rates?: {
-    HKD_CNY: number
-    USD_CNY?: number
-  }
-  quotes?: Record<string, { current_price: number | null; change_pct: number | null }>
-}
-
-interface AgentConfig {
-  name: string
-  display_name: string
-  description: string
-  enabled: boolean
-  schedule: string
-  execution_mode: string  // batch: 批量分析, single: 逐只分析
-}
-
-interface SchedulePreview {
-  schedule: string
-  timezone: string
-  next_runs: string[]
-}
-
-interface SearchResult {
-  symbol: string
-  name: string
-  market: string
-}
-
-interface QuoteRequestItem {
-  symbol: string
-  market: string
-}
-
-interface QuoteResponse {
-  symbol: string
-  market: string
-  current_price: number | null
-  change_pct: number | null
-}
-
-interface StockForm {
-  symbol: string
-  name: string
-  market: string
-}
-
-interface AccountForm {
-  name: string
-  available_funds: string
-}
-
-interface PositionForm {
-  account_id: number
-  stock_id: number
-  cost_price: string
-  quantity: string
-  invested_amount: string
-  trading_style: string
-  // 搜索选中的股票信息（新增持仓时用）
-  stock_symbol: string
-  stock_name: string
-  stock_market: string
-}
-
-// 股票建议信息（来自盘中监控 API）
-interface StockSuggestionData {
-  symbol: string
-  suggestion: SuggestionInfo | null
-  kline: KlineSummary | null
-}
-
-// 建议池中的建议（包含来源和时间信息）
-interface PoolSuggestion {
-  id: number
-  stock_symbol: string
-  stock_market?: string
-  stock_name: string
-  action: string
-  action_label: string
-  signal: string
-  reason: string
-  agent_name: string
-  agent_label: string
-  created_at: string
-  expires_at: string | null
-  is_expired: boolean
-  prompt_context: string
-  ai_response: string
-  meta?: Record<string, any>
-  should_alert?: boolean
-}
-
-interface MarketStatus {
-  code: string
-  name: string
-  status: string
-  status_text: string
-  is_trading: boolean
-  sessions: string[]
-  local_time: string
-}
-
-interface NewsItem {
-  source: string
-  source_label: string
-  external_id: string
-  title: string
-  content: string
-  publish_time: string
-  symbols: string[]
-  importance: number
-  url: string
-}
-
-interface PriceAlertRuleSummary {
-  stock_symbol: string
-  market: string
-  enabled: boolean
-}
-
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
-const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
   const items: QuoteRequestItem[] = []
@@ -443,15 +263,8 @@ export default function StocksPage() {
   const configLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadedRef = useRef(false)
 
-  // Stock form
+  // Stock form（弹窗本体在 portfolio/AddStockDialog，父级只持开关）
   const [showStockForm, setShowStockForm] = useState(false)
-  const [stockForm, setStockForm] = useState<StockForm>(emptyStockForm)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchMarket, setSearchMarket] = useState('')  // 搜索市场筛选
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [refreshingStockList, setRefreshingStockList] = useState(false)
 
   // Account form
   const [accountDialogOpen, setAccountDialogOpen] = useState(false)
@@ -584,8 +397,6 @@ export default function StocksPage() {
       return false
     }
   }
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
     return buildQuoteItemsFrom(stocks, portfolioRaw)
@@ -1015,9 +826,6 @@ export default function StocksPage() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
       if (positionDropdownRef.current && !positionDropdownRef.current.contains(e.target as Node)) {
         setShowPositionDropdown(false)
       }
@@ -1025,67 +833,6 @@ export default function StocksPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  // ========== Stock handlers ==========
-  const doSearch = async (q: string, market: string = searchMarket) => {
-    if (q.length < 1) { setSearchResults([]); setShowDropdown(false); return }
-    setSearching(true)
-    try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setSearchResults(results)
-      setShowDropdown(results.length > 0)
-    } catch { setSearchResults([]) }
-    finally { setSearching(false) }
-  }
-
-  const handleSearchInput = (value: string) => {
-    setSearchQuery(value)
-    clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => doSearch(value), 500)
-  }
-
-  const handleSearchMarketChange = (market: string) => {
-    setSearchMarket(market)
-    if (searchQuery) {
-      doSearch(searchQuery, market)
-    }
-  }
-
-  const refreshStockListCache = async () => {
-    setRefreshingStockList(true)
-    try {
-      const result = await fetchAPI<{ count: number }>('/stocks/refresh-list', { method: 'POST' })
-      toast(`已刷新股票列表，共 ${result.count} 只`, 'success')
-      if (searchQuery) {
-        doSearch(searchQuery)
-      }
-    } catch (e) {
-      toast('刷新失败', 'error')
-    } finally {
-      setRefreshingStockList(false)
-    }
-  }
-
-  const selectStock = (item: SearchResult) => {
-    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
-    setSearchQuery(`${item.symbol} ${item.name}`)
-    setShowDropdown(false)
-  }
-
-  const handleStockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await stocksApi.create(stockForm)
-      setStockForm(emptyStockForm)
-      setSearchQuery('')
-      setShowStockForm(false)
-      load()
-      toast('股票已添加', 'success')
-    } catch (e) {
-      toast(e instanceof Error ? e.message : '添加股票失败', 'error')
-    }
-  }
 
   const hasAnyPositionForStockId = (id: number): boolean => {
     return (portfolio?.accounts || []).some(acc => (acc.positions || []).some(p => p.stock_id === id))
@@ -1404,12 +1151,11 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: '港' }
-    if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: '美' }
+    if (m === 'US') return { style: 'bg-stock-down/10 text-stock-down', label: '美' }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1563,17 +1309,17 @@ export default function StocksPage() {
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">持仓</h1>
+          <h1 className="text-heading md:text-display font-bold text-foreground tracking-tight shrink-0">持仓</h1>
           {/* Desktop buttons + controls */}
           <div className="hidden md:flex items-center gap-3">
             {/* Controls */}
             <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent/30">
               <div className="flex items-center gap-1.5">
                 <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-90" />
-                <span className="text-[11px] text-muted-foreground">自动刷新</span>
+                <span className="text-caption text-muted-foreground">自动刷新</span>
                 {autoRefresh && (
                   <Select value={refreshInterval.toString()} onValueChange={v => setRefreshInterval(parseInt(v))}>
-                    <SelectTrigger className="h-6 w-14 text-[10px] px-1.5">
+                    <SelectTrigger className="h-6 w-14 text-mini px-1.5">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1588,12 +1334,12 @@ export default function StocksPage() {
               {(poolSuggestionsLoading || Object.keys(poolSuggestions).length > 0) && (
                 <>
                   <div className="w-px h-4 bg-border" />
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
                     {poolSuggestionsLoading && (
                       <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                     )}
                     {!poolSuggestionsLoading && Object.keys(poolSuggestions).length > 0 && (
-                      <span className="text-[10px] text-primary">
+                      <span className="text-mini text-primary">
                         {Object.keys(poolSuggestions).length}
                       </span>
                     )}
@@ -1603,7 +1349,7 @@ export default function StocksPage() {
               {lastRefreshTime && (
                 <>
                   <div className="w-px h-4 bg-border" />
-                  <span className="text-[10px] text-muted-foreground/60">
+                  <span className="text-mini text-muted-foreground">
                     {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </>
@@ -1620,7 +1366,7 @@ export default function StocksPage() {
             <Button variant="secondary" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" /> 添加账户
             </Button>
-            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button onClick={() => setShowStockForm(true)}>
               <Plus className="w-4 h-4" /> 添加股票
             </Button>
           </div>
@@ -1635,7 +1381,7 @@ export default function StocksPage() {
             <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" />
             </Button>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button size="sm" className="h-8 w-8 p-0" onClick={() => setShowStockForm(true)} aria-label="添加股票到自选">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -1645,7 +1391,7 @@ export default function StocksPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:flex-wrap md:overflow-visible">
           {marketStatus.map(m => {
             const statusColors: Record<string, string> = {
-              trading: 'bg-emerald-500',
+              trading: 'bg-stock-down',
               pre_market: 'bg-amber-500',
               break: 'bg-amber-500',
               after_hours: 'bg-slate-400',
@@ -1658,8 +1404,8 @@ export default function StocksPage() {
                 title={`${m.sessions.join(', ')} (${m.local_time}) · ${m.status_text}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${statusColors[m.status] || 'bg-slate-400'}`} />
-                <span className="text-[11px] text-muted-foreground">{m.name}</span>
-                <span className={`text-[10px] ${m.is_trading ? 'text-emerald-600' : 'text-muted-foreground/60'} hidden sm:inline`}>
+                <span className="text-caption text-muted-foreground">{m.name}</span>
+                <span className={`text-mini ${m.is_trading ? 'text-stock-down' : 'text-muted-foreground'} hidden sm:inline`}>
                   {m.status_text}
                 </span>
               </div>
@@ -1670,7 +1416,7 @@ export default function StocksPage() {
             <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75" />
             {autoRefresh ? (
               <Select value={refreshInterval.toString()} onValueChange={v => setRefreshInterval(parseInt(v))}>
-                <SelectTrigger className="h-5 w-12 text-[10px] px-1 border-0 bg-transparent">
+                <SelectTrigger className="h-5 w-12 text-mini px-1 border-0 bg-transparent">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1681,14 +1427,14 @@ export default function StocksPage() {
                 </SelectContent>
               </Select>
             ) : (
-              <span className="text-[10px] text-muted-foreground">自动刷新</span>
+              <span className="text-mini text-muted-foreground">自动刷新</span>
             )}
             {poolSuggestionsLoading && (
               <span className="w-2.5 h-2.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             )}
           </div>
           {lastRefreshTime && (
-            <span className="md:hidden shrink-0 text-[10px] text-muted-foreground/60 font-mono ml-1">
+            <span className="md:hidden shrink-0 text-mini text-muted-foreground font-mono ml-1">
               {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
@@ -1714,24 +1460,24 @@ export default function StocksPage() {
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <TrendingUp className="w-4 h-4" />
-              <span className="text-[12px]">总市值</span>
+              <span className="text-body-sm">总市值</span>
             </div>
-            <div className="text-[20px] font-bold text-foreground font-mono">
+            <div className="text-headline font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.total_market_value)}
             </div>
           </div>
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               {portfolio.total.total_pnl >= 0 ? (
-                <ArrowUpRight className="w-4 h-4 text-rose-500" />
+                <ArrowUpRight className="w-4 h-4 text-stock-up" />
               ) : (
-                <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                <ArrowDownRight className="w-4 h-4 text-stock-down" />
               )}
-              <span className="text-[12px]">总盈亏</span>
+              <span className="text-body-sm">总盈亏</span>
             </div>
-            <div className={`text-[20px] font-bold font-mono ${portfolio.total.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+            <div className={`text-headline font-bold font-mono ${portfolio.total.total_pnl >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>
               {portfolio.total.total_pnl >= 0 ? '+' : ''}{formatMoney(portfolio.total.total_pnl)}
-              <span className="text-[13px] ml-1.5">
+              <span className="text-body ml-1.5">
                 ({portfolio.total.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total.total_pnl_pct.toFixed(2)}%)
               </span>
             </div>
@@ -1747,15 +1493,15 @@ export default function StocksPage() {
               <div className="card p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   {isUp ? (
-                    <ArrowUpRight className="w-4 h-4 text-rose-500" />
+                    <ArrowUpRight className="w-4 h-4 text-stock-up" />
                   ) : (
-                    <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                    <ArrowDownRight className="w-4 h-4 text-stock-down" />
                   )}
-                  <span className="text-[12px]">今日盈亏</span>
+                  <span className="text-body-sm">今日盈亏</span>
                 </div>
-                <div className={`text-[20px] font-bold font-mono ${isUp ? 'text-rose-500' : 'text-emerald-500'}`}>
+                <div className={`text-headline font-bold font-mono ${isUp ? 'text-stock-up' : 'text-stock-down'}`}>
                   {isUp ? '+' : ''}{formatMoney(dayPnl)}
-                  <span className="text-[13px] ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
+                  <span className="text-body ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
                 </div>
               </div>
             )
@@ -1764,18 +1510,18 @@ export default function StocksPage() {
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Wallet className="w-4 h-4" />
-              <span className="text-[12px]">可用资金</span>
+              <span className="text-body-sm">可用资金</span>
             </div>
-            <div className="text-[20px] font-bold text-foreground font-mono">
+            <div className="text-headline font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.available_funds)}
             </div>
           </div>
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <PiggyBank className="w-4 h-4" />
-              <span className="text-[12px]">总资产</span>
+              <span className="text-body-sm">总资产</span>
             </div>
-            <div className="text-[20px] font-bold text-foreground font-mono">
+            <div className="text-headline font-bold text-foreground font-mono">
               {formatMoney(portfolio.total.total_assets)}
             </div>
           </div>
@@ -1783,12 +1529,12 @@ export default function StocksPage() {
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Bell className="w-4 h-4" />
-              <span className="text-[12px]">仓位占比</span>
+              <span className="text-body-sm">仓位占比</span>
             </div>
-            <div className="text-[20px] font-bold text-foreground font-mono">
+            <div className="text-headline font-bold text-foreground font-mono">
               {positionRatio ? `${positionRatio.pct.toFixed(1)}%` : '--'}
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1">
+            <div className="mt-1 text-caption text-muted-foreground line-clamp-1">
               {positionRatio ? `持仓市值 ${formatMoney(positionRatio.mv)} / 总资产 ${formatMoney(positionRatio.assets)}` : '—'}
             </div>
           </div>
@@ -1800,119 +1546,30 @@ export default function StocksPage() {
         <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-accent/30">
           <button
             onClick={() => setViewTab('positions')}
-            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-body-sm transition-colors ${
               viewTab === 'positions'
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            持仓 <span className="ml-1 font-mono text-[11px] opacity-70">{positionsCount}</span>
+            持仓 <span className="ml-1 font-mono text-caption opacity-70">{positionsCount}</span>
           </button>
           <button
             onClick={() => setViewTab('watchlist')}
-            className={`px-3 py-1.5 rounded-md text-[12px] transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-body-sm transition-colors ${
               viewTab === 'watchlist'
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            关注 <span className="ml-1 font-mono text-[11px] opacity-70">{watchlistCount}</span>
+            关注 <span className="ml-1 font-mono text-caption opacity-70">{watchlistCount}</span>
           </button>
         </div>
       </div>
 
       {/* Add Stock Dialog */}
-      <Dialog open={showStockForm} onOpenChange={(open) => { setShowStockForm(open); if (!open) { setSearchQuery(''); setSearchMarket('') } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>添加股票到自选</DialogTitle>
-            <DialogDescription>搜索并添加到自选股列表</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleStockSubmit}>
-            <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center gap-2 mb-2">
-                <Label className="mb-0">搜索股票</Label>
-                <div className="flex items-center gap-1">
-                  {[
-                    { value: '', label: '全部' },
-                    { value: 'CN', label: 'A股' },
-                    { value: 'HK', label: '港股' },
-                    { value: 'US', label: '美股' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleSearchMarketChange(opt.value)}
-                      className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
-                        searchMarket === opt.value
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-accent/50 text-muted-foreground hover:bg-accent'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={refreshStockListCache}
-                  disabled={refreshingStockList}
-                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors ml-2"
-                  title="搜索不到？点击刷新股票列表"
-                >
-                  {refreshingStockList ? (
-                    <span className="flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 animate-spin" /> 刷新中...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" /> 刷新列表
-                    </span>
-                  )}
-                </button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                <Input
-                  value={searchQuery}
-                  onChange={e => handleSearchInput(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={searchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : searchMarket === 'US' ? '代码或名称，如 AAPL 或 苹果' : '代码或名称，如 600519 或 茅台'}
-                  className="pl-10"
-                  autoComplete="off"
-                />
-                {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
-              </div>
-              {showDropdown && (
-                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto scrollbar card shadow-lg">
-                  {searchResults.map(item => (
-                    <button
-                      key={`${item.market}-${item.symbol}`}
-                      type="button"
-                      onClick={() => selectStock(item)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-[13px] hover:bg-accent/50 text-left transition-colors"
-                    >
-                      <span className="font-mono text-muted-foreground text-[12px] w-14">{item.symbol}</span>
-                      <span className="flex-1 font-medium text-foreground">{item.name}</span>
-                      <Badge variant="secondary">{marketLabel(item.market)}</Badge>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {stockForm.symbol && (
-                <div className="mt-2.5 flex items-center gap-2">
-                  <Badge><span className="font-mono">{stockForm.symbol}</span> {stockForm.name}</Badge>
-                  <Badge variant="secondary">{marketLabel(stockForm.market)}</Badge>
-                </div>
-              )}
-            </div>
-            <div className="mt-6 flex items-center gap-3 justify-end">
-              <Button type="button" variant="ghost" onClick={() => { setShowStockForm(false); setSearchQuery('') }}>取消</Button>
-              <Button type="submit" disabled={!stockForm.symbol}>确认添加</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddStockDialog open={showStockForm} onOpenChange={setShowStockForm} onAdded={load} />
+
 
       {/* Accounts & Positions */}
       {viewTab === 'positions' && (
@@ -1921,8 +1578,8 @@ export default function StocksPage() {
             <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
               <Building2 className="w-6 h-6 text-primary" />
             </div>
-            <p className="text-[15px] font-semibold text-foreground">还没有账户</p>
-            <p className="text-[13px] text-muted-foreground mt-1.5">点击"添加账户"创建你的第一个交易账户</p>
+            <p className="text-title font-semibold text-foreground">还没有账户</p>
+            <p className="text-body text-muted-foreground mt-1.5">点击"添加账户"创建你的第一个交易账户</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -1940,33 +1597,33 @@ export default function StocksPage() {
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   )}
                   <Building2 className="w-4 h-4 text-primary" />
-                  <span className="text-[14px] md:text-[15px] font-semibold text-foreground">{account.name}</span>
-                  <span className="text-[11px] md:text-[12px] text-muted-foreground">
+                  <span className="text-body-lg md:text-title font-semibold text-foreground">{account.name}</span>
+                  <span className="text-caption md:text-body-sm text-muted-foreground">
                     {account.positions.length} 只
                   </span>
                 </div>
                 <div className="flex items-center justify-between md:justify-end gap-2 md:gap-6 pl-6 md:pl-0">
                   <div className="flex items-center gap-2.5 md:gap-6 min-w-0">
                     <div className="text-left md:text-right">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">市值</div>
-                      <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_market_value)}</div>
+                      <div className="text-mini md:text-caption text-muted-foreground">市值</div>
+                      <div className="text-body-sm md:text-body font-mono font-medium whitespace-nowrap">{formatMoney(account.total_market_value)}</div>
                     </div>
                     <div className="text-left md:text-right">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">盈亏</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      <div className="text-mini md:text-caption text-muted-foreground">盈亏</div>
+                      <div className={`text-body-sm md:text-body font-mono font-medium whitespace-nowrap ${account.total_pnl >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>
                         {account.total_pnl >= 0 ? '+' : ''}{formatMoney(account.total_pnl)}
-                        <span className="text-[10px] md:text-[11px] ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
+                        <span className="text-mini md:text-caption ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
                       </div>
                     </div>
                     <div className="text-left md:text-right">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">今日</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      <div className="text-mini md:text-caption text-muted-foreground">今日</div>
+                      <div className={`text-body-sm md:text-body font-mono font-medium whitespace-nowrap ${account.total_daily_pnl >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>
                         {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
                       </div>
                     </div>
                     <div className="text-left md:text-right hidden sm:block">
-                      <div className="text-[10px] md:text-[11px] text-muted-foreground">可用</div>
-                      <div className="text-[12px] md:text-[13px] font-mono whitespace-nowrap">{formatMoney(account.available_funds)}</div>
+                      <div className="text-mini md:text-caption text-muted-foreground">可用</div>
+                      <div className="text-body-sm md:text-body font-mono whitespace-nowrap">{formatMoney(account.available_funds)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-0 md:gap-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -1987,7 +1644,7 @@ export default function StocksPage() {
               {expandedAccounts.has(account.id) && (
                 <div className="border-t border-border/30">
                   {account.positions.length === 0 ? (
-                    <p className="text-[13px] text-muted-foreground text-center py-8">暂无持仓，点击 + 添加</p>
+                    <p className="text-body text-muted-foreground text-center py-8">暂无持仓，点击 + 添加</p>
                   ) : (
                     <>
                       {/* Desktop Table */}
@@ -1995,17 +1652,17 @@ export default function StocksPage() {
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-border/30 bg-accent/20">
-                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">股票</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">现价</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">涨跌</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">成本</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">持仓</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">市值</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">盈亏</th>
-                              <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">今日</th>
-                              <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">风格</th>
-                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">Agent</th>
-                              <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">操作</th>
+                              <th className="text-left px-4 py-2 text-caption font-semibold text-muted-foreground">股票</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">现价</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">涨跌</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">成本</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">持仓</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">市值</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">盈亏</th>
+                              <th className="text-right px-4 py-2 text-caption font-semibold text-muted-foreground">今日</th>
+                              <th className="text-center px-4 py-2 text-caption font-semibold text-muted-foreground">风格</th>
+                              <th className="text-left px-4 py-2 text-caption font-semibold text-muted-foreground">Agent</th>
+                              <th className="text-center px-4 py-2 text-caption font-semibold text-muted-foreground">操作</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2014,10 +1671,10 @@ export default function StocksPage() {
                               const badge = marketBadge(pos.market)
                               const isForeign = pos.market === 'HK' || pos.market === 'US'
                               const changeColor = pos.change_pct != null
-                                ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                                ? (pos.change_pct > 0 ? 'text-stock-up' : pos.change_pct < 0 ? 'text-stock-down' : 'text-muted-foreground')
                                 : 'text-muted-foreground'
                               const pnlColor = pos.pnl != null
-                                ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                                ? (pos.pnl > 0 ? 'text-stock-up' : pos.pnl < 0 ? 'text-stock-down' : 'text-muted-foreground')
                                 : 'text-muted-foreground'
                               return (
                                 <tr
@@ -2053,12 +1710,12 @@ export default function StocksPage() {
                                   className={`group hover:bg-accent/30 transition-colors ${i > 0 ? 'border-t border-border/20' : ''} ${draggingPositionId === pos.id ? 'opacity-60' : ''}`}
                                 >
                                   <td className="px-4 py-2.5">
-                                    <span className={`text-[9px] px-1 py-0.5 rounded mr-1.5 ${badge.style}`}>{badge.label}</span>
-                                    <span className="font-mono text-[12px] font-semibold text-foreground">
+                                    <span className={`text-mini px-1 py-0.5 rounded mr-1.5 ${badge.style}`}>{badge.label}</span>
+                                    <span className="font-mono text-body-sm font-semibold text-foreground">
                                       {pos.symbol}
                                     </span>
                                     <button
-                                      className="ml-1.5 text-[12px] text-muted-foreground hover:text-primary"
+                                      className="ml-1.5 text-body-sm text-muted-foreground hover:text-primary"
                                       onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                     >
                                       {pos.name}
@@ -2079,49 +1736,49 @@ export default function StocksPage() {
                                       ) : null
                                     })()}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-body-sm ${changeColor}`}>
                                     {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-body-sm ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatPrice(pos.cost_price)}</td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
+                                  <td className="px-4 py-2.5 text-right font-mono text-body-sm text-muted-foreground">{formatPrice(pos.cost_price)}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-body-sm text-muted-foreground">{pos.quantity}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-body-sm text-muted-foreground">
                                     {pos.market_value != null ? (
                                       <div className="flex flex-col items-end">
                                         {isForeign ? (
                                           <>
                                             <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
-                                            {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">≈{formatMoney(pos.market_value_cny)}</span>}
+                                            {pos.market_value_cny && <span className="text-mini text-muted-foreground">≈{formatMoney(pos.market_value_cny)}</span>}
                                           </>
                                         ) : <span>{formatMoney(pos.market_value)}</span>}
                                       </div>
                                     ) : '—'}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pnlColor}`}>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-body-sm ${pnlColor}`}>
                                     {pos.pnl != null ? (
                                       <div className="flex flex-col items-end">
                                         <span>{pos.pnl >= 0 ? '+' : ''}{formatMoney(pos.pnl)}</span>
-                                        <span className="text-[10px] opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' CNY'}</span>
+                                        <span className="text-mini opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' CNY'}</span>
                                       </div>
                                     ) : '—'}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : ''}`}>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-body-sm ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-stock-up' : 'text-stock-down') : ''}`}>
                                     {pos.daily_pnl != null ? (
                                       <div className="flex flex-col items-end">
                                         <span>{pos.daily_pnl >= 0 ? '+' : ''}{formatMoney(pos.daily_pnl)}</span>
-                                        <span className="text-[10px] opacity-70">{pos.daily_pnl_pct != null ? `${pos.daily_pnl_pct >= 0 ? '+' : ''}${pos.daily_pnl_pct.toFixed(2)}%` : ''}</span>
+                                        <span className="text-mini opacity-70">{pos.daily_pnl_pct != null ? `${pos.daily_pnl_pct >= 0 ? '+' : ''}${pos.daily_pnl_pct.toFixed(2)}%` : ''}</span>
                                       </div>
                                     ) : '—'}
                                   </td>
                                   <td className="px-4 py-2.5 text-center">
                                     {pos.trading_style ? (
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                      <span className={`text-mini px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-stock-up/10 text-stock-up' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
                                         {pos.trading_style === 'short' ? '短线' : pos.trading_style === 'long' ? '长线' : '波段'}
                                       </span>
                                     ) : (
-                                      <span className="text-[10px] text-muted-foreground/50">-</span>
+                                      <span className="text-mini text-muted-foreground">-</span>
                                     )}
                                   </td>
                                   <td className="px-4 py-2.5">
@@ -2134,9 +1791,9 @@ export default function StocksPage() {
                                               const isRunning = runningAgents[stock.id] === sa.agent_name
                                               return (
                                                 <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                                  <Badge variant="default" className="text-[10px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
+                                                  <Badge variant="default" className="text-mini">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
                                                   {isRunning && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                                    <span className="inline-flex items-center gap-1 text-mini text-amber-600">
                                                       <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                                                       执行中
                                                     </span>
@@ -2146,7 +1803,7 @@ export default function StocksPage() {
                                             })}
                                           </div>
                                         ) : (
-                                          <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1"><Bot className="w-3 h-3" /> 未配置</span>
+                                          <span className="text-caption text-muted-foreground flex items-center gap-1"><Bot className="w-3 h-3" /> 未配置</span>
                                         )}
                                       </button>
                                     )}
@@ -2185,10 +1842,10 @@ export default function StocksPage() {
                           const stock = stocks.find(s => s.id === pos.stock_id)
                           const badge = marketBadge(pos.market)
                           const changeColor = pos.change_pct != null
-                            ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                            ? (pos.change_pct > 0 ? 'text-stock-up' : pos.change_pct < 0 ? 'text-stock-down' : 'text-muted-foreground')
                             : 'text-muted-foreground'
                           const pnlColor = pos.pnl != null
-                            ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                            ? (pos.pnl > 0 ? 'text-stock-up' : pos.pnl < 0 ? 'text-stock-down' : 'text-muted-foreground')
                             : 'text-muted-foreground'
                           return (
                             <div
@@ -2226,25 +1883,25 @@ export default function StocksPage() {
                               {/* Row 1: Stock info + Current price */}
                               <div className="flex items-center justify-between gap-2 mb-2">
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
-                                  <span className="shrink-0 font-mono text-[12px] font-semibold text-foreground">
+                                  <span className={`shrink-0 text-mini px-1 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                                  <span className="shrink-0 font-mono text-body-sm font-semibold text-foreground">
                                     {pos.symbol}
                                   </span>
                                   <button
-                                    className="text-[12px] text-muted-foreground hover:text-primary truncate"
+                                    className="text-body-sm text-muted-foreground hover:text-primary truncate"
                                     onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                   >
                                     {pos.name}
                                   </button>
                                   {pos.trading_style && (
-                                    <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                    <span className={`shrink-0 text-mini px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-stock-up/10 text-stock-up' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
                                       {pos.trading_style === 'short' ? '短' : pos.trading_style === 'long' ? '长' : '波'}
                                     </span>
                                   )}
                                 </div>
-                                <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
+                                <div className={`font-mono text-body font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
                                   {pos.current_price?.toFixed(2) || '—'}
-                                  {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                  {pos.change_pct != null && <span className="text-caption ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
                                 </div>
                               </div>
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
@@ -2264,29 +1921,29 @@ export default function StocksPage() {
                                 ) : null
                               })()}
                               {/* Row 3: Stats grid (4 cols, whitespace-nowrap to prevent "万" wrapping) */}
-                              <div className="grid grid-cols-4 gap-2 text-[11px]">
+                              <div className="grid grid-cols-4 gap-2 text-caption">
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">成本</div>
+                                  <div className="text-mini text-muted-foreground">成本</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.cost_price)}>{formatPrice(pos.cost_price)}</div>
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">数量</div>
+                                  <div className="text-mini text-muted-foreground">数量</div>
                                   <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">盈亏</div>
+                                  <div className="text-mini text-muted-foreground">盈亏</div>
                                   <div className={`font-mono whitespace-nowrap ${pnlColor}`}>
                                     {pos.pnl != null ? `${pos.pnl >= 0 ? '+' : ''}${formatMoney(pos.pnl)}` : '—'}
                                   </div>
                                   {pos.pnl_pct != null && (
-                                    <div className={`text-[10px] font-mono ${pnlColor} opacity-80`}>
+                                    <div className={`text-mini font-mono ${pnlColor} opacity-80`}>
                                       {pos.pnl_pct >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(2)}%
                                     </div>
                                   )}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[10px] text-muted-foreground">今日</div>
-                                  <div className={`font-mono whitespace-nowrap ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : 'text-muted-foreground'}`}>
+                                  <div className="text-mini text-muted-foreground">今日</div>
+                                  <div className={`font-mono whitespace-nowrap ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-stock-up' : 'text-stock-down') : 'text-muted-foreground'}`}>
                                     {pos.daily_pnl != null ? `${pos.daily_pnl >= 0 ? '+' : ''}${formatMoney(pos.daily_pnl)}` : '—'}
                                   </div>
                                 </div>
@@ -2301,9 +1958,9 @@ export default function StocksPage() {
                                         const isRunning = runningAgents[stock.id] === sa.agent_name
                                         return (
                                           <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                          <Badge variant="secondary" className="text-[9px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
+                                          <Badge variant="secondary" className="text-mini">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
                                             {isRunning && (
-                                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                                              <span className="inline-flex items-center gap-1 text-mini text-amber-600">
                                                 <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                                                 执行中
                                               </span>
@@ -2313,7 +1970,7 @@ export default function StocksPage() {
                                       })}
                                     </button>
                                   ) : (
-                                    <button onClick={() => stock && setAgentDialogStock(stock)} className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
+                                    <button onClick={() => stock && setAgentDialogStock(stock)} className="text-mini text-muted-foreground flex items-center gap-1">
                                       <Bot className="w-3 h-3" /> Agent
                                     </button>
                                   )}
@@ -2356,7 +2013,7 @@ export default function StocksPage() {
       {viewTab === 'watchlist' && (
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold text-foreground">关注列表</h3>
+            <h3 className="text-body font-semibold text-foreground">关注列表</h3>
             <div className="flex items-center gap-1">
               {[
                 { value: '', label: '全部', count: stocks.length },
@@ -2367,7 +2024,7 @@ export default function StocksPage() {
                 <button
                   key={opt.value}
                   onClick={() => setStockListFilter(opt.value)}
-                  className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                  className={`text-caption px-2 py-0.5 rounded transition-colors ${
                     stockListFilter === opt.value
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-accent/50 text-muted-foreground hover:bg-accent'
@@ -2380,14 +2037,14 @@ export default function StocksPage() {
           </div>
 
           <div className="flex items-center justify-between mb-3">
-            <div className="text-[11px] text-muted-foreground">筛选</div>
+            <div className="text-caption text-muted-foreground">筛选</div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setWatchlistOnlyAlerts(!watchlistOnlyAlerts)}
-                className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${
+                className={`text-caption px-2.5 py-1 rounded-md border transition-colors ${
                   watchlistOnlyAlerts
-                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-600'
-                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-rose-500/30'
+                    ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
+                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-stock-up/30'
                 }`}
                 title="只显示需要关注/预警的股票"
               >
@@ -2397,8 +2054,8 @@ export default function StocksPage() {
           </div>
           {stocks.length === 0 ? (
             <div className="py-12 text-center">
-              <div className="text-[13px] text-muted-foreground">还没有添加关注股票</div>
-              <div className="mt-2 text-[11px] text-muted-foreground/70">点击右上角“添加股票”开始</div>
+              <div className="text-body text-muted-foreground">还没有添加关注股票</div>
+              <div className="mt-2 text-caption text-muted-foreground">点击右上角“添加股票”开始</div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2413,7 +2070,7 @@ export default function StocksPage() {
                 .map((stock) => {
                 const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
                 const changeColor = quote?.change_pct != null
-                  ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
+                  ? (quote.change_pct > 0 ? 'text-stock-up' : quote.change_pct < 0 ? 'text-stock-down' : 'text-muted-foreground')
                   : 'text-muted-foreground'
                 const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, false)
                 return (
@@ -2454,17 +2111,17 @@ export default function StocksPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
+                          <span className={`text-mini px-1 py-0.5 rounded ${marketBadge(stock.market).style}`}>
                             {marketBadge(stock.market).label}
                           </span>
                           <button
-                            className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
+                            className="font-mono text-body-sm font-semibold text-foreground hover:text-primary"
                             onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.symbol}
                           </button>
                           <button
-                            className="text-[12px] text-muted-foreground truncate hover:text-primary"
+                            className="text-body-sm text-muted-foreground truncate hover:text-primary"
                             onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.name}
@@ -2472,10 +2129,10 @@ export default function StocksPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
+                        <div className={`font-mono text-body-lg font-bold leading-tight ${changeColor}`}>
                           {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
                         </div>
-                        <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
+                        <div className={`font-mono text-caption leading-tight ${changeColor}`}>
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                         </div>
                       </div>
@@ -2492,19 +2149,19 @@ export default function StocksPage() {
                           hasPosition={false}
                         />
                       ) : (
-                        <div className="text-[11px] text-muted-foreground/70 py-2">暂无技术面/AI 分析</div>
+                        <div className="text-caption text-muted-foreground py-2">暂无技术面/AI 分析</div>
                       )}
                     </div>
 
                     <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1 flex-wrap">
                         {stock.agents && stock.agents.length > 0 ? (
-                          <Badge variant="secondary" className="text-[10px]">{stock.agents.length} Agent</Badge>
+                          <Badge variant="secondary" className="text-mini">{stock.agents.length} Agent</Badge>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/60">未配置 Agent</span>
+                          <span className="text-mini text-muted-foreground">未配置 Agent</span>
                         )}
                         {runningAgents[stock.id] && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
+                          <span className="inline-flex items-center gap-1 text-mini text-amber-600">
                             <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                             {agents.find(a => a.name === runningAgents[stock.id])?.display_name || runningAgents[stock.id]}
                           </span>
@@ -2620,11 +2277,11 @@ export default function StocksPage() {
           {removeWatchStock && (
             <div className="space-y-4 mt-2">
               <div className="rounded-lg border border-border/40 bg-accent/20 p-3">
-                <div className="text-[13px] font-semibold text-foreground">
+                <div className="text-body font-semibold text-foreground">
                   {removeWatchStock.name}
-                  <span className="ml-2 font-mono text-[12px] text-muted-foreground">{removeWatchStock.symbol}</span>
+                  <span className="ml-2 font-mono text-body-sm text-muted-foreground">{removeWatchStock.symbol}</span>
                 </div>
-                <div className="mt-1 text-[12px] text-muted-foreground">
+                <div className="mt-1 text-body-sm text-muted-foreground">
                   {hasAnyPositionForStockId(removeWatchStock.id)
                     ? '该股票存在持仓，不能直接删除。请先在“持仓”Tab 删除持仓记录。'
                     : '删除后将不再出现在关注列表，同时会清理该股票关联的价格提醒。'}
@@ -2705,11 +2362,11 @@ export default function StocksPage() {
           <div className="space-y-4 mt-2">
             {editPositionId ? (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
+                <span className={`text-mini px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                   {marketBadge(positionForm.stock_market).label}
                 </span>
-                <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
-                <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                <span className="font-mono text-body-sm text-muted-foreground">{positionForm.stock_symbol}</span>
+                <span className="text-body text-foreground">{positionForm.stock_name}</span>
               </div>
             ) : (
               <div>
@@ -2726,7 +2383,7 @@ export default function StocksPage() {
                         key={opt.value}
                         type="button"
                         onClick={() => handlePositionSearchMarketChange(opt.value)}
-                        className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
+                        className={`text-caption px-2 py-0.5 rounded transition-colors ${
                           positionSearchMarket === opt.value
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-accent/50 text-muted-foreground hover:bg-accent'
@@ -2738,7 +2395,7 @@ export default function StocksPage() {
                   </div>
                 </div>
                 <div className="relative" ref={positionDropdownRef}>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
                     value={positionSearchQuery}
                     onChange={e => handlePositionSearchInput(e.target.value)}
@@ -2755,12 +2412,12 @@ export default function StocksPage() {
                           key={`${item.market}-${item.symbol}`}
                           type="button"
                           onClick={() => selectPositionStock(item)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-[13px] hover:bg-accent/50 text-left transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-body hover:bg-accent/50 text-left transition-colors"
                         >
-                          <span className={`text-[9px] px-1 py-0.5 rounded ${marketBadge(item.market).style}`}>
+                          <span className={`text-mini px-1 py-0.5 rounded ${marketBadge(item.market).style}`}>
                             {marketBadge(item.market).label}
                           </span>
-                          <span className="font-mono text-muted-foreground text-[12px]">{item.symbol}</span>
+                          <span className="font-mono text-muted-foreground text-body-sm">{item.symbol}</span>
                           <span className="flex-1 text-foreground">{item.name}</span>
                         </button>
                       ))}
@@ -2769,11 +2426,11 @@ export default function StocksPage() {
                 </div>
                 {positionForm.stock_symbol && (
                   <div className="mt-2 flex items-center gap-2">
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
+                    <span className={`text-mini px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                       {marketBadge(positionForm.stock_market).label}
                     </span>
-                    <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
-                    <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                    <span className="font-mono text-body-sm text-muted-foreground">{positionForm.stock_symbol}</span>
+                    <span className="text-body text-foreground">{positionForm.stock_name}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -2812,7 +2469,7 @@ export default function StocksPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>投入资金 <span className="text-muted-foreground/60 text-[11px]">(选填)</span></Label>
+                <Label>投入资金 <span className="text-muted-foreground text-caption">(选填)</span></Label>
                 <Input
                   value={positionForm.invested_amount}
                   onChange={e => setPositionForm({ ...positionForm, invested_amount: e.target.value })}
@@ -2863,7 +2520,7 @@ export default function StocksPage() {
           </DialogHeader>
           <div className="space-y-3 mt-2">
             {agents.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground py-4 text-center">暂无可用 Agent</p>
+              <p className="text-body text-muted-foreground py-4 text-center">暂无可用 Agent</p>
             ) : (
               agents.map(agent => {
                 const stockAgent = agentDialogStock?.agents?.find(a => a.agent_name === agent.name)
@@ -2873,15 +2530,15 @@ export default function StocksPage() {
                   <div key={agent.name} className="rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors overflow-hidden">
                     <div className="flex items-center justify-between p-3.5">
                       <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-border'}`} />
+                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-stock-down' : 'bg-border'}`} />
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-foreground">{agent.display_name}</span>
-                            <Badge variant="secondary" className="text-[9px]">
+                            <span className="text-body font-medium text-foreground">{agent.display_name}</span>
+                            <Badge variant="secondary" className="text-mini">
                               {isBatchMode ? '批量' : '逐只'}
                             </Badge>
                           </div>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{agent.description}</p>
+                          <p className="text-caption text-muted-foreground mt-0.5">{agent.description}</p>
                         </div>
                       </div>
                       <Switch
@@ -2892,7 +2549,7 @@ export default function StocksPage() {
                     </div>
                     {isAssigned && isBatchMode && (
                       <div className="px-3.5 pb-3.5 pt-0">
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-caption text-muted-foreground">
                           调度、AI模型、通知渠道请在 <a href="/agents" className="text-primary hover:underline">Agent 配置</a> 页面统一设置
                         </p>
                       </div>
@@ -2906,7 +2563,7 @@ export default function StocksPage() {
                             value={stockAgent?.schedule || '__default__'}
                             onValueChange={val => agentDialogStock && updateStockAgentSchedule(agentDialogStock, agent.name, val === '__default__' ? '' : val)}
                           >
-                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
+                            <SelectTrigger className="h-7 text-caption w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
                               <SelectValue placeholder="执行间隔" />
                             </SelectTrigger>
                             <SelectContent>
@@ -2919,7 +2576,7 @@ export default function StocksPage() {
                               <SelectItem value="*/30 9-15 * * 1-5">每 30 分钟</SelectItem>
                             </SelectContent>
                           </Select>
-                          <span className="text-[10px] text-muted-foreground">交易时段</span>
+                          <span className="text-mini text-muted-foreground">交易时段</span>
                         </div>
 
                         {/* Schedule Preview */}
@@ -2932,7 +2589,7 @@ export default function StocksPage() {
                           return (
                             <div className="ml-[22px] rounded-lg border border-border/40 bg-background/30 px-2.5 py-2">
                               <div className="flex items-center justify-between">
-                                <div className="text-[11px] text-muted-foreground">
+                                <div className="text-caption text-muted-foreground">
                                   未来触发时间预览{isFollowingGlobal ? <span className="ml-1 opacity-70">(跟随全局)</span> : null}
                                 </div>
                                 {isLoading && (
@@ -2940,9 +2597,9 @@ export default function StocksPage() {
                                 )}
                               </div>
                               {'error' in (preview || {}) ? (
-                                <div className="mt-1 text-[11px] text-muted-foreground">{(preview as any).error}</div>
+                                <div className="mt-1 text-caption text-muted-foreground">{(preview as any).error}</div>
                               ) : (preview as SchedulePreview | undefined)?.next_runs?.length ? (
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-caption text-muted-foreground">
                                   {(preview as SchedulePreview).next_runs.map((t, i) => (
                                     <span key={i} className="px-1.5 py-0.5 rounded border border-border/60 bg-accent/20 font-mono" title={t}>
                                       {formatPreviewTime(t, (preview as SchedulePreview).timezone)}
@@ -2953,9 +2610,9 @@ export default function StocksPage() {
                                   ) : null}
                                 </div>
                               ) : (
-                                <div className="mt-1 text-[11px] text-muted-foreground">—</div>
+                                <div className="mt-1 text-caption text-muted-foreground">—</div>
                               )}
-                              <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">schedule: {eff}</div>
+                              <div className="mt-1 text-mini text-muted-foreground font-mono">schedule: {eff}</div>
                             </div>
                           )
                         })()}
@@ -2967,7 +2624,7 @@ export default function StocksPage() {
                             value={stockAgent?.ai_model_id?.toString() ?? '__default__'}
                             onValueChange={val => agentDialogStock && updateStockAgentModel(agentDialogStock, agent.name, val === '__default__' ? null : parseInt(val))}
                           >
-                            <SelectTrigger className="h-7 text-[11px] w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
+                            <SelectTrigger className="h-7 text-caption w-auto min-w-[140px] px-2.5 bg-accent/50 border-border/50">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -2995,7 +2652,7 @@ export default function StocksPage() {
                                 <button
                                   key={ch.id}
                                   onClick={() => agentDialogStock && toggleStockAgentChannel(agentDialogStock, agent.name, ch.id)}
-                                  className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
+                                  className={`text-mini px-2 py-0.5 rounded-md border transition-colors ${
                                     isSelected
                                       ? 'bg-primary/10 border-primary/30 text-primary font-medium'
                                       : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-primary/30'
@@ -3006,14 +2663,14 @@ export default function StocksPage() {
                               )
                             })}
                             {(stockAgent?.notify_channel_ids || []).length === 0 && (
-                              <span className="text-[10px] text-muted-foreground">系统默认</span>
+                              <span className="text-mini text-muted-foreground">系统默认</span>
                             )}
                           </div>
                         )}
                         {/* Trigger Button */}
                         <div className="flex items-center gap-2 pt-1">
                           <Button
-                            variant="secondary" size="sm" className="h-7 text-[11px] px-2.5"
+                            variant="secondary" size="sm" className="h-7 text-caption px-2.5"
                             disabled={triggeringAgent === agent.name}
                             onClick={() => agentDialogStock && triggerStockAgent(agentDialogStock.id, agent.name)}
                           >
@@ -3042,17 +2699,17 @@ export default function StocksPage() {
             <DialogTitle className="text-base">{agentResultDialog?.title}</DialogTitle>
             <DialogDescription className="flex items-center gap-2 pt-1">
               {agentResultDialog?.should_alert ? (
-                <Badge variant="default" className="text-[10px]">建议关注</Badge>
+                <Badge variant="default" className="text-mini">建议关注</Badge>
               ) : (
-                <Badge variant="secondary" className="text-[10px]">无需关注</Badge>
+                <Badge variant="secondary" className="text-mini">无需关注</Badge>
               )}
               {agentResultDialog?.notified && (
-                <Badge variant="outline" className="text-[10px]">已发送通知</Badge>
+                <Badge variant="outline" className="text-mini">已发送通知</Badge>
               )}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-2 p-3 bg-accent/30 rounded-lg">
-            <pre className="text-[13px] whitespace-pre-wrap font-sans leading-relaxed">
+            <pre className="text-body whitespace-pre-wrap font-sans leading-relaxed">
               {agentResultDialog?.content}
             </pre>
           </div>
@@ -3082,10 +2739,10 @@ export default function StocksPage() {
 
           {/* 股票筛选器 */}
           <div className="flex items-center gap-2 flex-wrap py-2 border-b">
-            <span className="text-[12px] text-muted-foreground">筛选:</span>
+            <span className="text-body-sm text-muted-foreground">筛选:</span>
             <button
               onClick={() => { setNewsDialogSymbol(''); loadNews() }}
-              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
+              className={`text-caption px-2.5 py-1 rounded-md transition-colors ${
                 !newsDialogSymbol
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-accent/50 text-muted-foreground hover:bg-accent'
@@ -3097,7 +2754,7 @@ export default function StocksPage() {
               <button
                 key={stock.symbol}
                 onClick={() => { setNewsDialogSymbol(stock.name); loadNews(stock.name) }}
-                className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
+                className={`text-caption px-2.5 py-1 rounded-md transition-colors ${
                   newsDialogSymbol === stock.name
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-accent/50 text-muted-foreground hover:bg-accent'
@@ -3107,7 +2764,7 @@ export default function StocksPage() {
               </button>
             ))}
             {stocks.length > 10 && (
-              <span className="text-[10px] text-muted-foreground">+{stocks.length - 10}</span>
+              <span className="text-mini text-muted-foreground">+{stocks.length - 10}</span>
             )}
           </div>
 
@@ -3116,10 +2773,10 @@ export default function StocksPage() {
             {newsLoading ? (
               <div className="flex items-center justify-center py-12">
                 <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <span className="ml-2 text-[13px] text-muted-foreground">加载中...</span>
+                <span className="ml-2 text-body text-muted-foreground">加载中...</span>
               </div>
             ) : news.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-[13px]">
+              <div className="text-center py-12 text-muted-foreground text-body">
                 暂无相关资讯
               </div>
             ) : (
@@ -3132,19 +2789,19 @@ export default function StocksPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          <span className={`text-mini px-1.5 py-0.5 rounded ${
                             item.source === 'eastmoney' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
                             item.source === 'eastmoney_news' ? 'bg-blue-500/10 text-blue-500' :
-                            'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            'bg-stock-down/10 text-stock-down dark:text-stock-down'
                           }`}>
                             {item.source_label}
                           </span>
                           {item.importance >= 2 && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500">
+                            <span className="text-mini px-1.5 py-0.5 rounded bg-stock-up/10 text-stock-up">
                               重要
                             </span>
                           )}
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-mini text-muted-foreground">
                             {item.publish_time}
                           </span>
                         </div>
@@ -3152,7 +2809,7 @@ export default function StocksPage() {
                           href={item.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[13px] font-medium text-foreground hover:text-primary transition-colors block"
+                          className="text-body font-medium text-foreground hover:text-primary transition-colors block"
                         >
                           {item.title}
                         </a>
@@ -3165,14 +2822,14 @@ export default function StocksPage() {
                                 <button
                                   key={sym}
                                   onClick={() => { setNewsDialogSymbol(stockName); loadNews(stockName) }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono hover:bg-primary/20 transition-colors"
+                                  className="text-mini px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono hover:bg-primary/20 transition-colors"
                                 >
                                   {stockName}
                                 </button>
                               )
                             })}
                             {item.symbols.length > 5 && (
-                              <span className="text-[10px] text-muted-foreground">+{item.symbols.length - 5}</span>
+                              <span className="text-mini text-muted-foreground">+{item.symbols.length - 5}</span>
                             )}
                           </div>
                         )}
@@ -3195,7 +2852,7 @@ export default function StocksPage() {
 
           {/* 底部刷新按钮 */}
           <div className="flex items-center justify-between pt-2 border-t">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-caption text-muted-foreground">
               共 {news.length} 条资讯
             </span>
             <Button variant="secondary" size="sm" onClick={() => loadNews(newsDialogSymbol || undefined)} disabled={newsLoading}>

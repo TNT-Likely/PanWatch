@@ -7,17 +7,17 @@ export type TechnicalBadgeTone = 'neutral' | 'bullish' | 'bearish' | 'warning' |
 
 const toneClassMap: Record<TechnicalBadgeTone, string> = {
   neutral: 'bg-accent/50 text-muted-foreground',
-  bullish: 'bg-rose-500/10 text-rose-600',
-  bearish: 'bg-emerald-500/10 text-emerald-600',
+  bullish: 'bg-stock-up/10 text-stock-up',
+  bearish: 'bg-stock-down/10 text-stock-down',
   warning: 'bg-amber-500/10 text-amber-600',
   info: 'bg-blue-500/10 text-blue-600',
-  buy: 'bg-rose-500 text-white',
-  add: 'bg-rose-400 text-white',
-  reduce: 'bg-emerald-500 text-white',
-  sell: 'bg-emerald-600 text-white',
+  buy: 'bg-stock-up text-white',
+  add: 'bg-stock-up text-white',
+  reduce: 'bg-stock-down text-white',
+  sell: 'bg-stock-down text-white',
   hold: 'bg-amber-500 text-white',
   watch: 'bg-slate-500 text-white',
-  avoid: 'bg-red-600 text-white',
+  avoid: 'bg-stock-up text-white',
   alert: 'bg-blue-500 text-white',
 }
 

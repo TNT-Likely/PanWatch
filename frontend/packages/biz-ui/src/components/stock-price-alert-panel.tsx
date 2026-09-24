@@ -264,7 +264,7 @@ export default function StockPriceAlertPanel(props: {
     >
       <Bell className="w-3.5 h-3.5" />
       {shownSummary.total > 0 && (
-        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-primary-foreground text-[9px] leading-[14px] text-center">
+        <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-primary text-primary-foreground text-mini leading-[14px] text-center">
           {shownSummary.enabled}
         </span>
       )}
@@ -288,9 +288,9 @@ export default function StockPriceAlertPanel(props: {
               </Button>
             </div>
             {loading ? (
-              <div className="text-[12px] text-muted-foreground py-6 text-center">加载中...</div>
+              <div className="text-body-sm text-muted-foreground py-6 text-center">加载中...</div>
             ) : rules.length === 0 ? (
-              <div className="text-[12px] text-muted-foreground py-6 text-center">该股票暂无提醒规则</div>
+              <div className="text-body-sm text-muted-foreground py-6 text-center">该股票暂无提醒规则</div>
             ) : (
               <div className="space-y-2 max-h-[48vh] overflow-y-auto scrollbar">
                 {rules.map(r => (
@@ -298,12 +298,12 @@ export default function StockPriceAlertPanel(props: {
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-medium truncate">{r.name || `${props.stockName || symbol} 提醒`}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/15 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>
+                          <span className="text-body font-medium truncate">{r.name || `${props.stockName || symbol} 提醒`}</span>
+                          <span className={`text-mini px-1.5 py-0.5 rounded ${r.enabled ? 'bg-stock-down/15 text-stock-down' : 'bg-muted text-muted-foreground'}`}>
                             {r.enabled ? '启用' : '暂停'}
                           </span>
                         </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
+                        <div className="mt-1 text-caption text-muted-foreground">
                           {(r.condition_group?.items || []).map(conditionText).join(r.condition_group?.op === 'or' ? ' 或 ' : ' 且 ')}
                         </div>
                       </div>

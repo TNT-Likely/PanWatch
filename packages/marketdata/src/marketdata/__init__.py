@@ -15,8 +15,10 @@ from marketdata.types import (
     EventItem,
     FlashNews,
     Fundamentals,
+    GlobalIndexQuote,
     HotBoard,
     HotStock,
+    MacroIndicator,
     MarginItem,
     NewsArticle,
     NorthboundItem,
@@ -30,6 +32,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "MarketData", "Symbol", "Market", "Bar", "CapitalFlow", "EventItem", "FlashNews", "Fundamentals",
+    "GlobalIndexQuote", "MacroIndicator",
     "HotStock", "HotBoard", "NewsArticle",
     "DragonTigerItem", "MarginItem", "ShareholderItem", "DividendItem", "NorthboundItem",
     "Quote", "Request", "Response",

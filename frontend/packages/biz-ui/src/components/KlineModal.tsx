@@ -31,7 +31,7 @@ export default function KlineModal(props: {
             initialDays={props.initialDays}
           />
         ) : (
-          <div className="text-[12px] text-muted-foreground py-8 text-center">未选择股票</div>
+          <div className="text-body-sm text-muted-foreground py-8 text-center">未选择股票</div>
         )}
       </DialogContent>
     </Dialog>
