@@ -15,6 +15,7 @@ import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
 import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
 import { AssistantWelcome } from '@/components/assistant/AssistantWelcome'
+import type { AssistantStockSearchResult } from '@/components/assistant/AssistantStockPicker'
 import { ContextPanel } from '@/components/assistant/ContextPanel'
 import { ContextUsageIndicator } from '@/components/assistant/ContextUsageIndicator'
 import { TraceTimeline } from '@/components/assistant/TraceTimeline'
@@ -537,18 +538,28 @@ export default function ChatWidget({
     await removeConversation(convId)
   }, [removeConversation])
 
-  const handleSend = useCallback(async (overrideContent?: string) => {
+  const handleSend = useCallback(async (
+    overrideContent?: string,
+    overrideStockContext?: StockContext,
+  ) => {
     const content = (overrideContent || input).trim()
     if (!content || sending || sendingRef.current || pendingApprovals.length > 0) return
 
     sendingRef.current = true
     setSending(true)
 
+    const messageStockContext = overrideStockContext || stockContext
     let convId = activeConvId
     if (!convId) {
       try {
         const conv = await chatApi.createConversation(
-          stockContext ? { stock_symbol: stockContext.symbol, stock_market: stockContext.market } : undefined
+          messageStockContext
+            ? {
+                stock_symbol: messageStockContext.symbol,
+                stock_market: messageStockContext.market,
+                initial_context: messageStockContext.pageContext,
+              }
+            : undefined,
         )
         convId = conv.id
         setActiveConversationId(conv.id)
@@ -697,6 +708,19 @@ export default function ChatWidget({
       setSending(false)
     }
   }, [input, sending, pendingApprovals.length, activeConvId, stockContext, pushToken, resetStream, loadMessages, resetFollowing, onConversationChange, appendTrace])
+
+  const handleStockSelect = useCallback((stock: AssistantStockSearchResult) => {
+    const nextContext: StockContext = {
+      symbol: stock.symbol,
+      market: stock.market,
+      stockName: stock.name,
+    }
+    setStockContext(nextContext)
+    void handleSend(
+      `分析 ${stock.market}:${stock.symbol} ${stock.name} 的基本面、行情和近期新闻`,
+      nextContext,
+    )
+  }, [handleSend])
 
   const handleApprovalDecision = useCallback(async (
     approval: AssistantApproval,
@@ -848,7 +872,7 @@ export default function ChatWidget({
       <div
         data-testid={embedded ? 'assistant-shell' : undefined}
         className={embedded
-        ? 'relative flex h-full min-h-0 w-full overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm'
+        ? 'relative flex h-full min-h-0 w-full overflow-hidden rounded-none border border-border/60 bg-card shadow-sm sm:rounded-2xl'
         : 'fixed bottom-0 right-0 z-50 flex h-full w-full flex-col overflow-hidden bg-background shadow-2xl md:bottom-5 md:right-5 md:h-[600px] md:w-[420px] md:rounded-xl md:border md:border-border/60'}>
         {embedded && (
           <div className="hidden w-64 shrink-0 md:flex">
@@ -884,8 +908,8 @@ export default function ChatWidget({
           ? 'relative flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden'
           : 'relative flex h-full flex-col overflow-hidden'}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-accent/20">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-accent/20 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {embedded && (
             <button
               type="button"
@@ -905,11 +929,11 @@ export default function ChatWidget({
               <ChevronLeft className="w-4 h-4" />
             </button>
           )}
-          <span className="text-[14px] font-semibold text-foreground">AI 助手</span>
+          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">AI 助手</span>
           {view === 'chat' && stockContext && (
-            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+            <span className="inline-flex max-w-[42vw] items-center gap-1 truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary sm:max-w-none">
               {stockContext.market}:{stockContext.symbol}
-              {stockContext.stockName && ` ${stockContext.stockName}`}
+              <span className="truncate">{stockContext.stockName && ` ${stockContext.stockName}`}</span>
               <button
                 onClick={() => { setStockContext(null); setSuggestedQuestions([]) }}
                 className="hover:text-primary/70 transition-colors"
@@ -961,7 +985,11 @@ export default function ChatWidget({
 
       {/* List view */}
       {view === 'list' && embedded && (
-        <AssistantWelcome onSubmit={(question) => { void handleSend(question) }} disabled={interactionLocked} />
+        <AssistantWelcome
+          onSubmit={(question) => { void handleSend(question) }}
+          onSelectStock={handleStockSelect}
+          disabled={interactionLocked}
+        />
       )}
       {view === 'list' && !embedded && (
         <div className="flex-1 overflow-y-auto scrollbar">
@@ -1011,7 +1039,7 @@ export default function ChatWidget({
             ref={scrollBoxRef}
             data-testid="assistant-message-list"
             onScroll={handleScroll}
-            className="min-h-0 flex-1 overflow-y-auto scrollbar px-4 py-3 space-y-3"
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 scrollbar sm:px-4"
           >
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (
@@ -1042,7 +1070,7 @@ export default function ChatWidget({
                 key={msg.id}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className="flex max-w-[85%] flex-col gap-2">
+                <div className="flex max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
                   <div
                     className={`rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
                       msg.role === 'user'
@@ -1074,7 +1102,7 @@ export default function ChatWidget({
             ))}
             {sending && traceEvents.length > 0 && (
               <div className="flex justify-start">
-                <div className="w-full max-w-[85%]">
+                <div className="w-full max-w-[92%] sm:max-w-[85%]">
                   <TraceTimeline events={traceEvents} live />
                 </div>
               </div>
@@ -1082,7 +1110,7 @@ export default function ChatWidget({
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
-                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-[12px] bg-accent/40 border border-border/40">
+                <div className="w-full max-w-[92%] rounded-xl border border-border/40 bg-accent/40 px-3 py-2 text-[12px] sm:max-w-[85%]">
                   <div className="font-medium text-foreground mb-1.5">
                     诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
                   </div>
@@ -1120,7 +1148,7 @@ export default function ChatWidget({
             {sending && streamText && (
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-accent/60 text-foreground">
+                <div className="max-w-[92%] rounded-xl bg-accent/60 px-3 py-2 text-[13px] leading-relaxed text-foreground sm:max-w-[85%]">
                   <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeStreamMarkdown(streamText)}</ReactMarkdown>
                   </div>
@@ -1155,11 +1183,11 @@ export default function ChatWidget({
           )}
 
           {/* Input */}
-          <div data-testid="assistant-composer" className="flex shrink-0 items-center gap-2 px-4 py-3 border-t border-border/40">
+          <div data-testid="assistant-composer" className="sticky bottom-0 flex shrink-0 items-center gap-2 border-t border-border/40 bg-background/95 px-3 py-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] backdrop-blur sm:px-4 sm:py-3 sm:pb-3">
             <input
               ref={inputRef}
               type="text"
-              className="flex-1 h-9 px-3 rounded-lg bg-accent/40 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-10 min-w-0 flex-1 rounded-lg bg-accent/40 px-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/30 sm:h-9"
               placeholder="输入问题..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -1172,7 +1200,7 @@ export default function ChatWidget({
               disabled={interactionLocked}
             />
             <button
-              className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:h-9 sm:w-9"
               onClick={() => handleSend()}
               disabled={interactionLocked || !input.trim()}
             >

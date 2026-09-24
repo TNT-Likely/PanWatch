@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { chatApi } from '@panwatch/api'
+import { chatApi, fetchAPI } from '@panwatch/api'
 import ChatWidget from '@/components/ChatWidget'
 
 vi.mock('@panwatch/api', () => ({
+  fetchAPI: vi.fn(),
   chatApi: {
     listConversations: vi.fn().mockResolvedValue([]),
     createConversation: vi.fn().mockResolvedValue({
@@ -120,6 +121,29 @@ describe('ChatWidget layout', () => {
     expect(screen.queryByRole('button', { name: '新建对话' })).toBeNull()
   })
 
+  it('passes the selected stock into the new analysis conversation', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchAPI).mockResolvedValue([
+      { symbol: '600519', name: '贵州茅台', market: 'CN' },
+    ])
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '分析一只股票' }))
+    await user.type(screen.getByRole('searchbox', { name: '搜索股票' }), '茅台')
+    await user.click(await screen.findByRole('button', { name: /贵州茅台/ }))
+
+    await waitFor(() => expect(chatApi.createConversation).toHaveBeenCalledWith({
+      stock_symbol: '600519',
+      stock_market: 'CN',
+      initial_context: undefined,
+    }))
+    expect(chatApi.sendAssistantMessageStream).toHaveBeenCalledWith(
+      1,
+      '分析 CN:600519 贵州茅台 的基本面、行情和近期新闻',
+      expect.any(Object),
+    )
+  })
+
   it('keeps the composer at the bottom while only the message list scrolls', async () => {
     const user = userEvent.setup()
 
@@ -137,6 +161,8 @@ describe('ChatWidget layout', () => {
     expect(messageList.className).toContain('min-h-0')
     expect(messageList.className).toContain('overflow-y-auto')
     expect(composer.className).toContain('shrink-0')
+    expect(composer.className).toContain('env(safe-area-inset-bottom)')
+    expect(composer.className).toContain('sm:px-4')
   })
 
   it('ignores a second send fired before the first request updates React state', async () => {
