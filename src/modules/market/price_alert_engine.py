@@ -391,10 +391,9 @@ class PriceAlertEngine:
                     items.append({"rule_id": rule.id, "status": "duplicated"})
                     continue
 
-                notify_ok, notify_err = await self._send_notify(db, rule, ev.snapshot)
-                hit.notify_success = bool(notify_ok)
-                hit.notify_error = notify_err or ""
-
+                # 规则字段更新与命中记录同事务提交(锁窗口毫秒级);
+                # 通知必须在事务之外——渠道 httpx 超时 30s/渠道,在锁内会把
+                # SQLite 单写锁占住数十秒,饿死应用自身写入(实测事故根因)。
                 rule.last_trigger_at = now
                 rule.last_trigger_price = _safe_float(quote.get("current_price"))
                 rule.trigger_count_today = int(rule.trigger_count_today or 0) + 1
@@ -404,6 +403,15 @@ class PriceAlertEngine:
 
                 db.commit()
                 triggered += 1
+
+                try:
+                    notify_ok, notify_err = await self._send_notify(db, rule, ev.snapshot)
+                except Exception as exc:  # 通知异常不回滚命中,也不中断整轮扫描
+                    notify_ok, notify_err = False, str(exc)
+                hit.notify_success = bool(notify_ok)
+                hit.notify_error = notify_err or ""
+                db.commit()  # 微事务:仅回写通知结果
+
                 items.append(
                     {
                         "rule_id": rule.id,
