@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
@@ -66,10 +67,12 @@ def _compact_date(date_str: str) -> str:
 
 
 def fetch_board_list(limit: int = 100, proxy: str | None = None) -> list[dict]:
-    """行业榜:复用现有 Discovery 通道(东财行业板块排名)。
+    """行业榜:主源 Discovery 通道(东财);不可用时降级同花顺行业资金流页。
 
-    返回 [{code, name, change_pct, turnover}, ...];失败返回 [](fail-soft)。
+    返回 [{code, name, change_pct, turnover, _source}, ...];失败返回 [](fail-soft)。
+    ``_source`` 标记行来源,供快照血统(meta.provenance)如实标注。
     """
+    out: list[dict] = []
     try:
         from src.platform.marketdata.marketdata_client import get_market_data
 
@@ -78,8 +81,7 @@ def fetch_board_list(limit: int = 100, proxy: str | None = None) -> list[dict]:
         )
     except Exception as e:
         logger.warning("[行业快照] Discovery 行业榜获取失败: %s", e)
-        return []
-    out: list[dict] = []
+        boards = []
     for it in boards or []:
         code = str(getattr(it, "code", "") or "").strip()
         name = str(getattr(it, "name", "") or "").strip()
@@ -91,9 +93,18 @@ def fetch_board_list(limit: int = 100, proxy: str | None = None) -> list[dict]:
                 "name": name,
                 "change_pct": to_float(getattr(it, "change_pct", None)),
                 "turnover": to_float(getattr(it, "turnover", None)),
+                "_source": "discovery.hot_boards",
             }
         )
-    return out
+    if out:
+        return out[:limit]
+    ths_rows = _ths_board_list(limit)
+    if ths_rows:
+        logger.warning(
+            "[行业快照] Discovery 行业榜不可用,降级同花顺行业榜 boards=%d(degrade=1)",
+            len(ths_rows),
+        )
+    return ths_rows
 
 
 def _ak():
@@ -111,6 +122,114 @@ def _df_records(df) -> list[dict]:
         return df.to_dict("records")
     except Exception:
         return []
+
+
+#: 同花顺页面直连 UA(境内站,不走代理)
+_THS_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "Chrome/126 Safari/537.36"
+)
+
+
+def _ths_get(url: str, referer: str) -> str:
+    """同花顺页面直连取数(境内站禁用代理);8s 超时,重试 1 次;GBK 解码。
+
+    失败抛 RuntimeError,由调用方 fail-soft。
+    """
+    import requests
+
+    last_err: Exception | None = None
+    for _ in range(2):
+        try:
+            r = requests.get(
+                url,
+                timeout=8,
+                headers={"User-Agent": _THS_UA, "Referer": referer},
+                proxies={"http": None, "https": None},
+            )
+            r.raise_for_status()
+            r.encoding = "gbk"
+            return r.text
+        except Exception as e:  # noqa: PERF203 - 重试语义需要循环内捕获
+            last_err = e
+    raise RuntimeError(f"ths_fetch_failed: {last_err}")
+
+
+def _ths_hyzjl_rows() -> list[dict]:
+    """同花顺行业资金流页(服务端渲染表格)→ [{name, change_pct, net_e8, companies}]。
+
+    该页是行业级资金流的可靠服务端渲染源;akshare 的
+    ``stock_fund_flow_industry`` 解析器已与页面结构脱节(列数不匹配),故直析。
+    """
+    import io
+
+    import pandas as pd
+
+    html = _ths_get("https://data.10jqka.com.cn/funds/hyzjl/", "https://data.10jqka.com.cn/")
+    tables = pd.read_html(io.StringIO(html))
+    df = max(tables, key=len)
+    rows: list[dict] = []
+    for rec in _df_records(df):
+        name = str(rec.get("行业") or "").strip()
+        if not name:
+            continue
+        pct_raw = str(rec.get("涨跌幅") or "").replace("%", "").strip()
+        rows.append(
+            {
+                "name": name,
+                "change_pct": to_float(pct_raw or None),
+                "net_e8": to_float(rec.get("净额(亿)")),
+                "companies": to_float(rec.get("公司家数")),
+            }
+        )
+    return rows
+
+
+def _ths_name_codes() -> dict[str, str]:
+    """同花顺行业名→板块代码(akshare 名单接口);失败返回 {}。"""
+    try:
+        ak = _ak()
+        df = ak.stock_board_industry_name_ths()
+    except Exception as e:
+        logger.warning("[行业快照] 同花顺行业名单获取失败: %s", e)
+        return {}
+    out: dict[str, str] = {}
+    for rec in _df_records(df):
+        name = str(rec.get("name") or "").strip()
+        code = str(rec.get("code") or "").strip()
+        if name and code:
+            out[name] = code
+    return out
+
+
+def _ths_board_list(limit: int) -> list[dict]:
+    """同花顺行业榜:资金流页(涨跌幅/净流入)+ 名单页(代码)按名称对齐。
+
+    名称对不上的行直接丢弃(无代码无法支撑成分股链路,不给伪代码)。
+    """
+    try:
+        rows = _ths_hyzjl_rows()
+    except Exception as e:
+        logger.warning("[行业快照] 同花顺行业页获取失败: %s", e)
+        return []
+    if not rows:
+        return []
+    codes = _ths_name_codes()
+    out: list[dict] = []
+    for r in rows[:limit]:
+        code = codes.get(r["name"], "")
+        if not code:
+            continue
+        out.append(
+            {
+                "code": code,
+                "name": r["name"],
+                "change_pct": r["change_pct"],
+                "turnover": None,
+                "_source": "ths.hyzjl",
+            }
+        )
+    return out
 
 
 def fetch_em_sector_flow() -> dict[str, dict]:
@@ -138,26 +257,22 @@ def fetch_em_sector_flow() -> dict[str, dict]:
 
 
 def fetch_ths_sector_flow() -> dict[str, dict]:
-    """行业资金流备源:同花顺行业资金流(即时)。
+    """行业资金流备源:同花顺行业资金流页(hyzjl)服务端表格直析。
 
-    返回 {行业名: {"main": 净额}}。注意口径:同花顺净额是全口径净流入
-    (非东财"主力"口径),caliber 记 ths_total,交叉时容差放宽。失败返回 {}。
+    返回 {行业名: {"main": 净额(元)}}。注意口径:同花顺净额是全口径净流入
+    (非东财"主力"口径,页值单位为亿,此处换算为元对齐东财),caliber 记
+    ths_total,交叉时容差放宽。失败返回 {}。
     """
     try:
-        ak = _ak()
-        df = ak.stock_fund_flow_industry(symbol="即时")
+        rows = _ths_hyzjl_rows()
     except Exception as e:
         logger.warning("[行业快照] 同花顺行业资金流获取失败: %s", e)
         return {}
     out: dict[str, dict] = {}
-    for row in _df_records(df):
-        name = str(row.get("行业") or "").strip()
-        if not name:
+    for r in rows:
+        if r["net_e8"] is None:
             continue
-        net = to_float(row.get("净额"))
-        if net is None:
-            continue
-        out[name] = {"main": net}
+        out[r["name"]] = {"main": round(r["net_e8"] * 1e8, 2)}
     return out
 
 
@@ -388,20 +503,22 @@ def collect_daily_snapshot(
         row_degrade = max(main_degrade, small_degrade, zt_degrade)
         degrade_rows.append(row_degrade)
 
+        board_source = str(board.get("_source") or "discovery.hot_boards")
+        board_caliber = "ths_board_rank" if board_source == "ths.hyzjl" else "em_board_rank"
         meta = {
             "provenance": {
                 "change_pct": make_provenance(
                     value=board.get("change_pct"),
-                    source="discovery.hot_boards",
+                    source=board_source,
                     as_of=as_of,
-                    caliber="em_board_rank",
+                    caliber=board_caliber,
                     degrade_level=DEGRADE_SINGLE_SOURCE if boards else DEGRADE_MISSING,
                 ),
                 "turnover": make_provenance(
                     value=board.get("turnover"),
-                    source="discovery.hot_boards",
+                    source=board_source,
                     as_of=as_of,
-                    caliber="em_board_rank",
+                    caliber=board_caliber,
                     degrade_level=DEGRADE_SINGLE_SOURCE if boards else DEGRADE_MISSING,
                 ),
                 "main_net_inflow": {
@@ -537,7 +654,7 @@ def _pct_changes_from_snapshot_rows(pcts: list[float]) -> dict[str, float | None
 
 
 def fetch_board_hist_closes(board_name: str, days: int = 40) -> list[float]:
-    """主源:东财行业指数历史日K收盘价(旧→新)。失败返回 [](fail-soft)。"""
+    """主源:东财行业指数历史日K收盘价(旧→新);不可用降级同花顺行业指数。失败返回 []。"""
     if not board_name:
         return []
     try:
@@ -553,19 +670,44 @@ def fetch_board_hist_closes(board_name: str, days: int = 40) -> list[float]:
         )
     except Exception as e:
         logger.warning("[行业动量] 行业K线获取失败 name=%s: %s", board_name, e)
-        return []
+        return _ths_board_closes(board_name, days)
     closes: list[float] = []
     for row in _df_records(df):
         c = to_float(row.get("收盘"))
+        if c is not None:
+            closes.append(c)
+    return closes if closes else _ths_board_closes(board_name, days)
+
+
+def _ths_board_closes(board_name: str, days: int = 40) -> list[float]:
+    """行业K线备源:同花顺行业指数日K收盘价(旧→新)。失败返回 [](fail-soft)。"""
+    if not board_name:
+        return []
+    try:
+        ak = _ak()
+        end = beijing_now()
+        start = end - timedelta(days=max(days * 2, 30))
+        df = ak.stock_board_industry_index_ths(
+            symbol=board_name,
+            start_date=start.strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+        )
+    except Exception as e:
+        logger.warning("[行业动量] 同花顺行业指数K线失败 name=%s: %s", board_name, e)
+        return []
+    closes: list[float] = []
+    for row in _df_records(df):
+        c = to_float(row.get("收盘价"))
         if c is not None:
             closes.append(c)
     return closes
 
 
 def fetch_board_constituents(board_code: str, limit: int = 10) -> list[dict]:
-    """备源:Discovery 通道取板块成交额前 N 成分股。失败返回 [](fail-soft)。"""
+    """备源:Discovery 通道取板块成交额前 N 成分股;不可用降级同花顺详情页。失败返回 []。"""
     if not board_code:
         return []
+    out: list[dict] = []
     try:
         from src.platform.marketdata.marketdata_client import get_market_data
 
@@ -574,8 +716,7 @@ def fetch_board_constituents(board_code: str, limit: int = 10) -> list[dict]:
         )
     except Exception as e:
         logger.warning("[行业动量] 板块成分股获取失败 code=%s: %s", board_code, e)
-        return []
-    out: list[dict] = []
+        stocks = []
     for it in stocks or []:
         symbol = str(getattr(it, "symbol", "") or "").strip()
         if not symbol:
@@ -586,6 +727,46 @@ def fetch_board_constituents(board_code: str, limit: int = 10) -> list[dict]:
                 "turnover": to_float(getattr(it, "turnover", None)),
             }
         )
+    if out:
+        return out[:limit]
+    ths_rows = _ths_board_constituents(board_code, limit)
+    if ths_rows:
+        logger.warning(
+            "[行业动量] 成分股降级同花顺详情页 code=%s n=%d(degrade=1)",
+            board_code,
+            len(ths_rows),
+        )
+    return ths_rows
+
+
+def _ths_board_constituents(board_code: str, limit: int) -> list[dict]:
+    """同花顺板块详情页成分股(服务端表格)。
+
+    code 仅接受 6 位数字(同花顺板块代码),拒绝其他取值拼接 URL。
+    """
+    import io
+
+    import pandas as pd
+
+    if not re.fullmatch(r"\d{6}", str(board_code)):
+        return []
+    try:
+        html = _ths_get(
+            f"https://q.10jqka.com.cn/thshy/detail/code/{board_code}/",
+            "https://q.10jqka.com.cn/",
+        )
+        tables = pd.read_html(io.StringIO(html))
+    except Exception as e:
+        logger.warning("[行业动量] 同花顺详情页获取失败 code=%s: %s", board_code, e)
+        return []
+    df = max(tables, key=len)
+    out: list[dict] = []
+    for rec in _df_records(df):
+        symbol = str(rec.get("代码") or "").strip()
+        if not symbol:
+            continue
+        turnover_raw = str(rec.get("成交额") or "").replace("亿", "").strip()
+        out.append({"symbol": symbol, "turnover": to_float(turnover_raw or None)})
     return out[:limit]
 
 
