@@ -80,8 +80,8 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
         visible=True,
         display_order=15,
         config={
-            "pipeline_timeout_minutes": 20,
-            "llm_timeout_seconds": 120,
+            "pipeline_timeout_minutes": 30,
+            "llm_timeout_seconds": 380,  # 思考型模型非流式单轮常超 2 分钟,120 会误杀(与 tradingagents 同款结论)
             "emit_paper_trading_signal": False,
             "auto_create_alerts": True,
             "max_candidates": 5,

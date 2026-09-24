@@ -996,28 +996,35 @@ def _latest_period_label(periods: list[str]) -> str:
 
 
 def _single_quarter_profit_yoy(profit: dict[str, float | None], periods: list[str]) -> float | None:
-    """最新单季净利同比:需连续同季差分;任何一步不可得返回 None(核验侧按缺项处理)。"""
+    """最新单季净利同比:累计序列差分出单季,与去年同季单季比;不可得返回 None。
+
+    键为 ``YYYYMMDD`` 报告期(值为年初至今累计)。单季 = 本期累计 − 上期累计
+    (Q1 单季即累计);去年同季单季同样差分。任何一步不可得返回 None。
+    """
     items = sorted((k, v) for k, v in (profit or {}).items() if v is not None)
     if len(items) < 5:
         return None
     keys = [k for k, _ in items]
     vals = [v for _, v in items]
 
-    def q(key: str) -> str:
-        return key[4:6]
+    def _single(idx: int) -> float | None:
+        """第 idx 期(与 keys 对齐)的单季净利;Q1 即累计,否则减同年上一累计期。"""
+        k = keys[idx]
+        if k[4:6] == "03":
+            return vals[idx]
+        if idx < 1 or keys[idx - 1][:4] != k[:4] or keys[idx - 1][4:6] >= k[4:6]:
+            return None
+        return vals[idx] - vals[idx - 1]
 
-    last, prev = keys[-1], keys[-2]
-    if q(last) != q(prev):
+    last = keys[-1]
+    single_now = _single(len(keys) - 1)
+    if single_now is None:
         return None
-    single_now = vals[-1] - vals[-2]
-    same_q = [k for k in keys if q(k) == q(last)]
-    if len(same_q) < 2:
+    prev_same_q = [k for k in keys if k[4:6] == last[4:6] and k[:4] < last[:4]]
+    if not prev_same_q:
         return None
-    j = keys.index(same_q[-2])
-    if j - 1 < 0:
-        return None
-    single_prev = vals[j] - vals[j - 1]
-    if single_prev == 0:
+    single_prev = _single(keys.index(prev_same_q[-1]))
+    if single_prev is None or single_prev == 0:
         return None
     try:
         return (single_now - single_prev) / abs(single_prev)
@@ -1120,7 +1127,14 @@ def load_fundamentals(
         .order_by(FundamentalsCache.report_period.desc(), FundamentalsCache.id.desc())
         .first()
     )
-    if row and isinstance(row.summary, dict) and row.summary.get("rev_cagr") is not None:
+    # 复用条件须覆盖核验必需字段:缺 single_quarter_profit_yoy 的缓存(旧版缺陷)
+    # 会让核验必然 FAIL,不如重拉重算
+    if (
+        row
+        and isinstance(row.summary, dict)
+        and row.summary.get("rev_cagr") is not None
+        and row.summary.get("single_quarter_profit_yoy") is not None
+    ):
         return row.summary, ""
 
     if time.monotonic() >= deadline - pcfg.FINANCE_BUDGET_RESERVE_SEC:

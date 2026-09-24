@@ -1271,8 +1271,8 @@ def test_agent_seed_spec_and_workflow_names():
     assert spec.execution_mode == "batch" and spec.kind == AGENT_KIND_WORKFLOW
     assert spec.display_order == 15
     assert spec.config == {
-        "pipeline_timeout_minutes": 20,
-        "llm_timeout_seconds": 120,
+        "pipeline_timeout_minutes": 30,
+        "llm_timeout_seconds": 380,
         "emit_paper_trading_signal": False,
         "auto_create_alerts": True,
         "max_candidates": 5,
