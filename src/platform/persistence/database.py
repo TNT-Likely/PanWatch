@@ -22,7 +22,9 @@ os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 # SQLite 适合本地开发和单实例部署，但并发写入时不能无限等待锁。
 # 将等待限制在数秒内，让上层事务可以回滚/重试或返回明确错误，而不是
 # 让浏览器请求长时间表现为“卡死”。
-SQLITE_BUSY_TIMEOUT_MS = 5_000
+# 30s:写锁已按「通知移出事务/分批提交」短化,排队 30s 可吸收合法突发
+# (价格提醒扫描、信号刷新、pipeline 落库互撞);5s 会在突发期误伤报 database is locked。
+SQLITE_BUSY_TIMEOUT_MS = 30_000
 SQLITE_INIT_RETRY_DELAYS = (0.5, 1.0, 2.0)
 
 engine = create_engine(
