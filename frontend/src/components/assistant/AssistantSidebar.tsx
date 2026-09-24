@@ -59,7 +59,7 @@ export function AssistantSidebar({
               <button
                 type="button"
                 onClick={() => onDelete(conversation.id)}
-                className="mr-1 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-stock-up/10 hover:text-stock-up group-hover:opacity-100 focus:opacity-100"
+                className="mr-1 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100"
                 aria-label={`删除 ${title}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />

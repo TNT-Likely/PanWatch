@@ -1031,7 +1031,7 @@ export default function ChatWidget({
                 </div>
                 <button
                   onClick={(e) => deleteConversation(conv.id, e)}
-                  className="p-1 rounded text-muted-foreground hover:text-stock-up transition-colors shrink-0"
+                  className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1129,9 +1129,9 @@ export default function ChatWidget({
                         <span
                           className={
                             s.status === 'done'
-                              ? 'text-stock-down'
+                              ? 'text-success'
                               : s.status === 'failed'
-                              ? 'text-stock-up'
+                              ? 'text-destructive'
                               : s.status === 'running'
                               ? 'text-primary'
                               : 'text-muted-foreground'

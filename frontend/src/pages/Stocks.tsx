@@ -1155,7 +1155,7 @@ export default function StocksPage() {
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: '港' }
-    if (m === 'US') return { style: 'bg-stock-down/10 text-stock-down', label: '美' }
+    if (m === 'US') return { style: 'bg-violet-500/10 text-violet-600', label: '美' }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1391,7 +1391,7 @@ export default function StocksPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:flex-wrap md:overflow-visible">
           {marketStatus.map(m => {
             const statusColors: Record<string, string> = {
-              trading: 'bg-stock-down',
+              trading: 'bg-success',
               pre_market: 'bg-amber-500',
               break: 'bg-amber-500',
               after_hours: 'bg-slate-400',
@@ -1405,7 +1405,7 @@ export default function StocksPage() {
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${statusColors[m.status] || 'bg-slate-400'}`} />
                 <span className="text-caption text-muted-foreground">{m.name}</span>
-                <span className={`text-mini ${m.is_trading ? 'text-stock-down' : 'text-muted-foreground'} hidden sm:inline`}>
+                <span className={`text-mini ${m.is_trading ? 'text-success' : 'text-muted-foreground'} hidden sm:inline`}>
                   {m.status_text}
                 </span>
               </div>
@@ -1774,7 +1774,7 @@ export default function StocksPage() {
                                   </td>
                                   <td className="px-4 py-2.5 text-center">
                                     {pos.trading_style ? (
-                                      <span className={`text-mini px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-stock-up/10 text-stock-up' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                      <span className={`text-mini px-1.5 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-primary/10 text-primary' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
                                         {pos.trading_style === 'short' ? '短线' : pos.trading_style === 'long' ? '长线' : '波段'}
                                       </span>
                                     ) : (
@@ -1894,7 +1894,7 @@ export default function StocksPage() {
                                     {pos.name}
                                   </button>
                                   {pos.trading_style && (
-                                    <span className={`shrink-0 text-mini px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-stock-up/10 text-stock-up' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                                    <span className={`shrink-0 text-mini px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-primary/10 text-primary' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
                                       {pos.trading_style === 'short' ? '短' : pos.trading_style === 'long' ? '长' : '波'}
                                     </span>
                                   )}
@@ -2043,8 +2043,8 @@ export default function StocksPage() {
                 onClick={() => setWatchlistOnlyAlerts(!watchlistOnlyAlerts)}
                 className={`text-caption px-2.5 py-1 rounded-md border transition-colors ${
                   watchlistOnlyAlerts
-                    ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
-                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-stock-up/30'
+                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    : 'bg-accent/30 border-border/50 text-muted-foreground hover:border-primary/30'
                 }`}
                 title="只显示需要关注/预警的股票"
               >
@@ -2530,7 +2530,7 @@ export default function StocksPage() {
                   <div key={agent.name} className="rounded-xl bg-accent/30 hover:bg-accent/50 transition-colors overflow-hidden">
                     <div className="flex items-center justify-between p-3.5">
                       <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-stock-down' : 'bg-border'}`} />
+                        <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-success' : 'bg-border'}`} />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-body font-medium text-foreground">{agent.display_name}</span>
@@ -2792,12 +2792,12 @@ export default function StocksPage() {
                           <span className={`text-mini px-1.5 py-0.5 rounded ${
                             item.source === 'eastmoney' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
                             item.source === 'eastmoney_news' ? 'bg-blue-500/10 text-blue-500' :
-                            'bg-stock-down/10 text-stock-down dark:text-stock-down'
+                            'bg-violet-500/10 text-violet-600'
                           }`}>
                             {item.source_label}
                           </span>
                           {item.importance >= 2 && (
-                            <span className="text-mini px-1.5 py-0.5 rounded bg-stock-up/10 text-stock-up">
+                            <span className="text-mini px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
                               重要
                             </span>
                           )}

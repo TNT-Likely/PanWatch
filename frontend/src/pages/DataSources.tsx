@@ -72,12 +72,12 @@ const DATASOURCE_TYPES = {
   news: { label: '新闻资讯', icon: Newspaper, color: 'text-blue-500' },
   kline: { label: 'K线数据', icon: LineChart, color: 'text-orange-500' },
   capital_flow: { label: '资金流向', icon: DollarSign, color: 'text-yellow-500' },
-  quote: { label: '实时行情', icon: TrendingUp, color: 'text-stock-down' },
+  quote: { label: '实时行情', icon: TrendingUp, color: 'text-sky-500' },
   events: { label: '事件日历', icon: Layers, color: 'text-violet-500' },
   chart: { label: 'K线截图', icon: Image, color: 'text-purple-500' },
   flash_news: { label: '快讯', icon: Zap, color: 'text-amber-500' },
   fundamentals: { label: '基本面', icon: BarChart3, color: 'text-indigo-500' },
-  dragon_tiger: { label: '龙虎榜', icon: Trophy, color: 'text-stock-up' },
+  dragon_tiger: { label: '龙虎榜', icon: Trophy, color: 'text-fuchsia-500' },
   margin: { label: '融资融券', icon: Landmark, color: 'text-cyan-500' },
   shareholders: { label: '股东户数', icon: Users, color: 'text-teal-500' },
   dividend: { label: '分红', icon: Gift, color: 'text-pink-500' },
@@ -297,7 +297,7 @@ export default function DataSourcesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-body font-medium text-foreground">{source.name}</span>
                         {source.supports_batch && (
-                          <span className="flex items-center gap-0.5 text-mini px-1.5 py-0.5 rounded bg-stock-down/10 text-stock-down dark:text-stock-down">
+                          <span className="flex items-center gap-0.5 text-mini px-1.5 py-0.5 rounded bg-success/10 text-success">
                             <Layers className="w-2.5 h-2.5" />
                             批量
                           </span>
@@ -307,7 +307,7 @@ export default function DataSourcesPage() {
                         <span className="text-caption text-muted-foreground font-mono">{source.provider}</span>
                         <span className="text-caption text-muted-foreground">优先级: {source.priority}</span>
                         {source.engine_attached ? (
-                          <span className="text-mini px-1.5 py-0.5 rounded bg-stock-down/10 text-stock-down dark:text-stock-down">已接入新引擎</span>
+                          <span className="text-mini px-1.5 py-0.5 rounded bg-success/10 text-success">已接入新引擎</span>
                         ) : (
                           <span className="text-mini px-1.5 py-0.5 rounded bg-muted text-muted-foreground">旧路·待迁移</span>
                         )}
@@ -493,7 +493,7 @@ export default function DataSourcesPage() {
 
             <div className="flex justify-between gap-2 pt-2">
               {editId ? (
-                <Button variant="ghost" className="text-stock-up hover:text-stock-up" onClick={deleteSource}>
+                <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={deleteSource}>
                   <Trash2 className="w-4 h-4 mr-1" />删除
                 </Button>
               ) : <span />}
@@ -517,7 +517,7 @@ export default function DataSourcesPage() {
               {testResult?.test_passed ? (
                 <Check className="w-5 h-5 text-success" />
               ) : (
-                <X className="w-5 h-5 text-stock-up" />
+                <X className="w-5 h-5 text-destructive" />
               )}
               测试结果 - {testResult?.source_name}
             </DialogTitle>
@@ -532,7 +532,7 @@ export default function DataSourcesPage() {
             <div className="flex items-center gap-4 p-3 rounded-lg bg-accent/30">
               <div className="flex-1">
                 <div className="text-caption text-muted-foreground">状态</div>
-                <div className={`text-body font-medium ${testResult?.test_passed ? 'text-stock-down dark:text-stock-down' : 'text-stock-up'}`}>
+                <div className={`text-body font-medium ${testResult?.test_passed ? 'text-success' : 'text-destructive'}`}>
                   {testResult?.test_passed ? '测试成功' : '测试失败'}
                 </div>
               </div>
@@ -548,7 +548,7 @@ export default function DataSourcesPage() {
 
             {/* Error message */}
             {testResult?.error && (
-              <div className="p-3 rounded-lg bg-stock-up/10 border border-stock-up/20">
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                 <div className="text-caption text-destructive font-medium mb-1">错误信息</div>
                 <div className="text-body-sm text-destructive break-words whitespace-pre-wrap">{testResult.error}</div>
               </div>
@@ -570,7 +570,7 @@ export default function DataSourcesPage() {
                       <span className={`px-1 py-0.5 rounded text-mini flex-shrink-0 ${
                         log.action === 'start' ? 'bg-blue-500/10 text-blue-500' :
                         log.action === 'success' ? 'bg-success/10 text-success' :
-                        'bg-stock-up/10 text-stock-up'
+                        'bg-destructive/10 text-destructive'
                       }`}>
                         {log.action === 'start' ? '开始' : log.action === 'success' ? '成功' : '失败'}
                       </span>

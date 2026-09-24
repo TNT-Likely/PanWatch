@@ -1266,11 +1266,11 @@ export default function StockInsightModal(props: {
                       <div className="text-caption text-muted-foreground mb-2">持仓信息</div>
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-body-sm">
-                          <div className="rounded bg-stock-down/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
                             <div className="text-mini text-muted-foreground">持仓数量</div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
-                          <div className="rounded bg-stock-down/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
                             <div className="text-mini text-muted-foreground">持仓成本(单价)</div>
                             <div
                               className={`font-mono ${
@@ -1286,11 +1286,11 @@ export default function StockInsightModal(props: {
                               {formatNumber(holdingAgg.unitCost)}
                             </div>
                           </div>
-                          <div className="rounded bg-stock-down/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
                             <div className="text-mini text-muted-foreground">持仓市值</div>
                             <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue)}</div>
                           </div>
-                          <div className="rounded bg-stock-down/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/15 px-2 py-1.5">
                             <div className="text-mini text-muted-foreground">总盈亏</div>
                             <div className={`font-mono ${holdingAgg.pnl >= 0 ? 'text-stock-up' : 'text-stock-down'}`}>
                               {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl)}

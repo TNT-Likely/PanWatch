@@ -68,11 +68,11 @@ function outcomeLabel(outcome?: AgentPredictionOutcomeItem) {
 
 function OutcomeCell({ outcome }: { outcome?: AgentPredictionOutcomeItem }) {
   if (!outcome || outcome.status === 'pending') return <span className="text-body-sm text-muted-foreground">{outcomeLabel(outcome)}</span>
-  return <div className="text-right"><div className={`font-mono text-body-sm ${pctClass(outcome.return_pct)}`}>{formatPct(outcome.return_pct)}</div><div className={`text-mini ${outcome.hit ? 'text-stock-down' : 'text-muted-foreground'}`}>{outcomeLabel(outcome)}</div></div>
+  return <div className="text-right"><div className={`font-mono text-body-sm ${pctClass(outcome.return_pct)}`}>{formatPct(outcome.return_pct)}</div><div className={`text-mini ${outcome.hit ? 'text-success' : 'text-muted-foreground'}`}>{outcomeLabel(outcome)}</div></div>
 }
 
 function SummaryCard({ label, value, hint, tone = 'default' }: { label: string; value: string; hint?: string; tone?: 'default' | 'positive' | 'warning' }) {
-  const valueClass = tone === 'positive' ? 'text-stock-down' : tone === 'warning' ? 'text-amber-600' : 'text-foreground'
+  const valueClass = tone === 'positive' ? 'text-success' : tone === 'warning' ? 'text-amber-600' : 'text-foreground'
   return <div className="rounded-xl border border-border/60 bg-card/70 p-3.5"><div className="text-caption text-muted-foreground">{label}</div><div className={`mt-1 text-xl font-bold ${valueClass}`}>{value}</div>{hint && <div className="mt-1 text-mini text-muted-foreground">{hint}</div>}</div>
 }
 

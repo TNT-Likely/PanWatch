@@ -944,7 +944,7 @@ export default function SettingsPage() {
                         disabled={!isChanged || saving === setting.key}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
                           saved === setting.key
-                            ? 'bg-stock-down/10 text-stock-down'
+                            ? 'bg-success/10 text-success'
                             : isChanged
                               ? 'bg-primary text-white'
                               : 'text-muted-foreground'
@@ -1067,9 +1067,9 @@ export default function SettingsPage() {
                 <span className="opacity-50">|</span>
                 <span>反馈: <span className="font-mono text-foreground">{fbStats.total}</span></span>
                 <span className="opacity-50">|</span>
-                <span>有用: <span className="font-mono text-stock-down">{fbStats.useful}</span></span>
+                <span>有用: <span className="font-mono text-success">{fbStats.useful}</span></span>
                 <span className="opacity-50">|</span>
-                <span>没用: <span className="font-mono text-stock-up">{fbStats.useless}</span></span>
+                <span>没用: <span className="font-mono text-destructive">{fbStats.useless}</span></span>
                 <span className="opacity-50">|</span>
                 <span>有用率: <span className="font-mono text-foreground">{Math.round(fbStats.useful_rate * 100)}%</span></span>
               </div>

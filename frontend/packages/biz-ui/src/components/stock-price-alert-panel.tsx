@@ -299,7 +299,7 @@ export default function StockPriceAlertPanel(props: {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-body font-medium truncate">{r.name || `${props.stockName || symbol} 提醒`}</span>
-                          <span className={`text-mini px-1.5 py-0.5 rounded ${r.enabled ? 'bg-stock-down/15 text-stock-down' : 'bg-muted text-muted-foreground'}`}>
+                          <span className={`text-mini px-1.5 py-0.5 rounded ${r.enabled ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                             {r.enabled ? '启用' : '暂停'}
                           </span>
                         </div>

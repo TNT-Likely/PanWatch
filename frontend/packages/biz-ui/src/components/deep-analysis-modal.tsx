@@ -43,9 +43,9 @@ const STAGE_LABEL: Record<string, string> = {
 }
 
 const DECISION_COLOR: Record<string, string> = {
-  buy: 'text-stock-down dark:text-stock-down',
+  buy: 'text-stock-up dark:text-stock-up',
   hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-stock-up dark:text-stock-up',
+  sell: 'text-stock-down dark:text-stock-down',
 }
 
 const POLL_INTERVAL_MS = 2000
@@ -370,7 +370,7 @@ export function DeepAnalysisModal({
 
         {stage === 'error' && (
           <div className="space-y-3 text-body">
-            <div className="rounded-lg bg-stock-up/10 border border-stock-up/30 p-3 text-stock-up">
+            <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-destructive">
               <div className="font-semibold mb-1">分析失败</div>
               <div className="text-body-sm">{error}</div>
             </div>
@@ -418,16 +418,16 @@ function IdleView({
 
       {/* 本月预算 */}
       {budget && (
-        <div className={`rounded-lg p-3 text-body-sm ${overBudget ? 'bg-stock-up/10 border border-stock-up/30' : 'bg-accent/20'}`}>
+        <div className={`rounded-lg p-3 text-body-sm ${overBudget ? 'bg-destructive/10 border border-destructive/30' : 'bg-accent/20'}`}>
           <div className="flex items-center justify-between">
             <span className="font-medium">本月预算</span>
-            <span className={overBudget ? 'text-stock-up' : 'text-muted-foreground'}>
+            <span className={overBudget ? 'text-destructive' : 'text-muted-foreground'}>
               ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
               {budget.runs_this_month > 0 && ` · ${budget.runs_this_month} 次`}
             </span>
           </div>
           {overBudget && (
-            <div className="text-caption text-stock-up mt-1">
+            <div className="text-caption text-destructive mt-1">
               ⚠️ 本月预算已用尽。如需继续,请到「设置 → Agent → TradingAgents」调高 `monthly_budget_usd`。
             </div>
           )}
@@ -524,7 +524,7 @@ function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] 
   const statusClasses: Record<ProgressDataSource['status'], string> = {
     pending: 'text-muted-foreground',
     running: 'text-sky-600 dark:text-sky-400',
-    done: 'text-stock-down dark:text-stock-down',
+    done: 'text-success',
     error: 'text-amber-600 dark:text-amber-400',
   }
 
@@ -578,11 +578,11 @@ export function ToolkitDiagnostics({
   const total = hit + miss + pass + fall + err
 
   const ACTION_CLS: Record<string, string> = {
-    HIT: 'text-stock-down dark:text-stock-down',
+    HIT: 'text-success',
     MISS: 'text-amber-600 dark:text-amber-400',
     PASSTHROUGH: 'text-sky-600 dark:text-sky-400',
     FALLTHROUGH: 'text-orange-600 dark:text-orange-400',
-    ERROR: 'text-stock-up',
+    ERROR: 'text-destructive',
   }
 
   return (
@@ -680,7 +680,7 @@ function StageRow({ stage }: { stage: ProgressStage }) {
     stage.status === 'done' ? '✓' : stage.status === 'running' ? '🔄' : '⏸'
   const cls =
     stage.status === 'done'
-      ? 'text-stock-down dark:text-stock-down'
+      ? 'text-success'
       : stage.status === 'running'
       ? 'text-primary'
       : 'text-muted-foreground'

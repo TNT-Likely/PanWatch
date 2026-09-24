@@ -283,7 +283,7 @@ export function SuggestionBadge({
                       disabled={feedback !== null}
                       className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                         feedback === 'useful'
-                          ? 'bg-stock-down/10 border-stock-down/30 text-stock-down'
+                          ? 'bg-success/10 border-success/30 text-success'
                           : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -294,7 +294,7 @@ export function SuggestionBadge({
                       disabled={feedback !== null}
                       className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                         feedback === 'useless'
-                          ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
+                          ? 'bg-destructive/10 border-destructive/30 text-destructive'
                           : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
                       }`}
                     >
@@ -491,7 +491,7 @@ export function SuggestionBadge({
                     disabled={feedback !== null}
                     className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                       feedback === 'useful'
-                        ? 'bg-stock-down/10 border-stock-down/30 text-stock-down'
+                        ? 'bg-success/10 border-success/30 text-success'
                         : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
                     }`}
                   >
@@ -502,7 +502,7 @@ export function SuggestionBadge({
                     disabled={feedback !== null}
                     className={`text-body-sm px-3 py-1.5 rounded-md border transition-colors ${
                       feedback === 'useless'
-                        ? 'bg-stock-up/10 border-stock-up/30 text-stock-up'
+                        ? 'bg-destructive/10 border-destructive/30 text-destructive'
                         : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
                     }`}
                   >

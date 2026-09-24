@@ -204,9 +204,9 @@ export function TechnicalIndicatorStrip(props: {
 }
 
 export const DEEP_DECISION_COLOR: Record<string, string> = {
-  buy: 'text-stock-down dark:text-stock-down',
-  hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-stock-up dark:text-stock-up',
+  buy: 'text-stock-up dark:text-stock-up',
+  hold: 'text-warning dark:text-warning',
+  sell: 'text-stock-down dark:text-stock-down',
 }
 
 export const DEEP_STAGE_LABEL: Record<string, string> = {
@@ -381,7 +381,7 @@ export function DeepHistoryComparison({
   const fmtPct = (v: number | null): string => (v == null ? '-' : `${(v * 100).toFixed(0)}%`)
   const fmtRet = (v: number | null): string => (v == null ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
   const retCls = (v: number | null): string =>
-    v == null ? 'text-muted-foreground' : v > 0 ? 'text-stock-down dark:text-stock-down' : v < 0 ? 'text-stock-up dark:text-stock-up' : 'text-muted-foreground'
+    v == null ? 'text-muted-foreground' : v > 0 ? 'text-stock-up dark:text-stock-up' : v < 0 ? 'text-stock-down dark:text-stock-down' : 'text-muted-foreground'
 
   return (
     <div className="rounded-lg border border-border/50 p-3 space-y-2">
@@ -396,11 +396,11 @@ export function DeepHistoryComparison({
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">买入 ({stats.buy_count})</div>
-          <div className="font-semibold text-stock-down dark:text-stock-down">{fmtPct(stats.buy_hit_rate)}</div>
+          <div className="font-semibold text-stock-up dark:text-stock-up">{fmtPct(stats.buy_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">卖出 ({stats.sell_count})</div>
-          <div className="font-semibold text-stock-up dark:text-stock-up">{fmtPct(stats.sell_hit_rate)}</div>
+          <div className="font-semibold text-stock-down dark:text-stock-down">{fmtPct(stats.sell_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">平均 20 日收益</div>

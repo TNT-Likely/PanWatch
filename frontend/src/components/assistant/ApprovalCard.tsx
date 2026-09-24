@@ -38,7 +38,7 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
       : ''
   const decisionStatusClass = approval.status === 'rejected'
     ? 'text-destructive'
-    : 'text-stock-down dark:text-stock-down'
+    : 'text-success'
 
   return (
     <section className="max-w-[85%] rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-body">

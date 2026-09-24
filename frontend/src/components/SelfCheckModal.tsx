@@ -86,7 +86,7 @@ function ItemRow({ item }: { item: CheckRow }) {
               {item.error}
             </p>
           )}
-          {item.hint && <p className="text-caption font-medium text-stock-up">{item.hint}</p>}
+          {item.hint && <p className="text-caption font-medium text-destructive">{item.hint}</p>}
         </div>
       )}
       {item.status !== 'fail' && item.status !== 'checking' && item.note && (
@@ -272,7 +272,7 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
           </Button>
         </div>
 
-        {listError && <div className="mt-3 text-body-sm text-stock-up">{listError}</div>}
+        {listError && <div className="mt-3 text-body-sm text-destructive">{listError}</div>}
         {!listError && total === 0 && !running && (
           <div className="mt-4 rounded-xl border border-border/40 bg-accent/20 p-4 text-center text-body-sm text-muted-foreground">
             未配置 数据源 / AI / 通知,先去设置里配置后再自检。

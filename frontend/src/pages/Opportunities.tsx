@@ -89,10 +89,10 @@ const toneClass = (item: StrategySignalItem) => {
   const action = (item.action || '').toLowerCase()
   const score = Number(item.rank_score || item.score || 0)
   if (action === 'buy') {
-    return 'border-stock-up/35 bg-[linear-gradient(140deg,hsl(var(--rose-500)/0.14),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
+    return 'border-stock-up/35 bg-[linear-gradient(140deg,hsl(var(--stock-up)/0.10),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
   }
   if (action === 'add') {
-    return 'border-stock-down/35 bg-[linear-gradient(140deg,hsl(var(--emerald-500)/0.13),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
+    return 'border-stock-down/35 bg-[linear-gradient(140deg,hsl(var(--stock-down)/0.10),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
   }
   if (score >= 85) {
     return 'border-primary/35 bg-[linear-gradient(140deg,hsl(var(--primary)/0.12),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
@@ -103,7 +103,7 @@ const toneClass = (item: StrategySignalItem) => {
 const actionBadgeClass = (action?: string) => {
   const key = (action || '').toLowerCase()
   if (key === 'buy') return 'bg-stock-up/15 text-stock-up border border-stock-up/35'
-  if (key === 'add') return 'bg-stock-down/15 text-stock-down border border-stock-down/35'
+  if (key === 'add') return 'bg-stock-up/15 text-stock-up border border-stock-up/35'
   if (key === 'hold') return 'bg-blue-500/15 text-blue-400 border border-blue-500/35'
   return 'bg-accent text-muted-foreground border border-border/50'
 }
@@ -119,7 +119,7 @@ const displayActionLabel = (item: StrategySignalItem) => {
 const verificationBadge = (ev: StrategySignalItem['earnings_verification']) => {
   const status = (ev?.status || '').toLowerCase()
   if (status === 'passed') {
-    return { label: '财报已核验', cls: 'bg-stock-down/15 text-stock-down border border-stock-down/30' }
+    return { label: '财报已核验', cls: 'bg-success/15 text-success border border-success/30' }
   }
   if (status === 'warn') {
     return { label: '财报存疑', cls: 'bg-orange-500/15 text-orange-600 border border-orange-500/30' }
@@ -229,8 +229,8 @@ const formatEntryDisplay = (action: string | undefined, entryLow: number | null,
 }
 
 const regimeToneClass = (regime?: string) => {
-  if (regime === 'bullish') return 'bg-stock-down/15 text-stock-down border border-stock-down/30'
-  if (regime === 'bearish') return 'bg-stock-up/15 text-stock-up border border-stock-up/30'
+  if (regime === 'bullish') return 'bg-stock-up/15 text-stock-up border border-stock-up/30'
+  if (regime === 'bearish') return 'bg-stock-down/15 text-stock-down border border-stock-down/30'
   return 'bg-amber-500/12 text-amber-300 border border-amber-500/25'
 }
 
@@ -765,7 +765,7 @@ export default function OpportunitiesPage() {
                     {item.ai_score != null && (
                       <div className="mt-1 flex items-center justify-end gap-1">
                         <span className="text-mini text-muted-foreground">AI</span>
-                        <span className={`inline-flex items-center justify-center min-w-[18px] px-1.5 py-0.5 rounded text-caption font-semibold ${item.ai_score >= 8 ? 'bg-stock-down/20 text-stock-down' : item.ai_score >= 6 ? 'bg-primary/20 text-primary' : item.ai_score >= 4 ? 'bg-amber-500/20 text-amber-400' : 'bg-stock-up/20 text-stock-up'}`}>
+                        <span className={`inline-flex items-center justify-center min-w-[18px] px-1.5 py-0.5 rounded text-caption font-semibold ${item.ai_score >= 8 ? 'bg-success/20 text-success' : item.ai_score >= 6 ? 'bg-primary/20 text-primary' : item.ai_score >= 4 ? 'bg-amber-500/20 text-amber-400' : 'bg-destructive/20 text-destructive'}`}>
                           {item.ai_score}
                         </span>
                       </div>
@@ -803,12 +803,12 @@ export default function OpportunitiesPage() {
                 {item.factor_explain && (((item.factor_explain.positive?.length ?? 0) > 0) || ((item.factor_explain.negative?.length ?? 0) > 0)) && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {(item.factor_explain.positive ?? []).map((f) => (
-                      <span key={`p-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-mini bg-stock-down/15 text-stock-down">
+                      <span key={`p-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-mini bg-stock-up/15 text-stock-up">
                         {f.label} +{Math.abs(f.contribution).toFixed(1)}
                       </span>
                     ))}
                     {(item.factor_explain.negative ?? []).map((f) => (
-                      <span key={`n-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-mini bg-stock-up/15 text-stock-up">
+                      <span key={`n-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-mini bg-stock-down/15 text-stock-down">
                         {f.label} {f.contribution.toFixed(1)}
                       </span>
                     ))}

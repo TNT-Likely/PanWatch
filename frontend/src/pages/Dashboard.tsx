@@ -66,8 +66,8 @@ const ALERT_LABEL: Record<string, string> = {
 }
 
 const FEED_BADGE: Record<string, { label: string; cls: string }> = {
-  alert: { label: '提醒命中', cls: 'bg-stock-up/15 text-stock-up' },
-  holding: { label: '持仓', cls: 'bg-stock-down/15 text-stock-down' },
+  alert: { label: '提醒命中', cls: 'bg-destructive/15 text-destructive' },
+  holding: { label: '持仓', cls: 'bg-primary/15 text-primary' },
   watch: { label: '自选', cls: 'bg-accent text-muted-foreground' },
   risk: { label: '风险', cls: 'bg-amber-500/15 text-amber-600' },
   opportunity: { label: '机会', cls: 'bg-primary/10 text-primary' },
@@ -76,7 +76,7 @@ const FEED_BADGE: Record<string, { label: string; cls: string }> = {
 // 市场分布 stacked 条配色:CN 用品牌色,US/HK 用差异化色区分
 const MARKET_BAR_CLS: Record<string, string> = {
   CN: 'bg-primary',
-  US: 'bg-stock-down',
+  US: 'bg-violet-500',
   HK: 'bg-orange-500',
 }
 
@@ -663,7 +663,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : (
-                <div className="pt-1 text-caption text-stock-down">✓ 集中度/分布未见明显风险</div>
+                <div className="pt-1 text-caption text-success">✓ 集中度/分布未见明显风险</div>
               )}
               <button
                 type="button"

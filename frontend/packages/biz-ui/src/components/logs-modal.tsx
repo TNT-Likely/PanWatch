@@ -33,8 +33,8 @@ const LEVEL_DOT: Record<string, string> = {
   DEBUG: 'bg-slate-400',
   INFO: 'bg-blue-500',
   WARNING: 'bg-amber-500',
-  ERROR: 'bg-stock-up',
-  CRITICAL: 'bg-stock-up',
+  ERROR: 'bg-destructive',
+  CRITICAL: 'bg-destructive',
 }
 const TIME_RANGES = [
   { label: '1h', value: 1 },

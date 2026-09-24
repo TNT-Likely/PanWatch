@@ -126,9 +126,9 @@ export default function PatSection() {
                   <span className="text-body-sm font-medium text-foreground truncate">{it.name || '未命名'}</span>
                   <code className="font-mono text-caption text-muted-foreground">{it.prefix}…</code>
                   {it.revoked ? (
-                    <span className="text-mini px-1.5 py-0.5 rounded-full bg-stock-up/15 text-stock-up">已吊销</span>
+                    <span className="text-mini px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive">已吊销</span>
                   ) : (
-                    <span className="text-mini px-1.5 py-0.5 rounded-full bg-stock-down/15 text-stock-down">有效</span>
+                    <span className="text-mini px-1.5 py-0.5 rounded-full bg-success/15 text-success">有效</span>
                   )}
                 </div>
                 <div className="text-mini text-muted-foreground mt-0.5">
@@ -137,7 +137,7 @@ export default function PatSection() {
                 </div>
               </div>
               {!it.revoked ? (
-                <Button variant="ghost" size="sm" className="h-8 text-stock-up" onClick={() => revoke(it.id)}>
+                <Button variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => revoke(it.id)}>
                   <Trash2 className="w-3.5 h-3.5" /> 吊销
                 </Button>
               ) : null}

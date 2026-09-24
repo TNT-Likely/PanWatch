@@ -55,9 +55,9 @@ function fmtInt(n: number | null | undefined): string {
 }
 
 const VERDICT_STYLE: Record<string, string> = {
-  适合: 'bg-stock-down/15 text-stock-down border-stock-down/30',
+  适合: 'bg-success/15 text-success border-success/30',
   谨慎: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
-  不适合: 'bg-stock-up/15 text-stock-up border-stock-up/30',
+  不适合: 'bg-destructive/15 text-destructive border-destructive/30',
   未知: 'bg-muted text-muted-foreground border-border',
 }
 
@@ -208,7 +208,7 @@ export default function AddPositionCalculator({
               {calc.isAdd && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">摊薄</span>
-                  <span className={`font-mono ${calc.diluteAbs >= 0 ? 'text-stock-down' : 'text-stock-up'}`}>
+                  <span className={`font-mono ${calc.diluteAbs >= 0 ? 'text-success' : 'text-destructive'}`}>
                     {calc.diluteAbs >= 0 ? '↓' : '↑'}
                     {fmt(Math.abs(calc.diluteAbs))}（{fmt(Math.abs(calc.dilutePct))}%）
                   </span>

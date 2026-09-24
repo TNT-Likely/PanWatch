@@ -61,13 +61,13 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
         <>
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="font-medium tabular-nums">{usageLabel(detail.usage)}：{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
-            <span className={detail.status === 'needs_compression' ? 'text-stock-up' : detail.status === 'warning' ? 'text-amber-600' : 'text-stock-down'}>
+            <span className={detail.status === 'needs_compression' ? 'text-destructive' : detail.status === 'warning' ? 'text-amber-600' : 'text-success'}>
               {detail.status === 'needs_compression' ? '需要压缩' : detail.status === 'warning' ? '接近上限' : '正常'} · {usagePercent(detail.usage)}%
             </span>
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
             <div
-              className={detail.status === 'needs_compression' ? 'h-full bg-stock-up' : detail.status === 'warning' ? 'h-full bg-amber-500' : 'h-full bg-stock-down'}
+              className={detail.status === 'needs_compression' ? 'h-full bg-destructive' : detail.status === 'warning' ? 'h-full bg-amber-500' : 'h-full bg-success'}
               style={{ width: `${usagePercent(detail.usage)}%` }}
             />
           </div>
@@ -89,7 +89,7 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
           )}
           {detail.last_compression && (
             <div className="mt-3 border-t border-border/40 pt-2 text-muted-foreground">
-              <div className={detail.last_compression.status === 'no_gain' ? 'text-amber-600' : 'text-stock-down'}>
+              <div className={detail.last_compression.status === 'no_gain' ? 'text-amber-600' : 'text-success'}>
                 {STATUS_LABELS[detail.last_compression.status]}
               </div>
               {detail.last_compression.status === 'compressed' && (

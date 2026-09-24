@@ -205,7 +205,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
 
           {step === 'complete' && (
             <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-stock-down flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-success flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-headline font-bold text-foreground mb-2">

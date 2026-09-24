@@ -543,7 +543,7 @@ export default function AgentsPage() {
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${agent.enabled ? 'bg-stock-down' : 'bg-border'}`} />
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${agent.enabled ? 'bg-success' : 'bg-border'}`} />
                       <h3 className="text-title font-semibold text-foreground">{agent.display_name}</h3>
                       <Badge variant="secondary" className="text-mini">{modeLabel}</Badge>
                       <button
