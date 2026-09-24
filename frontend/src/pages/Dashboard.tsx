@@ -631,7 +631,10 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* 领涨/拖累:双向条 */}
+              {/* 领涨/拖累:双向条(近60日归因:贡献 = 起始权重 × 区间收益) */}
+              {attribution.length > 1 && (
+                <div className="text-[10px] text-muted-foreground">近 60 日归因 · 贡献 = 权重 × 区间收益</div>
+              )}
               {attribution.length > 1 &&
                 [
                   { label: '领涨', item: attribution[0] },
@@ -653,8 +656,14 @@ export default function DashboardPage() {
                           }
                         />
                       </div>
-                      <span className="w-28 shrink-0 truncate text-right text-[11px]">
-                        {item.name} <span className={`font-mono ${moveColor(item.contribution_pct)}`}>{pct(item.contribution_pct)}</span>
+                      <span className="w-44 shrink-0 truncate text-right text-[11px]">
+                        {item.name}{' '}
+                        <span className={`font-mono ${moveColor(item.return_pct)}`} title="近60日区间收益">
+                          60日{pct(item.return_pct)}
+                        </span>
+                        <span className="text-muted-foreground" title="对组合收益的贡献:权重×区间收益">
+                          ｜贡献 {pct(item.contribution_pct)}
+                        </span>
                       </span>
                     </div>
                   )
