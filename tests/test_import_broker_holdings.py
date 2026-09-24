@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.import_broker_holdings import (  # noqa: E402
     Holding,
+    capital_deduction,
     load_holdings,
     plan_import,
 )
@@ -61,3 +62,12 @@ def test_plan_all_new():
     hs = [Holding("600276", "恒瑞医药", 200, 47.22)]
     plan = plan_import(hs, set(), set())
     assert len(plan.to_create) == 1 and not plan.skipped_positions and not plan.skipped_paper
+
+
+def test_capital_deduction_market_value_with_cost_fallback():
+    rows = [
+        Holding("600276", "恒瑞医药", 200, 47.22, market_value=8956.0),
+        Holding("002050", "三花智控", 100, 36.57),  # 无市值快照 → 回退成本×数量
+    ]
+    assert capital_deduction(rows) == round(8956.0 + 36.57 * 100, 2)
+    assert capital_deduction([]) == 0.0

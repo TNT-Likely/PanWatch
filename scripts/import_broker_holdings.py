@@ -5,10 +5,11 @@
 
 约定(与用户确认的口径一致):
 - **跳过已存在**:PanWatch 持仓 (account_id, stock) 已有、或模拟盘已有同股 open 持仓 → 跳过;
-- **不动模拟盘资金**:只建 PaperTradingPosition 行,不改 current_capital/initial_capital;
+- **模拟盘资金按市值扣减**:新建仓位同步从 current_capital 扣减市值占用
+  (总资产 = 现金 + 持仓市值,与资金配置的总资金保持一致);不改 initial_capital;
 - **模拟盘开关保持不变**(脚本绝不触碰 enabled);
 - 溯源:模拟盘行 strategy_code="broker_import"、signal_action="buy"、signal_snapshot_date=当日;
-- 幂等:重复执行结果一致。
+- 幂等:重复执行结果一致(跳过的仓位不重复扣资金)。
 """
 
 from __future__ import annotations
@@ -125,10 +126,26 @@ def run(file: str, account_id: int, dry_run: bool) -> int:
         db.close()
 
 
+def capital_deduction(to_create: list) -> float:
+    """导入仓位占用的模拟盘资金 = Σ(市值快照);缺市值回退成本×数量。"""
+    total = 0.0
+    for h in to_create:
+        if h.market_value:
+            total += h.market_value
+        else:
+            total += h.cost_price * h.quantity
+    return round(total, 2)
+
+
 def _run_once(db, today: str, account_id: int, holdings: list, dry_run: bool) -> int:
     from sqlalchemy import text
 
-    from src.platform.persistence.models import PaperTradingPosition, Position, Stock
+    from src.platform.persistence.models import (
+        PaperTradingAccount,
+        PaperTradingPosition,
+        Position,
+        Stock,
+    )
 
     db.execute(text("PRAGMA busy_timeout = 20000"))  # 写锁排队等待 20s,替代立即 SQLITE_BUSY
     pos_syms: set[str] = {
@@ -156,9 +173,15 @@ def _run_once(db, today: str, account_id: int, holdings: list, dry_run: bool) ->
         print(f"  [跳过·模拟盘已存在] {s}")
 
     if dry_run:
-        print("(dry-run 未写库)")
+        deduct = capital_deduction(plan.to_create)
+        print(f"(dry-run 未写库;将扣减模拟盘现金 {deduct})")
         return 0
 
+    # 模拟盘资金口径:导入仓位同步扣减市值占用(总资产=现金+持仓市值保持与总资金一致)
+    deduct = capital_deduction(plan.to_create)
+    account = db.query(PaperTradingAccount).first()
+    if account is None:
+        print("警告: 模拟盘账户不存在,跳过资金扣减")
     created_pos = created_paper = 0
     for h in plan.to_create:
         stock = db.query(Stock).filter(
@@ -183,8 +206,12 @@ def _run_once(db, today: str, account_id: int, holdings: list, dry_run: bool) ->
             signal_snapshot_date=today,
         ))
         created_paper += 1
+    if account is not None and deduct:
+        before = float(account.current_capital or 0)
+        account.current_capital = round(before - deduct, 2)
+        print(f"模拟盘现金: {before} − {deduct} = {account.current_capital}")
     db.commit()
-    print(f"完成:持仓 +{created_pos},模拟盘 +{created_paper}(资金未动,开关未动)")
+    print(f"完成:持仓 +{created_pos},模拟盘 +{created_paper},现金扣减 {deduct}(开关未动)")
     return 0
 
 
