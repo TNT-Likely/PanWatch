@@ -402,6 +402,16 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "test_symbols": list(DEFAULT_TEST_SYMBOLS),
         },
         {
+            "name": "新浪K线",
+            "type": "kline",
+            "provider": "sina",
+            "config": {"description": "新浪日K(仅CN,不复权),腾讯/东财被风控时的境内兜底(免 key)。"},
+            "enabled": True,
+            "priority": 3,   # 腾讯(0)之后、东财(5)之前 → CN 第二源
+            "supports_batch": False,
+            "test_symbols": list(DEFAULT_TEST_SYMBOLS),
+        },
+        {
             "name": "东方财富 K线",
             "type": "kline",
             "provider": "eastmoney",

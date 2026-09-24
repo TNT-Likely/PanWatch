@@ -194,6 +194,57 @@ class EastmoneyKlineVendor(KlineVendor):
         return fetch_eastmoney_kline(_em_secid(sym), days)
 
 
+_SINA_KLINE_URL = (
+    "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
+)
+
+
+def fetch_sina_kline_raw(tsym: str, days: int) -> list[Bar]:
+    """按原始腾讯式符号(sh/sz+code)取新浪日K(scale=240,旧→新)。
+
+    腾讯 ifzq/东财对部分出口 IP 风控拦截时的境内备源。
+    """
+    days = min(max(int(days or 1), 1), 1023)
+    payload = market_get(
+        _SINA_KLINE_URL, host_key="quotes.sina.cn", min_interval_s=0.2,
+        params={"symbol": tsym, "scale": "240", "ma": "no", "datalen": str(days)},
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"},
+        timeout=10, retries=2, parse="json", log_label="新浪K线", symbol=tsym,
+    )
+    rows = payload if isinstance(payload, list) else []
+    out: list[Bar] = []
+    for row in rows:
+        try:
+            out.append(
+                Bar(
+                    date=str(row.get("day") or ""),
+                    open=float(row.get("open")),
+                    close=float(row.get("close")),
+                    high=float(row.get("high")),
+                    low=float(row.get("low")),
+                    volume=float(row.get("volume") or 0.0),
+                )
+            )
+        except Exception:
+            continue
+    return out
+
+
+class SinaKlineVendor(KlineVendor):
+    """新浪日K(仅 CN):腾讯/东财不可用时的境内兜底源。"""
+
+    name = "sina"
+    supports_markets = {"CN"}
+
+    def fetch(self, symbols: list[Symbol], config: dict) -> list[Bar]:
+        if not symbols:
+            return []
+        sym = symbols[0]
+        if sym.market != Market.CN:
+            return []
+        return fetch_sina_kline_raw(sym.to_tencent(), _days(config))
+
+
 def _yahoo_range(days: int) -> str:
     """days → Yahoo chart v8 的 range 枚举(不用 period1/period2,避免依赖当前时间)。"""
     if days <= 5:

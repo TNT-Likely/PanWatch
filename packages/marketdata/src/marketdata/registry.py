@@ -28,6 +28,7 @@ from marketdata.vendors.global_markets import (
 from marketdata.vendors.macro import AkshareMacroVendor
 from marketdata.vendors.kline import (
     EastmoneyKlineVendor,
+    SinaKlineVendor,
     StooqKlineVendor,
     TencentKlineVendor,
     YahooKlineVendor,
@@ -62,6 +63,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "stooq": StooqKlineVendor,
         "eastmoney": EastmoneyKlineVendor,
         "yahoo": YahooKlineVendor,
+        "sina": SinaKlineVendor,
     },
     "capital_flow": {
         "eastmoney": EastmoneyCapitalFlowVendor,
