@@ -249,11 +249,23 @@ export default function ChatWidget({
 
   // The application shell owns cross-page “问 AI” routing.  Keeping the
   // handoff as a prop means it is not lost while this page is unmounted.
+  //
+  // 防重入双 ref:StrictMode(挂载 effect 跑→cleanup→再跑)与重复 window 事件会让本
+  // effect 执行多次,每次都调 createConversation 就会一次点击建出两个会话。用
+  // 「在途 pending / 已建 done」内容签名守卫,同一上下文只发一次 POST。
+  // 刻意不用 cleanup 置 cancelled:丢弃在途响应只会让已创建的会话变成孤儿
+  // (无人接管),正确做法是让重跑的 effect 被守卫拦下、在途响应正常落地。
+  const handoffPendingRef = useRef<{ key: string } | null>(null)
+  const handoffDoneRef = useRef<{ key: string } | null>(null)
   useEffect(() => {
     if (!embedded || !initialStockContext?.symbol) return
 
-    let cancelled = false
     const detail = initialStockContext
+    const key = JSON.stringify(detail)
+    if (handoffPendingRef.current?.key === key) return // 在途:重跑不重复发 POST
+    if (handoffDoneRef.current?.key === key) return // 同一上下文已建过会话
+    handoffPendingRef.current = { key }
+
     setOpen(true)
     setStockContext(detail)
     setSuggestedQuestions([])
@@ -266,18 +278,18 @@ export default function ChatWidget({
       stock_market: detail.market,
       initial_context: detail.pageContext,
     }).then((conv) => {
-      if (cancelled) return
+      handoffDoneRef.current = { key }
       setActiveConversationId(conv.id)
       onConversationChange?.(conv.id)
       setMessages([])
       setView('chat')
       setConversations((prev) => [conv, ...prev.filter((item) => item.id !== conv.id)])
       loadSuggestedQuestions(detail.symbol, detail.market)
-    }).catch(() => {
-      if (!cancelled) setView('chat')
+    }).catch((e) => {
+      handoffPendingRef.current = null // 失败允许重试(下次进入同上下文再建)
+      console.debug('[chat] handoff 会话创建失败,已允许重试', key, e)
+      setView('chat')
     })
-
-    return () => { cancelled = true }
   }, [embedded, initialStockContext, loadSuggestedQuestions, onConversationChange, resetFollowing, setActiveConversationId])
 
   useEffect(() => {

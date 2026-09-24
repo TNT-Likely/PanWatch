@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ChatWidget from '@/components/ChatWidget'
 import type { AssistantStockContext } from '@/components/AssistantOpenBridge'
@@ -15,7 +15,18 @@ export default function AssistantPage() {
   const conversationId = parseConversationId(rawConversationId)
   const navigate = useNavigate()
   const location = useLocation()
-  const launchContext = (location.state as { assistantContext?: AssistantStockContext } | null)?.assistantContext || null
+  // 消费即焚:首帧把 location.state 里的上下文固定成快照,随后立即用 replace 剥离
+  // state——否则只要用户停留在本页,任何后续 remount 都会重新拿到旧上下文,
+  // 触发 ChatWidget 再次创建会话(实测一次点击建出两个会话的成因之一)。
+  const [launchContext] = useState(
+    () => (location.state as { assistantContext?: AssistantStockContext } | null)?.assistantContext || null,
+  )
+
+  useEffect(() => {
+    if ((location.state as { assistantContext?: unknown } | null)?.assistantContext) {
+      navigate(location.pathname + location.search + location.hash, { replace: true })
+    }
+  }, [location.key, location.pathname, location.search, location.hash, navigate])
 
   const setConversationId = useCallback((nextId: number | null, options?: { replace?: boolean }) => {
     const nextPath = nextId == null ? '/assistant' : `/assistant/${nextId}`
