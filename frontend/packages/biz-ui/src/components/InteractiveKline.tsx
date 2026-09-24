@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as LW from 'lightweight-charts'
 import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
+import { useStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 
 type BusinessDay = { year: number; month: number; day: number }
@@ -175,12 +176,13 @@ export default function InteractiveKline(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
 
-  // 涨跌语义色（hsl 片段，来自 --stock-up/--stock-down，随主题亮暗切换）
+  // 涨跌语义色（hsl 片段，来自 --stock-up/--stock-down，随主题亮暗与口径切换重建图表）
+  const stockMode = useStockColorMode()
   const stockHsl = useMemo(() => {
     const s = getComputedStyle(document.documentElement)
     const raw = (name: string, fb: string) => (s.getPropertyValue(name) || '').trim() || fb
     return { up: raw('--stock-up', '0 72% 51%'), down: raw('--stock-down', '152 70% 29%') }
-  }, [])
+  }, [stockMode])
 
   const load = async () => {
     if (!props.symbol) return
@@ -523,7 +525,7 @@ export default function InteractiveKline(props: {
         // ignore
       }
     }
-  }, [series, showRsi, indexByDate, interval])
+  }, [series, stockHsl, showRsi, indexByDate, interval])
 
   return (
     <div className="card p-4 md:p-5">

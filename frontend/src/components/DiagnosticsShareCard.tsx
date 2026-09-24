@@ -1,4 +1,5 @@
 import { type PortfolioDiagnostics } from '@panwatch/api'
+import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface DiagnosticsShareCardProps {
@@ -10,15 +11,15 @@ interface DiagnosticsShareCardProps {
   benchmarkLabel?: string
 }
 
-const UP = '#e11d48'
-const DOWN = '#059669'
 const NEUTRAL = '#d97706'
 const SLATE = '#0f172a'
 
 function signColor(v?: number | null): string {
+  // 导出时读取当前口径/主题下的涨跌色
+  const { up, down } = shareStockPalette()
   if (v == null || !isFinite(v)) return NEUTRAL
-  if (v > 0) return UP
-  if (v < 0) return DOWN
+  if (v > 0) return up
+  if (v < 0) return down
   return NEUTRAL
 }
 
@@ -36,7 +37,7 @@ const marketLabel = (m: string) => MARKET_LABEL[m] || m
 function hhiBand(hhi: number): { label: string; color: string } {
   if (hhi >= 0.4) return { label: '偏集中', color: NEUTRAL }
   if (hhi >= 0.25) return { label: '适中', color: SLATE }
-  return { label: '较分散', color: DOWN }
+  return { label: '较分散', color: shareStockPalette().down }
 }
 
 function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {

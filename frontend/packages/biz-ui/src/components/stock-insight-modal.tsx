@@ -37,6 +37,12 @@ import {
 } from './stock-insight-parts'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
 
+function stockHslRaw(which: 'up' | 'down'): string {
+  const s = getComputedStyle(document.documentElement)
+  return (s.getPropertyValue(which === 'up' ? '--stock-up' : '--stock-down') || '').trim()
+    || (which === 'up' ? '0 72% 51%' : '152 70% 29%')
+}
+
 interface QuoteResponse {
   symbol: string
   market: string
@@ -827,7 +833,7 @@ export default function StockInsightModal(props: {
     try {
       const { marketLabel, price, chg, action, signal, reason, risks, technicalBrief, levelsBrief, source, ts } = shareCardPayload
       const up = (quote?.change_pct || 0) >= 0
-      const changeColor = up ? '#ef4444' : '#10b981'
+      const changeColor = up ? `hsl(${stockHslRaw('up')})` : `hsl(${stockHslRaw('down')})`
       const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
@@ -1343,15 +1349,15 @@ export default function StockInsightModal(props: {
                               const yHigh = toY(Number(k.high))
                               const yLow = toY(Number(k.low))
                               const up = Number(k.close) >= Number(k.open)
-                              const color = up ? '#ef4444' : '#10b981'
+                              const color = up ? 'hsl(var(--stock-up))' : 'hsl(var(--stock-down))'
                               const bodyTop = Math.min(yOpen, yClose)
                               const bodyH = Math.max(1.4, Math.abs(yOpen - yClose))
                               const active = miniHoverIdx === idx
                               return (
                                 <g key={`${k.date}-${idx}`}>
                                   {active && <rect x={x - xStep / 2} y={6} width={xStep} height={108} fill="rgba(59,130,246,0.10)" />}
-                                  <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={color} strokeWidth="1" />
-                                  <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} rx="0.6" />
+                                  <line x1={x} y1={yHigh} x2={x} y2={yLow} style={{ stroke: color }} strokeWidth="1" />
+                                  <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} style={{ fill: color }} rx="0.6" />
                                 </g>
                               )
                             })}

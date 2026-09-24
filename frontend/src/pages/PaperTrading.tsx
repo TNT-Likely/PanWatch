@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
   paperTradingApi,
@@ -39,6 +40,8 @@ function PnlPctText({ value }: { value: number }) {
 }
 
 function EquityChart({ data }: { data: EquityCurvePoint[] }) {
+  const stockMode = useStockColorMode()
+  void stockMode // 口径变化触发重渲染，曲线取新色
   if (data.length < 2) {
     return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">暂无足够数据绘制曲线</div>
   }

@@ -1,4 +1,5 @@
 import { type StrategySignalItem } from '@panwatch/api'
+import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface SignalScoreShareCardProps {
@@ -7,10 +8,10 @@ interface SignalScoreShareCardProps {
   item: StrategySignalItem
 }
 
-// A股配色:看多=红、看空/中性等
-const UP = '#e11d48'
+// 动作/评分强调色（涨色随口径切换），中性琥珀/灰固定
 const NEUTRAL = '#d97706'
 const SLATE = '#475569'
+const upColor = () => shareStockPalette().up
 
 const MARKET_LABEL: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股' }
 const marketLabel = (m?: string) => (m ? MARKET_LABEL[m] || m : '')
@@ -24,14 +25,14 @@ function actionVisual(item: StrategySignalItem): { label: string; color: string 
   let label = item.action_label || item.action || '观望'
   if (!item.is_holding_snapshot && key === 'hold') label = '观望'
   if (!item.is_holding_snapshot && key === 'add') label = '建仓'
-  if (key === 'buy' || key === 'add') return { label, color: UP }
+  if (key === 'buy' || key === 'add') return { label, color: upColor() }
   if (key === 'hold') return { label, color: NEUTRAL }
   return { label, color: SLATE }
 }
 
 /** AI 评分(1~10)分档配色:≥8 红(强)、6~8 琥珀、<6 灰。 */
 function scoreColor(score: number): string {
-  if (score >= 8) return UP
+  if (score >= 8) return upColor()
   if (score >= 6) return NEUTRAL
   return SLATE
 }

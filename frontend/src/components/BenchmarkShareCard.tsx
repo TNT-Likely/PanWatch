@@ -1,4 +1,5 @@
 import { type PortfolioBenchmark } from '@panwatch/api'
+import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface BenchmarkShareCardProps {
@@ -8,14 +9,13 @@ interface BenchmarkShareCardProps {
 }
 
 // A股配色:红=涨/正、绿=跌/负、中性=琥珀
-const UP = '#e11d48'
-const DOWN = '#059669'
 const NEUTRAL = '#d97706'
 
 function signColor(v?: number | null): string {
   if (v == null || !isFinite(v)) return NEUTRAL
-  if (v > 0) return UP
-  if (v < 0) return DOWN
+  const { up, down } = shareStockPalette()
+  if (v > 0) return up
+  if (v < 0) return down
   return NEUTRAL
 }
 
@@ -44,6 +44,7 @@ function Sparkline({
   width?: number
   height?: number
 }) {
+  const { up: UP } = shareStockPalette()
   const pad = 6
   const xs = curve.length
   if (xs < 2) return null
@@ -101,6 +102,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
  * 模拟盘成绩单卡(vs 基准)。脱敏:全程只展示百分比 / 比率,绝不出现任何金额(¥)。
  */
 export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkShareCardProps) {
+  const { up: UP } = shareStockPalette()
   const days = bench.days ?? 60
   const benchLabel = bench.benchmark_label || '沪深300'
   const excess = bench.excess_return
