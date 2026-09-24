@@ -173,6 +173,64 @@ def test_task_event_stream_closes_after_approval_pause():
     engine.dispose()
 
 
+def test_task_snapshot_contains_usage_and_tool_timing_summary():
+    engine, session, repository, task = _repository()
+
+    repository.record_model_usage(
+        task.id,
+        {
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "cached_input_tokens": 10,
+            "reasoning_output_tokens": 4,
+            "model": "test-model",
+            "source": "provider",
+        },
+    )
+    repository.record_tool_started(
+        task.id,
+        call_id="call-1",
+        tool_name="get_quote",
+        arguments={"symbol": "600519"},
+    )
+    repository.record_tool_completed(
+        task.id,
+        call_id="call-1",
+        tool_name="get_quote",
+        summary="查询完成",
+        ok=True,
+        duration_ms=420,
+        attempt_count=2,
+    )
+
+    snapshot = repository.get_task_snapshot(task.id)
+
+    assert snapshot["usage"] == {
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "total_tokens": 150,
+        "cached_input_tokens": 10,
+        "reasoning_output_tokens": 4,
+        "source": "provider",
+        "model": "test-model",
+    }
+    assert snapshot["tools"] == [
+        {
+            "call_id": "call-1",
+            "tool": "get_quote",
+            "status": "completed",
+            "summary": "查询完成",
+            "duration_ms": 420,
+            "attempt_count": 2,
+            "error_code": None,
+        }
+    ]
+
+    session.close()
+    engine.dispose()
+
+
 def test_claim_task_only_allows_one_worker_to_start_queued_work():
     engine, session, repository, task = _repository()
 

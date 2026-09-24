@@ -102,6 +102,7 @@ class DurableRuntimeEventSink:
             )
             return
         if event.type is EventType.MODEL_USAGE:
+            repository.record_model_usage(self._task_id, data)
             repository.append_task_event(
                 self._task_id,
                 TaskEventType.MODEL_USAGE,

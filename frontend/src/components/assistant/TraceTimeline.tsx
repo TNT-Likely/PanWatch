@@ -32,14 +32,41 @@ function describe(event: AssistantTraceEvent): { label: string; icon: typeof Fil
     case 'context_prepared': return { label: event.data.compressed ? '上下文已压缩并准备' : '上下文已准备', icon: FileClock }
     case 'step_updated': return { label: `执行步骤 ${event.data.step || ''}`, icon: ListTree }
     case 'tool_call_start': return { label: `调用工具：${name}`, icon: Wrench }
-    case 'tool_result': return { label: event.data.ok ? `工具完成：${name}` : `工具失败：${name}`, icon: event.data.ok ? CheckCircle2 : AlertCircle }
-    case 'model_usage': return { label: `模型用量：输入 ${event.data.input_tokens || 0}，输出 ${event.data.output_tokens || 0}`, icon: Gauge }
+    case 'tool_result': return {
+      label: `${event.data.ok ? `工具完成：${name}` : `工具失败：${name}`}${formatDurationSuffix(event.data.duration_ms)}`,
+      icon: event.data.ok ? CheckCircle2 : AlertCircle,
+    }
+    case 'model_usage': {
+      const suffix = formatDurationSuffix(event.data.duration_ms)
+      const cache = Number(event.data.cached_input_tokens || 0)
+      const reasoning = Number(event.data.reasoning_output_tokens || 0)
+      const extras = [
+        cache > 0 ? `缓存 ${cache}` : '',
+        reasoning > 0 ? `推理 ${reasoning}` : '',
+      ].filter(Boolean)
+      const usageSuffix = extras.length > 0 ? ` · ${extras.join(' · ')}` : ''
+      return {
+        label: `模型用量：输入 ${event.data.input_tokens || 0}，输出 ${event.data.output_tokens || 0}${usageSuffix}${suffix}`,
+        icon: Gauge,
+      }
+    }
     case 'approval_required': return { label: '等待用户审批', icon: PauseCircle }
     case 'paused': return { label: '任务已暂停', icon: PauseCircle }
     case 'done': return { label: '任务完成', icon: CheckCircle2 }
     case 'error': return { label: '任务失败', icon: AlertCircle }
     default: return { label: '任务已启动', icon: FileClock }
   }
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return ''
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1).replace(/\.0$/, '')}s`
+}
+
+function formatDurationSuffix(value: unknown): string {
+  const duration = formatDuration(Number(value || 0))
+  return duration ? ` · ${duration}` : ''
 }
 
 function detail(event: AssistantTraceEvent): string {
@@ -54,15 +81,27 @@ function detail(event: AssistantTraceEvent): string {
 
 function summary(events: AssistantTraceEvent[]): string {
   const toolCalls = events.filter((event) => event.event === 'tool_call_start').length
-  const latest = [...events].reverse().find((event) => ['done', 'error', 'paused'].includes(event.event))
-  const status = latest?.event === 'done'
+  const totalTokens = events
+    .filter((event) => event.event === 'model_usage')
+    .reduce((total, event) => total + Number(
+      event.data.total_tokens
+      || Number(event.data.input_tokens || 0) + Number(event.data.output_tokens || 0),
+    ), 0)
+  const terminal = [...events].reverse().find((event) => ['done', 'error', 'paused'].includes(event.event))
+  const duration = Number(terminal?.data.duration_ms || 0)
+  const status = terminal?.event === 'done'
     ? '已完成'
-    : latest?.event === 'error'
+    : terminal?.event === 'error'
     ? '已失败'
-    : latest?.event === 'paused'
+    : terminal?.event === 'paused'
     ? '等待继续'
     : '执行中'
-  return toolCalls > 0 ? `${status} · ${toolCalls} 次工具调用` : status
+  const details = [
+    formatDuration(duration),
+    toolCalls > 0 ? `${toolCalls} 次工具调用` : '',
+    totalTokens > 0 ? `${totalTokens} tokens` : '',
+  ].filter(Boolean)
+  return details.length > 0 ? `${status} · ${details.join(' · ')}` : status
 }
 
 export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
