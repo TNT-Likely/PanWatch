@@ -9,14 +9,14 @@ export type SuggestionAction =
   | 'avoid'
 
 export const suggestionActionColors: Record<SuggestionAction, string> = {
-  buy: 'bg-rose-500 text-white',
-  add: 'bg-rose-400 text-white',
-  reduce: 'bg-emerald-500 text-white',
-  sell: 'bg-emerald-600 text-white',
+  buy: 'bg-stock-up text-white',
+  add: 'bg-stock-up text-white',
+  reduce: 'bg-stock-down text-white',
+  sell: 'bg-stock-down text-white',
   hold: 'bg-amber-500 text-white',
   watch: 'bg-slate-500 text-white',
   alert: 'bg-blue-500 text-white',
-  avoid: 'bg-red-600 text-white',
+  avoid: 'bg-stock-up text-white',
 }
 
 export const suggestionActionLabels: Record<SuggestionAction, string> = {

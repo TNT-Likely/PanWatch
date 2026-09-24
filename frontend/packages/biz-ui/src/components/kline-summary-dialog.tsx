@@ -194,7 +194,7 @@ export function KlineSummaryDialog({
             <div className="space-y-0.5">
               <div>{stockName ? `${stockName} (${symbol})` : symbol}</div>
               {(effectiveSummary?.timeframe || effectiveSummary?.computed_at || effectiveSummary?.asof) && (
-                <div className="text-[11px] text-muted-foreground/70">
+                <div className="text-caption text-muted-foreground/70">
                   {effectiveSummary?.timeframe ? `周期: ${effectiveSummary.timeframe}` : '周期: 1d'}
                   {effectiveSummary?.asof ? ` · 数据截至: ${effectiveSummary.asof}` : ''}
                   {effectiveSummary?.computed_at ? ` · 计算时间: ${formatLocalDateTime(effectiveSummary.computed_at)}` : ''}
@@ -205,11 +205,11 @@ export function KlineSummaryDialog({
         </DialogHeader>
 
         {!initialSummary && loading ? (
-          <div className="text-[12px] text-muted-foreground">加载中...</div>
+          <div className="text-secondary text-muted-foreground">加载中...</div>
         ) : error ? (
-          <div className="text-[12px] text-rose-500">{error}</div>
+          <div className="text-secondary text-destructive">{error}</div>
         ) : !effectiveSummary ? (
-          <div className="text-[12px] text-muted-foreground">暂无数据</div>
+          <div className="text-secondary text-muted-foreground">暂无数据</div>
         ) : (
           <div className="space-y-3">
             {suggestion && (
@@ -220,11 +220,11 @@ export function KlineSummaryDialog({
                     tone={technicalToneFromSuggestionAction(suggestion.action, suggestion.action_label)}
                     size="sm"
                   />
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-mini text-muted-foreground">
                     {hasPosition ? '已持仓' : '未持仓'} · score {suggestion.score}
                   </span>
                 </div>
-                <div className="mt-2 text-[12px] text-foreground font-medium">
+                <div className="mt-2 text-secondary text-foreground font-medium">
                   {suggestion.signal}
                 </div>
 
@@ -232,11 +232,11 @@ export function KlineSummaryDialog({
                   <div className="mt-2 space-y-1">
                     {suggestion.items.map((it, idx) => {
                       const color =
-                        it.delta > 0 ? 'text-rose-500' :
-                        it.delta < 0 ? 'text-emerald-500' :
+                        it.delta > 0 ? 'text-stock-up' :
+                        it.delta < 0 ? 'text-stock-down' :
                         'text-muted-foreground'
                       return (
-                        <div key={`${it.text}-${idx}`} className="flex items-center justify-between gap-3 text-[11px]">
+                        <div key={`${it.text}-${idx}`} className="flex items-center justify-between gap-3 text-caption">
                           <span className="text-muted-foreground">{it.text}</span>
                           <span className={`font-mono ${color}`}>
                             {it.delta > 0 ? '+' : ''}{it.delta}
@@ -247,17 +247,17 @@ export function KlineSummaryDialog({
                   </div>
                 )}
 
-                <div className="mt-2 text-[10px] text-muted-foreground/70">
+                <div className="mt-2 text-mini text-muted-foreground/70">
                   仅基于技术指标规则生成，非投资建议
                 </div>
               </div>
             )}
 
-            <div className="text-[10px] text-muted-foreground/60">
+            <div className="text-mini text-muted-foreground/60">
               提示：悬停指标标签可查看详细说明
             </div>
 
-            <div className="flex flex-wrap gap-2 text-[11px]">
+            <div className="flex flex-wrap gap-2 text-caption">
               {effectiveSummary.trend && (
                 <HoverPopover
                   title="趋势（均线排列）"
@@ -275,13 +275,13 @@ export function KlineSummaryDialog({
                           <li><span className="font-medium text-foreground">均线交织</span>：震荡/换手期，信号更依赖成交量与关键价位。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">当前：{effectiveSummary.trend}</div>
+                      <div className="text-mini text-muted-foreground/70">当前：{effectiveSummary.trend}</div>
                       {(effectiveSummary.ma5 != null || effectiveSummary.ma10 != null || effectiveSummary.ma20 != null || effectiveSummary.ma60 != null) && (
-                        <div className="text-[10px] text-muted-foreground/70">
+                        <div className="text-mini text-muted-foreground/70">
                           均线：MA5≈{effectiveSummary.ma5 != null ? effectiveSummary.ma5.toFixed(2) : '—'}；MA10≈{effectiveSummary.ma10 != null ? effectiveSummary.ma10.toFixed(2) : '—'}；MA20≈{effectiveSummary.ma20 != null ? effectiveSummary.ma20.toFixed(2) : '—'}；MA60≈{effectiveSummary.ma60 != null ? effectiveSummary.ma60.toFixed(2) : '—'}
                         </div>
                       )}
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：均线属于滞后指标，更适合“过滤趋势”，不建议单独作为进出场依据。
                       </div>
                     </div>
@@ -309,10 +309,10 @@ export function KlineSummaryDialog({
                           <li><span className="font-medium text-foreground">柱体正/负</span>：正值通常表示多头动能占优；负值通常表示空头动能占优。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         当前：{effectiveSummary.macd_status}{effectiveSummary.macd_hist != null ? `，柱体${effectiveSummary.macd_hist > 0 ? '为正' : effectiveSummary.macd_hist < 0 ? '为负' : '接近0'} (hist≈${effectiveSummary.macd_hist.toFixed(3)})` : ''}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：MACD 在震荡区间容易频繁“假交叉”，通常需要结合趋势（均线）与量价确认。
                       </div>
                     </div>
@@ -341,10 +341,10 @@ export function KlineSummaryDialog({
                           <li>RSI6 20-30：偏弱（动能偏空）</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         当前：{effectiveSummary.rsi_status}{effectiveSummary.rsi6 != null ? `，RSI6≈${effectiveSummary.rsi6.toFixed(0)}` : ''}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：超买不等于立刻下跌、超卖不等于立刻反弹；更可靠的用法是结合趋势和关键位看“背离/衰竭”。
                       </div>
                     </div>
@@ -376,7 +376,7 @@ export function KlineSummaryDialog({
                           <li>J 值极端（&gt;100 或 &lt;0）时，常被视为“超买/超卖”，但在强趋势里可能失真。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70 space-y-1">
+                      <div className="text-mini text-muted-foreground/70 space-y-1">
                         <div>当前：{effectiveSummary.kdj_status}</div>
                         {(effectiveSummary.kdj_k != null || effectiveSummary.kdj_d != null || effectiveSummary.kdj_j != null) && (
                           <div>
@@ -386,7 +386,7 @@ export function KlineSummaryDialog({
                           </div>
                         )}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：震荡行情里 KDJ 可能频繁反复，建议与支撑/压力位结合使用。
                       </div>
                     </div>
@@ -413,10 +413,10 @@ export function KlineSummaryDialog({
                           <li><span className="font-medium text-foreground">缩量</span>：可能表示观望/衰竭；若下跌缩量，有时是抛压减弱的信号。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         当前：{effectiveSummary.volume_trend}{effectiveSummary.volume_ratio != null ? `，量比≈${effectiveSummary.volume_ratio.toFixed(1)}x` : ''}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：量能的意义需要结合价格方向（价涨量增/价涨量缩/价跌量增/价跌量缩）综合判断。
                       </div>
                     </div>
@@ -456,7 +456,7 @@ export function KlineSummaryDialog({
                           <li>其他：正常波动</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70 space-y-1">
+                      <div className="text-mini text-muted-foreground/70 space-y-1">
                         <div>
                           当前：{effectiveSummary.boll_status}{effectiveSummary.boll_width != null ? `，带宽≈${effectiveSummary.boll_width.toFixed(1)}%` : ''}
                         </div>
@@ -491,8 +491,8 @@ export function KlineSummaryDialog({
                         <span className="font-medium text-foreground">代表什么：</span>
                         多数形态需要结合趋势、量能与关键位确认。比如锤子线出现在下跌末端更有意义；吞没形态更看重“前后两根K线对比”。
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">当前：{effectiveSummary.kline_pattern}</div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">当前：{effectiveSummary.kline_pattern}</div>
+                      <div className="text-mini text-muted-foreground/70">
                         注意：单根K线形态误判率较高，建议仅作提示，不建议孤立决策。
                       </div>
                     </div>
@@ -504,7 +504,7 @@ export function KlineSummaryDialog({
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2 text-[11px]">
+            <div className="flex flex-wrap gap-2 text-caption">
               {effectiveSummary && effectiveSummary.support != null && (
                 <HoverPopover
                   title="支撑位（关键支撑区）"
@@ -526,7 +526,7 @@ export function KlineSummaryDialog({
                           <li>适合用于设置止损/止盈/加减仓区间：用关键位去约束风险，而不是预测最高点最低点。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70 space-y-1">
+                      <div className="text-mini text-muted-foreground/70 space-y-1">
                         <div>当前：支撑≈{effectiveSummary.support.toFixed(2)}</div>
                         {effectiveSummary.last_close != null && effectiveSummary.support > 0 && (
                           <div>
@@ -541,7 +541,7 @@ export function KlineSummaryDialog({
                           </div>
                         )}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：支撑/压力是“统计出的关键位”，不是必然会反转的点位；趋势很强时可直接击穿。
                       </div>
                     </div>
@@ -576,7 +576,7 @@ export function KlineSummaryDialog({
                           <li>压力附近可用来规划分批止盈/减仓，或观察是否出现量价背离、冲高回落等风险信号。</li>
                         </ul>
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70 space-y-1">
+                      <div className="text-mini text-muted-foreground/70 space-y-1">
                         <div>当前：压力≈{effectiveSummary.resistance.toFixed(2)}</div>
                         {effectiveSummary.last_close != null && effectiveSummary.resistance > 0 && (
                           <div>
@@ -591,7 +591,7 @@ export function KlineSummaryDialog({
                           </div>
                         )}
                       </div>
-                      <div className="text-[10px] text-muted-foreground/70">
+                      <div className="text-mini text-muted-foreground/70">
                         注意：突破是否有效，往往取决于“是否放量 + 是否能站稳/回踩确认”。单靠刺穿一瞬间容易假突破。
                       </div>
                     </div>
@@ -608,7 +608,7 @@ export function KlineSummaryDialog({
             </div>
 
             {(effectiveSummary.change_5d != null || effectiveSummary.change_20d != null || effectiveSummary.amplitude != null) && (
-              <div className="flex gap-4 text-[11px] text-muted-foreground">
+              <div className="flex gap-4 text-caption text-muted-foreground">
                 {effectiveSummary.change_5d != null && (
                   <HoverPopover
                     title="5日涨跌幅（短期动量）"
@@ -630,7 +630,7 @@ export function KlineSummaryDialog({
                             <li>过大的正涨幅也可能意味着“短期过热”，要防回撤；更建议结合支撑/压力位设定风控。</li>
                           </ul>
                         </div>
-                        <div className="text-[10px] text-muted-foreground/70">
+                        <div className="text-mini text-muted-foreground/70">
                           当前：{effectiveSummary.change_5d >= 0 ? '+' : ''}{effectiveSummary.change_5d.toFixed(2)}%
                         </div>
                       </div>
@@ -638,7 +638,7 @@ export function KlineSummaryDialog({
                     trigger={
                       <span className="cursor-help hover:text-foreground">
                         5日{' '}
-                        <span className={effectiveSummary.change_5d >= 0 ? 'text-rose-500' : 'text-emerald-500'}>
+                        <span className={effectiveSummary.change_5d >= 0 ? 'text-stock-up' : 'text-stock-down'}>
                           {effectiveSummary.change_5d >= 0 ? '+' : ''}{effectiveSummary.change_5d.toFixed(2)}%
                         </span>
                       </span>
@@ -666,7 +666,7 @@ export function KlineSummaryDialog({
                             <li>5日与20日分歧：可能代表“短期反弹/回调”发生在更大的趋势里，需谨慎辨别是否反转。</li>
                           </ul>
                         </div>
-                        <div className="text-[10px] text-muted-foreground/70">
+                        <div className="text-mini text-muted-foreground/70">
                           当前：{effectiveSummary.change_20d >= 0 ? '+' : ''}{effectiveSummary.change_20d.toFixed(2)}%
                         </div>
                       </div>
@@ -674,7 +674,7 @@ export function KlineSummaryDialog({
                     trigger={
                       <span className="cursor-help hover:text-foreground">
                         20日{' '}
-                        <span className={effectiveSummary.change_20d >= 0 ? 'text-rose-500' : 'text-emerald-500'}>
+                        <span className={effectiveSummary.change_20d >= 0 ? 'text-stock-up' : 'text-stock-down'}>
                           {effectiveSummary.change_20d >= 0 ? '+' : ''}{effectiveSummary.change_20d.toFixed(2)}%
                         </span>
                       </span>
@@ -702,7 +702,7 @@ export function KlineSummaryDialog({
                             <li>振幅高时更建议降低仓位/更严格止损；避免用“同一套止损距离”应对不同波动。</li>
                           </ul>
                         </div>
-                        <div className="text-[10px] text-muted-foreground/70 space-y-1">
+                        <div className="text-mini text-muted-foreground/70 space-y-1">
                           <div>当前：{effectiveSummary.amplitude.toFixed(2)}%</div>
                           {effectiveSummary.amplitude_avg5 != null && (
                             <div>近5日均值：{effectiveSummary.amplitude_avg5.toFixed(2)}%</div>
@@ -721,10 +721,10 @@ export function KlineSummaryDialog({
             )}
 
             <details className="group">
-              <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground">
-                建议/评分规则说明 <span className="text-[10px]">(点击展开)</span>
+              <summary className="text-caption text-muted-foreground cursor-pointer hover:text-foreground">
+                建议/评分规则说明 <span className="text-mini">(点击展开)</span>
               </summary>
-              <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap bg-accent/20 rounded p-2 space-y-2">
+              <div className="mt-2 text-caption text-muted-foreground whitespace-pre-wrap bg-accent/20 rounded p-2 space-y-2">
                 <div className="font-medium text-foreground">建议规则（按是否持仓）</div>
                 <div className="space-y-1">
                   <div>未持仓：score ≥ 3 → 买入；score ≤ -2 → 回避；其他 → 观望</div>

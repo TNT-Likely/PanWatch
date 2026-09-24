@@ -28,9 +28,9 @@ import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import ShareCardModal from '../components/ShareCardModal'
 
 const DECISION_COLOR: Record<string, string> = {
-  buy: 'text-rose-500',
+  buy: 'text-stock-up',
   hold: 'text-amber-500',
-  sell: 'text-emerald-500',
+  sell: 'text-stock-down',
 }
 
 /** 各 section 配图标(决策/技术/情绪/新闻/基本面/辩论/风控),与 buildAnalysisSections 的 id 对齐 */
@@ -56,7 +56,7 @@ function inferMarket(symbol: string): string {
 
 function pctClass(v: number | null | undefined): string {
   if (v == null) return 'text-muted-foreground'
-  return v > 0 ? 'text-rose-500' : v < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+  return v > 0 ? 'text-stock-up' : v < 0 ? 'text-stock-down' : 'text-muted-foreground'
 }
 
 function fmtPct(v: number | null | undefined): string {
@@ -232,8 +232,8 @@ export default function AnalysisDetailPage() {
   // 目录头(标题 + 二级目录开关),桌面右栏 / 移动下拉共用
   const tocHeader = (
     <div className="flex items-center justify-between gap-2 mb-2 px-2">
-      <span className="text-[11px] font-medium text-muted-foreground/70">目录</span>
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <span className="text-caption font-medium text-muted-foreground/70">目录</span>
+      <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
         <span className="cursor-pointer select-none" onClick={() => setShowSub((v) => !v)}>
           二级目录
         </span>
@@ -244,7 +244,7 @@ export default function AnalysisDetailPage() {
 
   // 目录列表(桌面右栏 / 移动下拉共用);onAfter 用于移动端选完自动收起
   const tocNav = (onAfter?: () => void) => (
-    <nav className="space-y-0.5 text-[13px]">
+    <nav className="space-y-0.5 text-body">
       {toc.map((t) => (
         <button
           key={t.id}
@@ -253,7 +253,7 @@ export default function AnalysisDetailPage() {
             onAfter?.()
           }}
           className={`block w-full text-left py-1 rounded-md transition-colors truncate ${
-            t.level === 1 ? 'pl-5 pr-2 text-[12px]' : 'px-2'
+            t.level === 1 ? 'pl-5 pr-2 text-secondary' : 'px-2'
           } ${
             activeId === t.id
               ? 'bg-accent text-foreground font-medium'
@@ -281,10 +281,10 @@ export default function AnalysisDetailPage() {
               <ArrowLeft className="w-4 h-4" />
             </button>
             <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} 深度分析`}</h1>
-            <span className="text-[12px] text-muted-foreground shrink-0">{date}</span>
+            <span className="text-secondary text-muted-foreground shrink-0">{date}</span>
             <button
               onClick={() => setShareOpen(true)}
-              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
               title="生成可分享的结论卡片图"
             >
               <ImageDown className="w-3.5 h-3.5" />
@@ -293,7 +293,7 @@ export default function AnalysisDetailPage() {
             <button
               onClick={handleExportPdf}
               disabled={pdfBusy}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-secondary text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
               title="导出 PDF 文件"
             >
               <FileDown className="w-3.5 h-3.5" />
@@ -306,14 +306,14 @@ export default function AnalysisDetailPage() {
           {/* 决策摘要(移动端在正文顶部;桌面端移到右侧目录区,见下方 aside) */}
           {sug && (
             <div className="lg:hidden rounded-xl bg-accent/30 p-4 mb-6 flex items-center gap-3 flex-wrap">
-              <span className={`text-[24px] font-bold ${decisionColor}`}>
+              <span className={`text-display font-bold ${decisionColor}`}>
                 {decisionLabel}
               </span>
-              {reviewRequired && <span className="text-[12px] text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
-              <span className="text-[13px] text-muted-foreground">
+              {reviewRequired && <span className="text-secondary text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
+              <span className="text-body text-muted-foreground">
                 置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
               </span>
-              <span className="ml-auto text-[11px] text-muted-foreground">
+              <span className="ml-auto text-caption text-muted-foreground">
                 成本 ${rawData.cost_usd?.toFixed(4) ?? '-'}
               </span>
             </div>
@@ -324,7 +324,7 @@ export default function AnalysisDetailPage() {
             <div className="relative">
               <button
                 onClick={() => setTocOpen((o) => !o)}
-                className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-border/50 bg-card/95 backdrop-blur text-[13px] font-medium shadow-sm"
+                className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-border/50 bg-card/95 backdrop-blur text-body font-medium shadow-sm"
               >
                 <List className="w-4 h-4 shrink-0" />
                 <span className="truncate">{currentTitle || '目录'}</span>
@@ -349,11 +349,11 @@ export default function AnalysisDetailPage() {
             const Icon = SECTION_ICON[s.id]
             return (
               <section key={s.id} id={`sec-${s.id}`} className="mb-12 scroll-mt-24">
-                <h2 className="flex items-center gap-2 text-[18px] font-bold mb-4 pb-2 border-b border-border/40">
+                <h2 className="flex items-center gap-2 text-heading font-bold mb-4 pb-2 border-b border-border/40">
                   {Icon && <Icon className="w-[18px] h-[18px] text-primary/70 shrink-0" />}
                   {s.title}
                 </h2>
-                <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-[16px] prose-h3:text-[15px] prose-h4:text-[14px] prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground/90 prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
+                <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-title prose-h3:text-title prose-h4:text-body-lg prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground/90 prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={headingComponents(s.id)}>
                     {s.markdown}
                   </ReactMarkdown>
@@ -364,35 +364,35 @@ export default function AnalysisDetailPage() {
 
           {/* 历史决策对比 */}
           <section id="sec-history" className="mb-10 scroll-mt-24">
-            <h2 className="flex items-center gap-2 text-[18px] font-bold mb-4 pb-2 border-b border-border/40">
+            <h2 className="flex items-center gap-2 text-heading font-bold mb-4 pb-2 border-b border-border/40">
               <History className="w-[18px] h-[18px] text-primary/70 shrink-0" />
               历史决策 vs 实际涨跌
             </h2>
             {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-[13px]">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-body">
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">总命中率</div>
+                  <div className="text-caption text-muted-foreground mb-1">总命中率</div>
                   <div className="font-bold">{stats.overall_hit_rate != null ? `${(stats.overall_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">买入命中</div>
+                  <div className="text-caption text-muted-foreground mb-1">买入命中</div>
                   <div className="font-bold">{stats.buy_hit_rate != null ? `${(stats.buy_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">卖出命中</div>
+                  <div className="text-caption text-muted-foreground mb-1">卖出命中</div>
                   <div className="font-bold">{stats.sell_hit_rate != null ? `${(stats.sell_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">平均 20 日收益</div>
+                  <div className="text-caption text-muted-foreground mb-1">平均 20 日收益</div>
                   <div className={`font-bold ${pctClass(stats.avg_return_20d_pct)}`}>{fmtPct(stats.avg_return_20d_pct)}</div>
                 </div>
               </div>
             )}
             {items.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-[13px]">
+                <table className="w-full text-body">
                   <thead>
-                    <tr className="border-b border-border text-muted-foreground text-[12px]">
+                    <tr className="border-b border-border text-muted-foreground text-secondary">
                       <th className="text-left py-2 pr-3">日期</th>
                       <th className="text-left py-2 px-2">决策</th>
                       <th className="text-right py-2 px-2">分析价</th>
@@ -418,12 +418,12 @@ export default function AnalysisDetailPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-[13px] text-muted-foreground py-4">暂无历史决策记录</div>
+              <div className="text-body text-muted-foreground py-4">暂无历史决策记录</div>
             )}
           </section>
 
           {/* 免责 */}
-          <div className="text-[11px] text-muted-foreground/70 italic border-t border-border/30 pt-4">
+          <div className="text-caption text-muted-foreground/70 italic border-t border-border/30 pt-4">
             本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。投资有风险,决策需自主判断。
           </div>
           </article>
@@ -436,21 +436,21 @@ export default function AnalysisDetailPage() {
             {sug && (
               <div className="p-3.5 border-b border-border">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[22px] font-bold leading-none ${decisionColor}`}>
+                  <span className={`text-display font-bold leading-none ${decisionColor}`}>
                     {decisionLabel}
                   </span>
-                  <span className="text-[11px] text-muted-foreground shrink-0">
+                  <span className="text-caption text-muted-foreground shrink-0">
                     ${rawData.cost_usd?.toFixed(4) ?? '-'}
                   </span>
                 </div>
                 {reviewRequired && (
-                  <p className="mt-2 text-[11px] leading-4 text-orange-600">
+                  <p className="mt-2 text-caption leading-4 text-orange-600">
                     上游无法安全生成可执行评级，请人工核验数据与报告。
                   </p>
                 )}
                 {sug.confidence != null && (
                   <div className="mt-2.5">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
+                    <div className="flex items-center justify-between text-caption text-muted-foreground mb-1">
                       <span>置信度</span>
                       <span className="font-medium text-foreground">{sug.confidence.toFixed(1)} / 10</span>
                     </div>
@@ -458,9 +458,9 @@ export default function AnalysisDetailPage() {
                       <div
                         className={`h-full rounded-full ${
                           sug.action === 'buy'
-                            ? 'bg-rose-500'
+                            ? 'bg-stock-up'
                             : sug.action === 'sell'
-                              ? 'bg-emerald-500'
+                              ? 'bg-stock-down'
                               : 'bg-amber-500'
                         }`}
                         style={{ width: `${Math.max(0, Math.min(100, sug.confidence * 10))}%` }}

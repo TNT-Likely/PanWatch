@@ -60,11 +60,11 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
           <DialogDescription>管理工具权限，以及上下文压缩使用的模型和预算。</DialogDescription>
         </DialogHeader>
         <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4">
-          {error && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
+          {error && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-secondary text-destructive">{error}</p>}
           {permissions ? (
             <AgentPermissionsPanel permissions={permissions} onChange={(change) => { void changePermission(change) }} variant="drawer" />
           ) : !error ? (
-            <div className="flex items-center gap-2 py-10 text-[13px] text-muted-foreground">
+            <div className="flex items-center gap-2 py-10 text-body text-muted-foreground">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
               正在加载工具权限…
             </div>

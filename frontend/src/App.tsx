@@ -147,8 +147,8 @@ function App() {
               <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-4 h-4 text-white" />
               </div>
-              <span className="text-[15px] font-bold text-foreground">PanWatch</span>
-              {version && <span className="text-[11px] text-muted-foreground/60 font-normal">v{version}</span>}
+              <span className="text-title font-bold text-foreground">PanWatch</span>
+              {version && <span className="text-caption text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
 
             {/* Nav Links */}
@@ -171,7 +171,7 @@ function App() {
                       }`}
                     />
                     <span
-                      className={`relative px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all flex items-center gap-1.5 ${
+                      className={`relative px-3.5 py-2 rounded-xl text-body font-medium transition-all flex items-center gap-1.5 ${
                         isActive
                           ? 'text-foreground'
                           : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -220,8 +220,8 @@ function App() {
               <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
-              <span className="text-[14px] font-bold text-foreground">PanWatch</span>
-              {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
+              <span className="text-body-lg font-bold text-foreground">PanWatch</span>
+              {version && <span className="text-mini text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
               <button
@@ -268,7 +268,7 @@ function App() {
                 }`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{label}</span>
+                <span className="text-mini font-medium">{label}</span>
               </NavLink>
             )
           })}
@@ -310,7 +310,7 @@ function App() {
               当前版本 v{version}，可升级到 v{upgradeInfo?.latest}。
             </DialogDescription>
           </DialogHeader>
-          <div className="text-[12px] text-muted-foreground">
+          <div className="text-secondary text-muted-foreground">
             建议升级以获取最新功能和修复。
           </div>
           <div className="flex items-center justify-end gap-2">

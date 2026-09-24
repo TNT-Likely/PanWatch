@@ -942,9 +942,9 @@ export default function ChatWidget({
               <ChevronLeft className="w-4 h-4" />
             </button>
           )}
-          <span className="text-[14px] font-semibold text-foreground">AI 助手</span>
+          <span className="text-body-lg font-semibold text-foreground">AI 助手</span>
           {view === 'chat' && stockContext && (
-            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+            <span className="inline-flex items-center gap-1 text-caption px-2 py-0.5 rounded-full bg-primary/10 text-primary">
               {stockContext.market}:{stockContext.symbol}
               {stockContext.stockName && ` ${stockContext.stockName}`}
               <button
@@ -1003,12 +1003,12 @@ export default function ChatWidget({
       {view === 'list' && !embedded && (
         <div className="flex-1 overflow-y-auto scrollbar">
           {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[13px] gap-3">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-body gap-3">
               <MessageCircle className="w-8 h-8 opacity-30" />
               <p>暂无对话</p>
               <button
                 onClick={createNewConversation}
-                className="text-[12px] px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="text-secondary px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 开始新对话
               </button>
@@ -1021,17 +1021,17 @@ export default function ChatWidget({
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/30 transition-colors border-b border-border/20"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] text-foreground truncate">
+                  <div className="text-body text-foreground truncate">
                     {conv.title || '新对话'}
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                  <div className="text-caption text-muted-foreground mt-0.5">
                     {conv.stock_symbol ? `${conv.stock_market}:${conv.stock_symbol} · ` : ''}
                     {new Date(conv.created_at).toLocaleDateString()}
                   </div>
                 </div>
                 <button
                   onClick={(e) => deleteConversation(conv.id, e)}
-                  className="p-1 rounded text-muted-foreground/50 hover:text-rose-400 transition-colors shrink-0"
+                  className="p-1 rounded text-muted-foreground/50 hover:text-stock-up transition-colors shrink-0"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1053,12 +1053,12 @@ export default function ChatWidget({
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="text-[11px] text-muted-foreground">推荐问题</span>
+                <span className="text-caption text-muted-foreground">推荐问题</span>
                 <div className="flex flex-wrap gap-2">
                   {suggestedQuestions.map((q) => (
                     <button
                       key={q}
-                      className="text-[11px] px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left"
+                      className="text-caption px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-left"
                       onClick={() => handleSend(q)}
                       disabled={interactionLocked}
                     >
@@ -1069,7 +1069,7 @@ export default function ChatWidget({
               </div>
             )}
             {messages.length === 0 && suggestedQuestions.length === 0 && !sending && (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[13px] gap-2">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-body gap-2">
                 <MessageCircle className="w-6 h-6 opacity-30" />
                 <p>输入问题开始对话</p>
               </div>
@@ -1081,14 +1081,14 @@ export default function ChatWidget({
               >
                 <div className="flex max-w-[85%] flex-col gap-2">
                   <div
-                    className={`rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
+                    className={`rounded-xl px-3 py-2 text-body leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-accent/60 text-foreground'
                     }`}
                   >
                     {msg.role === 'assistant' ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
+                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-secondary [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                       </div>
                     ) : (
@@ -1119,7 +1119,7 @@ export default function ChatWidget({
             {sending && plan && plan.steps.length > 0 && (
               // 计划驱动(全面诊断持仓)的计划卡片:步骤 + 状态
               <div className="flex justify-start">
-                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-[12px] bg-accent/40 border border-border/40">
+                <div className="max-w-[85%] w-full rounded-xl px-3 py-2 text-secondary bg-accent/40 border border-border/40">
                   <div className="font-medium text-foreground mb-1.5">
                     诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
                   </div>
@@ -1129,9 +1129,9 @@ export default function ChatWidget({
                         <span
                           className={
                             s.status === 'done'
-                              ? 'text-emerald-600'
+                              ? 'text-stock-down'
                               : s.status === 'failed'
-                              ? 'text-rose-600'
+                              ? 'text-stock-up'
                               : s.status === 'running'
                               ? 'text-primary'
                               : 'text-muted-foreground'
@@ -1157,8 +1157,8 @@ export default function ChatWidget({
             {sending && streamText && (
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">
-                <div className="max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-accent/60 text-foreground">
-                  <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
+                <div className="max-w-[85%] rounded-xl px-3 py-2 text-body leading-relaxed bg-accent/60 text-foreground">
+                  <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-title [&_h2]:text-body-lg [&_h3]:text-body [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-secondary [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeStreamMarkdown(streamText)}</ReactMarkdown>
                   </div>
                 </div>
@@ -1167,7 +1167,7 @@ export default function ChatWidget({
             {sending && !streamText && pendingApprovals.length === 0 && (
               <div className="flex justify-start">
                 <div
-                  className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2"
+                  className="bg-accent/60 rounded-xl px-3 py-2 text-body text-muted-foreground flex items-center gap-2"
                   role="status"
                   aria-label={streamTool || '正在请求助手回复'}
                 >
@@ -1196,7 +1196,7 @@ export default function ChatWidget({
             <input
               ref={inputRef}
               type="text"
-              className="flex-1 h-9 px-3 rounded-lg bg-accent/40 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="flex-1 h-9 px-3 rounded-lg bg-accent/40 text-body text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/30"
               placeholder="输入问题..."
               value={input}
               onChange={(e) => setInput(e.target.value)}

@@ -671,7 +671,7 @@ export default function SettingsPage() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/30" />
         <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
               <input ref={avatarFileRef} type="file" accept="image/*" className="hidden" onChange={onPickAvatar} />
               <button
                 type="button"
@@ -690,22 +690,22 @@ export default function SettingsPage() {
                 </span>
               </button>
               <span className="mx-1 hidden h-4 w-px bg-border/50 sm:block" />
-              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
+              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
                 <span className="font-mono text-foreground/90">{services.length}</span> 服务商
               </div>
-              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
+              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
                 <span className="font-mono text-foreground/90">{allModels.length}</span> 模型
               </div>
-              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
+              <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
                 <span className="font-mono text-foreground/90">{enabledChannels.length}</span>/<span className="font-mono">{channels.length}</span> 渠道启用
               </div>
               {defaultModel ? (
-                <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
+                <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
                   默认模型 <span className="font-mono text-foreground/90">{defaultModel.model}</span>
                 </div>
               ) : null}
               {defaultChannel ? (
-                <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-[11px] text-muted-foreground">
+                <div className="px-2.5 py-1 rounded-full bg-background/70 border border-border/50 text-caption text-muted-foreground">
                   默认通知 <span className="text-foreground/90">{defaultChannel.name}</span>
                 </div>
               ) : null}
@@ -728,7 +728,7 @@ export default function SettingsPage() {
             <button
               key={it.id}
               onClick={() => scrollTo(it.id)}
-              className="group flex items-center gap-2 rounded-full border border-border/50 bg-background/70 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
+              className="group flex items-center gap-2 rounded-full border border-border/50 bg-background/70 px-3 py-1.5 text-caption text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
             >
               <span className="font-medium text-foreground/90 group-hover:text-foreground">{it.label}</span>
               {it.hint ? <span className="opacity-60">{it.hint}</span> : null}
@@ -742,8 +742,8 @@ export default function SettingsPage() {
         <section id="sec-ai" className="card p-4 md:p-6 lg:col-span-7">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
             <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">AI 服务商 & 模型</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">连接你的 AI 服务并设置默认模型</p>
+              <h3 className="text-secondary md:text-body font-semibold text-foreground">AI 服务商 & 模型</h3>
+              <p className="text-caption text-muted-foreground mt-1">连接你的 AI 服务并设置默认模型</p>
             </div>
             <Button size="sm" className="h-8" onClick={() => openServiceDialog()}>
               <Plus className="w-3.5 h-3.5" />
@@ -751,7 +751,7 @@ export default function SettingsPage() {
             </Button>
           </div>
           {services.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground text-center py-6">暂无 AI 服务商，点击"添加服务商"创建</p>
+            <p className="text-body text-muted-foreground text-center py-6">暂无 AI 服务商，点击"添加服务商"创建</p>
           ) : (
             <div className="space-y-4">
               {services.map(svc => (
@@ -759,11 +759,11 @@ export default function SettingsPage() {
                   {/* Service header */}
                   <div className="flex items-center justify-between p-3.5">
                     <div className="min-w-0">
-                      <span className="text-[13px] font-medium text-foreground">{svc.name}</span>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate font-mono">{svc.base_url}</p>
+                      <span className="text-body font-medium text-foreground">{svc.name}</span>
+                      <p className="text-caption text-muted-foreground mt-0.5 truncate font-mono">{svc.base_url}</p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => openModelDialog(svc.id)}>
+                      <Button size="sm" variant="ghost" className="h-7 text-caption" onClick={() => openModelDialog(svc.id)}>
                         <Plus className="w-3 h-3" /> 模型
                       </Button>
                       <Button
@@ -790,8 +790,8 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-2">
                             {m.is_default && <Star className="w-3 h-3 text-amber-500" />}
                             <Cpu className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-[12px] font-medium text-foreground">{m.name}</span>
-                            <span className="text-[11px] text-muted-foreground font-mono">{m.model}</span>
+                            <span className="text-secondary font-medium text-foreground">{m.name}</span>
+                            <span className="text-caption text-muted-foreground font-mono">{m.model}</span>
                           </div>
                           <div className="flex items-center gap-0.5">
                             <Button
@@ -832,8 +832,8 @@ export default function SettingsPage() {
         <section id="sec-notify" className="card p-4 md:p-6 lg:col-span-5">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
             <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">通知渠道</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">推送到 Telegram/Bark 等渠道</p>
+              <h3 className="text-secondary md:text-body font-semibold text-foreground">通知渠道</h3>
+              <p className="text-caption text-muted-foreground mt-1">推送到 Telegram/Bark 等渠道</p>
             </div>
             <Button size="sm" className="h-8" onClick={() => openChannelDialog()}>
               <Plus className="w-3.5 h-3.5" />
@@ -841,7 +841,7 @@ export default function SettingsPage() {
             </Button>
           </div>
           {channels.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground text-center py-6">暂无通知渠道，点击"添加"创建</p>
+            <p className="text-body text-muted-foreground text-center py-6">暂无通知渠道，点击"添加"创建</p>
           ) : (
             <div className="space-y-3">
               {channels.map(ch => (
@@ -849,8 +849,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-3 min-w-0">
                     {ch.is_default && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
                     <div className="min-w-0">
-                      <span className="text-[13px] font-medium text-foreground">{ch.name}</span>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{CHANNEL_TYPE_FIELDS[ch.type]?.label || ch.type}</p>
+                      <span className="text-body font-medium text-foreground">{ch.name}</span>
+                      <p className="text-caption text-muted-foreground mt-0.5">{CHANNEL_TYPE_FIELDS[ch.type]?.label || ch.type}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -890,8 +890,8 @@ export default function SettingsPage() {
           <section id="sec-system" className="card p-4 md:p-6 lg:col-span-12">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4 md:mb-5">
               <div>
-                <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">系统</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">偏好与高级选项。修改后立即生效。</p>
+                <h3 className="text-secondary md:text-body font-semibold text-foreground">系统</h3>
+                <p className="text-caption text-muted-foreground mt-1">偏好与高级选项。修改后立即生效。</p>
               </div>
               <div className="flex items-center gap-2">
                 <Input
@@ -901,7 +901,7 @@ export default function SettingsPage() {
                   className="h-9 w-full md:w-[320px]"
                 />
                 {health?.timezone ? (
-                  <div className="hidden md:flex px-2.5 h-9 items-center rounded-lg border border-border/50 bg-accent/20 text-[11px] text-muted-foreground">
+                  <div className="hidden md:flex px-2.5 h-9 items-center rounded-lg border border-border/50 bg-accent/20 text-caption text-muted-foreground">
                     TZ <span className="ml-1 font-mono text-foreground/90">{health.timezone}</span>
                   </div>
                 ) : null}
@@ -944,7 +944,7 @@ export default function SettingsPage() {
                         disabled={!isChanged || saving === setting.key}
                         className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
                           saved === setting.key
-                            ? 'bg-emerald-500/10 text-emerald-600'
+                            ? 'bg-stock-down/10 text-stock-down'
                             : isChanged
                               ? 'bg-primary text-white'
                               : 'text-muted-foreground/30'
@@ -968,8 +968,8 @@ export default function SettingsPage() {
         <section id="sec-pack" className="card p-4 md:p-6 lg:col-span-7">
           <div className="flex items-start justify-between mb-4 gap-3">
             <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">配置包</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">一键导入/导出 Agent、关注列表与系统设置</p>
+              <h3 className="text-secondary md:text-body font-semibold text-foreground">配置包</h3>
+              <p className="text-caption text-muted-foreground mt-1">一键导入/导出 Agent、关注列表与系统设置</p>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="secondary" size="sm" className="h-8" onClick={exportTemplate} disabled={exporting}>
@@ -990,9 +990,9 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex items-center gap-2 mb-4">
-            <div className="text-[11px] text-muted-foreground">导入模式</div>
+            <div className="text-caption text-muted-foreground">导入模式</div>
             <Select value={importMode} onValueChange={(v) => setImportMode(v as any)}>
-              <SelectTrigger className="h-8 w-[160px] text-[12px]">
+              <SelectTrigger className="h-8 w-[160px] text-secondary">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1022,7 +1022,7 @@ export default function SettingsPage() {
           />
 
           <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+            <div className="flex items-center gap-2 text-secondary font-semibold text-foreground">
               <FileJson className="w-4 h-4 text-muted-foreground" />
               官方模板
             </div>
@@ -1030,17 +1030,17 @@ export default function SettingsPage() {
               {builtinTemplates.map(t => (
                 <div key={t.name} className="rounded-lg border border-border/40 bg-background/30 p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-[12px] font-semibold text-foreground">{t.name}</div>
+                    <div className="text-secondary font-semibold text-foreground">{t.name}</div>
                     <Button
                       size="sm"
                       className="h-7"
                       onClick={() => importTemplate(t.payload)}
                       disabled={importing}
                     >
-                      <span className="text-[12px]">应用</span>
+                      <span className="text-secondary">应用</span>
                     </Button>
                   </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">{t.desc}</div>
+                  <div className="mt-1 text-caption text-muted-foreground">{t.desc}</div>
                 </div>
               ))}
             </div>
@@ -1051,8 +1051,8 @@ export default function SettingsPage() {
         <section id="sec-feedback" className="card p-4 md:p-6 lg:col-span-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">建议反馈</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">用于评估推送质量与策略迭代</p>
+              <h3 className="text-secondary md:text-body font-semibold text-foreground">建议反馈</h3>
+              <p className="text-caption text-muted-foreground mt-1">用于评估推送质量与策略迭代</p>
             </div>
             <Button variant="secondary" size="sm" className="h-8" onClick={loadFeedbackStats} disabled={fbLoading}>
               <BarChart3 className="w-3.5 h-3.5" />
@@ -1062,24 +1062,24 @@ export default function SettingsPage() {
 
           {fbStats ? (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-secondary text-muted-foreground">
                 <span>近 {fbStats.range_days} 天</span>
                 <span className="opacity-50">|</span>
                 <span>反馈: <span className="font-mono text-foreground/90">{fbStats.total}</span></span>
                 <span className="opacity-50">|</span>
-                <span>有用: <span className="font-mono text-emerald-600">{fbStats.useful}</span></span>
+                <span>有用: <span className="font-mono text-stock-down">{fbStats.useful}</span></span>
                 <span className="opacity-50">|</span>
-                <span>没用: <span className="font-mono text-rose-600">{fbStats.useless}</span></span>
+                <span>没用: <span className="font-mono text-stock-up">{fbStats.useless}</span></span>
                 <span className="opacity-50">|</span>
                 <span>有用率: <span className="font-mono text-foreground/90">{Math.round(fbStats.useful_rate * 100)}%</span></span>
               </div>
 
               {fbStats.by_agent?.length ? (
                 <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-                  <div className="text-[12px] font-semibold text-foreground">按 Agent</div>
+                  <div className="text-secondary font-semibold text-foreground">按 Agent</div>
                   <div className="mt-2 space-y-1">
                     {fbStats.by_agent.slice(0, 6).map(a => (
-                      <div key={a.agent_name} className="flex items-center justify-between text-[11px]">
+                      <div key={a.agent_name} className="flex items-center justify-between text-caption">
                         <span className="font-mono text-muted-foreground">{a.agent_name}</span>
                         <span className="font-mono text-muted-foreground">
                           {a.useful}/{a.total} ({Math.round(a.useful_rate * 100)}%)
@@ -1089,11 +1089,11 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="text-[12px] text-muted-foreground">暂无反馈数据</div>
+                <div className="text-secondary text-muted-foreground">暂无反馈数据</div>
               )}
             </div>
           ) : (
-            <div className="text-[12px] text-muted-foreground">暂无反馈数据</div>
+            <div className="text-secondary text-muted-foreground">暂无反馈数据</div>
           )}
         </section>
 
@@ -1262,7 +1262,7 @@ export default function SettingsPage() {
                         if (!checked) { const next = new Set(batchChecked); next.add(id); setBatchChecked(next) }
                       }
                     }}
-                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-caption transition-colors ${
                       isDefault ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                   >
@@ -1352,7 +1352,7 @@ export default function SettingsPage() {
 
       {/* Version Footer */}
       {version && (
-        <div className="mt-8 text-center text-[11px] text-muted-foreground/60">
+        <div className="mt-8 text-center text-caption text-muted-foreground/60">
           PanWatch v{version}
         </div>
       )}

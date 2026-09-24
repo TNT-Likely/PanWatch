@@ -278,12 +278,12 @@ export default function PriceAlertsPage() {
   return (
     <div>
       <div className="mb-4 md:mb-8">
-        <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">价格提醒</h1>
-        <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">到价/量能触发，支持冷却、每日上限与交易时段门禁</p>
+        <h1 className="text-headline md:text-display font-bold text-foreground tracking-tight">价格提醒</h1>
+        <p className="text-secondary md:text-body text-muted-foreground mt-0.5 md:mt-1">到价/量能触发，支持冷却、每日上限与交易时段门禁</p>
       </div>
 
       <div className="card p-4 mb-4 flex items-center justify-between gap-2">
-        <div className="text-[12px] text-muted-foreground">规则数：{rules.length}</div>
+        <div className="text-secondary text-muted-foreground">规则数：{rules.length}</div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" className="h-8" onClick={runScan} disabled={scanRunning}>
             {scanRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -301,8 +301,8 @@ export default function PriceAlertsPage() {
       ) : rules.length === 0 ? (
         <div className="card p-8 text-center">
           <BellRing className="w-6 h-6 mx-auto text-muted-foreground" />
-          <div className="mt-2 text-[14px] text-foreground">暂无价格提醒规则</div>
-          <div className="mt-1 text-[12px] text-muted-foreground">创建规则后，系统会每分钟自动扫描并触发通知</div>
+          <div className="mt-2 text-body-lg text-foreground">暂无价格提醒规则</div>
+          <div className="mt-1 text-secondary text-muted-foreground">创建规则后，系统会每分钟自动扫描并触发通知</div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -311,14 +311,14 @@ export default function PriceAlertsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[14px] font-semibold">{r.name || `${r.stock_name} 提醒`}</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-accent/50 text-muted-foreground">{r.market}:{r.stock_symbol}</span>
-                    <span className={`text-[11px] px-2 py-0.5 rounded ${r.enabled ? 'bg-emerald-500/15 text-emerald-500' : 'bg-muted text-muted-foreground'}`}>{r.enabled ? '启用' : '暂停'}</span>
+                    <span className="text-body-lg font-semibold">{r.name || `${r.stock_name} 提醒`}</span>
+                    <span className="text-caption px-2 py-0.5 rounded bg-accent/50 text-muted-foreground">{r.market}:{r.stock_symbol}</span>
+                    <span className={`text-caption px-2 py-0.5 rounded ${r.enabled ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>{r.enabled ? '启用' : '暂停'}</span>
                   </div>
-                  <div className="mt-2 text-[12px] text-muted-foreground">
+                  <div className="mt-2 text-secondary text-muted-foreground">
                     {(r.condition_group?.items || []).map(conditionText).join(r.condition_group?.op === 'or' ? ' 或 ' : ' 且 ')}
                   </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground/80">
+                  <div className="mt-1 text-caption text-muted-foreground/80">
                     冷却 {r.cooldown_minutes} 分钟 · 日上限 {r.max_triggers_per_day} 次 · 最近触发 {fmt(r.last_trigger_at)}
                   </div>
                 </div>
@@ -333,12 +333,12 @@ export default function PriceAlertsPage() {
               </div>
               {/* Mobile: buttons at bottom */}
               <div className="flex md:hidden items-center gap-1.5 mt-3 pt-3 border-t border-border/30">
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => testRule(r)}>测试</Button>
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openHits(r)}><BarChart3 className="w-3 h-3" /></Button>
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openEdit(r)}>编辑</Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-caption" onClick={() => testRule(r)}>测试</Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-caption" onClick={() => openHits(r)}><BarChart3 className="w-3 h-3" /></Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-caption" onClick={() => openEdit(r)}>编辑</Button>
                 <div className="flex-1" />
-                <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-7 px-2 text-[11px]" onClick={() => toggleRule(r)}>{r.enabled ? '停用' : '启用'}</Button>
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => removeRule(r)}><Trash2 className="w-3 h-3" /></Button>
+                <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-7 px-2 text-caption" onClick={() => toggleRule(r)}>{r.enabled ? '停用' : '启用'}</Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-caption" onClick={() => removeRule(r)}><Trash2 className="w-3 h-3" /></Button>
               </div>
             </div>
           ))}
@@ -366,16 +366,16 @@ export default function PriceAlertsPage() {
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto scrollbar space-y-2">
             {hits.length === 0 ? (
-              <div className="text-[12px] text-muted-foreground text-center py-6">暂无命中记录</div>
+              <div className="text-secondary text-muted-foreground text-center py-6">暂无命中记录</div>
             ) : hits.map(h => (
               <div key={h.id} className="rounded border border-border/40 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[12px] text-muted-foreground">{fmt(h.trigger_time)}</div>
-                  <div className={`text-[11px] ${h.notify_success ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  <div className="text-secondary text-muted-foreground">{fmt(h.trigger_time)}</div>
+                  <div className={`text-caption ${h.notify_success ? 'text-success' : 'text-destructive'}`}>
                     {h.notify_success ? '通知成功' : `通知失败 ${h.notify_error || ''}`}
                   </div>
                 </div>
-                <div className="mt-2 text-[11px] bg-accent/20 rounded p-2 font-mono overflow-x-auto scrollbar">
+                <div className="mt-2 text-caption bg-accent/20 rounded p-2 font-mono overflow-x-auto scrollbar">
                   {JSON.stringify(h.trigger_snapshot || {}, null, 2)}
                 </div>
               </div>

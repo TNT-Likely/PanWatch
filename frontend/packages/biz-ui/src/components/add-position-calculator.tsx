@@ -55,9 +55,9 @@ function fmtInt(n: number | null | undefined): string {
 }
 
 const VERDICT_STYLE: Record<string, string> = {
-  适合: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
+  适合: 'bg-stock-down/15 text-stock-down border-stock-down/30',
   谨慎: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
-  不适合: 'bg-rose-500/15 text-rose-500 border-rose-500/30',
+  不适合: 'bg-stock-up/15 text-stock-up border-stock-up/30',
   未知: 'bg-muted text-muted-foreground border-border',
 }
 
@@ -145,21 +145,21 @@ export default function AddPositionCalculator({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between text-[11px] text-muted-foreground"
+        className="flex w-full items-center justify-between text-caption text-muted-foreground"
       >
         <span>加仓测算{hasHolding ? '' : '（当前空仓 · 建仓测算）'}</span>
         <span>{open ? '收起 ▾' : '展开 ▸'}</span>
       </button>
 
       {open && (
-        <div className="mt-2 space-y-2 text-[12px]">
+        <div className="mt-2 space-y-2 text-secondary">
           <div className="flex gap-1">
             {(['shares', 'amount'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setMode(m)}
-                className={`rounded border px-2 py-0.5 text-[11px] ${
+                className={`rounded border px-2 py-0.5 text-caption ${
                   mode === m
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border text-muted-foreground'
@@ -172,7 +172,7 @@ export default function AddPositionCalculator({
 
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1">
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-mini text-muted-foreground">
                 {mode === 'shares' ? '加仓股数' : '加仓金额(元)'}
               </div>
               <Input
@@ -183,7 +183,7 @@ export default function AddPositionCalculator({
               />
             </label>
             <label className="space-y-1">
-              <div className="text-[10px] text-muted-foreground">加仓价</div>
+              <div className="text-mini text-muted-foreground">加仓价</div>
               <Input
                 value={priceRaw}
                 onChange={(e) => setPriceRaw(e.target.value)}
@@ -194,7 +194,7 @@ export default function AddPositionCalculator({
           </div>
 
           {mode === 'amount' && addQty > 0 && (
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-mini text-muted-foreground">
               ≈ {fmtInt(addQty)} 股{isCN ? `（≈${fmtInt(addQty / 100)} 手）` : ''}
             </div>
           )}
@@ -208,7 +208,7 @@ export default function AddPositionCalculator({
               {calc.isAdd && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">摊薄</span>
-                  <span className={`font-mono ${calc.diluteAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  <span className={`font-mono ${calc.diluteAbs >= 0 ? 'text-stock-down' : 'text-stock-up'}`}>
                     {calc.diluteAbs >= 0 ? '↓' : '↑'}
                     {fmt(Math.abs(calc.diluteAbs))}（{fmt(Math.abs(calc.dilutePct))}%）
                   </span>
@@ -221,17 +221,17 @@ export default function AddPositionCalculator({
                 </span>
               </div>
               {lotWarn && (
-                <div className="text-[10px] text-amber-600">提示:A股通常 100 股/手,建议取整到 100 的倍数</div>
+                <div className="text-mini text-amber-600">提示:A股通常 100 股/手,建议取整到 100 的倍数</div>
               )}
             </div>
           ) : (
-            <div className="text-[11px] text-muted-foreground">填写加仓股数/金额与价格后自动计算</div>
+            <div className="text-caption text-muted-foreground">填写加仓股数/金额与价格后自动计算</div>
           )}
 
           {hasHolding && (
             <div className="grid grid-cols-2 items-end gap-2">
               <label className="space-y-1">
-                <div className="text-[10px] text-muted-foreground">反推:目标成本</div>
+                <div className="text-mini text-muted-foreground">反推:目标成本</div>
                 <Input
                   value={targetRaw}
                   onChange={(e) => setTargetRaw(e.target.value)}
@@ -239,7 +239,7 @@ export default function AddPositionCalculator({
                   placeholder={`< ${fmt(currentCost)}`}
                 />
               </label>
-              <div className="pb-1 text-[11px]">
+              <div className="pb-1 text-caption">
                 {targetRaw.trim() === '' ? (
                   <span className="text-muted-foreground">按加仓价反推所需股数</span>
                 ) : reverseShares != null ? (
@@ -271,15 +271,15 @@ export default function AddPositionCalculator({
             <div className="space-y-1 rounded border border-border/60 p-2">
               <div className="flex items-center gap-2">
                 <span
-                  className={`rounded border px-2 py-0.5 text-[11px] ${
+                  className={`rounded border px-2 py-0.5 text-caption ${
                     VERDICT_STYLE[aiResult.verdict] || VERDICT_STYLE['未知']
                   }`}
                 >
                   {aiResult.verdict}
                 </span>
-                <span className="text-[10px] text-muted-foreground">AI 结论 · 仅供参考</span>
+                <span className="text-mini text-muted-foreground">AI 结论 · 仅供参考</span>
               </div>
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[12px] leading-relaxed [&_p]:my-1 [&_ul]:my-1">
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-secondary leading-relaxed [&_p]:my-1 [&_ul]:my-1">
                 <ReactMarkdown>{aiResult.content}</ReactMarkdown>
               </div>
             </div>

@@ -69,7 +69,7 @@ export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
   const [expanded, setExpanded] = useState(live)
   if (events.length === 0) return null
   return (
-    <section data-testid="assistant-trace" className="rounded-lg border border-border/50 bg-background/70 px-3 py-2 text-[11px]">
+    <section data-testid="assistant-trace" className="rounded-lg border border-border/50 bg-background/70 px-3 py-2 text-caption">
       <button
         type="button"
         className="flex w-full items-center gap-1.5 text-left font-medium text-muted-foreground hover:text-foreground"
@@ -78,7 +78,7 @@ export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
       >
         <FileClock className="h-3.5 w-3.5 shrink-0" />
         <span>执行记录</span>
-        <span className="min-w-0 flex-1 truncate text-[10px] font-normal">{summary(events)}</span>
+        <span className="min-w-0 flex-1 truncate text-mini font-normal">{summary(events)}</span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && (

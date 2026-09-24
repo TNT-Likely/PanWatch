@@ -42,8 +42,8 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
   const content = (
     <>
       <div className="mb-4">
-        <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">助手工具权限</h3>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <h3 className="text-secondary md:text-body font-semibold text-foreground">助手工具权限</h3>
+        <p className="mt-1 text-caption text-muted-foreground">
           仅影响助手可见和可执行的工具；破坏性操作始终禁止，需确认的工具不能设为直接允许。
         </p>
       </div>
@@ -51,7 +51,7 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
         {permissions.defaults.map((item) => (
           <label
             key={item.risk}
-            className="flex min-w-0 items-center justify-between gap-1 rounded-xl border border-border/50 bg-accent/20 px-2.5 py-2 text-[11px] text-muted-foreground"
+            className="flex min-w-0 items-center justify-between gap-1 rounded-xl border border-border/50 bg-accent/20 px-2.5 py-2 text-caption text-muted-foreground"
           >
             <span className="min-w-0 shrink truncate whitespace-nowrap">{RISK_LABELS[item.risk]}</span>
             <select
@@ -63,7 +63,7 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
                 mode: event.target.value as PermissionMode,
                 risk: item.risk,
               })}
-              className="h-7 min-w-0 shrink-0 rounded-md border border-border/60 bg-background px-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-7 min-w-0 shrink-0 rounded-md border border-border/60 bg-background px-1.5 text-caption text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             >
               {availableModesForRisk(item.risk).map((mode) => (
                 <option key={mode} value={mode}>{MODE_LABELS[mode]}</option>
@@ -74,12 +74,12 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
       </div>
       <div className="mt-4 space-y-2">
         {permissions.tools.length === 0 ? (
-          <p className="py-2 text-[12px] text-muted-foreground">当前没有已注册的可配置工具。</p>
+          <p className="py-2 text-secondary text-muted-foreground">当前没有已注册的可配置工具。</p>
         ) : permissions.tools.map((tool) => (
           <div key={tool.name} className="flex items-center justify-between gap-3 rounded-xl bg-accent/30 px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-[12px] font-medium text-foreground">{tool.title}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
+              <p className="text-secondary font-medium text-foreground">{tool.title}</p>
+              <p className="mt-0.5 text-caption text-muted-foreground">
                 {tool.name} · {RISK_LABELS[tool.risk]}{tool.confirmation_required ? ' · 需确认' : ''}
               </p>
             </div>
@@ -92,7 +92,7 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
                 mode: event.target.value as PermissionMode,
                 risk: tool.risk,
               })}
-              className="h-8 rounded-lg border border-border/60 bg-background px-2 text-[12px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-8 rounded-lg border border-border/60 bg-background px-2 text-secondary text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             >
               {availableModes(tool).map((mode) => (
                 <option key={mode} value={mode}>{MODE_LABELS[mode]}</option>

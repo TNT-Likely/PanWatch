@@ -84,18 +84,18 @@ export default function FactorWeightsPanel() {
     <section id="sec-factors" className="card p-4 md:p-6 lg:col-span-12">
       <div className="flex items-start justify-between mb-4 gap-3">
         <div>
-          <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground flex items-center gap-1.5">
+          <h3 className="text-secondary md:text-body font-semibold text-foreground flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-muted-foreground" />
             因子权重自校准
           </h3>
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-caption text-muted-foreground mt-1">
             每因子权重由 IC/IR 每日自动标定;锁定或关闭自动标定可手动接管(仅供参考)。
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-3 text-[12px] text-amber-500">{error}</div>
+        <div className="mb-3 text-secondary text-amber-500">{error}</div>
       )}
 
       {loading ? (
@@ -103,12 +103,12 @@ export default function FactorWeightsPanel() {
           <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       ) : sortedItems.length === 0 ? (
-        <div className="text-[12px] text-muted-foreground text-center py-6">暂无因子权重数据</div>
+        <div className="text-secondary text-muted-foreground text-center py-6">暂无因子权重数据</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-secondary">
             <thead>
-              <tr className="text-left text-[11px] text-muted-foreground border-b border-border/50">
+              <tr className="text-left text-caption text-muted-foreground border-b border-border/50">
                 <th className="py-2 pr-3 font-medium">因子</th>
                 <th className="py-2 pr-3 font-medium">市场</th>
                 <th className="py-2 pr-3 font-medium text-right">权重</th>
