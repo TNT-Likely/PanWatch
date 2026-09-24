@@ -291,3 +291,24 @@ def test_手动刷新机会不受非交易日守卫影响(monkeypatch):
     asyncio.run(sched.refresh_opportunities_once())
 
     assert calls["n"] == 1
+
+
+def test_上下文后验评估仅在夜间运行且不启动补跑(monkeypatch):
+    """长时间后验评估不应在 Web 服务启动后立即抢占 SQLite。"""
+    from src.modules.research.context_scheduler import ContextMaintenanceScheduler
+
+    sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
+    monkeypatch.setattr(sched.scheduler, "start", lambda: None)
+    monkeypatch.setattr(
+        "src.platform.scheduling.scheduler_registry.register", lambda *_args: None
+    )
+
+    sched.start()
+
+    jobs = {job.id: job for job in sched.scheduler.get_jobs()}
+    assert "context_maintenance_bootstrap_evaluate" not in jobs
+
+    evaluate_job = jobs["context_maintenance_evaluate"]
+    fields = {field.name: str(field) for field in evaluate_job.trigger.fields}
+    assert fields["hour"] == "4"
+    assert fields["minute"] == "30"

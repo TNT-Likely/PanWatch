@@ -585,8 +585,7 @@ export default function ChatWidget({
 
     try {
       // 优先走 SSE 流式（token 流 + 工具过程可视）
-      const stream = embedded ? chatApi.sendAssistantMessageStream : chatApi.sendMessageStream
-      await stream(convId, content, {
+      await chatApi.sendAssistantMessageStream(convId, content, {
         onRunStarted: ({ taskId: nextTaskId, contextUsage }) => {
           receivedAny = true
           if (nextTaskId > 0) {
@@ -682,40 +681,16 @@ export default function ChatWidget({
       setConversations((prev) =>
         prev.map((c) => c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)
       )
-    } catch (e) {
-      if (streamError) {
-        if (!embedded) {
-          setMessages((prev) => [...prev, {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: streamError,
-            created_at: new Date().toISOString(),
-          }])
-        }
-      } else if (!receivedAny && !embedded) {
-        // 流式完全不可用（旧后端/代理不支持等）→ 降级非流式端点
-        try {
-          const reply = await chatApi.sendMessage(convId, content)
-          setMessages((prev) => [...prev, reply])
-          setConversations((prev) =>
-            prev.map((c) => c.id === convId ? { ...c, title: c.title || content.slice(0, 20) } : c)
-          )
-        } catch (e2) {
-          const errMsg: ChatMessage = {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: `请求失败：${e2 instanceof Error ? e2.message : '未知错误'}`,
-            created_at: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, errMsg])
-        }
-      } else if (embedded) {
-        // 新助手不再追加“请求未完成”错误气泡；用户可直接重新提交。
-      } else {
-        // 已收到部分事件但流中断：生成在服务端继续并落库，稍后拉取最终消息
-        await new Promise((r) => setTimeout(r, 1500))
-        await loadMessages(convId)
-      }
+    } catch {
+      const message = streamError || (receivedAny
+        ? '助手连接中断，任务仍可能在后台执行，请稍后刷新查看结果。'
+        : '助手请求失败，请稍后重试。')
+      setMessages((prev) => [...prev, {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: message,
+        created_at: new Date().toISOString(),
+      }])
     } finally {
       resetStream()
       sendingRef.current = false

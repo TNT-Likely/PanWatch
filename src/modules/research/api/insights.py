@@ -8,7 +8,7 @@ from src.platform.marketdata.models import MarketCode
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.automation.suggestion_pool import get_latest_suggestions
-from src.modules.assistant.legacy_chat_tools import (
+from src.modules.assistant.tool_adapters import (
     build_stock_context,
     fetch_realtime_context,
     fetch_technical_context,

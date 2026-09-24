@@ -12,6 +12,15 @@ LLM 生成结构化计划(逐持仓股分析 → 组合风险 → 汇总建议)�
 import json
 import logging
 import re
+from datetime import UTC, datetime
+
+from pan_agent import (
+    BeforeModelTurnContext,
+    ExtensionToolContext,
+    ToolExposureDecision,
+    ToolResult,
+    ToolSpec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -272,3 +281,78 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
 
     await _publish_plan(stream, steps, status="done")
     return summary
+
+
+class PortfolioDiagnosisExtension:
+    """Expose the existing portfolio planner through the canonical runtime.
+
+    The planner remains a host-specific orchestration detail, while the
+    runtime sees one read-only virtual tool and durable extension events.
+    """
+
+    name = "portfolio_diagnosis"
+
+    def __init__(self, db, ai_client, execute_tool) -> None:
+        self._db = db
+        self._ai_client = ai_client
+        self._execute_tool = execute_tool
+
+    @staticmethod
+    def _tool_spec() -> ToolSpec:
+        return ToolSpec(
+            name="portfolio_diagnosis",
+            title="全面诊断持仓",
+            description=(
+                "执行一次全面持仓诊断，按计划分析组合风险和持仓股票，"
+                "返回有依据的风险与调仓建议。"
+            ),
+            input_schema={"type": "object", "properties": {}},
+        )
+
+    async def before_model_turn(
+        self, context: BeforeModelTurnContext
+    ) -> ToolExposureDecision | None:
+        latest_user = next(
+            (
+                message.content
+                for message in reversed(context.messages)
+                if message.role == "user" and message.content.strip()
+            ),
+            "",
+        )
+        if not should_use_planning(latest_user):
+            return None
+        if any(
+            message.role == "tool" and message.name == self._tool_spec().name
+            for message in context.messages
+        ):
+            return None
+        return ToolExposureDecision(additional_tools=(self._tool_spec(),))
+
+    async def handle_tool_call(self, context: ExtensionToolContext) -> ToolResult | None:
+        if context.call.name != self._tool_spec().name:
+            return None
+
+        class EventBridge:
+            async def publish(_, event: str, data: dict) -> None:
+                # The planner's token stream is internal to this virtual tool;
+                # the runtime emits the final grounded answer after the result.
+                if event == "plan":
+                    await context.emit_event(event, data)
+
+        try:
+            summary = await run_portfolio_diagnosis(
+                self._db,
+                EventBridge(),
+                self._ai_client,
+                self._execute_tool,
+            )
+        except Exception as exc:  # noqa: BLE001 - runtime converts this to a tool failure
+            logger.exception("持仓诊断扩展执行失败")
+            return ToolResult.failure(summary=f"持仓诊断失败：{exc}", error_code="diagnosis_failed")
+        return ToolResult.success(
+            summary=summary or "持仓诊断已完成。",
+            data={"summary": summary},
+            sources=[{"name": "PanWatch 持仓诊断"}],
+            observed_at=datetime.now(UTC),
+        )

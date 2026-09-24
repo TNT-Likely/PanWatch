@@ -6,7 +6,10 @@
 
 import asyncio
 
-from src.modules.assistant.chat_planner import (
+from pan_agent import BeforeModelTurnContext, ModelMessage, ReadOnlyToolPolicy, RunRequest
+
+from src.modules.assistant.portfolio_diagnosis import (
+    PortfolioDiagnosisExtension,
     build_default_plan,
     normalize_steps,
     parse_plan,
@@ -185,3 +188,22 @@ def test_build_default_plan_shape():
     """默认计划为组合风险单步"""
     plan = build_default_plan("持仓文本")
     assert plan[0]["action"] == "portfolio_risk"
+
+
+def test_portfolio_diagnosis_is_exposed_as_a_runtime_extension_tool():
+    extension = PortfolioDiagnosisExtension(None, None, None)
+    context = BeforeModelTurnContext(
+        request=RunRequest(
+            run_id="test",
+            messages=[ModelMessage(role="user", content="请全面诊断我的持仓")],
+        ),
+        messages=(ModelMessage(role="user", content="请全面诊断我的持仓"),),
+        available_tools=(),
+        policy=ReadOnlyToolPolicy(),
+        emit_event=lambda _name, _data: asyncio.sleep(0),
+    )
+
+    decision = asyncio.run(extension.before_model_turn(context))
+
+    assert decision is not None
+    assert [tool.name for tool in decision.additional_tools] == ["portfolio_diagnosis"]

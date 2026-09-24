@@ -109,7 +109,7 @@ Agent 执行循环。`bootstrap` 中只保留确有启动期职责的文件；�
 | 模块 | HTTP router 目录 | 接口范围 |
 | --- | --- | --- |
 | `administration` | `modules/administration/api/` | 鉴权、设置、健康检查、日志、数据源、PAT、MCP |
-| `assistant` | `modules/assistant/api.py`、`chat_api.py` | 导航级助手与兼容的聊天接口；共享旧聊天工具在 `legacy_chat_tools.py` |
+| `assistant` | `modules/assistant/api.py` | 导航级助手、持久化任务与运行时扩展；共享业务工具适配器在 `tool_adapters.py` |
 | `automation` | `modules/automation/api/` | Agent、建议池、模板 |
 | `market` | `modules/market/api/` | 标的、行情、K 线、新闻、发现、价格告警 |
 | `portfolio` | `modules/portfolio/api/` | 账户、持仓历史、仪表盘 |
