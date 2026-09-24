@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { moveColor as pctClass } from '@panwatch/base-ui/components/patterns'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -54,10 +55,6 @@ function inferMarket(symbol: string): string {
   return 'US'
 }
 
-function pctClass(v: number | null | undefined): string {
-  if (v == null) return 'text-muted-foreground'
-  return v > 0 ? 'text-stock-up' : v < 0 ? 'text-stock-down' : 'text-muted-foreground'
-}
 
 function fmtPct(v: number | null | undefined): string {
   if (v == null) return '-'

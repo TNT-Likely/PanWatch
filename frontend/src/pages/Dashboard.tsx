@@ -34,28 +34,8 @@ import BenchChart from '@/components/BenchChart'
 import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
+import { moveColor, pctChipCls, fmtMoney, fmtPct as pct } from '@panwatch/base-ui/components/patterns'
 
-function pct(v?: number | null, digits = 2): string {
-  if (v == null || !isFinite(v)) return '--'
-  return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`
-}
-function moveColor(v?: number | null): string {
-  if (v == null) return 'text-muted-foreground'
-  return v > 0 ? 'text-stock-up' : v < 0 ? 'text-stock-down' : 'text-muted-foreground'
-}
-/** 涨跌着色 chip 的背景+文字类;null/平盘 → 灰底。红涨绿跌(A股口径)。 */
-function pctChipCls(v?: number | null): string {
-  if (v == null) return 'bg-accent text-muted-foreground'
-  if (v > 0) return 'bg-stock-up/10 text-stock-up'
-  if (v < 0) return 'bg-stock-down/10 text-stock-down'
-  return 'bg-accent text-muted-foreground'
-}
-/** 金额展示:+¥2,175 风格(千分位 + 正负号),脱敏场景外的常规展示用。 */
-function fmtMoney(v?: number | null): string {
-  if (v == null || !isFinite(v)) return '--'
-  const sign = v > 0 ? '+' : v < 0 ? '-' : ''
-  return `${sign}¥${Math.abs(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
-}
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
 function stripMarkdown(s: string): string {
   return s
