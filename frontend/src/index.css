@@ -64,6 +64,16 @@
     --input: 240 5% 18%;
     --ring: 234 85% 62%;
   }
+
+  /* 涨跌色口径切换：绿涨红跌（欧美）——交换 stock-up/down 值，亮暗分别覆盖 */
+  :root[data-stock-mode='up-green'] {
+    --stock-up: 152 70% 29%;
+    --stock-down: 0 72% 51%;
+  }
+  .dark[data-stock-mode='up-green'] {
+    --stock-up: 142 69% 58%;
+    --stock-down: 0 100% 71%;
+  }
 }
 
 @layer base {

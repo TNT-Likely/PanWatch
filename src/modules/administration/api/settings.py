@@ -55,6 +55,7 @@ SETTING_DESCRIPTIONS = {
     "notify_retry_backoff_seconds": "通知重试退避秒数（基数）",
     "notify_dedupe_ttl_overrides": "通知幂等窗口覆盖（JSON，空为默认）",
     "stock_link_platform": "股票链接平台（点击股票代码跳转的行情网站）",
+    "price_color_mode": "涨跌颜色口径：up-red=红涨绿跌(默认) / up-green=绿涨红跌",
     "panwatch_base_url": "PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）",
 }
 
@@ -71,6 +72,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_retry_backoff_seconds": str(s.notify_retry_backoff_seconds),
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
+        "price_color_mode": "up-red",
         "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
     }
 
@@ -181,6 +183,10 @@ def set_avatar(update: SettingUpdate, db: Session = Depends(get_db)):
 
 @router.put("/{key}", response_model=SettingResponse)
 def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db)):
+    # 枚举类键值校验：非法值拒绝入库（前端有回退，但入库脏值会破坏跨设备同步语义）
+    if key == "price_color_mode" and update.value not in ("up-red", "up-green"):
+        raise HTTPException(status_code=400, detail="price_color_mode 仅支持 up-red / up-green")
+
     setting = db.query(AppSettings).filter(AppSettings.key == key).first()
     if not setting:
         desc = SETTING_DESCRIPTIONS.get(key, "")

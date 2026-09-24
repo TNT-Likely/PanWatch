@@ -15,6 +15,7 @@ import AppSidebar from '@/components/layout/AppSidebar'
 import MobileTopBar from '@/components/layout/MobileTopBar'
 import MobileTabBar from '@/components/layout/MobileTabBar'
 import MobileNavDrawer from '@/components/layout/MobileNavDrawer'
+import { initStockModeFromBackend } from '@panwatch/base-ui/hooks/use-stock-mode'
 
 const {
   LoginPage,
@@ -81,6 +82,11 @@ function App() {
     appApi.version()
       .then(data => setVersion(data?.version || ''))
       .catch(() => {})
+  }, [])
+
+  // 涨跌色口径：本地无显式设置时从后端回落（多设备一致）
+  useEffect(() => {
+    void initStockModeFromBackend()
   }, [])
 
   useEffect(() => {
