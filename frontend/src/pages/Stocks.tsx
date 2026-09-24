@@ -22,212 +22,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import AddStockDialog from './portfolio/AddStockDialog'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 
-interface AgentResult {
-  success?: boolean
-  message?: string
-  title: string
-  content: string
-  should_alert: boolean
-  notified: boolean
-  skipped?: boolean
-}
+import {
+  AgentResult,
+  StockAgentInfo,
+  Stock,
+  Account,
+  Position,
+  PortfolioSummary,
+  AgentConfig,
+  SchedulePreview,
+  SearchResult,
+  QuoteRequestItem,
+  QuoteResponse,
+  AccountForm,
+  PositionForm,
+  StockSuggestionData,
+  PoolSuggestion,
+  MarketStatus,
+  NewsItem,
+  PriceAlertRuleSummary,
+  emptyAccountForm,
+} from './portfolio/types'
 
-interface StockAgentInfo {
-  agent_name: string
-  display_name?: string
-  schedule: string
-  ai_model_id: number | null
-  notify_channel_ids: number[]
-}
-
-interface Stock {
-  id: number
-  symbol: string
-  name: string
-  market: string
-  sort_order?: number
-  agents: StockAgentInfo[]
-}
-
-interface Account {
-  id: number
-  name: string
-  available_funds: number
-  enabled: boolean
-}
-
-interface Position {
-  id: number
-  stock_id: number
-  sort_order?: number
-  symbol: string
-  name: string
-  market: string
-  cost_price: number
-  quantity: number
-  invested_amount: number | null
-  trading_style: string  // short: 短线, swing: 波段, long: 长线
-  current_price: number | null
-  current_price_cny: number | null  // 人民币价格（港股换算后）
-  change_pct: number | null
-  market_value: number | null
-  market_value_cny: number | null  // 人民币市值
-  pnl: number | null
-  pnl_pct: number | null
-  daily_pnl: number | null
-  daily_pnl_pct: number | null
-  exchange_rate: number | null  // 汇率（仅港股）
-}
-
-interface AccountSummary {
-  id: number
-  name: string
-  available_funds: number
-  total_market_value: number
-  total_cost: number
-  total_pnl: number
-  total_pnl_pct: number
-  total_daily_pnl: number
-  total_assets: number
-  positions: Position[]
-}
-
-interface PortfolioSummary {
-  accounts: AccountSummary[]
-  total: {
-    total_market_value: number
-    total_cost: number
-    total_pnl: number
-    total_pnl_pct: number
-    total_daily_pnl: number
-    available_funds: number
-    total_assets: number
-  }
-  exchange_rates?: {
-    HKD_CNY: number
-    USD_CNY?: number
-  }
-  quotes?: Record<string, { current_price: number | null; change_pct: number | null }>
-}
-
-interface AgentConfig {
-  name: string
-  display_name: string
-  description: string
-  enabled: boolean
-  schedule: string
-  execution_mode: string  // batch: 批量分析, single: 逐只分析
-}
-
-interface SchedulePreview {
-  schedule: string
-  timezone: string
-  next_runs: string[]
-}
-
-interface SearchResult {
-  symbol: string
-  name: string
-  market: string
-}
-
-interface QuoteRequestItem {
-  symbol: string
-  market: string
-}
-
-interface QuoteResponse {
-  symbol: string
-  market: string
-  current_price: number | null
-  change_pct: number | null
-}
-
-interface StockForm {
-  symbol: string
-  name: string
-  market: string
-}
-
-interface AccountForm {
-  name: string
-  available_funds: string
-}
-
-interface PositionForm {
-  account_id: number
-  stock_id: number
-  cost_price: string
-  quantity: string
-  invested_amount: string
-  trading_style: string
-  // 搜索选中的股票信息（新增持仓时用）
-  stock_symbol: string
-  stock_name: string
-  stock_market: string
-}
-
-// 股票建议信息（来自盘中监控 API）
-interface StockSuggestionData {
-  symbol: string
-  suggestion: SuggestionInfo | null
-  kline: KlineSummary | null
-}
-
-// 建议池中的建议（包含来源和时间信息）
-interface PoolSuggestion {
-  id: number
-  stock_symbol: string
-  stock_market?: string
-  stock_name: string
-  action: string
-  action_label: string
-  signal: string
-  reason: string
-  agent_name: string
-  agent_label: string
-  created_at: string
-  expires_at: string | null
-  is_expired: boolean
-  prompt_context: string
-  ai_response: string
-  meta?: Record<string, any>
-  should_alert?: boolean
-}
-
-interface MarketStatus {
-  code: string
-  name: string
-  status: string
-  status_text: string
-  is_trading: boolean
-  sessions: string[]
-  local_time: string
-}
-
-interface NewsItem {
-  source: string
-  source_label: string
-  external_id: string
-  title: string
-  content: string
-  publish_time: string
-  symbols: string[]
-  importance: number
-  url: string
-}
-
-interface PriceAlertRuleSummary {
-  stock_symbol: string
-  market: string
-  enabled: boolean
-}
-
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
-const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
   const items: QuoteRequestItem[] = []
@@ -443,15 +263,8 @@ export default function StocksPage() {
   const configLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadedRef = useRef(false)
 
-  // Stock form
+  // Stock form（弹窗本体在 portfolio/AddStockDialog，父级只持开关）
   const [showStockForm, setShowStockForm] = useState(false)
-  const [stockForm, setStockForm] = useState<StockForm>(emptyStockForm)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchMarket, setSearchMarket] = useState('')  // 搜索市场筛选
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [searching, setSearching] = useState(false)
-  const [refreshingStockList, setRefreshingStockList] = useState(false)
 
   // Account form
   const [accountDialogOpen, setAccountDialogOpen] = useState(false)
@@ -584,8 +397,6 @@ export default function StocksPage() {
       return false
     }
   }
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
     return buildQuoteItemsFrom(stocks, portfolioRaw)
@@ -1015,9 +826,6 @@ export default function StocksPage() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
       if (positionDropdownRef.current && !positionDropdownRef.current.contains(e.target as Node)) {
         setShowPositionDropdown(false)
       }
@@ -1025,67 +833,6 @@ export default function StocksPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  // ========== Stock handlers ==========
-  const doSearch = async (q: string, market: string = searchMarket) => {
-    if (q.length < 1) { setSearchResults([]); setShowDropdown(false); return }
-    setSearching(true)
-    try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setSearchResults(results)
-      setShowDropdown(results.length > 0)
-    } catch { setSearchResults([]) }
-    finally { setSearching(false) }
-  }
-
-  const handleSearchInput = (value: string) => {
-    setSearchQuery(value)
-    clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => doSearch(value), 500)
-  }
-
-  const handleSearchMarketChange = (market: string) => {
-    setSearchMarket(market)
-    if (searchQuery) {
-      doSearch(searchQuery, market)
-    }
-  }
-
-  const refreshStockListCache = async () => {
-    setRefreshingStockList(true)
-    try {
-      const result = await fetchAPI<{ count: number }>('/stocks/refresh-list', { method: 'POST' })
-      toast(`已刷新股票列表，共 ${result.count} 只`, 'success')
-      if (searchQuery) {
-        doSearch(searchQuery)
-      }
-    } catch (e) {
-      toast('刷新失败', 'error')
-    } finally {
-      setRefreshingStockList(false)
-    }
-  }
-
-  const selectStock = (item: SearchResult) => {
-    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
-    setSearchQuery(`${item.symbol} ${item.name}`)
-    setShowDropdown(false)
-  }
-
-  const handleStockSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await stocksApi.create(stockForm)
-      setStockForm(emptyStockForm)
-      setSearchQuery('')
-      setShowStockForm(false)
-      load()
-      toast('股票已添加', 'success')
-    } catch (e) {
-      toast(e instanceof Error ? e.message : '添加股票失败', 'error')
-    }
-  }
 
   const hasAnyPositionForStockId = (id: number): boolean => {
     return (portfolio?.accounts || []).some(acc => (acc.positions || []).some(p => p.stock_id === id))
@@ -1404,7 +1151,6 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
@@ -1620,7 +1366,7 @@ export default function StocksPage() {
             <Button variant="secondary" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" /> 添加账户
             </Button>
-            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button onClick={() => setShowStockForm(true)}>
               <Plus className="w-4 h-4" /> 添加股票
             </Button>
           </div>
@@ -1635,7 +1381,7 @@ export default function StocksPage() {
             <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" />
             </Button>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button size="sm" className="h-8 w-8 p-0" onClick={() => setShowStockForm(true)} aria-label="添加股票到自选">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -1822,97 +1568,8 @@ export default function StocksPage() {
       </div>
 
       {/* Add Stock Dialog */}
-      <Dialog open={showStockForm} onOpenChange={(open) => { setShowStockForm(open); if (!open) { setSearchQuery(''); setSearchMarket('') } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>添加股票到自选</DialogTitle>
-            <DialogDescription>搜索并添加到自选股列表</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleStockSubmit}>
-            <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center gap-2 mb-2">
-                <Label className="mb-0">搜索股票</Label>
-                <div className="flex items-center gap-1">
-                  {[
-                    { value: '', label: '全部' },
-                    { value: 'CN', label: 'A股' },
-                    { value: 'HK', label: '港股' },
-                    { value: 'US', label: '美股' },
-                  ].map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleSearchMarketChange(opt.value)}
-                      className={`text-caption px-2 py-0.5 rounded transition-colors ${
-                        searchMarket === opt.value
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-accent/50 text-muted-foreground hover:bg-accent'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={refreshStockListCache}
-                  disabled={refreshingStockList}
-                  className="text-mini text-muted-foreground hover:text-foreground transition-colors ml-2"
-                  title="搜索不到？点击刷新股票列表"
-                >
-                  {refreshingStockList ? (
-                    <span className="flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3 animate-spin" /> 刷新中...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" /> 刷新列表
-                    </span>
-                  )}
-                </button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                <Input
-                  value={searchQuery}
-                  onChange={e => handleSearchInput(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={searchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : searchMarket === 'US' ? '代码或名称，如 AAPL 或 苹果' : '代码或名称，如 600519 或 茅台'}
-                  className="pl-10"
-                  autoComplete="off"
-                />
-                {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
-              </div>
-              {showDropdown && (
-                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto scrollbar card shadow-lg">
-                  {searchResults.map(item => (
-                    <button
-                      key={`${item.market}-${item.symbol}`}
-                      type="button"
-                      onClick={() => selectStock(item)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-body hover:bg-accent/50 text-left transition-colors"
-                    >
-                      <span className="font-mono text-muted-foreground text-secondary w-14">{item.symbol}</span>
-                      <span className="flex-1 font-medium text-foreground">{item.name}</span>
-                      <Badge variant="secondary">{marketLabel(item.market)}</Badge>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {stockForm.symbol && (
-                <div className="mt-2.5 flex items-center gap-2">
-                  <Badge><span className="font-mono">{stockForm.symbol}</span> {stockForm.name}</Badge>
-                  <Badge variant="secondary">{marketLabel(stockForm.market)}</Badge>
-                </div>
-              )}
-            </div>
-            <div className="mt-6 flex items-center gap-3 justify-end">
-              <Button type="button" variant="ghost" onClick={() => { setShowStockForm(false); setSearchQuery('') }}>取消</Button>
-              <Button type="submit" disabled={!stockForm.symbol}>确认添加</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddStockDialog open={showStockForm} onOpenChange={setShowStockForm} onAdded={load} />
+
 
       {/* Accounts & Positions */}
       {viewTab === 'positions' && (
