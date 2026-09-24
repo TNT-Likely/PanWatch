@@ -277,7 +277,9 @@ function App() {
 
       {/* Content */}
       <main
-        className={`${isAssistantRoute ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''} px-4 md:px-6 py-4 md:py-6 w-full`}
+        className={`${isAssistantRoute
+          ? 'flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6'
+          : 'pb-4 md:pb-6'} px-4 pt-4 md:px-6 md:pt-6 w-full`}
       >
         <AssistantOpenBridge />
         <RouteErrorBoundary>

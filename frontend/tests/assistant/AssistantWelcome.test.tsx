@@ -16,4 +16,15 @@ describe('AssistantWelcome', () => {
 
     expect(onSubmit).toHaveBeenCalledWith('诊断我的持仓风险和关键关注点')
   })
+
+  it('opens stock selection before starting a single-stock analysis', async () => {
+    const user = userEvent.setup()
+
+    render(<AssistantWelcome onSubmit={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '分析一只股票' }))
+
+    expect(screen.getByTestId('assistant-stock-picker')).toBeTruthy()
+    expect(screen.getByRole('searchbox', { name: '搜索股票' })).toBeTruthy()
+  })
 })

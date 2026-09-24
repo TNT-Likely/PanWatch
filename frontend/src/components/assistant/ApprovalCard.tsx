@@ -41,7 +41,7 @@ export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
     : 'text-emerald-600 dark:text-emerald-400'
 
   return (
-    <section className="max-w-[85%] rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-[13px]">
+    <section className="max-w-[92%] rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-[13px] sm:max-w-[85%]">
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 rounded-md bg-amber-500/10 p-1.5 text-amber-600 dark:text-amber-400">
           <ShieldAlert className="h-4 w-4" />
