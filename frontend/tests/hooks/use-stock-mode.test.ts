@@ -79,3 +79,14 @@ describe('use-stock-mode', () => {
     expect(document.documentElement.dataset.stockMode).toBeUndefined()
   })
 })
+
+describe('use-stock-mode · 模块初始化', () => {
+  it('模块初始化时同步 localStorage 已有口径到 React 状态（Select 联动）', async () => {
+    vi.resetModules()
+    localStorage.setItem('panwatch-stock-mode', 'up-green')
+    document.documentElement.removeAttribute('data-stock-mode')
+    const mod = await import('@panwatch/base-ui/hooks/use-stock-mode')
+    const { result } = renderHook(() => mod.useStockColorMode())
+    expect(result.current).toBe('up-green')
+  })
+})

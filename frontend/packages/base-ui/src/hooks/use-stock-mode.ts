@@ -23,8 +23,11 @@ function apply(m: StockColorMode) {
   else delete document.documentElement.dataset.stockMode
 }
 
-// 模块加载即同步应用（覆盖 index.html 内联脚本之外的场景，如测试/HMR）
-apply(parseMode(typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null) ?? 'up-red')
+// 模块加载即同步 localStorage 已有口径到状态与 DOM（index.html 内联脚本只设 DOM，
+// React 状态必须在此处对齐，否则 Select 等受控组件与实际口径不一致）
+const initialMode = parseMode(typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null) ?? 'up-red'
+current = initialMode
+apply(initialMode)
 
 export function setStockColorMode(m: StockColorMode) {
   current = m
