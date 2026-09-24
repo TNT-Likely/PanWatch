@@ -10,6 +10,7 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { useStockColorMode, setStockColorMode, type StockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 
 interface Setting {
   key: string
@@ -138,6 +139,42 @@ const CHANNEL_TYPE_FIELDS: Record<string, { label: string; fields: ChannelFieldD
 const emptyServiceForm: ServiceForm = { name: '', base_url: '', api_key: '' }
 const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
+
+
+/** 涨跌颜色口径卡：切换即时生效（localStorage + 后端同步），色例预览随口径变色。 */
+function StockModeCard() {
+  const stockMode = useStockColorMode()
+  return (
+    <div className="rounded-xl border border-border/50 bg-accent/10 p-3.5">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-body-sm font-medium text-foreground">涨跌颜色</div>
+          <div className="text-caption text-muted-foreground mt-0.5">
+            行情与盈亏的涨跌配色口径，全站生效并与账号同步
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline font-mono text-body-sm tabular-nums">
+            <span className="text-stock-up">▲ +2.34%</span>{' '}
+            <span className="text-stock-down">▼ -1.20%</span>
+          </span>
+          <Select
+            value={stockMode}
+            onValueChange={v => setStockColorMode(v as StockColorMode)}
+          >
+            <SelectTrigger className="w-[180px] h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="up-red">红涨绿跌（A股）</SelectItem>
+              <SelectItem value="up-green">绿涨红跌（欧美）</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Setting[]>([])
@@ -907,6 +944,9 @@ export default function SettingsPage() {
                 ) : null}
               </div>
             </div>
+
+            {/* 显示偏好：即时生效（不走下方 KV 的编辑/保存流），本地+后端同步 */}
+            <StockModeCard />
 
             <div className="space-y-5">
               {filteredSettings.map(setting => {

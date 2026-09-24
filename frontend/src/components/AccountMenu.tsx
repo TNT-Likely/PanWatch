@@ -4,6 +4,7 @@ import { Moon, Sun, Monitor, Check, LogOut, User, Stethoscope, type LucideIcon }
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
+import { useStockColorMode, setStockColorMode, type StockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 
 export interface AccountNavItem {
   to: string
@@ -15,6 +16,11 @@ const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; label: string }[] = [
   { value: 'light', icon: Sun, label: '亮色' },
   { value: 'dark', icon: Moon, label: '暗色' },
   { value: 'system', icon: Monitor, label: '跟随系统' },
+]
+
+const STOCK_MODE_OPTIONS: { value: StockColorMode; sample: string; label: string }[] = [
+  { value: 'up-red', sample: '红涨绿跌', label: 'A股' },
+  { value: 'up-green', sample: '绿涨红跌', label: '欧美' },
 ]
 
 interface AccountMenuProps {
@@ -44,6 +50,7 @@ export default function AccountMenu({
   const ref = useRef<HTMLDivElement | null>(null)
   const location = useLocation()
   const avatar = useAvatar()
+  const stockMode = useStockColorMode()
   // 仅在支持 hover 的设备(PC)启用悬停展开;触屏维持点击
   const [canHover] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches,
@@ -132,6 +139,32 @@ export default function AccountMenu({
               >
                 <Icon className="w-3.5 h-3.5" />
                 {label}
+                {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
+              </button>
+            )
+          })}
+
+          <div className="my-1 h-px bg-border/50" />
+          {/* 涨跌颜色口径:红涨绿跌 ↔ 绿涨红跌 */}
+          <div className="px-2.5 pt-0.5 pb-1 text-caption text-muted-foreground">涨跌颜色</div>
+          {STOCK_MODE_OPTIONS.map(({ value, sample, label }) => {
+            const active = stockMode === value
+            return (
+              <button
+                key={value}
+                onClick={() => setStockColorMode(value)}
+                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary transition-colors ${
+                  active
+                    ? 'text-foreground bg-accent/40'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+                }`}
+              >
+                <span className="font-mono">
+                  <span className={value === 'up-red' ? 'text-stock-up' : 'text-stock-down'}>▲</span>
+                  <span className={value === 'up-red' ? 'text-stock-down' : 'text-stock-up'}>▼</span>
+                </span>
+                {sample}
+                <span className="text-mini text-muted-foreground/70">({label})</span>
                 {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
               </button>
             )

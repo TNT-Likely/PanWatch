@@ -2,6 +2,7 @@ import { useLocation, NavLink } from 'react-router-dom'
 import { LogOut, Monitor, Moon, Stethoscope, Sun, type LucideIcon } from 'lucide-react'
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
+import { useStockColorMode, setStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { NAV_GROUPS, isNavItemActive } from './nav-config'
 
@@ -25,6 +26,7 @@ const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; label: string }[] = [
  */
 export default function MobileNavDrawer({ open, onOpenChange, mode, onSetMode, onOpenSelfCheck }: MobileNavDrawerProps) {
   const location = useLocation()
+  const stockMode = useStockColorMode()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -84,6 +86,17 @@ export default function MobileNavDrawer({ open, onOpenChange, mode, onSetMode, o
             )
           })}
           <span className="flex-1" role="presentation" />
+          <button
+            onClick={() => setStockColorMode(stockMode === 'up-red' ? 'up-green' : 'up-red')}
+            title={stockMode === 'up-red' ? '当前：红涨绿跌（点击切换）' : '当前：绿涨红跌（点击切换）'}
+            aria-label={`涨跌颜色：${stockMode === 'up-red' ? '红涨绿跌' : '绿涨红跌'}，点击切换`}
+            className="flex h-9 items-center gap-1 rounded-lg px-2 text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+          >
+            <span className="font-mono text-body-sm">
+              <span className={stockMode === 'up-red' ? 'text-stock-up' : 'text-stock-down'}>▲</span>
+              <span className={stockMode === 'up-red' ? 'text-stock-down' : 'text-stock-up'}>▼</span>
+            </span>
+          </button>
           <button
             onClick={() => {
               onOpenChange(false)
