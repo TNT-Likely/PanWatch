@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1080" viewBox="0 0 1680 1080" role="img" aria-labelledby="chart-title chart-desc">
+  <title id="chart-title">PanWatch TradingAgents 深度分析流程</title>
+  <desc id="chart-desc">从 PanWatch 分析触发、数据采集和预算检查开始，经过 TradingAgents 分析师、多空辩论、研究计划、交易方案和风控讨论，最后由投资组合经理给出评级，再由 PanWatch 保存建议、按需写入模拟盘信号并发送通知。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#63748b" />
+    </marker>
+    <marker id="arrow-dash" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8b9ab0" />
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #233047; }
+    .main-title { font-size: 31px; font-weight: 700; }
+    .subtitle { font-size: 17px; fill: #61708a; }
+    .lane-label { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+    .node-title { font-size: 19px; font-weight: 650; }
+    .node-body { font-size: 16px; fill: #52627a; }
+    .small { font-size: 14px; fill: #687890; }
+    .step-text { font-size: 14px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+    .center { text-anchor: middle; }
+    .panel-pw { fill: #f4f7ff; stroke: #d8e2f7; }
+    .panel-ta { fill: #f7f5fc; stroke: #e0daf0; }
+    .panel-out { fill: #f2faf6; stroke: #d5ebe0; }
+    .card-pw { fill: #fff; stroke: #8ba7df; }
+    .card-ta { fill: #fff; stroke: #aa9aca; }
+    .card-out { fill: #fff; stroke: #79b89d; }
+    .card-note { fill: #fff; stroke: #a8b5c6; stroke-dasharray: 7 6; }
+    .arrow { fill: none; stroke: #63748b; stroke-width: 2.5; marker-end: url(#arrow); }
+    .arrow-dashed { fill: none; stroke: #8b9ab0; stroke-width: 2.2; stroke-dasharray: 7 6; marker-end: url(#arrow-dash); }
+  </style>
+
+  <text x="56" y="60" class="main-title">TradingAgents 深度分析流程</text>
+  <text x="58" y="94" class="subtitle">PanWatch 集成：从单标的触发、协作分析到建议落地</text>
+
+  <rect x="40" y="130" width="965" height="240" rx="20" class="panel-pw" />
+  <text x="64" y="166" class="lane-label" fill="#4568ad">PANWATCH · 触发与数据准备</text>
+  <rect x="1025" y="130" width="615" height="240" rx="20" class="panel-ta" />
+  <text x="1049" y="166" class="lane-label" fill="#705d9f">TRADINGAGENTS · 分析与辩论</text>
+
+  <rect x="65" y="205" width="240" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="65" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="91" cy="229" r="16" fill="#5379c9" />
+  <text x="91" y="229" class="step-text">1</text>
+  <text x="116" y="239" class="node-title">分析触发</text>
+  <text x="88" y="274" class="node-body">持仓页 · 定时任务</text>
+  <text x="88" y="301" class="node-body">盘中异动规则（可选）</text>
+
+  <rect x="375" y="205" width="260" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="375" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="401" cy="229" r="16" fill="#5379c9" />
+  <text x="401" y="229" class="step-text">2</text>
+  <text x="426" y="239" class="node-title">并行采集</text>
+  <text x="398" y="274" class="node-body">行情 · K 线 · 资金流 · 事件</text>
+  <text x="398" y="301" class="node-body">技术指标 / 财务按市场补充</text>
+
+  <rect x="705" y="205" width="260" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="705" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="731" cy="229" r="16" fill="#5379c9" />
+  <text x="731" y="229" class="step-text">3</text>
+  <text x="756" y="239" class="node-title">运行前检查</text>
+  <text x="728" y="274" class="node-body">命中同日缓存则复用结果</text>
+  <text x="728" y="301" class="node-body">无缓存时检查月度预算</text>
+
+  <rect x="1045" y="205" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1045" y="205" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1071" cy="229" r="16" fill="#7865a8" />
+  <text x="1071" y="229" class="step-text">4</text>
+  <text x="1096" y="239" class="node-title">分析师团队</text>
+  <text x="1068" y="274" class="node-body">市场 · 情绪 · 新闻 · 基本面</text>
+  <text x="1068" y="301" class="node-body">按配置顺序运行，按需取数</text>
+
+  <rect x="1335" y="205" width="280" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1335" y="205" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1361" cy="229" r="16" fill="#7865a8" />
+  <text x="1361" y="229" class="step-text">5</text>
+  <text x="1386" y="239" class="node-title">看多 / 看空辩论</text>
+  <text x="1358" y="274" class="node-body">Bull ↔ Bear 轮流交锋</text>
+  <text x="1358" y="301" class="node-body">达到配置轮数后继续</text>
+
+  <path d="M305 267 H375" class="arrow" />
+  <path d="M635 267 H705" class="arrow" />
+  <path d="M965 267 H1045" class="arrow" />
+  <path d="M1295 267 H1335" class="arrow" />
+
+  <rect x="40" y="415" width="260" height="255" rx="20" class="panel-out" />
+  <text x="62" y="451" class="lane-label" fill="#36795e">PANWATCH · 结果处理</text>
+  <rect x="320" y="415" width="1320" height="255" rx="20" class="panel-ta" />
+  <text x="344" y="451" class="lane-label" fill="#705d9f">TRADINGAGENTS · 研究计划与风险决策</text>
+
+  <path d="M1475 330 V480 H1470 V485" class="arrow" />
+  <text x="1492" y="447" class="small">进入决策</text>
+
+  <rect x="1340" y="485" width="260" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1340" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1366" cy="509" r="16" fill="#7865a8" />
+  <text x="1366" y="509" class="step-text">6</text>
+  <text x="1391" y="519" class="node-title">研究经理</text>
+  <text x="1363" y="554" class="node-body">综合多空观点</text>
+  <text x="1363" y="581" class="node-body">形成结构化投资计划</text>
+
+  <rect x="1035" y="485" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1035" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1061" cy="509" r="16" fill="#7865a8" />
+  <text x="1061" y="509" class="step-text">7</text>
+  <text x="1086" y="519" class="node-title">交易员</text>
+  <text x="1058" y="554" class="node-body">提出交易方向</text>
+  <text x="1058" y="581" class="node-body">与仓位方案</text>
+
+  <rect x="730" y="485" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="730" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="756" cy="509" r="16" fill="#7865a8" />
+  <text x="756" y="509" class="step-text">8</text>
+  <text x="781" y="519" class="node-title">风控辩论</text>
+  <text x="753" y="554" class="node-body">激进 → 保守 → 中性</text>
+  <text x="753" y="581" class="node-body">按设置轮流讨论</text>
+
+  <rect x="415" y="485" width="260" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="415" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="441" cy="509" r="16" fill="#7865a8" />
+  <text x="441" y="509" class="step-text">9</text>
+  <text x="466" y="519" class="node-title">投资组合经理</text>
+  <text x="438" y="554" class="node-body">综合计划、风控观点与持仓</text>
+  <text x="438" y="581" class="node-body">输出评级与决策书</text>
+
+  <rect x="60" y="485" width="250" height="125" rx="16" class="card-out" stroke-width="1.6" />
+  <rect x="60" y="485" width="6" height="125" rx="3" fill="#419273" />
+  <circle cx="86" cy="509" r="16" fill="#39896d" />
+  <text x="86" y="509" class="step-text">10</text>
+  <text x="111" y="519" class="node-title">PanWatch 结果映射</text>
+  <text x="83" y="554" class="node-body">五级评级 → 买入 / 持有 / 卖出</text>
+  <text x="83" y="581" class="node-body">保存分析历史与建议池</text>
+
+  <path d="M1340 547 H1285" class="arrow" />
+  <path d="M1035 547 H980" class="arrow" />
+  <path d="M730 547 H675" class="arrow" />
+  <path d="M415 547 H310" class="arrow" />
+
+  <rect x="40" y="690" width="960" height="300" rx="20" class="panel-out" />
+  <text x="64" y="727" class="lane-label" fill="#36795e">PANWATCH · 建议交付</text>
+
+  <path d="M185 610 V697" class="arrow" />
+  <path d="M185 697 L312 747 L185 797 L58 747 Z" fill="#fffaf0" stroke="#d5a552" stroke-width="1.8" />
+  <text x="185" y="744" class="node-title center" font-size="17">模拟盘联动已启用？</text>
+  <text x="185" y="768" class="small center">默认关闭</text>
+
+  <rect x="60" y="855" width="300" height="100" rx="16" class="card-out" stroke-width="1.6" stroke-dasharray="7 5" />
+  <text x="210" y="895" class="node-title center">可选：写入模拟盘信号</text>
+  <text x="210" y="925" class="node-body center">启用后仅写入符合条件的买 / 卖信号</text>
+
+  <rect x="515" y="855" width="430" height="100" rx="16" class="card-out" stroke-width="1.6" />
+  <text x="730" y="895" class="node-title center">界面查看 + 通知渠道</text>
+  <text x="730" y="925" class="node-body center">历史详情可查；按通知策略推送摘要</text>
+
+  <path d="M185 797 V827 H210 V855" class="arrow-dashed" />
+  <text x="198" y="824" class="small">是</text>
+  <path d="M312 747 H730 V855" class="arrow" />
+  <text x="532" y="738" class="small">否</text>
+  <path d="M360 905 H515" class="arrow" />
+
+  <rect x="1025" y="690" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
+  <text x="1053" y="728" class="node-title">运行观测</text>
+  <text x="1053" y="764" class="node-body">采集阶段、LangGraph 节点进度和模型成本</text>
+  <text x="1053" y="791" class="node-body">写入 trace，供运行进度查询</text>
+
+  <rect x="1025" y="850" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
+  <text x="1053" y="888" class="node-title">历史反馈 ↻</text>
+  <text x="1053" y="924" class="node-body">持有期到期后与基准比较、生成反思</text>
+  <text x="1053" y="951" class="node-body">供后续同标的分析作为上下文</text>
+
+  <circle cx="61" cy="1030" r="8" fill="#5379c9" />
+  <text x="78" y="1036" class="small">PanWatch 接入</text>
+  <circle cx="235" cy="1030" r="8" fill="#7865a8" />
+  <text x="252" y="1036" class="small">TradingAgents 推理</text>
+  <circle cx="425" cy="1030" r="8" fill="#39896d" />
+  <text x="442" y="1036" class="small">PanWatch 结果处理</text>
+  <line x1="625" y1="1030" x2="665" y2="1030" stroke="#8b9ab0" stroke-width="2" stroke-dasharray="6 5" />
+  <text x="675" y="1036" class="small">可选步骤 / 跨次反馈</text>
+</svg>
