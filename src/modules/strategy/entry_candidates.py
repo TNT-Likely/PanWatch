@@ -43,7 +43,6 @@ AGENT_LABELS: dict[str, str] = {
     "premarket_outlook": "盘前分析",
     "intraday_monitor": "盘中监测",
     "daily_report": "收盘复盘",
-    "news_digest": "新闻速递",
     "market_scan": "市场扫描",
 }
 
@@ -1220,6 +1219,7 @@ def _load_latest_suggestions(limit: int = 300) -> list[StockSuggestion]:
                 StockSuggestion.stock_market,
                 func.max(StockSuggestion.id).label("max_id"),
             )
+            .filter(StockSuggestion.agent_name != "news_digest")
             .group_by(StockSuggestion.stock_symbol, StockSuggestion.stock_market)
             .subquery()
         )

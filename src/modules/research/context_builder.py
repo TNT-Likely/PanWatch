@@ -87,7 +87,7 @@ class ContextBuilder:
                 db.query(AnalysisHistory)
                 .filter(
                     AnalysisHistory.agent_name.in_(
-                        ("news_digest", "premarket_outlook", "daily_report")
+                        ("premarket_outlook", "daily_report")
                     ),
                     AnalysisHistory.analysis_date >= cutoff,
                 )
@@ -130,7 +130,7 @@ class ContextBuilder:
                         continue
                     out.append(
                         {
-                            "source": it.get("source") or "news_digest",
+                            "source": it.get("source") or row.agent_name or "analysis_history",
                             "external_id": it.get("external_id") or "",
                             "title": title,
                             "content": content,

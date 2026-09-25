@@ -47,7 +47,6 @@ if [[ "$WITH_AGENT_SMOKE" -eq 1 ]]; then
   AGENTS=(
     "daily_report"
     "premarket_outlook"
-    "news_digest"
     "chart_analyst"
     "intraday_monitor"
   )
@@ -67,7 +66,6 @@ base = sys.argv[1]
 agents = [
     "daily_report",
     "premarket_outlook",
-    "news_digest",
     "chart_analyst",
     "intraday_monitor",
 ]
