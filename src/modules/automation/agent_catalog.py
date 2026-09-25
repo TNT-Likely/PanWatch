@@ -18,15 +18,13 @@ WORKFLOW_AGENT_NAMES: tuple[str, ...] = (
     "daily_report",
 )
 
-CAPABILITY_AGENT_NAMES: tuple[str, ...] = (
-    "news_digest",
-    "chart_analyst",
-)
+CAPABILITY_AGENT_NAMES: tuple[str, ...] = ("chart_analyst",)
+LEGACY_CAPABILITY_AGENT_NAMES: tuple[str, ...] = ("news_digest",)
 
 
 def infer_agent_kind(agent_name: str | None) -> str:
     name = (agent_name or "").strip()
-    if name in CAPABILITY_AGENT_NAMES:
+    if name in CAPABILITY_AGENT_NAMES or name in LEGACY_CAPABILITY_AGENT_NAMES:
         return AGENT_KIND_CAPABILITY
     return AGENT_KIND_WORKFLOW
 
@@ -96,23 +94,6 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
         kind=AGENT_KIND_WORKFLOW,
         visible=True,
         display_order=30,
-    ),
-    AgentSeedSpec(
-        name="news_digest",
-        display_name="新闻速递（能力）",
-        description="内部能力：提供新闻抓取、去重与主题聚合，不独立调度",
-        enabled=False,
-        schedule="",
-        execution_mode="batch",
-        kind=AGENT_KIND_CAPABILITY,
-        visible=False,
-        lifecycle_status="deprecated",
-        replaced_by="premarket_outlook,daily_report,intraday_monitor",
-        display_order=110,
-        config={
-            "since_hours": 12,
-            "fallback_since_hours": 24,
-        },
     ),
     AgentSeedSpec(
         name="chart_analyst",

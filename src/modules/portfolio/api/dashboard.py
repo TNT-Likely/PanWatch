@@ -114,7 +114,6 @@ def _load_latest_insights(db: Session) -> list[dict]:
     agents = (
         ("premarket_outlook", "盘前分析"),
         ("daily_report", "收盘复盘"),
-        ("news_digest", "新闻速递"),
     )
     for agent_name, label in agents:
         row = (

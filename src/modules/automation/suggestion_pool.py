@@ -23,8 +23,6 @@ def _dedupe_window_minutes(agent_name: str) -> int:
     # Intraday runs frequently; other agents run a few times a day.
     if agent_name == "intraday_monitor":
         return 30
-    if agent_name == "news_digest":
-        return 60
     return 180
 
 
@@ -33,7 +31,6 @@ AGENT_EXPIRY_HOURS = {
     "premarket_outlook": 12,  # 盘前建议当日有效（约12小时）
     "intraday_monitor": 6,  # 盘中建议6小时有效
     "daily_report": 16,  # 盘后建议隔夜有效（到次日开盘，约16小时）
-    "news_digest": 12,  # 新闻速递建议半天有效
 }
 
 # Agent 中文名称映射
@@ -41,6 +38,7 @@ AGENT_LABELS = {
     "premarket_outlook": "盘前分析",
     "intraday_monitor": "盘中监测",
     "daily_report": "收盘复盘",
+    # 保留旧建议的显示名称；新闻速递已没有生成器。
     "news_digest": "新闻速递",
 }
 
@@ -215,6 +213,8 @@ def get_suggestions_for_stock(
     db = SessionLocal()
     try:
         query = db.query(StockSuggestion).filter(StockSuggestion.stock_symbol == stock_symbol)
+        if not include_expired:
+            query = query.filter(StockSuggestion.agent_name != "news_digest")
         if stock_market:
             query = query.filter(
                 StockSuggestion.stock_market == (stock_market or "CN").strip().upper()
@@ -260,6 +260,7 @@ def get_latest_suggestions(
                 StockSuggestion.stock_market,
                 func.max(StockSuggestion.id).label("max_id"),
             )
+            .filter(StockSuggestion.agent_name != "news_digest")
             .group_by(StockSuggestion.stock_symbol, StockSuggestion.stock_market)
             .subquery()
         )

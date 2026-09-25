@@ -130,7 +130,6 @@ interface StockItem {
 const AGENT_LABELS: Record<string, string> = {
   daily_report: '盘后日报',
   premarket_outlook: '盘前分析',
-  news_digest: '新闻速递',
 }
 
 function formatNumber(value: number | null | undefined, digits = 2): string {
@@ -366,7 +365,7 @@ export default function StockInsightModal(props: {
   const [news, setNews] = useState<NewsItem[]>([])
   const [announcements, setAnnouncements] = useState<NewsItem[]>([])
   const [reports, setReports] = useState<HistoryRecord[]>([])
-  const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report' | 'news_digest'>('premarket_outlook')
+  const [reportTab, setReportTab] = useState<'premarket_outlook' | 'daily_report'>('premarket_outlook')
   const [deepResult, setDeepResult] = useState<DeepAnalysisResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
   const [deepLoaded, setDeepLoaded] = useState(false)
@@ -486,44 +485,6 @@ export default function StockInsightModal(props: {
           return (n.symbols || []).map(x => String(x).toUpperCase()).includes(upperSymbol)
         })
       }
-      // 兜底：实时新闻为空时，回退到 news_digest 历史快照中的新闻列表
-      if ((data || []).length === 0) {
-        const bySymbol = await insightApi.history<HistoryRecord[]>({
-          agent_name: 'news_digest',
-          stock_symbol: symbol,
-          limit: 1,
-        }).catch(() => [])
-        let rec: HistoryRecord | null = (bySymbol || [])[0] || null
-        if (!rec) {
-          const globals = await insightApi.history<HistoryRecord[]>({
-            agent_name: 'news_digest',
-            stock_symbol: '*',
-            limit: 20,
-          }).catch(() => [])
-          const upperSymbol = symbol.toUpperCase()
-          const name = (resolvedName || '').trim()
-          rec = (globals || []).find((r) => {
-            const sug = r?.suggestions || {}
-            const keys = Object.keys(sug || {})
-            if (keys.includes(symbol) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
-            const text = `${r?.title || ''}\n${r?.content || ''}`.toUpperCase()
-            if (upperSymbol && text.includes(upperSymbol)) return true
-            if (name && `${r?.title || ''}\n${r?.content || ''}`.includes(name)) return true
-            return false
-          }) || null
-        }
-        if (rec?.news && Array.isArray(rec.news)) {
-          data = rec.news
-            .map((n) => ({
-              source: n.source || 'news_digest',
-              source_label: n.source || 'news_digest',
-              title: n.title || '',
-              publish_time: n.publish_time || rec?.analysis_date || '',
-              url: n.url || '',
-            }))
-            .filter((n) => !!n.title)
-        }
-      }
       setNews(data || [])
     } catch {
       setNews([])
@@ -606,7 +567,7 @@ export default function StockInsightModal(props: {
   const loadReports = useCallback(async () => {
     if (!symbol) return
     try {
-      const agents = ['premarket_outlook', 'daily_report', 'news_digest']
+      const agents = ['premarket_outlook', 'daily_report']
       const bySymbolResults = await Promise.all(
         agents.map(agent =>
           insightApi.history<HistoryRecord[]>({
@@ -888,7 +849,6 @@ export default function StockInsightModal(props: {
     const out: Record<string, HistoryRecord | null> = {
       premarket_outlook: null,
       daily_report: null,
-      news_digest: null,
     }
     for (const r of reports) {
       if (!out[r.agent_name]) out[r.agent_name] = r
@@ -1674,7 +1634,6 @@ export default function StockInsightModal(props: {
                     {([
                       { key: 'premarket_outlook', label: '盘前' },
                       { key: 'daily_report', label: '盘后' },
-                      { key: 'news_digest', label: '新闻' },
                     ] as const).map(item => (
                       <button
                         key={item.key}

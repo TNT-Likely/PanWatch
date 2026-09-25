@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     notify_retry_attempts: int = 2
     # 重试退避秒数（基数），实际会按 1x,2x,... 递增
     notify_retry_backoff_seconds: float = 2.0
-    # 幂等窗口覆盖（JSON），示例: {"news_digest":60,"daily_report":720}
+    # 幂等窗口覆盖（JSON），示例: {"daily_report":720}
     notify_dedupe_ttl_overrides: str = ""
 
     # SSL 证书（企业环境）
