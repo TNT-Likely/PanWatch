@@ -12,7 +12,7 @@ export default function KlineModal(props: {
   initialDays?: '60' | '120' | '250'
 }) {
   const symbol = String(props.symbol || '').trim()
-  const market = String(props.market || '').trim() || 'CN'
+  const market = String(props.market || '').trim() || 'TW'
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>

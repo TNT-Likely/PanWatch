@@ -1,14 +1,10 @@
 markets:
-  - code: CN
+  - code: TW
     stocks:
-      - symbol: "600519"
-        name: "贵州茅台"
-        # cost_price: 1800.00
-        # quantity: 100
-      - symbol: "000001"
-        name: "平安银行"
+      - symbol: "2330"
+        name: "台積電"
 
-  - code: HK
+  - code: US
     stocks:
-      - symbol: "00700"
-        name: "腾讯控股"
+      - symbol: "AAPL"
+        name: "Apple"

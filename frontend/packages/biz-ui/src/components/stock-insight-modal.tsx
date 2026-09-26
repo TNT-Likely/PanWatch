@@ -159,9 +159,10 @@ function formatMarketCap(value: number | null | undefined, market?: string): str
     return `${n.toFixed(2)}亿元`
   }
 
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
-  return `${n.toFixed(0)}元`
+  const unit = m === 'US' ? '美元' : '新台幣'
+  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}億${unit}`
+  if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}萬${unit}`
+  return `${n.toFixed(0)}${unit}`
 }
 
 function formatTime(isoTime?: string): string {
@@ -339,7 +340,7 @@ export default function StockInsightModal(props: {
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
-  const market = String(props.market || 'CN').trim().toUpperCase()
+  const market = String(props.market || 'TW').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<InsightTab>('overview')
   const [newsHours, setNewsHours] = useLocalStorage<string>('stock_insight_news_hours', '168')

@@ -457,7 +457,7 @@ class KlineCollector:
         """走 marketdata 包取数(不含缓存/合并逻辑):Engine 按 DataSource 优先级 +
         min_count 取数(条数不足则换源/取最长,tencent → stooq(US) / eastmoney(CN/HK))。
         """
-        need = (max(10, min(days, 30)) if self.market == MarketCode.US
+        need = (max(10, min(days, 30)) if self.market in (MarketCode.US, MarketCode.TW)
                 else (max(120, int(days * 0.6)) if self.market in (MarketCode.CN, MarketCode.HK) else 1))
         want = min(max(days, 3000), 20000) if self.market in (MarketCode.CN, MarketCode.HK) else days
         bars = get_market_data().klines(symbol, market=self.market.value, days=want, min_count=need)

@@ -46,6 +46,20 @@ class EastMoneyDiscoveryCollector:
     ) -> list[HotStock]:
         import asyncio as _aio
 
+        if market == "TW":
+            from marketdata.vendors.taiwan import taiwan_snapshot
+
+            rows = await _aio.to_thread(taiwan_snapshot)
+            items = [HotStock(
+                symbol=row["symbol"], market="TW", name=row["name"],
+                price=row["price"],
+                change_pct=(row["price"] - row["prev_close"]) / row["prev_close"] * 100
+                if row["price"] is not None and row["prev_close"] else None,
+                turnover=row["turnover"], volume=row["volume"],
+            ) for row in rows if row["price"] is not None]
+            key = (lambda item: item.turnover or 0) if mode == "turnover" else (lambda item: item.change_pct if item.change_pct is not None else float("-inf"))
+            return sorted(items, key=key, reverse=True)[:limit]
+
         pkg_items = await _aio.to_thread(
             get_market_data().hot_stocks,
             market=market,

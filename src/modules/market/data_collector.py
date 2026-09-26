@@ -13,11 +13,10 @@ from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import DataSource
 from src.platform.marketdata.models import MarketCode
 
-# 数据源测试的统一样本。每个市场固定两个稳定、容易识别的代码，避免新建数据源
-# 时只测到 A 股，导致港股/美股 provider 的市场路由问题直到生产才暴露。
+# 資料來源測試的統一樣本。每個市場固定兩個穩定、容易識別的程式碼，避免新建資料來源
+# 時只測到單一市場，導致台股/美股 provider 的市場路由問題直到生產才暴露。
 DEFAULT_TEST_SYMBOLS_BY_MARKET: dict[str, tuple[str, str]] = {
-    "CN": ("600519", "601127"),
-    "HK": ("00700", "00386"),
+    "TW": ("2330", "6488"),
     "US": ("AAPL", "NVDA"),
 }
 DEFAULT_TEST_SYMBOLS: tuple[str, ...] = tuple(

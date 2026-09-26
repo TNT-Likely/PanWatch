@@ -12,7 +12,7 @@ const UP = '#e11d48'
 const NEUTRAL = '#d97706'
 const SLATE = '#475569'
 
-const MARKET_LABEL: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股' }
+const MARKET_LABEL: Record<string, string> = { TW: '台股', US: '美股' }
 const marketLabel = (m?: string) => (m ? MARKET_LABEL[m] || m : '')
 
 /**

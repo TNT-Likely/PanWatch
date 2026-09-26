@@ -63,6 +63,22 @@ def test_yahoo_kline_prefers_adjclose(monkeypatch):
     assert len(out) == 1 and out[0].close == 183.2
 
 
+def test_taiwan_tpex_suffix_fallback_and_raw_ohlc(monkeypatch):
+    urls = []
+    payload = _chart_payload(
+        [_TS1], [500], [510], [495], [505], [100000], adjcloses=[490],
+    )
+
+    def fake_market_get(url, **kwargs):
+        urls.append(url)
+        return payload if ".TWO" in url else {"chart": {"result": []}}
+
+    monkeypatch.setattr(kv, "market_get", fake_market_get)
+    out = kv.YahooKlineVendor().fetch([Symbol.parse("6488", market="TW")], {"days": 30})
+    assert len(urls) == 2 and ".TW" in urls[0] and ".TWO" in urls[1]
+    assert out[0].close == 505  # 台股 OHLC 同一價格口徑
+
+
 def test_yahoo_kline_skips_null_bar(monkeypatch):
     payload = _chart_payload(
         [_TS1, _TS2],

@@ -32,6 +32,8 @@ def is_market_trading(market: MarketCode) -> bool:
 
 
 def market_label(market: MarketCode) -> str:
+    if market == MarketCode.TW:
+        return "台股"
     if market == MarketCode.CN:
         return "A股"
     if market == MarketCode.HK:
@@ -107,11 +109,17 @@ class IntradayMonitorAgent(BaseAgent):
 
         # SignalPack: 统一结构化输入（quote/technical/position）
         stock_config = context.watchlist[0] if context.watchlist else None
-        market = stock_config.market if stock_config else MarketCode.CN
+        market = stock_config.market if stock_config else MarketCode.TW
         symbol = stock_config.symbol if stock_config else ""
         name = stock_config.name if stock_config else symbol
 
-        # 按股票所属市场做交易时段门禁（而非全局任一市场开盘）
+        if market == MarketCode.TW and not self.bypass_market_hours:
+            return {
+                "stocks": [], "stock_data": None,
+                "skip_reason": "台股目前僅有官方盤後行情，已暫停盤中自動監測以避免使用過期價格",
+            }
+
+        # 按股票所屬市場做交易時段門禁（而非全域性任一市場開盤）
         if not self.bypass_market_hours and not is_market_trading(market):
             msg = f"当前{market_label(market)}非交易时段，已跳过执行"
             logger.info(f"{msg}: {symbol}")

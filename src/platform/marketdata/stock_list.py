@@ -261,34 +261,12 @@ def _fetch_from_akshare() -> list[dict]:
 
 
 def refresh_stock_list() -> list[dict]:
-    """拉取 A 股和港股列表并缓存"""
+    """拉取台股與美股標的清單並快取。"""
     stocks = []
+    from marketdata.vendors.taiwan import taiwan_snapshot
 
-    # A 股: 东方财富优先，akshare 备用
-    try:
-        cn_stocks = _fetch_from_eastmoney()
-        stocks.extend(cn_stocks)
-        logger.info(f"东方财富获取 A 股列表成功: {len(cn_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取 A 股失败: {e}")
-        try:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(_fetch_from_akshare)
-                cn_stocks = future.result(timeout=15)
-                stocks.extend(cn_stocks)
-            logger.info(f"akshare 获取 A 股列表成功: {len(cn_stocks)} 只")
-        except concurrent.futures.TimeoutError:
-            logger.error("akshare 获取超时（15s）")
-        except Exception as e2:
-            logger.error(f"A 股数据源获取失败: {e2}")
-
-    # 港股: 东方财富
-    try:
-        hk_stocks = _fetch_hk_from_eastmoney()
-        stocks.extend(hk_stocks)
-        logger.info(f"东方财富获取港股列表成功: {len(hk_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取港股失败: {e}")
+    stocks.extend({"symbol": row["symbol"], "name": row["name"], "market": "TW"}
+                  for row in taiwan_snapshot())
 
     # 美股: 东方财富
     try:
@@ -298,14 +276,6 @@ def refresh_stock_list() -> list[dict]:
     except Exception as e:
         logger.warning(f"东方财富获取美股失败: {e}")
 
-    # 北交所: 东方财富
-    try:
-        bj_stocks = _fetch_bj_from_eastmoney()
-        stocks.extend(bj_stocks)
-        logger.info(f"东方财富获取北交所列表成功: {len(bj_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取北交所失败: {e}")
-
     if stocks:
         _save_cache(stocks)
     return stocks
@@ -314,8 +284,8 @@ def refresh_stock_list() -> list[dict]:
 def get_stock_list() -> list[dict]:
     """获取股票列表(优先缓存)"""
     cached = _load_cache()
-    if cached:
-        return cached
+    if cached and any(row.get("market") == "TW" for row in cached):
+        return [row for row in cached if row.get("market") in {"TW", "US"}]
     return refresh_stock_list()
 
 
@@ -400,11 +370,15 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
 def search_stocks(query: str, market: str = "", limit: int = 20) -> list[dict]:
     """搜索股票 - 优先使用实时搜索，失败则使用缓存"""
     q = query.strip()
+    market = market.strip().upper()
     if not q:
         return []
 
-    # 尝试实时搜索
-    results = _realtime_search(q, market, limit)
+    if market and market not in {"TW", "US"}:
+        return []
+    # 東財搜尋只覆蓋美股；台股使用交易所盤後標的清單。
+    results = _realtime_search(q, "US", limit) if market == "US" else []
+    results = [row for row in results if row.get("market") == "US"]
     if len(results) >= limit:
         return results[:limit]
 
@@ -428,8 +402,13 @@ def search_stocks(query: str, market: str = "", limit: int = 20) -> list[dict]:
 
 
 def _cached_search(query: str, market: str = "", limit: int = 20) -> list[dict]:
-    """从缓存中模糊搜索股票"""
-    stocks = get_stock_list()
+    """從快取中模糊搜尋股票"""
+    if market == "TW":
+        from marketdata.vendors.taiwan import taiwan_snapshot
+
+        stocks = taiwan_snapshot()
+    else:
+        stocks = get_stock_list()
     if not stocks:
         return []
 

@@ -134,7 +134,7 @@ def is_panwatch_routable(symbol: str) -> bool:
     A 股(6 位数字)yfinance 拉不到,港股(5 位数字)yfinance 也要 .HK 后缀,
     都需要 PanWatch 兜底。美股(字母 ticker)继续走 yfinance。
     """
-    return is_a_share(symbol) or is_hk_share(symbol)
+    return is_a_share(symbol) or is_hk_share(symbol) or (symbol.isdigit() and len(symbol) == 4)
 
 
 def _looks_like_cn_keyword(symbol: str) -> bool:
@@ -491,6 +491,13 @@ def _market_for_symbol(symbol: str):
     """将 TradingAgents 的 ticker 映射到 PanWatch 市场。"""
     from src.platform.marketdata.models import MarketCode
 
+    cached_stock = _cache().get("stock")
+    if cached_stock is not None and str(getattr(cached_stock, "symbol", "")) == str(symbol):
+        market = getattr(cached_stock, "market", None)
+        if market is not None:
+            return MarketCode(getattr(market, "value", market))
+    if symbol.isdigit() and len(symbol) == 4:
+        return MarketCode.TW
     if is_a_share(symbol):
         return MarketCode.CN
     if is_hk_share(symbol):
@@ -746,18 +753,18 @@ def _stock_meta_header(symbol: str) -> str:
     quote = _cache().get("quote") or {}
 
     name = ""
-    market = "CN"
+    market = "TW"
     industry = ""
     if stock is not None:
         name = getattr(stock, "name", "") or ""
         market_obj = getattr(stock, "market", None)
-        market = getattr(market_obj, "value", str(market_obj or "CN"))
+        market = getattr(market_obj, "value", str(market_obj or "TW"))
     if not name and isinstance(quote, dict):
         name = quote.get("name") or ""
     if isinstance(quote, dict):
         industry = quote.get("industry") or ""
 
-    market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
+    market_label = {"TW": "台股", "CN": "中國 A 股", "HK": "港股", "US": "美股"}.get(market, market)
     cur_price = _attr(quote, "current_price", "") or _attr(quote, "price", "")
     change_pct = _attr(quote, "change_pct", "")
 
@@ -774,8 +781,10 @@ def _stock_meta_header(symbol: str) -> str:
             )
         except (TypeError, ValueError):
             pass
+    if market == "TW":
+        lines.append("  Taiwan price is the latest official end-of-day close, not a live intraday quote.")
     lines.append(
-        "  IMPORTANT: This is an A-share / HK / cross-market ticker. DO NOT guess the company "
+        "  IMPORTANT: This is a cross-market ticker. DO NOT guess the company "
         "from the ticker code alone — use the name above."
     )
     return "\n".join(lines)

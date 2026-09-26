@@ -11,15 +11,19 @@ class Market(str, Enum):
     CN = "CN"
     HK = "HK"
     US = "US"
+    TW = "TW"
 
 
 _CN_RE = re.compile(r"^[036]\d{5}$")   # 6 位,0/3/6 开头
 _HK_RE = re.compile(r"^\d{5}$")        # 5 位数字
 _US_RE = re.compile(r"^[A-Z.]{1,6}$")  # 1-6 位字母(含指数 .DJI)
+_TW_RE = re.compile(r"^\d{4,6}$")
 
 
 def _detect_market(code: str) -> Market:
     c = code.strip().upper()
+    if _TW_RE.match(c) and len(c) == 4:
+        return Market.TW
     if _CN_RE.match(c):
         return Market.CN
     if _HK_RE.match(c):
@@ -59,6 +63,10 @@ class Symbol:
         return _cn_exchange(self.code) + self.code
 
     def to_yfinance(self) -> str:
+        if self.market == Market.TW:
+            if self.code.upper() == "TAIEX":
+                return "^TWII"
+            return f"{self.code}.TW"
         if self.market == Market.HK:
             return f"{int(self.code):04d}.HK" if self.code.isdigit() else f"{self.code}.HK"
         return self.code  # US 直接用;CN 由 vendor.supports_markets 拦截,不会走到这

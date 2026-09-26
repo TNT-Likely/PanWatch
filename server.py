@@ -354,7 +354,27 @@ def seed_agents():
 # 预置数据源种子(供 seed_data_sources / reconcile_data_sources 复用)。
 # 只增不删的 upsert 目标;删孤儿的对账逻辑见 reconcile_data_sources。
 DATA_SOURCE_SEEDS: list[dict] = [
-        # 新闻类数据源
+        {
+            "name": "台灣證交所與櫃買中心盤後行情",
+            "type": "quote",
+            "provider": "taiwan",
+            "config": {"description": "官方上市/上櫃盤後資料，非即時報價；價格單位新台幣，成交量單位股。"},
+            "enabled": True,
+            "priority": 0,
+            "supports_batch": True,
+            "test_symbols": ["2330", "6488"],
+        },
+        {
+            "name": "Yahoo 台股日線",
+            "type": "kline",
+            "provider": "yahoo",
+            "config": {"description": "台股上市 .TW / 上櫃 .TWO 日 K 線，第三方資料。"},
+            "enabled": True,
+            "priority": 10,
+            "supports_batch": False,
+            "test_symbols": ["2330", "6488"],
+        },
+        # 新聞類資料來源
         {
             "name": "雪球资讯",
             "type": "news",
@@ -757,8 +777,8 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
         if not stock_ids:
             return []
 
-        # 绑定优先：只要绑定了 Agent，就纳入执行范围
-        stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all()
+        # 繫結優先：只要繫結了 Agent，就納入執行範圍
+        stocks = db.query(Stock).filter(Stock.id.in_(stock_ids), Stock.market.in_(("TW", "US"))).all()
         result = []
         for s in stocks:
             try:

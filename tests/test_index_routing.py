@@ -48,12 +48,13 @@ def test_get_market_indices_uses_marketdata(monkeypatch):
     monkeypatch.setattr(mkt, "get_market_data", lambda: _MD())
     # spark 取数不是本用例关注点,桩掉避免真实联网(见 test_market_indices_spark.py 专测 spark)。
     monkeypatch.setattr(mkt, "get_index_klines", lambda *a, **k: [])
+    monkeypatch.setattr(mkt, "_twse_index", lambda: {"symbol": "TAIEX", "name": "加權指數", "market": "TW", "current_price": 22000.0, "change_pct": 0.5, "change_amount": 100.0, "prev_close": 21900.0, "spark": []})
 
     out = asyncio.run(mkt.get_market_indices())
 
     assert captured["symbols"] == [idx["tencent_symbol"] for idx in mkt.MARKET_INDICES]
-    sh = next(i for i in out if i["symbol"] == "000001")
-    assert sh["current_price"] == 3200.0 and sh["change_pct"] == 0.63
-    # 未命中行情的指数仍返回基本信息占位(current_price=None),匹配逻辑不变
-    hsi = next(i for i in out if i["symbol"] == "HSI")
-    assert hsi["current_price"] is None
+    taiex = next(i for i in out if i["symbol"] == "TAIEX")
+    assert taiex["current_price"] == 22000.0 and taiex["change_pct"] == 0.5
+    # 未命中行情的指數仍返回基本資訊佔位(current_price=None),匹配邏輯不變
+    dji = next(i for i in out if i["symbol"] == "DJI")
+    assert dji["current_price"] is None

@@ -52,7 +52,7 @@ function pctChipCls(v?: number | null): string {
 function fmtMoney(v?: number | null): string {
   if (v == null || !isFinite(v)) return '--'
   const sign = v > 0 ? '+' : v < 0 ? '-' : ''
-  return `${sign}¥${Math.abs(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+  return `${sign}NT$${Math.abs(v).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`
 }
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
 function stripMarkdown(s: string): string {
@@ -91,11 +91,10 @@ const FEED_BADGE: Record<string, { label: string; cls: string }> = {
   opportunity: { label: '机会', cls: 'bg-primary/10 text-primary' },
 }
 
-// 市场分布 stacked 条配色:CN 用品牌色,US/HK 用差异化色区分
+// 市場分佈配色
 const MARKET_BAR_CLS: Record<string, string> = {
-  CN: 'bg-primary',
+  TW: 'bg-primary',
   US: 'bg-emerald-500',
-  HK: 'bg-orange-500',
 }
 
 export default function DashboardPage() {
@@ -127,7 +126,7 @@ export default function DashboardPage() {
   const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean }>({
     open: false,
     symbol: '',
-    market: 'CN',
+    market: 'TW',
     name: '',
     hasPosition: false,
   })
@@ -202,7 +201,7 @@ export default function DashboardPage() {
   }
 
   const openStock = (symbol: string, market: string, name = '', hasPosition = false) =>
-    setModal({ open: true, symbol, market: market || 'CN', name, hasPosition })
+    setModal({ open: true, symbol, market: market || 'TW', name, hasPosition })
 
   const runAiReview = async () => {
     setAiReviewLoading(true)
@@ -449,7 +448,7 @@ export default function DashboardPage() {
                   <div
                     key={i}
                     className={`flex items-center gap-2 py-1 text-[12px] ${t.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
-                    onClick={() => t.symbol && openStock(t.symbol, t.market || 'CN', '')}
+                    onClick={() => t.symbol && openStock(t.symbol, t.market || 'TW', '')}
                   >
                     <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[9px] text-amber-600">
                       {t.type === 'no_alert' ? '加提醒' : '将到期'}
@@ -469,7 +468,7 @@ export default function DashboardPage() {
                   <div
                     key={i}
                     className={`flex items-center gap-3 py-2 ${it.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
-                    onClick={() => it.symbol && openStock(it.symbol, it.market || 'CN', it.name || '')}
+                    onClick={() => it.symbol && openStock(it.symbol, it.market || 'TW', it.name || '')}
                   >
                     <span className={`shrink-0 rounded px-1 text-[9px] ${badge.cls}`}>{badge.label}</span>
                     <div className="min-w-0 flex-1">
@@ -530,7 +529,7 @@ export default function DashboardPage() {
                   <span className="flex items-center gap-1.5">
                     <span className="h-0 w-3.5 border-t-[1.5px] border-dashed border-muted-foreground/70" />
                     <span className="text-muted-foreground">
-                      {bench?.benchmark_label || '沪深300'} {benchReady ? pct(bench!.benchmark_return) : ''}
+                      {bench?.benchmark_label || '台灣加權指數'} {benchReady ? pct(bench!.benchmark_return) : ''}
                     </span>
                   </span>
                 </div>

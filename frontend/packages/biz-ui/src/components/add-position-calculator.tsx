@@ -221,7 +221,7 @@ export default function AddPositionCalculator({
                 </span>
               </div>
               {lotWarn && (
-                <div className="text-[10px] text-amber-600">提示:A股通常 100 股/手,建议取整到 100 的倍数</div>
+                <div className="text-[10px] text-amber-600">股數請依券商與市場交易規則輸入</div>
               )}
             </div>
           ) : (

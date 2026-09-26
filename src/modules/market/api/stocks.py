@@ -19,7 +19,7 @@ from src.platform.persistence.models import (
 )
 from src.platform.marketdata.stock_list import search_stocks, refresh_stock_list
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.platform.marketdata.models import MarketCode, MARKETS
+from src.platform.marketdata.models import MarketCode, MARKETS, ACTIVE_MARKETS
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ router = APIRouter()
 class StockCreate(BaseModel):
     symbol: str
     name: str
-    market: str = "CN"
+    market: str = "TW"
 
 
 class StockUpdate(BaseModel):
@@ -122,7 +122,8 @@ def get_market_status():
     from datetime import datetime
 
     result = []
-    for market_code, market_def in MARKETS.items():
+    for market_code in ACTIVE_MARKETS:
+        market_def = MARKETS[market_code]
         try:
             now = datetime.now(market_def.get_tz())
             is_trading = market_def.is_trading_time()
@@ -199,7 +200,7 @@ def refresh_list():
 
 @router.get("", response_model=list[StockResponse])
 def list_stocks(db: Session = Depends(get_db)):
-    stocks = db.query(Stock).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
+    stocks = db.query(Stock).filter(Stock.market.in_(("TW", "US"))).order_by(Stock.sort_order.asc(), Stock.id.asc()).all()
     agent_display_names = _agent_display_names(db, stocks)
     return [_stock_to_response(s, agent_display_names) for s in stocks]
 
@@ -241,6 +242,9 @@ def get_quotes(db: Session = Depends(get_db)):
 
 @router.post("", response_model=StockResponse)
 def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
+    stock.market = stock.market.strip().upper()
+    if stock.market not in {"TW", "US"}:
+        raise HTTPException(400, "僅支援台股與美股")
     existing = db.query(Stock).filter(
         Stock.symbol == stock.symbol, Stock.market == stock.market
     ).first()

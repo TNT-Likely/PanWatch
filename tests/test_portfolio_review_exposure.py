@@ -38,17 +38,28 @@ def test_review_keeps_internal_distribution_separate_from_total_exposure(db, mon
     from src.platform.ai import ai_failover
     db.add(Account(name='test', available_funds=300))
     db.commit()
-    holdings = [{'symbol':'TEST','market':'CN','market_value':250,'unrealized_pnl':0}]
+    holdings = [{'symbol':'TEST','market':'TW','market_value':250,'unrealized_pnl':0}]
     monkeypatch.setattr(accounts, '_gather_holdings', lambda _: holdings)
     monkeypatch.setattr(benchmark, 'build_portfolio_benchmark', lambda *a, **kw: {})
     monkeypatch.setattr(benchmark, 'build_attribution', lambda *a, **kw: [])
     client = AsyncMock()
-    client.chat.return_value = '持仓内部集中度：CN 100%；总资产敞口：45.5%'
+    client.chat.return_value = '持倉內部集中度：TW 100%；總資產敞口：45.5%'
     monkeypatch.setattr(ai_failover, 'get_configured_failover_client', lambda *a: client)
     result = asyncio.run(accounts.portfolio_ai_review(db=db))
     system, context = client.chat.call_args.args
-    assert '持仓内部集中度' in system and '总资产敞口' in system
-    assert '总资产 550 CNY' in context and '45.5%' in context
-    assert result['diagnostics']['by_market'] == {'CN':250}
+    assert '持倉內部集中度' in system and '總資產敞口' in system
+    assert '總資產 550 TWD' in context and '45.5%' in context
+    assert result['diagnostics']['by_market'] == {'TW':250}
     assert result['diagnostics']['max_weight'] == 1
     assert result['account_totals']['available_funds'] == 300
+
+
+def test_legacy_cny_cash_converts_to_twd(db, monkeypatch):
+    db.add(Account(name='legacy', available_funds=100, cash_currency='CNY'))
+    db.commit()
+    monkeypatch.setattr(accounts, 'get_cny_twd_rate', lambda: 4.7)
+    totals = accounts._gather_account_totals(db, market_value=530)
+    assert totals == {'available_funds': 470, 'total_assets': 1000, 'equity_ratio': 0.53}
+    summary = accounts.get_portfolio_summary(include_quotes=False, db=db)
+    assert summary['accounts'][0]['available_funds'] == 470
+    assert summary['total']['total_assets'] == 470

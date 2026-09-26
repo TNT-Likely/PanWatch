@@ -18,14 +18,14 @@ def _mem_db():
 
 
 def test_list_weights_returns_all_market_factor_pairs():
-    """GET 列表返回 5 因子 × 3 市场。"""
+    """GET 列表返回 5 因子 × 台美兩市場。"""
     from src.modules.strategy.api import factors
 
     db = _mem_db()
     try:
         res = factors.list_weights(db=db)
         assert "items" in res
-        assert len(res["items"]) == 15
+        assert len(res["items"]) == 10
     finally:
         db.close()
 
@@ -37,7 +37,7 @@ def test_update_weight_pins_and_sets_value():
     db = _mem_db()
     try:
         payload = factors.FactorWeightUpdate(weight=1.25, is_pinned=True)
-        res = factors.update_weight("alpha_score", "CN", payload, db=db)
+        res = factors.update_weight("alpha_score", "TW", payload, db=db)
         assert res["weight"] == 1.25
         assert res["is_pinned"] is True
     finally:
@@ -52,7 +52,7 @@ def test_update_weight_unknown_factor_returns_400():
     try:
         payload = factors.FactorWeightUpdate(weight=1.1)
         with pytest.raises(HTTPException) as ei:
-            factors.update_weight("bad_factor", "CN", payload, db=db)
+            factors.update_weight("bad_factor", "TW", payload, db=db)
         assert ei.value.status_code == 400
     finally:
         db.close()

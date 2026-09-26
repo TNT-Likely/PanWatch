@@ -65,11 +65,13 @@ INDEX_TENCENT: dict[str, tuple[str, str]] = {
     "399006": ("sz399006", "创业板指"),
     "000001": ("sh000001", "上证指数"),
 }
-DEFAULT_BENCHMARK = "000300"
-_ANNUALIZE = 242  # A股年化交易日数
+DEFAULT_BENCHMARK = "TAIEX"
+_ANNUALIZE = 242  # A股年化交易日數
 
 
 def benchmark_label(code: str) -> str:
+    if code == "TAIEX":
+        return "台灣加權指數"
     return INDEX_TENCENT.get(code, (code, code))[1]
 
 
@@ -127,7 +129,17 @@ def compute_benchmark_metrics(
 
 
 def _fetch_benchmark_series(code: str, days: int) -> tuple[list[str], list[float]]:
-    """取基准指数日K → (dates, closes);失败返回 ([], [])。"""
+    """取基準指數日K → (dates, closes);失敗返回 ([], [])。"""
+    if code == "TAIEX":
+        try:
+            from marketdata.symbol import Symbol
+            from marketdata.vendors.kline import YahooKlineVendor
+
+            bars = YahooKlineVendor().fetch([Symbol.parse("TAIEX", market="TW")], {"days": days})
+            return [bar.date for bar in bars], [bar.close for bar in bars]
+        except Exception as exc:
+            logger.warning("台股基準日線取得失敗: %s", exc)
+            return [], []
     tsym = INDEX_TENCENT.get(
         code, (code if code.startswith(("sh", "sz")) else f"sh{code}", code)
     )[0]

@@ -255,7 +255,7 @@ def build_stock_metadata_context(
     if not stock_symbol:
         return ""
 
-    market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
+    market_label = {"TW": "台股", "CN": "中國 A 股", "HK": "港股", "US": "美股"}.get(market, market)
     lines = [
         "[Stock Metadata]",
         f"- Ticker: {stock_symbol}",
@@ -266,8 +266,10 @@ def build_stock_metadata_context(
         lines.append(f"- Industry: {industry}")
     if current_price and current_price > 0:
         lines.append(f"- Current price: {current_price:.2f}")
+    if market == "TW":
+        lines.append("- Price source: latest official end-of-day close; not a live intraday quote")
     lines.append(
-        "- IMPORTANT: This is an A-share / HK / cross-market ticker. DO NOT guess the "
+        "- IMPORTANT: This is a cross-market ticker. DO NOT guess the "
         "company from the ticker code; always use the company name above."
     )
     return "\n".join(lines)

@@ -72,7 +72,7 @@ export default function StockPriceAlertPanel(props: {
 }) {
   const { toast } = useToast()
   const symbol = String(props.symbol || '').trim()
-  const market = String(props.market || 'CN').trim().toUpperCase()
+  const market = String(props.market || 'TW').trim().toUpperCase()
   const mode = props.mode || 'icon'
 
   const [open, setOpen] = useState(false)

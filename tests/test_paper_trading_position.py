@@ -20,8 +20,8 @@ def test_compute_quantity_respects_budget():
         rank_score=90, market_budget=1_000_000, price=10.0,
         available_cash=1_000_000, cost_model=cm,
     )
-    assert qty > 0 and qty % 100 == 0
-    assert qty <= 25000  # 25% 预算 / 10 元
+    assert qty > 0
+    assert qty <= 25000  # 25% 預算 / 10 元
 
 
 def test_compute_quantity_respects_cash():
@@ -31,7 +31,7 @@ def test_compute_quantity_respects_cash():
         rank_score=90, market_budget=1_000_000, price=10.0,
         available_cash=3000, cost_model=cm,
     )
-    assert qty % 100 == 0
+    assert qty > 0
     if qty > 0:
         outlay = -cm.fill("buy", 10.0, qty).cash_delta
         assert outlay <= 3000
@@ -44,7 +44,7 @@ def test_compute_quantity_insufficient_cash_returns_zero():
         rank_score=90, market_budget=1_000_000, price=100.0,
         available_cash=500, cost_model=cm,
     )
-    assert qty == 0
+    assert qty > 0  # 台股零股可買入一股
 
 
 def test_engine_imports_ok():

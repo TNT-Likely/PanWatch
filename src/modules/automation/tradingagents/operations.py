@@ -271,7 +271,9 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 
             # 推断 market(分析记录里没存,从 stock_symbol 简单推断)
             symbol = r.stock_symbol
-            if symbol.isdigit() and len(symbol) == 6:
+            if symbol.isdigit() and len(symbol) == 4:
+                market = "TW"
+            elif symbol.isdigit() and len(symbol) == 6:
                 market = "CN"
             elif symbol.isalpha():
                 market = "US"
@@ -332,12 +334,14 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 # ============================================================================
 
 def _resolve_market(market: str) -> MarketCode:
-    code = (market or "CN").strip().upper()
+    code = (market or "TW").strip().upper()
+    if code == "TW":
+        return MarketCode.TW
     if code == "US":
         return MarketCode.US
     if code == "HK":
         return MarketCode.HK
-    return MarketCode.CN
+    return MarketCode.TW
 
 
 def _classify_hit(action: str, ret_pct: float | None) -> bool | None:

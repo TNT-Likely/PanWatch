@@ -30,9 +30,9 @@ type GroupedSignal = {
 }
 
 const marketLabel = (m?: string) => {
-  if (m === 'HK') return '港股'
+  if (m === 'TW') return '台股'
   if (m === 'US') return '美股'
-  return 'A股'
+  return m || '台股'
 }
 
 const sourceAgentLabelMap: Record<string, string> = {
@@ -156,7 +156,7 @@ const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
     id: Number(row.id || 0),
     snapshot_date: row.snapshot_date || '',
     stock_symbol: row.stock_symbol,
-    stock_market: row.stock_market || 'CN',
+    stock_market: row.stock_market || 'TW',
     stock_name: row.stock_name || row.stock_symbol,
     strategy_code: (row.strategy_tags && row.strategy_tags[0]) || 'watchlist_agent',
     strategy_name: (row.strategy_labels && row.strategy_labels[0]) || '候选建议',
@@ -230,7 +230,7 @@ export default function OpportunitiesPage() {
   const [strategyCatalog, setStrategyCatalog] = useState<StrategyCatalogItem[]>([])
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
 
-  const [market, setMarket] = useLocalStorage<'ALL' | 'CN' | 'HK' | 'US'>('panwatch_opportunities_market_v3', DEFAULT_FILTERS.market)
+  const [market, setMarket] = useLocalStorage<'ALL' | 'TW' | 'US'>('panwatch_opportunities_market_v4', DEFAULT_FILTERS.market)
   const [source, setSource] = useLocalStorage<SourceFilter>('panwatch_opportunities_source_v3', DEFAULT_FILTERS.source)
   const [holding, setHolding] = useLocalStorage<HoldingFilter>('panwatch_opportunities_holding_v3', DEFAULT_FILTERS.holding)
   const [strategy, setStrategy] = useLocalStorage('panwatch_opportunities_strategy_v3', DEFAULT_FILTERS.strategy)
@@ -240,7 +240,7 @@ export default function OpportunitiesPage() {
 
   const [insightOpen, setInsightOpen] = useState(false)
   const [insightSymbol, setInsightSymbol] = useState('')
-  const [insightMarket, setInsightMarket] = useState('CN')
+  const [insightMarket, setInsightMarket] = useState('TW')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
 
@@ -249,7 +249,7 @@ export default function OpportunitiesPage() {
 
   const openInsight = useCallback((item: StrategySignalItem) => {
     setInsightSymbol(item.stock_symbol)
-    setInsightMarket(item.stock_market || 'CN')
+    setInsightMarket(item.stock_market || 'TW')
     setInsightName(item.stock_name)
     setInsightHasPosition(!!item.is_holding_snapshot)
     setInsightOpen(true)
@@ -435,7 +435,7 @@ export default function OpportunitiesPage() {
   const groupedItems = useMemo<GroupedSignal[]>(() => {
     const grouped = new Map<string, { primary: StrategySignalItem; members: StrategySignalItem[] }>()
     for (const row of items) {
-      const key = `${row.stock_market || 'CN'}:${row.stock_symbol}`
+      const key = `${row.stock_market || 'TW'}:${row.stock_symbol}`
       const prev = grouped.get(key)
       if (!prev) {
         grouped.set(key, { primary: row, members: [row] })
@@ -626,12 +626,11 @@ export default function OpportunitiesPage() {
 
       <div className="card p-3 md:p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
-          <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US')}>
+          <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'TW' | 'US')}>
             <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">全部市场</SelectItem>
-              <SelectItem value="CN">A股</SelectItem>
-              <SelectItem value="HK">港股</SelectItem>
+              <SelectItem value="ALL">全部市場</SelectItem>
+              <SelectItem value="TW">台股</SelectItem>
               <SelectItem value="US">美股</SelectItem>
             </SelectContent>
           </Select>

@@ -132,7 +132,7 @@ export default function PriceAlertsPage() {
     }
     const qStockId = Number(params.get('stock_id') || 0)
     const qSymbol = String(params.get('symbol') || '').trim().toUpperCase()
-    const qMarket = String(params.get('market') || '').trim().toUpperCase() || 'CN'
+    const qMarket = String(params.get('market') || '').trim().toUpperCase() || 'TW'
     const qName = String(params.get('name') || '').trim()
 
     const openWithStock = async () => {

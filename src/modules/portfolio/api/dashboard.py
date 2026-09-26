@@ -44,7 +44,7 @@ def _format_datetime(dt) -> str:
 
 def _to_market(market: str) -> str:
     m = (market or "ALL").strip().upper()
-    return m if m in ("ALL", "CN", "HK", "US") else "ALL"
+    return m if m in ("ALL", "TW", "US") else "ALL"
 
 
 def _action_priority(item: dict) -> int:

@@ -136,7 +136,7 @@ export function SuggestionBadge({
   stockSymbol,
   kline,
   showFullInline = false,
-  market = 'CN',
+  market = 'TW',
   hasPosition = false,
   showTechnicalCompanion = true,
 }: SuggestionBadgeProps) {
@@ -391,7 +391,7 @@ export function SuggestionBadge({
           open={klineDialogOpen}
           onOpenChange={setKlineDialogOpen}
           symbol={stockSymbol || ''}
-          market={market || 'CN'}
+          market={market || 'TW'}
           stockName={stockName}
           hasPosition={hasPosition}
           initialSummary={kline as any}

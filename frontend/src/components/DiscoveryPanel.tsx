@@ -26,7 +26,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
   const [portfolioRaw, setPortfolioRaw] = useState<DashboardPortfolioSummary | null>(null)
 
   const [discoverTab, setDiscoverTab] = useLocalStorage<'boards' | 'stocks'>('panwatch_dashboard_discoverTab', 'boards')
-  const [discoverMarket, setDiscoverMarket] = useLocalStorage<'CN' | 'HK' | 'US'>('panwatch_dashboard_discoverMarket', 'CN')
+  const [discoverMarket, setDiscoverMarket] = useLocalStorage<'TW' | 'US'>('panwatch_dashboard_discoverMarket_v2', 'TW')
   const [stocksMode, setStocksMode] = useLocalStorage<'turnover' | 'gainers' | 'for_you'>('panwatch_dashboard_stocksMode', 'for_you')
   const [boardsMode, setBoardsMode] = useLocalStorage<'gainers' | 'turnover'>('panwatch_dashboard_boardsMode', 'gainers')
   const [hotStocks, setHotStocks] = useState<HotStockItem[]>([])
@@ -185,13 +185,12 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             <Button variant="outline" size="sm" onClick={() => navigate('/opportunities')} className="h-7 text-[12px]">
               进入机会页
             </Button>
-            <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'CN' | 'HK' | 'US')}>
+            <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'TW' | 'US')}>
               <SelectTrigger className="h-7 w-[90px] text-[12px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CN">A股</SelectItem>
-                <SelectItem value="HK">港股</SelectItem>
+                <SelectItem value="TW">台股</SelectItem>
                 <SelectItem value="US">美股</SelectItem>
               </SelectContent>
             </Select>
@@ -258,6 +257,10 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             </div>
           </div>
 
+          {discoverMarket === 'TW' && (
+            <p className="mb-2 text-[11px] text-muted-foreground">台股榜單採用官方盤後資料{hotStocks[0]?.as_of ? `（${hotStocks[0].as_of}）` : ''}，非盤中即時排名。</p>
+          )}
+
           {discoverLoading ? (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -270,8 +273,8 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
           ) : discoverTab === 'boards' ? (
             hotBoards.length === 0 ? (
               <div className="py-6 text-center text-[12px] text-muted-foreground">
-                {discoverError || (discoverMarket === 'CN' ? '暂无数据' : `${discoverMarket === 'HK' ? '港股' : '美股'}暂不提供板块榜，已支持热门股票`)}
-                {discoverMarket !== 'CN' && (
+                {discoverError || '暫無主題資料'}
+                {(
                   <div className="mt-2">
                     <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setDiscoverTab('stocks')}>
                       切换到热门股票
@@ -356,7 +359,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                     key={s.symbol}
                     onClick={() => {
                       setBoardDialogOpen(false)
-                      onOpenStock(s.symbol, s.market || 'CN', s.name, false)
+                      onOpenStock(s.symbol, s.market || 'TW', s.name, false)
                     }}
                     className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
                   >

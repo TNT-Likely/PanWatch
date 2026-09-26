@@ -31,15 +31,44 @@ logger = logging.getLogger(__name__)
 _CN_TRADING_DATES: frozenset[date] | None = None
 # 日历覆盖区间,用于判断查询日期是否落在可信范围内(跨年未刷新时会超出)
 _CN_RANGE: tuple[date, date] | None = None
+_TW_CLOSED_DATES: frozenset[date] | None = None
+_TW_OPEN_DATES: frozenset[date] | None = None
+_TW_YEAR: int | None = None
 
 _FALLBACK_TZ = "Asia/Shanghai"
 
 
 def reset_cache() -> None:
-    """清空日历缓存(配置变更或测试用)。"""
-    global _CN_TRADING_DATES, _CN_RANGE
+    """清空日曆快取(配置變更或測試用)。"""
+    global _CN_TRADING_DATES, _CN_RANGE, _TW_CLOSED_DATES, _TW_OPEN_DATES, _TW_YEAR
     _CN_TRADING_DATES = None
     _CN_RANGE = None
+    _TW_CLOSED_DATES = None
+    _TW_OPEN_DATES = None
+    _TW_YEAR = None
+
+
+def _fetch_tw_calendar() -> tuple[frozenset[date], frozenset[date], int]:
+    import httpx
+
+    response = httpx.get("https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule", timeout=12)
+    response.raise_for_status()
+    response.encoding = "utf-8"
+    closed, opened = set(), set()
+    for item in response.json():
+        raw = str(item.get("Date") or "")
+        if len(raw) != 7 or not raw.isdigit():
+            continue
+        day = date(int(raw[:3]) + 1911, int(raw[3:5]), int(raw[5:7]))
+        name = str(item.get("Name") or "")
+        if "交易日" in name or "補行交易" in name:
+            opened.add(day)
+        else:
+            closed.add(day)
+    if not (closed or opened):
+        raise ValueError("證交所休市表為空")
+    year = next(iter(closed or opened)).year
+    return frozenset(closed), frozenset(opened), year
 
 
 def _fetch_cn_trading_dates() -> frozenset[date]:
@@ -59,25 +88,14 @@ def _fetch_cn_trading_dates() -> frozenset[date]:
 
 
 def refresh_blocking() -> bool:
-    """同步刷新 A 股交易日历。返回是否成功;失败不抛异常(保持降级行为)。"""
-    global _CN_TRADING_DATES, _CN_RANGE
+    """同步重新整理台股休市表；失敗時降級為週末判斷。"""
+    global _TW_CLOSED_DATES, _TW_OPEN_DATES, _TW_YEAR
     try:
-        dates = _fetch_cn_trading_dates()
-    except Exception as e:
-        logger.warning("[交易日历] A股日历拉取失败,降级为只判周末: %s", e)
+        _TW_CLOSED_DATES, _TW_OPEN_DATES, _TW_YEAR = _fetch_tw_calendar()
+        return True
+    except Exception as exc:
+        logger.warning("[交易日曆] 台股休市表取得失敗，降級為週末判斷: %s", exc)
         return False
-    if not dates:
-        logger.warning("[交易日历] A股日历为空,降级为只判周末")
-        return False
-    _CN_TRADING_DATES = dates
-    _CN_RANGE = (min(dates), max(dates))
-    logger.info(
-        "[交易日历] A股日历已加载: %s 个交易日 (%s ~ %s)",
-        len(dates),
-        _CN_RANGE[0],
-        _CN_RANGE[1],
-    )
-    return True
 
 
 async def refresh() -> bool:
@@ -133,7 +151,13 @@ def is_trading_day(market, d: date | datetime | None = None) -> bool:
     code = _to_market_code(market)
     target = _resolve_date(code, d)
 
-    # 周末:三个市场都不开。零依赖、永远准确,放在最前面。
+    if code == MarketCode.TW and _TW_YEAR == target.year:
+        if _TW_OPEN_DATES and target in _TW_OPEN_DATES:
+            return True
+        if _TW_CLOSED_DATES and target in _TW_CLOSED_DATES:
+            return False
+
+    # 週末:三個市場都不開。零依賴、永遠準確,放在最前面。
     if target.weekday() >= 5:
         return False
 
@@ -151,6 +175,4 @@ def any_market_trading_day(d: date | datetime | None = None) -> bool:
     """CN/HK/US 任一为交易日即 `True`。全市场休市(如周末)返回 `False`。"""
     from src.platform.marketdata.models import MarketCode
 
-    return any(
-        is_trading_day(m, d) for m in (MarketCode.CN, MarketCode.HK, MarketCode.US)
-    )
+    return any(is_trading_day(m, d) for m in (MarketCode.TW, MarketCode.US))
