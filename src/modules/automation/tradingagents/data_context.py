@@ -293,7 +293,13 @@ def to_tradingagents_portfolio(portfolio: Any):
     if not accounts:
         return None
 
-    from tradingagents.portfolio import PortfolioContext, Position
+    try:
+        from tradingagents.portfolio import PortfolioContext, Position
+    except ImportError:
+        logger.warning(
+            "当前环境中的 TradingAgents 未提供 portfolio 模块 (需 v0.5.0+)，跳过持仓上下文注入"
+        )
+        return None
 
     cash = 0.0
     by_ticker: dict[str, list[tuple[float, float | None]]] = {}

@@ -705,8 +705,9 @@ class DataCollectorManager:
 
         try:
             # 包内 news publish_time 是 aware(UTC),now 也须 aware,否则 since 过滤崩
-            from datetime import timezone
-            news = md.news(test_symbols, names=names, now=datetime.now(timezone.utc))
+            from datetime import datetime, timezone
+            # 测试连通性时放宽检索窗口至 72 小时，避免非交易时段因 2 小时无突发新闻导致假阴性
+            news = md.news(test_symbols, names=names, since_hours=72, now=datetime.now(timezone.utc))
         except Exception as e:
             return CollectorResult(success=False, error=str(e))
 

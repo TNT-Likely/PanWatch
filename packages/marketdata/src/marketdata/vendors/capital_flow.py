@@ -9,8 +9,8 @@ from marketdata.symbol import Market, Symbol
 from marketdata.types import CapitalFlow
 from marketdata.vendors.base import CapitalFlowVendor
 
-_EASTMONEY_FLOW_URL = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
-_FLOW_HOST = "push2his.eastmoney.com"
+_EASTMONEY_FLOW_URL = "https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get"
+_FLOW_HOST = "push2delay.eastmoney.com"
 _FLOW_MIN_INTERVAL_S = 0.2
 
 _SINA_FLOW_URL = (

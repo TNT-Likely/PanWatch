@@ -577,10 +577,18 @@ class TradingAgentsAgent(BaseAgent):
                 patch_instrument_context(graph, stock_metadata_context)
 
             date_str = datetime.now().strftime("%Y-%m-%d")
+            import inspect
+            propagate_kwargs = {}
+            ta_portfolio = to_tradingagents_portfolio(portfolio)
+            if "portfolio" in inspect.signature(graph.propagate).parameters:
+                propagate_kwargs["portfolio"] = ta_portfolio
+            elif ta_portfolio is not None:
+                logger.warning("当前 TradingAgentsGraph.propagate 不支持 portfolio 参数，跳过传递")
+
             final_state, decision = graph.propagate(
                 symbol,
                 date_str,
-                portfolio=to_tradingagents_portfolio(portfolio),
+                **propagate_kwargs,
             )
 
         # 成本提取(TradingAgents 内部 token 统计;若上游未暴露,fallback 用 estimate)
