@@ -14,6 +14,7 @@ class _K:
 def test_spark_injected_for_each_index(monkeypatch):
     """每个指数都应附上 spark(近20日收盘价列表),与 get_index_klines 返回的 close 序列一致。"""
     mkt.clear_indices_cache()
+    monkeypatch.setattr(mkt, "_twse_index", lambda: None)
 
     captured_days: dict[str, int] = {}
 
@@ -52,13 +53,14 @@ def test_spark_injected_for_each_index(monkeypatch):
 def test_spark_failsoft_on_error_or_unmapped(monkeypatch):
     """单指数取 spark 异常(如美股指数无 INDEX_SECID 映射)→ spark=[],不影响 quote 主体也不抛异常。"""
     mkt.clear_indices_cache()
+    monkeypatch.setattr(mkt, "_twse_index", lambda: None)
 
     class _MD:
         def index_quotes(self, tencent_symbols):
             return [
                 {
-                    "symbol": "000001",
-                    "name": "上证指数",
+                    "symbol": ".IXIC",
+                    "name": "納斯達克",
                     "current_price": 3200.0,
                     "change_pct": 0.63,
                     "change_amount": 20.0,
@@ -74,11 +76,11 @@ def test_spark_failsoft_on_error_or_unmapped(monkeypatch):
 
     out = asyncio.run(mkt.get_market_indices())
 
-    # quote 主体不受影响:上证指数仍返回正确行情
-    sh = next(i for i in out if i["symbol"] == "000001")
-    assert sh["current_price"] == 3200.0
-    assert sh["spark"] == []
-    # 未映射/取数失败的指数(如美股)同样 spark=[] 且仍在结果里
+    # 美股 quote 主體不受 spark 失敗影響。
+    us = next(i for i in out if i["symbol"] == "IXIC")
+    assert us["current_price"] == 3200.0
+    assert us["spark"] == []
+    # 未對映/取數失敗的指數(如美股)同樣 spark=[] 且仍在結果裡
     assert all(i["spark"] == [] for i in out)
     assert len(out) == len(mkt.MARKET_INDICES)
 
@@ -86,6 +88,7 @@ def test_spark_failsoft_on_error_or_unmapped(monkeypatch):
 def test_indices_response_cached_60s(monkeypatch):
     """整个 indices 响应加 60s 进程内缓存:短时间内重复调用不应重复拉取 quote/K线。"""
     mkt.clear_indices_cache()
+    monkeypatch.setattr(mkt, "_twse_index", lambda: None)
 
     call_count = {"quotes": 0, "klines": 0}
 

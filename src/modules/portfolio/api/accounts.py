@@ -18,10 +18,12 @@ from src.platform.marketdata.models import MarketCode
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# 汇率缓存
-_hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港币默认汇率 0.92
-_usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元默认汇率 7.25
-EXCHANGE_RATE_TTL = 3600  # 1 小时缓存
+# 匯率快取
+_hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港幣預設匯率 0.92
+_usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元預設匯率 7.25
+_usd_twd_rate_cache: dict = {"rate": None, "ts": 0}
+_cny_twd_rate_cache: dict = {"rate": None, "ts": 0}
+EXCHANGE_RATE_TTL = 3600  # 1 小時快取
 
 
 def get_hkd_cny_rate() -> float:
@@ -92,6 +94,48 @@ def get_usd_cny_rate() -> float:
     return _usd_rate_cache["rate"]
 
 
+def get_usd_twd_rate() -> float | None:
+    """取得美元兌新台幣匯率；無有效匯率時不製造估計值。"""
+    global _usd_twd_rate_cache
+    if time.time() - _usd_twd_rate_cache["ts"] < EXCHANGE_RATE_TTL:
+        return _usd_twd_rate_cache["rate"]
+    try:
+        response = httpx.get(
+            "https://hq.sinajs.cn/list=fx_susdtwd",
+            timeout=5,
+            headers={"Referer": "https://finance.sina.com.cn/", "User-Agent": "Mozilla/5.0"},
+        )
+        response.raise_for_status()
+        rate = float(response.text.split('"')[1].split(",")[1])
+        if 10 <= rate <= 100:
+            _usd_twd_rate_cache = {"rate": rate, "ts": time.time()}
+            return rate
+    except (httpx.HTTPError, ValueError, IndexError) as exc:
+        logger.warning("取得 USD/TWD 匯率失敗: %s", exc)
+    return _usd_twd_rate_cache["rate"]
+
+
+def get_cny_twd_rate() -> float | None:
+    """舊帳戶人民幣現金換算；匯率缺失時不把原幣誤當台幣。"""
+    global _cny_twd_rate_cache
+    if time.time() - _cny_twd_rate_cache["ts"] < EXCHANGE_RATE_TTL:
+        return _cny_twd_rate_cache["rate"]
+    try:
+        response = httpx.get(
+            "https://hq.sinajs.cn/list=fx_scnytwd",
+            timeout=5,
+            headers={"Referer": "https://finance.sina.com.cn/", "User-Agent": "Mozilla/5.0"},
+        )
+        response.raise_for_status()
+        rate = float(response.text.split('"')[1].split(",")[1])
+        if 2 <= rate <= 10:
+            _cny_twd_rate_cache = {"rate": rate, "ts": time.time()}
+            return rate
+    except (httpx.HTTPError, ValueError, IndexError) as exc:
+        logger.warning("取得 CNY/TWD 匯率失敗: %s", exc)
+    return _cny_twd_rate_cache["rate"]
+
+
 # ========== Pydantic Models ==========
 
 class AccountCreate(BaseModel):
@@ -109,6 +153,7 @@ class AccountResponse(BaseModel):
     id: int
     name: str
     available_funds: float
+    cash_currency: str
     enabled: bool
 
     class Config:
@@ -177,8 +222,8 @@ def get_account(account_id: int, db: Session = Depends(get_db)):
 
 @router.post("/accounts", response_model=AccountResponse)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
-    """创建账户"""
-    account = Account(name=data.name, available_funds=data.available_funds)
+    """建立賬戶"""
+    account = Account(name=data.name, available_funds=data.available_funds, cash_currency="TWD")
     db.add(account)
     db.commit()
     db.refresh(account)
@@ -197,6 +242,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         account.name = data.name
     if data.available_funds is not None:
         account.available_funds = data.available_funds
+        account.cash_currency = "TWD"
     if data.enabled is not None:
         account.enabled = data.enabled
 
@@ -426,15 +472,19 @@ def get_portfolio_summary(
         for pos in acc.positions:
             all_stock_ids.add(pos.stock_id)
 
-    stocks = db.query(Stock).filter(Stock.id.in_(all_stock_ids)).all() if all_stock_ids else []
+    stocks = db.query(Stock).filter(Stock.id.in_(all_stock_ids), Stock.market.in_(("TW", "US"))).all() if all_stock_ids else []
     stock_map = {s.id: s for s in stocks}
 
     # 获取实时行情（可选）
     quotes = _fetch_quotes_for_stocks(stocks) if include_quotes else {}
 
-    # 获取汇率
-    hkd_rate = get_hkd_cny_rate()
-    usd_rate = get_usd_cny_rate()
+    # 新台幣為統一彙總幣別；美元匯率缺失時停止估值，避免錯報總資產。
+    usd_rate = get_usd_twd_rate() if any(s.market == "US" for s in stocks) else 1.0
+    if usd_rate is None:
+        raise HTTPException(503, "USD/TWD 匯率暫時不可用，無法準確計算投資組合")
+    cny_rate = get_cny_twd_rate() if any(acc.cash_currency == "CNY" and acc.available_funds for acc in accounts) else 1.0
+    if cny_rate is None:
+        raise HTTPException(503, "CNY/TWD 匯率暫時不可用，無法準確換算舊帳戶現金")
 
     # 计算各账户持仓
     account_summaries = []
@@ -444,6 +494,7 @@ def get_portfolio_summary(
     grand_daily_pnl = 0
 
     for acc in accounts:
+        cash_twd = acc.available_funds * (cny_rate if acc.cash_currency == "CNY" else 1.0)
         positions_data = []
         acc_market_value = 0
         acc_cost = 0
@@ -463,14 +514,9 @@ def get_portfolio_summary(
             change_pct = quote["change_pct"] if quote else None
             prev_close = quote.get("prev_close") if quote else None
 
-            # 根据市场确定汇率
-            is_foreign = stock.market in ("HK", "US")
-            if stock.market == "HK":
-                rate = hkd_rate
-            elif stock.market == "US":
-                rate = usd_rate
-            else:
-                rate = 1.0
+            # 根據市場確定匯率
+            is_foreign = stock.market == "US"
+            rate = usd_rate if stock.market == "US" else 1.0
 
             market_value = None
             market_value_cny = None
@@ -509,9 +555,11 @@ def get_portfolio_summary(
                 "trading_style": pos.trading_style,
                 "current_price": current_price,
                 "current_price_cny": round(current_price * rate, 2) if current_price else None,
+                "current_price_twd": round(current_price * rate, 2) if current_price else None,
                 "change_pct": change_pct,
                 "market_value": round(market_value, 2) if market_value else None,
                 "market_value_cny": round(market_value_cny, 2) if market_value_cny else None,
+                "market_value_twd": round(market_value_cny, 2) if market_value_cny else None,
                 "pnl": round(pnl, 2) if pnl else None,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct else None,
                 "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
@@ -522,16 +570,17 @@ def get_portfolio_summary(
         if include_quotes:
             acc_pnl = acc_market_value - acc_cost
             acc_pnl_pct = (acc_pnl / acc_cost * 100) if acc_cost > 0 else 0
-            acc_total_assets = acc_market_value + acc.available_funds
+            acc_total_assets = acc_market_value + cash_twd
         else:
             acc_pnl = 0
             acc_pnl_pct = 0
-            acc_total_assets = acc.available_funds
+            acc_total_assets = cash_twd
 
         account_summaries.append({
             "id": acc.id,
             "name": acc.name,
-            "available_funds": acc.available_funds,
+            "available_funds": round(cash_twd, 2),
+            "cash_currency": acc.cash_currency,
             "total_market_value": round(acc_market_value, 2),
             "total_cost": round(acc_cost, 2),
             "total_pnl": round(acc_pnl, 2),
@@ -543,7 +592,7 @@ def get_portfolio_summary(
 
         grand_total_market_value += acc_market_value
         grand_total_cost += acc_cost
-        grand_available_funds += acc.available_funds
+        grand_available_funds += cash_twd
         grand_daily_pnl += acc_daily_pnl
 
     if include_quotes:
@@ -576,8 +625,8 @@ def get_portfolio_summary(
             "total_assets": round(grand_total_assets, 2),
         },
         "exchange_rates": {
-            "HKD_CNY": hkd_rate,
-            "USD_CNY": usd_rate,
+            "USD_TWD": usd_rate,
+            "CNY_TWD": cny_rate,
         },
         "quotes": quotes_dict,  # 可选：返回行情数据
     }
@@ -631,13 +680,15 @@ def _holdings_signature(db: Session) -> str:
 
 
 def _gather_holdings(db: Session) -> list[dict]:
-    """汇总所有启用账户的真实持仓为统一列表(CNY 市值/浮盈 + fx),多账户同股合并。"""
+    """彙總台美股持倉為新台幣市值/浮盈，多賬戶同股合併。"""
     accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
     stock_ids = {p.stock_id for acc in accounts for p in acc.positions}
-    stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all() if stock_ids else []
+    stocks = db.query(Stock).filter(Stock.id.in_(stock_ids), Stock.market.in_(("TW", "US"))).all() if stock_ids else []
     stock_map = {s.id: s for s in stocks}
     quotes = _fetch_quotes_for_stocks(stocks) if stocks else {}
-    hkd, usd = get_hkd_cny_rate(), get_usd_cny_rate()
+    usd = get_usd_twd_rate() if any(s.market == "US" for s in stocks) else 1.0
+    if usd is None:
+        raise HTTPException(503, "USD/TWD 匯率暫時不可用，無法準確計算持倉")
 
     out: list[dict] = []
     seen: dict[tuple[str, str], dict] = {}
@@ -646,7 +697,7 @@ def _gather_holdings(db: Session) -> list[dict]:
             stock = stock_map.get(pos.stock_id)
             if not stock:
                 continue
-            rate = hkd if stock.market == "HK" else usd if stock.market == "US" else 1.0
+            rate = usd if stock.market == "US" else 1.0
             quote = quotes.get(stock.symbol)
             price = quote.get("current_price") if quote else None
             cost_cny = pos.cost_price * pos.quantity * rate
@@ -684,7 +735,7 @@ def portfolio_diagnostics(db: Session = Depends(get_db)):
 
 @router.get("/portfolio/benchmark")
 def portfolio_benchmark(
-    days: int = 60, benchmark: str = "000300", db: Session = Depends(get_db)
+    days: int = 60, benchmark: str = "TAIEX", db: Session = Depends(get_db)
 ):
     """真实持仓组合 vs 基准:超额收益/信息比率/相对回撤 + 归一化净值曲线。"""
     from src.modules.portfolio.portfolio_benchmark import (
@@ -765,8 +816,8 @@ def portfolio_todos(db: Session = Depends(get_db)):
 
 
 @router.get("/portfolio/attribution")
-def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session = Depends(get_db)):
-    """近 days 日各持仓对组合收益的贡献(谁拖累/贡献),降序。"""
+def portfolio_attribution(days: int = 60, benchmark: str = "TAIEX", db: Session = Depends(get_db)):
+    """近 days 日各持倉對組合收益的貢獻(誰拖累/貢獻),降序。"""
     from src.modules.portfolio.portfolio_benchmark import DEFAULT_BENCHMARK, build_attribution
 
     days = max(20, min(int(days), 250))
@@ -790,14 +841,16 @@ def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session
 
 
 def _gather_account_totals(db: Session, *, market_value: float) -> dict:
-    """Use the same enabled-account scope as holdings; cash is stored in CNY.
+    """Use the same enabled-account scope as holdings; convert legacy cash to TWD.
 
     Reuse the already-valued holdings instead of fetching quotes a second time.
     Non-positive equity has no meaningful exposure ratio (not zero exposure).
     """
-    cash = float(db.query(func.sum(Account.available_funds)).filter(
-        Account.enabled == True  # noqa: E712
-    ).scalar() or 0.0)
+    cash_accounts = db.query(Account).filter(Account.enabled == True).all()  # noqa: E712
+    cny_rate = get_cny_twd_rate() if any(acc.cash_currency == "CNY" and acc.available_funds for acc in cash_accounts) else 1.0
+    if cny_rate is None:
+        raise HTTPException(503, "CNY/TWD 匯率暫時不可用，無法準確換算舊帳戶現金")
+    cash = sum(acc.available_funds * (cny_rate if acc.cash_currency == "CNY" else 1.0) for acc in cash_accounts)
     total = market_value + cash
     return {
         "available_funds": round(cash, 2),
@@ -825,11 +878,11 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
     worst = list(reversed(attr[-3:])) if len(attr) > 3 else []
 
     lines = [
-        f"持仓 {diag['position_count']} 只,总市值 {diag['total_market_value']:.0f},浮盈 {diag['total_unrealized_pnl']:.0f}",
-        f"持仓内部集中度 HHI {diag['hhi']},最大单仓占已投资金额 {diag['max_weight'] * 100:.0f}%",
-        f"启用账户总资产 {totals['total_assets']:.0f} CNY（现金/可用资金 {totals['available_funds']:.0f} CNY）",
-        (f"总资产敞口：权益类仓位占总资产 {totals['equity_ratio'] * 100:.1f}%"
-         if totals['equity_ratio'] is not None else "总资产敞口：总资产非正，比例不可计算"),
+        f"持倉 {diag['position_count']} 只,總市值 {diag['total_market_value']:.0f},浮盈 {diag['total_unrealized_pnl']:.0f}",
+        f"持倉內部集中度 HHI {diag['hhi']},最大單倉佔已投資金額 {diag['max_weight'] * 100:.0f}%",
+        f"啟用賬戶總資產 {totals['total_assets']:.0f} TWD（現金/可用資金 {totals['available_funds']:.0f} TWD）",
+        (f"總資產敞口：權益類倉位佔總資產 {totals['equity_ratio'] * 100:.1f}%"
+         if totals['equity_ratio'] is not None else "總資產敞口：總資產非正，比例不可計算"),
     ]
     if bench.get("excess_return") is not None:
         lines.append(
@@ -838,7 +891,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
             f"相对回撤 {bench.get('relative_drawdown')}%"
         )
     if diag.get("by_market"):
-        lines.append("持仓内部市场分布（市值 CNY）:" + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
+        lines.append("持倉內部市場分佈（市值 TWD）:" + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
     if diag.get("alerts"):
         lines.append("风险提示:" + "; ".join(diag["alerts"]))
     if top:

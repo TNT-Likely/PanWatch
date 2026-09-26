@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from sqlalchemy import func
@@ -19,15 +20,15 @@ from src.platform.persistence.models import (
     PaperTradingTrade,
     StrategySignalRun,
 )
-from src.modules.strategy.backtest.cost_model import CostModel
+from src.modules.strategy.backtest.cost_model import CostConfig, CostModel
 
 logger = logging.getLogger(__name__)
 
-# 模拟盘交易成本(A股口径,Phase 1)。与回测共用同一成本模型。
-COST_MODEL = CostModel()
+# 台股簡化模擬盤使用零費率；實際手續費與交易稅尚未納入。
+COST_MODEL = CostModel(CostConfig(commission_rate=0, min_commission=0, stamp_duty_rate=0, transfer_fee_rate=0))
 
-# 建仓股数下限(A股一手)
-FIXED_QUANTITY = 100
+# 建倉股數下限
+FIXED_QUANTITY = 1
 
 # 移动止损:浮盈超过 MIN_PROFIT_FOR_TRAILING 后启用,从持仓最高价回撤超 TRAILING_STOP_PCT 即离场
 MIN_PROFIT_FOR_TRAILING = 0.05
@@ -83,7 +84,7 @@ def _to_market(market: str) -> MarketCode:
     try:
         return MarketCode(market)
     except Exception:
-        return MarketCode.CN
+        return MarketCode.TW
 
 
 def _is_trading_time(market: str) -> bool:
@@ -107,8 +108,8 @@ def _safe_float(v: Any) -> float | None:
 # 分市场资金配置（投资比例 → 子池现金）
 # ---------------------------------------------------------------------------
 
-ALL_MARKETS: tuple[str, ...] = ("CN", "HK", "US")
-DEFAULT_ALLOCATIONS: dict[str, float] = {"CN": 0.5, "HK": 0.3, "US": 0.2}
+ALL_MARKETS: tuple[str, ...] = ("TW", "US")
+DEFAULT_ALLOCATIONS: dict[str, float] = {"TW": 1.0, "US": 0.0}
 
 
 def normalize_allocations(raw: dict | None) -> dict[str, float]:
@@ -127,7 +128,7 @@ def normalize_allocations(raw: dict | None) -> dict[str, float]:
 def market_allocations_or_default(account: Any) -> dict[str, float]:
     """账户未配置比例时回退默认配置，否则归一化已配置的比例。"""
     raw = getattr(account, "market_allocations", None) or {}
-    if not raw:
+    if not raw or "TW" not in raw:
         return dict(DEFAULT_ALLOCATIONS)
     return normalize_allocations(raw)
 
@@ -138,8 +139,8 @@ def allocations_from_excluded(excluded: list[str] | None) -> dict[str, float]:
     weights = {m: DEFAULT_ALLOCATIONS[m] for m in ALL_MARKETS if m not in excluded_set}
     total = sum(weights.values())
     if total <= 0:
-        # 全部被排除：兜底投 A 股
-        return {"CN": 1.0, "HK": 0.0, "US": 0.0}
+        # 全部被排除：兜底配置台股
+        return {"TW": 1.0, "US": 0.0}
     return {m: round(weights.get(m, 0.0) / total, 6) for m in ALL_MARKETS}
 
 
@@ -268,6 +269,8 @@ class PaperTradingEngine:
             by_symbol = {str(r.get("symbol")): r for r in rows}
             for sym in symbols:
                 q = by_symbol.get(sym)
+                if market == MarketCode.TW and q and q.get("as_of") != datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat():
+                    continue
                 if q:
                     out[(market.value, sym)] = q
         return out
@@ -280,6 +283,7 @@ class PaperTradingEngine:
         query = (
             db.query(StrategySignalRun)
             .filter(
+                StrategySignalRun.stock_market.in_(ALL_MARKETS),
                 StrategySignalRun.status == "active",
                 StrategySignalRun.action.in_(["buy", "add"]),
                 StrategySignalRun.entry_low.isnot(None),
@@ -494,7 +498,7 @@ class PaperTradingEngine:
         exit_events: list[tuple[PaperTradingPosition, PaperTradingTrade]] = []
         positions = (
             db.query(PaperTradingPosition)
-            .filter(PaperTradingPosition.status == "open")
+            .filter(PaperTradingPosition.status == "open", PaperTradingPosition.stock_market == "TW")
             .all()
         )
         if not positions:

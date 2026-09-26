@@ -242,7 +242,7 @@ export default function DataSourcesPage() {
   }
 
   const resetToSeed = async () => {
-    if (!window.confirm('将删除孤儿源、补齐缺失默认源，并把内置数据源测试股票恢复为 A/HK/US 各两条；自定义配置与凭证会保留。是否继续?')) return
+    if (!window.confirm('將刪除孤兒源、補齊缺失預設源，並恢復內建測試股票設定；自定義配置與憑證會保留。是否繼續?')) return
     setResetting(true)
     try {
       const result = await resetDataSourcesToSeed()

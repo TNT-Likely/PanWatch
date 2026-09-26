@@ -130,6 +130,6 @@ def test_reconcile_refreshes_legacy_seed_test_symbols_but_keeps_custom_values():
     seeded = next(row for row in rows if row.name == "腾讯K线")
     custom = next(row for row in rows if row.name == "自定义 K线")
 
-    assert seeded.test_symbols == ["600519", "601127", "00700", "00386", "AAPL", "NVDA"]
+    assert seeded.test_symbols == ["2330", "6488", "AAPL", "NVDA"]
     assert custom.test_symbols == ["688981"]
     db.close()

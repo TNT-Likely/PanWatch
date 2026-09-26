@@ -15,13 +15,12 @@ interface AssistantStockPickerProps {
 }
 
 const MARKETS = [
-  { value: 'CN', label: 'A 股' },
-  { value: 'HK', label: '港股' },
+  { value: 'TW', label: '台股' },
   { value: 'US', label: '美股' },
 ]
 
 export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: AssistantStockPickerProps) {
-  const [market, setMarket] = useState('CN')
+  const [market, setMarket] = useState('TW')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AssistantStockSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -81,7 +80,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label="选择股票市场">
+      <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label="選擇股票市場">
         {MARKETS.map((item) => (
           <button
             key={item.value}

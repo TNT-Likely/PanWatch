@@ -23,7 +23,7 @@ export interface PaperTradingAccountResponse {
   updated_at: string
 }
 
-export type MarketView = 'ALL' | 'CN' | 'HK' | 'US'
+export type MarketView = 'ALL' | 'TW' | 'US'
 
 export interface PaperTradingPositionItem {
   id: number

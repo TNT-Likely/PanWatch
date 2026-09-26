@@ -142,7 +142,7 @@ export function KlineSummaryDialog({
     setError(null)
     setSummary(null)
 
-    const m = market || 'CN'
+    const m = market || 'TW'
     fetchAPI<KlineSummaryResponse>(`/klines/${encodeURIComponent(symbol)}/summary?market=${encodeURIComponent(m)}`)
       .then((data) => setSummary(data.summary || null))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))

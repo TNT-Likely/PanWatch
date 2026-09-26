@@ -27,7 +27,7 @@ function pct(v?: number | null, digits = 1): string {
   return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`
 }
 
-const MARKET_LABEL: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股' }
+const MARKET_LABEL: Record<string, string> = { TW: '台股', US: '美股' }
 const marketLabel = (m: string) => MARKET_LABEL[m] || m
 
 /**

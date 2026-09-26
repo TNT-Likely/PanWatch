@@ -141,9 +141,9 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
             "count": 1,
             "items": [
                 {
-                    "stock_symbol": "600519",
-                    "stock_market": "CN",
-                    "stock_name": "贵州茅台",
+                    "stock_symbol": "2330",
+                    "stock_market": "TW",
+                    "stock_name": "台積電",
                     "rank_score": 88.5,
                     "action": "buy",
                     "action_label": "建仓",
@@ -176,13 +176,13 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
         assistant_tools.build_panwatch_tool_registry(session).execute(
             "find_research_candidates",
             _request(),
-            {"market": "CN", "holding": "unheld", "min_score": 80, "limit": 3},
+            {"market": "TW", "holding": "unheld", "min_score": 80, "limit": 3},
         )
     )
 
     assert result.ok is True
     assert captured == {
-        "market": "CN",
+        "market": "TW",
         "status": "active",
         "min_score": 80.0,
         "limit": 3,
@@ -196,9 +196,9 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
         "count": 1,
         "items": [
             {
-                "symbol": "600519",
-                "market": "CN",
-                "name": "贵州茅台",
+                "symbol": "2330",
+                "market": "TW",
+                "name": "台積電",
                 "score": 88.5,
                 "action": "建仓",
                 "risk": "中风险",
@@ -214,7 +214,7 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
             }
         ],
     }
-    assert "贵州茅台" in result.summary
+    assert "台積電" in result.summary
     session.close()
     engine.dispose()
 

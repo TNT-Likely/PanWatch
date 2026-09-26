@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from src.platform.marketdata.collectors.kline_collector import get_index_klines
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.taiwan_index import twse_index as _twse_index
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,18 +21,14 @@ def get_market_data():
 # 主要市场指数配置
 # response_symbol: 腾讯 API 返回的 symbol（用于匹配）
 MARKET_INDICES = [
-    # A股指数
-    {"symbol": "000001", "name": "上证指数", "market": "CN", "tencent_symbol": "sh000001", "response_symbol": "000001"},
-    {"symbol": "399001", "name": "深证成指", "market": "CN", "tencent_symbol": "sz399001", "response_symbol": "399001"},
-    {"symbol": "399006", "name": "创业板指", "market": "CN", "tencent_symbol": "sz399006", "response_symbol": "399006"},
-    # 港股指数
-    {"symbol": "HSI", "name": "恒生指数", "market": "HK", "tencent_symbol": "hkHSI", "response_symbol": "HSI"},
-    # 美股指数 (腾讯返回的 symbol 带点号前缀: .IXIC, .DJI)
-    {"symbol": "IXIC", "name": "纳斯达克", "market": "US", "tencent_symbol": "usIXIC", "response_symbol": ".IXIC"},
-    {"symbol": "DJI", "name": "道琼斯", "market": "US", "tencent_symbol": "usDJI", "response_symbol": ".DJI"},
+    # 美股指數 (騰訊返回的 symbol 帶點號字首: .IXIC, .DJI)
+    {"symbol": "IXIC", "name": "納斯達克", "market": "US", "tencent_symbol": "usIXIC", "response_symbol": ".IXIC"},
+    {"symbol": "DJI", "name": "道瓊斯", "market": "US", "tencent_symbol": "usDJI", "response_symbol": ".DJI"},
 ]
 
-# 指数响应内存缓存:60s(行情价格要新鲜)。
+
+
+# 指數響應記憶體快取:60s(行情價格要新鮮)。
 _INDICES_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _INDICES_CACHE_TTL_S = 60
 
@@ -81,8 +78,8 @@ async def get_market_indices():
     try:
         quotes = get_market_data().index_quotes(tencent_symbols)
     except Exception as e:
-        logger.error(f"获取市场指数失败: {e}")
-        return []
+        logger.error(f"獲取市場指數失敗: {e}")
+        quotes = []
 
     # 构建 response_symbol -> quote 映射
     quote_map = {}
@@ -116,6 +113,7 @@ async def get_market_indices():
                 "prev_close": quote["prev_close"],
                 "spark": spark,
             })
+
         else:
             # 即使没有行情也返回基本信息
             result.append({
@@ -128,6 +126,10 @@ async def get_market_indices():
                 "prev_close": None,
                 "spark": spark,
             })
+
+    taiwan = await asyncio.to_thread(_twse_index)
+    if taiwan:
+        result.insert(0, taiwan)
 
     _INDICES_CACHE["indices"] = (now, result)
     return result

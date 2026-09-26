@@ -38,7 +38,7 @@ export const portfolioApi = {
   /** 组合 vs 基准(超额/信息比率/相对回撤 + 归一化曲线)。 */
   benchmark: (params?: { days?: number; benchmark?: string }) =>
     fetchAPI<PortfolioBenchmark>(
-      `/portfolio/benchmark?days=${params?.days ?? 60}&benchmark=${encodeURIComponent(params?.benchmark ?? '000300')}`,
+      `/portfolio/benchmark?days=${params?.days ?? 60}&benchmark=${encodeURIComponent(params?.benchmark ?? 'TAIEX')}`,
       { timeoutMs: 60000 },
     ),
 

@@ -33,7 +33,7 @@ def _seed_pair(db, sid, *, market, snapshot_date, alpha, ret, horizon=5):
 
 
 def test_calibrate_all_markets_closes_loop_into_scoring():
-    """端到端:快照+outcome → calibrate_all_markets → CN alpha 权重上调 → 评分 raw_score 提升。"""
+    """端到端:快照+outcome → calibrate_all_markets → TW alpha 權重上調 → 評分 raw_score 提升。"""
     from src.modules.strategy.factor_calibration import calibrate_all_markets
     from src.modules.strategy.factor_weights import get_factor_weights
     from src.modules.strategy.strategy_engine import _compute_factor_breakdown
@@ -42,15 +42,15 @@ def test_calibrate_all_markets_closes_loop_into_scoring():
     db = _mem_db()
     try:
         d = (date.today() - timedelta(days=30)).strftime("%Y-%m-%d")
-        for i in range(1, 7):  # CN:alpha 与 ret 完全正相关
-            _seed_pair(db, i, market="CN", snapshot_date=d, alpha=float(i), ret=float(i))
+        for i in range(1, 7):  # TW:alpha 與 ret 完全正相關
+            _seed_pair(db, i, market="TW", snapshot_date=d, alpha=float(i), ret=float(i))
         db.commit()
 
         res = calibrate_all_markets(db=db, min_samples=5)
-        assert set(res) == {"CN", "HK", "US"}
+        assert set(res) == {"TW", "US"}
 
-        w = get_factor_weights("CN", db=db)
-        assert w["alpha_score"] > 1.0  # IC 闭环把权重抬高
+        w = get_factor_weights("TW", db=db)
+        assert w["alpha_score"] > 1.0  # IC 閉環把權重抬高
 
         row = EntryCandidate(
             score=80.0, action="watch", status="active", plan_quality=80,

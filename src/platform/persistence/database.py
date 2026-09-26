@@ -199,7 +199,13 @@ def _backup_db_before_migration() -> None:
 def _migrate(engine):
     """增量 schema 迁移（SQLite ALTER TABLE ADD COLUMN）"""
     migrations = [
-        # Phase 1(模拟盘求真):持仓期最高价,移动止损用
+        # 既有帳戶現金依舊資料口徑為 CNY；新建帳戶預設 TWD。
+        (
+            "accounts",
+            "cash_currency",
+            "ALTER TABLE accounts ADD COLUMN cash_currency TEXT DEFAULT 'CNY'",
+        ),
+        # Phase 1(模擬盤求真):持倉期最高價,移動止損用
         (
             "paper_trading_positions",
             "highest_price",

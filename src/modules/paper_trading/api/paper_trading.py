@@ -464,13 +464,15 @@ def update_settings(body: UpdateSettingsBody, db: Session = Depends(get_db)):
     if body.market_allocations is not None:
         alloc = normalize_allocations(body.market_allocations)
         total = sum(alloc.values())
+        if alloc.get("US", 0) > 0:
+            raise HTTPException(400, "美股模擬交易尚未支援 USD/TWD 換匯與美股費用模型")
         if total > 1.0 + 1e-9:
             raise HTTPException(400, f"投资比例合计不能超过 100%（当前 {round(total * 100)}%）")
         acc.market_allocations = alloc
         # 同步派生 excluded_markets（比例 0 即排除），兼容旧读取
         acc.excluded_markets = [m for m in ALL_MARKETS if alloc.get(m, 0.0) <= 0]
     elif body.excluded_markets is not None:
-        valid = {"CN", "HK", "US"}
+        valid = {"TW", "US"}
         acc.excluded_markets = [m for m in body.excluded_markets if m in valid]
 
     if body.initial_capital is not None and body.initial_capital > 0:

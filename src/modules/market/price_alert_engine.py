@@ -7,6 +7,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -125,6 +126,8 @@ class PriceAlertEngine:
             by_symbol = {str(r.get("symbol")): r for r in rows}
             for sym in symbols:
                 q = by_symbol.get(sym)
+                if market == MarketCode.TW and q and q.get("as_of") != datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat():
+                    continue  # 盤後價格不能當成今天的盤中即時報價發送警報
                 if q:
                     out[(market.value, sym)] = q
         return out
@@ -322,7 +325,9 @@ class PriceAlertEngine:
         now = _utc_now()
         db = SessionLocal()
         try:
-            query = db.query(PriceAlertRule).join(Stock).filter(PriceAlertRule.enabled == True)
+            query = db.query(PriceAlertRule).join(Stock).filter(
+                PriceAlertRule.enabled == True, Stock.market.in_(("TW", "US"))
+            )
             if only_rule_id:
                 query = query.filter(PriceAlertRule.id == only_rule_id)
             rules = query.all()

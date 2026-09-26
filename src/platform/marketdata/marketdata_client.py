@@ -41,7 +41,9 @@ class DbConfigProvider:
         )
         sources = []
         for row in rows:
-            # 腾讯美股接口在当前网络出口稳定返回 501；A/HK 仍保留腾讯作为主源。
+            if market_code == "TW" and row.provider not in ({"taiwan", "yfinance"} if datatype == "quote" else {"yahoo"} if datatype == "kline" else set()):
+                continue
+            # 騰訊美股介面在當前網路出口穩定返回 501；A/HK 仍保留騰訊作為主源。
             if (
                 datatype == "kline"
                 and market_code == "US"
@@ -98,6 +100,7 @@ def _quote_to_row(q: Quote) -> dict:
         "pe_ratio": q.pe_ratio,
         "circulating_market_value": q.circulating_market_value,
         "total_market_value": q.total_market_value,
+        "as_of": q.timestamp.date().isoformat() if q.market == "TW" else None,
     }
 
 

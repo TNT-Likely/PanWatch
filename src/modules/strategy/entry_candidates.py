@@ -131,9 +131,9 @@ def _safe_float(value) -> float | None:
 
 def _to_market(value: str | None) -> MarketCode:
     try:
-        return MarketCode((value or "CN").strip().upper())
+        return MarketCode((value or "TW").strip().upper())
     except Exception:
-        return MarketCode.CN
+        return MarketCode.TW
 
 
 def _resolve_market_scan_proxy() -> str | None:
@@ -981,7 +981,7 @@ def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
     safe_limit = max(20, int(limit_per_market))
     min_required = min(max(12, int(safe_limit * 0.55)), safe_limit)
 
-    for market in ("CN", "HK", "US"):
+    for market in ("TW", "US"):
         try:
             turnover = _run_async(
                 collector.fetch_hot_stocks(
@@ -1102,7 +1102,7 @@ def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
                 )
 
     # Final per-market cap and stable ordering.
-    for market in ("CN", "HK", "US"):
+    for market in ("TW", "US"):
         keys = [k for k in result.keys() if k.startswith(f"{market}:")]
         if len(keys) <= safe_limit:
             continue

@@ -89,25 +89,25 @@ class TestKlineSourceTestPath(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_default_kline_symbols_cover_each_market_twice(self):
-        """默认 K 线测试样本应覆盖 A/HK/US,每个市场两个代码。"""
+        """預設 K 線測試樣本應覆蓋 TW/US,每個市場兩個程式碼。"""
         from src.modules.market.data_collector import DEFAULT_TEST_SYMBOLS_BY_MARKET, DEFAULT_TEST_SYMBOLS
 
-        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["CN"], ("600519", "601127"))
-        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["HK"], ("00700", "00386"))
+        self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["TW"], ("2330", "6488"))
         self.assertEqual(DEFAULT_TEST_SYMBOLS_BY_MARKET["US"], ("AAPL", "NVDA"))
-        self.assertEqual(DEFAULT_TEST_SYMBOLS, ("600519", "601127", "00700", "00386", "AAPL", "NVDA"))
+        self.assertEqual(DEFAULT_TEST_SYMBOLS, ("2330", "6488", "AAPL", "NVDA"))
 
     def test_all_symbol_based_seed_tests_use_balanced_defaults(self):
-        """所有带股票代码的内置数据源测试都应使用三市场各两条默认样本。"""
+        """內建資料來源使用台美預設樣本；台股專屬來源只測台股。"""
         from server import DATA_SOURCE_SEEDS
         from src.modules.market.data_collector import DEFAULT_TEST_SYMBOLS
 
         for seed in DATA_SOURCE_SEEDS:
             if seed["test_symbols"]:
-                self.assertEqual(seed["test_symbols"], list(DEFAULT_TEST_SYMBOLS), seed["name"])
+                expected = ["2330", "6488"] if seed["provider"] == "taiwan" or (seed["provider"] == "yahoo" and seed["type"] == "kline" and seed["test_symbols"] == ["2330", "6488"]) else list(DEFAULT_TEST_SYMBOLS)
+                self.assertEqual(seed["test_symbols"], expected, seed["name"])
 
     async def test_empty_symbols_report_effective_defaults(self):
-        """未配置 test_symbols 时,测试结果应返回实际使用的六个默认代码。"""
+        """未配置 test_symbols 時,測試結果應返回台美四個預設程式碼。"""
         fixed_bar = Bar(
             date="2026-07-16", open=1.1, close=1.2, high=1.3, low=1.0, volume=110.0
         )
@@ -119,7 +119,7 @@ class TestKlineSourceTestPath(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             result.test_symbols,
-            ["600519", "601127", "00700", "00386", "AAPL", "NVDA"],
+            ["2330", "6488", "AAPL", "NVDA"],
         )
 
     async def test_success_returns_items_and_count(self):

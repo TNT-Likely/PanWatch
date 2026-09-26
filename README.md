@@ -1,6 +1,6 @@
 # 盯盘侠 PanWatch
 
-**自托管 AI 盯盘助手 · 集成 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投资决策** — A 股 / 港股 / 美股实时监控、持仓管理、智能分析、全渠道推送
+**自託管 AI 投研助手 · 整合 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投資決策** — 台股 / 美股行情、持倉管理、智慧分析與通知
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -75,9 +75,10 @@
 <details>
 <summary><b>多市场 & 多账户</b></summary>
 
-- **覆盖市场**：A 股、港股、美股实时行情
-- **账户管理**：支持多券商账户独立管理，汇总展示总资产
-- **交易风格**：按短线/波段/长线分别设置，AI 建议更精准
+- **覆蓋市場**：台股與美股。台股行情採證交所、櫃買中心最新盤後資料；歷史日 K 線採 Yahoo，盤中自動監測暫停。
+- **彙總幣別**：持倉與總資產以新台幣顯示，美股按 USD/TWD 匯率換算。
+- **賬戶管理**：支援多券商賬戶獨立管理，彙總展示總資產
+- **交易風格**：按短線/波段/長線分別設定，AI 建議更精準
 
 </details>
 

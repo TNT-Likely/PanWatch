@@ -139,7 +139,7 @@ async def fetch_realtime_context(symbol: str, market: str) -> str:
         from src.platform.marketdata.marketdata_client import md_quote_rows
         from src.platform.marketdata.models import MarketCode
 
-        code = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
+        code = MarketCode(market) if market in ("TW", "US") else MarketCode.TW
         rows = await asyncio.to_thread(md_quote_rows, [symbol], code.value)
         if not rows:
             return ""

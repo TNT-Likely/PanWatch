@@ -67,8 +67,8 @@ def _pick_num(mapping: dict, keys: list[str]) -> float | None:
 
 
 def _normalize_market(market: str) -> str:
-    m = (market or "CN").strip().upper()
-    return m if m in ("CN", "HK", "US") else "CN"
+    m = (market or "TW").strip().upper()
+    return m if m in ("TW", "US") else "TW"
 
 
 def _latest_snapshot_stocks(db: Session, market: str, limit: int = 120) -> list[dict]:
@@ -117,6 +117,25 @@ async def _hot_stocks_live_or_snapshot(
     limit: int,
 ) -> list[dict]:
     mkt = _normalize_market(market)
+    if mkt == "TW":
+        from marketdata.vendors.taiwan import taiwan_snapshot
+        import asyncio
+
+        rows = await asyncio.to_thread(taiwan_snapshot)
+        items = []
+        for row in rows:
+            price, prev = row["price"], row["prev_close"]
+            if price is None or price <= 0:
+                continue
+            items.append({
+                "symbol": row["symbol"], "market": "TW", "name": row["name"],
+                "price": price,
+                "change_pct": (price - prev) / prev * 100 if prev else None,
+                "turnover": row["turnover"], "volume": row["volume"],
+                "as_of": row["date"],
+            })
+        field = "turnover" if mode == "turnover" else "change_pct"
+        return sorted(items, key=lambda item: item[field] if item[field] is not None else float("-inf"), reverse=True)[:limit]
     try:
         items = await collector.fetch_hot_stocks(market=mkt, mode=mode, limit=limit)
         data = [
@@ -188,7 +207,7 @@ def _build_synthetic_boards(
             "turnover": _sum([_to_number(x.get("turnover")) for x in top]),
         }
 
-    market_name = {"CN": "A股", "HK": "港股", "US": "美股"}.get(mkt, mkt)
+    market_name = {"TW": "台股", "US": "美股"}.get(mkt, mkt)
     buckets = [
         build_bucket("GAINERS", f"{market_name}涨幅领先", gainers),
         build_bucket("TURNOVER", f"{market_name}成交额领先", turnover),
@@ -226,7 +245,7 @@ def _stocks_by_synthetic_board(
 
 @router.get("/stocks")
 async def get_hot_stocks(
-    market: str = "CN",
+    market: str = "TW",
     mode: str = "turnover",
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -265,7 +284,7 @@ async def get_hot_stocks(
 
 @router.get("/boards")
 async def get_hot_boards(
-    market: str = "CN",
+    market: str = "TW",
     mode: str = "gainers",
     limit: int = 12,
     db: Session = Depends(get_db),
@@ -333,7 +352,7 @@ async def get_board_stocks(
     board_code: str,
     mode: str = "gainers",
     limit: int = 20,
-    market: str = "CN",
+    market: str = "TW",
     db: Session = Depends(get_db),
 ):
     """Top stocks in a board."""
@@ -352,7 +371,7 @@ async def get_board_stocks(
     if cached is not None:
         return cached
 
-    if code.startswith(("CN_", "HK_", "US_")):
+    if code.startswith(("TW_", "US_")):
         proxy = _resolve_proxy() or None
         collector = EastMoneyDiscoveryCollector(proxy=proxy)
         market_from_code = code.split("_", 1)[0]

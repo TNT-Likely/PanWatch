@@ -102,7 +102,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
  */
 export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkShareCardProps) {
   const days = bench.days ?? 60
-  const benchLabel = bench.benchmark_label || '沪深300'
+  const benchLabel = bench.benchmark_label || '台灣加權指數'
   const excess = bench.excess_return
   const heroColor = signColor(excess)
   const curve = (bench.curve || []).filter((p) => isFinite(p.portfolio) && isFinite(p.benchmark))

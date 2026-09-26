@@ -46,7 +46,7 @@ def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | No
     """Validate the small symbol contract shared by all market tools."""
     symbol = str(arguments.get("symbol") or "").strip().upper()
     try:
-        market = MarketCode(str(arguments.get("market") or "CN").strip().upper())
+        market = MarketCode(str(arguments.get("market") or "TW").strip().upper())
     except ValueError:
         return None
     return (symbol, market) if symbol else None
@@ -98,7 +98,7 @@ def _json_safe(value: object) -> object:
 
 
 def _market_argument(arguments: dict[str, Any]) -> MarketCode | None:
-    raw = str(arguments.get("market") or "CN").strip().upper()
+    raw = str(arguments.get("market") or "TW").strip().upper()
     try:
         return MarketCode(raw)
     except ValueError:
@@ -155,7 +155,7 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
     quote = source_meta.get("quote") if isinstance(source_meta.get("quote"), dict) else {}
     return {
         "symbol": str(item.get("stock_symbol") or ""),
-        "market": str(item.get("stock_market") or "CN"),
+        "market": str(item.get("stock_market") or "TW"),
         "name": str(item.get("stock_name") or item.get("stock_symbol") or ""),
         "score": item.get("rank_score", item.get("score")),
         "action": item.get("action_label") or item.get("action") or "观望",
@@ -199,7 +199,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 error_code="candidate_filter_invalid",
             )
         if (
-            (market and market not in {"CN", "HK", "US"})
+            (market and market not in {"TW", "US"})
             or holding not in {"all", "held", "unheld"}
             or (risk_level and risk_level not in {"all", "low", "medium", "high"})
             or not 0 <= min_score <= 100
@@ -905,8 +905,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "default": "CN",
-                        "description": "市场代码",
+                        "default": "TW",
+                        "description": "市場程式碼",
                     },
                 },
             },
@@ -924,8 +924,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "description": "可选市场代码；不填表示全部市场",
+                        "enum": ["TW", "US"],
+                        "description": "可選市場程式碼；不填表示全部市場",
                     },
                     "holding": {
                         "type": "string",
@@ -974,8 +974,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "default": "CN",
-                        "description": "市场代码",
+                        "default": "TW",
+                        "description": "市場程式碼",
                     },
                 },
             },
@@ -998,8 +998,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "default": "CN",
-                        "description": "市场代码",
+                        "default": "TW",
+                        "description": "市場程式碼",
                     },
                     "limit": {
                         "type": "integer",
@@ -1025,8 +1025,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     "query": {"type": "string", "description": "股票代码或名称"},
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "description": "可选市场代码；不填表示全部市场",
+                        "enum": ["TW", "US"],
+                        "description": "可選市場程式碼；不填表示全部市場",
                     },
                     "limit": {
                         "type": "integer",
@@ -1060,8 +1060,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "default": "CN",
+                        "enum": ["TW", "US"],
+                        "default": "TW",
                     },
                     "mode": {
                         "type": "string",
@@ -1090,8 +1090,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "default": "CN",
+                        "enum": ["TW", "US"],
+                        "default": "TW",
                     },
                     "mode": {
                         "type": "string",
@@ -1146,8 +1146,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "type": "object",
                 "required": ["symbol"],
                 "properties": {
-                    "symbol": {"type": "string", "description": "股票代码，例如 600519"},
-                    "market": {"type": "string", "default": "CN"},
+                    "symbol": {"type": "string", "description": "股票程式碼，例如 600519"},
+                    "market": {"type": "string", "default": "TW"},
                 },
             },
         ),
@@ -1163,8 +1163,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "type": "object",
                 "required": ["symbol"],
                 "properties": {
-                    "symbol": {"type": "string", "description": "股票代码，例如 600519"},
-                    "market": {"type": "string", "default": "CN"},
+                    "symbol": {"type": "string", "description": "股票程式碼，例如 600519"},
+                    "market": {"type": "string", "default": "TW"},
                 },
             },
         ),
@@ -1184,7 +1184,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                         "type": "string",
                         "description": "交易日期，格式 YYYY-MM-DD",
                     },
-                    "market": {"type": "string", "default": "CN"},
+                    "market": {"type": "string", "default": "TW"},
                 },
             },
         ),
@@ -1205,8 +1205,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "description": "可选市场代码",
+                        "enum": ["TW", "US"],
+                        "description": "可選市場程式碼",
                     },
                     "enabled": {
                         "type": "boolean",
@@ -1314,8 +1314,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "default": "CN",
-                        "description": "市场代码",
+                        "default": "TW",
+                        "description": "市場程式碼",
                     },
                     "direction": {
                         "type": "string",

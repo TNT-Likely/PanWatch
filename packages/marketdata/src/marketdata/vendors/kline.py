@@ -217,24 +217,30 @@ class YahooKlineVendor(KlineVendor):
     """Yahoo chart v8 日K,零 crumb / 零 cookie(crumb 只有 quoteSummary 基本面才需要)。"""
 
     name = "yahoo"
-    supports_markets = {"US", "HK"}
+    supports_markets = {"US", "HK", "TW"}
 
     def fetch(self, symbols: list[Symbol], config: dict) -> list[Bar]:
         if not symbols:
             return []
         sym = symbols[0]
-        if sym.market not in (Market.US, Market.HK):
+        if sym.market not in (Market.US, Market.HK, Market.TW):
             return []
         days = _days(config)
-        ysym = sym.to_yfinance()
         proxy = config.get("proxy")
-        payload = market_get(
-            _YAHOO_CHART_URL.format(sym=ysym), host_key="query2.finance.yahoo.com",
-            params={"interval": "1d", "range": _yahoo_range(days)},
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
-            timeout=10, retries=2, parse="json", proxy=proxy,
-            log_label="Yahoo K线", symbol=ysym,
-        )
+        candidates = [sym.to_yfinance()]
+        if sym.market == Market.TW and sym.code.upper() != "TAIEX":
+            candidates.append(f"{sym.code}.TWO")
+        payload = None
+        for ysym in candidates:
+            payload = market_get(
+                _YAHOO_CHART_URL.format(sym=ysym), host_key="query2.finance.yahoo.com",
+                params={"interval": "1d", "range": _yahoo_range(days)},
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
+                timeout=10, retries=2, parse="json", proxy=proxy,
+                log_label="Yahoo K线", symbol=ysym,
+            )
+            if isinstance(payload, dict) and ((payload.get("chart") or {}).get("result")):
+                break
         if not isinstance(payload, dict):
             return []
         try:
@@ -262,7 +268,8 @@ class YahooKlineVendor(KlineVendor):
                 c = closes[i] if i < len(closes) else None
                 if o is None or h is None or low is None or c is None:
                     continue
-                if adjcloses is not None and i < len(adjcloses) and adjcloses[i] is not None:
+                # 台股指標使用一致的未調整 OHLC；舊市場行為保持相容。
+                if sym.market != Market.TW and adjcloses is not None and i < len(adjcloses) and adjcloses[i] is not None:
                     c = adjcloses[i]
                 v = volumes[i] if i < len(volumes) and volumes[i] is not None else 0
                 date = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")

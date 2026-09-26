@@ -231,9 +231,9 @@ def _safe_float(value) -> float | None:
 
 def _to_market(value: str | None) -> MarketCode:
     try:
-        return MarketCode((value or "CN").strip().upper())
+        return MarketCode((value or "TW").strip().upper())
     except Exception:
-        return MarketCode.CN
+        return MarketCode.TW
 
 
 def _parse_day(value: str | None) -> date | None:
@@ -1789,7 +1789,7 @@ def rebalance_strategy_weights(
             default_weight = float(c.get("default_weight", 1.0))
             all_metrics = by_all.get(code, {"sample_size": 0, "wins": 0, "avg_return_pct": 0.0})
             targets.append((code, "ALL", {"default_weight": default_weight, **all_metrics}))
-            for market in ("CN", "HK", "US"):
+            for market in ("TW", "US"):
                 metrics = by_pair.get((code, market), {"sample_size": 0, "wins": 0, "avg_return_pct": 0.0})
                 targets.append((code, market, {"default_weight": default_weight, **metrics}))
 

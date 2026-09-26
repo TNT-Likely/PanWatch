@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -59,6 +60,18 @@ class DailyReportAgent(BaseAgent):
         直接走 marketdata 新包(index_quotes)。
         与旧 _get_cn_index 口径一致：仅 CN 出数，其余市场返回空 list。
         """
+        if market_code == MarketCode.TW:
+            from src.platform.marketdata.taiwan_index import twse_index as _twse_index
+
+            item = await asyncio.to_thread(_twse_index)
+            if not item:
+                return []
+            return [IndexData(
+                symbol=item["symbol"], name=item["name"], market=MarketCode.TW,
+                current_price=item["current_price"], change_pct=item["change_pct"],
+                change_amount=item["change_amount"], volume=0, turnover=0,
+                timestamp=datetime.now(),
+            )]
         if market_code != MarketCode.CN:
             return []
         items = get_market_data().index_quotes(_CN_INDEX_TENCENT_SYMBOLS)

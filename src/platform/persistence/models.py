@@ -68,8 +68,9 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)  # 账户名称，如 "招商证券"、"华泰证券"
-    available_funds = Column(Float, default=0)  # 可用资金
+    name = Column(String, nullable=False)  # 賬戶名稱，如 "招商證券"、"華泰證券"
+    available_funds = Column(Float, default=0)  # 可用資金
+    cash_currency = Column(String, default="TWD", server_default="TWD")
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -85,8 +86,8 @@ class Stock(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
-    market = Column(String, nullable=False)  # CN / HK / US
-    # 以下字段已废弃，持仓信息移至 Position 表
+    market = Column(String, nullable=False)  # TW / US；歷史 CN / HK 資料仍可讀
+    # 以下欄位已廢棄，持倉資訊移至 Position 表
     cost_price = Column(Float, nullable=True)
     quantity = Column(Integer, nullable=True)
     invested_amount = Column(Float, nullable=True)

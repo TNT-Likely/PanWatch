@@ -593,9 +593,9 @@ def export_tradingagents_analysis_pdf(
 
 @router.get("/tradingagents/history-comparison")
 def get_tradingagents_history_comparison(
-    stock_symbol: str = Query(..., description="股票代码,如 300418"),
-    market: str = Query("CN", description="市场:CN/US/HK"),
-    days: int = Query(90, ge=7, le=365, description="回溯天数"),
+    stock_symbol: str = Query(..., description="股票程式碼,如 300418"),
+    market: str = Query("TW", description="市場:TW/US"),
+    days: int = Query(90, ge=7, le=365, description="回溯天數"),
 ):
     """某只股票的 TradingAgents 历史决策 vs 实际涨跌对比。
 

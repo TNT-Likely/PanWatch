@@ -71,15 +71,15 @@ interface Position {
   invested_amount: number | null
   trading_style: string  // short: 短线, swing: 波段, long: 长线
   current_price: number | null
-  current_price_cny: number | null  // 人民币价格（港股换算后）
+  current_price_cny: number | null  // 舊欄位名，現為新台幣換算值
   change_pct: number | null
   market_value: number | null
-  market_value_cny: number | null  // 人民币市值
+  market_value_cny: number | null  // 舊欄位名，現為新台幣換算值
   pnl: number | null
   pnl_pct: number | null
   daily_pnl: number | null
   daily_pnl_pct: number | null
-  exchange_rate: number | null  // 汇率（仅港股）
+  exchange_rate: number | null  // 匯率（美股換算台幣）
 }
 
 interface AccountSummary {
@@ -107,8 +107,7 @@ interface PortfolioSummary {
     total_assets: number
   }
   exchange_rates?: {
-    HKD_CNY: number
-    USD_CNY?: number
+    USD_TWD: number
   }
   quotes?: Record<string, { current_price: number | null; change_pct: number | null }>
 }
@@ -226,7 +225,7 @@ interface PriceAlertRuleSummary {
   enabled: boolean
 }
 
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
+const emptyStockForm: StockForm = { symbol: '', name: '', market: 'TW' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
@@ -260,7 +259,7 @@ const toQuoteMap = (rows: QuoteResponse[]): Record<string, { current_price: numb
 const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, { total: number; enabled: number }> => {
   const map: Record<string, { total: number; enabled: number }> = {}
   for (const row of rows || []) {
-    const key = `${String(row.market || 'CN').toUpperCase()}:${String(row.stock_symbol || '').toUpperCase()}`
+    const key = `${String(row.market || 'TW').toUpperCase()}:${String(row.stock_symbol || '').toUpperCase()}`
     if (!map[key]) map[key] = { total: 0, enabled: 0 }
     map[key].total += 1
     if (row.enabled) map[key].enabled += 1
@@ -276,8 +275,7 @@ const mergePortfolioQuotes = (
 ): PortfolioSummary | null => {
   if (!portfolio) return null
 
-  const hkdRate = portfolio.exchange_rates?.HKD_CNY ?? 0.92
-  const usdRate = portfolio.exchange_rates?.USD_CNY ?? 7.25
+  const usdRate = portfolio.exchange_rates?.USD_TWD ?? 0
 
   let grandMarketValue = 0
   let grandCost = 0
@@ -293,7 +291,7 @@ const mergePortfolioQuotes = (
       const quote = quotes[`${pos.market}:${pos.symbol}`]
       const current_price = quote?.current_price ?? pos.current_price ?? null
       const change_pct = quote?.change_pct ?? pos.change_pct ?? null
-      const rate = pos.market === 'HK' ? hkdRate : pos.market === 'US' ? usdRate : 1
+      const rate = pos.market === 'US' ? usdRate : 1
 
       const cost = pos.cost_price * pos.quantity * rate
       accCost += cost
@@ -333,7 +331,7 @@ const mergePortfolioQuotes = (
         pnl_pct,
         daily_pnl,
         daily_pnl_pct,
-        exchange_rate: pos.market === 'HK' || pos.market === 'US' ? rate : null,
+        exchange_rate: pos.market === 'US' ? rate : null,
       }
     })
 
@@ -425,13 +423,13 @@ export default function StocksPage() {
   // Kline Dialog
   const [klineDialogOpen, setKlineDialogOpen] = useState(false)
   const [klineDialogSymbol, setKlineDialogSymbol] = useState('')
-  const [klineDialogMarket, setKlineDialogMarket] = useState('CN')
+  const [klineDialogMarket, setKlineDialogMarket] = useState('TW')
   const [klineDialogName, setKlineDialogName] = useState<string | undefined>(undefined)
   const [klineDialogHasPosition, setKlineDialogHasPosition] = useState<boolean>(false)
   const [klineDialogInitialSummary, setKlineDialogInitialSummary] = useState<KlineSummary | null>(null)
   const [insightOpen, setInsightOpen] = useState(false)
   const [insightSymbol, setInsightSymbol] = useState('')
-  const [insightMarket, setInsightMarket] = useState('CN')
+  const [insightMarket, setInsightMarket] = useState('TW')
   const [insightName, setInsightName] = useState<string | undefined>(undefined)
   const [insightHasPosition, setInsightHasPosition] = useState(false)
 
@@ -460,7 +458,7 @@ export default function StocksPage() {
 
   // Position form
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
-  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
+  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'TW' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
   const [positionSearchQuery, setPositionSearchQuery] = useState('')
@@ -491,7 +489,7 @@ export default function StocksPage() {
   const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
 
   // Stock list filter
-  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'TW' = 台股, 'US' = 美股
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
   // Remove watchlist modal
@@ -854,10 +852,10 @@ export default function StocksPage() {
 
   const openKlineDialog = useCallback((symbol: string, market: string, name?: string, hasPosition?: boolean) => {
     setKlineDialogSymbol(symbol)
-    setKlineDialogMarket(market || 'CN')
+    setKlineDialogMarket(market || 'TW')
     setKlineDialogName(name)
     setKlineDialogHasPosition(!!hasPosition)
-    const m = market || 'CN'
+    const m = market || 'TW'
     setKlineDialogInitialSummary(klineSummaries[`${m}:${symbol}`] || null)
     setKlineDialogOpen(true)
   }, [klineSummaries])
@@ -871,7 +869,7 @@ export default function StocksPage() {
 
   const openStockDetail = useCallback((stockSymbol: string, stockMarket: string, stockName?: string, hasPosition?: boolean) => {
     setInsightSymbol(stockSymbol)
-    setInsightMarket(stockMarket || 'CN')
+    setInsightMarket(stockMarket || 'TW')
     setInsightName(stockName)
     setInsightHasPosition(!!hasPosition)
     setInsightOpen(true)
@@ -1185,7 +1183,7 @@ export default function StocksPage() {
         trading_style: '',
         stock_symbol: '',
         stock_name: '',
-        stock_market: 'CN',
+        stock_market: 'TW',
       })
       setEditPositionId(null)
     }
@@ -1404,13 +1402,13 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? 'A股' : m === 'HK' ? '港股' : m === 'US' ? '美股' : m
+  const marketLabel = (m: string) => m === 'TW' ? '台股' : m === 'US' ? '美股' : m
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
-    if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: '港' }
+    if (m === 'TW') return { style: 'bg-blue-500/10 text-blue-600', label: '台' }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: '美' }
-    return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
+    return { style: 'bg-muted text-muted-foreground', label: m }
   }
 
   // 保留原始精度显示价格（不强制截断小数位）
@@ -1426,21 +1424,21 @@ export default function StocksPage() {
   }
 
   const getPriceAlertSummary = (symbol: string, market: string) => {
-    const key = `${String(market || 'CN').toUpperCase()}:${String(symbol || '').toUpperCase()}`
+    const key = `${String(market || 'TW').toUpperCase()}:${String(symbol || '').toUpperCase()}`
     return priceAlertSummaryMap[key] || { total: 0, enabled: 0 }
   }
 
   // 获取股票的建议信息（优先使用建议池，包含来源和时间信息）
   const getSuggestionForStock = (symbol: string, market: string, hasPosition?: boolean): { suggestion: SuggestionInfo | null; kline: KlineSummary | null } => {
-    const key = `${market || 'CN'}:${symbol}`
-    // 优先使用建议池的建议（包含来源和时间信息）
+    const key = `${market || 'TW'}:${symbol}`
+    // 優先使用建議池的建議（包含來源和時間資訊）
     const poolSug =
       poolSuggestions[key] ||
       (() => {
         const fallback = poolSuggestions[symbol]
         if (!fallback) return null
         const fm = String(fallback.stock_market || '').toUpperCase()
-        return fm && fm !== String(market || 'CN').toUpperCase() ? null : fallback
+        return fm && fm !== String(market || 'TW').toUpperCase() ? null : fallback
       })()
     if (poolSug) {
       const preloadedKline = klineSummaries[key] || (suggestions[symbol]?.kline as any) || null
@@ -1562,6 +1560,7 @@ export default function StocksPage() {
     <div>
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
+        <p className="text-[11px] text-muted-foreground">台股價格使用證交所／櫃買中心最新盤後資料，並非盤中即時報價；美股報價依已啟用的資料來源。</p>
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-[18px] md:text-[22px] font-bold text-foreground tracking-tight shrink-0">持仓</h1>
           {/* Desktop buttons + controls */}
@@ -1835,8 +1834,7 @@ export default function StocksPage() {
                 <div className="flex items-center gap-1">
                   {[
                     { value: '', label: '全部' },
-                    { value: 'CN', label: 'A股' },
-                    { value: 'HK', label: '港股' },
+                    { value: 'TW', label: '台股' },
                     { value: 'US', label: '美股' },
                   ].map(opt => (
                     <button
@@ -1877,7 +1875,7 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={searchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : searchMarket === 'US' ? '代码或名称，如 AAPL 或 苹果' : '代码或名称，如 600519 或 茅台'}
+                  placeholder={searchMarket === 'US' ? '程式碼或名稱，如 AAPL 或 Apple' : '程式碼或名稱，如 2330 或 台積電'}
                   className="pl-10"
                   autoComplete="off"
                 />
@@ -2012,7 +2010,7 @@ export default function StocksPage() {
                             {account.positions.map((pos, i) => {
                               const stock = stocks.find(s => s.id === pos.stock_id)
                               const badge = marketBadge(pos.market)
-                              const isForeign = pos.market === 'HK' || pos.market === 'US'
+                              const isForeign = pos.market === 'US'
                               const changeColor = pos.change_pct != null
                                 ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
                                 : 'text-muted-foreground'
@@ -2080,7 +2078,7 @@ export default function StocksPage() {
                                     })()}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
+                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)} {isForeign ? 'USD' : 'TWD'}</span> : '—'}
                                   </td>
                                   <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
@@ -2092,7 +2090,7 @@ export default function StocksPage() {
                                       <div className="flex flex-col items-end">
                                         {isForeign ? (
                                           <>
-                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
+                                            <span>{formatMoney(pos.market_value)} USD</span>
                                             {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">≈{formatMoney(pos.market_value_cny)}</span>}
                                           </>
                                         ) : <span>{formatMoney(pos.market_value)}</span>}
@@ -2103,7 +2101,7 @@ export default function StocksPage() {
                                     {pos.pnl != null ? (
                                       <div className="flex flex-col items-end">
                                         <span>{pos.pnl >= 0 ? '+' : ''}{formatMoney(pos.pnl)}</span>
-                                        <span className="text-[10px] opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' CNY'}</span>
+                                        <span className="text-[10px] opacity-70">{pos.pnl_pct != null ? `${pos.pnl_pct >= 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%` : ''}{isForeign && ' TWD'}</span>
                                       </div>
                                     ) : '—'}
                                   </td>
@@ -2360,8 +2358,7 @@ export default function StocksPage() {
             <div className="flex items-center gap-1">
               {[
                 { value: '', label: '全部', count: stocks.length },
-                { value: 'CN', label: 'A股', count: stocks.filter(s => s.market === 'CN').length },
-                { value: 'HK', label: '港股', count: stocks.filter(s => s.market === 'HK').length },
+                { value: 'TW', label: '台股', count: stocks.filter(s => s.market === 'TW').length },
                 { value: 'US', label: '美股', count: stocks.filter(s => s.market === 'US').length },
               ].map(opt => (
                 <button
@@ -2659,11 +2656,11 @@ export default function StocksPage() {
               <Input
                 value={accountForm.name}
                 onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
-                placeholder="如：招商证券、华泰证券"
+                placeholder="如：台股帳戶、美股帳戶"
               />
             </div>
             <div>
-              <Label>可用资金（元）</Label>
+              <Label>可用資金（新台幣）</Label>
               <Input
                 value={accountForm.available_funds}
                 onChange={e => setAccountForm({ ...accountForm, available_funds: e.target.value })}
@@ -2718,8 +2715,7 @@ export default function StocksPage() {
                   <div className="flex items-center gap-1">
                     {[
                       { value: '', label: '全部' },
-                      { value: 'CN', label: 'A股' },
-                      { value: 'HK', label: '港股' },
+                      { value: 'TW', label: '台股' },
                       { value: 'US', label: '美股' },
                     ].map(opt => (
                       <button
@@ -2743,7 +2739,7 @@ export default function StocksPage() {
                     value={positionSearchQuery}
                     onChange={e => handlePositionSearchInput(e.target.value)}
                     onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={positionSearchMarket === 'HK' ? '代码或名称，如 00700 或 腾讯' : positionSearchMarket === 'US' ? '代码或名称，如 LI 或 理想汽车' : positionSearchMarket === 'CN' ? '代码或名称，如 600519 或 茅台' : '代码或名称，如 600519 / 00700 / AAPL'}
+                    placeholder={positionSearchMarket === 'US' ? '程式碼或名稱，如 AAPL 或 Apple' : '程式碼或名稱，如 2330 或 台積電'}
                     className="pl-9"
                     autoComplete="off"
                   />

@@ -22,6 +22,7 @@ export interface HotStockItem {
   change_pct: number | null
   turnover: number | null
   volume?: number | null
+  as_of?: string
 }
 
 export interface HotBoardItem {
@@ -33,7 +34,7 @@ export interface HotBoardItem {
 
 export const discoveryApi = {
   listHotStocks: (params?: {
-    market?: 'CN' | 'HK' | 'US'
+    market?: 'TW' | 'US'
     mode?: 'turnover' | 'gainers' | 'for_you'
     limit?: number
   }) =>
@@ -46,7 +47,7 @@ export const discoveryApi = {
     ),
 
   listHotBoards: (params?: {
-    market?: 'CN' | 'HK' | 'US'
+    market?: 'TW' | 'US'
     mode?: 'gainers' | 'turnover' | 'hot'
     limit?: number
   }) =>

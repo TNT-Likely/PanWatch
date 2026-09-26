@@ -47,10 +47,9 @@ const SECTION_ICON: Record<string, LucideIcon> = {
 /** 二级目录显示开关的 localStorage 键(记住用户选择) */
 const TOC_SUB_KEY = 'panwatch_toc_show_sub'
 
-/** 从代码粗略推断市场:6 位数字=A股, 5 位数字=港股, 其余=美股 */
+/** 台股以數字代碼、美股以字母代碼區分。 */
 function inferMarket(symbol: string): string {
-  if (/^\d{6}$/.test(symbol)) return 'CN'
-  if (/^\d{5}$/.test(symbol)) return 'HK'
+  if (/^\d{4,6}$/.test(symbol)) return 'TW'
   return 'US'
 }
 

@@ -74,7 +74,7 @@ def test_get_all_factor_weights_lists_all_markets():
         items = get_all_factor_weights(db=db)
         assert len(items) == len(CALIBRATABLE_FACTORS) * len(MARKETS)
         keys = {(i["factor_code"], i["market"]) for i in items}
-        assert ("alpha_score", "CN") in keys
+        assert ("alpha_score", "TW") in keys
         sample = items[0]
         assert {"weight", "is_pinned", "auto_calibrate"} <= set(sample)
     finally:
@@ -88,11 +88,11 @@ def test_set_factor_weight_manual_writes_history():
 
     db = _mem_db()
     try:
-        res = set_factor_weight("alpha_score", "CN", weight=1.3, is_pinned=True, db=db)
+        res = set_factor_weight("alpha_score", "TW", weight=1.3, is_pinned=True, db=db)
         assert res["weight"] == 1.3
         assert res["is_pinned"] is True
         hist = (db.query(FactorWeightHistory)
-                .filter_by(factor_code="alpha_score", market="CN", reason="manual").all())
+                .filter_by(factor_code="alpha_score", market="TW", reason="manual").all())
         assert len(hist) == 1
         assert hist[0].new_weight == 1.3
     finally:
