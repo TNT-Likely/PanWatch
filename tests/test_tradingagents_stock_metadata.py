@@ -62,7 +62,7 @@ def test_stock_meta_header_from_cache():
         header = _stock_meta_header("601127")
     assert "赛力斯" in header
     assert "601127" in header
-    assert "中国 A 股" in header
+    assert "中國 A 股" in header
     assert "83.26" in header
     assert "汽车" in header
     assert "DO NOT guess" in header
