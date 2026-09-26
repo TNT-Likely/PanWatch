@@ -735,6 +735,58 @@ class TestPortfolioContext(unittest.TestCase):
         self.assertIsInstance(captured["portfolio"], PortfolioContext)
         self.assertEqual(captured["portfolio"].positions[0].ticker, "600519")
 
+    def test_run_tradingagents_sync_legacy_graph_without_portfolio(self):
+        """兼容旧版 TradingAgents: propagate 签名无 portfolio 参数时平滑降级,不传该关键字且不报错。"""
+        from contextlib import nullcontext
+        from unittest.mock import MagicMock, patch
+        from tradingagents.graph import trading_graph
+        from src.modules.automation.tradingagents import agent as agent_module
+        from src.modules.automation.tradingagents.agent import TradingAgentsAgent
+
+        captured = {}
+
+        class LegacyFakeGraph:
+            def __init__(self, **kwargs):
+                self.propagator = None
+                self.total_cost = 0.01
+
+            def propagate(self, company_name, trade_date, asset_type="stock"):
+                captured.update({
+                    "company_name": company_name,
+                    "trade_date": trade_date,
+                    "asset_type": asset_type,
+                })
+                return {"final_trade_decision": "**Rating**: Buy"}, "BUY"
+
+        agent = TradingAgentsAgent()
+        ai_client = MagicMock(api_key="key")
+        ta_config = {
+            "selected_analysts": ["market"],
+            "max_debate_rounds": 1,
+            "deep_think_llm": "test-model",
+        }
+        with (
+            patch.object(trading_graph, "TradingAgentsGraph", LegacyFakeGraph),
+            patch.object(agent_module, "apply_compat_patches"),
+            patch.object(agent_module, "inject_api_key_env"),
+            patch.object(agent_module, "patch_route_to_vendor", lambda: nullcontext()),
+            patch.object(agent_module, "panwatch_data_context", lambda *args, **kwargs: nullcontext()),
+        ):
+            result = agent._run_tradingagents_sync(
+                ai_client=ai_client,
+                symbol="600519",
+                market="CN",
+                ta_config=ta_config,
+                progress_handler=None,
+                panwatch_data={},
+                stock_metadata_context="",
+                portfolio=self._portfolio(),
+            )
+
+        self.assertEqual(result["decision"], "BUY")
+        self.assertEqual(captured["company_name"], "600519")
+        self.assertNotIn("portfolio", captured)
+
 
 class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
     async def test_collect_from_marketdata_package(self):
