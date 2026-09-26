@@ -1,3 +1,4 @@
+import { ConcentrationNotice } from '@/components/ConcentrationNotice'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
@@ -683,6 +684,7 @@ export default function DashboardPage() {
                     <div className="shrink-0 text-right">
                       <div className="font-mono text-[13px] text-foreground">{score.toFixed(0)}</div>
                       <div className="text-[9px] text-muted-foreground">评分</div>
+                      <ConcentrationNotice item={o} />
                       <div className="mt-1 h-[3px] w-10 rounded bg-accent/40">
                         <div className="h-[3px] rounded bg-primary/70" style={{ width: `${score}%` }} />
                       </div>

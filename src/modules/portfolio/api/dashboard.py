@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.platform.runtime.config import Settings
+from src.modules.portfolio.opportunity_risk import risk_adjusted_opportunities
 from src.modules.strategy.strategy_engine import get_strategy_stats, list_strategy_signals
 from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.persistence.database import get_db
@@ -169,7 +170,7 @@ def get_dashboard_overview(
         risk_level="all",
         include_payload=False,
     )
-    grouped_unheld = _group_signals(list(unheld.get("items") or []))
+    grouped_unheld = _group_signals(risk_adjusted_opportunities(list(unheld.get("items") or [])))
     executable = [
         x
         for x in grouped_unheld

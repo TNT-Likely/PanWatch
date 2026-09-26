@@ -1,3 +1,4 @@
+import { ConcentrationNotice } from '@/components/ConcentrationNotice'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
@@ -150,7 +151,7 @@ const shouldReplacePrimary = (next: StrategySignalItem, current: StrategySignalI
 const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
   const source = row.candidate_source || 'watchlist'
   const sourceLabel = row.candidate_source_label || (source === 'market_scan' ? '市场池' : source === 'mixed' ? '市场+关注' : '关注池')
-  const riskLevel: 'low' | 'medium' | 'high' = Number(row.score || 0) >= 85 ? 'high' : Number(row.score || 0) >= 70 ? 'medium' : 'low'
+  const riskLevel: 'low' | 'medium' | 'high' = Number(row.raw_score ?? row.score ?? 0) >= 85 ? 'high' : Number(row.raw_score ?? row.score ?? 0) >= 70 ? 'medium' : 'low'
   const riskLabel = riskLevel === 'high' ? '高风险' : riskLevel === 'low' ? '低风险' : '中风险'
   return {
     id: Number(row.id || 0),
@@ -167,6 +168,10 @@ const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
     source_pool_label: sourceLabel,
     score: Number(row.score || 0),
     rank_score: Number(row.score || 0),
+    raw_score: row.raw_score,
+    raw_rank_score: row.raw_score,
+    concentration_flag: row.concentration_flag,
+    concentration_note: row.concentration_note,
     confidence: row.confidence ?? null,
     status: row.status || 'inactive',
     action: row.action || 'watch',
@@ -743,6 +748,7 @@ export default function OpportunitiesPage() {
                     <div className={`text-[12px] font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
                       评分 {Math.round(item.rank_score || item.score || 0)}
                     </div>
+                    <ConcentrationNotice item={item} />
                     {item.ai_score != null && (
                       <div className="mt-1 flex items-center justify-end gap-1">
                         <span className="text-[10px] text-muted-foreground">AI</span>
