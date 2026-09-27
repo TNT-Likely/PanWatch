@@ -412,7 +412,9 @@ class AssistantService:
 
     def build_runtime(self, failover_client) -> AgentRuntime:
         """Compose host adapters into the business-agnostic PanAgent runtime."""
-        tools = build_panwatch_tool_registry(self._repository.session)
+        tools = build_panwatch_tool_registry(
+            self._repository.session, adanos_api_key=self._settings.adanos_api_key
+        )
         return AgentRuntime(
             FailoverModelAdapter(failover_client),
             tools,
@@ -427,7 +429,11 @@ class AssistantService:
                     ToolResearchPlugin(
                         ToolResearchService(
                             tools,
-                            descriptors=list(PANWATCH_TOOL_DESCRIPTORS),
+                            descriptors=[
+                                descriptor for descriptor in PANWATCH_TOOL_DESCRIPTORS
+                                if self._settings.adanos_api_key.strip()
+                                or descriptor.tool_name != "get_adanos_stock_sentiment"
+                            ],
                         ),
                         mode="active",
                     )
@@ -470,7 +476,7 @@ class AssistantService:
                 "confirmation_required": tool.confirmation_required,
             }
             for tool in build_panwatch_tool_registry(
-                self._repository.session
+                self._repository.session, adanos_api_key=self._settings.adanos_api_key
             ).registered_tools()
         ]
         return {
@@ -502,7 +508,7 @@ class AssistantService:
             registered = {
                 tool.name: tool
                 for tool in build_panwatch_tool_registry(
-                    self._repository.session
+                    self._repository.session, adanos_api_key=self._settings.adanos_api_key
                 ).registered_tools()
             }
             if selector_value not in registered:
@@ -597,7 +603,9 @@ class AssistantService:
         """Estimate the definitions registered for the assistant model input."""
         return [
             tool.openai_schema()
-            for tool in build_panwatch_tool_registry(self._repository.session).registered_tools()
+            for tool in build_panwatch_tool_registry(
+                self._repository.session, adanos_api_key=self._settings.adanos_api_key
+            ).registered_tools()
         ]
 
     @staticmethod
