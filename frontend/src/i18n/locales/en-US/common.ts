@@ -1,0 +1,64 @@
+import type { TranslationShape } from '../../resource-types'
+import { common as zhCommon } from '../zh-CN/common'
+
+export const common = {
+  product: {
+    name: 'PanWatch',
+    englishName: 'PanWatch',
+    tagline: 'AI-powered market monitoring assistant',
+  },
+  actions: {
+    add: 'Add',
+    apply: 'Apply',
+    back: 'Back',
+    cancel: 'Cancel',
+    close: 'Close',
+    confirm: 'Confirm',
+    copy: 'Copy',
+    delete: 'Delete',
+    edit: 'Edit',
+    export: 'Export',
+    import: 'Import',
+    reload: 'Reload',
+    refresh: 'Refresh',
+    remindLater: 'Remind me later',
+    reset: 'Reset',
+    retry: 'Retry',
+    save: 'Save',
+    search: 'Search',
+    test: 'Test',
+    upgrade: 'View update',
+    viewDetails: 'View details',
+  },
+  states: {
+    all: 'All',
+    copied: 'Copied',
+    disabled: 'Disabled',
+    empty: 'No data',
+    enabled: 'Enabled',
+    failed: 'Failed',
+    loading: 'Loading…',
+    none: 'None',
+    success: 'Success',
+  },
+  route: {
+    loading: 'Loading page…',
+    loadFailed: 'Failed to load this page',
+    loadFailedHint: 'Try again. If the problem continues, your browser may have cached an older version of the page.',
+  },
+  links: {
+    github: 'GitHub repository',
+    logs: 'View logs',
+  },
+  update: {
+    title: 'Update available',
+    description: 'You are using v{{current}}. Version v{{latest}} is available.',
+    recommendation: 'Upgrade to get the latest features and fixes.',
+  },
+  markets: {
+    all: 'All markets',
+    CN: 'China A-shares',
+    HK: 'Hong Kong',
+    US: 'United States',
+  },
+} as const satisfies TranslationShape<typeof zhCommon>
