@@ -43,6 +43,7 @@ def diagnose_positions(positions: list[dict]) -> dict:
             "by_strategy": {},
             "total_unrealized_pnl": 0.0,
             "alerts": [],
+            "alert_details": [],
         }
 
     values = [max(0.0, float(p.get("market_value") or 0.0)) for p in positions]
@@ -61,16 +62,21 @@ def diagnose_positions(positions: list[dict]) -> dict:
     upnl = sum(float(p.get("unrealized_pnl") or 0.0) for p in positions)
 
     alerts: list[str] = []
+    alert_details: list[dict] = []
     if max_w >= MAX_SINGLE_WEIGHT:
         alerts.append(f"单仓集中度过高:最大持仓占 {max_w * 100:.0f}%")
+        alert_details.append({"code": "single_concentration", "weight": round(max_w * 100)})
     if hhi >= HIGH_HHI:
         alerts.append(f"组合高度集中(HHI={hhi:.2f})")
+        alert_details.append({"code": "hhi_concentration", "hhi": round(hhi, 2)})
     if len(positions) < MIN_POSITIONS and total > 0:
         alerts.append(f"持仓数过少({len(positions)}),分散不足")
+        alert_details.append({"code": "too_few_positions", "count": len(positions)})
     if total > 0:
         for m, v in by_market.items():
             if v / total >= MAX_MARKET_WEIGHT:
                 alerts.append(f"{m} 市场占比过高({v / total * 100:.0f}%)")
+                alert_details.append({"code": "market_concentration", "market": m, "weight": round(v / total * 100)})
 
     return {
         "position_count": len(positions),
@@ -81,6 +87,7 @@ def diagnose_positions(positions: list[dict]) -> dict:
         "by_strategy": {k: round(v, 2) for k, v in by_strategy.items()},
         "total_unrealized_pnl": round(upnl, 2),
         "alerts": alerts,
+        "alert_details": alert_details,
     }
 
 

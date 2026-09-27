@@ -79,6 +79,16 @@ const MARKET_BAR_CLS: Record<string, string> = {
   HK: 'bg-orange-500',
 }
 
+const INDEX_TRANSLATION_KEYS: Record<string, string> = {
+  '000001': 'sseComposite',
+  '399001': 'szseComponent',
+  '399006': 'chinext',
+  HSI: 'hangSeng',
+  IXIC: 'nasdaq',
+  DJI: 'dowJones',
+  '000300': 'csi300',
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { t } = useTranslation('configuration')
@@ -192,7 +202,7 @@ export default function DashboardPage() {
     try {
       setAiReview(await portfolioApi.aiReview())
     } catch (e) {
-      setAiReview({ content: e instanceof Error ? `AI health check failed: ${e.message}` : dashboardT('dashboard.aiChecking') })
+      setAiReview({ content: dashboardT('dashboardRuntime.aiReviewFailed', { message: e instanceof Error ? e.message : '' }) })
     } finally {
       setAiReviewLoading(false)
     }
@@ -211,6 +221,56 @@ export default function DashboardPage() {
     return list.slice(0, 5)
   }, [overview, oppFallback])
 
+  const localizedDiagnosticAlerts = useMemo(() => {
+    if (!diag) return []
+    if (!diag.alert_details?.length) return diag.alerts || []
+    return diag.alert_details.map((alert) => {
+      const market = alert.market
+        ? dashboardT(`dashboard.markets.${alert.market}`, { defaultValue: alert.market })
+        : ''
+      return dashboardT(`dashboard.diagnosticAlerts.${alert.code}`, {
+        ...alert,
+        market,
+        defaultValue: alert.code,
+      })
+    })
+  }, [diag, t])
+
+  const marketLabel = (market: string): string =>
+    dashboardT(`dashboard.markets.${market}`, { defaultValue: market })
+
+  const indexLabel = (symbol: string, fallback: string): string => {
+    const key = INDEX_TRANSLATION_KEYS[symbol]
+    return key ? dashboardT(`dashboard.indices.${key}`) : fallback
+  }
+
+  const benchmarkLabel = bench?.benchmark_code
+    ? indexLabel(bench.benchmark_code, bench.benchmark_label || dashboardT('dashboard.defaultBenchmark'))
+    : (bench?.benchmark_label || dashboardT('dashboard.defaultBenchmark'))
+
+  const todoLabel = (todo: PortfolioTodo): string => {
+    if (todo.type === 'no_alert') {
+      return dashboardT('dashboardRuntime.todos.noAlert', { name: todo.name || todo.symbol || '' })
+    }
+    if (todo.type === 'alert_expiring') {
+      return dashboardT('dashboardRuntime.todos.alertExpiring', {
+        name: todo.name || dashboardT('dashboardRuntime.todos.defaultAlert'),
+      })
+    }
+    return todo.message
+  }
+
+  const opportunityActionLabel = (action: string, fallback: string): string => {
+    if (!action) return fallback
+    const key = `dashboardRuntime.actions.${action.toLowerCase()}`
+    const translated = dashboardT(key)
+    return translated === key ? fallback : translated
+  }
+
+  const briefLabel = brief?.type
+    ? dashboardT(`dashboardRuntime.briefTypes.${brief.type}`, { defaultValue: brief.agent_label })
+    : brief?.agent_label
+
   // 今日必读候选(多源)→ 交 AI 策展(失败兜底原序)
   const candidates = useMemo<CurateCandidate[]>(() => {
     const out: CurateCandidate[] = []
@@ -227,12 +287,12 @@ export default function DashboardPage() {
         signal: s.suggestion?.signal || (s.alert_type ? dashboardT(`dashboard.alerts.${s.alert_type}`, { defaultValue: s.alert_type }) : ''),
       })
     }
-    for (const a of diag?.alerts || []) out.push({ type: 'risk', name: dashboardT('dashboard.health'), market: '', signal: a })
+    for (const a of localizedDiagnosticAlerts) out.push({ type: 'risk', name: dashboardT('dashboard.health'), market: '', signal: a })
     for (const o of opportunities.slice(0, 3)) {
       out.push({ type: 'opportunity', symbol: o.stock_symbol, name: o.stock_name || o.stock_symbol, market: o.stock_market, signal: o.signal || o.reason || o.action_label || '' })
     }
     return out
-  }, [alertHits, urgent, diag, opportunities])
+  }, [alertHits, urgent, localizedDiagnosticAlerts, opportunities])
 
   const candKey = useMemo(
     () => candidates.map((c) => `${c.type}:${c.symbol}:${c.change_pct ?? ''}`).join('|'),
@@ -326,7 +386,7 @@ export default function DashboardPage() {
           {marketStatus.map((m) => (
             <span key={m.code} className="inline-flex items-center gap-1.5 rounded-full bg-accent/40 px-2 py-0.5">
               <span className={`h-1.5 w-1.5 rounded-full ${m.is_trading ? 'bg-amber-500' : 'bg-muted-foreground/40'}`} />
-              <span className="text-muted-foreground">{m.name}</span>
+              <span className="text-muted-foreground">{marketLabel(m.code)}</span>
             </span>
           ))}
         </div>
@@ -384,7 +444,7 @@ export default function DashboardPage() {
           <div key={`${ix.market}:${ix.symbol}`} className="card-subtle relative p-2.5">
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
-                <div className="truncate text-[11px] text-muted-foreground">{ix.name}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{indexLabel(ix.symbol, ix.name)}</div>
                 <div className="font-mono text-[15px] text-foreground">
                   {ix.current_price != null ? ix.current_price.toFixed(2) : '--'}
                 </div>
@@ -437,7 +497,7 @@ export default function DashboardPage() {
                     <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[9px] text-amber-600">
                       {t.type === 'no_alert' ? dashboardT('dashboard.addAlert') : dashboardT('dashboard.expiring')}
                     </span>
-                    <span className="truncate">{t.message}</span>
+                    <span className="truncate">{todoLabel(t)}</span>
                   </div>
                 ))}
               </div>
@@ -515,7 +575,7 @@ export default function DashboardPage() {
                   <span className="flex items-center gap-1.5">
                     <span className="h-0 w-3.5 border-t-[1.5px] border-dashed border-muted-foreground/70" />
                     <span className="text-muted-foreground">
-                      {bench?.benchmark_label || dashboardT('dashboard.defaultBenchmark')} {benchReady ? pct(bench!.benchmark_return) : ''}
+                      {benchmarkLabel} {benchReady ? pct(bench!.benchmark_return) : ''}
                     </span>
                   </span>
                 </div>
@@ -602,9 +662,9 @@ export default function DashboardPage() {
                   )
                 })}
 
-              {diag!.alerts.length > 0 ? (
+              {localizedDiagnosticAlerts.length > 0 ? (
                 <div className="space-y-1 pt-1">
-                  {diag!.alerts.map((a, i) => (
+                  {localizedDiagnosticAlerts.map((a, i) => (
                     <div key={i} className="flex items-start gap-1 text-[11px] text-amber-600">
                       <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                       <span>{a}</span>
@@ -661,7 +721,7 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-[13px] font-medium">{o.stock_name || o.stock_symbol}</span>
-                        {o.action_label && <span className="rounded bg-primary/10 px-1 text-[9px] text-primary">{o.action_label}</span>}
+                        {o.action_label && <span className="rounded bg-primary/10 px-1 text-[9px] text-primary">{opportunityActionLabel(o.action, o.action_label)}</span>}
                       </div>
                       {(o.signal || o.reason) && <div className="truncate text-[11px] text-muted-foreground">{o.signal || o.reason}</div>}
                     </div>
@@ -685,7 +745,7 @@ export default function DashboardPage() {
             <div className="mb-1 flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
                 <Newspaper className="h-4 w-4 text-primary" />
-                {brief.agent_label}
+                {briefLabel}
               </h2>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
@@ -736,7 +796,7 @@ export default function DashboardPage() {
           onClose={() => setShareDiag(false)}
           diag={diag}
           excessReturn={benchReady ? bench!.excess_return : null}
-          benchmarkLabel={bench?.benchmark_label}
+          benchmarkLabel={benchmarkLabel}
         />
       )}
 

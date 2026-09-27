@@ -419,12 +419,19 @@ async def curate_today(req: CurateRequest, db: Session = Depends(get_db)):
         + (f" {c.signal}" if c.signal else "")
         for i, c in enumerate(cands)
     )
+    from src.platform.language import resolve_report_language
+
+    english = resolve_report_language(db) == "en-US"
     system_prompt = (
-        "你是盯盘助手。从用户今日候选事件里挑出最值得关注的,按重要度排序,"
-        "重点关照:已触发的提醒、持仓的大幅异动、组合风险。"
-        "只输出每条一行,格式: 序号|重要度(0-100整数)|一句话说明为什么值得看。不解释、不臆造。"
+        "You are a market-monitoring assistant. Rank the user's candidate events by importance, prioritizing triggered alerts, large moves in holdings, and portfolio risk. "
+        "Write the explanation in English even when an input description is Chinese. Output one item per line using: index|importance (integer 0-100)|one-sentence reason. Do not explain the format or invent facts."
+        if english
+        else "你是盯盘助手。从用户今日候选事件里挑出最值得关注的,按重要度排序,重点关照:已触发的提醒、持仓的大幅异动、组合风险。只输出每条一行,格式: 序号|重要度(0-100整数)|一句话说明为什么值得看。不解释、不臆造。"
     )
-    user_content = f"今日候选(均来自该用户的持仓/自选/提醒/机会):\n{listing}"
+    user_content = (
+        f"Today's candidates (from this user's holdings, watchlist, alerts, and opportunities):\n{listing}"
+        if english else f"今日候选(均来自该用户的持仓/自选/提醒/机会):\n{listing}"
+    )
 
     items: list[dict] = []
     try:

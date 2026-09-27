@@ -102,7 +102,7 @@ function parseHeadings(markdown: string): { text: string; slug: string }[] {
 }
 
 export default function AnalysisDetailPage() {
-  const { t } = useTranslation('configuration')
+  const { t, i18n } = useTranslation('configuration')
   const analysisT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const { symbol = '', date = '' } = useParams()
   const navigate = useNavigate()
@@ -160,7 +160,9 @@ export default function AnalysisDetailPage() {
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
   const decisionLabel = reviewRequired ? analysisT('assistantPage.analysis.reviewHint') : sug?.action_label
   const decisionColor = reviewRequired ? 'text-orange-500' : (sug ? DECISION_COLOR[sug.action] || '' : '')
-  const sections = buildAnalysisSections(rawData)
+  const sections = buildAnalysisSections(rawData, {
+    english: (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en'),
+  })
   const stats = history?.stats
   const items = history?.items || []
 

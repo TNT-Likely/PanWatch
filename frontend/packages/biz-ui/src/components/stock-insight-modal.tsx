@@ -22,6 +22,7 @@ import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import { useTranslation } from 'react-i18next'
 
 interface QuoteResponse {
   symbol: string
@@ -127,48 +128,48 @@ interface StockItem {
   agents?: StockAgentInfo[]
 }
 
-const AGENT_LABELS: Record<string, string> = {
-  daily_report: '盘后日报',
-  premarket_outlook: '盘前分析',
-}
-
 function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value == null) return '--'
   return value.toFixed(digits)
 }
 
-function formatCompactNumber(value: number | null | undefined): string {
+function formatCompactNumber(value: number | null | undefined, english = false): string {
   if (value == null) return '--'
   const n = Number(value)
   if (!isFinite(n)) return '--'
   const abs = Math.abs(n)
+  if (english && abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`
+  if (english && abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`
+  if (english && abs >= 1e3) return `${(n / 1e3).toFixed(2)}K`
   if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`
   if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万`
   return n.toFixed(0)
 }
 
-function formatMarketCap(value: number | null | undefined, market?: string): string {
+function formatMarketCap(value: number | null | undefined, market?: string, english = false): string {
   if (value == null) return '--'
   const n = Number(value)
   if (!isFinite(n)) return '--'
   const m = String(market || '').toUpperCase()
   const abs = Math.abs(n)
 
-  // 腾讯 A 股字段常见为“亿元”口径（如 808 表示 808 亿元）
+  // Tencent CN quote data may already use units of CNY 100 million.
   if (m === 'CN' && abs > 0 && abs < 100000) {
-    return `${n.toFixed(2)}亿元`
+    return english ? `${(n / 10).toFixed(2)}B CNY` : `${n.toFixed(2)}亿元`
   }
 
+  if (english && abs >= 1e9) return `${(n / 1e9).toFixed(2)}B CNY`
+  if (english && abs >= 1e6) return `${(n / 1e6).toFixed(2)}M CNY`
   if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
   if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
-  return `${n.toFixed(0)}元`
+  return english ? `${n.toFixed(0)} CNY` : `${n.toFixed(0)}元`
 }
 
-function formatTime(isoTime?: string): string {
+function formatTime(isoTime?: string, locale = 'zh-CN'): string {
   if (!isoTime) return ''
   const d = new Date(isoTime)
   if (isNaN(d.getTime())) return ''
-  return d.toLocaleString('zh-CN', {
+  return d.toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -270,17 +271,17 @@ function firstNonEmptyText(...vals: unknown[]): string {
   return ''
 }
 
-function buildShareTechnicalRisks(kline: KlineSummary | null): string[] {
+function buildShareTechnicalRisks(kline: KlineSummary | null, english = false): string[] {
   if (!kline) return []
   const out: string[] = []
   const rsi = String(kline.rsi_status || '')
   const macd = `${kline.macd_cross || ''} ${kline.macd_status || ''}`
   const vol = String(kline.volume_trend || '')
-  if (rsi.includes('超买')) out.push('短线过热回撤风险')
-  if (rsi.includes('超卖')) out.push('弱势延续风险')
-  if (macd.includes('死叉')) out.push('趋势转弱风险')
-  if (macd.includes('顶背离')) out.push('动能背离风险')
-  if (vol.includes('放量')) out.push('波动放大风险')
+  if (rsi.includes('超买')) out.push(english ? 'Short-term overheating and pullback risk' : '短线过热回撤风险')
+  if (rsi.includes('超卖')) out.push(english ? 'Risk of continued weakness' : '弱势延续风险')
+  if (macd.includes('死叉')) out.push(english ? 'Trend-weakening risk' : '趋势转弱风险')
+  if (macd.includes('顶背离')) out.push(english ? 'Momentum-divergence risk' : '动能背离风险')
+  if (vol.includes('放量')) out.push(english ? 'Elevated volatility risk' : '波动放大风险')
   return out.slice(0, 3)
 }
 
@@ -294,14 +295,17 @@ function TechnicalIndicatorStrip(props: {
   score?: number
   evidence?: Array<{ text: string; delta: number }>
 }) {
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
   const { klineSummary, technicalSuggestion, stockName, stockSymbol, market, hasPosition, score, evidence = [] } = props
   if (!klineSummary) {
-    return <div className="text-[12px] text-muted-foreground py-3">暂无技术指标</div>
+    return <div className="text-[12px] text-muted-foreground py-3">{tr('technical.none')}</div>
   }
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[12px] text-muted-foreground">技术指标建议</span>
+        <span className="text-[12px] text-muted-foreground">{tr('technical.indicators')}</span>
         <SuggestionBadge
           suggestion={technicalSuggestion}
           stockName={stockName}
@@ -310,7 +314,7 @@ function TechnicalIndicatorStrip(props: {
           kline={klineSummary}
           hasPosition={hasPosition}
         />
-        <TechnicalBadge label={`评分 ${Number(score ?? 0).toFixed(1)}`} tone="neutral" size="xs" className="text-foreground" />
+        <TechnicalBadge label={tr('technical.score', { value: Number(score ?? 0).toFixed(1) })} tone="neutral" size="xs" className="text-foreground" />
       </div>
       {evidence.length > 0 && (
         <div className="flex flex-wrap gap-1.5 text-[10px]">
@@ -338,6 +342,19 @@ export default function StockInsightModal(props: {
   hasPosition?: boolean
 }) {
   const { toast } = useToast()
+  const { t, i18n } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
+  const locale = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
+  const english = locale === 'en-US'
+  const agentLabel = (name: string) => name === 'daily_report' ? tr('reports.afterMarketAgent') : name === 'premarket_outlook' ? tr('reports.premarketAgent') : name
+  const actionLabel = (action?: string, label?: string) => {
+    const normalized = normalizeSuggestionAction(action, label)
+    if (english || !label) {
+      return (t as unknown as (key: string) => string)(`kline.actions.${normalized}`)
+    }
+    return label
+  }
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
@@ -626,7 +643,7 @@ export default function StockInsightModal(props: {
     try {
       await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadHoldingAgg()])
     } catch (e) {
-      toast(e instanceof Error ? e.message : '加载失败', 'error')
+      toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -638,7 +655,7 @@ export default function StockInsightModal(props: {
     try {
       await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadSuggestions(), loadNews(), loadAnnouncements(), loadHoldingAgg(), loadReports()])
     } catch (e) {
-      toast(e instanceof Error ? e.message : '加载失败', 'error')
+      toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -771,12 +788,12 @@ export default function StockInsightModal(props: {
     const topEvidence = (technicalScored.evidence || []).filter(e => e.delta !== 0).slice(0, 3).map(e => e.text)
     return {
       action: technicalScored.action,
-      action_label: technicalScored.action_label,
-      signal: technicalScored.signal || '技术面中性',
-      reason: topEvidence.length > 0 ? topEvidence.join('；') : '基于K线技术指标自动生成的基础建议',
+      action_label: actionLabel(technicalScored.action, technicalScored.action_label),
+      signal: english ? tr('technical.neutral') : (technicalScored.signal || tr('technical.neutral')),
+      reason: english ? tr('technical.fallbackReason') : (topEvidence.length > 0 ? topEvidence.join('；') : tr('technical.fallbackReason')),
       should_alert: technicalScored.action === 'buy' || technicalScored.action === 'add' || technicalScored.action === 'sell' || technicalScored.action === 'reduce',
       agent_name: 'technical_fallback',
-      agent_label: '技术指标',
+      agent_label: tr('technical.indicators'),
       created_at: new Date().toISOString(),
       is_expired: false,
       meta: {
@@ -785,46 +802,52 @@ export default function StockInsightModal(props: {
         evidence_count: technicalScored.evidence?.length || 0,
       },
     }
-  }, [klineSummary, technicalScored])
+  }, [klineSummary, technicalScored, english])
   const buildPageContext = useCallback(() => {
     const parts: string[] = []
     if (quote) {
-      const items = [`价格${quote.current_price}`, `涨跌幅${quote.change_pct}%`]
-      if (quote.volume != null) items.push(`成交量${quote.volume}`)
-      if (quote.turnover_rate != null) items.push(`换手率${quote.turnover_rate}%`)
-      if (quote.pe_ratio != null) items.push(`市盈率${quote.pe_ratio}`)
-      if (quote.total_market_value != null) items.push(`总市值${quote.total_market_value}`)
-      parts.push(`实时行情：${items.join('，')}`)
+      const items = english
+        ? [`Price ${quote.current_price}`, `Change ${quote.change_pct}%`]
+        : [`价格${quote.current_price}`, `涨跌幅${quote.change_pct}%`]
+      if (quote.volume != null) items.push(english ? `Volume ${quote.volume}` : `成交量${quote.volume}`)
+      if (quote.turnover_rate != null) items.push(english ? `Turnover rate ${quote.turnover_rate}%` : `换手率${quote.turnover_rate}%`)
+      if (quote.pe_ratio != null) items.push(english ? `P/E ${quote.pe_ratio}` : `市盈率${quote.pe_ratio}`)
+      if (quote.total_market_value != null) items.push(english ? `Market cap ${quote.total_market_value}` : `总市值${quote.total_market_value}`)
+      parts.push(english ? `Live quote: ${items.join(', ')}` : `实时行情：${items.join('，')}`)
     }
     if (klineSummary) {
       const k = klineSummary as any
       const items = []
-      if (k.trend) items.push(`趋势${k.trend}`)
+      if (k.trend) items.push(english ? `Trend ${k.trend}` : `趋势${k.trend}`)
       if (k.macd_status) items.push(`MACD${k.macd_status}`)
       if (k.rsi_status) items.push(`RSI${k.rsi_status}${k.rsi6 != null ? `(${k.rsi6})` : ''}`)
       if (k.kdj_status) items.push(`KDJ${k.kdj_status}`)
-      if (k.boll_status) items.push(`布林${k.boll_status}`)
-      if (k.volume_trend) items.push(`量能${k.volume_trend}${k.volume_ratio != null ? `(${k.volume_ratio}x)` : ''}`)
-      if (k.support != null) items.push(`支撑${k.support}`)
-      if (k.resistance != null) items.push(`压力${k.resistance}`)
-      if (items.length) parts.push(`技术面：${items.join('，')}`)
+      if (k.boll_status) items.push(`${english ? 'Bollinger ' : '布林'}${k.boll_status}`)
+      if (k.volume_trend) items.push(`${english ? 'Volume ' : '量能'}${k.volume_trend}${k.volume_ratio != null ? `(${k.volume_ratio}x)` : ''}`)
+      if (k.support != null) items.push(`${english ? 'Support ' : '支撑'}${k.support}`)
+      if (k.resistance != null) items.push(`${english ? 'Resistance ' : '压力'}${k.resistance}`)
+      if (items.length) parts.push(english ? `Technical: ${items.join(', ')}` : `技术面：${items.join('，')}`)
     }
     if (technicalScored) {
-      parts.push(`技术评分：${technicalScored.action_label}(score=${technicalScored.score})，信号：${technicalScored.signal || '中性'}`)
+      parts.push(english
+        ? `Technical score: ${actionLabel(technicalScored.action, technicalScored.action_label)} (score=${technicalScored.score}); signal: ${technicalScored.signal || 'neutral'}`
+        : `技术评分：${technicalScored.action_label}(score=${technicalScored.score})，信号：${technicalScored.signal || '中性'}`)
       const evidence = (technicalScored.evidence || []).filter((e: any) => e.delta !== 0)
       if (evidence.length) {
-        parts.push(`评分依据：${evidence.map((e: any) => `${e.text}(${e.delta > 0 ? '+' : ''}${e.delta})`).join('；')}`)
+        parts.push(`${english ? 'Scoring evidence: ' : '评分依据：'}${evidence.map((e: any) => `${e.text}(${e.delta > 0 ? '+' : ''}${e.delta})`).join(english ? '; ' : '；')}`)
       }
     }
     if (suggestions.length > 0) {
-      const lines = suggestions.slice(0, 3).map(s => `- [${s.agent_label || s.agent_name}] ${s.action_label}: ${s.signal}`)
-      parts.push(`最近AI建议：\n${lines.join('\n')}`)
+      const lines = suggestions.slice(0, 3).map(s => `- [${s.agent_label || s.agent_name}] ${actionLabel(s.action, s.action_label)}: ${s.signal}`)
+      parts.push(`${english ? 'Recent AI suggestions' : '最近AI建议'}：\n${lines.join('\n')}`)
     }
     if (holdingAgg) {
-      parts.push(`持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
+      parts.push(english
+        ? `Position: ${holdingAgg.quantity} shares; cost ${holdingAgg.unitCost}; market value ${holdingAgg.marketValue}; P&L ${holdingAgg.pnl}`
+        : `持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
     }
     return parts.join('\n')
-  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg])
+  }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, english])
 
   const quoteUp = (quote?.change_pct || 0) > 0
   const quoteDown = (quote?.change_pct || 0) < 0
@@ -887,42 +910,44 @@ export default function StockInsightModal(props: {
       }
       return [] as string[]
     }
-    const marketLabel = badge.label
+    const marketLabel = tr(`markets.${market}`)
     const price = quote?.current_price != null ? formatNumber(quote.current_price) : '--'
     const chg = quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'
-    const action = latestShareSuggestion?.action_label || latestShareSuggestion?.action || '暂无'
+    const action = latestShareSuggestion
+      ? actionLabel(latestShareSuggestion.action, latestShareSuggestion.action_label)
+      : tr('suggestions.empty')
     const signal = firstNonEmptyText(
       latestShareSuggestion?.signal,
       pickFromJson('signal', 'summary', 'core_view'),
       technicalScored?.signal,
-      '技术面中性'
+      tr('technical.neutral')
     ) || '--'
     const reason = firstNonEmptyText(
       latestShareSuggestion?.reason,
       pickFromJson('reason', 'thesis', 'core_judgement', 'core_judgment', 'analysis'),
       technicalFallbackSuggestion?.reason,
-      '暂无'
+      tr('technical.none')
     ) || '--'
     const risksList = [
       ...normalizeTextList((latestShareSuggestion as any)?.meta?.risks),
       ...pickListFromJson('risks', 'risk', 'risk_points'),
-      ...buildShareTechnicalRisks(klineSummary),
+      ...buildShareTechnicalRisks(klineSummary, english),
     ].filter(Boolean)
     const dedupRisks = Array.from(new Set(risksList))
-    const risks = dedupRisks.length > 0 ? dedupRisks.slice(0, 2).join('；') : '市场波动风险'
+    const risks = dedupRisks.length > 0 ? dedupRisks.slice(0, 2).join(english ? '; ' : '；') : tr('technical.marketRisk')
     const triggerList = pickListFromJson('triggers', 'trigger', 'signals')
     const invalidList = pickListFromJson('invalidations', 'invalidation', 'stop_conditions')
-    const trigger = triggerList.length > 0 ? triggerList.slice(0, 2).join('；') : '--'
-    const invalidation = invalidList.length > 0 ? invalidList.slice(0, 2).join('；') : '--'
+    const trigger = triggerList.length > 0 ? triggerList.slice(0, 2).join(english ? '; ' : '；') : '--'
+    const invalidation = invalidList.length > 0 ? invalidList.slice(0, 2).join(english ? '; ' : '；') : '--'
     const technicalBrief = firstNonEmptyText(
       [klineSummary?.trend, klineSummary?.macd_status, klineSummary?.rsi_status].filter(Boolean).join(' / '),
       technicalScored?.signal
     ) || '--'
     const levelsBrief = (klineSummary?.support != null && klineSummary?.resistance != null)
-      ? `支撑 ${formatNumber(klineSummary.support)} / 压力 ${formatNumber(klineSummary.resistance)}`
+      ? `${tr('share.support')} ${formatNumber(klineSummary.support)} / ${tr('share.resistance')} ${formatNumber(klineSummary.resistance)}`
       : '--'
-    const source = latestShareSuggestion?.agent_label || latestShareSuggestion?.agent_name || '技术指标'
-    const ts = new Date().toLocaleString('zh-CN', {
+    const source = latestShareSuggestion?.agent_label || latestShareSuggestion?.agent_name || tr('technical.indicators')
+    const ts = new Date().toLocaleString(locale, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -931,24 +956,24 @@ export default function StockInsightModal(props: {
       hour12: false,
     })
     return { marketLabel, price, chg, action, signal, reason, risks, trigger, invalidation, technicalBrief, levelsBrief, source, ts }
-  }, [badge.label, klineSummary, latestShareSuggestion, quote?.change_pct, quote?.current_price, technicalFallbackSuggestion?.reason, technicalScored?.signal])
+  }, [klineSummary, latestShareSuggestion, quote?.change_pct, quote?.current_price, technicalFallbackSuggestion?.reason, technicalScored?.signal, market, english, locale])
 
   const shareText = useMemo(() => {
     const { marketLabel, price, chg, action, signal, reason, risks, trigger, invalidation, technicalBrief, levelsBrief, source, ts } = shareCardPayload
     const lines = [
-      `【PanWatch 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
-      `时间：${ts}`,
-      `现价：${price}（${chg}）`,
-      `建议：${action}`,
-      `信号：${signal}`,
-      `理由：${reason}`,
-      `风险：${risks}`,
-      `技术：${technicalBrief}`,
-      `关键位：${levelsBrief}`,
-      `来源：${source}`,
+      `${tr('share.title')} — ${resolvedName} (${symbol} · ${marketLabel})`,
+      `${tr('share.time')}: ${ts}`,
+      `${tr('share.currentPrice')}: ${price} (${chg})`,
+      `${tr('share.suggestion')}: ${action}`,
+      `${tr('share.signal')}: ${signal}`,
+      `${tr('share.reason')}: ${reason}`,
+      `${tr('share.risk')}: ${risks}`,
+      `${tr('share.technical')}: ${technicalBrief}`,
+      `${tr('share.levels')}: ${levelsBrief}`,
+      `${tr('share.source')}: ${source}`,
     ]
-    if (trigger !== '--') lines.splice(7, 0, `触发：${trigger}`)
-    if (invalidation !== '--') lines.splice(8, 0, `失效：${invalidation}`)
+    if (trigger !== '--') lines.splice(7, 0, `${tr('share.trigger')}: ${trigger}`)
+    if (invalidation !== '--') lines.splice(8, 0, `${tr('share.invalidation')}: ${invalidation}`)
     return lines.join('\n')
   }, [shareCardPayload, resolvedName, symbol])
 
@@ -979,31 +1004,31 @@ export default function StockInsightModal(props: {
   </defs>
   <rect x="0" y="0" width="1200" height="630" fill="url(#bg)"/>
   <rect x="40" y="30" width="1120" height="570" rx="22" fill="#0f172a" stroke="#1f2937"/>
-  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">PanWatch 洞察</text>
-  <text x="76" y="150" fill="#f8fafc" font-size="42" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(`${resolvedName}（${symbol} · ${marketLabel}）`, 28))}</text>
+  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.title'))}</text>
+  <text x="76" y="150" fill="#f8fafc" font-size="42" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(`${resolvedName} (${symbol} · ${marketLabel})`, 28))}</text>
   <text x="76" y="198" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(ts)}</text>
 
-  <text x="76" y="284" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">现价</text>
+  <text x="76" y="284" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.currentPrice'))}</text>
   <text x="180" y="284" fill="#f8fafc" font-size="52" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(price)}</text>
   <text x="380" y="284" fill="${changeColor}" font-size="36" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(chg)}</text>
 
-  <text x="76" y="352" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">建议</text>
+  <text x="76" y="352" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.suggestion'))}</text>
   <text x="180" y="352" fill="#22d3ee" font-size="34" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(action, 20))}</text>
 
-  <text x="76" y="412" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">信号</text>
+  <text x="76" y="412" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.signal'))}</text>
   <text x="180" y="412" fill="#e2e8f0" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(signal, 46))}</text>
 
-  <text x="76" y="466" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">理由</text>
+  <text x="76" y="466" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.reason'))}</text>
   <text x="180" y="466" fill="#cbd5e1" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(reason, 52))}</text>
 
-  <text x="76" y="520" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">风险</text>
+  <text x="76" y="520" fill="#94a3b8" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.risk'))}</text>
   <text x="180" y="520" fill="#cbd5e1" font-size="24" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(risks, 52))}</text>
 
-  <text x="76" y="560" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">技术</text>
+  <text x="76" y="560" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.technical'))}</text>
   <text x="180" y="560" fill="#cbd5e1" font-size="21" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(technicalBrief, 58))}</text>
-  <text x="76" y="590" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">关键位</text>
+  <text x="76" y="590" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.levels'))}</text>
   <text x="180" y="590" fill="#cbd5e1" font-size="21" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(levelsBrief, 58))}</text>
-  <text x="76" y="618" fill="#64748b" font-size="18" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">来源：${esc(source)} · 仅供参考，不构成投资建议</text>
+  <text x="76" y="618" fill="#64748b" font-size="18" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(tr('share.source'))}: ${esc(source)} · ${esc(tr('share.disclaimer'))}</text>
 </svg>`
 
       const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
@@ -1018,7 +1043,7 @@ export default function StockInsightModal(props: {
       canvas.width = 1200
       canvas.height = 630
       const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('无法创建画布')
+      if (!ctx) throw new Error(tr('messages.canvasUnavailable'))
       ctx.drawImage(img, 0, 0)
       URL.revokeObjectURL(url)
       const png = canvas.toDataURL('image/png')
@@ -1026,9 +1051,9 @@ export default function StockInsightModal(props: {
       a.href = png
       a.download = `panwatch-${symbol}-${Date.now()}.png`
       a.click()
-      toast('分享图片已生成并下载', 'success')
+      toast(tr('messages.imageSaved'), 'success')
     } catch {
-      toast('图片生成失败，请稍后重试', 'error')
+      toast(tr('messages.imageFailed'), 'error')
     } finally {
       setImageExporting(false)
     }
@@ -1073,12 +1098,12 @@ export default function StockInsightModal(props: {
     try {
       const copied = await copyTextWithFallback(shareText)
       if (copied) {
-        toast('洞察内容已复制', 'success')
+        toast(tr('messages.copied'), 'success')
       } else {
-        toast('复制失败，请优先使用“图片”分享', 'error')
+        toast(tr('messages.copyFailed'), 'error')
       }
     } catch {
-      toast('复制失败，请优先使用“图片”分享', 'error')
+      toast(tr('messages.copyFailed'), 'error')
     }
   }, [copyTextWithFallback, shareText, toast])
 
@@ -1086,24 +1111,24 @@ export default function StockInsightModal(props: {
     try {
       if (typeof navigator !== 'undefined' && (navigator as any).share) {
         await (navigator as any).share({
-          title: `${resolvedName} 洞察`,
+          title: `${resolvedName} ${tr('share.title')}`,
           text: shareText,
         })
         return
       }
       const copied = await copyTextWithFallback(shareText)
       if (copied) {
-        toast('当前环境不支持系统分享，已自动复制内容', 'success')
+        toast(tr('messages.shareCopied'), 'success')
       } else {
-        toast('当前环境不支持分享且复制失败，请使用“图片”分享', 'error')
+        toast(tr('messages.shareAndCopyFailed'), 'error')
       }
     } catch (e: any) {
       if (e?.name === 'AbortError') return
       const copied = await copyTextWithFallback(shareText)
       if (copied) {
-        toast('分享失败，已自动复制内容', 'success')
+        toast(tr('messages.shareFailed'), 'success')
       } else {
-        toast('分享失败且复制失败，请使用“图片”分享', 'error')
+        toast(tr('messages.shareAndCopyFailed'), 'error')
       }
     }
   }, [copyTextWithFallback, resolvedName, shareText, toast])
@@ -1134,7 +1159,7 @@ export default function StockInsightModal(props: {
         bypass_throttle: true,
         bypass_market_hours: true,
       })
-      toast('已设置提醒，AI 分析已提交', 'success')
+      toast(tr('messages.alertSet'), 'success')
       // 轮询等待建议生成（最多 2 分钟，每 5 秒一次）
       const before = Date.now()
       const poll = setInterval(async () => {
@@ -1146,7 +1171,7 @@ export default function StockInsightModal(props: {
       setTimeout(() => clearInterval(poll), 125_000)
       return
     } catch (e) {
-      toast(e instanceof Error ? e.message : '设置提醒失败', 'error')
+      toast(e instanceof Error ? e.message : tr('messages.alertFailed'), 'error')
     } finally {
       setAlerting(false)
     }
@@ -1155,7 +1180,7 @@ export default function StockInsightModal(props: {
   const toggleWatch = useCallback(async () => {
     if (!symbol) return
     if (watchingStock && hasHolding) {
-      toast('该股票存在持仓，请先删除持仓后再取消关注', 'error')
+      toast(tr('messages.holdingCannotUnfollow'), 'error')
       return
     }
 
@@ -1165,15 +1190,15 @@ export default function StockInsightModal(props: {
         await stocksApi.remove(watchingStock.id)
         setWatchingStock(null)
         delete stockCacheRef.current[`${market}:${symbol}`]
-        toast('已取消关注', 'success')
+        toast(tr('messages.unfollowed'), 'success')
       } else {
         const created = await stocksApi.create({ symbol, name: resolvedName || symbol, market })
         setWatchingStock(created)
         stockCacheRef.current[`${market}:${symbol}`] = created
-        toast('已添加关注', 'success')
+        toast(tr('messages.followed'), 'success')
       }
     } catch (e) {
-      toast(e instanceof Error ? e.message : '操作失败', 'error')
+      toast(e instanceof Error ? e.message : tr('messages.operationFailed'), 'error')
     } finally {
       setWatchToggleLoading(false)
     }
@@ -1208,7 +1233,7 @@ export default function StockInsightModal(props: {
       return
     } catch (e) {
       toast(
-        e instanceof Error ? e.message : '自动 AI 建议触发失败，可点击「一键设提醒」重试',
+        e instanceof Error ? e.message : tr('messages.autoSuggestionFailed'),
         'error'
       )
       setAutoSuggesting(false)
@@ -1243,24 +1268,24 @@ export default function StockInsightModal(props: {
             <div className="flex items-start justify-between gap-3 pr-10 md:pr-8">
               <div className="shrink-0">
                 <DialogTitle className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{badge.label}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded ${badge.style}`}>{tr(`markets.${market}`)}</span>
                   <span className="break-all">{resolvedName}</span>
                   <span className="font-mono text-[12px] text-muted-foreground">({symbol})</span>
                 </DialogTitle>
-                <DialogDescription className="hidden md:block">概览、K线、AI建议、新闻、历史分析都在同一弹窗查看</DialogDescription>
+                <DialogDescription className="hidden md:block">{tr('description')}</DialogDescription>
               </div>
               <div className="hidden md:flex items-center gap-2">
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleExportShareImage()} disabled={imageExporting}>
                   <Download className={`w-3.5 h-3.5 ${imageExporting ? 'animate-pulse' : ''}`} />
-                  <span>{imageExporting ? '生成中' : '图片'}</span>
+                  <span>{imageExporting ? tr('actions.generating') : tr('actions.image')}</span>
                 </Button>
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleShareInsight()}>
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>分享</span>
+                  <span>{tr('actions.share')}</span>
                 </Button>
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => handleCopyShareText()}>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>复制</span>
+                  <span>{tr('actions.copy')}</span>
                 </Button>
                 <Button
                   variant="secondary"
@@ -1268,13 +1293,13 @@ export default function StockInsightModal(props: {
                   className="h-8 px-2.5"
                   onClick={toggleWatch}
                   disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
-                  title={hasHolding && watchingStock ? '持仓中的股票无法取消关注' : undefined}
+                  title={hasHolding && watchingStock ? tr('actions.holdingCannotUnfollow') : undefined}
                 >
-                  {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
+                  {watchToggleLoading ? tr('actions.processing') : (watchingStock ? (hasHolding ? tr('actions.held') : tr('actions.unfollow')) : tr('actions.follow'))}
                 </Button>
                 <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
                 <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={handleSetAlert} disabled={alerting}>
-                  {alerting ? '设置中...' : '一键设提醒'}
+                  {alerting ? tr('actions.setting') : tr('actions.setAlert')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -1287,7 +1312,7 @@ export default function StockInsightModal(props: {
                     props.onOpenChange(false)
                   }}
                 >
-                  <Sparkles className="w-3.5 h-3.5 mr-1" /> 问 AI
+                  <Sparkles className="w-3.5 h-3.5 mr-1" /> {tr('actions.askAI')}
                 </Button>
                 <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading}>
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -1311,11 +1336,11 @@ export default function StockInsightModal(props: {
                 onClick={toggleWatch}
                 disabled={watchToggleLoading || (hasHolding && !!watchingStock)}
               >
-                {watchToggleLoading ? '处理中...' : (watchingStock ? (hasHolding ? '持仓中' : '取消关注') : '快速关注')}
+                {watchToggleLoading ? tr('actions.processing') : (watchingStock ? (hasHolding ? tr('actions.held') : tr('actions.unfollow')) : tr('actions.follow'))}
               </Button>
               <StockPriceAlertPanel mode="inline" symbol={symbol} market={market} stockName={resolvedName} />
               <Button variant="secondary" size="sm" className="h-8 px-2.5 shrink-0" onClick={handleSetAlert} disabled={alerting}>
-                {alerting ? '设置中...' : '一键设提醒'}
+                {alerting ? tr('actions.setting') : tr('actions.setAlert')}
               </Button>
               <Button
                 variant="secondary"
@@ -1328,7 +1353,7 @@ export default function StockInsightModal(props: {
                   props.onOpenChange(false)
                 }}
               >
-                <Sparkles className="w-3.5 h-3.5 mr-1" /> 问 AI
+                <Sparkles className="w-3.5 h-3.5 mr-1" /> {tr('actions.askAI')}
               </Button>
               <Button variant="outline" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleRefreshAll()} disabled={loading}>
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -1339,13 +1364,13 @@ export default function StockInsightModal(props: {
           <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
             <div className="flex items-center gap-1 flex-wrap">
               {[
-                { id: 'overview', label: '概览' },
-                { id: 'suggestions', label: `建议 (${suggestions.length})` },
-                { id: 'reports', label: `报告 (${reports.length})` },
-                { id: 'deep', label: deepResult ? '深度 (1)' : '深度' },
-                { id: 'kline', label: 'K线' },
-                { id: 'announcements', label: `公告 (${announcements.length})` },
-                { id: 'news', label: `新闻 (${news.length})` },
+                { id: 'overview', label: tr('tabs.overview') },
+                { id: 'suggestions', label: tr('tabs.suggestions', { count: suggestions.length }) },
+                { id: 'reports', label: tr('tabs.reports', { count: reports.length }) },
+                { id: 'deep', label: deepResult ? tr('tabs.deepCount') : tr('tabs.deep') },
+                { id: 'kline', label: tr('tabs.kline') },
+                { id: 'announcements', label: tr('tabs.announcements', { count: announcements.length }) },
+                { id: 'news', label: tr('tabs.news', { count: news.length }) },
               ].map(item => (
                 <button
                   key={item.id}
@@ -1359,21 +1384,21 @@ export default function StockInsightModal(props: {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">自动刷新</span>
+              <span className="text-[11px] text-muted-foreground">{tr('autoRefresh')}</span>
               <Switch
                 checked={autoRefreshEnabled}
                 onCheckedChange={setAutoRefreshEnabled}
-                aria-label="自动刷新"
+                aria-label={tr('autoRefresh')}
               />
               <Select value={String(autoRefreshSec)} onValueChange={(v) => setAutoRefreshSec(Number(v))}>
                 <SelectTrigger className="h-7 w-[84px] text-[11px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="10">10秒</SelectItem>
-                  <SelectItem value="20">20秒</SelectItem>
-                  <SelectItem value="30">30秒</SelectItem>
-                  <SelectItem value="60">60秒</SelectItem>
+                  <SelectItem value="10">{tr('seconds', { count: 10 })}</SelectItem>
+                  <SelectItem value="20">{tr('seconds', { count: 20 })}</SelectItem>
+                  <SelectItem value="30">{tr('seconds', { count: 30 })}</SelectItem>
+                  <SelectItem value="60">{tr('seconds', { count: 60 })}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1393,26 +1418,26 @@ export default function StockInsightModal(props: {
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">今开</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">最高</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">最低</div><div className={`font-mono ${levelColor(quote?.low_price)}`}>{formatNumber(quote?.low_price)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">成交量</div><div className="font-mono">{formatCompactNumber(quote?.volume)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">成交额</div><div className="font-mono">{formatCompactNumber(quote?.turnover)}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">振幅</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">换手率</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">市盈率</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">总市值</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.open')}</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.high')}</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.low')}</div><div className={`font-mono ${levelColor(quote?.low_price)}`}>{formatNumber(quote?.low_price)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.volume')}</div><div className="font-mono">{formatCompactNumber(quote?.volume, english)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.turnover')}</div><div className="font-mono">{formatCompactNumber(quote?.turnover, english)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.amplitude')}</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.turnoverRate')}</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.pe')}</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.marketCap')}</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market, english)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
-                      <div className="text-[11px] text-muted-foreground mb-2">持仓信息</div>
+                      <div className="text-[11px] text-muted-foreground mb-2">{tr('holding.title')}</div>
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓数量</div>
+                            <div className="text-[10px] text-muted-foreground">{tr('holding.quantity')}</div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓成本(单价)</div>
+                            <div className="text-[10px] text-muted-foreground">{tr('holding.cost')}</div>
                             <div
                               className={`font-mono ${
                                 quote?.current_price != null
@@ -1428,18 +1453,18 @@ export default function StockInsightModal(props: {
                             </div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">持仓市值</div>
-                            <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue)}</div>
+                            <div className="text-[10px] text-muted-foreground">{tr('holding.marketValue')}</div>
+                            <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue, english)}</div>
                           </div>
                           <div className="rounded bg-emerald-500/10 px-2 py-1.5">
-                            <div className="text-[10px] text-muted-foreground">总盈亏</div>
+                            <div className="text-[10px] text-muted-foreground">{tr('holding.pnl')}</div>
                             <div className={`font-mono ${holdingAgg.pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                              {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl)}
+                              {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl, english)}
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-muted-foreground">未在持仓中</div>
+                        <div className="text-[11px] text-muted-foreground">{tr('holding.empty')}</div>
                       )}
                       <AddPositionCalculator
                         symbol={symbol}
@@ -1452,9 +1477,9 @@ export default function StockInsightModal(props: {
                   </div>
 
                   <div className="card p-4 h-full">
-                    <div className="text-[12px] text-muted-foreground mb-2">迷你K线</div>
+                    <div className="text-[12px] text-muted-foreground mb-2">{tr('miniKline.title')}</div>
                     {!klineSummary ? (
-                      <div className="text-[12px] text-muted-foreground py-8">暂无K线摘要</div>
+                      <div className="text-[12px] text-muted-foreground py-8">{tr('miniKline.noSummary')}</div>
                     ) : (
                       <>
                         {miniKlineLoading ? (
@@ -1473,7 +1498,7 @@ export default function StockInsightModal(props: {
                               setMiniHoverIdx(Math.max(0, Math.min(miniKlines.length - 1, idx)))
                             }}
                           >
-                            <title>点击进入交互式K线</title>
+                            <title>{tr('miniKline.open')}</title>
                             {miniKlines.map((k, idx) => {
                               const xStep = 320 / miniKlines.length
                               const x = xStep * idx + xStep / 2
@@ -1498,7 +1523,7 @@ export default function StockInsightModal(props: {
                             })}
                           </svg>
                         ) : (
-                          <div className="h-32 text-[11px] text-muted-foreground flex items-center justify-center">暂无迷你K线</div>
+                          <div className="h-32 text-[11px] text-muted-foreground flex items-center justify-center">{tr('miniKline.empty')}</div>
                         )}
                         <div className="mt-2 rounded bg-accent/10 p-2.5">
                           <TechnicalIndicatorStrip
@@ -1520,12 +1545,12 @@ export default function StockInsightModal(props: {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[12px] text-muted-foreground">AI建议</div>
+                      <div className="text-[12px] text-muted-foreground">{tr('cards.aiSuggestions')}</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('suggestions')}>
-                        更多
+                        {tr('actions.more')}
                       </Button>
                       {autoSuggesting && suggestions.length > 0 && (
-                        <div className="text-[10px] text-primary">更新中...</div>
+                        <div className="text-[10px] text-primary">{tr('cards.updating')}</div>
                       )}
                     </div>
                     {suggestions.length > 0 ? (
@@ -1539,43 +1564,43 @@ export default function StockInsightModal(props: {
                           showTechnicalCompanion={false}
                         />
                         <div className="rounded bg-accent/10 p-2 text-[11px]">
-                          <div className="text-muted-foreground">核心判断</div>
-                          <div className="mt-1 text-foreground line-clamp-2">{suggestions[0].signal || suggestions[0].reason || '暂无说明'}</div>
-                          <div className="mt-1 text-muted-foreground">动作: {suggestions[0].action_label || suggestions[0].action || '--'}</div>
-                          <div className="mt-1 text-foreground line-clamp-2">依据: {suggestions[0].reason || '暂无补充依据'}</div>
+                          <div className="text-muted-foreground">{tr('cards.core')}</div>
+                          <div className="mt-1 text-foreground line-clamp-2">{suggestions[0].signal || suggestions[0].reason || tr('cards.noDescription')}</div>
+                          <div className="mt-1 text-muted-foreground">{tr('cards.action')}{actionLabel(suggestions[0].action, suggestions[0].action_label)}</div>
+                          <div className="mt-1 text-foreground line-clamp-2">{tr('cards.rationale')}{suggestions[0].reason || tr('cards.noRationale')}</div>
                           <div className="mt-1 text-muted-foreground">
-                            来源: {suggestions[0].agent_label || suggestions[0].agent_name || 'AI'}{suggestions[0].created_at ? ` · ${formatTime(suggestions[0].created_at)}` : ''}
+                            {tr('cards.source')}{suggestions[0].agent_label || suggestions[0].agent_name || 'AI'}{suggestions[0].created_at ? ` · ${formatTime(suggestions[0].created_at, locale)}` : ''}
                           </div>
                         </div>
                         {suggestions.length > 1 && (
                           <div className="rounded bg-accent/10 p-2 text-[11px]">
-                            <div className="text-muted-foreground mb-1">近期补充建议</div>
+                            <div className="text-muted-foreground mb-1">{tr('cards.recentSuggestions')}</div>
                             {suggestions.slice(1, 3).map((item, idx) => (
                               <div key={`${item.created_at || 'extra'}-${idx}`} className="line-clamp-1 text-foreground">
-                                {item.action_label || item.action} · {item.signal || item.reason || '--'}
+                                {actionLabel(item.action, item.action_label)} · {item.signal || item.reason || '--'}
                               </div>
                             ))}
                           </div>
                         )}
-                        <div className="text-[10px] text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? '正在自动生成 AI 建议...' : ''}</div>
+                        <div className="text-[10px] text-primary min-h-[14px]">{autoSuggesting && suggestions.length === 0 ? tr('cards.generatingSuggestion') : ''}</div>
                       </div>
                     ) : (
                       <div className="text-[12px] text-muted-foreground py-6">
-                        {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无 AI 建议'}
+                        {autoSuggesting ? tr('cards.generatingSuggestionWait') : tr('cards.noSuggestion')}
                       </div>
                     )}
                   </div>
 
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[12px] text-muted-foreground">新闻</div>
+                      <div className="text-[12px] text-muted-foreground">{tr('cards.news')}</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('news')}>
-                        更多
+                        {tr('actions.more')}
                       </Button>
                     </div>
                     <div className="flex-1 space-y-2">
                       {news.length === 0 ? (
-                        <div className="text-[12px] text-muted-foreground py-6">暂无相关新闻</div>
+                        <div className="text-[12px] text-muted-foreground py-6">{tr('cards.noNews')}</div>
                       ) : (
                         news.slice(0, 3).map((item, idx) => (
                           <a
@@ -1586,7 +1611,7 @@ export default function StockInsightModal(props: {
                             className="block rounded-lg border border-border/30 bg-accent/10 p-2.5 hover:bg-accent/20 transition-colors"
                           >
                             <div className="text-[12px] text-foreground line-clamp-2">{item.title}</div>
-                            <div className="mt-1 text-[10px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                            <div className="mt-1 text-[10px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time, locale)}</div>
                           </a>
                         ))
                       )}
@@ -1594,21 +1619,21 @@ export default function StockInsightModal(props: {
                   </div>
                   <div className="card p-4 h-full flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="text-[12px] text-muted-foreground">AI报告</div>
+                      <div className="text-[12px] text-muted-foreground">{tr('cards.aiReports')}</div>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={() => setTab('reports')}>
-                        更多
+                        {tr('actions.more')}
                       </Button>
                     </div>
                     {!latestReport ? (
-                      <div className="text-[12px] text-muted-foreground py-3">暂无报告</div>
+                      <div className="text-[12px] text-muted-foreground py-3">{tr('cards.noReport')}</div>
                     ) : (
                       <div className="rounded-lg border border-border/30 bg-accent/10 p-2.5">
                         <div className="text-[11px] text-muted-foreground">
-                          {AGENT_LABELS[latestReport.agent_name] || latestReport.agent_name} · {latestReport.analysis_date}
+                          {agentLabel(latestReport.agent_name)} · {latestReport.analysis_date}
                         </div>
-                        <div className="mt-1 text-[13px] font-medium line-clamp-1">{latestReport.title || '报告摘要'}</div>
+                        <div className="mt-1 text-[13px] font-medium line-clamp-1">{latestReport.title || tr('cards.reportSummary')}</div>
                         <div className="mt-1 text-[12px] text-foreground/90 line-clamp-3">
-                          {markdownToPlainText(latestReport.content) || '暂无报告内容'}
+                          {markdownToPlainText(latestReport.content) || tr('cards.noReportContent')}
                         </div>
                       </div>
                     )}
@@ -1632,8 +1657,8 @@ export default function StockInsightModal(props: {
                 <div className="card p-3">
                   <div className="flex items-center gap-1">
                     {([
-                      { key: 'premarket_outlook', label: '盘前' },
-                      { key: 'daily_report', label: '盘后' },
+                      { key: 'premarket_outlook', label: tr('reports.premarket') },
+                      { key: 'daily_report', label: tr('reports.afterMarket') },
                     ] as const).map(item => (
                       <button
                         key={item.key}
@@ -1648,13 +1673,13 @@ export default function StockInsightModal(props: {
                   </div>
                 </div>
                 {!activeReport ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无报告</div>
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center">{tr('cards.noReport')}</div>
                 ) : (
                   <div className="card p-4 space-y-3">
                     <div className="text-[11px] text-muted-foreground">
-                      {AGENT_LABELS[activeReport.agent_name] || activeReport.agent_name} · {activeReport.analysis_date}
+                      {agentLabel(activeReport.agent_name)} · {activeReport.analysis_date}
                     </div>
-                    <div className="text-[15px] font-medium">{activeReport.title || '报告摘要'}</div>
+                    <div className="text-[15px] font-medium">{activeReport.title || tr('cards.reportSummary')}</div>
                     {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
                       <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
                         {(activeReport.suggestions as any)[symbol].action_label}
@@ -1662,33 +1687,33 @@ export default function StockInsightModal(props: {
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
                       <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
-                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
+                        <ReactMarkdown>{activeReport.content || tr('cards.noReportContent')}</ReactMarkdown>
                       </div>
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
                       <details className="rounded-lg border border-border/40 bg-accent/10 p-3">
-                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">查看分析上下文</summary>
+                        <summary className="cursor-pointer text-[12px] text-muted-foreground select-none">{tr('reports.context')}</summary>
                         {activeReport.prompt_stats ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt统计</div>
+                            <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.promptStats')}</div>
                             <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.news_debug ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">新闻注入明细</div>
+                            <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.newsDetails')}</div>
                             <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.context_payload ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">上下文快照</div>
+                            <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.contextSnapshot')}</div>
                             <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.prompt_context ? (
                           <div className="mt-2">
-                            <div className="text-[11px] text-muted-foreground mb-1">Prompt原文</div>
+                            <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.promptOriginal')}</div>
                             <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
                           </div>
                         ) : null}
@@ -1714,7 +1739,7 @@ export default function StockInsightModal(props: {
                         )
                       }
                     >
-                      打开详情页 ↗
+                      {tr('actions.openDetails')}
                     </Button>
                   </div>
                 )}
@@ -1736,13 +1761,13 @@ export default function StockInsightModal(props: {
             {tab === 'suggestions' && (
               <div className="space-y-3">
                 <div className="card p-3 flex items-center justify-between gap-3">
-                  <div className="text-[12px] text-muted-foreground">显示过期建议</div>
+                  <div className="text-[12px] text-muted-foreground">{tr('suggestions.showExpired')}</div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? '包含过期' : '仅有效'}</span>
+                    <span className="text-[11px] text-muted-foreground">{includeExpiredSuggestions ? tr('suggestions.includeExpired') : tr('suggestions.activeOnly')}</span>
                     <Switch
                       checked={includeExpiredSuggestions}
                       onCheckedChange={setIncludeExpiredSuggestions}
-                      aria-label="显示过期建议"
+                      aria-label={tr('suggestions.showExpired')}
                     />
                   </div>
                 </div>
@@ -1751,12 +1776,12 @@ export default function StockInsightModal(props: {
                     <div className="card p-4">
                       <SuggestionBadge suggestion={technicalFallbackSuggestion} stockName={resolvedName} stockSymbol={symbol} kline={klineSummary} hasPosition={!!props.hasPosition} />
                       <div className="mt-2 text-[10px] text-muted-foreground">
-                        {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '当前显示技术指标基础建议'}
+                        {autoSuggesting ? tr('cards.generatingSuggestionWait') : tr('suggestions.technicalFallback')}
                       </div>
                     </div>
                   ) : (
                     <div className="card p-6 text-[12px] text-muted-foreground text-center">
-                      {autoSuggesting ? '正在自动生成 AI 建议（通常 5-15 秒）...' : '暂无建议'}
+                      {autoSuggesting ? tr('cards.generatingSuggestionWait') : tr('suggestions.empty')}
                     </div>
                   )
                 ) : (
@@ -1779,16 +1804,16 @@ export default function StockInsightModal(props: {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="6">近6小时</SelectItem>
-                      <SelectItem value="12">近12小时</SelectItem>
-                      <SelectItem value="24">近24小时</SelectItem>
-                      <SelectItem value="48">近48小时</SelectItem>
-                      <SelectItem value="168">近7天</SelectItem>
+                      <SelectItem value="6">{tr('ranges.hours6')}</SelectItem>
+                      <SelectItem value="12">{tr('ranges.hours12')}</SelectItem>
+                      <SelectItem value="24">{tr('ranges.hours24')}</SelectItem>
+                      <SelectItem value="48">{tr('ranges.hours48')}</SelectItem>
+                      <SelectItem value="168">{tr('ranges.days7')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {news.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无相关新闻</div>
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center">{tr('cards.noNews')}</div>
                 ) : (
                   news.map((item, idx) => (
                     <a
@@ -1802,7 +1827,7 @@ export default function StockInsightModal(props: {
                         <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time, locale)}</div>
                     </a>
                   ))
                 )}
@@ -1817,19 +1842,19 @@ export default function StockInsightModal(props: {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="168">近7天</SelectItem>
-                      <SelectItem value="336">近14天</SelectItem>
-                      <SelectItem value="720">近30天</SelectItem>
-                      <SelectItem value="2160">近90天</SelectItem>
-                      <SelectItem value="4320">近180天</SelectItem>
-                      <SelectItem value="24">近24小时</SelectItem>
-                      <SelectItem value="48">近48小时</SelectItem>
-                      <SelectItem value="72">近72小时</SelectItem>
+                      <SelectItem value="168">{tr('ranges.days7')}</SelectItem>
+                      <SelectItem value="336">{tr('ranges.days14')}</SelectItem>
+                      <SelectItem value="720">{tr('ranges.days30')}</SelectItem>
+                      <SelectItem value="2160">{tr('ranges.days90')}</SelectItem>
+                      <SelectItem value="4320">{tr('ranges.days180')}</SelectItem>
+                      <SelectItem value="24">{tr('ranges.hours24')}</SelectItem>
+                      <SelectItem value="48">{tr('ranges.hours48')}</SelectItem>
+                      <SelectItem value="72">{tr('ranges.hours72')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {announcements.length === 0 ? (
-                  <div className="card p-6 text-[12px] text-muted-foreground text-center">暂无公告</div>
+                  <div className="card p-6 text-[12px] text-muted-foreground text-center">{tr('announcementsEmpty')}</div>
                 ) : (
                   announcements.map((item, idx) => (
                     <a
@@ -1843,7 +1868,7 @@ export default function StockInsightModal(props: {
                         <div className="text-[13px] font-medium text-foreground line-clamp-2">{item.title}</div>
                         <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       </div>
-                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time)}</div>
+                      <div className="mt-2 text-[11px] text-muted-foreground">{item.source_label || item.source} · {formatTime(item.publish_time, locale)}</div>
                     </a>
                   ))
                 )}
@@ -1863,13 +1888,6 @@ const DEEP_DECISION_COLOR: Record<string, string> = {
   buy: 'text-emerald-600 dark:text-emerald-400',
   hold: 'text-amber-600 dark:text-amber-400',
   sell: 'text-rose-600 dark:text-rose-400',
-}
-
-const DEEP_STAGE_LABEL: Record<string, string> = {
-  market: '技术分析师',
-  social: '情绪分析师',
-  news: '新闻分析师',
-  fundamentals: '基本面分析师',
 }
 
 function DeepAnalysisSection({
@@ -1895,20 +1913,27 @@ function DeepAnalysisSection({
   setShowDebate: (v: boolean) => void
   onRefresh: () => void
 }) {
+  const { t, i18n } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
+  const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
+  const deepAction = (action: string, label: string) => english
+    ? (t as unknown as (key: string) => string)(`kline.actions.${normalizeSuggestionAction(action, label)}`)
+    : label
   if (loading && !loaded) {
     return (
       <div className="card p-6 text-center text-[12px] text-muted-foreground">
         <span className="inline-block w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin mr-2 align-middle" />
-        正在加载深度分析报告...
+        {tr('deep.loading')}
       </div>
     )
   }
   if (!result && !history?.items?.length) {
     return (
       <div className="card p-6 text-center text-[12px] text-muted-foreground space-y-2">
-        <div>暂无深度分析报告</div>
+        <div>{tr('deep.empty')}</div>
         <div className="text-[11px] text-muted-foreground/70">
-          可在持仓 / 自选页点击 🧠 深度分析按钮触发
+          {tr('deep.emptyHint')}
         </div>
       </div>
     )
@@ -1924,7 +1949,7 @@ function DeepAnalysisSection({
     <div className="space-y-3 text-[13px]">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] text-muted-foreground">
-          TradingAgents 深度{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
+          {tr('deep.title')}{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
         </div>
         <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
           <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
@@ -1935,17 +1960,17 @@ function DeepAnalysisSection({
         <div className="rounded-lg bg-accent/30 p-4 space-y-2">
           <div className="flex items-center gap-3">
             <span className={`text-[20px] font-bold ${DEEP_DECISION_COLOR[sug.action] || ''}`}>
-              {sug.action_label}
+              {deepAction(sug.action, sug.action_label)}
             </span>
             {typeof sug.confidence === 'number' && (
               <span className="text-[12px] text-muted-foreground">
-                置信度 {sug.confidence.toFixed(1)} / 10
+                {tr('deep.confidence', { value: sug.confidence.toFixed(1) })}
               </span>
             )}
           </div>
           {sug.reason && <div className="text-[12px] text-foreground/80">{sug.reason.slice(0, 240)}</div>}
           {typeof costUsd === 'number' && (
-            <div className="text-[10px] text-muted-foreground mt-2">成本:${costUsd.toFixed(4)}</div>
+            <div className="text-[10px] text-muted-foreground mt-2">{tr('deep.cost', { value: costUsd.toFixed(4) })}</div>
           )}
         </div>
       )}
@@ -1966,7 +1991,7 @@ function DeepAnalysisSection({
             className="text-[12px] text-muted-foreground hover:text-foreground flex items-center gap-1"
             onClick={() => setShowAnalyst(!showAnalyst)}
           >
-            {showAnalyst ? '▼' : '▶'} 4 位分析师报告
+            {showAnalyst ? '▼' : '▶'} {tr('deep.analysts')}
           </button>
           {showAnalyst && (
             <div className="space-y-3 mt-2 pl-3 border-l-2 border-border/40">
@@ -1975,10 +2000,10 @@ function DeepAnalysisSection({
                 if (!text) return null
                 return (
                   <details key={k} open className="text-[12px]">
-                    <summary className="font-medium cursor-pointer">{DEEP_STAGE_LABEL[k] || k}</summary>
+                    <summary className="font-medium cursor-pointer">{tr(`deep.stages.${k}`)}</summary>
                     <div className="mt-2 text-[11px] text-foreground/80 whitespace-pre-wrap">
                       {text.slice(0, 1500)}
-                      {text.length > 1500 && '... (截断)'}
+                      {text.length > 1500 && tr('deep.truncated')}
                     </div>
                   </details>
                 )
@@ -1994,14 +2019,14 @@ function DeepAnalysisSection({
             className="text-[12px] text-muted-foreground hover:text-foreground flex items-center gap-1"
             onClick={() => setShowDebate(!showDebate)}
           >
-            {showDebate ? '▼' : '▶'} 看多看空辩论
+            {showDebate ? '▼' : '▶'} {tr('deep.debate')}
           </button>
           {showDebate && (
             <div className="mt-2 pl-3 border-l-2 border-border/40 text-[11px] text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
               {debate.history}
               {debate.judge_decision && (
                 <>
-                  <div className="font-medium mt-3 mb-1">研究主管裁决:</div>
+                  <div className="font-medium mt-3 mb-1">{tr('deep.judge')}</div>
                   <div>{debate.judge_decision}</div>
                 </>
               )}
@@ -2011,7 +2036,7 @@ function DeepAnalysisSection({
       )}
 
       <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
-        本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
+        {tr('deep.disclaimer')}
       </div>
     </div>
   )
@@ -2024,10 +2049,17 @@ function DeepHistoryComparison({
   history: HistoryComparisonResponse | null
   loading: boolean
 }) {
+  const { t, i18n } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
+  const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
+  const deepAction = (action: string, label: string) => english
+    ? (t as unknown as (key: string) => string)(`kline.actions.${normalizeSuggestionAction(action, label)}`)
+    : label
   if (loading && !history) {
     return (
       <div className="rounded-lg border border-border/40 p-3 text-[11px] text-muted-foreground text-center">
-        历史对比加载中...
+        {tr('deep.historyLoading')}
       </div>
     )
   }
@@ -2042,24 +2074,24 @@ function DeepHistoryComparison({
   return (
     <div className="rounded-lg border border-border/50 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[12px] font-medium">历史决策 vs 实际涨跌</div>
-        <div className="text-[10px] text-muted-foreground">仅基于满 20 个交易日的决策统计</div>
+        <div className="text-[12px] font-medium">{tr('deep.historyTitle')}</div>
+        <div className="text-[10px] text-muted-foreground">{tr('deep.historyHint')}</div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
         <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">总命中率</div>
+          <div className="text-muted-foreground">{tr('deep.hitRate')}</div>
           <div className="font-semibold">{fmtPct(stats.overall_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">买入 ({stats.buy_count})</div>
+          <div className="text-muted-foreground">{tr('deep.buy', { count: stats.buy_count })}</div>
           <div className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(stats.buy_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">卖出 ({stats.sell_count})</div>
+          <div className="text-muted-foreground">{tr('deep.sell', { count: stats.sell_count })}</div>
           <div className="font-semibold text-rose-600 dark:text-rose-400">{fmtPct(stats.sell_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
-          <div className="text-muted-foreground">平均 20 日收益</div>
+          <div className="text-muted-foreground">{tr('deep.avg20d')}</div>
           <div className={`font-semibold ${retCls(stats.avg_return_20d_pct)}`}>{fmtRet(stats.avg_return_20d_pct)}</div>
         </div>
       </div>
@@ -2067,13 +2099,13 @@ function DeepHistoryComparison({
         <table className="w-full text-[11px]">
           <thead className="text-muted-foreground">
             <tr className="border-b border-border/40">
-              <th className="text-left px-1 py-1 font-normal">日期</th>
-              <th className="text-left px-1 py-1 font-normal">决策</th>
-              <th className="text-right px-1 py-1 font-normal">分析价</th>
-              <th className="text-right px-1 py-1 font-normal">1日</th>
-              <th className="text-right px-1 py-1 font-normal">5日</th>
-              <th className="text-right px-1 py-1 font-normal">20日</th>
-              <th className="text-center px-1 py-1 font-normal">命中</th>
+              <th className="text-left px-1 py-1 font-normal">{tr('deep.columns.date')}</th>
+              <th className="text-left px-1 py-1 font-normal">{tr('deep.columns.decision')}</th>
+              <th className="text-right px-1 py-1 font-normal">{tr('deep.columns.price')}</th>
+              <th className="text-right px-1 py-1 font-normal">{tr('deep.columns.day1')}</th>
+              <th className="text-right px-1 py-1 font-normal">{tr('deep.columns.day5')}</th>
+              <th className="text-right px-1 py-1 font-normal">{tr('deep.columns.day20')}</th>
+              <th className="text-center px-1 py-1 font-normal">{tr('deep.columns.hit')}</th>
             </tr>
           </thead>
           <tbody>
@@ -2081,7 +2113,7 @@ function DeepHistoryComparison({
               <tr key={`${item.analysis_date}-${i}`} className="border-b border-border/20 hover:bg-accent/10">
                 <td className="px-1 py-1 text-muted-foreground whitespace-nowrap">{item.analysis_date}</td>
                 <td className="px-1 py-1">
-                  <span className={DEEP_DECISION_COLOR[item.action] || ''}>{item.action_label}</span>
+                  <span className={DEEP_DECISION_COLOR[item.action] || ''}>{deepAction(item.action, item.action_label)}</span>
                   {typeof item.confidence === 'number' && (
                     <span className="text-muted-foreground text-[10px] ml-1">({item.confidence.toFixed(1)})</span>
                   )}

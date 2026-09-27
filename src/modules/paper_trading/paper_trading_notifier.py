@@ -140,11 +140,12 @@ STRATEGY_NAME_MAP_EN = {
 
 
 def _report_is_english() -> bool:
-    """Read the explicit AI/report language preference; never infer it from UI locale."""
+    """Resolve the AI/report preference, including follow-interface mode."""
     db = SessionLocal()
     try:
-        setting = db.query(AppSettings).filter(AppSettings.key == "ai_report_language").first()
-        return bool(setting and setting.value == "en-US")
+        from src.platform.language import resolve_report_language
+
+        return resolve_report_language(db) == "en-US"
     except Exception:
         return False
     finally:

@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import Account
+from src.platform.persistence.models import Account, AppSettings
 from src.modules.portfolio.api import accounts
 
 
@@ -52,3 +52,28 @@ def test_review_keeps_internal_distribution_separate_from_total_exposure(db, mon
     assert result['diagnostics']['by_market'] == {'CN':250}
     assert result['diagnostics']['max_weight'] == 1
     assert result['account_totals']['available_funds'] == 300
+
+
+def test_review_follows_english_interface_language(db, monkeypatch):
+    from src.modules.portfolio import portfolio_benchmark as benchmark
+    from src.platform.ai import ai_failover
+
+    db.add_all([
+        Account(name='test', available_funds=300),
+        AppSettings(key='ui_language', value='en-US', description=''),
+    ])
+    db.commit()
+    holdings = [{'symbol': 'TEST', 'market': 'CN', 'market_value': 250, 'unrealized_pnl': 0}]
+    monkeypatch.setattr(accounts, '_gather_holdings', lambda _: holdings)
+    monkeypatch.setattr(benchmark, 'build_portfolio_benchmark', lambda *a, **kw: {})
+    monkeypatch.setattr(benchmark, 'build_attribution', lambda *a, **kw: [])
+    client = AsyncMock()
+    client.chat.return_value = 'Health check: concentrated\nSuggestions:\n- Diversify\nRisk: concentration'
+    monkeypatch.setattr(ai_failover, 'get_configured_failover_client', lambda *a: client)
+
+    asyncio.run(accounts.portfolio_ai_review(db=db))
+
+    system, context = client.chat.call_args.args
+    assert 'write a concise health check' in system
+    assert 'Concentration within invested capital' in context
+    assert '风险提示' not in context

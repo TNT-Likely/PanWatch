@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { BenchmarkCurvePoint } from '@panwatch/api'
+import { useTranslation } from 'react-i18next'
 
 interface BenchChartProps {
   curve: BenchmarkCurvePoint[]
@@ -14,10 +15,12 @@ function BenchChartSvg({
   points,
   width,
   height,
+  ariaLabel,
 }: {
   points: BenchmarkCurvePoint[]
   width: number
   height: number
+  ariaLabel: string
 }) {
   const padLeft = 2
   const padRight = 40 // 预留右侧 % 刻度文字
@@ -51,7 +54,7 @@ function BenchChartSvg({
   const areaAttr = `${xAt(0).toFixed(1)},${baseline.toFixed(1)} ${portfolioAttr} ${xAt(n - 1).toFixed(1)},${baseline.toFixed(1)}`
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="组合净值 vs 基准走势图">
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
       <defs>
         <linearGradient id="benchchart-area" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.22} />
@@ -128,6 +131,7 @@ function BenchChartSvg({
  * curve 为空/有效点数 < 2 时不渲染(由上层负责展示"计算中"等占位文案)。
  */
 export default function BenchChart({ curve, height = 150, className }: BenchChartProps) {
+  const { t } = useTranslation('configuration')
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
 
@@ -148,7 +152,7 @@ export default function BenchChart({ curve, height = 150, className }: BenchChar
 
   return (
     <div ref={containerRef} className={className} style={{ width: '100%', height }}>
-      {width > 0 && <BenchChartSvg points={points} width={width} height={height} />}
+      {width > 0 && <BenchChartSvg points={points} width={width} height={height} ariaLabel={t('dashboardRuntime.benchmarkChart')} />}
     </div>
   )
 }

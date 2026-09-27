@@ -158,10 +158,10 @@ def test_prepare_context_includes_durable_tool_findings_as_trusted_facts(monkeyp
     engine.dispose()
 
 
-def test_context_includes_ai_response_language_separately_from_ui_locale():
+def test_context_uses_interface_language_for_ai_responses():
     engine, session, service = _service()
     conversation = service.create_conversation(CreateConversationCommand())
-    session.add(AppSettings(key="ai_report_language", value="en-US", description=""))
+    session.add(AppSettings(key="ui_language", value="en-US", description=""))
     session.commit()
 
     messages = service._context_messages(conversation.id)

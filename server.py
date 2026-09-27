@@ -925,8 +925,13 @@ def _get_app_setting(key: str) -> str:
 
 
 def _get_report_language() -> str:
-    value = _get_app_setting("ai_report_language")
-    return value if value in {"zh-CN", "en-US"} else "zh-CN"
+    from src.platform.language import resolve_report_language
+
+    db = SessionLocal()
+    try:
+        return resolve_report_language(db)
+    finally:
+        db.close()
 
 
 def resolve_ai_model(

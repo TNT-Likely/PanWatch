@@ -28,19 +28,7 @@ import {
   isTerminalProgressStatus,
   shouldContinueProgressWatch,
 } from '../../../../src/lib/tradingagents-progress'
-
-const STAGE_LABEL: Record<string, string> = {
-  data_collection: '数据准备',
-  market_analyst: '技术分析师',
-  social_analyst: '情绪分析师',
-  news_analyst: '新闻分析师',
-  fundamentals_analyst: '基本面分析师',
-  bull_bear_debate: '看多看空辩论',
-  research_manager: '研究主管',
-  trader: '交易员决策',
-  risk_judge: '风控判定',
-  final_decision: 'PM 整合',
-}
+import { useTranslation } from 'react-i18next'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-emerald-600 dark:text-emerald-400',
@@ -109,6 +97,9 @@ export function DeepAnalysisModal({
   initialResult = null,
 }: DeepAnalysisModalProps) {
   const { toast } = useToast()
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   const [stage, setStage] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [traceId, setTraceId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ProgressResponse | null>(null)
@@ -227,13 +218,13 @@ export function DeepAnalysisModal({
           setResult(latest)
           setStage('done')
         } else {
-          setError('结果未落库,请稍后到「AI 历史」查看')
+          setError(tr('errors.resultMissing'))
           setStage('error')
         }
       } else if (resp.status === 'failed') {
         stopWatching()
         clearRunningTrace(stockSymbol)
-        setError(resp.run?.error || '分析失败')
+        setError(resp.run?.error || tr('errors.analysisFailed'))
         setStage('error')
       } else if (resp.status === 'stale') {
         // 后端检测到僵尸 running（超过整个任务生命周期窗口）
@@ -317,7 +308,7 @@ export function DeepAnalysisModal({
       if (!tid) {
         // 后端未返回 trace_id,只显示 message
         setStage('done')
-        toast(triggerResp.message || '已触发', 'success')
+        toast(triggerResp.message || tr('triggered'), 'success')
         return
       }
       // 持久化 trace_id 让关闭重开能恢复进度
@@ -328,7 +319,7 @@ export function DeepAnalysisModal({
       pollProgress(tid)
     } catch (e) {
       setStage('error')
-      setError(e instanceof Error ? e.message : '触发失败')
+      setError(e instanceof Error ? e.message : tr('errors.triggerFailed'))
     }
   }, [stockId, stockSymbol, startWatching, pollProgress, toast])
 
@@ -342,10 +333,10 @@ export function DeepAnalysisModal({
       <DialogContent className="w-[92vw] max-w-6xl max-h-[85vh] overflow-y-auto scrollbar">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            🧠 深度分析 · {stockName} ({stockSymbol})
+            {tr('title', { name: stockName, symbol: stockSymbol })}
           </DialogTitle>
           <DialogDescription>
-            TradingAgents 多 Agent 决策框架 · 仅供学习研究参考,不构成投资建议
+            {tr('description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -371,12 +362,12 @@ export function DeepAnalysisModal({
         {stage === 'error' && (
           <div className="space-y-3 text-[13px]">
             <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-rose-600">
-              <div className="font-semibold mb-1">分析失败</div>
+              <div className="font-semibold mb-1">{tr('failedTitle')}</div>
               <div className="text-[12px]">{error}</div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleClose}>关闭</Button>
-              <Button onClick={() => handleStart(false)}>重试</Button>
+              <Button variant="outline" onClick={handleClose}>{tr('close')}</Button>
+              <Button onClick={() => handleStart(false)}>{tr('retry')}</Button>
             </div>
           </div>
         )}
@@ -396,23 +387,26 @@ function IdleView({
   onStart: () => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   const overBudget = budget?.exceeded && budget.over_budget_action === 'reject'
   const est = budget?.estimate_next_run
   return (
     <div className="space-y-4 text-[13px]">
       <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
-        <div className="font-medium">即将分析:{stockSymbol}</div>
+        <div className="font-medium">{tr('idle.upcoming', { symbol: stockSymbol })}</div>
         <div className="text-muted-foreground">
-          调用 4 类分析师(技术 / 情绪 / 新闻 / 基本面) + 看多看空辩论 + 风控 + PM 整合
+          {tr('idle.framework')}
         </div>
         <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
-          <div>⏱ 预计耗时:3-8 分钟</div>
+          <div>{tr('idle.duration')}</div>
           {est ? (
-            <div>💰 预估成本:${est.cost_low_usd.toFixed(2)} - ${est.cost_high_usd.toFixed(2)} ({est.model})</div>
+            <div>{tr('idle.cost', { low: est.cost_low_usd.toFixed(2), high: est.cost_high_usd.toFixed(2), model: est.model })}</div>
           ) : (
-            <div>💰 预估成本:加载中...</div>
+            <div>{tr('idle.costLoading')}</div>
           )}
-          <div>ℹ️ 异步执行,可关闭弹窗,完成时通过通知渠道推送</div>
+          <div>{tr('idle.async')}</div>
         </div>
       </div>
 
@@ -420,23 +414,23 @@ function IdleView({
       {budget && (
         <div className={`rounded-lg p-3 text-[12px] ${overBudget ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-accent/20'}`}>
           <div className="flex items-center justify-between">
-            <span className="font-medium">本月预算</span>
+            <span className="font-medium">{tr('idle.budget')}</span>
             <span className={overBudget ? 'text-rose-600' : 'text-muted-foreground'}>
               ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
-              {budget.runs_this_month > 0 && ` · ${budget.runs_this_month} 次`}
+              {budget.runs_this_month > 0 && tr('idle.runs', { count: budget.runs_this_month })}
             </span>
           </div>
           {overBudget && (
             <div className="text-[11px] text-rose-600 mt-1">
-              ⚠️ 本月预算已用尽。如需继续,请到「设置 → Agent → TradingAgents」调高 `monthly_budget_usd`。
+              {tr('idle.budgetExceeded')}
             </div>
           )}
         </div>
       )}
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>取消</Button>
-        <Button onClick={onStart} disabled={overBudget}>开始分析</Button>
+        <Button variant="outline" onClick={onCancel}>{tr('idle.cancel')}</Button>
+        <Button onClick={onStart} disabled={overBudget}>{tr('idle.start')}</Button>
       </div>
     </div>
   )
@@ -451,6 +445,9 @@ function RunningView({
   traceId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   const elapsed = progress?.elapsed_sec ?? 0
   const cost = progress?.total_cost_usd ?? 0
   const stages = progress?.stages ?? []
@@ -460,19 +457,19 @@ function RunningView({
       <div className="rounded-lg bg-accent/30 p-3 space-y-2">
         <div className="flex items-center gap-2">
           <span className="inline-block w-3 h-3 rounded-full bg-primary animate-pulse" />
-          <span className="font-medium">分析进行中...</span>
+          <span className="font-medium">{tr('running.title')}</span>
           <span className="ml-auto text-[11px] text-muted-foreground">
-            已用 {formatElapsed(elapsed)} · ${cost.toFixed(4)}
+            {tr('running.elapsed', { time: formatElapsed(elapsed), cost: cost.toFixed(4) })}
           </span>
         </div>
         {progress?.active_operation && (
           <div className="text-[11px] text-muted-foreground">
             {progress.active_operation.agent && (
               <>
-                当前 Agent：<span className="font-mono">{progress.active_operation.agent}</span> ·{' '}
+                {tr('running.currentAgent')}<span className="font-mono">{progress.active_operation.agent}</span> ·{' '}
               </>
             )}
-            当前操作：{progress.active_operation.kind === 'tool' ? '数据工具 ' : ''}
+            {tr('running.currentOperation')}{progress.active_operation.kind === 'tool' ? tr('running.dataTool') : ''}
             <span className="font-mono">{progress.active_operation.name}</span>
           </div>
         )}
@@ -480,7 +477,7 @@ function RunningView({
           {stages.length > 0 ? stages.map((s) => (
             <StageRow key={s.name} stage={s} />
           )) : (
-            <div className="text-[12px] text-muted-foreground">准备中...</div>
+            <div className="text-[12px] text-muted-foreground">{tr('running.preparing')}</div>
           )}
         </div>
         <div className="text-[10px] text-muted-foreground/70 mt-3 font-mono">
@@ -499,7 +496,7 @@ function RunningView({
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>
-          后台运行 (完成时推送通知)
+          {tr('running.background')}
         </Button>
       </div>
     </div>
@@ -507,20 +504,9 @@ function RunningView({
 }
 
 function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] }) {
-  const labels: Record<string, string> = {
-    quote: '行情',
-    klines: 'K 线',
-    capital_flow: '资金流',
-    events: '事件',
-    financial: '财报',
-    technical: '技术指标',
-  }
-  const statusLabels: Record<ProgressDataSource['status'], string> = {
-    pending: '等待',
-    running: '请求中',
-    done: '完成',
-    error: '失败降级',
-  }
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   const statusClasses: Record<ProgressDataSource['status'], string> = {
     pending: 'text-muted-foreground',
     running: 'text-sky-600 dark:text-sky-400',
@@ -530,12 +516,18 @@ function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] 
 
   return (
     <div className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]">
-      <div className="font-medium mb-1">数据准备明细</div>
+      <div className="font-medium mb-1">{tr('data.title')}</div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {sources.map((source) => (
-          <span key={source.name} className={statusClasses[source.status]} title={source.error}>
-            {labels[source.name] || source.name}: {statusLabels[source.status]}
-          </span>
+          (() => {
+            const sourceKey = `data.sources.${source.name}`
+            const translatedSource = tr(sourceKey)
+            return (
+              <span key={source.name} className={statusClasses[source.status]} title={source.error}>
+                {translatedSource === `deepAnalysis.${sourceKey}` ? source.name : translatedSource}: {tr(`data.statuses.${source.status}`)}
+              </span>
+            )
+          })()
         ))}
       </div>
     </div>
@@ -568,6 +560,9 @@ export function ToolkitDiagnostics({
   recent: ToolkitDiagItem[]
   defaultOpen?: boolean
 }) {
+  const { t } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   if (!summary && recent.length === 0) return null
 
   const hit = summary?.hit ?? 0
@@ -588,27 +583,27 @@ export function ToolkitDiagnostics({
   return (
     <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]" open={defaultOpen}>
       <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
-        <span className="font-medium">数据注入诊断</span>
+        <span className="font-medium">{tr('toolkit.title')}</span>
         <span className="text-[11px] text-muted-foreground">
-          (PanWatch 数据 → TradingAgents 工具)
+          {tr('toolkit.subtitle')}
         </span>
         <span className="ml-auto text-[11px] whitespace-nowrap">
           <span className={ACTION_CLS.HIT}>HIT {hit}</span>
           <span className="text-muted-foreground"> · MISS {miss}</span>
-          <span className={ACTION_CLS.PASSTHROUGH}> · 透传 {pass}</span>
-          {fall > 0 && <span className={ACTION_CLS.FALLTHROUGH}> · 兜底 {fall}</span>}
-          {err > 0 && <span className="text-rose-600"> · 错误 {err}</span>}
+          <span className={ACTION_CLS.PASSTHROUGH}> · {tr('toolkit.passthrough')} {pass}</span>
+          {fall > 0 && <span className={ACTION_CLS.FALLTHROUGH}> · {tr('toolkit.fallback')} {fall}</span>}
+          {err > 0 && <span className="text-rose-600"> · {tr('toolkit.error')} {err}</span>}
         </span>
       </summary>
       <div className="text-[10.5px] text-muted-foreground/80 mt-2 leading-relaxed">
-        <span className={ACTION_CLS.HIT}>HIT</span>: 用 PanWatch 数据 ·{' '}
-        <span className={ACTION_CLS.MISS}>MISS</span>: 命中但 PanWatch 未实现 ·{' '}
-        <span className={ACTION_CLS.PASSTHROUGH}>透传</span>: 非 A 股直接走上游 vendor ·{' '}
-        <span className={ACTION_CLS.FALLTHROUGH}>兜底</span>: A 股但 cache 为空,走了上游
+        <span className={ACTION_CLS.HIT}>HIT</span>: {tr('toolkit.legendHit')} ·{' '}
+        <span className={ACTION_CLS.MISS}>MISS</span>: {tr('toolkit.legendMiss')} ·{' '}
+        <span className={ACTION_CLS.PASSTHROUGH}>{tr('toolkit.passthrough')}</span>: {tr('toolkit.legendPassthrough')} ·{' '}
+        <span className={ACTION_CLS.FALLTHROUGH}>{tr('toolkit.fallback')}</span>: {tr('toolkit.legendFallback')}
       </div>
       {total === 0 ? (
         <div className="text-[11px] text-muted-foreground mt-2">
-          ⚠️ 还没有任何工具调用记录(可能 TradingAgents 还在准备阶段)。
+          {tr('toolkit.empty')}
         </div>
       ) : (
         <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
@@ -622,7 +617,7 @@ export function ToolkitDiagnostics({
                 <span className="text-foreground/80 truncate flex-1 text-left">
                   {h.method} ({h.symbol || '-'})
                   {h.reason && <span className="text-muted-foreground"> · {h.reason}</span>}
-                  {h.chars != null && <span className="text-muted-foreground"> · {h.chars} 字符</span>}
+                  {h.chars != null && <span className="text-muted-foreground">{tr('toolkit.chars', { count: h.chars })}</span>}
                   {h.source && <span className="text-muted-foreground/70"> · {h.source}</span>}
                 </span>
               </div>
@@ -655,7 +650,7 @@ export function ToolkitDiagnostics({
                         {h.snippet}
                         {h.chars != null && h.chars > h.snippet.length && (
                           <span className="text-muted-foreground/60">
-                            {'\n\n'}...(共 {h.chars} 字符,仅展示前 {h.snippet.length})
+                            {'\n\n'}{tr('toolkit.truncated', { total: h.chars, shown: h.snippet.length })}
                           </span>
                         )}
                       </pre>
@@ -675,7 +670,10 @@ export function ToolkitDiagnostics({
 }
 
 function StageRow({ stage }: { stage: ProgressStage }) {
-  const label = STAGE_LABEL[stage.name] || stage.name
+  const { t } = useTranslation('bizUi')
+  const translationKey = `deepAnalysis.stages.${stage.name}`
+  const translated = (t as unknown as (key: string) => string)(translationKey)
+  const label = translated === translationKey ? stage.name : translated
   const icon =
     stage.status === 'done' ? '✓' : stage.status === 'running' ? '🔄' : '⏸'
   const cls =
@@ -706,21 +704,25 @@ function DoneView({
   stockSymbol: string
   onRerun: () => void
 }) {
+  const { t, i18n } = useTranslation('bizUi')
+  const tr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
+  const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
   // 防御性默认值:后端拉历史时可能 raw_data 缺失,这里给完整 fallback 避免白屏
   const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
   const sug = rawData.suggestion || {
     action: 'hold' as const,
-    action_label: '持有',
+    action_label: tr('done.fallbackAction'),
     signal: '',
     reason: '',
     should_alert: false,
     agent_name: 'tradingagents',
-    agent_label: 'TradingAgents 深度',
+    agent_label: tr('done.fallbackAgent'),
     confidence: 5.0,
   }
   const fromCache = rawData.from_cache
   const costUsd = rawData.cost_usd
-  const sections = buildAnalysisSections(rawData)
+  const sections = buildAnalysisSections(rawData, { english })
   const analysisDate = result.timestamp
     ? String(result.timestamp).slice(0, 10)
     : new Date().toISOString().slice(0, 10)
@@ -729,9 +731,9 @@ function DoneView({
     <div className="space-y-4 text-[13px]">
       {fromCache && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[12px] text-amber-700 dark:text-amber-400 flex items-center justify-between">
-          <span>ℹ️ 当日缓存:今天已经分析过这只股票,展示缓存结果(无新成本)</span>
+          <span>{tr('done.cached')}</span>
           <Button variant="outline" size="sm" onClick={onRerun} className="ml-3 h-7 text-[11px]">
-            忽略缓存重新分析
+            {tr('done.rerun')}
           </Button>
         </div>
       )}
@@ -739,10 +741,10 @@ function DoneView({
       {/* 顶层摘要(精简成一行:决策 + 置信度 + 成本;完整理由在"最终决策" tab) */}
       <div className="rounded-lg bg-accent/30 px-4 py-2.5 flex items-center gap-3 flex-wrap">
         <span className={`text-[18px] font-bold ${DECISION_COLOR[sug.action] || ''}`}>
-          {sug.action_label}
+          {english ? (t as unknown as (key: string) => string)(`kline.actions.${sug.action}`) : sug.action_label}
         </span>
         <span className="text-[12px] text-muted-foreground">
-          置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
+          {tr('done.confidence', { value: sug.confidence?.toFixed(1) ?? '-' })}
         </span>
         <Button
           variant="outline"
@@ -750,10 +752,10 @@ function DoneView({
           className="h-7 text-[11px] ml-auto"
           onClick={() => window.open(`/analysis/${stockSymbol}/${analysisDate}`, '_blank')}
         >
-          查看详细页
+          {tr('done.details')}
         </Button>
         <span className="text-[10px] text-muted-foreground">
-          成本:${costUsd?.toFixed(4) ?? '-'}
+          {tr('done.cost', { value: costUsd?.toFixed(4) ?? '-' })}
         </span>
       </div>
 
@@ -770,8 +772,7 @@ function DoneView({
 
       {/* 免责声明 */}
       <div className="text-[10px] text-muted-foreground/70 italic border-t border-border/30 pt-2">
-        本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。
-        投资有风险,决策需自主判断。
+        {tr('done.disclaimer')}
       </div>
     </div>
   )

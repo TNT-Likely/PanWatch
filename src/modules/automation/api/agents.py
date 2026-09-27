@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AgentConfig, AgentRun, AppSettings, LogEntry
+from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
 from src.platform.scheduling.schedule_parser import preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
 from src.platform.runtime.config import Settings
@@ -580,8 +580,9 @@ def export_tradingagents_analysis_pdf(
         raise HTTPException(status_code=404, detail="未找到该深度分析记录")
 
     # 用 raw_data 拼详情页同款完整分节(含 4 分析师全文 + 辩论全文);raw_data 缺失时回退 content
-    language_setting = db.query(AppSettings).filter(AppSettings.key == "ai_report_language").first()
-    report_language = language_setting.value if language_setting and language_setting.value in {"zh-CN", "en-US"} else "zh-CN"
+    from src.platform.language import resolve_report_language
+
+    report_language = resolve_report_language(db)
     report_md = assemble_report_markdown(record.raw_data or {}, language=report_language) or (record.content or "")
     english = report_language == "en-US"
     pdf_title = f"{stock_symbol} Deep Analysis" if english else (record.title or "深度分析")

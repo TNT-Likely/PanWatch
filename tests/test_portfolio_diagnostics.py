@@ -27,6 +27,12 @@ def test_diagnose_max_weight_alert():
     r = diagnose_positions(pos)
     assert r["max_weight"] == 0.6
     assert any("集中度" in a for a in r["alerts"])
+    assert {item["code"] for item in r["alert_details"]} >= {
+        "single_concentration",
+        "hhi_concentration",
+        "too_few_positions",
+        "market_concentration",
+    }
 
 
 def test_diagnose_by_market_distribution():

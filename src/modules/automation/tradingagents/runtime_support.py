@@ -85,7 +85,10 @@ def build_ta_llm_config(
     config["tool_vendors"] = dict(config.get("tool_vendors") or {})
 
     if runtime_dir is not None:
-        root = Path(runtime_dir).expanduser().resolve()
+        # Preserve the caller's path spelling. On macOS, resolving a /var temporary
+        # path rewrites it to /private/var even though both names address the same
+        # directory, which leaks an unexpected path into the runtime configuration.
+        root = Path(runtime_dir).expanduser()
         results_dir = root / "results"
         data_cache_dir = root / "cache"
         memory_dir = root / "memory"

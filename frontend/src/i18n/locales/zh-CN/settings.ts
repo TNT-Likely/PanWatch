@@ -13,7 +13,5 @@ export const settings = {
     englishExperimental: 'English（实验性）',
     switchAria: '切换界面语言',
     quickSwitch: 'English',
-    reportTitle: 'AI 输出语言',
-    report: { simplifiedChinese: '简体中文', english: 'English' },
   },
 } as const

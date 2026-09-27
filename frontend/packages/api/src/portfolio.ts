@@ -9,6 +9,13 @@ export interface PortfolioDiagnostics {
   by_strategy: Record<string, number>
   total_unrealized_pnl: number
   alerts: string[]
+  alert_details?: Array<{
+    code: 'single_concentration' | 'hhi_concentration' | 'too_few_positions' | 'market_concentration' | string
+    weight?: number
+    hhi?: number
+    count?: number
+    market?: string
+  }>
 }
 
 export interface BenchmarkCurvePoint {

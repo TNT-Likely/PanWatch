@@ -309,24 +309,7 @@ class TradingAgentsAgent(BaseAgent):
 
         # 2) 构造 TradingAgents config (支持 deep / quick 双模型)
         from src.platform.persistence.database import DB_PATH
-        output_language = self.output_language
-        try:
-            from src.platform.persistence.database import SessionLocal
-            from src.platform.persistence.models import AppSettings
-
-            preference_db = SessionLocal()
-            try:
-                language_setting = (
-                    preference_db.query(AppSettings)
-                    .filter(AppSettings.key == "ai_report_language")
-                    .first()
-                )
-                if language_setting and language_setting.value in {"zh-CN", "en-US"}:
-                    output_language = "English" if language_setting.value == "en-US" else "Chinese"
-            finally:
-                preference_db.close()
-        except Exception:
-            logger.debug("AI report language preference unavailable; using the Agent default")
+        output_language = "English" if context.report_language == "en-US" else "Chinese"
         ta_runtime_dir = Path(DB_PATH).resolve().parent / "tradingagents"
         ta_config = build_ta_llm_config(
             context.ai_client,

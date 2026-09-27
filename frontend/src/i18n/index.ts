@@ -40,7 +40,7 @@ void i18n
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: [...SUPPORTED_LOCALES],
     defaultNS: 'common',
-    ns: ['common', 'auth', 'navigation', 'settings', 'configuration'],
+    ns: ['common', 'auth', 'navigation', 'settings', 'configuration', 'bizUi'],
     interpolation: {
       escapeValue: false,
     },

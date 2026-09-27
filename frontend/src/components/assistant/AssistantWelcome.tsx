@@ -1,7 +1,7 @@
 import { ArrowUpRight, Briefcase, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useReportLanguage } from '@/i18n/report-language'
+import { useInterfaceLanguage } from '@/i18n/interface-language'
 import { AssistantStockPicker, type AssistantStockSearchResult } from './AssistantStockPicker'
 
 interface AssistantWelcomeProps {
@@ -13,7 +13,7 @@ interface AssistantWelcomeProps {
 /** First-run surface for the full-page assistant before a conversation exists. */
 export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: AssistantWelcomeProps) {
   const { t, i18n } = useTranslation('configuration')
-  const reportLanguage = useReportLanguage()
+  const reportLanguage = useInterfaceLanguage()
   const uiT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const reportT = i18n.getFixedT(reportLanguage, 'configuration') as unknown as (key: string, options?: Record<string, unknown>) => string
   const quickQuestions = [

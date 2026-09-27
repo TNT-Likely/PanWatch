@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Bot, Bell, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { useTranslation } from 'react-i18next'
 
 interface OnboardingProps {
   open: boolean
@@ -14,6 +15,7 @@ type Step = 'welcome' | 'ai' | 'notify' | 'complete'
 
 export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
   const navigate = useNavigate()
+  const { t } = useTranslation('bizUi')
   const [step, setStep] = useState<Step>('welcome')
 
   const handleNext = () => {
@@ -66,12 +68,12 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <TrendingUp className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-[20px] font-bold text-foreground mb-2">
-                欢迎使用盯盘侠
+                {t('onboarding.welcome')}
               </h2>
               <p className="text-[14px] text-muted-foreground mb-6">
                 {hasStocks
-                  ? '你的自选股已就绪，可以开始使用了'
-                  : '我们已为你添加了 5 只热门股票作为示例，你可以立即查看实时行情'
+                  ? t('onboarding.ready')
+                  : t('onboarding.samples')
                 }
               </p>
 
@@ -81,8 +83,8 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <TrendingUp className="w-4 h-4 text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">实时行情监控</p>
-                    <p className="text-[12px] text-muted-foreground">跟踪自选股价格变动，快速发现异动</p>
+                    <p className="text-[13px] font-medium text-foreground">{t('onboarding.liveTitle')}</p>
+                    <p className="text-[12px] text-muted-foreground">{t('onboarding.liveDesc')}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -90,8 +92,8 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <Bot className="w-4 h-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">AI 智能分析</p>
-                    <p className="text-[12px] text-muted-foreground">盘后日报、异动建议、技术分析</p>
+                    <p className="text-[13px] font-medium text-foreground">{t('onboarding.aiTitle')}</p>
+                    <p className="text-[12px] text-muted-foreground">{t('onboarding.aiDesc')}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-accent/30">
@@ -99,22 +101,22 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                     <Bell className="w-4 h-4 text-amber-500" />
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground">智能通知推送</p>
-                    <p className="text-[12px] text-muted-foreground">Telegram、企业微信等多渠道推送</p>
+                    <p className="text-[13px] font-medium text-foreground">{t('onboarding.notifyTitle')}</p>
+                    <p className="text-[12px] text-muted-foreground">{t('onboarding.notifyDesc')}</p>
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <Button className="flex-1" onClick={handleNext}>
-                  开始使用 <ChevronRight className="w-4 h-4" />
+                  {t('onboarding.start')} <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
               <button
                 onClick={handleSkip}
                 className="mt-3 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
               >
-                跳过引导
+                {t('onboarding.skip')}
               </button>
             </div>
           )}
@@ -125,37 +127,37 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <Bot className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-[20px] font-bold text-foreground mb-2">
-                配置 AI 分析
+                {t('onboarding.configureAi')}
               </h2>
               <p className="text-[14px] text-muted-foreground mb-4">
-                连接 AI 服务后，可获得智能分析功能
+                {t('onboarding.configureAiDesc')}
               </p>
 
               <div className="space-y-2 text-left mb-6 p-4 rounded-xl bg-accent/30">
                 <div className="flex items-center gap-2 text-[13px]">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  <span className="text-foreground">盘后日报自动分析</span>
+                  <span className="text-foreground">{t('onboarding.aiItems.report')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[13px]">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  <span className="text-foreground">异动 AI 建议</span>
+                  <span className="text-foreground">{t('onboarding.aiItems.suggestion')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[13px]">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  <span className="text-foreground">技术图表分析</span>
+                  <span className="text-foreground">{t('onboarding.aiItems.chart')}</span>
                 </div>
               </div>
 
               <p className="text-[12px] text-muted-foreground mb-4">
-                支持 OpenAI、智谱、DeepSeek 等服务商
+                {t('onboarding.aiProviders')}
               </p>
 
               <div className="flex items-center gap-3">
                 <Button variant="secondary" className="flex-1" onClick={handleNext}>
-                  稍后再说
+                  {t('onboarding.later')}
                 </Button>
                 <Button className="flex-1" onClick={handleGoToSettings}>
-                  前往配置
+                  {t('onboarding.configure')}
                 </Button>
               </div>
             </div>
@@ -167,37 +169,37 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <Bell className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-[20px] font-bold text-foreground mb-2">
-                配置通知渠道
+                {t('onboarding.configureNotify')}
               </h2>
               <p className="text-[14px] text-muted-foreground mb-4">
-                配置后可收到实时推送通知
+                {t('onboarding.configureNotifyDesc')}
               </p>
 
               <div className="space-y-2 text-left mb-6 p-4 rounded-xl bg-accent/30">
                 <div className="flex items-center gap-2 text-[13px]">
                   <Bell className="w-4 h-4 text-amber-500" />
-                  <span className="text-foreground">盘中异动提醒</span>
+                  <span className="text-foreground">{t('onboarding.notifyItems.intraday')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[13px]">
                   <Bell className="w-4 h-4 text-amber-500" />
-                  <span className="text-foreground">AI 分析报告推送</span>
+                  <span className="text-foreground">{t('onboarding.notifyItems.report')}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[13px]">
                   <Bell className="w-4 h-4 text-amber-500" />
-                  <span className="text-foreground">止盈止损预警</span>
+                  <span className="text-foreground">{t('onboarding.notifyItems.stop')}</span>
                 </div>
               </div>
 
               <p className="text-[12px] text-muted-foreground mb-4">
-                支持 Telegram、企业微信等渠道
+                {t('onboarding.notifyProviders')}
               </p>
 
               <div className="flex items-center gap-3">
                 <Button variant="secondary" className="flex-1" onClick={handleNext}>
-                  稍后再说
+                  {t('onboarding.later')}
                 </Button>
                 <Button className="flex-1" onClick={handleGoToSettings}>
-                  前往配置
+                  {t('onboarding.configure')}
                 </Button>
               </div>
             </div>
@@ -209,18 +211,18 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <CheckCircle2 className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-[20px] font-bold text-foreground mb-2">
-                设置完成
+                {t('onboarding.complete')}
               </h2>
               <p className="text-[14px] text-muted-foreground mb-6">
-                你可以随时在「设置」页面修改配置
+                {t('onboarding.completeDesc')}
               </p>
 
               <div className="space-y-3">
                 <Button className="w-full" onClick={() => onComplete()}>
-                  进入 Dashboard
+                  {t('onboarding.dashboard')}
                 </Button>
                 <Button variant="secondary" className="w-full" onClick={handleGoToPortfolio}>
-                  管理自选股
+                  {t('onboarding.portfolio')}
                 </Button>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
+import { useTranslation } from 'react-i18next'
 
 export default function KlineModal(props: {
   open: boolean
@@ -11,6 +12,7 @@ export default function KlineModal(props: {
   initialInterval?: '1d' | '1w' | '1m'
   initialDays?: '60' | '120' | '250'
 }) {
+  const { t } = useTranslation('bizUi')
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || '').trim() || 'CN'
 
@@ -18,9 +20,9 @@ export default function KlineModal(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>{props.title || (symbol ? `K线：${symbol}` : 'K线')}</DialogTitle>
+          <DialogTitle>{props.title || (symbol ? t('klineModal.title', { symbol }) : t('klineModal.fallbackTitle'))}</DialogTitle>
           <DialogDescription>
-            {props.description || '日K/周K/月K切换，含MA/成交量/MACD。'}
+            {props.description || t('klineModal.description')}
           </DialogDescription>
         </DialogHeader>
         {symbol ? (
@@ -31,7 +33,7 @@ export default function KlineModal(props: {
             initialDays={props.initialDays}
           />
         ) : (
-          <div className="text-[12px] text-muted-foreground py-8 text-center">未选择股票</div>
+          <div className="text-[12px] text-muted-foreground py-8 text-center">{t('klineModal.noStock')}</div>
         )}
       </DialogContent>
     </Dialog>

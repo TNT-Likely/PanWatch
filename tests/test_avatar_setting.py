@@ -81,3 +81,16 @@ def test_avatar_key_not_in_generic_list(tmp_path, monkeypatch):
     c.put("/settings/avatar", json={"value": _IMG})
     keys = [s["key"] for s in c.get("/settings").json()]
     assert "ui_avatar" not in keys
+
+
+def test_interface_language_is_persisted_but_ai_language_is_not_an_independent_setting(tmp_path, monkeypatch):
+    """界面语言供后台 AI 任务读取；不再向设置页暴露独立 AI 语言偏好。"""
+    c = _client(tmp_path, monkeypatch)
+
+    saved = c.put("/settings/ui_language", json={"value": "en-US"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["value"] == "en-US"
+    assert c.put("/settings/ui_language", json={"value": "fr-FR"}).status_code == 400
+
+    keys = [setting["key"] for setting in c.get("/settings").json()]
+    assert "ai_report_language" not in keys

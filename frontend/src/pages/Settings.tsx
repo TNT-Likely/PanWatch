@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
-import { setStoredReportLanguage, type ReportLanguage } from '@/i18n/report-language'
 
 interface Setting {
   key: string
@@ -318,10 +317,6 @@ export default function SettingsPage() {
         fetchAPI<AgentsHealth>('/agents/health'),
       ])
       setSettings(settingsData)
-      const reportLanguage = settingsData.find(s => s.key === 'ai_report_language')?.value
-      if (reportLanguage === 'zh-CN' || reportLanguage === 'en-US') {
-        setStoredReportLanguage(reportLanguage as ReportLanguage)
-      }
       setServices(servicesData)
       setChannels(channelsData)
       setVersion(versionData.version)
@@ -456,9 +451,6 @@ export default function SettingsPage() {
         method: 'PUT',
         body: JSON.stringify({ value }),
       })
-      if (key === 'ai_report_language' && (value === 'zh-CN' || value === 'en-US')) {
-        setStoredReportLanguage(value as ReportLanguage)
-      }
       const newEdited = { ...edited }
       delete newEdited[key]
       setEdited(newEdited)
@@ -742,10 +734,16 @@ export default function SettingsPage() {
   const defaultChannel = channels.find(c => c.is_default)
   const enabledChannels = channels.filter(c => c.enabled)
 
+  const settingLabel = (setting: Setting): string => {
+    const key = `configuration:settingsPage.system.settingDescriptions.${setting.key}`
+    const translated = configT(key)
+    return translated === key ? (setting.description || setting.key) : translated
+  }
+
   const filteredSettings = settings.filter(s => {
     const q = systemQuery.trim().toLowerCase()
     if (!q) return true
-    return (s.description || '').toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
+    return settingLabel(s).toLowerCase().includes(q) || (s.key || '').toLowerCase().includes(q)
   })
 
   // 按“重要性”排序：常用优先，低频靠后
@@ -1022,27 +1020,12 @@ export default function SettingsPage() {
                 const currentValue = edited[setting.key] ?? setting.value
                 const isChanged = setting.key in edited
                 const STOCK_LINK_OPTIONS: Record<string, string> = { xueqiu: configT('configuration:settingsPage.system.stockLinkXueqiu') }
-                const label = setting.key === 'ai_report_language'
-                  ? configT('configuration:settingsPage.system.aiReportLanguage')
-                  : setting.description || setting.key
+                const label = settingLabel(setting)
                 return (
                   <div key={setting.key}>
                     <Label>{label}</Label>
                     <div className="flex items-center gap-2.5">
-                      {setting.key === 'ai_report_language' ? (
-                        <Select
-                          value={currentValue || 'zh-CN'}
-                          onValueChange={v => setEdited({ ...edited, [setting.key]: v })}
-                        >
-                          <SelectTrigger className={`${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="zh-CN">{configT('configuration:settingsPage.system.chinese')}</SelectItem>
-                            <SelectItem value="en-US">{configT('configuration:settingsPage.system.english')}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : setting.key === 'stock_link_platform' ? (
+                      {setting.key === 'stock_link_platform' ? (
                         <Select
                           value={currentValue || 'xueqiu'}
                           onValueChange={v => setEdited({ ...edited, [setting.key]: v })}

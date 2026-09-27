@@ -14,6 +14,7 @@ export interface PortfolioTodo {
   type: string // no_alert | alert_expiring
   symbol?: string
   market?: string
+  name?: string
   message: string
 }
 

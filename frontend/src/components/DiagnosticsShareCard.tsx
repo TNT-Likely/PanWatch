@@ -81,7 +81,14 @@ export default function DiagnosticsShareCard({
   const markets = Object.entries(diag.by_market || {})
     .map(([m, v]) => ({ m, w: totalMv > 0 ? (v / totalMv) * 100 : 0 }))
     .sort((a, b) => b.w - a.w)
-  const alerts = (diag.alerts || []).slice(0, 3)
+  const alerts = (
+    diag.alert_details?.length
+      ? diag.alert_details.map((alert) => {
+          const market = alert.market ? marketLabel(alert.market) : ''
+          return shareT(`dashboard.diagnosticAlerts.${alert.code}`, { ...alert, market, defaultValue: alert.code })
+        })
+      : (diag.alerts || [])
+  ).slice(0, 3)
   const hasExcess = excessReturn != null && isFinite(excessReturn)
 
   return (
