@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Cpu } from 'lucide-react'
 import { chatApi, type AssistantConfig, type AssistantConfigUpdate } from '@panwatch/api'
+import { useTranslation } from 'react-i18next'
 
 interface AssistantConfigForm {
   compression_model_id: string
@@ -47,6 +48,9 @@ function toPayload(form: AssistantConfigForm): AssistantConfigUpdate {
 }
 
 export function AssistantConfigPanel() {
+  const { t } = useTranslation('configuration')
+  const assistantT = t as unknown as (key: string) => string
+  const tr = (key: string) => assistantT(`p4.components.assistantConfig.${key}`)
   const [config, setConfig] = useState<AssistantConfig | null>(null)
   const [form, setForm] = useState<AssistantConfigForm>(EMPTY_FORM)
   const [loading, setLoading] = useState(true)
@@ -63,7 +67,7 @@ export function AssistantConfigPanel() {
         setForm(toForm(next))
       })
       .catch(() => {
-        if (active) setError('无法加载上下文配置，请稍后重试。')
+        if (active) setError(tr('loadFailed'))
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -86,19 +90,19 @@ export function AssistantConfigPanel() {
       setForm(toForm(next))
       setSaved(true)
     } catch {
-      setError('保存上下文配置失败，请检查阈值后重试。')
+      setError(tr('saveFailed'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <section aria-label="上下文配置" className="border-t border-border/50 pt-5">
+    <section aria-label={tr('aria')} className="border-t border-border/50 pt-5">
       <div className="mb-3 flex items-start gap-2">
         <Cpu className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div>
-          <h3 className="text-[13px] font-semibold text-foreground">上下文工程</h3>
-          <p className="mt-1 text-[11px] text-muted-foreground">配置自动压缩所使用的模型和上下文预算。</p>
+          <h3 className="text-[13px] font-semibold text-foreground">{tr('title')}</h3>
+          <p className="mt-1 text-[11px] text-muted-foreground">{tr('description')}</p>
         </div>
       </div>
 
@@ -106,19 +110,19 @@ export function AssistantConfigPanel() {
       {loading ? (
         <div className="flex items-center gap-2 py-6 text-[12px] text-muted-foreground">
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-          正在加载上下文配置…
+          {tr('loading')}
         </div>
       ) : config ? (
         <div className="space-y-3">
           <label className="block text-[11px] text-muted-foreground">
-            <span className="mb-1 block">上下文压缩模型</span>
+            <span className="mb-1 block">{tr('model')}</span>
             <select
-              aria-label="上下文压缩模型"
+              aria-label={tr('model')}
               value={form.compression_model_id}
               onChange={(event) => update('compression_model_id', event.target.value)}
               className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-[12px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
             >
-              <option value="">跟随系统默认模型</option>
+              <option value="">{tr('defaultModel')}</option>
               {config.models.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.service_name} / {model.name} ({model.model})
@@ -128,9 +132,9 @@ export function AssistantConfigPanel() {
           </label>
 
           <label className="block text-[11px] text-muted-foreground">
-            <span className="mb-1 block">压缩温度</span>
+            <span className="mb-1 block">{tr('temperature')}</span>
             <input
-              aria-label="压缩温度"
+              aria-label={tr('temperature')}
               type="number"
               min="0"
               max="2"
@@ -143,16 +147,16 @@ export function AssistantConfigPanel() {
 
           <div className="grid grid-cols-2 gap-2">
             {([
-              ['summary_max_tokens', '摘要最大 Token'],
-              ['max_tokens', '最大上下文 Token'],
-              ['soft_limit_tokens', '自动压缩阈值'],
-              ['hard_limit_tokens', '硬上限 Token'],
-              ['keep_recent_messages', '保留最近消息数'],
+              ['summary_max_tokens', 'summaryTokens'],
+              ['max_tokens', 'maxTokens'],
+              ['soft_limit_tokens', 'softLimit'],
+              ['hard_limit_tokens', 'hardLimit'],
+              ['keep_recent_messages', 'recentMessages'],
             ] as const).map(([key, label]) => (
               <label key={key} className="block text-[11px] text-muted-foreground">
-                <span className="mb-1 block">{label}</span>
+                <span className="mb-1 block">{tr(label)}</span>
                 <input
-                  aria-label={label}
+                  aria-label={tr(label)}
                   type="number"
                   min="1"
                   value={form[key]}
@@ -170,7 +174,7 @@ export function AssistantConfigPanel() {
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Check className="h-3.5 w-3.5" />
-            {saving ? '保存中…' : saved ? '已保存' : '保存上下文配置'}
+            {saving ? tr('saving') : saved ? tr('saved') : tr('save')}
           </button>
         </div>
       ) : null}

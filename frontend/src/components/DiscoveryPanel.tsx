@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layers, RefreshCw } from 'lucide-react'
 import {
@@ -14,6 +14,7 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { useLocalStorage } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   monitorStocks: DashboardMonitorStock[]
@@ -21,6 +22,10 @@ interface Props {
 }
 
 export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
+  const { t } = useTranslation('configuration')
+  const discoveryT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => discoveryT(`p4.components.discovery.${key}`, options), [discoveryT])
+  const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us' } as Record<string, string>)[market] || market}`), [discoveryT])
   const navigate = useNavigate()
   const [watchlist, setWatchlist] = useState<DashboardWatchStock[]>([])
   const [portfolioRaw, setPortfolioRaw] = useState<DashboardPortfolioSummary | null>(null)
@@ -104,7 +109,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
       }
     } catch (e) {
       if (!silent) {
-        setDiscoverError(e instanceof Error ? e.message : '加载失败')
+        setDiscoverError(e instanceof Error ? e.message : tr('loadFailed'))
         if (tab === 'boards') setHotBoards([])
         else setHotStocks([])
       }
@@ -136,31 +141,31 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
       score += Math.min((stock.turnover || 0) / 1e8, 8) + pctAbs * 0.6
       if (holdingSet.has(key)) {
         score += 10
-        reasons.push('持仓相关')
+        reasons.push(tr('reasons.holding'))
       } else if (watchlistSet.has(key)) {
         score += 6
-        reasons.push('自选相关')
+        reasons.push(tr('reasons.watchlist'))
       }
       const monitor = monitorMap.get(key)
       if (monitor?.suggestion?.should_alert || monitor?.alert_type) {
         score += 5
-        reasons.push('监控信号')
+        reasons.push(tr('reasons.monitor'))
       }
       if (stylePreference === 'short' && pctAbs >= 3) {
         score += 3
-        reasons.push('短线风格匹配')
+        reasons.push(tr('reasons.short'))
       } else if (stylePreference === 'swing' && pctAbs >= 1.5 && pctAbs <= 6) {
         score += 2
-        reasons.push('波段风格匹配')
+        reasons.push(tr('reasons.swing'))
       } else if (stylePreference === 'long' && pctAbs <= 4) {
         score += 2
-        reasons.push('长线波动适中')
+        reasons.push(tr('reasons.long'))
       }
-      if (reasons.length === 0) reasons.push('市场活跃度高')
+      if (reasons.length === 0) reasons.push(tr('reasons.active'))
       return { ...stock, _score: score, _reasons: reasons.slice(0, 2) }
     })
     return scored.sort((a, b) => b._score - a._score)
-  }, [hotStocks, holdingSet, watchlistSet, stylePreference, monitorStocks, discoverMarket])
+  }, [hotStocks, holdingSet, watchlistSet, stylePreference, monitorStocks, discoverMarket, tr])
 
   const visibleHotStocks = useMemo(
     () => (stocksMode === 'for_you' ? personalizedHotStocks.slice(0, 8) : hotStocks.slice(0, 8)),
@@ -179,20 +184,20 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Layers className="h-4 w-4 text-primary" />
-            机会发现
+            {tr('title')}
           </h2>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => navigate('/opportunities')} className="h-7 text-[12px]">
-              进入机会页
+              {tr('openOpportunities')}
             </Button>
             <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'CN' | 'HK' | 'US')}>
               <SelectTrigger className="h-7 w-[90px] text-[12px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CN">A股</SelectItem>
-                <SelectItem value="HK">港股</SelectItem>
-                <SelectItem value="US">美股</SelectItem>
+                <SelectItem value="CN">{marketLabel('CN')}</SelectItem>
+                <SelectItem value="HK">{marketLabel('HK')}</SelectItem>
+                <SelectItem value="US">{marketLabel('US')}</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -201,7 +206,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               onClick={() => loadDiscovery(undefined, { force: true })}
               disabled={discoverLoading}
               className="h-7 text-[12px]"
-              title="刷新"
+              title={tr('refresh')}
             >
               {discoverLoading ? (
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-current/30 border-t-current" />
@@ -221,7 +226,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               }}
               className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'boards' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
             >
-              热门板块
+              {tr('boards')}
             </button>
             <button
               onClick={() => {
@@ -230,7 +235,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               }}
               className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'stocks' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
             >
-              热门股票
+              {tr('stocks')}
             </button>
             <div className="ml-auto flex items-center gap-2">
               {discoverTab === 'boards' ? (
@@ -239,8 +244,8 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="gainers">涨幅榜</SelectItem>
-                    <SelectItem value="turnover">成交额榜</SelectItem>
+                    <SelectItem value="gainers">{tr('gainers')}</SelectItem>
+                    <SelectItem value="turnover">{tr('turnover')}</SelectItem>
                   </SelectContent>
                 </Select>
               ) : (
@@ -249,9 +254,9 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="for_you">For You</SelectItem>
-                    <SelectItem value="turnover">成交额榜</SelectItem>
-                    <SelectItem value="gainers">涨幅榜</SelectItem>
+                    <SelectItem value="for_you">{tr('forYou')}</SelectItem>
+                    <SelectItem value="turnover">{tr('turnover')}</SelectItem>
+                    <SelectItem value="gainers">{tr('gainers')}</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -270,11 +275,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
           ) : discoverTab === 'boards' ? (
             hotBoards.length === 0 ? (
               <div className="py-6 text-center text-[12px] text-muted-foreground">
-                {discoverError || (discoverMarket === 'CN' ? '暂无数据' : `${discoverMarket === 'HK' ? '港股' : '美股'}暂不提供板块榜，已支持热门股票`)}
+                {discoverError || (discoverMarket === 'CN' ? tr('noData') : tr('noBoardsMarket', { market: marketLabel(discoverMarket) }))}
                 {discoverMarket !== 'CN' && (
                   <div className="mt-2">
                     <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setDiscoverTab('stocks')}>
-                      切换到热门股票
+                      {tr('switchToStocks')}
                     </Button>
                   </div>
                 )}
@@ -289,7 +294,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                       key={b.code}
                       onClick={() => openBoard(b)}
                       className="flex items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
-                      title="查看板块成分股"
+                      title={tr('boardConstituentsTitle')}
                     >
                       <div className="min-w-0">
                         <div className="truncate text-[13px] font-medium text-foreground">{b.name}</div>
@@ -302,10 +307,10 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               </div>
             )
           ) : hotStocks.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">{discoverError || '暂无数据'}</div>
+            <div className="py-6 text-center text-[12px] text-muted-foreground">{discoverError || tr('noData')}</div>
           ) : (
             <div className="space-y-2">
-              {stocksMode === 'for_you' && <div className="px-1 text-[11px] text-muted-foreground">根据持仓/自选/监控信号/风格偏好排序</div>}
+              {stocksMode === 'for_you' && <div className="px-1 text-[11px] text-muted-foreground">{tr('personalizedHint')}</div>}
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {visibleHotStocks.slice(0, 6).map((s) => {
                   const pct = s.change_pct ?? 0
@@ -316,7 +321,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                       key={`${s.market || discoverMarket}:${s.symbol}`}
                       onClick={() => onOpenStock(s.symbol, s.market || discoverMarket, s.name, false)}
                       className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-accent/20 p-3 text-left transition-colors hover:bg-accent/35"
-                      title="打开股票详情弹窗"
+                      title={tr('openStockTitle')}
                     >
                       <div className="min-w-0">
                         <div className="truncate text-[13px] font-medium text-foreground">{s.name}</div>
@@ -341,11 +346,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
       <Dialog open={boardDialogOpen} onOpenChange={setBoardDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{activeBoard ? `板块：${activeBoard.name}` : '板块成分股'}</DialogTitle>
-            <DialogDescription>点击个股打开统一详情弹窗（含概览、K线、建议、新闻、历史）</DialogDescription>
+            <DialogTitle>{activeBoard ? tr('boardTitle', { name: activeBoard.name }) : tr('boardConstituents')}</DialogTitle>
+            <DialogDescription>{tr('boardDescription')}</DialogDescription>
           </DialogHeader>
           {boardStocks.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">暂无数据</div>
+            <div className="py-6 text-center text-[12px] text-muted-foreground">{tr('noData')}</div>
           ) : (
             <div className="scrollbar grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
               {boardStocks.map((s) => {

@@ -15,8 +15,8 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const quickQuestions = [
     { label: assistantT('assistantPage.welcome.analyzeStock'), question: assistantT('assistantPage.askStock', { market: 'CN', symbol: '600519', name: 'Kweichow Moutai' }), icon: Search, kind: 'stock' },
-    { label: assistantT('assistantPage.welcome.diagnosePortfolio'), question: 'Diagnose my portfolio risk and key watchpoints', icon: Briefcase, kind: 'question' },
-    { label: assistantT('assistantPage.welcome.findOpportunity'), question: 'Based on today’s market, find opportunities worth researching', icon: Sparkles, kind: 'question' },
+    { label: assistantT('assistantPage.welcome.diagnosePortfolio'), question: assistantT('assistantPage.welcome.diagnoseQuestion'), icon: Briefcase, kind: 'question' },
+    { label: assistantT('assistantPage.welcome.findOpportunity'), question: assistantT('assistantPage.welcome.opportunityQuestion'), icon: Sparkles, kind: 'question' },
   ]
   const [question, setQuestion] = useState('')
   const [stockPickerOpen, setStockPickerOpen] = useState(false)
