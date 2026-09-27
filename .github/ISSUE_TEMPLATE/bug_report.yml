@@ -1,0 +1,83 @@
+name: Bug report / 问题报告
+description: Report a reproducible problem in PanWatch / 提交可复现的问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to help improve PanWatch. Please remove API keys, tokens, cookies, account identifiers, portfolio data, and other private information before submitting.
+
+        感谢帮助改进 PanWatch。提交前请移除 API Key、Token、Cookie、账户标识、持仓数据及其他隐私信息。
+
+        **Security issue? Do not file it here.** Follow the [security policy](https://github.com/TNT-Likely/PanWatch/security/policy) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened? / 发生了什么？
+      description: Briefly describe the problem and its impact. / 简要说明问题及影响。
+      placeholder: Tell us what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: Provide the smallest repeatable set of steps. / 请提供最小可复现步骤。
+      placeholder: |
+        1. Go to ...
+        2. Configure ...
+        3. Click ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 预期行为
+      description: What should have happened? / 正确行为应是什么？
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PanWatch version or commit / PanWatch 版本或提交
+      description: Docker image tag, release version, or Git commit. / Docker 镜像标签、发布版本或 Git 提交。
+      placeholder: "e.g. latest, v0.0.0, or abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method / 安装方式
+      options:
+        - Docker
+        - Docker Compose
+        - Source checkout
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area / 影响范围
+      multiple: true
+      options:
+        - Web interface / 网页界面
+        - API / 后端接口
+        - AI or TradingAgents / AI 或 TradingAgents
+        - Market data / 行情数据
+        - Notifications / 通知推送
+        - Portfolio or paper trading / 持仓或模拟盘
+        - Internationalization / 国际化
+        - Documentation / 文档
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs, screenshots, or context / 脱敏日志、截图或补充信息
+      description: Never paste credentials, private URLs, or financial data. / 请勿粘贴凭据、私有 URL 或金融隐私数据。
+      render: shell

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/TNT-Likely/PanWatch/security/policy
+    about: Do not disclose vulnerabilities publicly. / 请勿公开披露安全漏洞。
+  - name: Contributing guide / 贡献指南
+    url: https://github.com/TNT-Likely/PanWatch/blob/main/CONTRIBUTING.md
+    about: Read the development, testing, and pull-request expectations. / 查看开发、测试和 PR 约定。

@@ -1,0 +1,63 @@
+name: Feature request / 功能建议
+description: Suggest an improvement with a clear user problem / 提交有明确用户问题的改进建议
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. Focus on the user problem and intended outcome before proposing an implementation.
+
+        感谢提出想法。请先说明用户问题和期望结果，再讨论具体实现。
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve / 要解决的问题
+      description: Who is affected, and what is difficult today? / 谁会受影响，目前有什么困难？
+      placeholder: As a ..., I need ..., because ...
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome / 期望结果
+      description: Describe the user-visible result, not only an implementation. / 描述用户可见的结果，而不只是实现方式。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach / 建议方案
+      description: Optional implementation ideas, flows, or mockups. / 可选：实现思路、流程或原型。
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 考虑过的替代方案
+      description: What workarounds or alternatives have you tried? / 已尝试哪些替代方案或临时做法？
+  - type: dropdown
+    id: area
+    attributes:
+      label: Relevant area / 相关模块
+      multiple: true
+      options:
+        - Portfolio and watchlist / 持仓与自选
+        - Market data and discovery / 行情与机会发现
+        - AI and TradingAgents / AI 与 TradingAgents
+        - Alerts and notifications / 提醒与通知
+        - Paper trading / 模拟盘
+        - Configuration and self-hosting / 配置与自托管
+        - Internationalization and documentation / 国际化与文档
+        - Developer experience / 开发体验
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist / 检查清单
+      options:
+        - label: I searched existing issues and discussions. / 我已搜索现有 Issue 和讨论。
+          required: true
+        - label: This request does not contain private portfolio data or credentials. / 本建议不包含持仓隐私数据或凭据。
+          required: true

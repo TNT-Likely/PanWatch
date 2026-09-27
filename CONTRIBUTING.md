@@ -201,4 +201,4 @@ Use a `codex/`-prefixed branch when changes are made through Codex unless a main
 
 For ordinary bugs, open an issue with reproduction steps, expected and actual behavior, version information, and sanitized logs. Remove tokens, cookies, account identifiers, positions, and other private financial data.
 
-For a security-sensitive issue, avoid publishing exploit details or credentials in a public issue. Contact the maintainer privately through the repository owner's available contact channel.
+For a security-sensitive issue, do not publish exploit details or credentials in a public issue. Follow the private reporting instructions in [SECURITY.md](SECURITY.md).
