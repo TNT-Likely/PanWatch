@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { useTranslation } from 'react-i18next'
 
 interface AgentConfig {
   id: number
@@ -133,15 +134,15 @@ function configToCron(config: ScheduleConfig): string {
 }
 
 // 友好显示调度
-function formatSchedule(cron: string): string {
+function formatSchedule(cron: string, translate: (key: string, options?: Record<string, unknown>) => string): string {
   const config = parseCronToConfig(cron)
   switch (config.type) {
     case 'daily':
-      return `每天 ${config.time}`
+      return `${translate('schedule.dailyHint')} ${config.time}`
     case 'weekdays':
-      return `工作日 ${config.time}`
+      return `${translate('schedule.weekdaysHint')} ${config.time}`
     case 'interval':
-      return `每 ${config.interval} 分钟`
+      return `${translate('schedule.everyMinutes', { count: config.interval })}`
     case 'cron':
       return cron
     default:
@@ -150,6 +151,8 @@ function formatSchedule(cron: string): string {
 }
 
 export default function AgentsPage() {
+  const { t } = useTranslation('configuration')
+  const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [agents, setAgents] = useState<AgentConfig[]>([])
   const [stocks, setStocks] = useState<StockConfig[]>([])
   const [services, setServices] = useState<AIService[]>([])
@@ -219,7 +222,7 @@ export default function AgentsPage() {
           const p = await fetchAPI<SchedulePreview>(`/agents/${a.name}/schedule/preview?count=3`)
           return [a.name, p] as const
         } catch (e) {
-          const msg = e instanceof Error ? e.message : '预览失败'
+          const msg = e instanceof Error ? e.message : configT('messages.previewFailed')
           return [a.name, { error: msg }] as const
         }
       }))
@@ -260,7 +263,7 @@ export default function AgentsPage() {
         const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(cron)}&count=5`)
         setSchedulePreview(p)
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '预览失败'
+        const msg = e instanceof Error ? e.message : configT('messages.previewFailed')
         setSchedulePreview({ error: msg })
       } finally {
         setSchedulePreviewLoading(false)
@@ -350,7 +353,7 @@ export default function AgentsPage() {
       })
       setStocks(prev => prev.map(s => (s.id === stock.id ? updated : s)))
     } catch (e) {
-      toast(e instanceof Error ? e.message : '切换绑定失败', 'error')
+      toast(e instanceof Error ? e.message : configT('messages.bindingFailed'), 'error')
     } finally {
       updateBindSaving(stock.id, false)
     }
@@ -360,7 +363,7 @@ export default function AgentsPage() {
     if (!bindDialogAgent) return
     const target = filteredBindStocks.filter(s => hasAgentBound(s, bindDialogAgent.name) !== shouldBind)
     if (target.length === 0) {
-      toast(shouldBind ? '当前筛选已全部绑定' : '当前筛选已全部解绑', 'info')
+      toast(shouldBind ? configT('messages.allBound') : configT('messages.allUnbound'), 'info')
       return
     }
 
@@ -384,9 +387,9 @@ export default function AgentsPage() {
       const updatedList = await Promise.all(tasks)
       const map = new Map(updatedList.map(s => [s.id, s]))
       setStocks(prev => prev.map(s => map.get(s.id) || s))
-      toast(shouldBind ? `已绑定 ${updatedList.length} 只` : `已解绑 ${updatedList.length} 只`, 'success')
+      toast(shouldBind ? configT('messages.boundCount', { count: updatedList.length }) : configT('messages.unboundCount', { count: updatedList.length }), 'success')
     } catch (e) {
-      toast(e instanceof Error ? e.message : '批量操作失败', 'error')
+      toast(e instanceof Error ? e.message : configT('messages.bulkFailed'), 'error')
     } finally {
       setBindSavingStockIds(new Set())
     }
@@ -396,9 +399,9 @@ export default function AgentsPage() {
     setTriggering(name)
     try {
       const res = await fetchAPI<{ queued?: boolean; message?: string }>(`/agents/${name}/trigger`, { method: 'POST' })
-      toast(res?.queued ? 'Agent 已提交后台执行' : (res?.message || 'Agent 已触发'), 'success')
+      toast(res?.queued ? configT('messages.submitted') : (res?.message || configT('messages.triggered')), 'success')
     } catch (e) {
-      toast(e instanceof Error ? e.message : '触发失败', 'error')
+      toast(e instanceof Error ? e.message : configT('messages.triggerFailed'), 'error')
     } finally {
       setTriggering(null)
     }
@@ -415,7 +418,7 @@ export default function AgentsPage() {
       const data = await fetchAPI<AgentRun[]>(`/agents/${agentName}/history?limit=5`)
       setRuns(prev => ({ ...prev, [agentName]: data }))
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '加载失败'
+      const msg = e instanceof Error ? e.message : configT('messages.loadFailed')
       setRuns(prev => ({ ...prev, [agentName]: { error: msg } }))
     } finally {
       setRunsLoading(prev => ({ ...prev, [agentName]: false }))
@@ -456,11 +459,11 @@ export default function AgentsPage() {
         method: 'PUT',
         body: JSON.stringify({ config: taConfigForm }),
       })
-      toast('TradingAgents 配置已保存', 'success')
+      toast(configT('messages.configSaved'), 'success')
       setTaConfigAgent(null)
       load()
     } catch (e) {
-      toast(e instanceof Error ? e.message : '保存失败', 'error')
+      toast(e instanceof Error ? e.message : configT('messages.saveFailed'), 'error')
     }
   }
 
@@ -478,7 +481,7 @@ export default function AgentsPage() {
     })
     setScheduleDialogAgent(null)
     load()
-    toast('调度已更新', 'success')
+    toast(configT('messages.scheduleUpdated'), 'success')
   }
 
   if (loading) {
@@ -493,28 +496,28 @@ export default function AgentsPage() {
     <div>
       <div className="mb-4 md:mb-8">
         <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">Agent</h1>
-        <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">自动化任务管理与调度</p>
+        <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">{configT('title')}</p>
       </div>
 
       {/* Scheduler Health */}
       <div className="card p-4 mb-4">
         <div className="flex items-center justify-between">
-          <div className="text-[13px] font-semibold text-foreground">调度健康</div>
+          <div className="text-[13px] font-semibold text-foreground">{configT('health')}</div>
           <Button variant="secondary" size="sm" className="h-8" onClick={loadHealth} disabled={healthLoading}>
             {healthLoading ? (
               <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
             ) : (
-              <span className="text-[12px]">刷新</span>
+              <span className="text-[12px]">{configT('refresh')}</span>
             )}
           </Button>
         </div>
         {health ? (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-            <span>时区: <span className="font-mono text-foreground/90">{health.timezone}</span></span>
+            <span>{configT('timezone')}: <span className="font-mono text-foreground/90">{health.timezone}</span></span>
             <span className="opacity-50">|</span>
-            <span>未来 24h 将触发: <span className="font-mono text-foreground/90">{health.summary.next_24h_count}</span></span>
+            <span>{configT('next24h')}: <span className="font-mono text-foreground/90">{health.summary.next_24h_count}</span></span>
             <span className="opacity-50">|</span>
-            <span>最近失败: <span className={`font-mono ${health.summary.recent_failed_count > 0 ? 'text-rose-600' : 'text-foreground/90'}`}>{health.summary.recent_failed_count}</span></span>
+            <span>{configT('recentFailed')}: <span className={`font-mono ${health.summary.recent_failed_count > 0 ? 'text-rose-600' : 'text-foreground/90'}`}>{health.summary.recent_failed_count}</span></span>
           </div>
         ) : (
           <div className="mt-2 text-[12px] text-muted-foreground">—</div>
@@ -526,18 +529,18 @@ export default function AgentsPage() {
           <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
             <Bot className="w-6 h-6 text-primary" />
           </div>
-          <p className="text-[15px] font-semibold text-foreground">暂无 Agent</p>
-          <p className="text-[13px] text-muted-foreground mt-1.5">启动后台服务后 Agent 会自动注册</p>
+          <p className="text-[15px] font-semibold text-foreground">{configT('emptyTitle')}</p>
+          <p className="text-[13px] text-muted-foreground mt-1.5">{configT('emptyDescription')}</p>
         </div>
       ) : (
         <div className="space-y-4">
           {agents.map(agent => {
-            const modeLabel = agent.execution_mode === 'single' ? '逐只分析' : '批量分析'
+            const modeLabel = agent.execution_mode === 'single' ? configT('modes.single') : configT('modes.batch')
             const preview = previews[agent.name]
             const boundStocks = getBoundStocks(agent.name)
             const boundSummary = boundStocks.length > 0
-              ? `${boundStocks.slice(0, 3).map(s => s.name || s.symbol).join('、')}${boundStocks.length > 3 ? '、...更多' : ''}`
-              : '未绑定股票'
+              ? `${boundStocks.slice(0, 3).map(s => s.name || s.symbol).join(', ')}${boundStocks.length > 3 ? configT('more') : ''}`
+              : configT('unbound')
             return (
               <div key={agent.name} className="card-hover p-4 md:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6">
@@ -554,7 +557,7 @@ export default function AgentsPage() {
                             ? 'bg-primary/12 border-primary/35 text-primary hover:bg-primary/18'
                             : 'bg-accent/30 border-border/60 text-muted-foreground hover:border-primary/30'
                         }`}
-                        title={`${boundSummary}（已绑定 ${getAgentBoundCount(agent.name)} / ${stocks.length}）`}
+                        title={configT('bound', { bound: getAgentBoundCount(agent.name), total: stocks.length })}
                       >
                         {boundSummary}
                       </button>
@@ -568,17 +571,17 @@ export default function AgentsPage() {
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/50 hover:bg-accent transition-colors"
                       >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-[12px] text-foreground">{formatSchedule(agent.schedule)}</span>
+                        <span className="text-[12px] text-foreground">{formatSchedule(agent.schedule, configT)}</span>
                         <Settings2 className="w-3 h-3 text-muted-foreground/50" />
                       </button>
                       {agent.name === 'tradingagents' && (
                         <button
                           onClick={() => setTaConfigAgent(agent)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors text-primary"
-                          title="编辑 TradingAgents 双模型/预算/超时/模拟盘等高级配置"
+                          title={configT('advanced.title')}
                         >
                           <Settings2 className="w-3.5 h-3.5" />
-                          <span className="text-[12px]">深度配置</span>
+                        <span className="text-[12px]">{configT('deepConfig')}</span>
                         </button>
                       )}
                     </div>
@@ -586,11 +589,11 @@ export default function AgentsPage() {
                     {/* 未来触发时间（按调度时区） */}
                     {'error' in (preview || {}) ? (
                       <div className="mt-2 ml-[22px] text-[11px] text-muted-foreground">
-                        未来触发时间：{(preview as { error: string }).error}
+                        {configT('futureTrigger')}{(preview as { error: string }).error}
                       </div>
                     ) : (preview as SchedulePreview | undefined)?.next_runs?.length ? (
                       <div className="mt-2 ml-[22px] flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span className="opacity-80">未来 3 次：</span>
+                        <span className="opacity-80">{configT('futureThree')}</span>
                         {(preview as SchedulePreview).next_runs.map((t, i) => (
                           <span
                             key={i}
@@ -618,7 +621,7 @@ export default function AgentsPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__default__">系统默认</SelectItem>
+                            <SelectItem value="__default__">{configT('systemDefault')}</SelectItem>
                             {services.map(svc => (
                               <SelectGroup key={svc.id}>
                                 <SelectLabel>{svc.name}</SelectLabel>
@@ -654,7 +657,7 @@ export default function AgentsPage() {
                             )
                           })}
                           {(agent.notify_channel_ids || []).length === 0 && (
-                            <span className="text-[11px] text-muted-foreground">系统默认</span>
+                            <span className="text-[11px] text-muted-foreground">{configT('systemDefault')}</span>
                           )}
                         </div>
                       )}
@@ -673,7 +676,7 @@ export default function AgentsPage() {
                       ) : (
                         <Play className="w-3.5 h-3.5" />
                       )}
-                      <span className="hidden sm:inline">{triggering === agent.name ? '运行中' : '触发'}</span>
+                      <span className="hidden sm:inline">{triggering === agent.name ? configT('running') : configT('trigger')}</span>
                     </Button>
                     <Button
                       variant="secondary"
@@ -681,7 +684,7 @@ export default function AgentsPage() {
                       className="h-8"
                       onClick={() => toggleRuns(agent.name)}
                     >
-                      <span className="text-[12px]">最近运行</span>
+                      <span className="text-[12px]">{configT('recentRun')}</span>
                     </Button>
                     <Button
                       variant={agent.enabled ? 'destructive' : 'default'}
@@ -690,7 +693,7 @@ export default function AgentsPage() {
                       onClick={() => toggleAgent(agent)}
                     >
                       <Power className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">{agent.enabled ? '停用' : '启用'}</span>
+                      <span className="hidden sm:inline">{agent.enabled ? configT('disabled') : configT('enabled')}</span>
                     </Button>
                   </div>
                 </div>
@@ -698,7 +701,7 @@ export default function AgentsPage() {
                 {runsOpen[agent.name] && (
                   <div className="mt-4 ml-[22px] sm:ml-0 rounded-lg border border-border/40 bg-accent/20 p-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-[12px] font-medium text-foreground">最近 5 次运行</div>
+                      <div className="text-[12px] font-medium text-foreground">{configT('recentRuns')}</div>
                       {runsLoading[agent.name] && (
                         <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                       )}
@@ -706,13 +709,13 @@ export default function AgentsPage() {
                     {(() => {
                       const data = runs[agent.name]
                       if (!data) {
-                        return <div className="mt-2 text-[11px] text-muted-foreground">加载中…</div>
+                        return <div className="mt-2 text-[11px] text-muted-foreground">{configT('loading')}</div>
                       }
                       if ('error' in data) {
                         return <div className="mt-2 text-[11px] text-muted-foreground">{data.error}</div>
                       }
                       if (data.length === 0) {
-                        return <div className="mt-2 text-[11px] text-muted-foreground">暂无记录</div>
+                        return <div className="mt-2 text-[11px] text-muted-foreground">{configT('noRecords')}</div>
                       }
                       return (
                         <div className="mt-2 space-y-2">
@@ -746,12 +749,12 @@ export default function AgentsPage() {
       <Dialog open={!!scheduleDialogAgent} onOpenChange={open => !open && setScheduleDialogAgent(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>设置执行周期</DialogTitle>
+            <DialogTitle>{configT('schedule.title')}</DialogTitle>
             <DialogDescription>{scheduleDialogAgent?.display_name}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
-              <Label>调度类型</Label>
+              <Label>{configT('schedule.type')}</Label>
               <Select
                 value={scheduleConfig.type}
                 onValueChange={val => setScheduleConfig({ ...scheduleConfig, type: val as ScheduleType })}
@@ -760,31 +763,31 @@ export default function AgentsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">每天定时</SelectItem>
-                  <SelectItem value="weekdays">工作日定时</SelectItem>
-                  <SelectItem value="interval">固定间隔</SelectItem>
-                  <SelectItem value="cron">自定义 Cron</SelectItem>
+                  <SelectItem value="daily">{configT('schedule.daily')}</SelectItem>
+                  <SelectItem value="weekdays">{configT('schedule.weekdays')}</SelectItem>
+                  <SelectItem value="interval">{configT('schedule.interval')}</SelectItem>
+                  <SelectItem value="cron">{configT('schedule.cron')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {(scheduleConfig.type === 'daily' || scheduleConfig.type === 'weekdays') && (
               <div>
-                <Label>执行时间</Label>
+                <Label>{configT('schedule.executionTime')}</Label>
                 <Input
                   type="time"
                   value={scheduleConfig.time || '15:30'}
                   onChange={e => setScheduleConfig({ ...scheduleConfig, time: e.target.value })}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  {scheduleConfig.type === 'weekdays' ? '周一至周五' : '每天'}在此时间执行
+                  {scheduleConfig.type === 'weekdays' ? configT('schedule.weekdaysHint') : configT('schedule.dailyHint')}{configT('schedule.executeAt')}
                 </p>
               </div>
             )}
 
             {scheduleConfig.type === 'interval' && (
               <div>
-                <Label>执行间隔（分钟）</Label>
+                <Label>{configT('schedule.intervalLabel')}</Label>
                 <Select
                   value={(scheduleConfig.interval || 30).toString()}
                   onValueChange={val => setScheduleConfig({ ...scheduleConfig, interval: parseInt(val) })}
@@ -793,11 +796,11 @@ export default function AgentsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="5">每 5 分钟</SelectItem>
-                    <SelectItem value="10">每 10 分钟</SelectItem>
-                    <SelectItem value="15">每 15 分钟</SelectItem>
-                    <SelectItem value="30">每 30 分钟</SelectItem>
-                    <SelectItem value="60">每小时</SelectItem>
+                    <SelectItem value="5">{configT('schedule.everyMinutes', { count: 5 })}</SelectItem>
+                    <SelectItem value="10">{configT('schedule.everyMinutes', { count: 10 })}</SelectItem>
+                    <SelectItem value="15">{configT('schedule.everyMinutes', { count: 15 })}</SelectItem>
+                    <SelectItem value="30">{configT('schedule.everyMinutes', { count: 30 })}</SelectItem>
+                    <SelectItem value="60">{configT('schedule.hourly')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -805,7 +808,7 @@ export default function AgentsPage() {
 
             {scheduleConfig.type === 'cron' && (
               <div>
-                <Label>Cron 表达式</Label>
+                <Label>{configT('schedule.cronLabel')}</Label>
                 <Input
                   value={scheduleConfig.cron || ''}
                   onChange={e => setScheduleConfig({ ...scheduleConfig, cron: e.target.value })}
@@ -813,7 +816,7 @@ export default function AgentsPage() {
                   className="font-mono"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  格式：分 时 日 月 周（如 0 15 * * 1-5 表示工作日 15:00）
+                  {configT('schedule.cronHint')}
                 </p>
               </div>
             )}
@@ -821,7 +824,7 @@ export default function AgentsPage() {
             {/* Preview */}
             <div className="rounded-lg border border-border/50 bg-accent/20 p-3">
               <div className="flex items-center justify-between">
-                <div className="text-[12px] font-medium text-foreground">未来触发时间预览</div>
+                <div className="text-[12px] font-medium text-foreground">{configT('schedule.preview')}</div>
                 {schedulePreviewLoading && (
                   <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 )}
@@ -854,8 +857,8 @@ export default function AgentsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setScheduleDialogAgent(null)}>取消</Button>
-              <Button onClick={saveSchedule}>保存</Button>
+              <Button variant="ghost" onClick={() => setScheduleDialogAgent(null)}>{configT('schedule.cancel')}</Button>
+              <Button onClick={saveSchedule}>{configT('schedule.save')}</Button>
             </div>
           </div>
         </DialogContent>
@@ -865,35 +868,35 @@ export default function AgentsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {bindDialogAgent ? `${bindDialogAgent.display_name} 股票绑定` : '股票绑定'}
+              {bindDialogAgent ? configT('binding.titleWithAgent', { agent: bindDialogAgent.display_name }) : configT('binding.title')}
             </DialogTitle>
-            <DialogDescription>点击即可切换绑定/不绑定，不会覆盖该股票的其它 Agent 个性化配置</DialogDescription>
+            <DialogDescription>{configT('binding.description')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div>
-              <Label>筛选股票</Label>
+              <Label>{configT('binding.filter')}</Label>
               <Input
                 value={bindKeyword}
                 onChange={(e) => setBindKeyword(e.target.value)}
-                placeholder="按代码或名称筛选"
+                placeholder={configT('binding.search')}
               />
             </div>
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
-                <Button variant={bindFilter === 'all' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('all')}>全部</Button>
-                <Button variant={bindFilter === 'bound' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('bound')}>已绑定</Button>
-                <Button variant={bindFilter === 'unbound' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('unbound')}>未绑定</Button>
+                <Button variant={bindFilter === 'all' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('all')}>{configT('binding.all')}</Button>
+                <Button variant={bindFilter === 'bound' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('bound')}>{configT('binding.bound')}</Button>
+                <Button variant={bindFilter === 'unbound' ? 'default' : 'secondary'} size="sm" className="h-7 text-[11px]" onClick={() => setBindFilter('unbound')}>{configT('binding.unbound')}</Button>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button variant="secondary" size="sm" className="h-7 text-[11px]" disabled={!bindDialogAgent || bindSavingStockIds.size > 0} onClick={() => applyBulkBindingForAgent(true)}>批量绑定</Button>
-                <Button variant="secondary" size="sm" className="h-7 text-[11px]" disabled={!bindDialogAgent || bindSavingStockIds.size > 0} onClick={() => applyBulkBindingForAgent(false)}>批量解绑</Button>
+                <Button variant="secondary" size="sm" className="h-7 text-[11px]" disabled={!bindDialogAgent || bindSavingStockIds.size > 0} onClick={() => applyBulkBindingForAgent(true)}>{configT('binding.bulkBind')}</Button>
+                <Button variant="secondary" size="sm" className="h-7 text-[11px]" disabled={!bindDialogAgent || bindSavingStockIds.size > 0} onClick={() => applyBulkBindingForAgent(false)}>{configT('binding.bulkUnbind')}</Button>
               </div>
             </div>
 
             <div className="max-h-[40vh] overflow-y-auto rounded border border-border/50 p-3">
               {filteredBindStocks.length === 0 ? (
-                <div className="p-4 text-[12px] text-muted-foreground text-center">无可选股票</div>
+                <div className="p-4 text-[12px] text-muted-foreground text-center">{configT('binding.empty')}</div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {filteredBindStocks.map((s) => {
@@ -912,7 +915,7 @@ export default function AgentsPage() {
                         }`}
                         title={`${s.name} (${s.symbol})`}
                       >
-                        {saving ? '处理中...' : `${s.name || s.symbol}`}
+                        {saving ? configT('binding.processing') : `${s.name || s.symbol}`}
                       </button>
                     )
                   })}
@@ -921,7 +924,7 @@ export default function AgentsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" onClick={() => setBindDialogAgent(null)}>关闭</Button>
+              <Button variant="ghost" onClick={() => setBindDialogAgent(null)}>{configT('binding.close')}</Button>
             </div>
           </div>
         </DialogContent>
@@ -931,9 +934,9 @@ export default function AgentsPage() {
       <Dialog open={!!taConfigAgent} onOpenChange={open => !open && setTaConfigAgent(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>TradingAgents 深度配置</DialogTitle>
+            <DialogTitle>{configT('advanced.title')}</DialogTitle>
             <DialogDescription>
-              双模型分档 / 月度预算 / 超时 / 模拟盘对接。完整说明见
+              {configT('advanced.description')}
               <code className="ml-1 text-[11px] bg-accent/40 px-1">.docs/tradingagents/USER_GUIDE.md § 12</code>
             </DialogDescription>
           </DialogHeader>
@@ -956,33 +959,32 @@ export default function AgentsPage() {
 
               return (
                 <section>
-                  <div className="font-medium mb-2">模型分档(可选)</div>
+                  <div className="font-medium mb-2">{configT('advanced.modelTier')}</div>
 
                   {/* 显示 Agent 默认模型来源,让用户知道 service 上下文 */}
                   <div className="rounded-md bg-accent/30 border border-border/40 p-2 text-[11px] text-muted-foreground mb-3">
                     {defaultModel && agentService ? (
-                      <>当前 Agent 默认模型: <span className="text-foreground font-medium">{defaultModel.model}</span>
-                       <span className="opacity-70"> (来自 {agentService.name})</span></>
+                      <>{configT('advanced.currentDefault')}<span className="text-foreground font-medium">{defaultModel.model}</span>
+                       <span className="opacity-70">{configT('advanced.from', { name: agentService.name })}</span></>
                     ) : (
-                      <>当前 Agent 使用系统默认 AI 服务(在 Agent 卡片上「模型」处选择)。
-                       建议先选定一个 Service 再来分档配置。</>
+                      <>{configT('advanced.systemDefaultHint')}</>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-[12px]">
-                        深度思考模型 <span className="text-muted-foreground/70 font-normal">(辩论/风控/PM)</span>
+                        {configT('advanced.deepModel')} <span className="text-muted-foreground/70 font-normal">{configT('advanced.deepHint')}</span>
                       </Label>
                       <Select
                         value={(taConfigForm.deep_model as string) || '__default__'}
                         onValueChange={val => setTaConfigForm({ ...taConfigForm, deep_model: val === '__default__' ? '' : val })}
                       >
                         <SelectTrigger className="h-9 text-[12px]">
-                          <SelectValue placeholder="使用 Agent 默认" />
+                          <SelectValue placeholder={configT('advanced.useAgentDefault')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__default__">使用 Agent 默认</SelectItem>
+                          <SelectItem value="__default__">{configT('advanced.useAgentDefault')}</SelectItem>
                           {candidateModels.map(m => (
                             <SelectItem key={`deep-${m.id}`} value={m.model}>
                               {m.model}{m.name !== m.model ? ` · ${m.name}` : ''}
@@ -993,17 +995,17 @@ export default function AgentsPage() {
                     </div>
                     <div>
                       <Label className="text-[12px]">
-                        快速思考模型 <span className="text-muted-foreground/70 font-normal">(分析师/工具)</span>
+                        {configT('advanced.quickModel')} <span className="text-muted-foreground/70 font-normal">{configT('advanced.quickHint')}</span>
                       </Label>
                       <Select
                         value={(taConfigForm.quick_model as string) || '__default__'}
                         onValueChange={val => setTaConfigForm({ ...taConfigForm, quick_model: val === '__default__' ? '' : val })}
                       >
                         <SelectTrigger className="h-9 text-[12px]">
-                          <SelectValue placeholder="= 深度模型" />
+                          <SelectValue placeholder={configT('advanced.sameAsDeep')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__default__">= 深度模型</SelectItem>
+                          <SelectItem value="__default__">{configT('advanced.sameAsDeep')}</SelectItem>
                           {candidateModels.map(m => (
                             <SelectItem key={`quick-${m.id}`} value={m.model}>
                               {m.model}{m.name !== m.model ? ` · ${m.name}` : ''}
@@ -1014,9 +1016,9 @@ export default function AgentsPage() {
                     </div>
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
-                    <div>• 留空 = 用 Agent 默认模型,不分档</div>
-                    <div>• 两个分档必须在同一个 AI 服务下(TradingAgents 共用 backend_url)</div>
-                    <div className="text-amber-600">⚠️ 不要选推理模型 (如 deepseek-r1 / o1) — 它们在 langchain agent loop 里会输出乱码。用 chat 类: claude-sonnet / deepseek-chat / gpt-4o-mini</div>
+                    <div>{configT('advanced.tierHint1')}</div>
+                    <div>{configT('advanced.tierHint2')}</div>
+                    <div className="text-amber-600">{configT('advanced.tierWarning')}</div>
                   </div>
                 </section>
               )
@@ -1024,10 +1026,10 @@ export default function AgentsPage() {
 
             {/* 预算与策略 */}
             <section>
-              <div className="font-medium mb-2">预算与策略</div>
+              <div className="font-medium mb-2">{configT('advanced.budgetStrategy')}</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-[12px]">月度预算(美元)</Label>
+                  <Label className="text-[12px]">{configT('advanced.monthlyBudget')}</Label>
                   <Input
                     type="number"
                     step="0.5"
@@ -1036,19 +1038,19 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-[12px]">超预算行为</Label>
+                  <Label className="text-[12px]">{configT('advanced.overBudget')}</Label>
                   <select
                     className="w-full h-9 rounded-md border border-border bg-background px-3 text-[13px]"
                     value={(taConfigForm.over_budget_action as string) || 'reject'}
                     onChange={e => setTaConfigForm({ ...taConfigForm, over_budget_action: e.target.value })}
                   >
-                    <option value="reject">拒绝新触发</option>
-                    <option value="warn">警告但继续</option>
-                    <option value="continue">不提示也不挡</option>
+                    <option value="reject">{configT('advanced.reject')}</option>
+                    <option value="warn">{configT('advanced.warn')}</option>
+                    <option value="continue">{configT('advanced.continue')}</option>
                   </select>
                 </div>
                 <div>
-                  <Label className="text-[12px]">辩论轮次</Label>
+                  <Label className="text-[12px]">{configT('advanced.debateRounds')}</Label>
                   <Input
                     type="number"
                     min={1}
@@ -1058,7 +1060,7 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-[12px]">超时(分钟)</Label>
+                  <Label className="text-[12px]">{configT('advanced.timeout')}</Label>
                   <Input
                     type="number"
                     min={1}
@@ -1080,12 +1082,11 @@ export default function AgentsPage() {
                   onChange={e => setTaConfigForm({ ...taConfigForm, emit_paper_trading_signal: e.target.checked })}
                 />
                 <label htmlFor="emit-paper-trading" className="font-medium cursor-pointer">
-                  把 BUY 决策写入模拟盘信号
+                  {configT('advanced.writeBuy')}
                 </label>
               </div>
               <div className="text-[11px] text-muted-foreground">
-                启用后,TA 输出 BUY 决策时会写一条 StrategySignalRun,PaperTradingEngine 下个 tick 自动开模拟仓
-                (止损 -5%,止盈 +10%)。<strong>默认关闭</strong> 防止误开仓。SELL 不会自动平仓。
+                {configT('advanced.paperHint')}
               </div>
             </section>
 
@@ -1104,12 +1105,12 @@ export default function AgentsPage() {
                       onChange={e => setAuto({ enabled: e.target.checked })}
                     />
                     <label htmlFor="auto-trigger-enabled" className="font-medium cursor-pointer">
-                      盘中急涨/急跌自动触发深度分析
+                      {configT('advanced.triggerEnabled')}
                     </label>
                   </div>
                   <div className="grid grid-cols-2 gap-3 mb-2">
                     <div>
-                      <Label className="text-[12px]">涨跌幅阈值(%)</Label>
+                      <Label className="text-[12px]">{configT('advanced.threshold')}</Label>
                       <Input
                         type="number"
                         step="0.5"
@@ -1120,7 +1121,7 @@ export default function AgentsPage() {
                       />
                     </div>
                     <div>
-                      <Label className="text-[12px]">冷却时间(小时)</Label>
+                      <Label className="text-[12px]">{configT('advanced.cooldown')}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -1131,8 +1132,7 @@ export default function AgentsPage() {
                     </div>
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    启用后,intraday_monitor 分析时若发现 |涨跌幅| ≥ 阈值,自动 fire-and-forget 触发 TA 深度分析。
-                    冷却时间内同一标的不会重复触发;月度预算用尽也会停止。<strong>默认关闭</strong> 避免成本失控。
+                    {configT('advanced.linkedHint')}
                   </div>
                 </section>
               )
@@ -1141,7 +1141,7 @@ export default function AgentsPage() {
             {/* 高级 JSON */}
             <details className="text-[12px]">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                高级:完整 config JSON
+                {configT('advanced.advancedJson')}
               </summary>
               <textarea
                 className="mt-2 w-full font-mono text-[11px] p-2 border border-border rounded bg-background min-h-[120px]"
@@ -1157,8 +1157,8 @@ export default function AgentsPage() {
             </details>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setTaConfigAgent(null)}>取消</Button>
-              <Button onClick={saveTaConfig}>保存</Button>
+              <Button variant="ghost" onClick={() => setTaConfigAgent(null)}>{configT('advanced.cancel')}</Button>
+              <Button onClick={saveTaConfig}>{configT('advanced.save')}</Button>
             </div>
           </div>
         </DialogContent>

@@ -9,6 +9,12 @@ const migratedFiles = [
   'src/components/AccountMenu.tsx',
   'src/components/RouteBoundary.tsx',
   'src/pages/Login.tsx',
+  'src/components/SelfCheckModal.tsx',
+  'src/components/PatSection.tsx',
+  'src/components/assistant/AgentPermissionsPanel.tsx',
+  'src/pages/DataSources.tsx',
+  'src/pages/Settings.tsx',
+  'src/pages/Agents.tsx',
 ]
 const hanPattern = /[\u3400-\u9fff]/u
 
