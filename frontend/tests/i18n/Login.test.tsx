@@ -38,7 +38,7 @@ describe('LoginPage translations', () => {
     expect(screen.getByRole('button', { name: '登录' })).toBeTruthy()
   })
 
-  it('renders the English experimental login surface', async () => {
+  it('renders the English login surface', async () => {
     const user = userEvent.setup()
     renderLogin()
 

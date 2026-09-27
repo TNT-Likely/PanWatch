@@ -13,7 +13,7 @@ export const settings = {
   language: {
     title: 'Interface language',
     simplifiedChinese: '简体中文',
-    englishExperimental: 'English (Experimental)',
+    english: 'English',
     switchAria: 'Switch interface language',
     quickSwitch: '简体中文',
   },

@@ -1,7 +1,8 @@
 # Frontend internationalization
 
-PanWatch defaults to `zh-CN`. A locale changes only interface language; it must not
-implicitly change currency, market, or timezone.
+PanWatch chooses `zh-CN` for new visitors whose browser language is Chinese and
+`en-US` for everyone else. A saved preference always wins. A locale changes only
+interface language; it must not implicitly change currency, market, or timezone.
 
 When adding user-facing copy:
 
@@ -12,7 +13,6 @@ When adding user-facing copy:
 4. Keep server error text as diagnostic data. New UI behavior must not branch on a
    translated error message.
 
-The English locale is experimental. Unmigrated business pages may remain in Chinese;
 Chinese is the runtime fallback for missing translation resources.
 
 Run `pnpm check:i18n` to ensure surfaces already declared migrated do not regress by

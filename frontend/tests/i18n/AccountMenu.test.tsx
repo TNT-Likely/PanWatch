@@ -34,7 +34,7 @@ describe('AccountMenu language switcher', () => {
     )
 
     await user.click(screen.getByRole('button', { name: '账户与设置' }))
-    await user.click(screen.getByRole('button', { name: 'English（实验性）' }))
+    await user.click(screen.getByRole('button', { name: 'English' }))
 
     expect(document.documentElement.lang).toBe('en-US')
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en-US')

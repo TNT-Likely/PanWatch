@@ -19,9 +19,23 @@ export function normalizeLocale(value: string | null | undefined): SupportedLoca
   return DEFAULT_LOCALE
 }
 
-function readStoredLocale(): SupportedLocale {
+export function detectInitialLocale(
+  storedLocale: string | null | undefined,
+  browserLanguages: readonly string[] = [],
+): SupportedLocale {
+  if (isSupportedLocale(storedLocale)) return storedLocale
+  const browserLocale = browserLanguages.find(Boolean)?.toLowerCase()
+  return browserLocale?.startsWith('zh') ? 'zh-CN' : 'en-US'
+}
+
+function readInitialLocale(): SupportedLocale {
   if (typeof window === 'undefined') return DEFAULT_LOCALE
-  return normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY))
+  const browserLanguages = typeof navigator === 'undefined'
+    ? []
+    : navigator.languages?.length
+      ? navigator.languages
+      : [navigator.language]
+  return detectInitialLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY), browserLanguages)
 }
 
 function applyLocale(locale: string) {
@@ -36,7 +50,7 @@ void i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: readStoredLocale(),
+    lng: readInitialLocale(),
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: [...SUPPORTED_LOCALES],
     defaultNS: 'common',

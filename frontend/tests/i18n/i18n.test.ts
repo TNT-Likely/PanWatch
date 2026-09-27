@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import i18n, {
   changeLocale,
+  detectInitialLocale,
   getCurrentLocale,
   LOCALE_STORAGE_KEY,
   normalizeLocale,
@@ -24,6 +25,18 @@ describe('internationalization runtime', () => {
     expect(normalizeLocale('en-GB')).toBe('en-US')
     expect(normalizeLocale('ja-JP')).toBe('zh-CN')
     expect(normalizeLocale(null)).toBe('zh-CN')
+  })
+
+  it('uses a saved preference before browser language', () => {
+    expect(detectInitialLocale('zh-CN', ['en-US'])).toBe('zh-CN')
+    expect(detectInitialLocale('en-US', ['zh-CN'])).toBe('en-US')
+  })
+
+  it('defaults new visitors by browser language', () => {
+    expect(detectInitialLocale(null, ['zh-Hans-CN'])).toBe('zh-CN')
+    expect(detectInitialLocale(null, ['en-GB'])).toBe('en-US')
+    expect(detectInitialLocale(null, ['ja-JP'])).toBe('en-US')
+    expect(detectInitialLocale(null, [])).toBe('en-US')
   })
 
   it('persists language changes and updates the document language', async () => {

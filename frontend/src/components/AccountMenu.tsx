@@ -20,9 +20,9 @@ const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; labelKey: 'light' | '
   { value: 'system', icon: Monitor, labelKey: 'system' },
 ]
 
-const LANGUAGE_OPTIONS: { value: SupportedLocale; labelKey: 'simplifiedChinese' | 'englishExperimental' }[] = [
+const LANGUAGE_OPTIONS: { value: SupportedLocale; labelKey: 'simplifiedChinese' | 'english' }[] = [
   { value: 'zh-CN', labelKey: 'simplifiedChinese' },
-  { value: 'en-US', labelKey: 'englishExperimental' },
+  { value: 'en-US', labelKey: 'english' },
 ]
 
 interface AccountMenuProps {
