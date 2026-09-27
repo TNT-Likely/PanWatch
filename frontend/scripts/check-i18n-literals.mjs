@@ -15,6 +15,10 @@ const migratedFiles = [
   'src/pages/DataSources.tsx',
   'src/pages/Settings.tsx',
   'src/pages/Agents.tsx',
+  'src/pages/Dashboard.tsx',
+  'src/pages/PriceAlerts.tsx',
+  'src/pages/Opportunities.tsx',
+  'packages/biz-ui/src/components/price-alert-form-dialog.tsx',
 ]
 const hanPattern = /[\u3400-\u9fff]/u
 
