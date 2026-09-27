@@ -350,7 +350,7 @@ export default function AnalysisDetailPage() {
                   {Icon && <Icon className="w-[18px] h-[18px] text-primary/70 shrink-0" />}
                   {s.title}
                 </h2>
-                <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-title prose-h3:text-title prose-h4:text-body-lg prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
+                <div className="prose prose-base dark:prose-invert max-w-none overflow-x-auto leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-title prose-h3:text-title prose-h4:text-body-lg prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={headingComponents(s.id)}>
                     {s.markdown}
                   </ReactMarkdown>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
 import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
+import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
 import {
   dashboardApi,
   portfolioApi,
@@ -674,9 +674,10 @@ export default function DashboardPage() {
                 {aiReviewLoading ? 'AI 体检中…' : 'AI 体检报告'}
               </button>
               {aiReview?.content && (
-                <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-body-sm [&_p]:my-1 [&_ul]:my-1">
-                  <ReactMarkdown>{aiReview.content}</ReactMarkdown>
-                </div>
+                <MarkdownView
+                  content={aiReview.content}
+                  className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
+                />
               )}
             </div>
           )}
@@ -799,9 +800,10 @@ export default function DashboardPage() {
             {brief.title && <div className="text-body-lg font-semibold text-foreground">{brief.title}</div>}
             {!briefOpen && briefSummary && <div className="mt-1 text-body-sm text-muted-foreground">{briefSummary}</div>}
             {briefOpen && brief.content && (
-              <div className="prose prose-sm dark:prose-invert mt-1 max-w-none break-words text-body-sm [&_p]:my-1 [&_ul]:my-1">
-                <ReactMarkdown>{brief.content}</ReactMarkdown>
-              </div>
+              <MarkdownView
+                content={brief.content}
+                className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
+              />
             )}
           </div>
         )}

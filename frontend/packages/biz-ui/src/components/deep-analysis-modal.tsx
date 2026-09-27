@@ -792,7 +792,7 @@ function AnalysisTabs({ sections }: { sections: AnalysisSection[] }) {
         </TabsList>
         {sections.map((s) => (
           <TabsContent key={s.id} value={s.id}>
-            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-body-sm prose-strong:text-foreground">
+            <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-body-sm prose-strong:text-foreground">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.markdown}</ReactMarkdown>
             </div>
           </TabsContent>

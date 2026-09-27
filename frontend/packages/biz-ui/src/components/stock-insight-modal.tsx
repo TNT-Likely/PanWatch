@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
+import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
 import {
   insightApi,
   stocksApi,
@@ -1527,9 +1527,10 @@ export default function StockInsightModal(props: {
                       </div>
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground break-words">
-                        <ReactMarkdown>{activeReport.content || '暂无报告内容'}</ReactMarkdown>
-                      </div>
+                      <MarkdownView
+                        content={activeReport.content || '暂无报告内容'}
+                        className="text-foreground"
+                      />
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
                       <details className="rounded-lg border border-border/40 bg-accent/10 p-3">

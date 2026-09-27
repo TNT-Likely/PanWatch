@@ -311,7 +311,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-accent/20 rounded-xl prose prose-sm dark:prose-invert max-w-none max-h-[62vh] md:max-h-[62vh] overflow-y-auto scrollbar">
+                <div className="mt-4 p-4 bg-accent/20 rounded-xl prose prose-sm dark:prose-invert max-w-none max-h-[62vh] md:max-h-[62vh] overflow-y-auto overflow-x-auto scrollbar">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedRecord.content}</ReactMarkdown>
                 </div>
               </div>
@@ -335,7 +335,7 @@ export default function HistoryPage() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 p-4 bg-accent/20 rounded-lg prose prose-sm dark:prose-invert max-w-none">
+          <div className="mt-4 p-4 bg-accent/20 rounded-lg prose prose-sm dark:prose-invert max-w-none overflow-x-auto">
             {detailRecord && <ReactMarkdown remarkPlugins={[remarkGfm]}>{detailRecord.content}</ReactMarkdown>}
           </div>
           {detailRecord?.prompt_stats ? (

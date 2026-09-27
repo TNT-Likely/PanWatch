@@ -1,6 +1,6 @@
-import ReactMarkdown from 'react-markdown'
 import { RefreshCw } from 'lucide-react'
 import { type DeepAnalysisResult, type HistoryComparisonResponse } from '@panwatch/api'
+import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
@@ -298,9 +298,7 @@ export function DeepAnalysisSection({
 
       {result?.content && (
         <div className="rounded-lg border border-border/50 p-4">
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <ReactMarkdown>{result.content}</ReactMarkdown>
-          </div>
+          <MarkdownView content={result.content} />
         </div>
       )}
 
@@ -320,10 +318,10 @@ export function DeepAnalysisSection({
                 return (
                   <details key={k} open className="text-body-sm">
                     <summary className="font-medium cursor-pointer">{DEEP_STAGE_LABEL[k] || k}</summary>
-                    <div className="mt-2 text-caption text-foreground/80 whitespace-pre-wrap">
-                      {text.slice(0, 1500)}
-                      {text.length > 1500 && '... (截断)'}
-                    </div>
+                    <MarkdownView
+                      content={text}
+                      className="mt-2 max-h-[320px] overflow-y-auto text-caption text-foreground/80 [&_p]:my-1 [&_li]:my-0.5"
+                    />
                   </details>
                 )
               })}
@@ -341,12 +339,15 @@ export function DeepAnalysisSection({
             {showDebate ? '▼' : '▶'} 看多看空辩论
           </button>
           {showDebate && (
-            <div className="mt-2 pl-3 border-l-2 border-border/40 text-caption text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {debate.history}
+            <div className="mt-2 pl-3 border-l-2 border-border/40 text-caption text-foreground/80">
+              <MarkdownView
+                content={debate.history}
+                className="max-h-[320px] overflow-y-auto [&_p]:my-1 [&_li]:my-0.5"
+              />
               {debate.judge_decision && (
                 <>
                   <div className="font-medium mt-3 mb-1">研究主管裁决:</div>
-                  <div>{debate.judge_decision}</div>
+                  <div className="whitespace-pre-wrap break-words">{debate.judge_decision}</div>
                 </>
               )}
             </div>
