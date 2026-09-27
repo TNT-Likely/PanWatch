@@ -152,17 +152,19 @@ function formatMarketCap(value: number | null | undefined, market?: string, engl
   if (!isFinite(n)) return '--'
   const m = String(market || '').toUpperCase()
   const abs = Math.abs(n)
+  const currency = m === 'US' ? 'USD' : m === 'HK' ? 'HKD' : 'CNY'
 
-  // Tencent CN quote data may already use units of CNY 100 million.
-  if (m === 'CN' && abs > 0 && abs < 100000) {
-    return english ? `${(n / 10).toFixed(2)}B CNY` : `${n.toFixed(2)}亿元`
+  // Quote providers normalize market capitalization in local-currency 100M units.
+  // Convert that unit before adding an English currency suffix for every market.
+  if (english) {
+    if (abs >= 10000) return `${(n / 10000).toFixed(2)}T ${currency}`
+    if (abs >= 10) return `${(n / 10).toFixed(2)}B ${currency}`
+    return `${(n * 100).toFixed(2)}M ${currency}`
   }
 
-  if (english && abs >= 1e9) return `${(n / 1e9).toFixed(2)}B CNY`
-  if (english && abs >= 1e6) return `${(n / 1e6).toFixed(2)}M CNY`
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿元`
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(2)}万元`
-  return english ? `${n.toFixed(0)} CNY` : `${n.toFixed(0)}元`
+  if (m === 'US') return `${n.toFixed(2)}亿美元`
+  if (m === 'HK') return `${n.toFixed(2)}亿港元`
+  return `${n.toFixed(2)}亿元`
 }
 
 function formatTime(isoTime?: string, locale = 'zh-CN'): string {
