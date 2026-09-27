@@ -1,11 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.platform.marketdata.models import MarketCode
+from src.web.errors import api_error
 
 router = APIRouter()
 
@@ -34,7 +35,7 @@ def _parse_market(market: str) -> MarketCode:
     try:
         return MarketCode(market)
     except ValueError:
-        raise HTTPException(400, f"不支持的市场: {market}")
+        raise api_error(400, "market_unsupported", f"不支持的市场: {market}")
 
 
 def _serialize_klines(klines) -> list[dict]:

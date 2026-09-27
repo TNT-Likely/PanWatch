@@ -1,12 +1,13 @@
 """数据源管理 API"""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import DataSource
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ def get_datasource(source_id: int, db: Session = Depends(get_db)):
     """获取单个数据源"""
     source = db.query(DataSource).filter(DataSource.id == source_id).first()
     if not source:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+        raise api_error(404, "datasource_not_found", "数据源不存在")
     return _to_response(source)
 
 
@@ -182,7 +183,7 @@ def update_datasource(
     """更新数据源"""
     source = db.query(DataSource).filter(DataSource.id == source_id).first()
     if not source:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+        raise api_error(404, "datasource_not_found", "数据源不存在")
 
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(source, key, value)
@@ -198,7 +199,7 @@ def delete_datasource(source_id: int, db: Session = Depends(get_db)):
     """删除数据源"""
     source = db.query(DataSource).filter(DataSource.id == source_id).first()
     if not source:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+        raise api_error(404, "datasource_not_found", "数据源不存在")
 
     db.delete(source)
     db.commit()
@@ -211,7 +212,7 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
     """测试数据源连接"""
     source = db.query(DataSource).filter(DataSource.id == source_id).first()
     if not source:
-        raise HTTPException(status_code=404, detail="数据源不存在")
+        raise api_error(404, "datasource_not_found", "数据源不存在")
 
     from src.modules.market.data_collector import get_collector_manager
 

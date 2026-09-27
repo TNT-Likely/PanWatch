@@ -573,7 +573,6 @@ def export_tradingagents_analysis_pdf(
     """
     from urllib.parse import quote
 
-    from fastapi import HTTPException
     from fastapi.responses import Response
 
     from src.modules.reporting.pdf_export import assemble_report_markdown, render_analysis_pdf

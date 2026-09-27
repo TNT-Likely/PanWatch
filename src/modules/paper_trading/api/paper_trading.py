@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
@@ -26,6 +26,7 @@ from src.platform.persistence.models import (
     PaperTradingPosition,
     PaperTradingTrade,
 )
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -432,7 +433,7 @@ def get_backends():
 def toggle_account(body: ToggleBody, db: Session = Depends(get_db)):
     acc = db.query(PaperTradingAccount).first()
     if not acc:
-        raise HTTPException(404, "模拟盘账户不存在")
+        raise api_error(404, "paper_trading_account_not_found", "模拟盘账户不存在")
     acc.enabled = body.enabled
     db.commit()
     db.refresh(acc)
@@ -443,7 +444,7 @@ def toggle_account(body: ToggleBody, db: Session = Depends(get_db)):
 def reset_account():
     result = ENGINE.reset_account()
     if not result.get("ok"):
-        raise HTTPException(500, "重置失败")
+        raise api_error(500, "paper_trading_reset_failed", "模拟盘重置失败")
     return {"ok": True}
 
 
@@ -451,7 +452,8 @@ def reset_account():
 async def close_position(position_id: int):
     result = await ENGINE.close_position_manual_async(position_id)
     if not result.get("ok"):
-        raise HTTPException(400, result.get("error", "平仓失败"))
+        logger.warning("模拟盘手动平仓失败: %s", result.get("error"))
+        raise api_error(400, "paper_trading_close_failed", "模拟盘平仓失败")
     return {"ok": True}
 
 
@@ -459,13 +461,17 @@ async def close_position(position_id: int):
 def update_settings(body: UpdateSettingsBody, db: Session = Depends(get_db)):
     acc = db.query(PaperTradingAccount).first()
     if not acc:
-        raise HTTPException(404, "模拟盘账户不存在")
+        raise api_error(404, "paper_trading_account_not_found", "模拟盘账户不存在")
 
     if body.market_allocations is not None:
         alloc = normalize_allocations(body.market_allocations)
         total = sum(alloc.values())
         if total > 1.0 + 1e-9:
-            raise HTTPException(400, f"投资比例合计不能超过 100%（当前 {round(total * 100)}%）")
+            raise api_error(
+                400,
+                "paper_trading_allocation_invalid",
+                f"投资比例合计不能超过 100%（当前 {round(total * 100)}%）",
+            )
         acc.market_allocations = alloc
         # 同步派生 excluded_markets（比例 0 即排除），兼容旧读取
         acc.excluded_markets = [m for m in ALL_MARKETS if alloc.get(m, 0.0) <= 0]
@@ -558,7 +564,8 @@ async def test_notify():
     from src.modules.paper_trading.paper_trading_notifier import send_test_notification
     result = await send_test_notification()
     if not result.get("success"):
-        raise HTTPException(400, result.get("error", "发送失败"))
+        logger.warning("模拟盘测试通知发送失败: %s", result.get("error"))
+        raise api_error(400, "paper_trading_notify_failed", "模拟盘测试通知发送失败")
     return {"ok": True}
 
 

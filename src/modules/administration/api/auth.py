@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ import jwt
 
 from src.platform.persistence.database import get_db, SessionLocal
 from src.platform.persistence.models import AppSettings
+from src.web.errors import api_error
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -170,16 +171,18 @@ async def get_current_user(
 
     # 已设置密码，需要验证 token
     if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未登录",
+        raise api_error(
+            401,
+            "auth_required",
+            "未登录",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not verify_token(credentials.credentials):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="登录已过期",
+        raise api_error(
+            401,
+            "auth_expired",
+            "登录已过期",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -199,13 +202,13 @@ async def auth_status(db: Session = Depends(get_db)):
 async def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
     """首次设置用户名和密码"""
     if get_password_hash(db):
-        raise HTTPException(400, "已设置过账号，请使用登录接口")
+        raise api_error(400, "auth_already_configured", "已设置过账号，请使用登录接口")
 
     if not data.username or len(data.username) < 2:
-        raise HTTPException(400, "用户名长度至少 2 位")
+        raise api_error(400, "username_too_short", "用户名长度至少 2 位")
 
     if len(data.password) < 6:
-        raise HTTPException(400, "密码长度至少 6 位")
+        raise api_error(400, "password_too_short", "密码长度至少 6 位")
 
     set_stored_username(db, data.username)
     password_hash = hash_password(data.password)
@@ -221,13 +224,13 @@ async def login(data: LoginRequest, db: Session = Depends(get_db)):
     stored_hash = get_password_hash(db)
     stored_username = get_stored_username(db)
     if not stored_hash or not stored_username:
-        raise HTTPException(400, "请先设置账号")
+        raise api_error(400, "auth_not_configured", "请先设置账号")
 
     if data.username != stored_username:
-        raise HTTPException(401, "用户名或密码错误")
+        raise api_error(401, "invalid_credentials", "用户名或密码错误")
 
     if hash_password(data.password) != stored_hash:
-        raise HTTPException(401, "用户名或密码错误")
+        raise api_error(401, "invalid_credentials", "用户名或密码错误")
 
     token, expires_at = create_token()
     return TokenResponse(token=token, expires_at=expires_at.isoformat())
@@ -241,7 +244,7 @@ async def change_password(
 ):
     """修改密码"""
     if len(data.password) < 6:
-        raise HTTPException(400, "密码长度至少 6 位")
+        raise api_error(400, "password_too_short", "密码长度至少 6 位")
 
     password_hash = hash_password(data.password)
     set_password_hash(db, password_hash)

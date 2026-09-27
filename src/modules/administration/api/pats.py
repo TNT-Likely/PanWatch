@@ -8,13 +8,14 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.modules.administration.pat import SCOPE_MCP_READ, generate_pat
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import PersonalAccessToken
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,7 +60,7 @@ def create_pat(body: CreatePatBody, db: Session = Depends(get_db)):
     scopes = body.scopes or [SCOPE_MCP_READ]
     invalid = [s for s in scopes if s not in _ALLOWED_SCOPES]
     if invalid:
-        raise HTTPException(400, f"不支持的 scope: {invalid}")
+        raise api_error(400, "pat_scope_invalid", f"不支持的 scope: {invalid}")
 
     plaintext, token_hash, prefix = generate_pat()
     expires_at = None
@@ -100,7 +101,7 @@ def revoke_pat(pat_id: int, db: Session = Depends(get_db)):
     """吊销 PAT(软删除:置 revoked_at，MCP 端点随即拒绝该令牌)。"""
     row = db.query(PersonalAccessToken).filter(PersonalAccessToken.id == pat_id).first()
     if not row:
-        raise HTTPException(404, "PAT 不存在")
+        raise api_error(404, "pat_not_found", "PAT 不存在")
     if row.revoked_at is None:
         row.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()

@@ -37,4 +37,21 @@ describe('fetchAPI error localization', () => {
 
     await expect(fetchAPI('/stocks/1')).rejects.toThrow('股票不存在')
   })
+
+  it('maps an unauthenticated error instead of treating sign-in failure as an expired session', async () => {
+    localStorage.setItem('panwatch-locale', 'en-US')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status: 401,
+      json: async () => ({
+        code: 401,
+        success: false,
+        error_code: 'invalid_credentials',
+        message: '用户名或密码错误',
+      }),
+    }))
+
+    await expect(fetchAPI('/auth/login', { method: 'POST' })).rejects.toThrow(
+      'The username or password is incorrect.',
+    )
+  })
 })

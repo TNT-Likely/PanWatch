@@ -1,13 +1,14 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import StockSuggestion, SuggestionFeedback
+from src.web.errors import api_error
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ def submit_feedback(payload: FeedbackIn, db: Session = Depends(get_db)):
         .first()
     )
     if not sug:
-        raise HTTPException(404, "建议不存在")
+        raise api_error(404, "suggestion_not_found", "建议不存在")
 
     fb = SuggestionFeedback(suggestion_id=payload.suggestion_id, useful=payload.useful)
     db.add(fb)

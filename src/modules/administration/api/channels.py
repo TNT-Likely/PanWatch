@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import NotifyChannel
 from src.platform.notifications.notifier import NotifierManager, CHANNEL_TYPES
+from src.web.errors import api_error
 
 router = APIRouter()
 
@@ -63,7 +64,7 @@ def create_channel(body: ChannelCreate, db: Session = Depends(get_db)):
 def update_channel(channel_id: int, body: ChannelUpdate, db: Session = Depends(get_db)):
     channel = db.query(NotifyChannel).filter(NotifyChannel.id == channel_id).first()
     if not channel:
-        raise HTTPException(404, "通知渠道不存在")
+        raise api_error(404, "channel_not_found", "通知渠道不存在")
 
     data = body.model_dump(exclude_unset=True)
     if data.get("is_default"):
@@ -81,7 +82,7 @@ def update_channel(channel_id: int, body: ChannelUpdate, db: Session = Depends(g
 def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     channel = db.query(NotifyChannel).filter(NotifyChannel.id == channel_id).first()
     if not channel:
-        raise HTTPException(404, "通知渠道不存在")
+        raise api_error(404, "channel_not_found", "通知渠道不存在")
     db.delete(channel)
     db.commit()
     return {"ok": True}
@@ -92,13 +93,13 @@ async def test_channel(channel_id: int, db: Session = Depends(get_db)):
     """发送测试通知"""
     channel = db.query(NotifyChannel).filter(NotifyChannel.id == channel_id).first()
     if not channel:
-        raise HTTPException(404, "通知渠道不存在")
+        raise api_error(404, "channel_not_found", "通知渠道不存在")
 
     notifier = NotifierManager()
     try:
         notifier.add_channel(channel.type, channel.config or {})
-    except Exception as e:
-        raise HTTPException(400, f"渠道配置无效: {e}")
+    except Exception as exc:
+        raise api_error(400, "channel_config_invalid", "通知渠道配置无效") from exc
 
     from src.platform.language import resolve_report_language
 
@@ -116,4 +117,4 @@ async def test_channel(channel_id: int, db: Session = Depends(get_db)):
     if result.get("success"):
         return {"ok": True, "message": "Test notification sent" if english else "测试通知发送成功"}
     else:
-        raise HTTPException(500, f"通知发送失败: {result.get('error', '未知错误')}")
+        raise api_error(500, "channel_test_failed", "测试通知发送失败")

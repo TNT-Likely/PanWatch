@@ -2,7 +2,7 @@ import logging
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.platform.runtime.config import Settings
@@ -10,6 +10,7 @@ from src.platform.notifications.notifier import get_global_proxy
 from src.platform.marketdata.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import MarketScanSnapshot, Stock
+from src.web.errors import api_error
 
 
 router = APIRouter()
@@ -239,7 +240,7 @@ async def get_hot_stocks(
     market = _normalize_market(market)
     mode = (mode or "turnover").lower()
     if mode not in ("turnover", "gainers"):
-        raise HTTPException(400, f"不支持的 mode: {mode}")
+        raise api_error(400, "discovery_mode_invalid", f"不支持的 mode: {mode}")
 
     key = f"stocks:{market}:{mode}:{int(limit)}"
     cached = _cache_get(key, ttl_s=45)
@@ -256,8 +257,10 @@ async def get_hot_stocks(
         limit=max(1, min(int(limit), 100)),
     )
     if not data:
-        raise HTTPException(
-            503, "热门股票数据源不可用（实时源与本地快照均不可用）"
+        raise api_error(
+            503,
+            "hot_stocks_unavailable",
+            "热门股票数据源不可用（实时源与本地快照均不可用）",
         )
     _cache_set(key, data)
     return data
@@ -278,7 +281,7 @@ async def get_hot_boards(
     market = _normalize_market(market)
     mode = (mode or "gainers").lower()
     if mode not in ("gainers", "turnover", "hot"):
-        raise HTTPException(400, f"不支持的 mode: {mode}")
+        raise api_error(400, "discovery_mode_invalid", f"不支持的 mode: {mode}")
 
     key = f"boards:{market}:{mode}:{int(limit)}"
     cached = _cache_get(key, ttl_s=60)
@@ -323,7 +326,7 @@ async def get_hot_boards(
             limit=limit,
         )
     if not data:
-        raise HTTPException(503, "热门板块/主题数据源不可用")
+        raise api_error(503, "hot_boards_unavailable", "热门板块/主题数据源不可用")
     _cache_set(key, data)
     return data
 
@@ -340,12 +343,12 @@ async def get_board_stocks(
 
     code = (board_code or "").strip()
     if not code:
-        raise HTTPException(400, "缺少板块代码")
+        raise api_error(400, "board_code_required", "缺少板块代码")
 
     mkt = _normalize_market(market)
     mode = (mode or "gainers").lower()
     if mode not in ("gainers", "turnover", "hot"):
-        raise HTTPException(400, f"不支持的 mode: {mode}")
+        raise api_error(400, "discovery_mode_invalid", f"不支持的 mode: {mode}")
 
     key = f"board_stocks:{mkt}:{code}:{mode}:{int(limit)}"
     cached = _cache_get(key, ttl_s=60)
@@ -382,12 +385,14 @@ async def get_board_stocks(
         )
     except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ProxyError) as e:
         logger.warning(f"discovery board_stocks connect timeout: {e!r}")
-        raise HTTPException(
-            503, "板块成分股数据源连接超时（可能需要配置代理 http_proxy）"
-        )
+        raise api_error(
+            503,
+            "board_stocks_timeout",
+            "板块成分股数据源连接超时（可能需要配置代理 http_proxy）",
+        ) from e
     except Exception as e:
         logger.warning(f"discovery board_stocks failed: {type(e).__name__}: {e!r}")
-        raise HTTPException(503, "板块成分股数据源不可用")
+        raise api_error(503, "board_stocks_unavailable", "板块成分股数据源不可用") from e
     data = [
         {
             "symbol": it.symbol,

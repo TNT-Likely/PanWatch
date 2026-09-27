@@ -1,7 +1,7 @@
 import base64
 import os
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -9,6 +9,7 @@ from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AppSettings
 from src.platform.runtime.config import Settings
 from src.modules.administration.update_checker import check_update
+from src.web.errors import api_error
 
 router = APIRouter()
 
@@ -154,13 +155,13 @@ def set_avatar(update: SettingUpdate, db: Session = Depends(get_db)):
         return {"value": ""}
 
     if not (value.startswith("data:") and "," in value):
-        raise HTTPException(400, "头像需为 data URL")
+        raise api_error(400, "avatar_data_url_invalid", "头像需为 data URL")
     header, b64 = value.split(",", 1)
     ext = "png" if "image/png" in header else "jpg"
     try:
         raw = base64.b64decode(b64)
     except Exception:
-        raise HTTPException(400, "头像数据无效")
+        raise api_error(400, "avatar_data_invalid", "头像数据无效")
 
     fname = f"avatar.{ext}"
     with open(os.path.join(_avatar_dir(), fname), "wb") as f:
@@ -182,7 +183,7 @@ def set_avatar(update: SettingUpdate, db: Session = Depends(get_db)):
 @router.put("/{key}", response_model=SettingResponse)
 def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db)):
     if key == "ui_language" and update.value not in {"zh-CN", "en-US"}:
-        raise HTTPException(400, "界面语言仅支持 zh-CN 或 en-US")
+        raise api_error(400, "ui_language_invalid", "界面语言仅支持 zh-CN 或 en-US")
     setting = db.query(AppSettings).filter(AppSettings.key == key).first()
     if not setting:
         desc = SETTING_DESCRIPTIONS.get(key, "")

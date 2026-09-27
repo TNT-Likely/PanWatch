@@ -7,7 +7,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from pan_agent import (
     EventType,
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 from src.platform.tasking.contracts import TaskStatus
+from src.web.errors import api_error
 
 from .context_schemas import (
     AssistantConfigDTO,
@@ -360,7 +361,7 @@ async def create_assistant_task(
             "created_at": task.created_at,
         }
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.get("/tasks/{task_id}/events")
@@ -373,7 +374,7 @@ async def stream_assistant_task_events(
     try:
         service.get_task_snapshot(task_id)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     return _task_stream_response(
         task_id,
         request=request,
@@ -389,7 +390,7 @@ def get_assistant_task(
     try:
         return service.get_task_snapshot(task_id)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.post("/tasks/{task_id}/cancel")
@@ -402,7 +403,7 @@ async def cancel_assistant_task(
         assistant_task_runner.cancel(task_id)
         return snapshot
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.post("/tasks/{task_id}/retry")
@@ -416,7 +417,7 @@ async def retry_assistant_task(
             assistant_task_runner.start_message(task_id, snapshot["conversation_id"])
         return snapshot
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.post("/conversations/{conversation_id}/messages/stream")
@@ -436,7 +437,7 @@ async def stream_assistant_message(
                 after_sequence=0,
             )
         except AssistantNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
     task = None
     context_result = None
@@ -474,7 +475,7 @@ async def stream_assistant_message(
         if task is not None:
             _finish_failed_task(service, task.id, "transport_setup_failed")
             return _error_response("transport_setup_failed")
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     except Exception:  # task setup failures must become terminal states
         if task is None:
             raise
@@ -505,9 +506,9 @@ async def stream_assistant_approval_decision(
     try:
         outcome = service.resolve_approval_decision(approval_id, body.decision)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     except (AssistantApprovalConflictError, AssistantApprovalExpiredError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise api_error(409, "assistant_approval_conflict", "该审批已处理或已过期") from exc
 
     if outcome.checkpoint is None:
 
@@ -579,7 +580,7 @@ def get_context_detail(
     try:
         return service.get_context_detail(conversation_id)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.post("/conversations/{conversation_id}/context/compress", response_model=ContextDetailDTO)
@@ -595,7 +596,7 @@ async def compress_context(
             compression_result=result,
         )
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.get("/health")
@@ -634,7 +635,7 @@ def update_assistant_config(
     try:
         return service.update_assistant_config(body)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise api_error(422, "assistant_config_invalid", "助手配置无效") from exc
 
 
 @router.put("/tool-permissions")
@@ -645,7 +646,7 @@ def update_tool_permission(
     try:
         return service.update_tool_permission(**body.model_dump())
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise api_error(422, "assistant_permission_invalid", "助手工具权限配置无效") from exc
 
 
 @router.post("/conversations", response_model=ConversationDTO)
@@ -672,7 +673,7 @@ def get_conversation(
     try:
         return service.get_conversation(conversation_id)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -683,5 +684,5 @@ def delete_conversation(
     try:
         service.delete_conversation(conversation_id)
     except AssistantNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     return {"ok": True}

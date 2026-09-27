@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import List
 
@@ -17,6 +17,7 @@ from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock
+from src.web.errors import api_error
 import asyncio
 import logging
 import time
@@ -42,7 +43,7 @@ def _parse_market(market: str) -> MarketCode:
     try:
         return MarketCode(market)
     except ValueError:
-        raise HTTPException(400, f"不支持的市场: {market}")
+        raise api_error(400, "market_unsupported", f"不支持的市场: {market}")
 
 
 @router.post("/batch")
@@ -208,7 +209,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     add_q = float(req.add_quantity)
     add_p = float(req.add_price)
     if add_q <= 0 or add_p <= 0:
-        raise HTTPException(400, "加仓股数与价格必须大于 0")
+        raise api_error(400, "position_calculation_invalid", "加仓股数与价格必须大于 0")
 
     new_q = cur_q + add_q
     new_cost = (cur_q * cur_c + add_q * add_p) / new_q if new_q > 0 else add_p
@@ -252,8 +253,9 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     try:
         client = get_configured_failover_client(db, req.model_id)
         content = await client.chat(system_prompt, user_content, temperature=0.3)
-    except Exception as e:
-        raise HTTPException(502, f"AI 评估失败: {e}")
+    except Exception as exc:
+        logger.warning("AI 加仓评估失败: %s", exc)
+        raise api_error(502, "ai_evaluation_failed", "AI 评估失败") from exc
 
     return {
         "symbol": req.symbol,
@@ -341,8 +343,9 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
         content = await get_configured_failover_client(db, req.model_id).chat(
             system_prompt, user_content, temperature=0.2
         )
-    except Exception as e:
-        raise HTTPException(502, f"AI 公告解读失败: {e}")
+    except Exception as exc:
+        logger.warning("AI 公告解读失败: %s", exc)
+        raise api_error(502, "ai_announcement_interpretation_failed", "AI 公告解读失败") from exc
 
     tone_map: dict[int, tuple[str, str]] = {}
     for line in (content or "").splitlines():

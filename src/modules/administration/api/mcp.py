@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from src.modules.administration.pat import (
 from src.modules.assistant.tool_adapters import ASSISTANT_TOOLS, execute_tool
 from src.platform.persistence.database import SessionLocal, get_db
 from src.platform.persistence.models import MCPCallLog, PersonalAccessToken
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,10 +70,10 @@ def authenticate_pat(request: Request, db: Session) -> dict:
     """校验 Authorization: Bearer pwmcp_...，返回 PAT 元数据；失败抛 HTTPException。"""
     header = request.headers.get("authorization") or ""
     if not header.lower().startswith("bearer "):
-        raise HTTPException(401, "缺少 Bearer PAT")
+        raise api_error(401, "mcp_bearer_required", "缺少 Bearer PAT")
     token = header[7:].strip()
     if not looks_like_pat(token):
-        raise HTTPException(403, "MCP 端点需要 PAT(pwmcp_ 前缀)")
+        raise api_error(403, "mcp_pat_required", "MCP 端点需要 PAT(pwmcp_ 前缀)")
 
     row = (
         db.query(PersonalAccessToken)
@@ -80,19 +81,19 @@ def authenticate_pat(request: Request, db: Session) -> dict:
         .first()
     )
     if row is None or not verify_pat_hash(token, row.token_hash):
-        raise HTTPException(401, "无效的 token")
+        raise api_error(401, "mcp_token_invalid", "无效的 token")
     if row.revoked_at is not None:
-        raise HTTPException(401, "token 已吊销")
+        raise api_error(401, "mcp_token_revoked", "token 已吊销")
     exp = _to_utc(row.expires_at)
     if exp is not None and exp < datetime.now(timezone.utc):
-        raise HTTPException(401, "token 已过期")
+        raise api_error(401, "mcp_token_expired", "token 已过期")
 
     try:
         scopes = set(json.loads(row.scopes_json or "[]"))
     except Exception:
         scopes = set()
     if SCOPE_MCP_READ not in scopes:
-        raise HTTPException(403, f"PAT 缺少所需 scope: {SCOPE_MCP_READ}")
+        raise api_error(403, "mcp_scope_required", f"PAT 缺少所需 scope: {SCOPE_MCP_READ}")
 
     _bump_last_used(db, row, request)
     return {

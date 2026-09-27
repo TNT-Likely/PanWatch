@@ -5,12 +5,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.modules.strategy.factor_weights import get_all_factor_weights, set_factor_weight
 from src.platform.persistence.database import get_db
+from src.web.errors import api_error
 
 router = APIRouter()
 
@@ -41,5 +42,5 @@ def update_weight(
             weight=payload.weight, is_pinned=payload.is_pinned,
             auto_calibrate=payload.auto_calibrate, db=db,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise api_error(400, "factor_weight_invalid", "因子权重配置无效") from exc
