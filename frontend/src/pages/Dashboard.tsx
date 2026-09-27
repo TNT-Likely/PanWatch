@@ -80,6 +80,11 @@ const MARKET_BAR_CLS: Record<string, string> = {
   HK: 'bg-orange-500',
 }
 
+// 主体栅格行1/行2四卡统一限高:flex 列布局 + lg 及以上 560px / 窄屏 70vh 上限;外框等高交给 grid stretch,超高由内容区滚动消化
+const PANEL_CARD_CLS = 'card flex flex-col p-4 lg:max-h-[560px] max-lg:max-h-[70vh]'
+// 卡片内容区(标题行之外):占满卡片剩余高度,超高时滚动(min-h-0 允许在 flex 列内收缩,否则 overflow 不生效)
+const PANEL_BODY_CLS = 'scrollbar min-h-0 flex-1 overflow-y-auto'
+
 /** 板块方向徽章配色(A股口径红涨绿跌):bullish 红 / bearish 绿 / 其余中性灰 */
 function sectorDirectionBadge(direction?: string): { label: string; cls: string } {
   const key = (direction || '').toLowerCase()
@@ -455,11 +460,11 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* 主体:要紧事(7) | 体检(5);机会(5) | 简报(7) */}
+      {/* 主体栅格:行1 要紧事(7) | 体检(5);行2 简报(7) | 板块预判(5)——盘前决策内容成组;行3 机会精选全宽(12,Top3 横排三卡) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         {/* 今日要紧事(主角) */}
-        <div className="card p-4 lg:col-span-7">
-          <div className="mb-2 flex items-center gap-2">
+        <div className={`${PANEL_CARD_CLS} lg:col-span-7`}>
+          <div className="mb-2 flex shrink-0 items-center gap-2">
             <Activity className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">今日要紧事</h2>
             <span className="text-caption text-muted-foreground">你的持仓/自选里今天该关注的</span>
@@ -475,56 +480,58 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
-          {loading && candidates.length === 0 ? (
-            <div className="py-6 text-center text-body-sm text-muted-foreground">扫描中…</div>
-          ) : candidates.length === 0 ? (
-            todos.length > 0 ? (
-              <div className="space-y-1.5 py-1">
-                <div className="text-caption text-muted-foreground">今日暂无异动/触发 ✓ · 待办:</div>
-                {todos.map((t, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center gap-2 py-1 text-body-sm ${t.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
-                    onClick={() => t.symbol && openStock(t.symbol, t.market || 'CN', '')}
-                  >
-                    <span className="shrink-0 rounded bg-amber-500/15 px-1 text-mini text-amber-600">
-                      {t.type === 'no_alert' ? '加提醒' : '将到期'}
-                    </span>
-                    <span className="truncate">{t.message}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无明显异动或触发信号 ✓</div>
-            )
-          ) : (
-            <div className="divide-y divide-border/40">
-              {feed.map((it, i) => {
-                const badge = FEED_BADGE[it.type] || { label: it.type, cls: 'bg-accent text-muted-foreground' }
-                return (
-                  <div
-                    key={i}
-                    className={`flex items-center gap-3 py-2 ${it.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
-                    onClick={() => it.symbol && openStock(it.symbol, it.market || 'CN', it.name || '')}
-                  >
-                    <span className={`shrink-0 rounded px-1 text-mini ${badge.cls}`}>{badge.label}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-body font-medium">{it.name || it.symbol}</div>
-                      {it.why && <div className="truncate text-caption text-muted-foreground">{it.why}</div>}
+          <div className={PANEL_BODY_CLS}>
+            {loading && candidates.length === 0 ? (
+              <div className="py-6 text-center text-body-sm text-muted-foreground">扫描中…</div>
+            ) : candidates.length === 0 ? (
+              todos.length > 0 ? (
+                <div className="space-y-1.5 py-1">
+                  <div className="text-caption text-muted-foreground">今日暂无异动/触发 ✓ · 待办:</div>
+                  {todos.map((t, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-2 py-1 text-body-sm ${t.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
+                      onClick={() => t.symbol && openStock(t.symbol, t.market || 'CN', '')}
+                    >
+                      <span className="shrink-0 rounded bg-amber-500/15 px-1 text-mini text-amber-600">
+                        {t.type === 'no_alert' ? '加提醒' : '将到期'}
+                      </span>
+                      <span className="truncate">{t.message}</span>
                     </div>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-caption ${pctChipCls(it.change_pct)}`}>
-                      {it.change_pct != null ? pct(it.change_pct) : '--'}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  ))}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无明显异动或触发信号 ✓</div>
+              )
+            ) : (
+              <div className="divide-y divide-border/40">
+                {feed.map((it, i) => {
+                  const badge = FEED_BADGE[it.type] || { label: it.type, cls: 'bg-accent text-muted-foreground' }
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-3 py-2 ${it.symbol ? 'cursor-pointer hover:bg-accent/30' : ''}`}
+                      onClick={() => it.symbol && openStock(it.symbol, it.market || 'CN', it.name || '')}
+                    >
+                      <span className={`shrink-0 rounded px-1 text-mini ${badge.cls}`}>{badge.label}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-body font-medium">{it.name || it.symbol}</div>
+                        {it.why && <div className="truncate text-caption text-muted-foreground">{it.why}</div>}
+                      </div>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-caption ${pctChipCls(it.change_pct)}`}>
+                        {it.change_pct != null ? pct(it.change_pct) : '--'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 组合体检(并入首页) */}
-        <div className="card p-4 lg:col-span-5">
-          <div className="mb-2 flex items-center gap-2">
+        <div className={`${PANEL_CARD_CLS} lg:col-span-5`}>
+          <div className="mb-2 flex shrink-0 items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">组合体检</h2>
             {benchReady && (
@@ -550,294 +557,157 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
-          {!hasHoldings ? (
-            <div className="py-6 text-center text-body-sm text-muted-foreground">
-              {loading ? '加载中…' : '暂无持仓,添加持仓后这里给风险与相对大盘表现'}
-            </div>
-          ) : (
-            <div className="space-y-3 text-body-sm">
-              {/* 图例行:色块 + 我的组合/基准收益 + 超额 chip */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-caption">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-[3px] w-3.5 rounded-full bg-primary" />
-                    <span className="text-muted-foreground">我的组合 {benchReady ? pct(bench!.portfolio_return) : ''}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-0 w-3.5 border-t-[1.5px] border-dashed border-muted-foreground/70" />
-                    <span className="text-muted-foreground">
-                      {bench?.benchmark_label || '沪深300'} {benchReady ? pct(bench!.benchmark_return) : ''}
-                    </span>
-                  </span>
-                </div>
-                {benchReady && (
-                  <span className={`rounded px-1.5 py-0.5 font-mono ${pctChipCls(bench!.excess_return)}`}>
-                    超额 {pct(bench!.excess_return)}
-                  </span>
-                )}
+          <div className={PANEL_BODY_CLS}>
+            {!hasHoldings ? (
+              <div className="py-6 text-center text-body-sm text-muted-foreground">
+                {loading ? '加载中…' : '暂无持仓,添加持仓后这里给风险与相对大盘表现'}
               </div>
-
-              {/* 净值 vs 基准双线图:loading/ready/empty/error 四态,不再永远"计算中" */}
-              {benchState === 'ready' && bench?.curve && bench.curve.length >= 2 ? (
-                <BenchChart curve={bench.curve} />
-              ) : (
-                <div className="flex h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-accent/10 text-caption text-muted-foreground">
-                  {benchState === 'loading' && <span>基准对比计算中…(需拉全部持仓 K 线,约 1 分钟)</span>}
-                  {benchState === 'empty' && <span>{bench?.reason || '数据不足,暂无法计算基准对比'}</span>}
-                  {benchState === 'error' && (
-                    <>
-                      <span>基准对比加载失败(超时或网络异常)</span>
-                      <button
-                        type="button"
-                        onClick={loadBench}
-                        className="rounded border border-border/60 px-2.5 py-1 text-caption text-primary hover:bg-accent/30"
-                      >
-                        重试
-                      </button>
-                    </>
+            ) : (
+              <div className="space-y-3 text-body-sm">
+                {/* 图例行:色块 + 我的组合/基准收益 + 超额 chip */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-caption">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-[3px] w-3.5 rounded-full bg-primary" />
+                      <span className="text-muted-foreground">我的组合 {benchReady ? pct(bench!.portfolio_return) : ''}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-0 w-3.5 border-t-[1.5px] border-dashed border-muted-foreground/70" />
+                      <span className="text-muted-foreground">
+                        {bench?.benchmark_label || '沪深300'} {benchReady ? pct(bench!.benchmark_return) : ''}
+                      </span>
+                    </span>
+                  </div>
+                  {benchReady && (
+                    <span className={`rounded px-1.5 py-0.5 font-mono ${pctChipCls(bench!.excess_return)}`}>
+                      超额 {pct(bench!.excess_return)}
+                    </span>
                   )}
                 </div>
-              )}
 
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">持仓 {diag!.position_count} 只 · 最大单仓</span>
-                <span className={`font-mono ${diag!.max_weight >= 0.4 ? 'text-amber-600' : ''}`}>
-                  {(diag!.max_weight * 100).toFixed(0)}%
-                </span>
-              </div>
+                {/* 净值 vs 基准双线图:loading/ready/empty/error 四态,不再永远"计算中" */}
+                {benchState === 'ready' && bench?.curve && bench.curve.length >= 2 ? (
+                  <BenchChart curve={bench.curve} />
+                ) : (
+                  <div className="flex h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-accent/10 text-caption text-muted-foreground">
+                    {benchState === 'loading' && <span>基准对比计算中…(需拉全部持仓 K 线,约 1 分钟)</span>}
+                    {benchState === 'empty' && <span>{bench?.reason || '数据不足,暂无法计算基准对比'}</span>}
+                    {benchState === 'error' && (
+                      <>
+                        <span>基准对比加载失败(超时或网络异常)</span>
+                        <button
+                          type="button"
+                          onClick={loadBench}
+                          className="rounded border border-border/60 px-2.5 py-1 text-caption text-primary hover:bg-accent/30"
+                        >
+                          重试
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
-              {/* 市场分布:stacked 单条 */}
-              {marketSegs.length > 0 && (
-                <div>
-                  <div className="flex h-2 overflow-hidden rounded-full bg-accent/30">
-                    {marketSegs.map((seg, i) => (
-                      <div
-                        key={seg.market}
-                        className={`h-full ${MARKET_BAR_CLS[seg.market] || 'bg-muted-foreground/50'}`}
-                        style={{ width: `${seg.pct}%`, marginRight: i < marketSegs.length - 1 ? 2 : 0 }}
-                      />
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">持仓 {diag!.position_count} 只 · 最大单仓</span>
+                  <span className={`font-mono ${diag!.max_weight >= 0.4 ? 'text-amber-600' : ''}`}>
+                    {(diag!.max_weight * 100).toFixed(0)}%
+                  </span>
+                </div>
+
+                {/* 市场分布:stacked 单条 */}
+                {marketSegs.length > 0 && (
+                  <div>
+                    <div className="flex h-2 overflow-hidden rounded-full bg-accent/30">
+                      {marketSegs.map((seg, i) => (
+                        <div
+                          key={seg.market}
+                          className={`h-full ${MARKET_BAR_CLS[seg.market] || 'bg-muted-foreground/50'}`}
+                          style={{ width: `${seg.pct}%`, marginRight: i < marketSegs.length - 1 ? 2 : 0 }}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-1 text-mini text-muted-foreground">
+                      {marketSegs.map((seg) => `${seg.market} ${seg.pct.toFixed(0)}%`).join(' · ')}
+                    </div>
+                  </div>
+                )}
+
+                {/* 领涨/拖累:双向条(近60日归因:贡献 = 起始权重 × 区间收益) */}
+                {attribution.length > 1 && (
+                  <div className="text-mini text-muted-foreground">近 60 日归因 · 贡献 = 权重 × 区间收益</div>
+                )}
+                {attribution.length > 1 &&
+                  [
+                    { label: '领涨', item: attribution[0] },
+                    { label: '拖累', item: attribution[attribution.length - 1] },
+                  ].map(({ label, item }) => {
+                    const w = Math.min(50, (Math.abs(item.contribution_pct) / attributionMaxAbs) * 50)
+                    const positive = item.contribution_pct >= 0
+                    return (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="w-8 shrink-0 text-mini text-muted-foreground">{label}</span>
+                        <div className="relative h-1.5 flex-1 rounded-full bg-accent/30">
+                          <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                          <div
+                            className={`absolute inset-y-0 rounded-full ${positive ? 'bg-stock-up' : 'bg-stock-down'}`}
+                            style={
+                              positive
+                                ? { left: '50%', width: `${w}%` }
+                                : { right: '50%', width: `${w}%` }
+                            }
+                          />
+                        </div>
+                        <span
+                          className="flex w-56 shrink-0 items-baseline justify-end gap-1 text-right text-caption"
+                          title={`${item.name} · 近60日${pct(item.return_pct)} · 贡献${pct(item.contribution_pct)}`}
+                        >
+                          <span className="min-w-0 truncate">{item.name}</span>
+                          <span className={`shrink-0 font-mono ${moveColor(item.return_pct)}`} title="近60日区间收益">
+                            60日{pct(item.return_pct)}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground" title="对组合收益的贡献:权重×区间收益">
+                            ｜贡献 {pct(item.contribution_pct)}
+                          </span>
+                        </span>
+                      </div>
+                    )
+                  })}
+
+                {diag!.alerts.length > 0 ? (
+                  <div className="space-y-1 pt-1">
+                    {diag!.alerts.map((a, i) => (
+                      <div key={i} className="flex items-start gap-1 text-caption text-amber-600">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>{a}</span>
+                      </div>
                     ))}
                   </div>
-                  <div className="mt-1 text-mini text-muted-foreground">
-                    {marketSegs.map((seg) => `${seg.market} ${seg.pct.toFixed(0)}%`).join(' · ')}
-                  </div>
-                </div>
-              )}
-
-              {/* 领涨/拖累:双向条(近60日归因:贡献 = 起始权重 × 区间收益) */}
-              {attribution.length > 1 && (
-                <div className="text-mini text-muted-foreground">近 60 日归因 · 贡献 = 权重 × 区间收益</div>
-              )}
-              {attribution.length > 1 &&
-                [
-                  { label: '领涨', item: attribution[0] },
-                  { label: '拖累', item: attribution[attribution.length - 1] },
-                ].map(({ label, item }) => {
-                  const w = Math.min(50, (Math.abs(item.contribution_pct) / attributionMaxAbs) * 50)
-                  const positive = item.contribution_pct >= 0
-                  return (
-                    <div key={label} className="flex items-center gap-2">
-                      <span className="w-8 shrink-0 text-mini text-muted-foreground">{label}</span>
-                      <div className="relative h-1.5 flex-1 rounded-full bg-accent/30">
-                        <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
-                        <div
-                          className={`absolute inset-y-0 rounded-full ${positive ? 'bg-stock-up' : 'bg-stock-down'}`}
-                          style={
-                            positive
-                              ? { left: '50%', width: `${w}%` }
-                              : { right: '50%', width: `${w}%` }
-                          }
-                        />
-                      </div>
-                      <span
-                        className="flex w-56 shrink-0 items-baseline justify-end gap-1 text-right text-caption"
-                        title={`${item.name} · 近60日${pct(item.return_pct)} · 贡献${pct(item.contribution_pct)}`}
-                      >
-                        <span className="min-w-0 truncate">{item.name}</span>
-                        <span className={`shrink-0 font-mono ${moveColor(item.return_pct)}`} title="近60日区间收益">
-                          60日{pct(item.return_pct)}
-                        </span>
-                        <span className="shrink-0 text-muted-foreground" title="对组合收益的贡献:权重×区间收益">
-                          ｜贡献 {pct(item.contribution_pct)}
-                        </span>
-                      </span>
-                    </div>
-                  )
-                })}
-
-              {diag!.alerts.length > 0 ? (
-                <div className="space-y-1 pt-1">
-                  {diag!.alerts.map((a, i) => (
-                    <div key={i} className="flex items-start gap-1 text-caption text-amber-600">
-                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                      <span>{a}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="pt-1 text-caption text-success">✓ 集中度/分布未见明显风险</div>
-              )}
-              <button
-                type="button"
-                onClick={runAiReview}
-                disabled={aiReviewLoading}
-                className="mt-1 w-full rounded border border-border/60 py-1 text-caption text-primary hover:bg-accent/30 disabled:opacity-60"
-              >
-                {aiReviewLoading ? 'AI 体检中…' : 'AI 体检报告'}
-              </button>
-              {aiReview?.content && (
-                <MarkdownView
-                  content={aiReview.content}
-                  className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
-                />
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 机会精选 */}
-        <div className="card p-4 lg:col-span-5">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="h-4 w-4 text-primary" />
-              机会精选
-            </h2>
-            <button
-              type="button"
-              className="text-caption text-muted-foreground hover:text-foreground"
-              onClick={() => navigate('/opportunities')}
-            >
-              进入机会页
-            </button>
+                ) : (
+                  <div className="pt-1 text-caption text-success">✓ 集中度/分布未见明显风险</div>
+                )}
+                <button
+                  type="button"
+                  onClick={runAiReview}
+                  disabled={aiReviewLoading}
+                  className="mt-1 w-full rounded border border-border/60 py-1 text-caption text-primary hover:bg-accent/30 disabled:opacity-60"
+                >
+                  {aiReviewLoading ? 'AI 体检中…' : 'AI 体检报告'}
+                </button>
+                {aiReview?.content && (
+                  <MarkdownView
+                    content={aiReview.content}
+                    className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
+                  />
+                )}
+              </div>
+            )}
           </div>
-          {opportunities.length === 0 ? (
-            <div className="py-6 text-center text-body-sm text-muted-foreground">{loading ? '加载中…' : '暂无活跃机会信号'}</div>
-          ) : (
-            <div className="divide-y divide-border/40">
-              {opportunities.slice(0, 3).map((o) => {
-                const score = Math.max(0, Math.min(100, o.rank_score ?? o.score ?? 0))
-                return (
-                  <div
-                    key={`${o.stock_market}:${o.stock_symbol}`}
-                    className="flex cursor-pointer items-center gap-2 py-2 hover:bg-accent/30"
-                    onClick={() => openStock(o.stock_symbol, o.stock_market, o.stock_name || o.stock_symbol)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-body font-medium">{o.stock_name || o.stock_symbol}</span>
-                        {o.action_label && <span className="rounded bg-primary/10 px-1 text-mini text-primary">{o.action_label}</span>}
-                      </div>
-                      {(o.signal || o.reason) && <div className="truncate text-caption text-muted-foreground">{o.signal || o.reason}</div>}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="font-mono text-body text-foreground">{score.toFixed(0)}</div>
-                      <div className="text-mini text-muted-foreground">评分</div>
-                      <div className="mt-1 h-[3px] w-10 rounded bg-accent/40">
-                        <div className="h-[3px] rounded bg-primary/70" style={{ width: `${score}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
 
-        {/* 今日板块预判(盘前决策引擎产出;独立加载,空/失败优雅降级) */}
-        <div className="card p-4 lg:col-span-5">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              今日板块预判
-            </h2>
-            {sectorDate && <span className="text-mini text-muted-foreground">{sectorDate}</span>}
-          </div>
-          {sectorState === 'loading' ? (
-            <div className="py-6 text-center text-body-sm text-muted-foreground">加载中…</div>
-          ) : sectorRows.length === 0 ? (
-            <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无板块预判</div>
-          ) : (
-            <div className="divide-y divide-border/40">
-              {sectorRows.map((s) => {
-                const badge = sectorDirectionBadge(s.direction)
-                const rationale = rationaleFirstLine(s.rationale)
-                const rowKey = sectorRowKey(s)
-                // rationale 为空的行不展开:不渲染箭头、不可点击
-                const hasDetail = Boolean(s.rationale && s.rationale.trim())
-                const catalysts = hasDetail ? catalystList(s.catalysts) : []
-                const expanded = hasDetail && expandedSector === rowKey
-                const rowBody = (
-                  <>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-body font-medium">{s.board_name || s.board_code}</span>
-                        <span className={`shrink-0 rounded px-1 text-mini ${badge.cls}`}>{badge.label}</span>
-                        {s.stage && (
-                          <span className="shrink-0 rounded bg-accent px-1 text-mini text-muted-foreground">{s.stage}</span>
-                        )}
-                      </div>
-                      {rationale && <div className="truncate text-caption text-muted-foreground">{rationale}</div>}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="font-mono text-body text-foreground">
-                        {s.confidence != null && isFinite(s.confidence) ? `${Math.round(s.confidence * 100)}%` : '--'}
-                      </div>
-                      <div className="text-mini text-muted-foreground">置信度</div>
-                    </div>
-                  </>
-                )
-                return (
-                  <div key={rowKey}>
-                    {hasDetail ? (
-                      <button
-                        type="button"
-                        className="flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-expanded={expanded}
-                        aria-controls={`sector-detail-${rowKey}`}
-                        onClick={() => setExpandedSector((cur) => (cur === rowKey ? null : rowKey))}
-                      >
-                        {rowBody}
-                        <ChevronDown
-                          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
-                        />
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 py-2">{rowBody}</div>
-                    )}
-                    {expanded && (
-                      <div id={`sector-detail-${rowKey}`} className="px-2 pb-2">
-                        <MarkdownView
-                          content={s.rationale}
-                          className="max-h-[280px] overflow-y-auto text-body-sm [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1"
-                        />
-                        {catalysts.length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {catalysts.map((c, i) => (
-                              <span
-                                key={`${i}-${c}`}
-                                className="rounded bg-accent px-1 py-0.5 text-mini text-muted-foreground"
-                              >
-                                {c}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="mt-1.5 text-mini text-muted-foreground">
-                          阶段 {s.stage || '--'} · 动量 {s.momentum_score ?? '--'} · 来源 {s.source_agent || '--'}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 盘前/盘后简报 */}
+        {/* 盘前/盘后简报(上移,与板块预判同组:盘前决策内容) */}
         {brief && (brief.title || brief.content) && (
-          <div className="card p-4 lg:col-span-7">
-            <div className="mb-1 flex items-center justify-between gap-2">
+          <div className={`${PANEL_CARD_CLS} lg:col-span-7`}>
+            <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold">
                 <Newspaper className="h-4 w-4 text-primary" />
                 {brief.agent_label}
@@ -857,16 +727,161 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
-            {brief.title && <div className="text-body-lg font-semibold text-foreground">{brief.title}</div>}
-            {!briefOpen && briefSummary && <div className="mt-1 text-body-sm text-muted-foreground">{briefSummary}</div>}
-            {briefOpen && brief.content && (
-              <MarkdownView
-                content={brief.content}
-                className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
-              />
-            )}
+            <div className={PANEL_BODY_CLS}>
+              {brief.title && <div className="text-body-lg font-semibold text-foreground">{brief.title}</div>}
+              {!briefOpen && briefSummary && <div className="mt-1 text-body-sm text-muted-foreground">{briefSummary}</div>}
+              {briefOpen && brief.content && (
+                <MarkdownView
+                  content={brief.content}
+                  className="mt-1 text-body-sm [&_p]:my-1 [&_ul]:my-1"
+                />
+              )}
+            </div>
           </div>
         )}
+
+        {/* 今日板块预判(盘前决策引擎产出;独立加载,空/失败优雅降级) */}
+        <div className={`${PANEL_CARD_CLS} lg:col-span-5`}>
+          <div className="mb-2 flex shrink-0 items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              今日板块预判
+            </h2>
+            {sectorDate && <span className="text-mini text-muted-foreground">{sectorDate}</span>}
+          </div>
+          <div className={PANEL_BODY_CLS}>
+            {sectorState === 'loading' ? (
+              <div className="py-6 text-center text-body-sm text-muted-foreground">加载中…</div>
+            ) : sectorRows.length === 0 ? (
+              <div className="py-6 text-center text-body-sm text-muted-foreground">今日暂无板块预判</div>
+            ) : (
+              <div className="divide-y divide-border/40">
+                {sectorRows.map((s) => {
+                  const badge = sectorDirectionBadge(s.direction)
+                  const rationale = rationaleFirstLine(s.rationale)
+                  const rowKey = sectorRowKey(s)
+                  // rationale 为空的行不展开:不渲染箭头、不可点击
+                  const hasDetail = Boolean(s.rationale && s.rationale.trim())
+                  const catalysts = hasDetail ? catalystList(s.catalysts) : []
+                  const expanded = hasDetail && expandedSector === rowKey
+                  const rowBody = (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-body font-medium">{s.board_name || s.board_code}</span>
+                          <span className={`shrink-0 rounded px-1 text-mini ${badge.cls}`}>{badge.label}</span>
+                          {s.stage && (
+                            <span className="shrink-0 rounded bg-accent px-1 text-mini text-muted-foreground">{s.stage}</span>
+                          )}
+                        </div>
+                        {rationale && <div className="truncate text-caption text-muted-foreground">{rationale}</div>}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-body text-foreground">
+                          {s.confidence != null && isFinite(s.confidence) ? `${Math.round(s.confidence * 100)}%` : '--'}
+                        </div>
+                        <div className="text-mini text-muted-foreground">置信度</div>
+                      </div>
+                    </>
+                  )
+                  return (
+                    <div key={rowKey}>
+                      {hasDetail ? (
+                        <button
+                          type="button"
+                          className="flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-expanded={expanded}
+                          aria-controls={`sector-detail-${rowKey}`}
+                          onClick={() => setExpandedSector((cur) => (cur === rowKey ? null : rowKey))}
+                        >
+                          {rowBody}
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 py-2">{rowBody}</div>
+                      )}
+                      {expanded && (
+                        <div id={`sector-detail-${rowKey}`} className="px-2 pb-2">
+                          <MarkdownView
+                            content={s.rationale}
+                            className="max-h-[280px] overflow-y-auto text-body-sm [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1"
+                          />
+                          {catalysts.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {catalysts.map((c, i) => (
+                                <span
+                                  key={`${i}-${c}`}
+                                  className="rounded bg-accent px-1 py-0.5 text-mini text-muted-foreground"
+                                >
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mt-1.5 text-mini text-muted-foreground">
+                            阶段 {s.stage || '--'} · 动量 {s.momentum_score ?? '--'} · 来源 {s.source_agent || '--'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 机会精选(全宽:Top3 信号横排三卡,信息结构不变) */}
+        <div className="card p-4 lg:col-span-12">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              机会精选
+            </h2>
+            <button
+              type="button"
+              className="text-caption text-muted-foreground hover:text-foreground"
+              onClick={() => navigate('/opportunities')}
+            >
+              进入机会页
+            </button>
+          </div>
+          {opportunities.length === 0 ? (
+            <div className="py-6 text-center text-body-sm text-muted-foreground">{loading ? '加载中…' : '暂无活跃机会信号'}</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              {opportunities.slice(0, 3).map((o) => {
+                const score = Math.max(0, Math.min(100, o.rank_score ?? o.score ?? 0))
+                return (
+                  <div
+                    key={`${o.stock_market}:${o.stock_symbol}`}
+                    className="card-subtle cursor-pointer p-3 transition-colors hover:bg-accent/40"
+                    onClick={() => openStock(o.stock_symbol, o.stock_market, o.stock_name || o.stock_symbol)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-body font-medium">{o.stock_name || o.stock_symbol}</span>
+                          {o.action_label && <span className="rounded bg-primary/10 px-1 text-mini text-primary">{o.action_label}</span>}
+                        </div>
+                        {(o.signal || o.reason) && <div className="truncate text-caption text-muted-foreground">{o.signal || o.reason}</div>}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-body text-foreground">{score.toFixed(0)}</div>
+                        <div className="text-mini text-muted-foreground">评分</div>
+                        <div className="mt-1 h-[3px] w-10 rounded bg-accent/40">
+                          <div className="h-[3px] rounded bg-primary/70" style={{ width: `${score}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <DiscoveryPanel monitorStocks={scan} onOpenStock={openStock} />
