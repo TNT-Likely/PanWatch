@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
 import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
@@ -35,6 +35,7 @@ import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
 import { moveColor, pctChipCls, fmtMoney, fmtPct as pct, PageHeader, PnlText } from '@panwatch/base-ui/components/patterns'
+import { useSlowLaneScheduler } from '@/hooks/useSlowLaneScheduler'
 
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
 function stripMarkdown(s: string): string {
@@ -115,6 +116,12 @@ function catalystList(catalysts?: unknown[]): string[] {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  // 次屏车道开关:首屏快车道完成后空闲期开启;开启前重接口(诊断/基准/归因/板块预判/AI 策展/发现)不发请求
+  const [slowLaneReady, setSlowLaneReady] = useState(false)
+  // 诊断独立加载态:从快车道拆出后,数据到达前组合速览/体检卡显示"加载中…"而非误闪"暂无持仓"
+  const [diagLoaded, setDiagLoaded] = useState(false)
+  // 次屏车道首拉幂等闸:idle 调度与手动刷新竞争时,防止慢车道被重复拉取
+  const slowLaneStartedRef = useRef(false)
   const [indices, setIndices] = useState<DashboardMarketIndex[]>([])
   const [scan, setScan] = useState<DashboardMonitorStock[]>([])
   const [overview, setOverview] = useState<DashboardOverviewResponse | null>(null)
@@ -166,51 +173,17 @@ export default function DashboardPage() {
     })
   }, [])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    // 指数 pills:独立加载不阻塞首屏(spark 冷启动可能 ~1s,数据到了自然浮现)
-    dashboardApi.indices().then(setIndices).catch(() => {})
-    // 快车道:DB/轻量查询,先让首屏(要紧事/体检分布/组合速览)尽快出来
-    const [sc, ov, dg, ht, td, ps, ms] = await Promise.allSettled([
-      dashboardApi.intradayScan(),
-      dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 }),
-      portfolioApi.diagnostics(),
-      homeApi.alertHitsToday(),
-      homeApi.todos(),
-      dashboardApi.portfolioSummary(),
-      dashboardApi.marketStatus(),
-    ])
-    if (sc.status === 'fulfilled') setScan(sc.value.stocks || [])
-    if (ov.status === 'fulfilled') setOverview(ov.value)
-    if (dg.status === 'fulfilled') setDiag(dg.value)
-    if (ht.status === 'fulfilled') setAlertHits(ht.value)
-    if (td.status === 'fulfilled') setTodos(td.value.todos || [])
-    if (ps.status === 'fulfilled') setPortfolioSummary(ps.value)
-    if (ms.status === 'fulfilled') setMarketStatus(ms.value)
-    setLoading(false) // 首屏不再等基准/归因(要拉全持仓 K 线)
-    setRefreshedAt(new Date())
+  // 慢车道:组合诊断(轻量但非首屏必需);fail-soft,失败与原快车道语义一致(按暂无持仓展示)
+  const loadDiag = useCallback(() => {
+    portfolioApi
+      .diagnostics()
+      .then((dg) => setDiag(dg))
+      .catch(() => {})
+      .finally(() => setDiagLoaded(true))
+  }, [])
 
-    // 机会兜底:overview 无机会时再取(不挡首屏)
-    if (ov.status !== 'fulfilled' || !ov.value.action_center?.opportunities?.length) {
-      recommendationsApi
-        .listStrategySignals({ status: 'active', limit: 5 })
-        .then((r) => setOppFallback(r.items || []))
-        .catch(() => {})
-    }
-
-    // 慢车道:基准/归因需拉全持仓 K 线(分钟级),独立加载,就绪后回填超额/归因
-    loadBench()
-
-    // 盘前/盘后简报:独立加载,取较新一条
-    Promise.allSettled([dashboardApi.brief('premarket'), dashboardApi.brief('eod')]).then((res) => {
-      const briefs = res
-        .filter((b): b is PromiseFulfilledResult<DashboardBrief> => b.status === 'fulfilled' && !b.value.empty)
-        .map((b) => b.value)
-      briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
-      setBrief(briefs[0] || null)
-    })
-
-    // 今日板块预判:独立加载不阻塞首屏(失败 fail-soft,已有数据保持展示)
+  // 慢车道:今日板块预判(失败 fail-soft,已有数据保持展示)
+  const fetchSectorForecast = useCallback(() => {
     sectorsApi
       .getSectorPredictions()
       .then((r) => {
@@ -222,7 +195,74 @@ export default function DashboardPage() {
       .catch(() => {
         setSectorState((prev) => (prev === 'ready' ? 'ready' : 'empty'))
       })
-  }, [loadBench])
+  }, [])
+
+  // 次屏车道一次拉齐:诊断( curate 的候选前置 )→ 基准/归因 → 板块预判;AI 策展由 slowLaneReady+diagLoaded 触发
+  const startSlowLane = useCallback(() => {
+    setSlowLaneReady(true)
+    loadDiag()
+    loadBench()
+    fetchSectorForecast()
+  }, [setSlowLaneReady, loadDiag, loadBench, fetchSectorForecast])
+
+  // idle 调度专用入口:页面生命周期内只首拉一次;手动刷新走 startSlowLane(每次全量)不经过此闸
+  const startSlowLaneOnce = useCallback(() => {
+    if (slowLaneStartedRef.current) return
+    slowLaneStartedRef.current = true
+    startSlowLane()
+  }, [startSlowLane])
+
+  // 次屏车道调度:首屏快车道完成(loading→false)后进入空闲期再拉重接口;手动刷新不经过此调度
+  useSlowLaneScheduler(!loading, startSlowLaneOnce)
+
+  const load = useCallback(
+    async (opts?: { manual?: boolean }) => {
+      setLoading(true)
+      // 指数 pills:独立加载不阻塞首屏(spark 冷启动可能 ~1s,数据到了自然浮现)
+      dashboardApi.indices().then(setIndices).catch(() => {})
+      // 快车道:DB/轻量查询,先让首屏(要紧事/组合速览/机会精选)尽快出来
+      const [sc, ov, ht, td, ps, ms] = await Promise.allSettled([
+        dashboardApi.intradayScan(),
+        dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 }),
+        homeApi.alertHitsToday(),
+        homeApi.todos(),
+        dashboardApi.portfolioSummary(),
+        dashboardApi.marketStatus(),
+      ])
+      if (sc.status === 'fulfilled') setScan(sc.value.stocks || [])
+      if (ov.status === 'fulfilled') setOverview(ov.value)
+      if (ht.status === 'fulfilled') setAlertHits(ht.value)
+      if (td.status === 'fulfilled') setTodos(td.value.todos || [])
+      if (ps.status === 'fulfilled') setPortfolioSummary(ps.value)
+      if (ms.status === 'fulfilled') setMarketStatus(ms.value)
+      setLoading(false) // 首屏不再等诊断/基准/归因(次屏车道延迟拉取)
+      setRefreshedAt(new Date())
+
+      // 机会兜底:overview 无机会时再取(不挡首屏)
+      if (ov.status !== 'fulfilled' || !ov.value.action_center?.opportunities?.length) {
+        recommendationsApi
+          .listStrategySignals({ status: 'active', limit: 5 })
+          .then((r) => setOppFallback(r.items || []))
+          .catch(() => {})
+      }
+
+      // 盘前/盘后简报:首屏车道,独立加载取较新一条
+      Promise.allSettled([dashboardApi.brief('premarket'), dashboardApi.brief('eod')]).then((res) => {
+        const briefs = res
+          .filter((b): b is PromiseFulfilledResult<DashboardBrief> => b.status === 'fulfilled' && !b.value.empty)
+          .map((b) => b.value)
+        briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+        setBrief(briefs[0] || null)
+      })
+
+      // 手动刷新:慢车道立即全量重拉(不等空闲);置闸防止挂起中的 idle 调度再重复拉取
+      if (opts?.manual) {
+        slowLaneStartedRef.current = true
+        startSlowLane()
+      }
+    },
+    [startSlowLane],
+  )
 
   useEffect(() => {
     load()
@@ -294,6 +334,8 @@ export default function DashboardPage() {
       setCurated([])
       return
     }
+    // 次屏车道:AI 策展为慢接口(LLM,秒级),待空闲期开启且诊断(候选来源之一)到位后拉取,避免双请求
+    if (!slowLaneReady || !diagLoaded) return
     let alive = true
     dashboardApi
       .curate(candidates)
@@ -303,7 +345,7 @@ export default function DashboardPage() {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candKey])
+  }, [candKey, slowLaneReady, diagLoaded])
 
   const feed = useMemo(() => {
     const rows = curated.length
@@ -376,7 +418,7 @@ export default function DashboardPage() {
         title="今日该看什么"
         actions={
           <>
-            <Button onClick={load} disabled={loading} size="sm" variant="ghost" className="h-7 px-2" aria-label="刷新首页数据">
+            <Button onClick={() => load({ manual: true })} disabled={loading} size="sm" variant="ghost" className="h-7 px-2" aria-label="刷新首页数据">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </Button>
             {refreshedAt && <span className="text-caption text-muted-foreground">{formatHeaderTime(refreshedAt)}</span>}
@@ -394,7 +436,7 @@ export default function DashboardPage() {
       <div className="card mb-3 p-4">
         {!hasHoldings ? (
           <div className="py-4 text-center text-body-sm text-muted-foreground">
-            {loading ? '加载中…' : '暂无持仓,添加持仓后这里展示今日盈亏与组合走势'}
+            {!diagLoaded ? '加载中…' : '暂无持仓,添加持仓后这里展示今日盈亏与组合走势'}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -562,7 +604,7 @@ export default function DashboardPage() {
           <div className={PANEL_BODY_CLS}>
             {!hasHoldings ? (
               <div className="py-6 text-center text-body-sm text-muted-foreground">
-                {loading ? '加载中…' : '暂无持仓,添加持仓后这里给风险与相对大盘表现'}
+                {!diagLoaded ? '加载中…' : '暂无持仓,添加持仓后这里给风险与相对大盘表现'}
               </div>
             ) : (
               <div className="space-y-3 text-body-sm">
@@ -886,7 +928,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <DiscoveryPanel monitorStocks={scan} onOpenStock={openStock} />
+      <DiscoveryPanel monitorStocks={scan} onOpenStock={openStock} active={slowLaneReady} />
 
       <StockInsightModal
         open={modal.open}

@@ -18,9 +18,11 @@ import { useLocalStorage } from '@/lib/utils'
 interface Props {
   monitorStocks: DashboardMonitorStock[]
   onOpenStock: (symbol: string, market: string, name?: string, hasPosition?: boolean) => void
+  /** 次屏车道开关:false 时不发任何请求(热榜/自选/组合速览),待父组件空闲期开启后再拉 */
+  active?: boolean
 }
 
-export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
+export default function DiscoveryPanel({ monitorStocks, onOpenStock, active = true }: Props) {
   const navigate = useNavigate()
   const [watchlist, setWatchlist] = useState<DashboardWatchStock[]>([])
   const [portfolioRaw, setPortfolioRaw] = useState<DashboardPortfolioSummary | null>(null)
@@ -42,9 +44,10 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
   }>({ boards: {}, stocks: {} })
 
   useEffect(() => {
+    if (!active) return
     dashboardApi.watchlist().then(setWatchlist).catch(() => {})
     dashboardApi.portfolioSummary({ include_quotes: false }).then(setPortfolioRaw).catch(() => {})
-  }, [])
+  }, [active])
 
   const watchlistSet = useMemo(
     () => new Set((watchlist || []).map((s) => `${s.market}:${s.symbol}`)),
@@ -168,10 +171,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
   )
 
   useEffect(() => {
+    if (!active) return
     loadDiscovery('boards', { silent: true })
     loadDiscovery('stocks', { silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoverMarket, boardsMode, stocksMode])
+  }, [discoverMarket, boardsMode, stocksMode, active])
 
   return (
     <>
