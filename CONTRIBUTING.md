@@ -1,384 +1,204 @@
-# 贡献指南
+# Contributing to PanWatch
 
-[English](CONTRIBUTING.en.md)
+[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
 
-感谢你对 PanWatch 的兴趣！本文档将指导你如何贡献代码，特别是如何编写 Agent 和数据源。
+Thank you for helping improve PanWatch. This guide describes the current repository layout, development workflow, extension points, and pull-request expectations.
 
-## 目录
+## Before you start
 
-- [项目结构](#项目结构)
-- [开发环境](#开发环境)
-- [编写 Agent](#编写-agent)
-- [编写数据源](#编写数据源)
-- [提交规范](#提交规范)
+- Search existing issues and pull requests before starting duplicate work.
+- For large features, architecture changes, new dependencies, or breaking behavior, open an issue first and describe the user problem and proposed boundary.
+- Never commit API keys, tokens, cookies, personal portfolio data, local databases, generated reports, or logs containing private data.
+- Keep a pull request focused. Separate unrelated cleanup from the behavior being changed.
 
----
+## Repository map
 
-## 项目结构
+| Path | Responsibility |
+|---|---|
+| `src/modules/` | Product modules and their API routes, services, and workflows |
+| `src/modules/automation/` | Scheduled and on-demand agents, catalog, scheduler, and TradingAgents integration |
+| `src/platform/` | Shared AI, persistence, market-data, notification, observability, and runtime infrastructure |
+| `packages/marketdata/` | Standalone typed market-data package with vendor failover |
+| `packages/pan-agent-*` | Reusable agent runtime, metering, and tool-research packages |
+| `frontend/src/` | React application, pages, components, hooks, and locale resources |
+| `frontend/packages/` | Shared frontend API, business UI, and base UI packages |
+| `prompts/` | Prompt templates used by analysis workflows |
+| `tests/` | Backend, integration, architecture, and evaluation tests |
+| `frontend/tests/` | Vitest and Testing Library tests |
+| `docs/` | Public documentation, diagrams, screenshots, and donation assets |
 
-```
-PanWatch/
-├── src/
-│   ├── agents/           # Agent 实现
-│   │   ├── base.py       # 基类和数据结构
-│   │   ├── daily_report.py
-│   │   └── ...
-│   ├── collectors/       # 数据采集器
-│   │   ├── news_collector.py
-│   │   ├── kline_collector.py
-│   │   └── ...
-│   ├── core/             # 核心模块
-│   │   ├── ai_client.py
-│   │   └── notifier.py
-│   └── web/              # Web API
-├── prompts/              # AI Prompt 模板
-├── frontend/             # React 前端
-└── server.py             # 入口文件
-```
+Respect module ownership: product code may depend on platform services, while standalone packages must not import the PanWatch application or database. Architecture tests enforce important boundaries.
 
----
+## Development setup
 
-## 开发环境
+### Requirements
+
+- Python 3.10 or newer; the Docker runtime uses Python 3.11.
+- Node.js 24.14.0.
+- pnpm 9.15.9.
+
+### Recommended commands
 
 ```bash
-# 后端
-python -m venv venv
-source venv/bin/activate
+# Terminal 1: create .venv, install backend dependencies, and start :8000
+make dev-api
+
+# Terminal 2: install frontend dependencies and start :5183
+make dev-web
+```
+
+The frontend development server proxies `/api` to `127.0.0.1:8000`.
+
+Manual setup is also supported:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python server.py
 
-# 前端
 cd frontend
 pnpm install
 pnpm dev
 ```
 
----
+Copy `.env.example` to `.env` when local configuration is needed. Use disposable test credentials and keep `.env` untracked.
 
-## 编写 Agent
+To install the repository's pre-push test hook:
 
-Agent 是 PanWatch 的核心分析单元，负责采集数据、调用 AI 分析、发送通知。
-
-### 1. 创建 Agent 文件
-
-在 `src/modules/automation/` 目录创建新文件，例如 `my_agent.py`：
-
-```python
-import logging
-from pathlib import Path
-
-from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
-
-logger = logging.getLogger(__name__)
-
-# Prompt 文件路径
-PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "my_agent.txt"
-
-
-class MyAgent(BaseAgent):
-    """我的自定义 Agent"""
-
-    # 必填：Agent 标识（英文，用于数据库和 API）
-    name = "my_agent"
-
-    # 必填：显示名称（中文，用于界面展示）
-    display_name = "我的 Agent"
-
-    # 必填：描述
-    description = "这是一个自定义 Agent 的示例"
-
-    async def collect(self, context: AgentContext) -> dict:
-        """
-        采集数据
-
-        Args:
-            context: 包含 watchlist（自选股列表）、portfolio（持仓信息）等
-
-        Returns:
-            采集到的数据字典，将传递给 build_prompt
-        """
-        data = {
-            "stocks": [],
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        # 遍历自选股采集数据
-        for stock in context.watchlist:
-            # stock.symbol: 股票代码
-            # stock.name: 股票名称
-            # stock.market: 市场（CN/HK/US）
-            pass
-
-        # 获取持仓信息
-        # context.portfolio.all_positions: 所有持仓列表
-        # context.portfolio.get_aggregated_position(symbol): 获取某只股票的汇总持仓
-
-        return data
-
-    def build_prompt(self, data: dict, context: AgentContext) -> tuple[str, str]:
-        """
-        构建 AI Prompt
-
-        Args:
-            data: collect() 返回的数据
-            context: Agent 上下文
-
-        Returns:
-            (system_prompt, user_content) 元组
-        """
-        # 读取 Prompt 模板
-        system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
-
-        # 构建用户输入
-        lines = []
-        lines.append("## 数据")
-        # ... 格式化数据
-
-        user_content = "\n".join(lines)
-        return system_prompt, user_content
-
-    async def should_notify(self, result: AnalysisResult) -> bool:
-        """
-        是否发送通知（可选重写）
-
-        默认返回 True，可根据分析结果决定是否通知
-        """
-        # 例如：只有重要信号才通知
-        # return "重要" in result.content
-        return True
+```bash
+make install-hooks
 ```
 
-### 2. 创建 Prompt 模板
+## Development workflow
 
-在 `prompts/` 目录创建对应的 Prompt 文件 `my_agent.txt`：
+1. Create a branch from the latest default branch.
+2. Add or update a focused test before or alongside the implementation.
+3. Keep network calls mocked in unit tests; tests must not require paid APIs or send real notifications.
+4. Update both language resources and public documentation when user-visible behavior changes.
+5. Run checks proportional to the affected area, followed by `git diff --check`.
+6. Open a pull request using the format below.
 
-```
-你是一个专业的股票分析师。
+## Validation
 
-## 任务
-根据提供的数据进行分析...
+Run the smallest focused test while iterating, then the relevant suite before opening a pull request.
 
-## 输出格式
-请按以下格式输出：
-1. 概述
-2. 详细分析
-3. 建议
-```
+```bash
+# Backend suite
+.venv/bin/python -m pytest -q
 
-### 3. 注册 Agent
+# Frontend suite, translation guard, type/build verification
+pnpm --dir frontend exec vitest run
+pnpm --dir frontend run check:i18n
+pnpm --dir frontend run build
 
-在 `server.py` 中注册：
-
-```python
-# 1. 导入
-from src.modules.automation.my_agent import MyAgent
-
-# 2. 添加到 AGENT_REGISTRY
-AGENT_REGISTRY: dict[str, type] = {
-    "daily_report": DailyReportAgent,
-    # ...
-    "my_agent": MyAgent,  # 添加这行
-}
-
-# 3. 在 seed_agents() 中添加配置
-def seed_agents():
-    agents = [
-        # ...
-        {
-            "name": "my_agent",
-            "display_name": "我的 Agent",
-            "description": "这是一个自定义 Agent",
-            "enabled": False,  # 默认禁用，用户手动启用
-            "schedule": "0 16 * * 1-5",  # cron 表达式
-            "execution_mode": "batch",  # batch: 批量分析 / single: 逐只分析
-        },
-    ]
+# Whitespace and conflict-marker check
+git diff --check
 ```
 
-### 4. Agent 上下文说明
+Package-specific changes should also run their own tests, for example:
 
-`AgentContext` 提供以下信息：
-
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `watchlist` | `list[StockConfig]` | 关联的自选股列表 |
-| `portfolio` | `PortfolioInfo` | 持仓组合信息 |
-| `ai_client` | `AIClient` | AI 客户端 |
-| `notifier` | `NotifierManager` | 通知管理器 |
-| `model_label` | `str` | 当前使用的模型标签 |
-
-### 5. 执行模式
-
-- **batch**：所有股票一起分析，适合日报类
-- **single**：逐只股票分析，适合实时监控类
-
----
-
-## 编写数据源
-
-数据源负责从外部 API 获取数据（行情、新闻、K线等）。
-
-### 1. 数据源类型
-
-| 类型 | 说明 | 示例 |
-|------|------|------|
-| `quote` | 实时行情 | 腾讯行情 |
-| `kline` | K线数据 | 腾讯K线 |
-| `news` | 新闻资讯 | 东方财富新闻 |
-| `capital_flow` | 资金流向 | 东方财富资金 |
-| `chart` | K线截图 | 雪球截图 |
-
-### 2. 创建数据采集器
-
-以新闻采集器为例，在 `src/collectors/` 创建文件：
-
-```python
-"""我的新闻采集器"""
-import logging
-from datetime import datetime
-from dataclasses import dataclass, field
-
-import httpx
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class NewsItem:
-    """新闻数据结构"""
-    source: str           # 数据源标识
-    external_id: str      # 外部唯一ID
-    title: str
-    content: str
-    publish_time: datetime
-    symbols: list[str] = field(default_factory=list)
-    url: str = ""
-
-
-class MyNewsCollector:
-    """我的新闻采集器"""
-
-    source = "my_news"
-
-    def __init__(self, config: dict = None):
-        """
-        初始化
-
-        Args:
-            config: 数据源配置（来自数据库 DataSource.config）
-        """
-        self.config = config or {}
-        self.api_key = self.config.get("api_key", "")
-
-    async def fetch_news(
-        self,
-        symbols: list[str] | None = None,
-        since: datetime | None = None,
-    ) -> list[NewsItem]:
-        """
-        获取新闻
-
-        Args:
-            symbols: 股票代码列表（可选，用于过滤）
-            since: 起始时间（可选）
-
-        Returns:
-            NewsItem 列表
-        """
-        results = []
-
-        async with httpx.AsyncClient() as client:
-            # 调用 API
-            resp = await client.get("https://api.example.com/news")
-            data = resp.json()
-
-            for item in data:
-                results.append(NewsItem(
-                    source=self.source,
-                    external_id=str(item["id"]),
-                    title=item["title"],
-                    content=item["content"],
-                    publish_time=datetime.fromisoformat(item["time"]),
-                    symbols=item.get("symbols", []),
-                    url=item.get("url", ""),
-                ))
-
-        return results
+```bash
+.venv/bin/python -m pytest packages/marketdata/tests -q
+.venv/bin/python -m pytest packages/pan-agent-runtime/tests -q
 ```
 
-### 3. 注册数据源
+Do not describe a check as passing unless you actually ran it. If an environment prevents a required check, explain the limitation in the pull request.
 
-在 `server.py` 的 `seed_data_sources()` 中添加：
+## Adding or changing an agent
 
-```python
-def seed_data_sources():
-    sources = [
-        # ...
-        {
-            "name": "我的新闻源",
-            "type": "news",
-            "provider": "my_news",  # 对应 collector 的 source
-            "config": {
-                "api_key": "",  # 用户在界面配置
-            },
-            "enabled": False,
-            "priority": 10,  # 优先级，数字越小优先级越高
-            "supports_batch": True,  # 是否支持批量查询
-            "test_symbols": ["600519"],  # 测试用股票代码
-        },
-    ]
-```
+Before creating an agent, decide whether it is:
 
-### 4. 在 Agent 中使用数据源
+- a **workflow agent**: user-visible and eligible for scheduling; or
+- a **capability agent**: invoked by another workflow or UI action and not independently scheduled.
 
-```python
-from src.platform.marketdata.collectors.my_collector import MyNewsCollector
+Use these integration points:
 
-class MyAgent(BaseAgent):
-    async def collect(self, context: AgentContext) -> dict:
-        collector = MyNewsCollector()
-        news = await collector.fetch_news(
-            symbols=[s.symbol for s in context.watchlist]
-        )
-        return {"news": news}
-```
+1. Implement the agent under `src/modules/automation/`, normally by extending `BaseAgent` and separating `collect()` from `build_prompt()`.
+2. Reuse `AgentContext` for AI, portfolio, watchlist, notification, and report-language state. Do not create parallel AI clients or notification pipelines.
+3. Put substantial prompts in `prompts/`. Preserve required machine-readable output structures when adding language instructions.
+4. Add the user-facing seed definition to `AGENT_SEED_SPECS` in `src/modules/automation/agent_catalog.py`, including kind, visibility, schedule, execution mode, and safe defaults.
+5. Add the implementation class to `AGENT_REGISTRY` in `server.py` when it can be executed directly.
+6. Add English and Chinese catalog labels under `agentsPage.catalog` in the frontend locale resources when the agent is visible in the UI.
+7. Add focused tests for collection, parsing, notification policy, scheduling, idempotency, failure states, and English report output as applicable.
 
----
+Prefer existing scheduler, persistence, tracing, cost metering, deduplication, and failover behavior. New workflows must end in an observable success or failure state and must not silently swallow exceptions.
 
-## 提交规范
+## Adding or changing a market-data source
 
-### Commit 格式
+Choose the correct layer first:
 
-```
+- Typed quote, K-line, fundamentals, flow, event, or discovery vendors belong in `packages/marketdata/`.
+- PanWatch-specific orchestration, caching, screenshots, or adapters belong in `src/platform/marketdata/collectors/`.
+
+For a vendor in the standalone package:
+
+1. Implement the appropriate vendor interface under `packages/marketdata/src/marketdata/vendors/`.
+2. Normalize responses into the shared dataclasses; do not expose provider-specific dictionaries to callers.
+3. Use the package HTTP helper so timeouts, proxy behavior, throttling, retries, and metrics remain consistent.
+4. Register the vendor in `VENDOR_CLASSES_BY_TYPE` in `packages/marketdata/src/marketdata/registry.py`.
+5. If PanWatch should expose it in the data-source admin UI, add a conservative entry to `DATA_SOURCE_SEEDS` in `server.py`. Lower priority numbers run first; providers requiring credentials or a proxy should normally start disabled.
+6. Add mocked parser and routing tests, including malformed/empty responses, supported markets, and failover behavior.
+
+Document attribution, authentication requirements, rate limits, market coverage, symbol format, and known data-quality limitations. Avoid destructive seed reconciliation and never overwrite user credentials or priorities during startup.
+
+## Frontend and internationalization
+
+- Put user-visible text in `frontend/src/i18n/locales/zh-CN/` and `frontend/src/i18n/locales/en-US/` using semantic keys.
+- Keep both locale shapes in sync and run `pnpm --dir frontend run check:i18n`.
+- A locale changes interface and generated-report language; it must not implicitly change market, currency, timezone, stock symbols, or source excerpts.
+- Use the existing format helpers for dates, numbers, percentages, currencies, and market labels.
+- Prefer shared components from `frontend/packages/` over page-local duplicates.
+- Render API failures from stable `error_code` values. Treat server error messages as diagnostics, not translation keys or control-flow contracts.
+- Add Testing Library coverage for user-visible state changes and locale-sensitive behavior.
+
+## Persistence and API changes
+
+- Keep migrations and startup reconciliation backward compatible with existing self-hosted data.
+- Prefer additive schema changes and explicit defaults. Do not silently delete or replace user configuration.
+- Keep API error codes stable and document new request or response fields.
+- Test upgrade paths, missing legacy fields, authorization boundaries, and repeated/idempotent requests where relevant.
+
+## Documentation
+
+- `README.md` is the default English project introduction.
+- `README.zh-CN.md` is the complete Simplified Chinese version.
+- Update both when installation, configuration, screenshots, or user-visible features change.
+- Keep historical compatibility files such as `README.en.md` and `CONTRIBUTING.en.md` working when paths move.
+- Do not present prototypes, local-only files, or unverified behavior as released functionality.
+
+## Commit messages
+
+Use Conventional Commits:
+
+```text
 <type>(<scope>): <subject>
 ```
 
-**Type 类型：**
-- `feat`: 新功能
-- `fix`: Bug 修复
-- `docs`: 文档更新
-- `refactor`: 重构
-- `style`: 格式调整
-- `test`: 测试相关
+Common types are `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `build`, and `ci`. Use the affected module as the scope, such as `assistant`, `marketdata`, `frontend`, or `i18n`.
 
-**示例：**
-```
-feat(automation): 添加盘中监控 Agent
+Examples:
 
-- 支持价格异动检测
-- 支持成交量异动检测
-- AI 智能判断是否需要通知
+```text
+feat(automation): add a pre-market risk digest
+fix(marketdata): handle empty quote volume
+docs(readme): clarify Docker startup behavior
 ```
 
-### PR 要求
+## Pull requests
 
-1. 确保代码通过 lint 检查
-2. 新增功能需要更新文档
-3. Agent 需要提供 Prompt 模板
-4. 数据源需要说明 API 来源和限制
+Pull-request titles should also use Conventional Commits. The body must include:
 
----
+1. **Background** — the problem and user impact.
+2. **Changes** — implementation and behavior changes grouped by module.
+3. **Validation** — exact commands that were run and their results.
+4. **Boundaries and risks** — compatibility, untested paths, and known limitations.
+5. **Follow-up** — only concrete work intentionally left for later.
 
-## 问题反馈
+Use a `codex/`-prefixed branch when changes are made through Codex unless a maintainer requests otherwise. The repository normally uses squash merge.
 
-如有问题，请提交 Issue 或 PR。
+## Reporting bugs and security issues
+
+For ordinary bugs, open an issue with reproduction steps, expected and actual behavior, version information, and sanitized logs. Remove tokens, cookies, account identifiers, positions, and other private financial data.
+
+For a security-sensitive issue, avoid publishing exploit details or credentials in a public issue. Contact the maintainer privately through the repository owner's available contact channel.

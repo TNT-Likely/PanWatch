@@ -302,7 +302,7 @@ Address: `TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
 
 ## Contributing
 
-Issues and pull requests are welcome. See the [contribution guide](CONTRIBUTING.md) for custom agent and data-source development. The current contribution guide is in Chinese.
+Issues and pull requests are welcome. See the [contribution guide](CONTRIBUTING.md) for setup, validation, internationalization, custom agents, and market-data sources.
 
 Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 

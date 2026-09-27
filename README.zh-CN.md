@@ -299,7 +299,7 @@ PanWatch 完全免费开源。如果它节省了你的时间或改善了工作�
 
 ## 贡献
 
-欢迎提交 Issue 和 PR！自定义 Agent 和数据源开发请参考 [贡献指南](CONTRIBUTING.md)。
+欢迎提交 Issue 和 PR！环境配置、验证、多语言、自定义 Agent 和数据源开发请参考[贡献指南](CONTRIBUTING.zh-CN.md)。
 社区交流（Telegram）：[t.me/panwatch](https://t.me/panwatch)
 
 ## License
