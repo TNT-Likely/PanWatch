@@ -1,6 +1,10 @@
 # 盯盘侠 PanWatch
 
+[简体中文](README.md) | [English](README.en.md)
+
 **自托管 AI 盯盘助手 · 集成 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投资决策** — A 股 / 港股 / 美股实时监控、持仓管理、智能分析、全渠道推送
+
+> 🌐 英文界面正在渐进完善，目前为实验性功能；核心业务页面仍可能出现中文。
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
