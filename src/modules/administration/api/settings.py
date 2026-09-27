@@ -56,6 +56,7 @@ SETTING_DESCRIPTIONS = {
     "notify_dedupe_ttl_overrides": "通知幂等窗口覆盖（JSON，空为默认）",
     "stock_link_platform": "股票链接平台（点击股票代码跳转的行情网站）",
     "panwatch_base_url": "PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）",
+    "ai_report_language": "AI 回复与报告语言（独立于界面语言；zh-CN / en-US）",
 }
 
 SETTING_KEYS = list(SETTING_DESCRIPTIONS.keys())
@@ -72,6 +73,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
+        "ai_report_language": "zh-CN",
     }
 
 
@@ -181,6 +183,8 @@ def set_avatar(update: SettingUpdate, db: Session = Depends(get_db)):
 
 @router.put("/{key}", response_model=SettingResponse)
 def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db)):
+    if key == "ai_report_language" and update.value not in {"zh-CN", "en-US"}:
+        raise HTTPException(400, "AI 输出语言仅支持 zh-CN 或 en-US")
     setting = db.query(AppSettings).filter(AppSettings.key == key).first()
     if not setting:
         desc = SETTING_DESCRIPTIONS.get(key, "")

@@ -1,6 +1,7 @@
 import { ArrowUpRight, Briefcase, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useReportLanguage } from '@/i18n/report-language'
 import { AssistantStockPicker, type AssistantStockSearchResult } from './AssistantStockPicker'
 
 interface AssistantWelcomeProps {
@@ -11,12 +12,14 @@ interface AssistantWelcomeProps {
 
 /** First-run surface for the full-page assistant before a conversation exists. */
 export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: AssistantWelcomeProps) {
-  const { t } = useTranslation('configuration')
-  const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const { t, i18n } = useTranslation('configuration')
+  const reportLanguage = useReportLanguage()
+  const uiT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const reportT = i18n.getFixedT(reportLanguage, 'configuration') as unknown as (key: string, options?: Record<string, unknown>) => string
   const quickQuestions = [
-    { label: assistantT('assistantPage.welcome.analyzeStock'), question: assistantT('assistantPage.askStock', { market: 'CN', symbol: '600519', name: 'Kweichow Moutai' }), icon: Search, kind: 'stock' },
-    { label: assistantT('assistantPage.welcome.diagnosePortfolio'), question: assistantT('assistantPage.welcome.diagnoseQuestion'), icon: Briefcase, kind: 'question' },
-    { label: assistantT('assistantPage.welcome.findOpportunity'), question: assistantT('assistantPage.welcome.opportunityQuestion'), icon: Sparkles, kind: 'question' },
+    { label: uiT('assistantPage.welcome.analyzeStock'), question: reportT('assistantPage.askStock', { market: 'CN', symbol: '600519', name: 'Kweichow Moutai' }), icon: Search, kind: 'stock' },
+    { label: uiT('assistantPage.welcome.diagnosePortfolio'), question: reportT('assistantPage.welcome.diagnoseQuestion'), icon: Briefcase, kind: 'question' },
+    { label: uiT('assistantPage.welcome.findOpportunity'), question: reportT('assistantPage.welcome.opportunityQuestion'), icon: Sparkles, kind: 'question' },
   ]
   const [question, setQuestion] = useState('')
   const [stockPickerOpen, setStockPickerOpen] = useState(false)
@@ -34,19 +37,19 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
       onSelectStock(stock)
       return
     }
-    onSubmit(assistantT('assistantPage.askStock', { market: stock.market, symbol: stock.symbol, name: stock.name }))
+    onSubmit(reportT('assistantPage.askStock', { market: stock.market, symbol: stock.symbol, name: stock.name }))
   }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 py-8 text-center sm:justify-center sm:px-10 sm:py-12">
       <p className="mb-4 text-[11px] font-semibold tracking-[0.16em] text-primary sm:text-[12px]">
-        PANWATCH · AI INVESTING RESEARCH
+        PANWATCH · {uiT('assistantPage.welcome.brandLabel')}
       </p>
       <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-        {assistantT('assistantPage.welcome.title')}
+        {uiT('assistantPage.welcome.title')}
       </h1>
       <p className="mt-4 max-w-2xl text-[14px] leading-6 text-muted-foreground sm:mt-5 sm:text-[15px] sm:leading-7 md:text-[17px]">
-        {assistantT('assistantPage.welcome.description')}
+        {uiT('assistantPage.welcome.description')}
       </p>
 
       {stockPickerOpen ? (
@@ -70,14 +73,14 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
               onChange={(event) => setQuestion(event.target.value)}
               disabled={disabled}
               className="h-11 min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted-foreground/80 sm:h-12 sm:text-[15px]"
-              placeholder={assistantT('assistantPage.welcome.searchPlaceholder')}
-              aria-label={assistantT('assistantPage.welcome.startResearch')}
+              placeholder={uiT('assistantPage.welcome.searchPlaceholder')}
+              aria-label={uiT('assistantPage.welcome.startResearch')}
             />
             <button
               type="submit"
               disabled={disabled || !question.trim()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label={assistantT('assistantPage.welcome.send')}
+              aria-label={uiT('assistantPage.welcome.send')}
             >
               <ArrowUpRight className="h-4 w-4" />
             </button>
@@ -102,9 +105,9 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
 
       <div className="mt-10 grid w-full max-w-3xl gap-3 text-left sm:mt-16 sm:grid-cols-3">
         {[
-          ['01', 'Start with a symbol', 'Enter a symbol or company name for comprehensive, short-term, or event-driven analysis.'],
-          ['02', 'Start with your portfolio', 'Use live and paper-trading data to identify concentration and risk exposure.'],
-          ['03', 'Start with a question', 'Connect quotes, candlesticks, and news to suggest the next research step.'],
+          ['01', uiT('assistantPage.welcome.symbolPathTitle'), uiT('assistantPage.welcome.symbolPathDescription')],
+          ['02', uiT('assistantPage.welcome.portfolioPathTitle'), uiT('assistantPage.welcome.portfolioPathDescription')],
+          ['03', uiT('assistantPage.welcome.questionPathTitle'), uiT('assistantPage.welcome.questionPathDescription')],
         ].map(([index, title, description]) => (
           <div key={index} className="rounded-2xl border border-border/60 bg-card/70 p-5">
             <span className="inline-flex rounded-lg bg-primary/10 px-2 py-1 text-[12px] font-semibold text-primary">{index}</span>

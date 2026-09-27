@@ -110,6 +110,12 @@ EXIT_REASON_LABELS = {
     "signal_reversal": "信号反转",
     "manual": "手动平仓",
 }
+EXIT_REASON_LABELS_EN = {
+    "stop_loss": "Stop loss",
+    "target_price": "Take profit",
+    "signal_reversal": "Signal reversal",
+    "manual": "Manual close",
+}
 
 STRATEGY_NAME_MAP = {
     "trend_follow": "趋势延续",
@@ -121,11 +127,32 @@ STRATEGY_NAME_MAP = {
     "market_scan": "市场扫描",
     "momentum": "动量策略",
 }
+STRATEGY_NAME_MAP_EN = {
+    "trend_follow": "Trend continuation",
+    "macd_golden": "MACD golden cross",
+    "volume_breakout": "Volume breakout",
+    "pullback": "Pullback confirmation",
+    "rebound": "Oversold rebound",
+    "watchlist_agent": "Agent suggestion",
+    "market_scan": "Market scan",
+    "momentum": "Momentum",
+}
 
 
-def _strategy_label(code: str) -> str:
-    """策略代码转中文名称。"""
-    return STRATEGY_NAME_MAP.get(code, code)
+def _report_is_english() -> bool:
+    """Read the explicit AI/report language preference; never infer it from UI locale."""
+    db = SessionLocal()
+    try:
+        setting = db.query(AppSettings).filter(AppSettings.key == "ai_report_language").first()
+        return bool(setting and setting.value == "en-US")
+    except Exception:
+        return False
+    finally:
+        db.close()
+
+
+def _strategy_label(code: str, english: bool = False) -> str:
+    return (STRATEGY_NAME_MAP_EN if english else STRATEGY_NAME_MAP).get(code, code)
 
 
 def _stock_display(symbol: str, market: str, name: str = "") -> str:
@@ -135,10 +162,10 @@ def _stock_display(symbol: str, market: str, name: str = "") -> str:
     return f"{label}({stock_link_markdown(symbol, market)})"
 
 
-def _format_entry_message(pos: dict, sig: dict | None) -> tuple[str, str]:
+def _format_entry_message(pos: dict, sig: dict | None, english: bool = False) -> tuple[str, str]:
     """格式化建仓通知，返回 (title, body)。pos/sig 为序列化后的 dict。"""
     name = pos.get("stock_name") or pos["stock_symbol"]
-    title = f"【模拟盘建仓】{name}"
+    title = f"[Paper trading entry] {name}" if english else f"【模拟盘建仓】{name}"
 
     # 盈亏比
     rr_str = ""
@@ -149,40 +176,50 @@ def _format_entry_message(pos: dict, sig: dict | None) -> tuple[str, str]:
         risk = abs(entry_price - stop_loss)
         reward = abs(target_price - entry_price)
         if risk > 0:
-            rr_str = f"\n盈亏比: {reward / risk:.1f}:1"
+            rr_str = f"\nRisk/reward: {reward / risk:.1f}:1" if english else f"\n盈亏比: {reward / risk:.1f}:1"
 
     score_str = ""
     strategy_code = pos.get("strategy_code", "")
     if sig:
         if sig.get("rank_score"):
-            score_str = f" | 评分: {sig['rank_score']:.1f}"
+            score_str = f" | Score: {sig['rank_score']:.1f}" if english else f" | 评分: {sig['rank_score']:.1f}"
         if sig.get("strategy_code"):
             strategy_code = sig["strategy_code"]
 
     stock_info = _stock_display(pos["stock_symbol"], pos["stock_market"], name)
-    body = (
-        f"股票: {stock_info}\n"
-        f"方向: 买入\n"
-        f"买入价: {entry_price:.2f} | 数量: {pos['quantity']} 股\n"
-        f"止损价: {stop_loss:.2f} | 目标价: {target_price:.2f}\n"
-        f"策略: {_strategy_label(strategy_code)}{score_str}"
-        f"{rr_str}"
-    )
+    if english:
+        body = (
+            f"Stock: {stock_info}\nDirection: Buy\n"
+            f"Entry: {entry_price:.2f} | Quantity: {pos['quantity']} shares\n"
+            f"Stop loss: {stop_loss:.2f} | Target: {target_price:.2f}\n"
+            f"Strategy: {_strategy_label(strategy_code, True)}{score_str}{rr_str}"
+        )
+    else:
+        body = (
+            f"股票: {stock_info}\n方向: 买入\n"
+            f"买入价: {entry_price:.2f} | 数量: {pos['quantity']} 股\n"
+            f"止损价: {stop_loss:.2f} | 目标价: {target_price:.2f}\n"
+            f"策略: {_strategy_label(strategy_code)}{score_str}{rr_str}"
+        )
     return title, body
 
 
-def _format_exit_message(pos: dict, trade: dict) -> tuple[str, str]:
+def _format_exit_message(pos: dict, trade: dict, english: bool = False) -> tuple[str, str]:
     """格式化平仓通知，返回 (title, body)。pos/trade 为序列化后的 dict。"""
     name = pos.get("stock_name") or pos["stock_symbol"]
     pnl = trade["pnl"]
     pnl_sign = "+" if pnl >= 0 else ""
-    title = f"【模拟盘平仓】{name} {pnl_sign}{pnl:.2f}"
+    title = f"[Paper trading close] {name} {pnl_sign}{pnl:.2f}" if english else f"【模拟盘平仓】{name} {pnl_sign}{pnl:.2f}"
 
     stock_info = _stock_display(pos["stock_symbol"], pos["stock_market"], name)
-    reason = EXIT_REASON_LABELS.get(trade["exit_reason"], trade["exit_reason"])
+    reason_map = EXIT_REASON_LABELS_EN if english else EXIT_REASON_LABELS
+    reason = reason_map.get(trade["exit_reason"], trade["exit_reason"])
     body = (
-        f"股票: {stock_info}\n"
-        f"平仓原因: {reason}\n"
+        f"Stock: {stock_info}\nExit reason: {reason}\n"
+        f"Entry: {trade['entry_price']:.2f} → Exit: {trade['exit_price']:.2f}\n"
+        f"P/L: {pnl_sign}{pnl:.2f} ({pnl_sign}{trade['pnl_pct']:.2f}%) | Held: {trade['holding_days']} days"
+        if english else
+        f"股票: {stock_info}\n平仓原因: {reason}\n"
         f"买入价: {trade['entry_price']:.2f} → 卖出价: {trade['exit_price']:.2f}\n"
         f"盈亏: {pnl_sign}{pnl:.2f} ({pnl_sign}{trade['pnl_pct']:.2f}%) | 持仓: {trade['holding_days']}天"
     )
@@ -205,27 +242,27 @@ def _dedup_signals(signals: list[StrategySignalRun]) -> list[tuple[StrategySigna
     return list(seen.values())
 
 
-def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradingAccount) -> tuple[str, str]:
+def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradingAccount, english: bool = False) -> tuple[str, str]:
     """格式化盘前计划，返回 (title, body)。信号会自动去重。"""
-    title = "【模拟盘盘前计划】"
+    title = "[Paper trading pre-market plan]" if english else "【模拟盘盘前计划】"
     if not signals:
-        return title, "今日无候选股票"
+        return title, "No candidates today" if english else "今日无候选股票"
 
     deduped = _dedup_signals(signals)
 
-    lines = [f"可用资金: {account.current_capital:,.2f}\n"]
-    lines.append("今日候选:")
+    lines = [f"Available capital: {account.current_capital:,.2f}\n" if english else f"可用资金: {account.current_capital:,.2f}\n"]
+    lines.append("Today's candidates:" if english else "今日候选:")
     for i, (sig, strat_count) in enumerate(deduped, 1):
         name = sig.stock_name or sig.stock_symbol
         from src.modules.administration.stock_link import stock_link_markdown
         link = stock_link_markdown(sig.stock_symbol, sig.stock_market)
         entry_range = ""
         if sig.entry_low and sig.entry_high:
-            entry_range = f" 入场区间: {sig.entry_low:.2f}-{sig.entry_high:.2f}"
-        score_str = f" 评分:{sig.rank_score:.1f}" if sig.rank_score else ""
-        strat_label = _strategy_label(sig.strategy_code)
+            entry_range = f" Entry range: {sig.entry_low:.2f}-{sig.entry_high:.2f}" if english else f" 入场区间: {sig.entry_low:.2f}-{sig.entry_high:.2f}"
+        score_str = (f" Score: {sig.rank_score:.1f}" if english else f" 评分:{sig.rank_score:.1f}") if sig.rank_score else ""
+        strat_label = _strategy_label(sig.strategy_code, english)
         if strat_count > 1:
-            strat_label = f"{strat_label} 等{strat_count}个策略"
+            strat_label = f"{strat_label} + {strat_count - 1} more" if english else f"{strat_label} 等{strat_count}个策略"
         lines.append(f"{i}. {name} ({link}){entry_range}{score_str} [{strat_label}]")
 
     return title, "\n".join(lines)
@@ -235,6 +272,7 @@ def _format_daily_summary(
     trades: list[PaperTradingTrade],
     positions: list[PaperTradingPosition],
     account: PaperTradingAccount,
+    english: bool = False,
 ) -> tuple[str, str]:
     """格式化日终摘要，返回 (title, body)。"""
     # 总资产
@@ -242,33 +280,33 @@ def _format_daily_summary(
     total_equity = account.current_capital + positions_value
     unrealized = sum(p.unrealized_pnl or 0 for p in positions)
 
-    title = "【模拟盘日终摘要】"
-    lines = [f"总资产: {total_equity:,.2f}"]
+    title = "[Paper trading daily summary]" if english else "【模拟盘日终摘要】"
+    lines = [f"Total equity: {total_equity:,.2f}" if english else f"总资产: {total_equity:,.2f}"]
 
     # 当日平仓
     if trades:
         day_pnl = sum(t.pnl for t in trades)
         pnl_sign = "+" if day_pnl >= 0 else ""
-        lines.append(f"\n当日平仓 {len(trades)} 笔, 盈亏: {pnl_sign}{day_pnl:,.2f}")
+        lines.append(f"\nClosed today: {len(trades)} trades, P/L: {pnl_sign}{day_pnl:,.2f}" if english else f"\n当日平仓 {len(trades)} 笔, 盈亏: {pnl_sign}{day_pnl:,.2f}")
         for t in trades:
             s = "+" if t.pnl >= 0 else ""
-            reason = EXIT_REASON_LABELS.get(t.exit_reason, t.exit_reason)
+            reason = (EXIT_REASON_LABELS_EN if english else EXIT_REASON_LABELS).get(t.exit_reason, t.exit_reason)
             lines.append(f"  · {t.stock_name or t.stock_symbol}: {s}{t.pnl:,.2f} ({s}{t.pnl_pct:.2f}%) [{reason}]")
     else:
-        lines.append("\n当日无平仓操作")
+        lines.append("\nNo positions closed today" if english else "\n当日无平仓操作")
 
     # 持仓浮盈
     if positions:
         u_sign = "+" if unrealized >= 0 else ""
-        lines.append(f"\n持仓中 {len(positions)} 只, 浮动盈亏: {u_sign}{unrealized:,.2f}")
+        lines.append(f"\nOpen positions: {len(positions)}, unrealized P/L: {u_sign}{unrealized:,.2f}" if english else f"\n持仓中 {len(positions)} 只, 浮动盈亏: {u_sign}{unrealized:,.2f}")
         for p in positions:
             pnl = p.unrealized_pnl or 0
             s = "+" if pnl >= 0 else ""
             lines.append(f"  · {p.stock_name or p.stock_symbol}: {s}{pnl:,.2f}")
     else:
-        lines.append("\n当前无持仓")
+        lines.append("\nNo open positions" if english else "\n当前无持仓")
 
-    lines.append(f"\n可用资金: {account.current_capital:,.2f}")
+    lines.append(f"\nAvailable capital: {account.current_capital:,.2f}" if english else f"\n可用资金: {account.current_capital:,.2f}")
     return title, "\n".join(lines)
 
 
@@ -284,7 +322,7 @@ async def notify_entry(pos: dict, sig: dict | None) -> None:
         mgr = _build_notifier()
         if not mgr:
             return
-        title, body = _format_entry_message(pos, sig)
+        title, body = _format_entry_message(pos, sig, english=_report_is_english())
         await mgr.notify(title, body)
     except Exception:
         logger.exception("[模拟盘通知] 建仓通知发送失败")
@@ -298,7 +336,7 @@ async def notify_exit(pos: dict, trade: dict) -> None:
         mgr = _build_notifier()
         if not mgr:
             return
-        title, body = _format_exit_message(pos, trade)
+        title, body = _format_exit_message(pos, trade, english=_report_is_english())
         await mgr.notify(title, body)
     except Exception:
         logger.exception("[模拟盘通知] 平仓通知发送失败")
@@ -336,7 +374,7 @@ async def send_premarket_plan() -> None:
                 query = query.filter(StrategySignalRun.stock_market.notin_(excluded))
             signals = query.order_by(StrategySignalRun.rank_score.desc()).all()
 
-            title, body = _format_premarket_plan(signals, account)
+            title, body = _format_premarket_plan(signals, account, english=_report_is_english())
             await mgr.notify(title, body)
         finally:
             db.close()
@@ -378,7 +416,7 @@ async def send_daily_summary() -> None:
                 .all()
             )
 
-            title, body = _format_daily_summary(trades, positions, account)
+            title, body = _format_daily_summary(trades, positions, account, english=_report_is_english())
             await mgr.notify(title, body)
         finally:
             db.close()
@@ -391,8 +429,9 @@ async def send_test_notification() -> dict:
     mgr = _build_notifier()
     if not mgr:
         return {"success": False, "error": "通知未启用或无可用渠道"}
+    english = _report_is_english()
     result = await mgr.notify_with_result(
-        "【模拟盘测试】",
-        "这是一条测试通知，确认通知渠道配置正常。",
+        "[Paper trading test]" if english else "【模拟盘测试】",
+        "This is a test notification to confirm that the channel is configured correctly." if english else "这是一条测试通知，确认通知渠道配置正常。",
     )
     return result

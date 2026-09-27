@@ -170,6 +170,18 @@ class TestPremarketDedup(unittest.TestCase):
 
 
 class TestMessageFormat(unittest.TestCase):
+    def test_english_preference_localizes_paper_trading_notification_templates(self):
+        position = {
+            "stock_symbol": "002837", "stock_market": "CN", "stock_name": "Inovance",
+            "quantity": 100, "entry_price": 113.0, "stop_loss": 104.0,
+            "target_price": 130.0, "strategy_code": "trend_follow",
+        }
+        title, body = _format_entry_message(position, None, english=True)
+
+        self.assertIn("Paper trading entry", title)
+        self.assertIn("Entry:", body)
+        self.assertIn("Trend continuation", body)
+
     def test_entry_message_format(self):
         """建仓通知 — 格式含价格/策略/链接"""
         pos_data = {

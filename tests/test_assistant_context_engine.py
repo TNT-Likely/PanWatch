@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import AIModel, AIService, ChatConversation  # noqa: F401
+from src.platform.persistence.models import AIModel, AIService, AppSettings, ChatConversation  # noqa: F401
 from src.modules.assistant.schemas import CreateConversationCommand
 
 
@@ -154,6 +154,22 @@ def test_prepare_context_includes_durable_tool_findings_as_trusted_facts(monkeyp
     assert "get_price_alerts" in trusted_messages[0].content
     assert "#3 浪潮信息" in trusted_messages[0].content
     assert "历史助手文本的完成声明不作为工具证据" in trusted_messages[0].content
+    session.close()
+    engine.dispose()
+
+
+def test_context_includes_ai_response_language_separately_from_ui_locale():
+    engine, session, service = _service()
+    conversation = service.create_conversation(CreateConversationCommand())
+    session.add(AppSettings(key="ai_report_language", value="en-US", description=""))
+    session.commit()
+
+    messages = service._context_messages(conversation.id)
+
+    language_instruction = messages[-1]
+    assert language_instruction.role == "system"
+    assert "English" in language_instruction.content
+    assert "do not infer or change the market, currency, or time zone" in language_instruction.content
     session.close()
     engine.dispose()
 

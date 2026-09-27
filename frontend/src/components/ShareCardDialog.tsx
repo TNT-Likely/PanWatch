@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { useTranslation } from 'react-i18next'
 
 interface ShareCardDialogProps {
   open: boolean
@@ -37,6 +38,9 @@ export default function ShareCardDialog({
   width = 640,
   children,
 }: ShareCardDialogProps) {
+  const { t } = useTranslation('configuration')
+  const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.${key}`, options)
   const cardRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
 
@@ -50,7 +54,7 @@ export default function ShareCardDialog({
       link.href = dataUrl
       link.click()
     } catch (e) {
-      alert(e instanceof Error ? `图片生成失败:${e.message}` : '图片生成失败,请重试')
+      alert(e instanceof Error ? tr('imageFailed', { message: e.message }) : tr('imageFailedRetry'))
     } finally {
       setBusy(false)
     }
@@ -60,8 +64,8 @@ export default function ShareCardDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>分享图片</DialogTitle>
-          <DialogDescription>导出一张干净的卡片,可分享到雪球 / 微信群。</DialogDescription>
+          <DialogTitle>{tr('title')}</DialogTitle>
+          <DialogDescription>{tr('description')}</DialogDescription>
         </DialogHeader>
 
         {/* 预览区:外层用主题背景,内层卡片自带显式配色 */}
@@ -89,7 +93,7 @@ export default function ShareCardDialog({
 
             {/* 页脚:免责 + 品牌引流行(全体分享卡一致) */}
             <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
-              仅供参考,不构成投资建议
+              {tr('disclaimer')}
             </div>
             <div
               style={{
@@ -117,9 +121,9 @@ export default function ShareCardDialog({
                   flexShrink: 0,
                 }}
               >
-                盯
+                P
               </span>
-              <span>盯盘侠 PanWatch</span>
+              <span>PanWatch</span>
               <span style={{ color: '#cbd5e1', fontWeight: 400 }}>·</span>
               <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12.5 }}>
                 github.com/TNT-Likely/PanWatch
@@ -131,7 +135,7 @@ export default function ShareCardDialog({
         {/* 操作区 */}
         <div className="mt-4 flex items-center justify-end gap-3">
           <Button variant="outline" size="sm" className="h-9" onClick={onClose} disabled={busy}>
-            关闭
+            {tr('close')}
           </Button>
           <Button size="sm" className="h-9" onClick={() => void handleDownload()} disabled={busy}>
             {busy ? (
@@ -139,7 +143,7 @@ export default function ShareCardDialog({
             ) : (
               <ImageDown className="w-3.5 h-3.5" />
             )}
-            {busy ? '生成中…' : '下载图片'}
+            {busy ? tr('generating') : tr('download')}
           </Button>
         </div>
       </DialogContent>

@@ -1,5 +1,7 @@
 # 贡献指南
 
+[English](CONTRIBUTING.en.md)
+
 感谢你对 PanWatch 的兴趣！本文档将指导你如何贡献代码，特别是如何编写 Agent 和数据源。
 
 ## 目录
@@ -348,9 +350,7 @@ class MyAgent(BaseAgent):
 ### Commit 格式
 
 ```
-<type>: <subject>
-
-<body>
+<type>(<scope>): <subject>
 ```
 
 **Type 类型：**
@@ -363,7 +363,7 @@ class MyAgent(BaseAgent):
 
 **示例：**
 ```
-feat: 添加盘中监控 Agent
+feat(automation): 添加盘中监控 Agent
 
 - 支持价格异动检测
 - 支持成交量异动检测

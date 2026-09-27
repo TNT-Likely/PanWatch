@@ -335,6 +335,22 @@ class AssistantService:
                 lines.append(f"- {finding.tool_name}: {finding.summary}")
             lines.append("如果当前请求要求继续执行操作，必须重新调用工具并等待成功结果。")
             messages.append(ModelMessage(role="system", content="\n".join(lines)))
+        report_language = (
+            self._repository.session.query(AppSettings)
+            .filter(AppSettings.key == "ai_report_language")
+            .first()
+        )
+        if report_language is not None and report_language.value in {"zh-CN", "en-US"}:
+            instruction = (
+                "用户单独设置的 AI 回复与报告语言：English。请用英文撰写自然语言回复和报告；"
+                "保留股票代码、专有名词、来源原文及用户指定的引用文字。工具调用参数和结构化字段按原有约定，"
+                "do not infer or change the market, currency, or time zone from this preference."
+                if report_language.value == "en-US"
+                else "用户单独设置的 AI 回复与报告语言：简体中文。请用简体中文撰写自然语言回复和报告；"
+                "保留股票代码、专有名词、来源原文及用户指定的引用文字。工具调用参数和结构化字段按原有约定，"
+                "不要因此推断或更改市场、币种或时区。"
+            )
+            messages.append(ModelMessage(role="system", content=instruction))
         return messages
 
     def record_user_message(self, conversation_id: int, content: str) -> MessageDTO:

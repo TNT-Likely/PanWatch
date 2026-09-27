@@ -6,6 +6,7 @@ import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
 import { useTranslation } from 'react-i18next'
 import { changeLocale, normalizeLocale, type SupportedLocale } from '@/i18n'
+import { saveReportLanguage, useReportLanguage, type ReportLanguage } from '@/i18n/report-language'
 
 export interface AccountNavItem {
   to: string
@@ -22,6 +23,11 @@ const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; labelKey: 'light' | '
 const LANGUAGE_OPTIONS: { value: SupportedLocale; labelKey: 'simplifiedChinese' | 'englishExperimental' }[] = [
   { value: 'zh-CN', labelKey: 'simplifiedChinese' },
   { value: 'en-US', labelKey: 'englishExperimental' },
+]
+
+const REPORT_LANGUAGE_OPTIONS: { value: ReportLanguage; labelKey: 'simplifiedChinese' | 'english' }[] = [
+  { value: 'zh-CN', labelKey: 'simplifiedChinese' },
+  { value: 'en-US', labelKey: 'english' },
 ]
 
 interface AccountMenuProps {
@@ -49,6 +55,7 @@ export default function AccountMenu({
 }: AccountMenuProps) {
   const { t, i18n: i18nInstance } = useTranslation('settings')
   const currentLocale = normalizeLocale(i18nInstance.resolvedLanguage || i18nInstance.language)
+  const reportLanguage = useReportLanguage()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   const location = useLocation()
@@ -162,6 +169,26 @@ export default function AccountMenu({
               >
                 <Languages className="w-3.5 h-3.5" />
                 {t(`language.${labelKey}`)}
+                {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
+              </button>
+            )
+          })}
+
+          <div className="px-2.5 pt-1.5 pb-1 text-[11px] text-muted-foreground">{t('language.reportTitle')}</div>
+          {REPORT_LANGUAGE_OPTIONS.map(({ value, labelKey }) => {
+            const active = reportLanguage === value
+            return (
+              <button
+                key={value}
+                onClick={() => { void saveReportLanguage(value).catch(() => undefined) }}
+                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] transition-colors ${
+                  active
+                    ? 'text-foreground bg-accent/40'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+                }`}
+              >
+                <Languages className="w-3.5 h-3.5" />
+                {t(`language.report.${labelKey}`)}
                 {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
               </button>
             )

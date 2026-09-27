@@ -1,5 +1,7 @@
 # TradingAgents 深度分析流程
 
+[English](tradingagents-flow.en.md)
+
 PanWatch 从持仓页、Agent 定时任务或已启用的盘中异动规则触发单标的分析。下图展示 PanWatch 的数据准备与结果处理，以及 TradingAgents 内部的多 Agent 决策流程。
 
 ![PanWatch TradingAgents 深度分析流程图](diagrams/tradingagents-flow.svg)

@@ -1,6 +1,7 @@
 import { type DeepAnalysisResult } from '@panwatch/api'
 import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
 import ShareCardDialog from './ShareCardDialog'
+import { useTranslation } from 'react-i18next'
 
 interface ShareCardModalProps {
   open: boolean
@@ -17,26 +18,24 @@ interface ShareCardModalProps {
  */
 const RATING_VISUAL: Record<
   string,
-  { label: string; color: string; soft: string; gradFrom: string; gradTo: string }
+  { color: string; soft: string; gradFrom: string; gradTo: string }
 > = {
   // 看多(红)
-  buy: { label: '买入', color: '#e11d48', soft: '#fff1f2', gradFrom: '#fb7185', gradTo: '#e11d48' },
-  add: { label: '增持', color: '#e11d48', soft: '#fff1f2', gradFrom: '#fda4af', gradTo: '#e11d48' },
+  buy: { color: '#e11d48', soft: '#fff1f2', gradFrom: '#fb7185', gradTo: '#e11d48' },
+  add: { color: '#e11d48', soft: '#fff1f2', gradFrom: '#fda4af', gradTo: '#e11d48' },
   // 中性(琥珀)
-  hold: { label: '持有', color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
+  hold: { color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
   // 看空(绿)
-  reduce: { label: '减持', color: '#059669', soft: '#ecfdf5', gradFrom: '#34d399', gradTo: '#059669' },
-  sell: { label: '卖出', color: '#059669', soft: '#ecfdf5', gradFrom: '#6ee7b7', gradTo: '#059669' },
+  reduce: { color: '#059669', soft: '#ecfdf5', gradFrom: '#34d399', gradTo: '#059669' },
+  sell: { color: '#059669', soft: '#ecfdf5', gradFrom: '#6ee7b7', gradTo: '#059669' },
 }
 const RATING_FALLBACK = {
-  label: '观望',
   color: '#475569',
   soft: '#f8fafc',
   gradFrom: '#94a3b8',
   gradTo: '#475569',
 }
 const REVIEW_VISUAL = {
-  label: '待人工复核',
   color: '#c2410c',
   soft: '#fff7ed',
   gradFrom: '#fb923c',
@@ -76,12 +75,20 @@ function cleanConclusion(text: string): string {
 }
 
 export default function ShareCardModal({ open, onClose, result, symbol, date }: ShareCardModalProps) {
+  const { t } = useTranslation('configuration')
+  const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.analysis.${key}`, options)
   const sug = result.raw_data?.suggestion
   // 评级来源:优先后端五档原值，否则用 action，再叠加中文 action_label 兜底。
   const ratingRaw = mapRatingRaw(sug?.rating_raw)
   const normalized = normalizeSuggestionAction(ratingRaw || sug?.action, sug?.action_label)
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
   const visual = reviewRequired ? REVIEW_VISUAL : (normalized && RATING_VISUAL[normalized]) || RATING_FALLBACK
+  const visualLabel = reviewRequired
+    ? shareT('p5.share.actions.review')
+    : normalized && ['buy', 'add', 'hold', 'reduce', 'sell'].includes(normalized)
+      ? shareT(`p5.share.actions.${normalized}`)
+      : shareT('p5.share.actions.watch')
 
   const stockName = parseStockName(result.title || '', symbol)
   const confidence = sug?.confidence
@@ -90,7 +97,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
   const confPct = Math.max(0, Math.min(100, (confidence ?? 0) * 10))
 
   return (
-    <ShareCardDialog open={open} onClose={onClose} filename={`${stockName}-${date}-分析卡片`}>
+    <ShareCardDialog open={open} onClose={onClose} filename={tr('filename', { name: stockName, date })}>
       {/* Header:股票名+代码 / 日期 */}
       <div
         style={{
@@ -127,7 +134,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
               flexShrink: 0,
             }}
           >
-            AI 投研结论
+            {tr('conclusion')}
           </div>
           <div
             style={{
@@ -138,7 +145,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
               marginLeft: 'auto',
             }}
           >
-            {visual.label}
+            {visualLabel}
           </div>
         </div>
 
@@ -153,7 +160,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
               marginBottom: 6,
             }}
           >
-            <span>置信度</span>
+            <span>{tr('confidence')}</span>
             <span style={{ fontWeight: 700 }}>
               {confidence != null ? confidence.toFixed(1) : '-'} / 10
             </span>
@@ -176,7 +183,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
             />
           </div>
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            分析成本 ${costUsd != null ? costUsd.toFixed(4) : '-'}
+            {tr('cost', { value: costUsd != null ? costUsd.toFixed(4) : '-' })}
           </div>
         </div>
       </div>
@@ -201,7 +208,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
 
       {/* TA 卡专属副标(9-Agent),置于外壳分割线/页脚之上 */}
       <div style={{ marginTop: 22, fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
-        AI 投研团队(9-Agent)深度分析
+        {tr('team')}
       </div>
     </ShareCardDialog>
   )

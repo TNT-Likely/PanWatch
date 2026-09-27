@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
+import { setStoredReportLanguage, type ReportLanguage } from '@/i18n/report-language'
 
 interface Setting {
   key: string
@@ -317,6 +318,10 @@ export default function SettingsPage() {
         fetchAPI<AgentsHealth>('/agents/health'),
       ])
       setSettings(settingsData)
+      const reportLanguage = settingsData.find(s => s.key === 'ai_report_language')?.value
+      if (reportLanguage === 'zh-CN' || reportLanguage === 'en-US') {
+        setStoredReportLanguage(reportLanguage as ReportLanguage)
+      }
       setServices(servicesData)
       setChannels(channelsData)
       setVersion(versionData.version)
@@ -446,10 +451,14 @@ export default function SettingsPage() {
   const handleSave = async (key: string) => {
     setSaving(key)
     try {
+      const value = edited[key] ?? settings.find(s => s.key === key)?.value
       await fetchAPI(`/settings/${key}`, {
         method: 'PUT',
-        body: JSON.stringify({ value: edited[key] ?? settings.find(s => s.key === key)?.value }),
+        body: JSON.stringify({ value }),
       })
+      if (key === 'ai_report_language' && (value === 'zh-CN' || value === 'en-US')) {
+        setStoredReportLanguage(value as ReportLanguage)
+      }
       const newEdited = { ...edited }
       delete newEdited[key]
       setEdited(newEdited)
@@ -1013,11 +1022,27 @@ export default function SettingsPage() {
                 const currentValue = edited[setting.key] ?? setting.value
                 const isChanged = setting.key in edited
                 const STOCK_LINK_OPTIONS: Record<string, string> = { xueqiu: configT('configuration:settingsPage.system.stockLinkXueqiu') }
+                const label = setting.key === 'ai_report_language'
+                  ? configT('configuration:settingsPage.system.aiReportLanguage')
+                  : setting.description || setting.key
                 return (
                   <div key={setting.key}>
-                    <Label>{setting.description || setting.key}</Label>
+                    <Label>{label}</Label>
                     <div className="flex items-center gap-2.5">
-                      {setting.key === 'stock_link_platform' ? (
+                      {setting.key === 'ai_report_language' ? (
+                        <Select
+                          value={currentValue || 'zh-CN'}
+                          onValueChange={v => setEdited({ ...edited, [setting.key]: v })}
+                        >
+                          <SelectTrigger className={`${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="zh-CN">{configT('configuration:settingsPage.system.chinese')}</SelectItem>
+                            <SelectItem value="en-US">{configT('configuration:settingsPage.system.english')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : setting.key === 'stock_link_platform' ? (
                         <Select
                           value={currentValue || 'xueqiu'}
                           onValueChange={v => setEdited({ ...edited, [setting.key]: v })}

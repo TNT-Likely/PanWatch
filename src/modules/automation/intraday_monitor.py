@@ -753,6 +753,7 @@ class IntradayMonitorAgent(BaseAgent):
             )
 
         system_prompt, user_content = self.build_prompt(data, context)
+        system_prompt = self.apply_report_language(context, system_prompt)
 
         # 打印完整 prompt 用于调试
         logger.info(f"=== Prompt for {stock.symbol} ===\n{user_content}")

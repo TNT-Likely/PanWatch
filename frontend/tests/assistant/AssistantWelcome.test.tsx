@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AssistantWelcome } from '@/components/assistant/AssistantWelcome'
+import { changeLocale } from '@/i18n'
+import { setStoredReportLanguage } from '@/i18n/report-language'
 
 describe('AssistantWelcome', () => {
   it('starts a focused research question from a suggested entry point', async () => {
@@ -26,5 +28,18 @@ describe('AssistantWelcome', () => {
 
     expect(screen.getByTestId('assistant-stock-picker')).toBeTruthy()
     expect(screen.getByRole('searchbox', { name: '搜索股票' })).toBeTruthy()
+  })
+
+  it('keeps AI response language independent from interface language', async () => {
+    await changeLocale('en-US')
+    setStoredReportLanguage('zh-CN')
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+
+    render(<AssistantWelcome onSubmit={onSubmit} />)
+
+    expect(screen.getByRole('heading', { name: 'What do you want to research today?' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Diagnose my portfolio' }))
+    expect(onSubmit).toHaveBeenCalledWith('诊断我的持仓风险和关键关注点')
   })
 })

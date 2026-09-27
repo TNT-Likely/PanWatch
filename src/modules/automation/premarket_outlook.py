@@ -653,6 +653,7 @@ class PremarketOutlookAgent(BaseAgent):
             context.model_label or "default",
         )
         system_prompt, user_content = self.build_prompt(data, context)
+        system_prompt = self.apply_report_language(context, system_prompt)
         logger.info(
             "[%s] Prompt构建完成: system_chars=%s user_chars=%s lines=%s",
             trace_id,

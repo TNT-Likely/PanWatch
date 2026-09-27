@@ -129,6 +129,12 @@ class ResponseWrapperMiddleware:
             if code == 0:
                 code = status_code if status_code != 0 else 1
             wrapped = {"code": code, "success": False, "data": None, "message": message}
+            stable_code = detail.get("code") if isinstance(detail, dict) else None
+            wrapped["error_code"] = (
+                str(stable_code)
+                if stable_code is not None and not str(stable_code).isdigit()
+                else f"http_{status_code}"
+            )
 
         new_body = json.dumps(wrapped, ensure_ascii=False).encode()
 

@@ -16,5 +16,7 @@ export const settings = {
     englishExperimental: 'English (Experimental)',
     switchAria: 'Switch interface language',
     quickSwitch: '简体中文',
+    reportTitle: 'AI response language',
+    report: { simplifiedChinese: 'Simplified Chinese', english: 'English' },
   },
 } as const satisfies TranslationShape<typeof zhSettings>

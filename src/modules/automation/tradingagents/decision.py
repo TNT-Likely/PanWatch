@@ -35,6 +35,13 @@ RATING_LABEL_MAP = {
     "underweight": "减持",
     "sell": "卖出",
 }
+RATING_LABEL_MAP_EN = {
+    "buy": "Buy",
+    "overweight": "Add",
+    "hold": "Hold",
+    "underweight": "Reduce",
+    "sell": "Sell",
+}
 
 # 5 档 → 3 档(给 action 字段;前端 'buy' | 'hold' | 'sell')
 RATING_ACTION_MAP = {
@@ -59,6 +66,7 @@ def map_state_to_result(
     stock: Any,
     ta_result: dict[str, Any],
     model_label: str = "",
+    output_language: str = "Chinese",
 ) -> AnalysisResult:
     """主入口:把 TradingAgents 的 final_state 映射成 AnalysisResult。
 
@@ -69,6 +77,9 @@ def map_state_to_result(
     """
     state = ta_result.get("final_state") or {}
     cost_usd = float(ta_result.get("cost_usd", 0.0) or 0.0)
+    english = output_language.lower().startswith("en")
+    rating_labels = RATING_LABEL_MAP_EN if english else RATING_LABEL_MAP
+    hold_label = "Hold" if english else "持有"
 
     # 评级以 PM 正文(final_trade_decision,用户实际看到的最终决策书)为权威来源:
     # 上游 propagate() 第二个返回的 decision 是对正文的二次提炼,会失真(正文写"卖出"
@@ -88,7 +99,7 @@ def map_state_to_result(
 
     review_required = rating_raw == REVIEW_RATING
     action = RATING_ACTION_MAP.get(rating_raw, "hold")
-    action_label = REVIEW_LABEL if review_required else RATING_LABEL_MAP.get(rating_raw, "持有")
+    action_label = ("Review required" if english else REVIEW_LABEL) if review_required else rating_labels.get(rating_raw, hold_label)
 
     confidence = _extract_confidence(state, rating_raw)
     short_reason = _short_reason(state)
@@ -103,11 +114,11 @@ def map_state_to_result(
         "reason": state.get("final_trade_decision") or short_reason,
         "should_alert": review_required or rating_raw in ("buy", "overweight", "underweight", "sell"),
         "agent_name": "tradingagents",
-        "agent_label": "TradingAgents 深度",
+        "agent_label": "TradingAgents deep analysis" if english else "TradingAgents 深度",
         "confidence": confidence,
     }
 
-    content = _render_markdown(state, suggestion, model_label, cost_usd)
+    content = _render_markdown(state, suggestion, model_label, cost_usd, output_language)
     # 详情页可点击链接(配了 panwatch_base_url 才出现)
     from datetime import date as _date
     from src.modules.research.analysis_link import analysis_detail_markdown
@@ -116,11 +127,12 @@ def map_state_to_result(
         content = content.rstrip() + f"\n\n---\n{_link}"
     # 通知体只放「最终决策」(决策摘要 + PM 决策书) + 详情链接;
     # 交易员/研究主管/风控辩论/四分析师等完整内容都在详情页,避免通知过长被截断。
-    notify_content = _render_notify(state, suggestion, cost_usd, _link)
+    notify_content = _render_notify(state, suggestion, cost_usd, _link, output_language)
 
     return AnalysisResult(
         agent_name="tradingagents",
-        title=f"【深度】{stock.name}({stock.symbol}):{suggestion['action_label']}",
+        title=(f"[Deep analysis] {stock.name} ({stock.symbol}): {suggestion['action_label']}" if english
+               else f"【深度】{stock.name}({stock.symbol}):{suggestion['action_label']}"),
         content=content,
         notify_content=notify_content,
         raw_data={
@@ -306,7 +318,7 @@ def _extract_risk_debate(state: dict) -> dict:
 
 
 def _render_notify(
-    state: dict, suggestion: dict, cost_usd: float, link_md: str = ""
+    state: dict, suggestion: dict, cost_usd: float, link_md: str = "", output_language: str = "Chinese"
 ) -> str:
     """通知体:只展示「最终决策」(决策摘要 + PM 最终决策书) + 详情链接。
 
@@ -314,19 +326,23 @@ def _render_notify(
     不进通知 —— 既符合"通知只看最终决策"的诉求,也避免推送过长被各渠道截断。
     """
     rating_raw = suggestion.get("rating_raw") or ""
+    english = output_language.lower().startswith("en")
+    labels = RATING_LABEL_MAP_EN if english else RATING_LABEL_MAP
+    hold_label = "Hold" if english else "持有"
     rating_note = (
-        f"(评级:{RATING_LABEL_MAP.get(rating_raw, '持有')})"
-        if rating_raw in RATING_LABEL_MAP else ""
+        (f"(Rating: {labels.get(rating_raw, hold_label)})" if english else f"(评级:{labels.get(rating_raw, hold_label)})")
+        if rating_raw in labels else ""
     )
     parts = [
-        f"## 最终决策\n\n"
-        f"**{suggestion['action_label']}** {rating_note} · 置信度 {suggestion['confidence']:.1f}/10\n"
+        f"## Final decision\n\n**{suggestion['action_label']}** {rating_note} · Confidence {suggestion['confidence']:.1f}/10\n"
+        if english else f"## 最终决策\n\n**{suggestion['action_label']}** {rating_note} · 置信度 {suggestion['confidence']:.1f}/10\n"
     ]
     final_text = (state.get("final_trade_decision") or "").strip()
     if final_text:
         parts.append(final_text + "\n")
     parts.append(
-        f"\n_成本 ${cost_usd:.4f} · 交易员 / 研究主管 / 风控辩论 / 四分析师完整内容见详情_"
+        f"\n_Cost ${cost_usd:.4f} · Full trader, research lead, risk debate, and analyst reports are available in the details_"
+        if english else f"\n_成本 ${cost_usd:.4f} · 交易员 / 研究主管 / 风控辩论 / 四分析师完整内容见详情_"
     )
     if link_md:
         parts.append(f"\n\n{link_md}")
@@ -334,26 +350,29 @@ def _render_notify(
 
 
 def _render_markdown(
-    state: dict, suggestion: dict, model_label: str, cost_usd: float
+    state: dict, suggestion: dict, model_label: str, cost_usd: float, output_language: str = "Chinese"
 ) -> str:
     parts = []
 
     rating_raw = suggestion.get("rating_raw") or ""
+    english = output_language.lower().startswith("en")
+    labels = RATING_LABEL_MAP_EN if english else RATING_LABEL_MAP
+    hold_label = "Hold" if english else "持有"
     rating_note = (
-        f"(评级:{RATING_LABEL_MAP.get(rating_raw, '持有')})"
-        if rating_raw in RATING_LABEL_MAP else ""
+        (f"(Rating: {labels.get(rating_raw, hold_label)})" if english else f"(评级:{labels.get(rating_raw, hold_label)})")
+        if rating_raw in labels else ""
     )
     parts.append(
-        f"## 最终决策\n\n"
-        f"**{suggestion['action_label']}** {rating_note} · 置信度 {suggestion['confidence']:.1f}/10\n"
+        f"## Final decision\n\n**{suggestion['action_label']}** {rating_note} · Confidence {suggestion['confidence']:.1f}/10\n"
+        if english else f"## 最终决策\n\n**{suggestion['action_label']}** {rating_note} · 置信度 {suggestion['confidence']:.1f}/10\n"
     )
 
     # 9 个 Agent 链路:PM(决策书) → Trader → 研究主管 → 风控 → 4 位分析师摘要
     if state.get("final_trade_decision"):
-        parts.append(f"### 🎯 PM 最终决策书\n\n{state['final_trade_decision']}\n")
+        parts.append(f"### 🎯 PM final decision\n\n{state['final_trade_decision']}\n" if english else f"### 🎯 PM 最终决策书\n\n{state['final_trade_decision']}\n")
 
     if state.get("trader_investment_plan"):
-        parts.append(f"### 💼 交易员执行计划\n\n{state['trader_investment_plan']}\n")
+        parts.append(f"### 💼 Trader execution plan\n\n{state['trader_investment_plan']}\n" if english else f"### 💼 交易员执行计划\n\n{state['trader_investment_plan']}\n")
 
     # 研究主管裁决 — 看多/看空辩论后的结论,之前只在折叠的辩论 section 末尾
     debate = state.get("investment_debate_state") or {}
@@ -361,17 +380,19 @@ def _render_markdown(
     if isinstance(debate, dict):
         judge_decision = (debate.get("judge_decision") or "").strip()
     if judge_decision:
-        parts.append(f"### ⚖️ 研究主管裁决(看多 vs 看空)\n\n{judge_decision}\n")
+        parts.append(f"### ⚖️ Research lead verdict (bull vs. bear)\n\n{judge_decision}\n" if english else f"### ⚖️ 研究主管裁决(看多 vs 看空)\n\n{judge_decision}\n")
 
     risk_jd = _risk_judgment(state)
     if risk_jd:
-        parts.append(f"### 🛡️ 风控辩论裁决\n\n{risk_jd}\n")
+        parts.append(f"### 🛡️ Risk debate verdict\n\n{risk_jd}\n" if english else f"### 🛡️ 风控辩论裁决\n\n{risk_jd}\n")
 
     # 4 位分析师完整报告不再塞进主体 markdown(早先截 300 字会把财务表格截在表头)。
     # 完整内容在 raw_data.analyst_reports,由前端 tab 完整渲染(含 GFM 表格)。
 
     parts.append(
-        "\n---\n"
+        "\n---\n_This report was generated by the TradingAgents 9-Agent framework (technical, sentiment, news, and fundamentals → bull/bear debate → research lead → trader → risk debate → PM). For research only; not investment advice._"
+        f"\n\nCost: ${cost_usd:.4f}"
+        if english else "\n---\n"
         f"_本分析由 TradingAgents 9-Agent 框架生成(技术/情绪/新闻/基本面 → 看多看空辩论 "
         f"→ 研究主管 → 交易员 → 风控辩论 → PM)。仅供学习研究参考,不构成投资建议。_\n"
         f"\n成本:${cost_usd:.4f}"

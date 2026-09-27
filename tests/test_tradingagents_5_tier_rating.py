@@ -74,6 +74,20 @@ def test_sell_rating_maps_to_sell():
     assert r.raw_data["suggestion"]["action_label"] == "卖出"
 
 
+def test_english_report_preference_localizes_tradingagents_wrapper():
+    result = map_state_to_result(
+        stock=_stock(),
+        ta_result=_result("Buy", "Rating: Buy\nConfidence: 8/10"),
+        output_language="English",
+    )
+
+    assert result.raw_data["suggestion"]["action_label"] == "Buy"
+    assert result.title.startswith("[Deep analysis]")
+    assert "## Final decision" in result.content
+    assert "not investment advice" in result.content
+    assert "Confidence" in result.notify_content
+
+
 # ============================================================
 # Fallback:propagate() 没返回 5 档,从文本里抽
 # ============================================================

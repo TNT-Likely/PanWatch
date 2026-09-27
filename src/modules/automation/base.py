@@ -125,6 +125,7 @@ class AgentContext:
         model_label: str = "",
         notify_policy: NotifyPolicy | None = None,
         suppress_notify: bool = False,
+        report_language: str = "zh-CN",
     ):
         self.ai_client = ai_client
         self.notifier = notifier
@@ -134,6 +135,7 @@ class AgentContext:
         self._primary_model_label = model_label
         self.notify_policy = notify_policy
         self.suppress_notify = suppress_notify
+        self.report_language = report_language if report_language in {"zh-CN", "en-US"} else "zh-CN"
 
     @property
     def model_label(self) -> str:
@@ -173,6 +175,35 @@ class BaseAgent(ABC):
     display_name: str = ""
     description: str = ""
 
+    def apply_report_language(self, context: AgentContext, system_prompt: str) -> str:
+        """Keep generated prose aligned with the user's report language preference."""
+        if context.report_language != "en-US":
+            return system_prompt
+        instruction = (
+            "\n\nOutput language: English. Write all user-facing analysis and notification prose in English. "
+            "Preserve stock names, symbols, source excerpts, identifiers, numbers, and JSON keys as provided; "
+            "translate only natural-language values and headings. Keep the required output structure unchanged."
+        )
+        return f"{system_prompt.rstrip()}{instruction}"
+
+    def localize_result_title(self, result: AnalysisResult, context: AgentContext) -> None:
+        if context.report_language != "en-US":
+            return
+        labels = {
+            "daily_report": "Daily report",
+            "premarket_outlook": "Pre-market outlook",
+            "chart_analyst": "Chart analysis",
+            "intraday_monitor": "Intraday monitor",
+            "tradingagents": "Deep analysis",
+        }
+        label = labels.get(self.name)
+        if not label:
+            return
+        result.title = result.title.replace(f"【{self.display_name}】", f"[{label}] ")
+        result.title = result.title.replace("、", ", ")
+        result.title = result.title.replace(" 等", " and ")
+        result.title = result.title.replace("只", " stocks")
+
     @abstractmethod
     async def collect(self, context: AgentContext) -> dict:
         """采集数据"""
@@ -191,6 +222,7 @@ class BaseAgent(ABC):
     async def analyze(self, context: AgentContext, data: dict) -> AnalysisResult:
         """调用 AI 分析"""
         system_prompt, user_content = self.build_prompt(data, context)
+        system_prompt = self.apply_report_language(context, system_prompt)
         content = await context.ai_client.chat(system_prompt, user_content)
 
         # 标题含股票信息
@@ -248,6 +280,7 @@ class BaseAgent(ABC):
         try:
             data = await self.collect(context)
             result = await self.analyze(context, data)
+            self.localize_result_title(result, context)
 
             if getattr(context, "suppress_notify", False):
                 with log_context(

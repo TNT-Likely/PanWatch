@@ -1,5 +1,6 @@
 import { type PortfolioDiagnostics } from '@panwatch/api'
 import ShareCardDialog from './ShareCardDialog'
+import { useTranslation } from 'react-i18next'
 
 interface DiagnosticsShareCardProps {
   open: boolean
@@ -27,16 +28,13 @@ function pct(v?: number | null, digits = 1): string {
   return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`
 }
 
-const MARKET_LABEL: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股' }
-const marketLabel = (m: string) => MARKET_LABEL[m] || m
-
 /**
  * 集中度(HHI)定性:0~1,越高越集中。0.4+ 偏高,0.25~0.4 适中,<0.25 分散。
  */
-function hhiBand(hhi: number): { label: string; color: string } {
-  if (hhi >= 0.4) return { label: '偏集中', color: NEUTRAL }
-  if (hhi >= 0.25) return { label: '适中', color: SLATE }
-  return { label: '较分散', color: DOWN }
+function hhiBand(hhi: number, tr: (key: string) => string): { label: string; color: string } {
+  if (hhi >= 0.4) return { label: tr('bands.concentrated'), color: NEUTRAL }
+  if (hhi >= 0.25) return { label: tr('bands.balanced'), color: SLATE }
+  return { label: tr('bands.diversified'), color: DOWN }
 }
 
 function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
@@ -70,7 +68,15 @@ export default function DiagnosticsShareCard({
   excessReturn,
   benchmarkLabel,
 }: DiagnosticsShareCardProps) {
-  const band = hhiBand(diag.hhi)
+  const { t } = useTranslation('configuration')
+  const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.diagnostics.${key}`, options)
+  const marketLabel = (market: string) => {
+    const key = `p5.share.markets.${market}`
+    const translated = shareT(key)
+    return translated === key ? market : translated
+  }
+  const band = hhiBand(diag.hhi, tr)
   const totalMv = diag.total_market_value || 0
   const markets = Object.entries(diag.by_market || {})
     .map(([m, v]) => ({ m, w: totalMv > 0 ? (v / totalMv) * 100 : 0 }))
@@ -79,11 +85,11 @@ export default function DiagnosticsShareCard({
   const hasExcess = excessReturn != null && isFinite(excessReturn)
 
   return (
-    <ShareCardDialog open={open} onClose={onClose} filename="组合体检卡">
+    <ShareCardDialog open={open} onClose={onClose} filename={tr('filename')}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: SLATE }}>组合体检</div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>持仓结构 · 风险</div>
+        <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: SLATE }}>{tr('title')}</div>
+        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>{tr('subtitle')}</div>
       </div>
 
       {/* Hero:集中度(HHI) */}
@@ -99,7 +105,7 @@ export default function DiagnosticsShareCard({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: 1, opacity: 0.92, flexShrink: 0 }}>
-            集中度(HHI)
+            {tr('concentration')}
           </div>
           <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
             <span style={{ fontSize: 42, fontWeight: 900, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
@@ -112,15 +118,15 @@ export default function DiagnosticsShareCard({
 
       {/* 关键指标 */}
       <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-        <StatBox label="持仓数" value={`${diag.position_count}`} sub="只" />
+        <StatBox label={tr('positions')} value={`${diag.position_count}`} sub={tr('countUnit')} />
         <StatBox
-          label="最大单仓占比"
+          label={tr('maxWeight')}
           value={`${(diag.max_weight * 100).toFixed(0)}%`}
           color={diag.max_weight >= 0.4 ? NEUTRAL : SLATE}
         />
         {hasExcess && (
           <StatBox
-            label={`近期相对${benchmarkLabel || '大盘'}`}
+            label={tr('recentPerformance', { benchmark: benchmarkLabel || tr('defaultBenchmark') })}
             value={pct(excessReturn)}
             color={signColor(excessReturn)}
           />
@@ -130,7 +136,7 @@ export default function DiagnosticsShareCard({
       {/* 市场分布 */}
       {markets.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>市场分布</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>{tr('marketDistribution')}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {markets.map(({ m, w }) => (
               <div key={m}>
@@ -158,7 +164,7 @@ export default function DiagnosticsShareCard({
 
       {/* 风险提示 */}
       <div style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>风险提示</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>{tr('riskAlerts')}</div>
         {alerts.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {alerts.map((a, i) => (
@@ -193,7 +199,7 @@ export default function DiagnosticsShareCard({
               color: '#065f46',
             }}
           >
-            ✓ 集中度 / 分布未见明显风险
+            {tr('noRisk')}
           </div>
         )}
       </div>

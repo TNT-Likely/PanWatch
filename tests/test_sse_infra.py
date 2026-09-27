@@ -145,3 +145,28 @@ def test_middleware_json_still_wrapped():
         assert body["data"] == {"hello": "world"}
 
     asyncio.run(run())
+
+
+def test_middleware_exposes_stable_http_error_code():
+    async def run():
+        async def app(scope, receive, send):
+            body = json.dumps({"detail": "记录不存在"}, ensure_ascii=False).encode()
+            await send({
+                "type": "http.response.start",
+                "status": 404,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({"type": "http.response.body", "body": body})
+
+        sent_messages: list[dict] = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await ResponseWrapperMiddleware(app)(_make_scope(), None, send)
+        body = json.loads(sent_messages[-1]["body"])
+        assert body["success"] is False
+        assert body["code"] == 404
+        assert body["error_code"] == "http_404"
+
+    asyncio.run(run())

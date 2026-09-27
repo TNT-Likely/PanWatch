@@ -182,6 +182,7 @@ class ChartAnalystAgent(BaseAgent):
         将截图作为图片传给 AI
         """
         system_prompt, user_content = self.build_prompt(data, context)
+        system_prompt = self.apply_report_language(context, system_prompt)
 
         # 收集图片路径
         screenshots: list[ChartScreenshot] = data.get("screenshots", [])
@@ -189,7 +190,11 @@ class ChartAnalystAgent(BaseAgent):
 
         if not image_paths:
             logger.warning("没有可用的截图，跳过分析")
-            content = "未能获取到 K 线图截图，请检查网络连接或稍后重试。"
+            content = (
+                "No candlestick chart screenshot is available. Check the network connection and try again."
+                if context.report_language == "en-US"
+                else "未能获取到 K 线图截图，请检查网络连接或稍后重试。"
+            )
         else:
             # 调用多模态 AI
             logger.info(f"使用 {len(image_paths)} 张截图进行多模态分析")

@@ -213,7 +213,7 @@ export const configuration = {
       addModel: '模型', discover: '嗅探模型（自动发现可用模型）', test: '测试模型', setDefault: '设为默认',
     },
     notifications: { title: '通知渠道', description: '推送到 Telegram/Bark 等渠道', add: '添加', empty: '暂无通知渠道，点击“添加”创建', sendTest: '发送测试', setDefault: '设为默认' },
-    system: { title: '系统', description: '偏好与高级选项。修改后立即生效。', searchPlaceholder: '搜索设置项（描述 / key）', stockLinkXueqiu: '雪球' },
+    system: { title: '系统', description: '偏好与高级选项。修改后立即生效。', searchPlaceholder: '搜索设置项（描述 / key）', stockLinkXueqiu: '雪球', aiReportLanguage: 'AI 回复与报告语言', chinese: '简体中文', english: 'English' },
     pack: {
       title: '配置包', description: '按模块迁移 AI、通知、Agent、关注列表、账户持仓与系统设置', export: '导出', import: '导入', importMode: '导入模式',
       merge: '合并更新（推荐）', replace: '替换（仅覆盖配置包包含项）', officialTemplates: '官方模板', apply: '应用',
@@ -272,10 +272,22 @@ export const configuration = {
       trace: { extension: { started: '研究可用工具', exposure: '工具目录已准备：{{direct}} 个直达，{{loaded}} 个已加载', candidates: '筛选工具候选：{{count}} 个', completed: '工具研究完成：选出 {{count}} 个', searched: '工具搜索完成：加载 {{count}} 个', fallback: '工具研究回退，继续使用默认工具集', unknown: '扩展事件：{{event}}' }, events: { contextCompressed: '上下文已压缩并准备', contextPrepared: '上下文已准备', step: '执行步骤 {{step}}', toolStart: '调用工具：{{name}}', toolDone: '工具完成：{{name}}', toolFailed: '工具失败：{{name}}', modelUsage: '模型用量：输入 {{input}}，输出 {{output}}{{extra}}', cache: '缓存 {{count}}', reasoning: '推理 {{count}}', approval: '等待用户审批', paused: '任务已暂停', done: '任务完成', error: '任务失败', started: '任务已启动', title: '执行记录' }, status: { done: '已完成', error: '已失败', paused: '等待继续', running: '执行中' }, toolCalls: '{{count}} 次工具调用' },
     },
   },
+  p5: {
+    share: {
+      title: '分享图片', description: '导出清晰的图片卡片，可分享到社交平台。', disclaimer: '仅供参考，不构成投资建议', close: '关闭', generating: '生成中…', download: '下载图片', imageFailed: '图片生成失败：{{message}}', imageFailedRetry: '图片生成失败，请重试',
+      markets: { CN: 'A股', HK: '港股', US: '美股' },
+      actions: { buy: '买入', add: '增持', hold: '持有', watch: '观望', reduce: '减持', sell: '卖出', review: '待人工复核' },
+      benchmark: { filename: 'AI模拟盘成绩单-近{{days}}天', title: 'AI 模拟盘成绩单', period: '近 {{days}} 天', excess: '超额收益（相对 {{benchmark}}）', portfolioReturn: '组合收益', informationRatio: '信息比率', relativeDrawdown: '相对回撤', portfolioNav: '组合净值', defaultBenchmark: '沪深300' },
+      signal: { filename: 'AI选股评分-{{name}}', title: 'AI 选股评分', score: 'AI 评分', positiveFactors: '利好因子', riskFactors: '风险因子' },
+      analysis: { filename: '{{name}}-分析卡片', conclusion: 'AI 投研结论', confidence: '置信度', cost: '分析成本 ${{value}}', team: 'AI 投研团队（9-Agent）深度分析' },
+      digest: { filename: '今日盯盘-{{date}}', title: '今日盯盘', subtitle: '持仓异动 / 机会 / 风险提醒 · AI 为你梳理的今日要点', noEvents: '✓ 今日暂无明显异动或触发信号', badges: { alert: '提醒命中', holding: '持仓', watch: '自选', risk: '风险', opportunity: '机会', other: '要点' } },
+      diagnostics: { filename: '组合体检卡', title: '组合体检', subtitle: '持仓结构 · 风险', bands: { concentrated: '偏集中', balanced: '适中', diversified: '较分散' }, concentration: '集中度（HHI）', positions: '持仓数', countUnit: '只', maxWeight: '最大单仓占比', recentPerformance: '近期相对{{benchmark}}', defaultBenchmark: '大盘', marketDistribution: '市场分布', riskAlerts: '风险提示', noRisk: '✓ 集中度 / 分布未见明显风险' },
+    },
+  },
   assistantPage: {
     tools: { get_portfolio: '正在查询持仓…', get_stock_quote: '正在查询行情…', get_kline_summary: '正在分析 K 线…', get_stock_news: '正在检索相关新闻…', create_price_alert: '正在创建价格提醒…', get_technical_analysis: '正在分析技术面…', get_stock_suggestions: '正在查询 AI 建议…', get_watchlist: '正在查询自选股…' },
     connectionInterrupted: '助手连接中断，任务仍可能在后台执行，请稍后刷新查看结果。', requestFailed: '助手请求失败，请稍后重试。', unknownError: '未知错误', closeHistory: '关闭历史会话', openHistory: '打开历史会话', backHome: '返回助手首页', title: 'AI 助手', permissions: '工具权限', noConversations: '暂无对话', newConversation: '开始新对话', newResearch: '新研究', history: '历史会话', recommended: '推荐问题', startConversation: '输入问题开始对话', askPlaceholder: '输入问题...', scrollBottom: '回到底部', scrollLatest: '滚动到最新消息', diagnosisPlan: '诊断计划', completed: '已完成', planning: '生成中…', execution: '执行中', approved: '已允许，已执行', rejected: '已拒绝，不会执行', pendingApproval: '请在 {{time}} 前决定', submitFailed: '提交决定失败，请重试。', submitting: '提交中…', allowOnce: '本次允许', deny: '拒绝', contextError: '无法读取上下文用量。', compressionFailed: '上下文压缩失败，原始消息未改变。', askStock: '分析 {{market}}:{{symbol}} {{name}} 的基本面、行情和近期新闻',
-    welcome: { analyzeStock: '分析一只股票', diagnosePortfolio: '诊断我的持仓', findOpportunity: '发现今日机会', diagnoseQuestion: '诊断我的持仓风险和关键关注点', opportunityQuestion: '结合今天的市场，找出值得研究的机会', title: '今天想研究什么？', description: '输入一只股票、一个市场问题，或让 PanWatch 诊断你的持仓。助手会先查询可用数据，再给出有依据的结论。', searchPlaceholder: '搜索股票，或问：我的持仓风险怎么样？', startResearch: '开始一项研究', send: '发送研究问题' },
+    welcome: { analyzeStock: '分析一只股票', diagnosePortfolio: '诊断我的持仓', findOpportunity: '发现今日机会', diagnoseQuestion: '诊断我的持仓风险和关键关注点', opportunityQuestion: '结合今天的市场，找出值得研究的机会', title: '今天想研究什么？', description: '输入一只股票、一个市场问题，或让 PanWatch 诊断你的持仓。助手会先查询可用数据，再给出有依据的结论。', searchPlaceholder: '搜索股票，或问：我的持仓风险怎么样？', startResearch: '开始一项研究', send: '发送研究问题', brandLabel: 'AI 投资研究', symbolPathTitle: '从股票开始', symbolPathDescription: '输入代码或公司名称，进行综合、短线或事件驱动分析。', portfolioPathTitle: '从持仓开始', portfolioPathDescription: '结合实盘和模拟盘数据，识别集中度与风险敞口。', questionPathTitle: '从问题开始', questionPathDescription: '关联行情、K 线和新闻，给出下一步研究方向。' },
     stockPicker: { back: '返回研究入口', title: '选择要分析的股票', description: '先选定标的，助手会基于实时数据开始研究', market: '选择股票市场', search: '搜索股票', searchPlaceholder: '输入股票代码或名称', empty: '没有找到匹配的股票', searchFailed: '搜索股票失败', markets: { CN: 'A 股', HK: '港股', US: '美股' } },
     analysis: { exportFailed: '导出失败', loading: '加载中...', notFound: '未找到 {{symbol}} 在 {{date}} 的深度分析记录', back: '返回', toc: '目录', subToc: '二级目录', depthAnalysis: '深度分析', share: '分享图', shareTitle: '生成可分享的结论卡片图', exportPdf: '导出 PDF', exporting: '导出中…', reviewHint: '数据或结论存在不确定性，请人工核验后再决策', confidence: '置信度', cost: '成本', history: '历史决策对比', historyVsActual: '历史决策 vs 实际涨跌', hitRate: '总命中率', buyHit: '买入命中', sellHit: '卖出命中', avg20d: '平均 20 日收益', date: '日期', decision: '决策', analysisPrice: '分析价', hit: '命中', noHistory: '暂无历史决策记录', disclaimer: '本分析由 AI 多 Agent 框架生成，仅供学习研究参考，不构成任何投资建议。投资有风险，决策需自主判断。', unsafe: '上游无法安全生成可执行评级，请人工核验数据与报告。' },
   },

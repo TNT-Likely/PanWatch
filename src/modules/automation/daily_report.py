@@ -568,6 +568,7 @@ class DailyReportAgent(BaseAgent):
     async def analyze(self, context: AgentContext, data: dict) -> AnalysisResult:
         """调用 AI 分析并保存到历史/建议池"""
         system_prompt, user_content = self.build_prompt(data, context)
+        system_prompt = self.apply_report_language(context, system_prompt)
         content = await context.ai_client.chat(system_prompt, user_content)
 
         # Keep structured JSON block at the very end.
