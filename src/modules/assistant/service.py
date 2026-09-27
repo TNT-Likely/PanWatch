@@ -58,7 +58,7 @@ from .schemas import (
     CreateConversationCommand,
     MessageDTO,
 )
-from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
+from .tool_descriptors import localized_tool_descriptors
 from .tool_adapters import execute_tool
 from .tools import build_panwatch_tool_registry
 
@@ -440,7 +440,11 @@ class AssistantService:
                     ToolResearchPlugin(
                         ToolResearchService(
                             tools,
-                            descriptors=list(PANWATCH_TOOL_DESCRIPTORS),
+                            descriptors=list(
+                                localized_tool_descriptors(
+                                    self._report_language()
+                                )
+                            ),
                         ),
                         mode="active",
                     )
@@ -455,6 +459,11 @@ class AssistantService:
         return PanWatchToolPolicy(
             self._repository, self._repository.permission_snapshot()
         )
+
+    def _report_language(self) -> str:
+        from src.platform.language import resolve_report_language
+
+        return resolve_report_language(self._repository.session)
 
     def get_tool_permissions(self) -> dict:
         """Return default risk policy plus registered-tool overrides for settings."""

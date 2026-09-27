@@ -168,7 +168,7 @@ def test_run_selfcheck_aggregates(monkeypatch):
             return {"category": "ai", "key": f"ai:{model.id}", "name": model.name,
                     "status": "fail", "latency_ms": 20, "error": "401", "hint": "key 错"}
 
-        async def fake_nc(channel, send=False):
+        async def fake_nc(channel, send=False, report_language="zh-CN"):
             return {"category": "notify", "key": f"nc:{channel.id}", "name": channel.name,
                     "status": "ok", "latency_ms": 5, "error": None, "hint": ""}
 
@@ -260,7 +260,7 @@ def test_run_selfcheck_keys_filter(monkeypatch):
             return {"category": "datasource", "key": f"ds:{s.id}", "name": s.name,
                     "status": "ok", "latency_ms": 1, "error": None, "hint": ""}
 
-        async def fake_nc(c, send=False):
+        async def fake_nc(c, send=False, report_language="zh-CN"):
             return {"category": "notify", "key": f"nc:{c.id}", "name": c.name,
                     "status": "ok", "latency_ms": 1, "error": None, "hint": ""}
 

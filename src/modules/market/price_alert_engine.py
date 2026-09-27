@@ -17,6 +17,7 @@ from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
+from src.platform.language import resolve_report_language
 
 logger = logging.getLogger(__name__)
 
@@ -286,20 +287,38 @@ class PriceAlertEngine:
         quote = snapshot.get("quote") or {}
         price = _safe_float(quote.get("current_price"))
         chg = _safe_float(quote.get("change_pct"))
-        title = f"【价格提醒】{name} ({symbol})"
-        lines = [
-            f"规则: {rule.name or f'提醒#{rule.id}'}",
-            f"现价: {price:.2f}" if price is not None else "现价: --",
-            f"涨跌幅: {chg:+.2f}%" if chg is not None else "涨跌幅: --",
-        ]
+        english = resolve_report_language(db) == "en-US"
+        title = (
+            f"[Price alert] {name} ({symbol})"
+            if english
+            else f"【价格提醒】{name} ({symbol})"
+        )
+        rule_name = rule.name or (f"Alert #{rule.id}" if english else f"提醒#{rule.id}")
+        lines = (
+            [
+                f"Rule: {rule_name}",
+                f"Current price: {price:.2f}" if price is not None else "Current price: --",
+                f"Change: {chg:+.2f}%" if chg is not None else "Change: --",
+            ]
+            if english
+            else [
+                f"规则: {rule_name}",
+                f"现价: {price:.2f}" if price is not None else "现价: --",
+                f"涨跌幅: {chg:+.2f}%" if chg is not None else "涨跌幅: --",
+            ]
+        )
         hit_lines = []
         for h in snapshot.get("conditions") or []:
             if h.get("matched"):
                 hit_lines.append(
-                    f"- {h.get('type')} {h.get('op')} {h.get('target')} (当前: {h.get('actual')})"
+                    (
+                        f"- {h.get('type')} {h.get('op')} {h.get('target')} (current: {h.get('actual')})"
+                        if english
+                        else f"- {h.get('type')} {h.get('op')} {h.get('target')} (当前: {h.get('actual')})"
+                    )
                 )
         if hit_lines:
-            lines.append("命中条件:")
+            lines.append("Matched conditions:" if english else "命中条件:")
             lines.extend(hit_lines[:4])
         content = "\n".join(lines)
 

@@ -152,7 +152,12 @@ async def probe_ai_model(model, service) -> dict:
                      int((time.monotonic() - t0) * 1000), str(e))
 
 
-async def probe_notify_channel(channel, *, send: bool = False) -> dict:
+async def probe_notify_channel(
+    channel,
+    *,
+    send: bool = False,
+    report_language: str = "zh-CN",
+) -> dict:
     """默认只校验 URI 配置(add_channel 不通会抛);send=True 才真实发送。"""
     from src.platform.notifications.notifier import NotifierManager
 
@@ -166,8 +171,16 @@ async def probe_notify_channel(channel, *, send: bool = False) -> dict:
             return _item("notify", f"nc:{channel.id}", name, "ok", latency,
                          note="仅校验配置格式,未真实发送(勾选「含真实发送」可发测试消息)",
                          note_code="notify_config_only")
+        english = report_language == "en-US"
         result = await notifier.notify_with_result(
-            title="系统自检", content="盯盘侠系统自检测试消息。", bypass_quiet_hours=True)
+            title="System check" if english else "系统自检",
+            content=(
+                "This is a PanWatch system-check test notification."
+                if english
+                else "盯盘侠系统自检测试消息。"
+            ),
+            bypass_quiet_hours=True,
+        )
         latency = int((time.monotonic() - t0) * 1000)
         ok = bool(result.get("success"))
         return _item("notify", f"nc:{channel.id}", name, _status_for(ok, latency), latency,
@@ -292,7 +305,7 @@ def _identity(t: dict) -> dict:
     return {"category": t["category"], "key": t["key"], "name": t["name"], "group": t.get("group")}
 
 
-def _probe_for(t: dict, notify_send: bool):
+def _probe_for(t: dict, notify_send: bool, report_language: str):
     kind = t["_kind"]
     if kind == "db":
         return probe_db()
@@ -304,7 +317,9 @@ def _probe_for(t: dict, notify_send: bool):
         return probe_datasource(t["_obj"])
     if kind == "ai":
         return probe_ai_model(t["_obj"], t["_service"])
-    return probe_notify_channel(t["_obj"], send=notify_send)
+    return probe_notify_channel(
+        t["_obj"], send=notify_send, report_language=report_language
+    )
 
 
 def list_selfcheck_items(*, db=None, include_system: bool = True) -> list[dict]:
@@ -323,9 +338,15 @@ async def run_selfcheck(*, db=None, notify_send: bool = False, keys=None, includ
     own = db is None
     db = db or SessionLocal()
     try:
+        from src.platform.language import resolve_report_language
+
+        report_language = resolve_report_language(db)
         keyset = set(keys) if keys is not None else None
         targets = [t for t in _enumerate(db, include_system) if keyset is None or t["key"] in keyset]
-        tasks = [_guard(_probe_for(t, notify_send), _identity(t)) for t in targets]
+        tasks = [
+            _guard(_probe_for(t, notify_send, report_language), _identity(t))
+            for t in targets
+        ]
         items = list(await asyncio.gather(*tasks)) if tasks else []
         summary = {
             "total": len(items),

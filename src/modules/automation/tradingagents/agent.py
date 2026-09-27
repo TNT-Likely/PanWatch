@@ -284,7 +284,7 @@ class TradingAgentsAgent(BaseAgent):
 
         # 0) 同日缓存命中(force_refresh=True 时跳过)
         if not force_refresh:
-            cached = self._try_cache_hit(stock)
+            cached = self._try_cache_hit(stock, context.report_language)
             if cached is not None:
                 logger.info(
                     f"[TA] 命中同日缓存 (agent=tradingagents symbol={stock.symbol})"
@@ -504,7 +504,7 @@ class TradingAgentsAgent(BaseAgent):
     def _make_trace_id(self, symbol: str) -> str:
         return f"ta-{symbol}-{int(datetime.now().timestamp())}"
 
-    def _try_cache_hit(self, stock) -> AnalysisResult | None:
+    def _try_cache_hit(self, stock, report_language: str = "zh-CN") -> AnalysisResult | None:
         """同标的同日是否已分析过 → 返回缓存的 AnalysisResult。"""
         if self.cache_ttl_hours <= 0:
             return None
@@ -520,7 +520,11 @@ class TradingAgentsAgent(BaseAgent):
             return None
         return AnalysisResult(
             agent_name=self.name,
-            title=history.title or f"【深度·缓存】{stock.name}({stock.symbol})",
+            title=history.title or (
+                f"[Deep analysis · cached] {stock.name} ({stock.symbol})"
+                if report_language == "en-US"
+                else f"【深度·缓存】{stock.name}({stock.symbol})"
+            ),
             content=history.content,
             raw_data=dict(history.raw_data),
         )

@@ -8,6 +8,8 @@ tool registration and permission decisions.
 from pan_agent import ToolRisk
 from pan_agent_tool_research import ToolDataFreshness, ToolDescriptor
 
+from .tool_metadata import ENTITY_LABELS_EN, localized_tool_presentation
+
 
 PANWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (
     ToolDescriptor(
@@ -243,3 +245,38 @@ PANWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (
         side_effects=["创建用户价格提醒"],
     ),
 )
+
+
+def localized_tool_descriptors(language: str) -> tuple[ToolDescriptor, ...]:
+    """Expose search metadata in the same language as the model-facing tools."""
+    if language != "en-US":
+        return PANWATCH_TOOL_DESCRIPTORS
+
+    localized: list[ToolDescriptor] = []
+    for descriptor in PANWATCH_TOOL_DESCRIPTORS:
+        title, summary = localized_tool_presentation(
+            descriptor.tool_name,
+            descriptor.title,
+            descriptor.summary,
+            language,
+        )
+        localized.append(
+            descriptor.model_copy(
+                update={
+                    "title": title,
+                    "summary": summary,
+                    "use_cases": [title],
+                    "keywords": [title, descriptor.tool_name],
+                    "aliases": [descriptor.tool_name],
+                    "entities": [
+                        ENTITY_LABELS_EN.get(entity, entity)
+                        for entity in descriptor.entities
+                    ],
+                    "output_summary": summary,
+                    "side_effects": (
+                        [summary] if descriptor.side_effects else []
+                    ),
+                }
+            )
+        )
+    return tuple(localized)

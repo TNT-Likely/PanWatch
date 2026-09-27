@@ -40,6 +40,9 @@ from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.marketdata.stock_list import search_stocks
 from src.platform.persistence.models import Stock
 from src.platform.runtime.config import Settings
+from src.platform.language import resolve_report_language
+
+from .tool_metadata import localized_input_schema, localized_tool_presentation
 
 
 def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | None:
@@ -176,6 +179,27 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
     """Register the host-owned market and portfolio tools for an assistant run."""
     registry = ToolRegistry()
     portfolio_service = build_portfolio_service(session)
+    language = resolve_report_language(session)
+
+    def tool_spec(
+        *,
+        name: str,
+        title: str,
+        description: str,
+        **kwargs: Any,
+    ) -> ToolSpec:
+        localized_title, localized_description = localized_tool_presentation(
+            name, title, description, language
+        )
+        input_schema = kwargs.pop("input_schema", None)
+        if input_schema is not None:
+            kwargs["input_schema"] = localized_input_schema(input_schema, language)
+        return ToolSpec(
+            name=name,
+            title=localized_title,
+            description=localized_description,
+            **kwargs,
+        )
 
     async def get_portfolio(_request: RunRequest, _arguments: dict) -> ToolResult:
         summary = portfolio_service.build_assistant_summary() or "用户暂无持仓。"
@@ -880,7 +904,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_portfolio",
             title="查询持仓",
             description="查询用户的实盘和模拟盘持仓摘要。",
@@ -890,7 +914,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_portfolio,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_stock_quote",
             title="查询实时行情",
             description="查询一只股票的最新价、涨跌幅和日内交易数据。",
@@ -914,7 +938,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_stock_quote,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="find_research_candidates",
             title="发现研究候选",
             description="查询 PanWatch 最新机会信号，返回适合进一步研究的候选标的及其评分、风险和入场计划。只读，不会刷新策略或执行交易。",
@@ -959,7 +983,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         find_research_candidates,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_kline_summary",
             title="分析 K 线走势",
             description="获取一只股票的均线、动量和近期 K 线指标摘要。",
@@ -983,7 +1007,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_kline_summary,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_stock_news",
             title="检索股票新闻",
             description="检索一只股票最近七天的相关新闻并返回精简摘要。",
@@ -1013,7 +1037,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_stock_news,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="search_stocks",
             title="搜索股票标的",
             description="按股票代码或名称搜索 PanWatch 股票清单，用于确认标的代码和市场。",
@@ -1040,7 +1064,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         search_stocks_tool,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_market_status",
             title="查询市场状态",
             description="查询 A 股、港股和美股当前是否处于交易时段及交易时间安排。",
@@ -1050,7 +1074,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_market_status,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_hot_stocks",
             title="查询热门股票",
             description="按成交额或涨幅查询指定市场的热门股票榜单。",
@@ -1080,7 +1104,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_hot_stocks,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_hot_boards",
             title="查询热门板块",
             description="按涨幅、成交额或热度查询指定市场的热门板块和主题。",
@@ -1110,7 +1134,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_hot_boards,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_board_stocks",
             title="查询板块成分股",
             description="查询指定板块中按涨幅、成交额或热度排序的成分股。",
@@ -1137,7 +1161,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_board_stocks,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_stock_fundamentals",
             title="查询股票基本面",
             description="查询一只股票的估值、盈利、成长和财报期等基本面摘要。",
@@ -1154,7 +1178,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_stock_fundamentals,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_capital_flow",
             title="查询资金流向",
             description="查询一只股票的主力、超大单和大单等资金流向摘要。",
@@ -1171,7 +1195,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_capital_flow,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_dragon_tiger",
             title="查询龙虎榜",
             description="查询指定交易日的龙虎榜上榜股票、上榜原因和买卖金额。",
@@ -1191,7 +1215,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_dragon_tiger,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="get_price_alerts",
             title="查询价格提醒",
             description="查询用户已创建的价格提醒，返回提醒 ID、标的、条件和启用状态。",
@@ -1224,7 +1248,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         get_price_alerts,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="update_price_alert",
             title="修改价格提醒",
             description="修改一条价格提醒的名称、目标价、方向或启用状态，需要用户批准。",
@@ -1278,7 +1302,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         update_price_alert,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="delete_price_alert",
             title="删除价格提醒",
             description="删除一条价格提醒及其历史命中记录，需要用户批准。",
@@ -1298,7 +1322,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         delete_price_alert,
     )
     registry.register(
-        ToolSpec(
+        tool_spec(
             name="create_price_alert",
             title="创建价格提醒",
             description="为已收录的股票创建盘中价格提醒，需要用户批准。",

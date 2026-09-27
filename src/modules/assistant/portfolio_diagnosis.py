@@ -22,6 +22,10 @@ from pan_agent import (
     ToolSpec,
 )
 
+from src.platform.language import resolve_report_language
+
+from .tool_metadata import localized_tool_presentation
+
 logger = logging.getLogger(__name__)
 
 # 触发词:显式命中即走计划驱动(简单启发式,试点足够)
@@ -297,15 +301,17 @@ class PortfolioDiagnosisExtension:
         self._ai_client = ai_client
         self._execute_tool = execute_tool
 
-    @staticmethod
-    def _tool_spec() -> ToolSpec:
+    def _tool_spec(self) -> ToolSpec:
+        title, description = localized_tool_presentation(
+            "portfolio_diagnosis",
+            "全面诊断持仓",
+            "执行一次全面持仓诊断，按计划分析组合风险和持仓股票，返回有依据的风险与调仓建议。",
+            resolve_report_language(self._db) if self._db is not None else "zh-CN",
+        )
         return ToolSpec(
             name="portfolio_diagnosis",
-            title="全面诊断持仓",
-            description=(
-                "执行一次全面持仓诊断，按计划分析组合风险和持仓股票，"
-                "返回有依据的风险与调仓建议。"
-            ),
+            title=title,
+            description=description,
             input_schema={"type": "object", "properties": {}},
         )
 
