@@ -65,3 +65,32 @@ def test_service_policy_hides_tools_outside_an_action_allowlist():
     assert policy.is_tool_visible(request, read_tool) is False
     session.close()
     engine.dispose()
+
+
+def test_adanos_tool_is_available_to_runtime_only_with_host_key():
+    from src.modules.assistant.repository import AssistantRepository
+    from src.modules.assistant.service import AssistantService
+    from src.platform.runtime.config import Settings
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    service = AssistantService(AssistantRepository(session), Settings(adanos_api_key="test-key"))
+
+    service.build_runtime(object())
+    names = {tool["name"] for tool in service.get_tool_permissions()["tools"]}
+    assert "get_adanos_stock_sentiment" in names
+    assert any(
+        schema["function"]["name"] == "get_adanos_stock_sentiment"
+        for schema in service._context_tool_schemas()
+    )
+
+    disabled = AssistantService(AssistantRepository(session), Settings(adanos_api_key=""))
+    disabled.build_runtime(object())
+    disabled_names = {tool["name"] for tool in disabled.get_tool_permissions()["tools"]}
+    assert "get_adanos_stock_sentiment" not in disabled_names
+
+    session.close()
+    engine.dispose()

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ai_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     ai_api_key: str = ""
     ai_model: str = "glm-4"
+    adanos_api_key: str = ""
 
     # Assistant context engineering. The compression model is optional: when
     # unset, the host reuses the configured default assistant model.

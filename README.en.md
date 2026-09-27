@@ -153,6 +153,7 @@ docker-compose up -d
 | `JWT_SECRET` | Secret used to sign JWTs | Generated automatically |
 | `DATA_DIR` | Data storage directory | `./data` |
 | `TZ` | Application timezone used for agent schedules and displayed times | `Asia/Shanghai` |
+| `ADANOS_API_KEY` | Optional. Enables a read-only assistant tool for US-stock sentiment from Adanos Reddit, X, News, and Polymarket; source access depends on your Adanos plan. It does not place trades. | Unset (tool disabled) |
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | Skip the initial Chromium installation when browser features are not required | Not set |
 | `LOG_LEVEL` | Console log level. `INFO` prints business events and errors; use `DEBUG` for scheduler heartbeats, collection steps, and other diagnostics. The UI log panel always retains the complete log. | `INFO` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` | Outbound HTTP proxy. Configure it through an external environment variable, `http_proxy=http://host:port` in `.env`, or **Settings → Global HTTP Proxy**. Priority: external environment variables > UI > `.env`. `NO_PROXY` includes `localhost,127.0.0.1` by default. | Not set |

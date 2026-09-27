@@ -153,6 +153,7 @@ docker-compose up -d
 | `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
 | `DATA_DIR` | 数据存储目录 | `./data` |
 | `TZ` | 应用时区（影响 Agent 调度触发时间与时间展示） | `Asia/Shanghai` |
+| `ADANOS_API_KEY` | 可选。配置后助手可查询 Adanos 美股 Reddit、X、新闻和 Polymarket 聚合情绪；需要相应来源的 API 套餐权限，不会自动触发交易 | 未设置（工具关闭） |
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | 跳过首次 Chromium 安装（不需要截图时可用） | 未设置 |
 | `LOG_LEVEL` | 控制台日志级别。默认 `INFO`（只输出业务事件 + 错误）；排查问题时设 `DEBUG` 可看到调度心跳、采集过程等底层日志。UI 日志板始终保留完整记录，不受影响 | `INFO` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` | 出站 HTTP 代理。三种配置方式任选其一: ① 启动前 `export HTTP_PROXY=...`；② `.env` 里写 `http_proxy=http://host:port`；③ UI「设置 → 全局 HTTP 代理」。三者优先级:外部环境变量 > UI > `.env`。生效后所有 httpx 客户端走代理。`NO_PROXY` 默认包含 `localhost,127.0.0.1` | 未设置 |

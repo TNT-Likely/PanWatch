@@ -3,6 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
+import httpx
 from pan_agent import ModelMessage, ReadOnlyToolPolicy, RunRequest, ToolExposure
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -49,6 +50,105 @@ def test_panwatch_registry_keeps_core_tools_direct_and_defers_specialized_tools(
     assert registry.model_tools(
         _request(), ReadOnlyToolPolicy(), names=["get_hot_stocks"], include_deferred=True
     )[0].name == "get_hot_stocks"
+    session.close()
+    engine.dispose()
+
+
+def test_adanos_tool_is_opt_in_and_us_only():
+    engine, session = _session()
+    assert "get_adanos_stock_sentiment" not in {
+        tool.name for tool in assistant_tools.build_panwatch_tool_registry(session).registered_tools()
+    }
+    registry = assistant_tools.build_panwatch_tool_registry(session, adanos_api_key="test-key")
+    assert registry.get("get_adanos_stock_sentiment").spec.exposure is ToolExposure.DEFERRED
+    result = asyncio.run(
+        registry.execute(
+            "get_adanos_stock_sentiment", _request(), {"symbol": "600519", "market": "CN"}
+        )
+    )
+    assert result.error_code == "adanos_us_only"
+    session.close()
+    engine.dispose()
+
+
+def test_adanos_tool_queries_all_stock_sources_without_exposing_key(monkeypatch):
+    engine, session = _session()
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "found": True,
+                "sentiment_score": 0.25,
+                "buzz_score": 40,
+                "bullish_pct": 55,
+                "bearish_pct": 20,
+                "mentions": 12,
+                "trade_count": 8,
+            },
+        )
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        assistant_tools.httpx,
+        "AsyncClient",
+        lambda **kwargs: client_type(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    registry = assistant_tools.build_panwatch_tool_registry(session, adanos_api_key="test-key")
+    for source in ("reddit", "x", "news", "polymarket"):
+        result = asyncio.run(
+            registry.execute(
+                "get_adanos_stock_sentiment",
+                _request(),
+                {"symbol": "AAPL", "source": source, "from": "2026-09-01", "to": "2026-09-07"},
+            )
+        )
+        assert result.ok is True
+        assert result.data["source"] == source
+        assert result.data["trade_count" if source == "polymarket" else "mentions"] == (
+            8 if source == "polymarket" else 12
+        )
+        assert "test-key" not in str(result.data) + result.summary
+        request = requests[-1]
+        assert request.url.path == f"/{source}/stocks/v1/stock/AAPL"
+        assert request.url.params["from"] == "2026-09-01"
+        assert request.url.params["to"] == "2026-09-07"
+        assert "days" not in request.url.params
+        assert request.headers["X-API-Key"] == "test-key"
+    session.close()
+    engine.dispose()
+
+
+def test_adanos_tool_reports_no_data_and_access_errors(monkeypatch):
+    engine, session = _session()
+    status = [200]
+
+    def handler(request):
+        return httpx.Response(status[0], json={"found": False})
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(
+        assistant_tools.httpx,
+        "AsyncClient",
+        lambda **kwargs: client_type(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    registry = assistant_tools.build_panwatch_tool_registry(session, adanos_api_key="test-key")
+    args = {"symbol": "AAPL", "source": "reddit", "from": "2026-09-01", "to": "2026-09-07"}
+    no_data = asyncio.run(registry.execute("get_adanos_stock_sentiment", _request(), args))
+    assert no_data.ok is True and no_data.data["found"] is False
+    assert "sentiment_score" not in no_data.data
+    status[0] = 403
+    denied = asyncio.run(registry.execute("get_adanos_stock_sentiment", _request(), args))
+    assert denied.error_code == "adanos_access_denied"
+    status[0] = 429
+    limited = asyncio.run(registry.execute("get_adanos_stock_sentiment", _request(), args))
+    assert limited.error_code == "adanos_rate_limited"
+    bad_window = asyncio.run(
+        registry.execute("get_adanos_stock_sentiment", _request(), {**args, "to": "2026-08-31"})
+    )
+    assert bad_window.error_code == "adanos_date_invalid"
     session.close()
     engine.dispose()
 

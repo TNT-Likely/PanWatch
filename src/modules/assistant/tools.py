@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
+import httpx
 from pan_agent import (
     RunRequest,
     ToolExposure,
@@ -172,8 +174,9 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
+def build_panwatch_tool_registry(session: Session, *, adanos_api_key: str = "") -> ToolRegistry:
     """Register the host-owned market and portfolio tools for an assistant run."""
+    adanos_api_key = adanos_api_key.strip()
     registry = ToolRegistry()
     portfolio_service = build_portfolio_service(session)
 
@@ -355,6 +358,85 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             summary=f"{market.value}:{symbol} 近 7 天相关新闻 {len(items)} 条。",
             data={"symbol": symbol, "market": market.value, "items": items},
             sources=[{"name": "PanWatch 新闻数据"}],
+            observed_at=datetime.now(UTC),
+        )
+
+    async def get_adanos_stock_sentiment(_request: RunRequest, arguments: dict) -> ToolResult:
+        parsed = _symbol_and_market({**arguments, "market": arguments.get("market") or "US"})
+        if parsed is None:
+            return _failure_for_symbol(arguments)
+        symbol, market = parsed
+        if market is not MarketCode.US:
+            return ToolResult.failure(
+                summary="Adanos 股票情绪数据仅支持美股。", error_code="adanos_us_only"
+            )
+        source = str(arguments.get("source") or "reddit").lower()
+        if source not in {"reddit", "x", "news", "polymarket"}:
+            return ToolResult.failure(
+                summary="Adanos 来源必须是 reddit、x、news 或 polymarket。",
+                error_code="adanos_source_invalid",
+            )
+        today = datetime.now(UTC).date()
+        start = str(arguments.get("from") or (today - timedelta(days=6)).isoformat())
+        end = str(arguments.get("to") or today.isoformat())
+        try:
+            if (
+                date.fromisoformat(start).isoformat() != start
+                or date.fromisoformat(end).isoformat() != end
+                or start > end
+            ):
+                raise ValueError("invalid UTC window")
+        except ValueError:
+            return ToolResult.failure(
+                summary="日期必须是有序的 YYYY-MM-DD UTC 区间。",
+                error_code="adanos_date_invalid",
+            )
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"https://api.adanos.org/{source}/stocks/v1/stock/{quote(symbol, safe='')}",
+                    params={"from": start, "to": end},
+                    headers={"X-API-Key": adanos_api_key, "Accept": "application/json"},
+                )
+            if response.status_code in (401, 403):
+                return ToolResult.failure(
+                    summary="Adanos API key 无权访问此来源。", error_code="adanos_access_denied"
+                )
+            if response.status_code == 429:
+                return ToolResult.failure(
+                    summary="Adanos 请求配额已用尽。", error_code="adanos_rate_limited"
+                )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return ToolResult.failure(
+                summary="Adanos 情绪数据暂时不可用。", error_code="adanos_unavailable"
+            )
+        if not isinstance(payload, dict) or not isinstance(payload.get("found"), bool):
+            return ToolResult.failure(
+                summary="Adanos 返回的数据格式无效。", error_code="adanos_unavailable"
+            )
+        data = {
+            "ticker": symbol,
+            "source": source,
+            "from": start,
+            "to": end,
+            "found": payload["found"],
+        }
+        if payload["found"]:
+            data.update(
+                {key: payload.get(key) for key in (
+                    "sentiment_score", "buzz_score", "bullish_pct", "bearish_pct",
+                    "mentions" if source != "polymarket" else "trade_count",
+                )}
+            )
+        return ToolResult.success(
+            summary=(
+                f"Adanos {source} 的 {symbol} 情绪数据已就绪。"
+                if payload["found"] else f"Adanos {source} 在该时间段没有 {symbol} 的合格数据。"
+            ),
+            data=data,
+            sources=[{"name": "Adanos Market Sentiment"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -1012,6 +1094,32 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ),
         get_stock_news,
     )
+    if adanos_api_key:
+        registry.register(
+            ToolSpec(
+                name="get_adanos_stock_sentiment",
+                title="查询 Adanos 美股情绪",
+                description="查询 Adanos Reddit、X、新闻或 Polymarket 的美股情绪聚合数据；仅供研究，不是交易信号。",
+                risk=ToolRisk.READ,
+                input_schema={
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "symbol": {"type": "string", "description": "美股代码，例如 AAPL"},
+                        "market": {"type": "string", "enum": ["US"], "default": "US"},
+                        "source": {
+                            "type": "string",
+                            "enum": ["reddit", "x", "news", "polymarket"],
+                            "default": "reddit",
+                        },
+                        "from": {"type": "string", "format": "date"},
+                        "to": {"type": "string", "format": "date"},
+                    },
+                },
+            ),
+            get_adanos_stock_sentiment,
+        )
+        registry.set_exposure("get_adanos_stock_sentiment", ToolExposure.DEFERRED)
     registry.register(
         ToolSpec(
             name="search_stocks",
