@@ -4,10 +4,18 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AgentConfig, AppSettings, Stock, StockAgent
+from src.platform.persistence.models import (
+    AIModel,
+    AgentConfig,
+    AppSettings,
+    NotifyChannel,
+    Stock,
+    StockAgent,
+)
 from src.modules.automation.agent_catalog import AGENT_KIND_CAPABILITY, infer_agent_kind
 
 
@@ -153,6 +161,89 @@ def import_template(
     updated_agents = 0
     created_stock_agents = 0
     updated_stock_agents = 0
+    dropped_ai_model_refs = 0
+    dropped_notify_channel_refs = 0
+    warnings: list[dict[str, Any]] = []
+
+    # 配置包中的自增 ID 只在导出实例内有意义。目标库存在对应记录时保留，
+    # 否则过滤关联；Agent、股票和 StockAgent 仍按自身自然键创建或更新。
+    requested_model_ids = {
+        a.ai_model_id for a in payload.agents or [] if a.ai_model_id is not None
+    }
+    requested_channel_ids = {
+        channel_id
+        for a in payload.agents or []
+        for channel_id in a.notify_channel_ids or []
+    }
+    for stock in payload.stocks or []:
+        for stock_agent in stock.agents or []:
+            if stock_agent.ai_model_id is not None:
+                requested_model_ids.add(stock_agent.ai_model_id)
+            requested_channel_ids.update(stock_agent.notify_channel_ids or [])
+    valid_model_ids = (
+        {
+            row[0]
+            for row in db.query(AIModel.id)
+            .filter(AIModel.id.in_(requested_model_ids))
+            .all()
+        }
+        if requested_model_ids
+        else set()
+    )
+    valid_channel_ids = (
+        {
+            row[0]
+            for row in db.query(NotifyChannel.id)
+            .filter(NotifyChannel.id.in_(requested_channel_ids))
+            .all()
+        }
+        if requested_channel_ids
+        else set()
+    )
+
+    def sanitize_model_id(
+        model_id: int | None, *, resource: str, resource_key: str
+    ) -> int | None:
+        nonlocal dropped_ai_model_refs
+        if model_id is None or model_id in valid_model_ids:
+            return model_id
+        dropped_ai_model_refs += 1
+        warnings.append(
+            {
+                "code": "missing_ai_model",
+                "resource": resource,
+                "resource_key": resource_key,
+                "reference_ids": [model_id],
+            }
+        )
+        return None
+
+    def sanitize_channel_ids(
+        channel_ids: list[int], *, resource: str, resource_key: str
+    ) -> list[int]:
+        nonlocal dropped_notify_channel_refs
+        missing_ids = sorted(
+            {
+                channel_id
+                for channel_id in channel_ids
+                if channel_id not in valid_channel_ids
+            }
+        )
+        if missing_ids:
+            dropped_notify_channel_refs += sum(
+                1 for channel_id in channel_ids if channel_id not in valid_channel_ids
+            )
+            warnings.append(
+                {
+                    "code": "missing_notify_channel",
+                    "resource": resource,
+                    "resource_key": resource_key,
+                    "reference_ids": missing_ids,
+                }
+            )
+        return [
+            channel_id for channel_id in channel_ids if channel_id in valid_channel_ids
+        ]
 
     # Settings
     for k, v in (payload.settings or {}).items():
@@ -190,8 +281,12 @@ def import_template(
         row.enabled = bool(a.enabled)
         row.schedule = a.schedule or ""
         row.execution_mode = a.execution_mode or "batch"
-        row.ai_model_id = a.ai_model_id
-        row.notify_channel_ids = a.notify_channel_ids or []
+        row.ai_model_id = sanitize_model_id(
+            a.ai_model_id, resource="agent", resource_key=a.name
+        )
+        row.notify_channel_ids = sanitize_channel_ids(
+            a.notify_channel_ids or [], resource="agent", resource_key=a.name
+        )
         if row.kind == AGENT_KIND_CAPABILITY:
             row.enabled = False
             row.schedule = ""
@@ -236,27 +331,43 @@ def import_template(
                     db.delete(x)
 
         for sa in s.agents:
+            resource_key = f"{s.market}:{s.symbol}:{sa.agent_name}"
+            ai_model_id = sanitize_model_id(
+                sa.ai_model_id, resource="stock_agent", resource_key=resource_key
+            )
+            notify_channel_ids = sanitize_channel_ids(
+                sa.notify_channel_ids or [],
+                resource="stock_agent",
+                resource_key=resource_key,
+            )
             row = existing_map.get(sa.agent_name)
             if not row:
                 row = StockAgent(
                     stock_id=stock.id,
                     agent_name=sa.agent_name,
                     schedule=sa.schedule or "",
-                    ai_model_id=sa.ai_model_id,
-                    notify_channel_ids=sa.notify_channel_ids or [],
+                    ai_model_id=ai_model_id,
+                    notify_channel_ids=notify_channel_ids,
                 )
                 db.add(row)
                 created_stock_agents += 1
             else:
                 row.schedule = sa.schedule or ""
-                row.ai_model_id = sa.ai_model_id
-                row.notify_channel_ids = sa.notify_channel_ids or []
+                row.ai_model_id = ai_model_id
+                row.notify_channel_ids = notify_channel_ids
                 updated_stock_agents += 1
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("配置包导入因无效关联回滚: %s", exc)
+        raise HTTPException(400, "配置包包含无效关联，导入已回滚") from exc
     logger.info(
         f"导入配置包: settings={updated_settings} agents(+{created_agents}/~{updated_agents}) "
-        f"stocks(+{created_stocks}/~{updated_stocks}) stock_agents(+{created_stock_agents}/~{updated_stock_agents})"
+        f"stocks(+{created_stocks}/~{updated_stocks}) "
+        f"stock_agents(+{created_stock_agents}/~{updated_stock_agents}) "
+        f"filtered_refs(model={dropped_ai_model_refs},channel={dropped_notify_channel_refs})"
     )
 
     # Best-effort: reload scheduler so schedule changes take effect immediately.
@@ -280,5 +391,8 @@ def import_template(
             "updated_stocks": updated_stocks,
             "created_stock_agents": created_stock_agents,
             "updated_stock_agents": updated_stock_agents,
+            "dropped_ai_model_refs": dropped_ai_model_refs,
+            "dropped_notify_channel_refs": dropped_notify_channel_refs,
         },
+        "warnings": warnings,
     }
