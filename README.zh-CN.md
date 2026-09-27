@@ -8,7 +8,7 @@
 
 > 🌐 支持简体中文与英文。首次访问会跟随浏览器语言，手动切换后会记住你的选择。
 
-[快速开始](#快速开始) · [功能一览](#-功能一览) · [核心功能](#核心功能) · [本地开发](#本地开发) · [参与贡献](#贡献)
+[快速开始](#快速开始) · [功能一览](#-功能一览) · [核心功能](#核心功能) · [本地开发](#本地开发) · [捐赠支持](#捐赠支持) · [参与贡献](#贡献)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -275,11 +275,27 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 
 ## 捐赠支持
 
-如果你觉得 PanWatch 有帮助，欢迎请作者喝杯咖啡：
+PanWatch 完全免费开源。如果它节省了你的时间或改善了工作流，欢迎支持项目持续开发：
 
-| 微信赞赏 | 支付宝 |
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white&style=for-the-badge)](https://paypal.me/sunxiaoyes)
+
+<details>
+<summary>USDT（TRC20）</summary>
+
+地址：`TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
+
+<img src="./docs/donate/binance.png" width="220" alt="币安 USDT TRC20 二维码" />
+
+</details>
+
+<details>
+<summary>支付宝 / 微信支付</summary>
+
+| 支付宝 | 微信支付 |
 |:---:|:---:|
-| <img src="./docs/donate/wechat.png" width="240" /> | <img src="./docs/donate/alipay.png" width="240" /> |
+| <img src="./docs/donate/alipay.png" width="160" alt="支付宝二维码" /> | <img src="./docs/donate/wechat.png" width="160" alt="微信支付二维码" /> |
+
+</details>
 
 ## 贡献
 
