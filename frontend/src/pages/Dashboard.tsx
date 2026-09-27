@@ -518,9 +518,11 @@ export default function DashboardPage() {
                         <div className="truncate text-body font-medium">{it.name || it.symbol}</div>
                         {it.why && <div className="truncate text-caption text-muted-foreground">{it.why}</div>}
                       </div>
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-caption ${pctChipCls(it.change_pct)}`}>
-                        {it.change_pct != null ? pct(it.change_pct) : '--'}
-                      </span>
+                      {it.change_pct != null && (
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-caption ${pctChipCls(it.change_pct)}`}>
+                          {pct(it.change_pct)}
+                        </span>
+                      )}
                     </div>
                   )
                 })}

@@ -976,7 +976,7 @@ export default function SettingsPage() {
                         value={currentValue}
                         onChange={e => setEdited({ ...edited, [setting.key]: e.target.value })}
                         className={`font-mono ${isChanged ? 'ring-2 ring-primary/20 border-primary/30' : ''}`}
-                        placeholder={setting.key}
+                        placeholder='未设置'
                       />
                       )}
                       <button

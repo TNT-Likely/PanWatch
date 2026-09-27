@@ -70,12 +70,6 @@ const sleep = (ms: number) => new Promise<void>((resolve) => {
   window.setTimeout(resolve, ms)
 })
 
-const formatMetric = (value: unknown, digits = 1) => {
-  const n = toNumberOrNull(value)
-  if (n == null) return '--'
-  return n.toFixed(digits)
-}
-
 const DEFAULT_FILTERS = {
   market: 'ALL' as const,
   source: 'all' as const,
@@ -732,6 +726,13 @@ export default function OpportunitiesPage() {
           const sourceAgentTailCount = Math.max(0, group.sourceAgents.length - 1)
           const eventScore = toNumberOrNull(newsMetric.event_score)
           const eventCount = Number(newsMetric.news_count || 0)
+          const alphaScore = toNumberOrNull(breakdown.alpha_score)
+          const catalystScore = toNumberOrNull(breakdown.catalyst_score)
+          const qualityScore = toNumberOrNull(breakdown.quality_score)
+          const riskPenaltyScore = toNumberOrNull(breakdown.risk_penalty)
+          const relStrengthPct = crossFeature.relative_strength_pct
+          // 指标行全部为空时整个 mini 网格不渲染，避免空容器占位
+          const hasMetricRows = [alphaScore, catalystScore, qualityScore, riskPenaltyScore, relStrengthPct, eventScore].some((v) => v != null)
           const verification = verificationBadge(item.earnings_verification)
           const sourceFlags: string[] = []
           if (group.hasMarketScan) sourceFlags.push('市场候选')
@@ -775,31 +776,41 @@ export default function OpportunitiesPage() {
                 <div className="mt-2 text-body-sm text-foreground line-clamp-2">{item.signal || item.reason || '--'}</div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-caption text-muted-foreground">
                   <div>入场: {formatEntryDisplay(item.action, entryLow, entryHigh)}</div>
-                  <div>止损: {formatPlanPrice(stopLoss)}</div>
-                  <div>目标: {formatPlanPrice(targetPrice)}</div>
-                  <div>失效: {item.invalidation || '--'}</div>
-                  <div>
-                    策略: {strategyHead}
-                    {strategyTailCount > 0 ? ` +${strategyTailCount}` : ''}
-                  </div>
+                  {stopLoss != null && <div>止损: {formatPlanPrice(stopLoss)}</div>}
+                  {targetPrice != null && <div>目标: {formatPlanPrice(targetPrice)}</div>}
+                  {item.invalidation && <div>失效: {item.invalidation}</div>}
+                  {strategyHead && (
+                    <div>
+                      策略: {strategyHead}
+                      {strategyTailCount > 0 ? ` +${strategyTailCount}` : ''}
+                    </div>
+                  )}
                   <div>来源池: {sourcePoolLabel}</div>
-                  <div>
-                    来源Agent: {sourceAgentHead}
-                    {sourceAgentTailCount > 0 ? ` +${sourceAgentTailCount}` : ''}
-                  </div>
-                  <div>风险: {item.risk_level_label || item.risk_level || '--'}</div>
-                  <div>市场状态: {marketRegime.regime_label || marketRegime.regime || '--'}</div>
+                  {sourceAgentHead !== '--' && (
+                    <div>
+                      来源Agent: {sourceAgentHead}
+                      {sourceAgentTailCount > 0 ? ` +${sourceAgentTailCount}` : ''}
+                    </div>
+                  )}
+                  {(item.risk_level_label || item.risk_level) && <div>风险: {item.risk_level_label || item.risk_level}</div>}
+                  {(marketRegime.regime_label || marketRegime.regime) && (
+                    <div>市场状态: {marketRegime.regime_label || marketRegime.regime}</div>
+                  )}
                   <div>持仓: {item.is_holding_snapshot ? '持仓中' : '未持仓'}</div>
                   <div>市场: {marketLabel(item.stock_market)}</div>
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-mini text-muted-foreground">
-                  <div>Alpha: {formatMetric(breakdown.alpha_score)}</div>
-                  <div>催化: {formatMetric(breakdown.catalyst_score)}</div>
-                  <div>质量: {formatMetric(breakdown.quality_score)}</div>
-                  <div>风险惩罚: {formatMetric(breakdown.risk_penalty)}</div>
-                  <div>相对强弱: {crossFeature.relative_strength_pct != null ? `${Number(crossFeature.relative_strength_pct).toFixed(0)}分位` : '--'}</div>
-                  <div>事件催化: {eventScore != null ? eventScore.toFixed(1) : '--'}{eventCount > 0 ? `（${eventCount}条）` : '（无命中）'}</div>
-                </div>
+                {hasMetricRows && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-mini text-muted-foreground">
+                    {alphaScore != null && <div>Alpha: {alphaScore.toFixed(1)}</div>}
+                    {catalystScore != null && <div>催化: {catalystScore.toFixed(1)}</div>}
+                    {qualityScore != null && <div>质量: {qualityScore.toFixed(1)}</div>}
+                    {riskPenaltyScore != null && <div>风险惩罚: {riskPenaltyScore.toFixed(1)}</div>}
+                    {relStrengthPct != null && <div>相对强弱: {relStrengthPct.toFixed(0)}分位</div>}
+                    {eventScore != null && (
+                      <div>事件催化: {eventScore.toFixed(1)}{eventCount > 0 ? `（${eventCount}条）` : '（无命中）'}</div>
+                    )}
+                  </div>
+                )}
                 {item.factor_explain && (((item.factor_explain.positive?.length ?? 0) > 0) || ((item.factor_explain.negative?.length ?? 0) > 0)) && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {(item.factor_explain.positive ?? []).map((f) => (

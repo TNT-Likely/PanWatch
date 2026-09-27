@@ -445,7 +445,7 @@ export default function PaperTradingPage() {
               <BarChart3 className="w-3.5 h-3.5" />
               最大回撤
             </div>
-            <div className="text-lg font-bold text-stock-down">{account.max_drawdown_pct.toFixed(2)}%</div>
+            <div className="text-lg font-bold text-destructive">{account.max_drawdown_pct.toFixed(2)}%</div>
           </div>
           <div className="card p-3">
             <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
