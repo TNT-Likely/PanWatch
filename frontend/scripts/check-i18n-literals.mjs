@@ -18,6 +18,7 @@ const migratedFiles = [
   'src/pages/Dashboard.tsx',
   'src/pages/PriceAlerts.tsx',
   'src/pages/Opportunities.tsx',
+  'src/pages/Stocks.tsx',
   'packages/biz-ui/src/components/price-alert-form-dialog.tsx',
   'src/pages/AnalysisDetail.tsx',
   'src/components/ChatWidget.tsx',
