@@ -39,7 +39,7 @@ Powered by [TradingAgents](https://github.com/TauricResearch/TradingAgents) for 
 
 ## 📸 Feature Overview
 
-The screenshots below use the Simplified Chinese interface; the same product surfaces are available in English.
+The screenshots below use the English interface; Simplified Chinese is available throughout the same product surfaces.
 
 | Portfolio · Multi-account overview | Opportunities · AI-scored ideas |
 |:---:|:---:|
