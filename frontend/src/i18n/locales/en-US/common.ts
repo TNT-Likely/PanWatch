@@ -6,6 +6,9 @@ export const common = {
     name: 'PanWatch',
     englishName: 'PanWatch',
     tagline: 'AI-powered market monitoring assistant',
+    pageTitle: 'PanWatch | AI stock monitoring',
+    shortTitle: 'PanWatch',
+    description: 'Self-hosted AI stock monitoring for A-shares, Hong Kong, and U.S. markets with TradingAgents.',
   },
   actions: {
     add: 'Add',

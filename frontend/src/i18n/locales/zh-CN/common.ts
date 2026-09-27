@@ -3,6 +3,9 @@ export const common = {
     name: '盯盘侠',
     englishName: 'PanWatch',
     tagline: 'AI 驱动的股票监控助手',
+    pageTitle: '盯盘侠 | PanWatch',
+    shortTitle: '盯盘侠',
+    description: 'AI 驱动的股票监控助手，覆盖 A 股、港股和美股，支持 TradingAgents 智能分析与异动提醒。',
   },
   actions: {
     add: '添加',

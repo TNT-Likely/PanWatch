@@ -841,7 +841,7 @@ export default function StockInsightModal(props: {
     }
     if (suggestions.length > 0) {
       const lines = suggestions.slice(0, 3).map(s => `- [${s.agent_label || s.agent_name}] ${actionLabel(s.action, s.action_label)}: ${s.signal}`)
-      parts.push(`${english ? 'Recent AI suggestions' : '最近AI建议'}：\n${lines.join('\n')}`)
+      parts.push(`${english ? 'Recent AI suggestions:\n' : '最近AI建议：\n'}${lines.join('\n')}`)
     }
     if (holdingAgg) {
       parts.push(english

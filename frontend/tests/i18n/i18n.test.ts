@@ -40,12 +40,34 @@ describe('internationalization runtime', () => {
   })
 
   it('persists language changes and updates the document language', async () => {
+    const description = document.createElement('meta')
+    description.name = 'description'
+    const appTitle = document.createElement('meta')
+    appTitle.name = 'apple-mobile-web-app-title'
+    const manifest = document.createElement('link')
+    manifest.rel = 'manifest'
+    document.head.append(description, appTitle, manifest)
+
     await changeLocale('en-US')
 
     expect(getCurrentLocale()).toBe('en-US')
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en-US')
     expect(document.documentElement.lang).toBe('en-US')
+    expect(document.title).toBe('PanWatch | AI stock monitoring')
+    expect(description.content).toContain('TradingAgents')
+    expect(appTitle.content).toBe('PanWatch')
+    expect(manifest.getAttribute('href')).toBe('/manifest.json')
     expect(i18n.t('navigation:items.portfolio')).toBe('Portfolio')
+
+    await changeLocale('zh-CN')
+    expect(document.title).toBe('盯盘侠 | PanWatch')
+    expect(description.content).toContain('A 股')
+    expect(appTitle.content).toBe('盯盘侠')
+    expect(manifest.getAttribute('href')).toBe('/manifest.zh-CN.json')
+
+    description.remove()
+    appTitle.remove()
+    manifest.remove()
   })
 
   it('uses Chinese as the configured fallback language', () => {

@@ -5,6 +5,7 @@ const CACHE_NAME = 'panwatch-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
+  '/manifest.zh-CN.json',
   '/icon-192.png',
   '/icon-512.png',
 ];

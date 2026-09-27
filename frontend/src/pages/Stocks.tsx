@@ -26,6 +26,7 @@ import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-mod
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
+import { getCurrentLocale } from '@/i18n'
 
 interface AgentResult {
   success?: boolean
@@ -888,7 +889,7 @@ export default function StocksPage() {
     try {
       const d = new Date(iso)
       if (isNaN(d.getTime())) return iso
-      return d.toLocaleString('zh-CN', {
+      return d.toLocaleString(getCurrentLocale(), {
         timeZone: tz || undefined,
         month: '2-digit',
         day: '2-digit',
@@ -1611,7 +1612,7 @@ export default function StocksPage() {
                 <>
                   <div className="w-px h-4 bg-border" />
                   <span className="text-[10px] text-muted-foreground/60">
-                    {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {lastRefreshTime.toLocaleTimeString(getCurrentLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </>
               )}
@@ -1696,7 +1697,7 @@ export default function StocksPage() {
           </div>
           {lastRefreshTime && (
             <span className="md:hidden shrink-0 text-[10px] text-muted-foreground/60 font-mono ml-1">
-              {lastRefreshTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {lastRefreshTime.toLocaleTimeString(getCurrentLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
         </div>

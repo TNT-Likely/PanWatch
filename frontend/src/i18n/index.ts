@@ -40,7 +40,14 @@ function readInitialLocale(): SupportedLocale {
 
 function applyLocale(locale: string) {
   const normalized = normalizeLocale(locale)
-  if (typeof document !== 'undefined') document.documentElement.lang = normalized
+  if (typeof document !== 'undefined') {
+    const metadata = resources[normalized].common.product
+    document.documentElement.lang = normalized
+    document.title = metadata.pageTitle
+    document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', metadata.description)
+    document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', metadata.shortTitle)
+    document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', normalized === 'zh-CN' ? '/manifest.zh-CN.json' : '/manifest.json')
+  }
   if (typeof window !== 'undefined') window.localStorage.setItem(LOCALE_STORAGE_KEY, normalized)
 }
 

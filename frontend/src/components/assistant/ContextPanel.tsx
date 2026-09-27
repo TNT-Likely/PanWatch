@@ -48,7 +48,7 @@ export function ContextPanel({ detail, loading, compressing, error, onCompress, 
       {!loading && detail && (
         <>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="font-medium tabular-nums">{usageLabel}：{detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
+            <span className="font-medium tabular-nums">{usageLabel}: {detail.usage.total_tokens.toLocaleString()} / {detail.usage.budget_tokens.toLocaleString()}</span>
             <span className={detail.status === 'needs_compression' ? 'text-rose-600' : detail.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'}>
               {detail.status === 'needs_compression' ? tr('needsCompression') : detail.status === 'warning' ? tr('warning') : tr('normal')} · {usagePercent(detail.usage)}%
             </span>

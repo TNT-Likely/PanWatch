@@ -10,6 +10,7 @@ import { Input } from '@panwatch/base-ui/components/ui/input'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
+import { getCurrentLocale } from '@/i18n'
 
 interface AgentConfig {
   id: number
@@ -191,7 +192,7 @@ export default function AgentsPage() {
     try {
       const d = new Date(iso)
       if (isNaN(d.getTime())) return iso
-      return d.toLocaleString('zh-CN', {
+      return d.toLocaleString(getCurrentLocale(), {
         timeZone: tz || undefined,
         month: '2-digit',
         day: '2-digit',

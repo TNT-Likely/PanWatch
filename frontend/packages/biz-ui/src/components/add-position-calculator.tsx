@@ -215,7 +215,7 @@ export default function AddPositionCalculator({
                   <span className="text-muted-foreground">{tr('dilution')}</span>
                   <span className={`font-mono ${calc.diluteAbs >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {calc.diluteAbs >= 0 ? '↓' : '↑'}
-                    {fmt(Math.abs(calc.diluteAbs))}（{fmt(Math.abs(calc.dilutePct))}%）
+                    {fmt(Math.abs(calc.diluteAbs))} ({fmt(Math.abs(calc.dilutePct))}%)
                   </span>
                 </div>
               )}

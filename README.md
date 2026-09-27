@@ -67,7 +67,7 @@ PanWatch integrates [TradingAgents](https://github.com/TauricResearch/TradingAge
 - **Four analyst roles** — technical, sentiment, news, and fundamentals — followed by a **bull/bear debate**, **risk review**, and **portfolio-manager decision**.
 - A complete reasoning trail is generated in 3–5 minutes and can be delivered to Telegram, WeCom, or DingTalk.
 - The default model is `deepseek-chat`; a typical run costs about USD 0.05, keeping monthly spending predictable.
-- [View the TradingAgents deep-analysis flowchart](docs/tradingagents-flow.md) (Chinese)
+- [View the TradingAgents deep-analysis flowchart](docs/tradingagents-flow.en.md)
 
 ## Core Features
 

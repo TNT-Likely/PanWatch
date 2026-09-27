@@ -33,6 +33,7 @@ import BenchChart from '@/components/BenchChart'
 import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
+import { formatNumber } from '@/i18n/format'
 
 function pct(v?: number | null, digits = 2): string {
   if (v == null || !isFinite(v)) return '--'
@@ -53,7 +54,7 @@ function pctChipCls(v?: number | null): string {
 function fmtMoney(v?: number | null): string {
   if (v == null || !isFinite(v)) return '--'
   const sign = v > 0 ? '+' : v < 0 ? '-' : ''
-  return `${sign}¥${Math.abs(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
+  return `${sign}¥${formatNumber(Math.abs(v), { maximumFractionDigits: 0 })}`
 }
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
 function stripMarkdown(s: string): string {

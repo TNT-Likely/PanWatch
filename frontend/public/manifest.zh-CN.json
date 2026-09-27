@@ -1,7 +1,7 @@
 {
-  "name": "PanWatch",
-  "short_name": "PanWatch",
-  "description": "Self-hosted AI stock monitoring powered by TradingAgents",
+  "name": "盯盘侠 PanWatch",
+  "short_name": "盯盘侠",
+  "description": "AI 驱动的股票监控助手",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f1117",
@@ -22,5 +22,5 @@
     }
   ],
   "categories": ["finance", "productivity"],
-  "lang": "en-US"
+  "lang": "zh-CN"
 }
