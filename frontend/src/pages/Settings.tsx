@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar, Languages } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import PatSection from '@/components/PatSection'
@@ -10,8 +10,6 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { useTranslation } from 'react-i18next'
-import { changeLocale, isSupportedLocale, normalizeLocale } from '@/i18n'
 
 interface Setting {
   key: string
@@ -25,6 +23,13 @@ interface TemplatePayload {
   settings?: Record<string, string>
   agents?: any[]
   stocks?: any[]
+}
+
+interface TemplateImportResponse {
+  summary?: {
+    dropped_ai_model_refs?: number
+    dropped_notify_channel_refs?: number
+  }
 }
 
 interface FeedbackStats {
@@ -142,8 +147,6 @@ const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
 export default function SettingsPage() {
-  const { t, i18n: i18nInstance } = useTranslation('settings')
-  const currentLocale = normalizeLocale(i18nInstance.resolvedLanguage || i18nInstance.language)
   const [settings, setSettings] = useState<Setting[]>([])
   const [services, setServices] = useState<AIService[]>([])
   const [channels, setChannels] = useState<NotifyChannel[]>([])
@@ -308,11 +311,18 @@ export default function SettingsPage() {
   const importTemplate = async (payload: TemplatePayload) => {
     setImporting(true)
     try {
-      const resp = await fetchAPI<any>(`/templates/import?mode=${importMode}`, {
+      const resp = await fetchAPI<TemplateImportResponse>(`/templates/import?mode=${importMode}`, {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      toast('配置包已导入', 'success')
+      const droppedRefs = Number(resp.summary?.dropped_ai_model_refs || 0)
+        + Number(resp.summary?.dropped_notify_channel_refs || 0)
+      toast(
+        droppedRefs > 0
+          ? `配置包已导入，已忽略 ${droppedRefs} 个失效关联`
+          : '配置包已导入',
+        'success',
+      )
       // refresh
       await load()
       return resp
@@ -654,7 +664,6 @@ export default function SettingsPage() {
 
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
-    { id: 'sec-language', label: t('language.jumpLabel'), hint: currentLocale },
     { id: 'sec-ai', label: 'AI', hint: `${services.length} 服务 / ${allModels.length} 模型` },
     { id: 'sec-notify', label: '通知', hint: `${enabledChannels.length}/${channels.length} 启用` },
     { id: 'sec-system', label: '系统', hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
@@ -718,6 +727,15 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9"
+              onClick={() => importFileRef.current?.click()}
+              disabled={importing}
+            >
+              <Upload className="w-3.5 h-3.5" /> {importing ? '导入中...' : '导入配置包'}
+            </Button>
             <Button variant="secondary" size="sm" className="h-9" onClick={exportTemplate} disabled={exporting}>
               <Download className="w-3.5 h-3.5" /> 导出配置包
             </Button>
@@ -743,37 +761,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <section id="sec-language" className="card p-4 md:p-6 lg:col-span-12">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Languages className="h-4 w-4" />
-              </div>
-              <div>
-                <h3 className="text-[12px] font-semibold text-foreground md:text-[13px]">{t('language.title')}</h3>
-                <p className="mt-1 text-[11px] text-muted-foreground">{t('language.description')}</p>
-              </div>
-            </div>
-            <Select
-              value={currentLocale}
-              onValueChange={value => {
-                if (isSupportedLocale(value)) void changeLocale(value)
-              }}
-            >
-              <SelectTrigger className="h-9 w-full text-[12px] md:w-[220px]" aria-label={t('language.title')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="zh-CN">{t('language.simplifiedChinese')}</SelectItem>
-                <SelectItem value="en-US">{t('language.englishExperimental')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="mt-3 rounded-lg border border-border/40 bg-accent/20 px-3 py-2 text-[11px] text-muted-foreground">
-            {t('language.experimentalNotice')}
-          </p>
-        </section>
-
         {/* AI Services + Models Section */}
         <section id="sec-ai" className="card p-4 md:p-6 lg:col-span-7">
           <div className="flex items-start justify-between mb-4 md:mb-5 gap-3">
