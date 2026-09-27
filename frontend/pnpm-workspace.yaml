@@ -1,2 +1,6 @@
 packages:
   - "packages/*"
+# pnpm 11 在跑脚本前默认做依赖状态检查(verify-deps-before-run)，node_modules 由 pnpm 9
+# 安装会被判过期并触发自动 install/purge，在非交互(验证)环境直接失败。
+# 脚本执行(tsc/vite/vitest)不依赖该检查，关闭之。.npmrc 中同名键 pnpm 11 不再读取。
+verifyDepsBeforeRun: false
