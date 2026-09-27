@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar, AlertTriangle } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
+import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
 import PatSection from '@/components/PatSection'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -17,19 +18,53 @@ interface Setting {
   description: string
 }
 
+type TemplateModule = 'settings' | 'ai' | 'notifications' | 'agents' | 'watchlist' | 'portfolio'
+
 interface TemplatePayload {
   version: number
   exported_at?: string
+  modules?: TemplateModule[]
   settings?: Record<string, string>
+  ai_services?: unknown[]
+  notify_channels?: unknown[]
   agents?: any[]
   stocks?: any[]
+  accounts?: unknown[]
 }
 
 interface TemplateImportResponse {
-  summary?: {
-    dropped_ai_model_refs?: number
-    dropped_notify_channel_refs?: number
+  modules?: TemplateModule[]
+  summary?: TemplateImportSummary
+}
+
+const TEMPLATE_MODULES: Array<{
+  id: TemplateModule
+  label: string
+  description: string
+  sensitive?: boolean
+}> = [
+  { id: 'settings', label: '系统设置', description: '代理、通知重试和静默时段等设置' },
+  { id: 'ai', label: 'AI 服务与模型', description: '服务地址、模型和 API Key', sensitive: true },
+  { id: 'notifications', label: '通知渠道', description: '渠道类型及完整凭据', sensitive: true },
+  { id: 'agents', label: 'Agent 配置', description: '启用状态、调度、模型与通知绑定' },
+  { id: 'watchlist', label: '关注列表', description: '关注标的和标的-Agent 绑定' },
+  { id: 'portfolio', label: '账户与持仓', description: '账户资金、成本、数量及交易风格' },
+]
+
+const ALL_TEMPLATE_MODULES = TEMPLATE_MODULES.map(item => item.id)
+
+const detectTemplateModules = (payload: TemplatePayload): TemplateModule[] => {
+  if (Array.isArray(payload.modules) && payload.modules.length > 0) {
+    return ALL_TEMPLATE_MODULES.filter(module => payload.modules?.includes(module))
   }
+  const detected: TemplateModule[] = []
+  if (Object.prototype.hasOwnProperty.call(payload, 'settings')) detected.push('settings')
+  if (Object.prototype.hasOwnProperty.call(payload, 'ai_services')) detected.push('ai')
+  if (Object.prototype.hasOwnProperty.call(payload, 'notify_channels')) detected.push('notifications')
+  if (Object.prototype.hasOwnProperty.call(payload, 'agents')) detected.push('agents')
+  if (Object.prototype.hasOwnProperty.call(payload, 'stocks')) detected.push('watchlist')
+  if (Object.prototype.hasOwnProperty.call(payload, 'accounts')) detected.push('portfolio')
+  return detected
 }
 
 interface FeedbackStats {
@@ -196,6 +231,16 @@ export default function SettingsPage() {
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge')
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [exportModules, setExportModules] = useState<TemplateModule[]>(ALL_TEMPLATE_MODULES)
+  const [importModules, setImportModules] = useState<TemplateModule[]>([])
+  const [availableImportModules, setAvailableImportModules] = useState<TemplateModule[]>([])
+  const [pendingImport, setPendingImport] = useState<TemplatePayload | null>(null)
+  const [lastImportFeedback, setLastImportFeedback] = useState<{
+    successMessage: string
+    warningMessage: string | null
+  } | null>(null)
 
   // Feedback stats
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
@@ -295,12 +340,15 @@ export default function SettingsPage() {
   }
 
   const exportTemplate = async () => {
+    if (exportModules.length === 0) return
     setExporting(true)
     try {
-      const data = await fetchAPI<TemplatePayload>('/templates/export')
+      const moduleQuery = encodeURIComponent(exportModules.join(','))
+      const data = await fetchAPI<TemplatePayload>(`/templates/export?modules=${moduleQuery}`)
       const date = new Date().toISOString().slice(0, 10)
       downloadJson(`panwatch-config-${date}.json`, data)
-      toast('配置包已导出', 'success')
+      toast(`配置包已导出（${exportModules.length} 个模块）`, 'success')
+      setExportDialogOpen(false)
     } catch (e) {
       toast(e instanceof Error ? e.message : '导出失败', 'error')
     } finally {
@@ -308,21 +356,21 @@ export default function SettingsPage() {
     }
   }
 
-  const importTemplate = async (payload: TemplatePayload) => {
+  const importTemplate = async (payload: TemplatePayload, selectedModules: TemplateModule[]) => {
+    if (selectedModules.length === 0) return null
     setImporting(true)
     try {
-      const resp = await fetchAPI<TemplateImportResponse>(`/templates/import?mode=${importMode}`, {
+      const moduleQuery = encodeURIComponent(selectedModules.join(','))
+      const resp = await fetchAPI<TemplateImportResponse>(`/templates/import?mode=${importMode}&modules=${moduleQuery}`, {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      const droppedRefs = Number(resp.summary?.dropped_ai_model_refs || 0)
-        + Number(resp.summary?.dropped_notify_channel_refs || 0)
-      toast(
-        droppedRefs > 0
-          ? `配置包已导入，已忽略 ${droppedRefs} 个失效关联`
-          : '配置包已导入',
-        'success',
-      )
+      const feedback = buildTemplateImportFeedback(resp.summary)
+      setLastImportFeedback(feedback)
+      toast(feedback.successMessage, 'success')
+      if (feedback.warningMessage) toast(feedback.warningMessage, 'info')
+      setImportDialogOpen(false)
+      setPendingImport(null)
       // refresh
       await load()
       return resp
@@ -332,6 +380,30 @@ export default function SettingsPage() {
     } finally {
       setImporting(false)
     }
+  }
+
+  const toggleTemplateModule = (
+    module: TemplateModule,
+    selected: TemplateModule[],
+    setSelected: (modules: TemplateModule[]) => void,
+  ) => {
+    setSelected(
+      selected.includes(module)
+        ? selected.filter(item => item !== module)
+        : ALL_TEMPLATE_MODULES.filter(item => item === module || selected.includes(item)),
+    )
+  }
+
+  const prepareTemplateImport = (payload: TemplatePayload) => {
+    const available = detectTemplateModules(payload)
+    if (available.length === 0) {
+      toast('配置包中没有可导入的模块', 'error')
+      return
+    }
+    setPendingImport(payload)
+    setAvailableImportModules(available)
+    setImportModules(available)
+    setImportDialogOpen(true)
   }
 
   const loadFeedbackStats = async () => {
@@ -736,7 +808,7 @@ export default function SettingsPage() {
             >
               <Upload className="w-3.5 h-3.5" /> {importing ? '导入中...' : '导入配置包'}
             </Button>
-            <Button variant="secondary" size="sm" className="h-9" onClick={exportTemplate} disabled={exporting}>
+            <Button variant="secondary" size="sm" className="h-9" onClick={() => setExportDialogOpen(true)} disabled={exporting}>
               <Download className="w-3.5 h-3.5" /> 导出配置包
             </Button>
             <Button size="sm" className="h-9" onClick={() => scrollTo('sec-ai')}>
@@ -992,10 +1064,10 @@ export default function SettingsPage() {
           <div className="flex items-start justify-between mb-4 gap-3">
             <div>
               <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">配置包</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">一键导入/导出 Agent、关注列表与系统设置</p>
+              <p className="text-[11px] text-muted-foreground mt-1">按模块迁移 AI、通知、Agent、关注列表、账户持仓与系统设置</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" className="h-8" onClick={exportTemplate} disabled={exporting}>
+              <Button variant="secondary" size="sm" className="h-8" onClick={() => setExportDialogOpen(true)} disabled={exporting}>
                 <Download className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">导出</span>
               </Button>
@@ -1036,13 +1108,28 @@ export default function SettingsPage() {
               if (!file) return
               try {
                 const text = await file.text()
-                const payload = JSON.parse(text)
-                await importTemplate(payload)
+                const payload = JSON.parse(text) as TemplatePayload
+                prepareTemplateImport(payload)
               } catch (err) {
                 toast('配置包解析失败', 'error')
               }
             }}
           />
+
+          {lastImportFeedback ? (
+            <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <div className="flex items-start gap-2 text-[12px] text-foreground">
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                <span>{lastImportFeedback.successMessage}</span>
+              </div>
+              {lastImportFeedback.warningMessage ? (
+                <div className="mt-2 flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{lastImportFeedback.warningMessage}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
             <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
@@ -1057,7 +1144,7 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       className="h-7"
-                      onClick={() => importTemplate(t.payload)}
+                      onClick={() => importTemplate(t.payload, detectTemplateModules(t.payload))}
                       disabled={importing}
                     >
                       <span className="text-[12px]">应用</span>
@@ -1124,6 +1211,119 @@ export default function SettingsPage() {
         <PatSection />
 
       </div>
+
+      {/* Export module picker */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>选择导出模块</DialogTitle>
+            <DialogDescription>配置包只包含勾选的模块，导入时还可以再次筛选。</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            {TEMPLATE_MODULES.map(module => (
+              <label
+                key={module.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
+                  exportModules.includes(module.id)
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border/50 bg-accent/20 hover:border-primary/20'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                  checked={exportModules.includes(module.id)}
+                  onChange={() => toggleTemplateModule(module.id, exportModules, setExportModules)}
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-[13px] font-medium text-foreground">
+                    {module.label}
+                    {module.sensitive ? <span className="text-[10px] text-amber-600">含凭据</span> : null}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{module.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {exportModules.some(module => module === 'ai' || module === 'notifications') ? (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              AI 服务会包含 API Key，通知渠道会包含 Token、Webhook 等完整凭据。请安全保存配置包。
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setExportDialogOpen(false)}>取消</Button>
+            <Button onClick={exportTemplate} disabled={exportModules.length === 0 || exporting}>
+              <Download className="h-4 w-4" /> {exporting ? '导出中...' : `导出 ${exportModules.length} 个模块`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import module picker */}
+      <Dialog
+        open={importDialogOpen}
+        onOpenChange={(open) => {
+          setImportDialogOpen(open)
+          if (!open) setPendingImport(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>选择导入模块</DialogTitle>
+            <DialogDescription>
+              配置包版本 v{pendingImport?.version || 1}，检测到 {availableImportModules.length} 个可用模块。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            {TEMPLATE_MODULES.filter(module => availableImportModules.includes(module.id)).map(module => (
+              <label
+                key={module.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${
+                  importModules.includes(module.id)
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border/50 bg-accent/20 hover:border-primary/20'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                  checked={importModules.includes(module.id)}
+                  onChange={() => toggleTemplateModule(module.id, importModules, setImportModules)}
+                />
+                <span className="min-w-0">
+                  <span className="text-[13px] font-medium text-foreground">{module.label}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{module.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-accent/20 p-3">
+            <div>
+              <div className="text-[12px] font-medium text-foreground">导入模式</div>
+              <div className="text-[10px] text-muted-foreground">替换模式会清理配置包所含账户/标的中未列出的绑定。</div>
+            </div>
+            <Select value={importMode} onValueChange={(value) => setImportMode(value as 'merge' | 'replace')}>
+              <SelectTrigger className="h-8 w-[150px] text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="merge">合并更新（推荐）</SelectItem>
+                <SelectItem value="replace">替换包含项</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setImportDialogOpen(false)}>取消</Button>
+            <Button
+              onClick={() => pendingImport && importTemplate(pendingImport, importModules)}
+              disabled={!pendingImport || importModules.length === 0 || importing}
+            >
+              <Upload className="h-4 w-4" /> {importing ? '导入中...' : `导入 ${importModules.length} 个模块`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Service Dialog */}
       <Dialog open={serviceDialogOpen} onOpenChange={setServiceDialogOpen}>
