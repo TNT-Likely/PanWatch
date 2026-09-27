@@ -1,5 +1,6 @@
 import { MessageSquareText, Plus, Trash2 } from 'lucide-react'
 import type { ChatConversation } from '@panwatch/api'
+import { useTranslation } from 'react-i18next'
 
 interface AssistantSidebarProps {
   conversations: ChatConversation[]
@@ -17,6 +18,8 @@ export function AssistantSidebar({
   onCreate,
   onDelete,
 }: AssistantSidebarProps) {
+  const { t } = useTranslation('configuration')
+  const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/50 bg-card/40 px-3 py-4 backdrop-blur-sm">
       <button
@@ -25,17 +28,17 @@ export function AssistantSidebar({
         className="flex h-10 items-center justify-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary/15"
       >
         <Plus className="h-4 w-4" />
-        新研究
+        {assistantT('assistantPage.newResearch')}
       </button>
       <div className="mt-6 flex items-center gap-2 px-2 text-[11px] font-medium text-muted-foreground">
         <MessageSquareText className="h-3.5 w-3.5" />
-        历史会话
+        {assistantT('assistantPage.history')}
       </div>
       <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 scrollbar">
         {conversations.length === 0 ? (
-          <p className="px-2 py-4 text-[12px] leading-5 text-muted-foreground">你的研究记录会显示在这里。</p>
+          <p className="px-2 py-4 text-[12px] leading-5 text-muted-foreground">{assistantT('assistantPage.welcome.description')}</p>
         ) : conversations.map((conversation) => {
-          const title = conversation.title || '新研究'
+          const title = conversation.title || assistantT('assistantPage.newResearch')
           const active = conversation.id === activeConversationId
           return (
             <div
@@ -60,7 +63,7 @@ export function AssistantSidebar({
                 type="button"
                 onClick={() => onDelete(conversation.id)}
                 className="mr-1 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-all hover:bg-rose-500/10 hover:text-rose-500 group-hover:opacity-100 focus:opacity-100"
-                aria-label={`删除 ${title}`}
+                aria-label={`${assistantT('assistantPage.deny')} ${title}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

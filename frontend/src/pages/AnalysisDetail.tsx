@@ -24,6 +24,7 @@ import {
   type HistoryComparisonResponse,
 } from '@panwatch/api'
 import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { useTranslation } from 'react-i18next'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import ShareCardModal from '../components/ShareCardModal'
 
@@ -101,6 +102,8 @@ function parseHeadings(markdown: string): { text: string; slug: string }[] {
 }
 
 export default function AnalysisDetailPage() {
+  const { t } = useTranslation('configuration')
+  const analysisT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const { symbol = '', date = '' } = useParams()
   const navigate = useNavigate()
   const [result, setResult] = useState<DeepAnalysisResult | null>(null)
@@ -124,7 +127,7 @@ export default function AnalysisDetailPage() {
     try {
       await tradingAgentsApi.downloadAnalysisPdf(symbol, date)
     } catch (e) {
-      alert(e instanceof Error ? e.message : '导出失败')
+      alert(e instanceof Error ? e.message : analysisT('assistantPage.analysis.exportFailed'))
     } finally {
       setPdfBusy(false)
     }
@@ -155,7 +158,7 @@ export default function AnalysisDetailPage() {
   const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
   const sug = rawData.suggestion
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
-  const decisionLabel = reviewRequired ? '待人工复核' : sug?.action_label
+  const decisionLabel = reviewRequired ? analysisT('assistantPage.analysis.reviewHint') : sug?.action_label
   const decisionColor = reviewRequired ? 'text-orange-500' : (sug ? DECISION_COLOR[sug.action] || '' : '')
   const sections = buildAnalysisSections(rawData)
   const stats = history?.stats
@@ -169,7 +172,7 @@ export default function AnalysisDetailPage() {
       fullToc.push({ id: `h-${s.id}-${h.slug}`, title: h.text, level: 1 })
     }
   }
-  fullToc.push({ id: 'sec-history', title: '历史决策对比', level: 0 })
+  fullToc.push({ id: 'sec-history', title: analysisT('assistantPage.analysis.history'), level: 0 })
   // 开关决定是否展示/联动二级目录
   const toc = showSub ? fullToc : fullToc.filter((t) => t.level === 0)
 
@@ -195,14 +198,14 @@ export default function AnalysisDetailPage() {
   }, [result, toc.length])
 
   if (loading) {
-    return <div className="p-12 text-center text-muted-foreground">加载中...</div>
+    return <div className="p-12 text-center text-muted-foreground">{analysisT('assistantPage.analysis.loading')}</div>
   }
   if (!result) {
     return (
       <div className="p-12 text-center text-muted-foreground space-y-3">
-        <div>未找到 {symbol} 在 {date} 的深度分析记录</div>
+        <div>{analysisT('assistantPage.analysis.notFound', { symbol, date })}</div>
         <button onClick={() => navigate(-1)} className="text-primary hover:underline">
-          返回
+          {analysisT('assistantPage.analysis.back')}
         </button>
       </div>
     )
@@ -232,10 +235,10 @@ export default function AnalysisDetailPage() {
   // 目录头(标题 + 二级目录开关),桌面右栏 / 移动下拉共用
   const tocHeader = (
     <div className="flex items-center justify-between gap-2 mb-2 px-2">
-      <span className="text-[11px] font-medium text-muted-foreground/70">目录</span>
+      <span className="text-[11px] font-medium text-muted-foreground/70">{analysisT('assistantPage.analysis.toc')}</span>
       <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <span className="cursor-pointer select-none" onClick={() => setShowSub((v) => !v)}>
-          二级目录
+          {analysisT('assistantPage.analysis.subToc')}
         </span>
         <Switch checked={showSub} onCheckedChange={setShowSub} />
       </div>
@@ -276,28 +279,28 @@ export default function AnalysisDetailPage() {
             <button
               onClick={() => navigate(-1)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all shrink-0"
-              aria-label="返回"
+              aria-label={analysisT('assistantPage.analysis.back')}
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} 深度分析`}</h1>
+            <h1 className="text-base font-bold truncate min-w-0">{result.title || `${symbol} ${analysisT('assistantPage.analysis.depthAnalysis')}`}</h1>
             <span className="text-[12px] text-muted-foreground shrink-0">{date}</span>
             <button
               onClick={() => setShareOpen(true)}
               className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
-              title="生成可分享的结论卡片图"
+              title={analysisT('assistantPage.analysis.shareTitle')}
             >
               <ImageDown className="w-3.5 h-3.5" />
-              分享图
+              {analysisT('assistantPage.analysis.share')}
             </button>
             <button
               onClick={handleExportPdf}
               disabled={pdfBusy}
               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/50 text-[12.5px] text-muted-foreground hover:text-foreground hover:bg-accent transition-all disabled:opacity-50"
-              title="导出 PDF 文件"
+              title={analysisT('assistantPage.analysis.exportPdf')}
             >
               <FileDown className="w-3.5 h-3.5" />
-              {pdfBusy ? '导出中…' : '导出 PDF'}
+              {pdfBusy ? analysisT('assistantPage.analysis.exporting') : analysisT('assistantPage.analysis.exportPdf')}
             </button>
           </div>
 
@@ -309,12 +312,12 @@ export default function AnalysisDetailPage() {
               <span className={`text-[24px] font-bold ${decisionColor}`}>
                 {decisionLabel}
               </span>
-              {reviewRequired && <span className="text-[12px] text-orange-600">数据或结论存在不确定性，请人工核验后再决策</span>}
+              {reviewRequired && <span className="text-[12px] text-orange-600">{analysisT('assistantPage.analysis.reviewHint')}</span>}
               <span className="text-[13px] text-muted-foreground">
-                置信度 {sug.confidence?.toFixed(1) ?? '-'} / 10
+                {analysisT('assistantPage.analysis.confidence')} {sug.confidence?.toFixed(1) ?? '-'} / 10
               </span>
               <span className="ml-auto text-[11px] text-muted-foreground">
-                成本 ${rawData.cost_usd?.toFixed(4) ?? '-'}
+                {analysisT('assistantPage.analysis.cost')} ${rawData.cost_usd?.toFixed(4) ?? '-'}
               </span>
             </div>
           )}
@@ -327,7 +330,7 @@ export default function AnalysisDetailPage() {
                 className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-border/50 bg-card/95 backdrop-blur text-[13px] font-medium shadow-sm"
               >
                 <List className="w-4 h-4 shrink-0" />
-                <span className="truncate">{currentTitle || '目录'}</span>
+                <span className="truncate">{currentTitle || analysisT('assistantPage.analysis.toc')}</span>
                 <ChevronDown
                   className={`w-4 h-4 ml-auto shrink-0 transition-transform ${tocOpen ? 'rotate-180' : ''}`}
                 />
@@ -366,24 +369,24 @@ export default function AnalysisDetailPage() {
           <section id="sec-history" className="mb-10 scroll-mt-24">
             <h2 className="flex items-center gap-2 text-[18px] font-bold mb-4 pb-2 border-b border-border/40">
               <History className="w-[18px] h-[18px] text-primary/70 shrink-0" />
-              历史决策 vs 实际涨跌
+              {analysisT('assistantPage.analysis.historyVsActual')}
             </h2>
             {stats && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-[13px]">
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">总命中率</div>
+                  <div className="text-[11px] text-muted-foreground mb-1">{analysisT('assistantPage.analysis.hitRate')}</div>
                   <div className="font-bold">{stats.overall_hit_rate != null ? `${(stats.overall_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">买入命中</div>
+                  <div className="text-[11px] text-muted-foreground mb-1">{analysisT('assistantPage.analysis.buyHit')}</div>
                   <div className="font-bold">{stats.buy_hit_rate != null ? `${(stats.buy_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">卖出命中</div>
+                  <div className="text-[11px] text-muted-foreground mb-1">{analysisT('assistantPage.analysis.sellHit')}</div>
                   <div className="font-bold">{stats.sell_hit_rate != null ? `${(stats.sell_hit_rate * 100).toFixed(0)}%` : '-'}</div>
                 </div>
                 <div className="rounded-lg bg-accent/30 p-3">
-                  <div className="text-[11px] text-muted-foreground mb-1">平均 20 日收益</div>
+                  <div className="text-[11px] text-muted-foreground mb-1">{analysisT('assistantPage.analysis.avg20d')}</div>
                   <div className={`font-bold ${pctClass(stats.avg_return_20d_pct)}`}>{fmtPct(stats.avg_return_20d_pct)}</div>
                 </div>
               </div>
@@ -393,13 +396,13 @@ export default function AnalysisDetailPage() {
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground text-[12px]">
-                      <th className="text-left py-2 pr-3">日期</th>
-                      <th className="text-left py-2 px-2">决策</th>
-                      <th className="text-right py-2 px-2">分析价</th>
-                      <th className="text-right py-2 px-2">1日</th>
-                      <th className="text-right py-2 px-2">5日</th>
-                      <th className="text-right py-2 px-2">20日</th>
-                      <th className="text-right py-2 pl-2">命中</th>
+                      <th className="text-left py-2 pr-3">{analysisT('assistantPage.analysis.date')}</th>
+                      <th className="text-left py-2 px-2">{analysisT('assistantPage.analysis.decision')}</th>
+                      <th className="text-right py-2 px-2">{analysisT('assistantPage.analysis.analysisPrice')}</th>
+                      <th className="text-right py-2 px-2">1D</th>
+                      <th className="text-right py-2 px-2">5D</th>
+                      <th className="text-right py-2 px-2">20D</th>
+                      <th className="text-right py-2 pl-2">{analysisT('assistantPage.analysis.hit')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -418,13 +421,13 @@ export default function AnalysisDetailPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-[13px] text-muted-foreground py-4">暂无历史决策记录</div>
+              <div className="text-[13px] text-muted-foreground py-4">{analysisT('assistantPage.analysis.noHistory')}</div>
             )}
           </section>
 
           {/* 免责 */}
           <div className="text-[11px] text-muted-foreground/70 italic border-t border-border/30 pt-4">
-            本分析由 AI 多 Agent 框架生成,仅供学习研究参考,不构成任何投资建议。投资有风险,决策需自主判断。
+            {analysisT('assistantPage.analysis.disclaimer')}
           </div>
           </article>
         </div>
@@ -445,13 +448,13 @@ export default function AnalysisDetailPage() {
                 </div>
                 {reviewRequired && (
                   <p className="mt-2 text-[11px] leading-4 text-orange-600">
-                    上游无法安全生成可执行评级，请人工核验数据与报告。
+                    {analysisT('assistantPage.analysis.unsafe')}
                   </p>
                 )}
                 {sug.confidence != null && (
                   <div className="mt-2.5">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
-                      <span>置信度</span>
+                      <span>{analysisT('assistantPage.analysis.confidence')}</span>
                       <span className="font-medium text-foreground">{sug.confidence.toFixed(1)} / 10</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-muted overflow-hidden">

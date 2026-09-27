@@ -1,5 +1,6 @@
 import { ArrowUpRight, Briefcase, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AssistantStockPicker, type AssistantStockSearchResult } from './AssistantStockPicker'
 
 interface AssistantWelcomeProps {
@@ -8,14 +9,15 @@ interface AssistantWelcomeProps {
   disabled?: boolean
 }
 
-const QUICK_QUESTIONS = [
-  { label: '分析一只股票', question: '分析一只股票的基本面、行情和近期新闻', icon: Search, kind: 'stock' },
-  { label: '诊断我的持仓', question: '诊断我的持仓风险和关键关注点', icon: Briefcase, kind: 'question' },
-  { label: '发现今日机会', question: '结合今天的市场行情，帮我寻找值得研究的机会', icon: Sparkles, kind: 'question' },
-]
-
 /** First-run surface for the full-page assistant before a conversation exists. */
 export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: AssistantWelcomeProps) {
+  const { t } = useTranslation('configuration')
+  const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const quickQuestions = [
+    { label: assistantT('assistantPage.welcome.analyzeStock'), question: assistantT('assistantPage.askStock', { market: 'CN', symbol: '600519', name: 'Kweichow Moutai' }), icon: Search, kind: 'stock' },
+    { label: assistantT('assistantPage.welcome.diagnosePortfolio'), question: 'Diagnose my portfolio risk and key watchpoints', icon: Briefcase, kind: 'question' },
+    { label: assistantT('assistantPage.welcome.findOpportunity'), question: 'Based on today’s market, find opportunities worth researching', icon: Sparkles, kind: 'question' },
+  ]
   const [question, setQuestion] = useState('')
   const [stockPickerOpen, setStockPickerOpen] = useState(false)
 
@@ -32,7 +34,7 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
       onSelectStock(stock)
       return
     }
-    onSubmit(`分析 ${stock.market}:${stock.symbol} ${stock.name} 的基本面、行情和近期新闻`)
+    onSubmit(assistantT('assistantPage.askStock', { market: stock.market, symbol: stock.symbol, name: stock.name }))
   }
 
   return (
@@ -41,10 +43,10 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
         PANWATCH · AI INVESTING RESEARCH
       </p>
       <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-        今天想研究什么？
+        {assistantT('assistantPage.welcome.title')}
       </h1>
       <p className="mt-4 max-w-2xl text-[14px] leading-6 text-muted-foreground sm:mt-5 sm:text-[15px] sm:leading-7 md:text-[17px]">
-        输入一只股票、一个市场问题，或让 PanWatch 诊断你的持仓。助手会先查询可用数据，再给出有依据的结论。
+        {assistantT('assistantPage.welcome.description')}
       </p>
 
       {stockPickerOpen ? (
@@ -68,21 +70,21 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
               onChange={(event) => setQuestion(event.target.value)}
               disabled={disabled}
               className="h-11 min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted-foreground/80 sm:h-12 sm:text-[15px]"
-              placeholder="搜索股票，或问：我的持仓风险怎么样？"
-              aria-label="开始一项研究"
+              placeholder={assistantT('assistantPage.welcome.searchPlaceholder')}
+              aria-label={assistantT('assistantPage.welcome.startResearch')}
             />
             <button
               type="submit"
               disabled={disabled || !question.trim()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="发送研究问题"
+              aria-label={assistantT('assistantPage.welcome.send')}
             >
               <ArrowUpRight className="h-4 w-4" />
             </button>
           </form>
 
           <div className="mt-6 flex w-full flex-col justify-center gap-2 sm:mt-7 sm:w-auto sm:flex-row sm:flex-wrap sm:gap-2.5">
-            {QUICK_QUESTIONS.map(({ label, question: quickQuestion, icon: Icon, kind }) => (
+            {quickQuestions.map(({ label, question: quickQuestion, icon: Icon, kind }) => (
               <button
                 key={label}
                 type="button"
@@ -100,9 +102,9 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
 
       <div className="mt-10 grid w-full max-w-3xl gap-3 text-left sm:mt-16 sm:grid-cols-3">
         {[
-          ['01', '从标的开始', '输入代码或公司名，生成综合、短线或事件驱动分析。'],
-          ['02', '从持仓开始', '调用你的实盘和模拟盘数据，识别集中度与风险敞口。'],
-          ['03', '从问题开始', '让助手串联行情、K 线和新闻，给出下一步研究方向。'],
+          ['01', 'Start with a symbol', 'Enter a symbol or company name for comprehensive, short-term, or event-driven analysis.'],
+          ['02', 'Start with your portfolio', 'Use live and paper-trading data to identify concentration and risk exposure.'],
+          ['03', 'Start with a question', 'Connect quotes, candlesticks, and news to suggest the next research step.'],
         ].map(([index, title, description]) => (
           <div key={index} className="rounded-2xl border border-border/60 bg-card/70 p-5">
             <span className="inline-flex rounded-lg bg-primary/10 px-2 py-1 text-[12px] font-semibold text-primary">{index}</span>

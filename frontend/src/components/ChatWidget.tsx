@@ -20,6 +20,7 @@ import { ContextPanel } from '@/components/assistant/ContextPanel'
 import { ContextUsageIndicator } from '@/components/assistant/ContextUsageIndicator'
 import { TraceTimeline } from '@/components/assistant/TraceTimeline'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
+import { useTranslation } from 'react-i18next'
 
 interface StockContext {
   symbol: string
@@ -57,7 +58,7 @@ function approvalFromSnapshot(approval: {
     id: approval.id,
     tool_title: approval.presentation?.tool_title || approval.tool_name,
     risk: approval.risk,
-    summary: approval.presentation?.summary || ('请求执行 ' + approval.tool_name),
+    summary: approval.presentation?.summary || ('Execute ' + approval.tool_name),
     expires_at: approval.expires_at,
     status: 'pending',
   }
@@ -65,14 +66,7 @@ function approvalFromSnapshot(approval: {
 
 // 工具名 → 过程可视化文案
 const TOOL_LABELS: Record<string, string> = {
-  get_portfolio: '正在查询持仓…',
-  get_stock_quote: '正在查询行情…',
-  get_kline_summary: '正在分析 K 线…',
-  get_stock_news: '正在检索相关新闻…',
-  create_price_alert: '正在创建价格提醒…',
-  get_technical_analysis: '正在分析技术面…',
-  get_stock_suggestions: '正在查询 AI 建议…',
-  get_watchlist: '正在查询自选股…',
+  get_portfolio: 'get_portfolio', get_stock_quote: 'get_stock_quote', get_kline_summary: 'get_kline_summary', get_stock_news: 'get_stock_news', create_price_alert: 'create_price_alert', get_technical_analysis: 'get_technical_analysis', get_stock_suggestions: 'get_stock_suggestions', get_watchlist: 'get_watchlist',
 }
 
 /** 增量渲染容错：流式文本里未闭合的代码围栏先乐观闭合，避免 markdown 渲染爆版式 */
@@ -87,6 +81,8 @@ export default function ChatWidget({
   onConversationChange,
   initialStockContext = null,
 }: ChatWidgetProps) {
+  const { t } = useTranslation('configuration')
+  const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [open, setOpen] = useState(embedded)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [conversationsLoaded, setConversationsLoaded] = useState(false)
@@ -206,7 +202,7 @@ export default function ChatWidget({
         if (!cancelled) setContextDetail(detail)
       })
       .catch(() => {
-        if (!cancelled) setContextError('无法读取上下文用量。')
+        if (!cancelled) setContextError(assistantT('assistantPage.contextError'))
       })
       .finally(() => {
         if (!cancelled) setContextLoading(false)
@@ -233,7 +229,7 @@ export default function ChatWidget({
         },
       })
     } catch {
-      setContextError('上下文压缩失败，原始消息未改变。')
+      setContextError(assistantT('assistantPage.compressionFailed'))
     } finally {
       setContextCompressing(false)
     }
@@ -343,7 +339,7 @@ export default function ChatWidget({
               if (!isCurrent()) return
               tokenBufRef.current = ''
               setStreamText('')
-              setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+              setStreamTool(assistantT(`assistantPage.tools.${TOOL_LABELS[name] || name}`, { defaultValue: `Calling ${name}…` }))
             },
             onToolResult: () => undefined,
             onTrace: (event) => {
@@ -644,7 +640,7 @@ export default function ChatWidget({
           // 工具调用轮的过渡性文本不是最终回答，清空缓冲
           tokenBufRef.current = ''
           setStreamText('')
-          setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+          setStreamTool(assistantT(`assistantPage.tools.${TOOL_LABELS[name] || name}`, { defaultValue: `Calling ${name}…` }))
         },
         onToolResult: () => {
           // 结果已就绪，等待模型基于数据继续回答
@@ -694,8 +690,8 @@ export default function ChatWidget({
       )
     } catch {
       const message = streamError || (receivedAny
-        ? '助手连接中断，任务仍可能在后台执行，请稍后刷新查看结果。'
-        : '助手请求失败，请稍后重试。')
+        ? assistantT('assistantPage.connectionInterrupted')
+        : assistantT('assistantPage.requestFailed'))
       setMessages((prev) => [...prev, {
         id: Date.now() + 1,
         role: 'assistant',
@@ -717,7 +713,7 @@ export default function ChatWidget({
     }
     setStockContext(nextContext)
     void handleSend(
-      `分析 ${stock.market}:${stock.symbol} ${stock.name} 的基本面、行情和近期新闻`,
+      assistantT('assistantPage.askStock', { market: stock.market, symbol: stock.symbol, name: stock.name }),
       nextContext,
     )
   }, [handleSend])
@@ -751,7 +747,7 @@ export default function ChatWidget({
         onToolCallStart: ({ name }) => {
           tokenBufRef.current = ''
           setStreamText('')
-          setStreamTool(TOOL_LABELS[name] || `正在调用 ${name}…`)
+          setStreamTool(assistantT(`assistantPage.tools.${TOOL_LABELS[name] || name}`, { defaultValue: `Calling ${name}…` }))
         },
         onToolResult: () => {
           // 工具结果到达后，等待模型继续输出最终回答。
@@ -839,7 +835,7 @@ export default function ChatWidget({
         setMessages((previous) => [...previous, {
           id: Date.now() + 1,
           role: 'assistant',
-          content: error instanceof Error ? error.message : '未知错误',
+          content: error instanceof Error ? error.message : assistantT('assistantPage.unknownError'),
           created_at: new Date().toISOString(),
         }])
       }
@@ -898,7 +894,7 @@ export default function ChatWidget({
             </div>
             <button
               type="button"
-              aria-label="关闭历史会话"
+              aria-label={assistantT('assistantPage.closeHistory')}
               className="flex-1 bg-black/20"
               onClick={() => setHistoryOpen(false)}
             />
@@ -915,7 +911,7 @@ export default function ChatWidget({
               type="button"
               onClick={() => setHistoryOpen(true)}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground md:hidden"
-              aria-label="打开历史会话"
+              aria-label={assistantT('assistantPage.openHistory')}
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -924,12 +920,12 @@ export default function ChatWidget({
             <button
               onClick={beginNewResearch}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="返回助手首页"
+              aria-label={assistantT('assistantPage.backHome')}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
           )}
-          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">AI 助手</span>
+          <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">{assistantT('assistantPage.title')}</span>
           {view === 'chat' && stockContext && (
             <span className="inline-flex max-w-[42vw] items-center gap-1 truncate rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary sm:max-w-none">
               {stockContext.market}:{stockContext.symbol}
@@ -955,8 +951,8 @@ export default function ChatWidget({
               type="button"
               onClick={() => setPermissionsOpen(true)}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-              title="工具权限"
-              aria-label="工具权限"
+              title={assistantT('assistantPage.permissions')}
+              aria-label={assistantT('assistantPage.permissions')}
             >
               <Settings2 className="h-4 w-4" />
             </button>
@@ -996,12 +992,12 @@ export default function ChatWidget({
           {conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[13px] gap-3">
               <MessageCircle className="w-8 h-8 opacity-30" />
-              <p>暂无对话</p>
+              <p>{assistantT('assistantPage.noConversations')}</p>
               <button
                 onClick={createNewConversation}
                 className="text-[12px] px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                开始新对话
+                {assistantT('assistantPage.newConversation')}
               </button>
             </div>
           ) : (
@@ -1013,7 +1009,7 @@ export default function ChatWidget({
               >
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-foreground truncate">
-                    {conv.title || '新对话'}
+                    {conv.title || assistantT('assistantPage.newConversation')}
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {conv.stock_symbol ? `${conv.stock_market}:${conv.stock_symbol} · ` : ''}
@@ -1044,7 +1040,7 @@ export default function ChatWidget({
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="text-[11px] text-muted-foreground">推荐问题</span>
+                <span className="text-[11px] text-muted-foreground">{assistantT('assistantPage.recommended')}</span>
                 <div className="flex flex-wrap gap-2">
                   {suggestedQuestions.map((q) => (
                     <button
@@ -1062,7 +1058,7 @@ export default function ChatWidget({
             {messages.length === 0 && suggestedQuestions.length === 0 && !sending && (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-[13px] gap-2">
                 <MessageCircle className="w-6 h-6 opacity-30" />
-                <p>输入问题开始对话</p>
+                <p>{assistantT('assistantPage.startConversation')}</p>
               </div>
             )}
             {messages.map((msg) => (
@@ -1112,7 +1108,7 @@ export default function ChatWidget({
               <div className="flex justify-start">
                 <div className="w-full max-w-[92%] rounded-xl border border-border/40 bg-accent/40 px-3 py-2 text-[12px] sm:max-w-[85%]">
                   <div className="font-medium text-foreground mb-1.5">
-                    诊断计划{plan.status === 'done' ? '（已完成）' : plan.status === 'planning' ? '（生成中…）' : ''}
+                    {assistantT('assistantPage.diagnosisPlan')}{plan.status === 'done' ? ` (${assistantT('assistantPage.completed')})` : plan.status === 'planning' ? ` (${assistantT('assistantPage.planning')})` : ''}
                   </div>
                   <ol className="space-y-1">
                     {plan.steps.map((s) => (
@@ -1160,7 +1156,7 @@ export default function ChatWidget({
                 <div
                   className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2"
                   role="status"
-                  aria-label={streamTool || '正在请求助手回复'}
+                  aria-label={streamTool || assistantT('assistantPage.requestFailed')}
                 >
                   <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                   {streamTool && <span>{streamTool}</span>}
@@ -1174,11 +1170,11 @@ export default function ChatWidget({
               type="button"
               onClick={scrollToBottom}
               className="absolute left-1/2 bottom-16 z-10 flex h-10 -translate-x-1/2 items-center gap-2 rounded-full border border-primary/30 bg-background/95 px-4 text-sm font-medium text-foreground shadow-xl shadow-black/20 backdrop-blur transition-all hover:-translate-x-1/2 hover:scale-105 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-              aria-label="回到底部"
-              title="滚动到最新消息"
+              aria-label={assistantT('assistantPage.scrollBottom')}
+              title={assistantT('assistantPage.scrollLatest')}
             >
               <ArrowDown className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">回到底部</span>
+              <span className="hidden sm:inline">{assistantT('assistantPage.scrollBottom')}</span>
             </button>
           )}
 
@@ -1188,7 +1184,7 @@ export default function ChatWidget({
               ref={inputRef}
               type="text"
               className="h-10 min-w-0 flex-1 rounded-lg bg-accent/40 px-3 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/30 sm:h-9"
-              placeholder="输入问题..."
+              placeholder={assistantT('assistantPage.askPlaceholder')}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
