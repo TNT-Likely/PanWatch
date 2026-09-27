@@ -200,11 +200,6 @@ export const configuration = {
       fields: { botToken: 'Bot token', chatId: 'Chat ID', proxy: 'Proxy', deviceKey: 'Device key', serverUrl: 'Server URL', webhookToken: 'Webhook token', signSecret: 'Signing secret', phones: '@Phone numbers', keyword: 'Keyword', webhookKey: 'Webhook key', sendKey: 'SendKey', token: 'Token', groupCode: 'Group code', webhookId: 'Webhook ID', userKey: 'User key', appToken: 'App token' },
       placeholders: { botToken: '123456:ABC-DEF...', chatId: '-100123456789', proxy: 'http://192.168.1.1:7890 or socks5://...', deviceKey: 'Your Bark Device Key', serverUrl: 'Defaults to api.day.app; self-hosted URL is supported', accessToken: 'access_token value', signSecret: 'SEC... (optional)', phones: 'Comma-separated, for example 13800138000,13900139000', keyword: 'Append when the group bot requires a keyword', webhookKey: 'Value after key= in the Webhook URL', webhookToken: 'Token after hook/', sendKey: 'SCT...', pushplusToken: 'Your PushPlus Token', groupCode: 'Optional; used for group notifications', webhookId: 'ID from the Webhook URL', userKey: 'Your user key', appToken: 'Your app token' },
     },
-    templates: {
-      conservative: { name: 'Conservative', description: 'Fewer interruptions: stricter intraday triggers; quiet hours recommended' },
-      balanced: { name: 'Balanced', description: 'Recommended default: balanced coverage and noise' },
-      aggressive: { name: 'Aggressive', description: 'Higher frequency: catch changes earlier for short-term monitoring' },
-    },
     importFeedback: {
       created: '{{count}} added', updated: '{{count}} updated', resource: '{{label}}: {{changes}}', settings: '{{count}} settings',
       listSeparator: ', ', itemSeparator: '; ', success: 'Imported: {{details}}', empty: 'Import complete: nothing needed to be added or updated',
@@ -223,7 +218,7 @@ export const configuration = {
       testFailed: 'Test failed', operationFailed: 'Operation failed', notificationSent: 'Test notification sent', channelSaved: 'Notification channel saved',
       configParseFailed: 'Failed to parse configuration package',
     },
-    nav: { ai: 'AI', notifications: 'Notifications', system: 'System', pack: 'Config pack', feedback: 'Feedback', pat: 'MCP tokens' },
+    nav: { ai: 'AI', notifications: 'Notifications', system: 'System', feedback: 'Feedback', pat: 'MCP tokens' },
     hero: {
       uploadAvatar: 'Upload avatar', avatarAlt: 'Avatar', providers: 'providers', models: 'models', channelsEnabled: 'channels enabled',
       defaultModel: 'Default model', defaultNotification: 'Default notification', importing: 'Importing...', importPack: 'Import config pack',
@@ -236,8 +231,7 @@ export const configuration = {
     notifications: { title: 'Notification channels', description: 'Send to Telegram, Bark, and other channels', add: 'Add', empty: 'No notification channels yet. Click “Add” to create one.', sendTest: 'Send test', setDefault: 'Set as default' },
     system: { title: 'System', description: 'Preferences and advanced options. Changes take effect immediately.', searchPlaceholder: 'Search settings (description / key)', stockLinkXueqiu: 'Xueqiu', settingDescriptions: { http_proxy: 'HTTP proxy used for quotes, news, AI, and notifications', notify_quiet_hours: 'Notification quiet hours (HH:MM-HH:MM; empty to disable)', notify_retry_attempts: 'Notification retry attempts (excluding the first attempt)', notify_retry_backoff_seconds: 'Notification retry backoff base (seconds)', notify_dedupe_ttl_overrides: 'Notification deduplication window overrides (JSON; empty for defaults)', stock_link_platform: 'Quote website opened when clicking a stock symbol', panwatch_base_url: 'Public PanWatch URL used in notification detail links, e.g. https://panwatch.example.com' } },
     pack: {
-      title: 'Config pack', description: 'Migrate AI, notifications, Agents, watchlist, portfolios, and system settings by module', export: 'Export', import: 'Import', importMode: 'Import mode',
-      merge: 'Merge updates (recommended)', replace: 'Replace (only modules in the package)', officialTemplates: 'Official templates', apply: 'Apply',
+      importMode: 'Import mode', merge: 'Merge updates (recommended)',
       chooseExport: 'Choose export modules', chooseExportDescription: 'Only selected modules are included. You can filter again during import.', sensitive: 'Contains credentials',
       credentialsWarning: 'AI services include API keys; notification channels include tokens, webhooks, and other credentials. Store this package securely.', cancel: 'Cancel', exporting: 'Exporting...', exportCount: 'Export {{count}} modules',
       chooseImport: 'Choose import modules', versionDetected: 'Package v{{version}} found with {{count}} available modules.', replaceHint: 'Replace mode removes bindings not listed for accounts and symbols in the package.', replaceContained: 'Replace included items', importing: 'Importing...', importCount: 'Import {{count}} modules',

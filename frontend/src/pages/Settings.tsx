@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar, AlertTriangle } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, BarChart3, User, Radar, AlertTriangle } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
@@ -242,10 +242,6 @@ export default function SettingsPage() {
   const [importModules, setImportModules] = useState<TemplateModule[]>([])
   const [availableImportModules, setAvailableImportModules] = useState<TemplateModule[]>([])
   const [pendingImport, setPendingImport] = useState<TemplatePayload | null>(null)
-  const [lastImportFeedback, setLastImportFeedback] = useState<{
-    successMessage: string
-    warningMessage: string | null
-  } | null>(null)
 
   // Feedback stats
   const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
@@ -254,58 +250,6 @@ export default function SettingsPage() {
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
   const { toast } = useToast()
-
-  const builtinTemplates: Array<{ name: string; desc: string; payload: TemplatePayload }> = [
-    {
-      name: configT('configuration:settingsPage.templates.conservative.name'),
-      desc: configT('configuration:settingsPage.templates.conservative.description'),
-      payload: {
-        version: 1,
-        settings: {
-          notify_quiet_hours: '23:00-07:00',
-          notify_retry_attempts: '2',
-          notify_retry_backoff_seconds: '2',
-        },
-        agents: [
-          { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
-          { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'intraday_monitor', enabled: true, schedule: '*/10 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 4.0, volume_alert_ratio: 2.5, throttle_minutes: 45 } },
-        ],
-      },
-    },
-    {
-      name: configT('configuration:settingsPage.templates.balanced.name'),
-      desc: configT('configuration:settingsPage.templates.balanced.description'),
-      payload: {
-        version: 1,
-        settings: {
-          notify_retry_attempts: '2',
-          notify_retry_backoff_seconds: '2',
-        },
-        agents: [
-          { name: 'premarket_outlook', enabled: true, schedule: '30 8 * * 1-5', execution_mode: 'batch' },
-          { name: 'daily_report', enabled: true, schedule: '30 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'intraday_monitor', enabled: true, schedule: '*/5 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 3.0, volume_alert_ratio: 2.0, throttle_minutes: 30 } },
-        ],
-      },
-    },
-    {
-      name: configT('configuration:settingsPage.templates.aggressive.name'),
-      desc: configT('configuration:settingsPage.templates.aggressive.description'),
-      payload: {
-        version: 1,
-        settings: {
-          notify_retry_attempts: '3',
-          notify_retry_backoff_seconds: '1',
-        },
-        agents: [
-          { name: 'premarket_outlook', enabled: true, schedule: '10 8 * * 1-5', execution_mode: 'batch' },
-          { name: 'daily_report', enabled: true, schedule: '10 15 * * 1-5', execution_mode: 'batch' },
-          { name: 'intraday_monitor', enabled: true, schedule: '*/3 9-15 * * 1-5', execution_mode: 'single', config: { event_only: true, price_alert_threshold: 2.0, volume_alert_ratio: 1.8, throttle_minutes: 20 } },
-        ],
-      },
-    },
-  ]
 
   const load = async () => {
     try {
@@ -371,7 +315,6 @@ export default function SettingsPage() {
         body: JSON.stringify(payload),
       })
       const feedback = buildTemplateImportFeedback(resp.summary, configT)
-      setLastImportFeedback(feedback)
       toast(feedback.successMessage, 'success')
       if (feedback.warningMessage) toast(feedback.warningMessage, 'info')
       setImportDialogOpen(false)
@@ -751,7 +694,6 @@ export default function SettingsPage() {
     { id: 'sec-ai', label: configT('configuration:settingsPage.nav.ai'), hint: `${services.length} ${configT('configuration:settingsPage.hero.providers')} / ${allModels.length} ${configT('configuration:settingsPage.hero.models')}` },
     { id: 'sec-notify', label: configT('configuration:settingsPage.nav.notifications'), hint: `${enabledChannels.length}/${channels.length} ${configT('configuration:settingsPage.hero.channelsEnabled')}` },
     { id: 'sec-system', label: configT('configuration:settingsPage.nav.system'), hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
-    { id: 'sec-pack', label: configT('configuration:settingsPage.nav.pack') },
     { id: 'sec-feedback', label: configT('configuration:settingsPage.nav.feedback') },
     { id: 'sec-pat', label: configT('configuration:settingsPage.nav.pat') },
   ]
@@ -764,6 +706,25 @@ export default function SettingsPage() {
 
   return (
     <div>
+      <input
+        ref={importFileRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (!file) return
+          try {
+            const text = await file.text()
+            const payload = JSON.parse(text) as TemplatePayload
+            prepareTemplateImport(payload)
+          } catch {
+            toast(configT('configuration:settingsPage.messages.configParseFailed'), 'error')
+          }
+        }}
+      />
+
       {/* Hero */}
       <div className="card relative overflow-hidden p-5 md:p-7">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/30" />
@@ -1072,106 +1033,8 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* Config Pack (Templates) */}
-        <section id="sec-pack" className="card p-4 md:p-6 lg:col-span-7">
-          <div className="flex items-start justify-between mb-4 gap-3">
-            <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">{configT('configuration:settingsPage.pack.title')}</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">{configT('configuration:settingsPage.pack.description')}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" className="h-8" onClick={() => setExportDialogOpen(true)} disabled={exporting}>
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{configT('configuration:settingsPage.pack.export')}</span>
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-8"
-                onClick={() => importFileRef.current?.click()}
-                disabled={importing}
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{configT('configuration:settingsPage.pack.import')}</span>
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 mb-4">
-            <div className="text-[11px] text-muted-foreground">{configT('configuration:settingsPage.pack.importMode')}</div>
-            <Select value={importMode} onValueChange={(v) => setImportMode(v as any)}>
-              <SelectTrigger className="h-8 w-[160px] text-[12px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="merge">{configT('configuration:settingsPage.pack.merge')}</SelectItem>
-                <SelectItem value="replace">{configT('configuration:settingsPage.pack.replace')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <input
-            ref={importFileRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (!file) return
-              try {
-                const text = await file.text()
-                const payload = JSON.parse(text) as TemplatePayload
-                prepareTemplateImport(payload)
-              } catch (err) {
-                toast(configT('configuration:settingsPage.messages.configParseFailed'), 'error')
-              }
-            }}
-          />
-
-          {lastImportFeedback ? (
-            <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-              <div className="flex items-start gap-2 text-[12px] text-foreground">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                <span>{lastImportFeedback.successMessage}</span>
-              </div>
-              {lastImportFeedback.warningMessage ? (
-                <div className="mt-2 flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{lastImportFeedback.warningMessage}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
-              <FileJson className="w-4 h-4 text-muted-foreground" />
-              {configT('configuration:settingsPage.pack.officialTemplates')}
-            </div>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
-              {builtinTemplates.map(t => (
-                <div key={t.name} className="rounded-lg border border-border/40 bg-background/30 p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[12px] font-semibold text-foreground">{t.name}</div>
-                    <Button
-                      size="sm"
-                      className="h-7"
-                      onClick={() => importTemplate(t.payload, detectTemplateModules(t.payload))}
-                      disabled={importing}
-                    >
-                      <span className="text-[12px]">{configT('configuration:settingsPage.pack.apply')}</span>
-                    </Button>
-                  </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">{t.desc}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {/* Feedback Stats */}
-        <section id="sec-feedback" className="card p-4 md:p-6 lg:col-span-5">
+        <section id="sec-feedback" className="card p-4 md:p-6 lg:col-span-12">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">{configT('configuration:settingsPage.feedback.title')}</h3>

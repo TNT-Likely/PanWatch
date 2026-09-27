@@ -197,11 +197,6 @@ export const configuration = {
       fields: { botToken: 'Bot Token', chatId: 'Chat ID', proxy: '代理', deviceKey: '设备 Key', serverUrl: '服务器地址', webhookToken: 'Webhook Token', signSecret: '加签密钥', phones: '@手机号', keyword: '关键字', webhookKey: 'Webhook Key', sendKey: 'SendKey', token: 'Token', groupCode: '群组编码', webhookId: 'Webhook ID', userKey: '用户 Key', appToken: '应用 Token' },
       placeholders: { botToken: '123456:ABC-DEF...', chatId: '-100123456789', proxy: 'http://192.168.1.1:7890 或 socks5://...', deviceKey: '你的 Bark Device Key', serverUrl: '默认 api.day.app，支持自建服务地址', accessToken: 'access_token 的值', signSecret: 'SEC...（可选）', phones: '逗号分隔，例如 13800138000,13900139000', keyword: '群机器人要求关键字时填写', webhookKey: 'Webhook URL 中 key= 后的值', webhookToken: 'hook/ 后面的 token', sendKey: 'SCT...', pushplusToken: '你的 PushPlus Token', groupCode: '可选，用于群组通知', webhookId: 'Webhook URL 中的 ID', userKey: '你的用户 Key', appToken: '你的应用 Token' },
     },
-    templates: {
-      conservative: { name: '保守', description: '低打扰：盘中更严格触发，静默时段建议开启' },
-      balanced: { name: '均衡', description: '默认推荐：兼顾覆盖与打扰' },
-      aggressive: { name: '激进', description: '更高频：更早捕捉变化，适合短线盯盘' },
-    },
     importFeedback: {
       created: '新增 {{count}}', updated: '更新 {{count}}', resource: '{{label}}{{changes}}', settings: '设置 {{count}} 项',
       listSeparator: '、', itemSeparator: '；', success: '已导入：{{details}}', empty: '导入完成：没有需要新增或更新的内容',
@@ -220,7 +215,7 @@ export const configuration = {
       testFailed: '测试失败', operationFailed: '操作失败', notificationSent: '测试通知已发送', channelSaved: '通知渠道已保存',
       configParseFailed: '配置包解析失败',
     },
-    nav: { ai: 'AI', notifications: '通知', system: '系统', pack: '配置包', feedback: '反馈', pat: 'MCP 令牌' },
+    nav: { ai: 'AI', notifications: '通知', system: '系统', feedback: '反馈', pat: 'MCP 令牌' },
     hero: {
       uploadAvatar: '点击上传头像', avatarAlt: '头像', providers: '服务商', models: '模型', channelsEnabled: '渠道启用',
       defaultModel: '默认模型', defaultNotification: '默认通知', importing: '导入中...', importPack: '导入配置包',
@@ -233,8 +228,7 @@ export const configuration = {
     notifications: { title: '通知渠道', description: '推送到 Telegram/Bark 等渠道', add: '添加', empty: '暂无通知渠道，点击“添加”创建', sendTest: '发送测试', setDefault: '设为默认' },
     system: { title: '系统', description: '偏好与高级选项。修改后立即生效。', searchPlaceholder: '搜索设置项（描述 / key）', stockLinkXueqiu: '雪球', settingDescriptions: { http_proxy: 'HTTP 代理地址（配置后行情、新闻、AI 和通知统一走此代理）', notify_quiet_hours: '通知静默时间段（HH:MM-HH:MM，空为关闭）', notify_retry_attempts: '通知失败重试次数（不含首次）', notify_retry_backoff_seconds: '通知重试退避秒数（基数）', notify_dedupe_ttl_overrides: '通知幂等窗口覆盖（JSON，空为默认）', stock_link_platform: '股票链接平台（点击股票代码跳转的行情网站）', panwatch_base_url: 'PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）' } },
     pack: {
-      title: '配置包', description: '按模块迁移 AI、通知、Agent、关注列表、账户持仓与系统设置', export: '导出', import: '导入', importMode: '导入模式',
-      merge: '合并更新（推荐）', replace: '替换（仅覆盖配置包包含项）', officialTemplates: '官方模板', apply: '应用',
+      importMode: '导入模式', merge: '合并更新（推荐）',
       chooseExport: '选择导出模块', chooseExportDescription: '配置包只包含勾选的模块，导入时还可以再次筛选。', sensitive: '含凭据',
       credentialsWarning: 'AI 服务会包含 API Key，通知渠道会包含 Token、Webhook 等完整凭据。请安全保存配置包。', cancel: '取消', exporting: '导出中...', exportCount: '导出 {{count}} 个模块',
       chooseImport: '选择导入模块', versionDetected: '配置包版本 v{{version}}，检测到 {{count}} 个可用模块。', replaceHint: '替换模式会清理配置包所含账户/标的中未列出的绑定。', replaceContained: '替换包含项', importing: '导入中...', importCount: '导入 {{count}} 个模块',
