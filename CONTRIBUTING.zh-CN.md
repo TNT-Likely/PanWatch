@@ -169,31 +169,31 @@ git diff --check
 
 ## 提交信息
 
-使用 Conventional Commits：
+提交信息统一使用英文，并采用 Conventional Commits：
 
 ```text
 <type>(<scope>): <subject>
 ```
 
-常用 type 包括 `feat`、`fix`、`refactor`、`perf`、`test`、`docs`、`chore`、`build` 和 `ci`。scope 使用受影响模块，例如 `assistant`、`marketdata`、`frontend` 或 `i18n`。
+常用 type 包括 `feat`、`fix`、`refactor`、`perf`、`test`、`docs`、`chore`、`build` 和 `ci`。scope 使用受影响模块，例如 `assistant`、`marketdata`、`frontend` 或 `i18n`。subject 使用简洁的英文祈使句，不以句号结尾。
 
 示例：
 
 ```text
-feat(automation): 新增盘前风险摘要
-fix(marketdata): 兼容成交量为空的行情响应
-docs(readme): 补充 Docker 启动说明
+feat(automation): add a pre-market risk digest
+fix(marketdata): handle empty quote volume
+docs(readme): clarify Docker startup behavior
 ```
 
 ## Pull Request
 
-PR 标题同样使用 Conventional Commits。正文至少包含：
+PR 标题和正文统一使用英文，标题同样采用 Conventional Commits。正文至少包含：
 
-1. **背景**：问题和用户影响。
-2. **变更内容**：按模块说明实现与行为变化。
-3. **验证**：实际执行的命令及结果。
-4. **边界与风险**：兼容性、未测试路径和已知限制。
-5. **后续计划**：只记录明确留到后续处理的工作。
+1. **Background**：问题和用户影响。
+2. **Changes**：按模块说明实现与行为变化。
+3. **Validation**：实际执行的命令及结果。
+4. **Boundaries and risks**：兼容性、未测试路径和已知限制。
+5. **Follow-up**：只记录明确留到后续处理的工作。
 
 通过 Codex 开发时，除非维护者另有要求，使用 `codex/` 前缀分支。仓库默认采用 squash merge。
 

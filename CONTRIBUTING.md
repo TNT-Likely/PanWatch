@@ -169,13 +169,13 @@ Document attribution, authentication requirements, rate limits, market coverage,
 
 ## Commit messages
 
-Use Conventional Commits:
+Commit messages must be written in English and use Conventional Commits:
 
 ```text
 <type>(<scope>): <subject>
 ```
 
-Common types are `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `build`, and `ci`. Use the affected module as the scope, such as `assistant`, `marketdata`, `frontend`, or `i18n`.
+Common types are `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `chore`, `build`, and `ci`. Use the affected module as the scope, such as `assistant`, `marketdata`, `frontend`, or `i18n`. Keep the subject concise, imperative, and without a trailing period.
 
 Examples:
 
@@ -187,7 +187,7 @@ docs(readme): clarify Docker startup behavior
 
 ## Pull requests
 
-Pull-request titles should also use Conventional Commits. The body must include:
+Pull-request titles and descriptions must be written in English. Titles should also use Conventional Commits. The body must include:
 
 1. **Background** — the problem and user impact.
 2. **Changes** — implementation and behavior changes grouped by module.
