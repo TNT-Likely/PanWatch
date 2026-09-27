@@ -82,7 +82,7 @@ function formatLocalDateTime(iso: string | undefined, locale: string): string {
 }
 
 function buildLocalizedSuggestion(s: KlineSummaryData, holding: boolean | undefined, tr: Translate) {
-  const scored = buildKlineSuggestion(s, holding)
+  const scored = buildKlineSuggestion(s, holding, tr)
   const items: Array<{ text: string; delta: number }> = []
   const add = (key: string, delta: number, options?: Record<string, unknown>) => items.push({ text: tr(`items.${key}`, options), delta })
 

@@ -1,4 +1,5 @@
 import { fetchAPI } from './client'
+import { interfaceText } from './locale'
 import { readSSE, type SSEEvent } from './sse'
 
 export interface ChatConversation {
@@ -310,7 +311,7 @@ function dispatchAssistantEvent(
       break
     }
     case 'status':
-      callbacks.onStatus?.(d.message || '思考中…')
+      callbacks.onStatus?.(d.message || interfaceText('思考中…', 'Thinking…'))
       break
     case 'run_started':
       callbacks.onRunStarted?.({
@@ -356,9 +357,9 @@ function dispatchAssistantEvent(
       const call = d.calls?.[0] || {}
       callbacks.onApprovalRequired?.({
         id: d.approval_id || '',
-        tool_title: d.presentation?.tool_title || call.name || d.name || '需要确认的工具操作',
+        tool_title: d.presentation?.tool_title || call.name || d.name || interfaceText('需要确认的工具操作', 'Tool action requiring confirmation'),
         risk: call.risk || d.risk || 'write',
-        summary: d.presentation?.summary || call.summary || ('请求执行 ' + (call.name || d.name || '工具操作')),
+        summary: d.presentation?.summary || call.summary || interfaceText(`请求执行 ${call.name || d.name || '工具操作'}`, `Request to run ${call.name || d.name || 'a tool action'}`),
         expires_at: d.expires_at || '',
         status: 'pending',
       })
@@ -384,7 +385,7 @@ function dispatchAssistantEvent(
       })
       break
     case 'error':
-      state.terminalError = d.message || '未知错误'
+      state.terminalError = d.message || interfaceText('未知错误', 'Unknown error')
       callbacks.onError?.(state.terminalError)
       break
   }
@@ -452,7 +453,7 @@ async function sendMessageStream(
     }
   }
 
-  if (!state.finished && !state.paused) throw primaryError || new Error('流式回复未完成')
+  if (!state.finished && !state.paused) throw primaryError || new Error(interfaceText('流式回复未完成', 'The streaming response did not complete.'))
 }
 
 async function subscribeAssistantTaskStream(
@@ -495,7 +496,7 @@ async function subscribeAssistantTaskStream(
 
   if (state.terminalError && !state.finished) throw new Error(state.terminalError)
   if (!state.finished && !state.paused && !signal?.aborted) {
-    throw primaryError || new Error('任务事件流未完成')
+    throw primaryError || new Error(interfaceText('任务事件流未完成', 'The task event stream did not complete.'))
   }
 }
 
@@ -551,5 +552,5 @@ async function decideAssistantApprovalStream(
   }
 
   if (state.terminalError && !state.finished) throw new Error(state.terminalError)
-  if (!state.finished && !state.paused) throw primaryError || new Error('流式回复未完成')
+  if (!state.finished && !state.paused) throw primaryError || new Error(interfaceText('流式回复未完成', 'The streaming response did not complete.'))
 }

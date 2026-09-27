@@ -9,13 +9,15 @@ export const bizUi = {
   stockPriceAlert: {
     conditions: { price: '价格', change_pct: '涨跌幅%', turnover: '成交额', volume: '成交量', volume_ratio: '量比' },
     messages: { loadFailed: '加载提醒失败', stockNotFound: '无法定位股票', createFailed: '无法创建提醒', saved: '提醒已保存', saveFailed: '保存失败', toggleFailed: '切换失败', deleted: '已删除', deleteFailed: '删除失败', deleteConfirm: '确认删除规则「{{name}}」？' },
-    alert: '提醒', priceAlert: '价格提醒', title: '{{name}} 提醒', summary: '{{market}} · 启用 {{enabled}} / 共 {{total}}', create: '新建提醒', loading: '加载中...', empty: '该股票暂无提醒规则', enabled: '启用', paused: '暂停', disable: '停用', enable: '启用', or: ' 或 ', and: ' 且 ', editTitle: '编辑提醒规则', createTitle: '新建提醒规则', formDescription: '支持价格、涨跌幅、成交额、量比条件，支持 AND / OR 组合', saveRule: '保存规则', defaultName: '{{name}} 价格提醒', fallbackName: '{{name}} 提醒',
+    alert: '提醒', priceAlert: '价格提醒', title: '{{name}} 提醒', summary: '{{market}} · 启用 {{enabled}} / 共 {{total}}', create: '新建提醒', loading: '加载中...', empty: '该股票暂无提醒规则', enabled: '启用', paused: '暂停', disable: '停用', enable: '启用', or: ' 或 ', and: ' 且 ', between: '介于', editTitle: '编辑提醒规则', createTitle: '新建提醒规则', formDescription: '支持价格、涨跌幅、成交额、量比条件，支持 AND / OR 组合', saveRule: '保存规则', defaultName: '{{name}} 价格提醒', fallbackName: '{{name}} 提醒',
   },
   kline: {
     title: 'K线 / 技术指标', period: '周期：{{value}}', dataAsOf: '数据截至：{{value}}', calculatedAt: '计算时间：{{value}}', loading: '加载中...', empty: '暂无数据', held: '已持仓', notHeld: '未持仓', score: '评分 {{value}}', disclaimer: '仅基于技术指标规则生成，非投资建议', hoverHint: '提示：悬停指标标签可查看详细说明', current: '当前：{{value}}',
     statuses: { bullish: '多头排列', bearish: '空头排列', mixed: '均线交织', goldenCross: '金叉', deathCross: '死叉', overbought: '超买', oversold: '超卖', strong: '偏强', weak: '偏弱', volumeUp: '放量', volumeDown: '缩量', upperBreak: '突破上轨', lowerBreak: '跌破下轨', positive: '为正', negative: '为负', neutral: '接近0' },
-    actions: { buy: '买入', add: '加仓', sell: '卖出', reduce: '减仓', avoid: '回避', hold: '持有', watch: '观望' },
-    items: { trendBull: '均线多头排列，趋势偏强', trendBear: '均线空头排列，趋势偏弱', macdGolden: 'MACD 金叉，短线动能偏强', macdDeath: 'MACD 死叉，短线动能转弱', macdHist: 'MACD 柱体{{status}}', rsiOversold: 'RSI 超卖，可能存在反弹', rsiStrong: 'RSI 偏强，买盘占优', rsiOverbought: 'RSI 超买，注意回调风险', rsiWeak: 'RSI 偏弱，短线承压', kdjGolden: 'KDJ 金叉，短线转强', kdjDeath: 'KDJ 死叉，短线转弱', bollUpper: '突破布林上轨，趋势强势', bollLower: '跌破布林下轨，走势偏弱', volumeUp: '放量配合，资金参与度提升', volumeDown: '缩量，动能不足', nearSupport: '价格接近支撑位，止跌反弹概率提升', nearResistance: '价格接近压力位，上行空间受限' },
+    actions: { buy: '买入', add: '加仓', sell: '卖出', reduce: '减仓', avoid: '回避', hold: '持有', watch: '观望', alert: '提醒' },
+    neutralSignal: '技术面中性',
+    items: { trendBull: '均线多头排列，趋势偏强', trendBear: '均线空头排列，趋势偏弱', trendMixed: '均线交织，趋势不明', macdGolden: 'MACD 金叉，短线动能偏强', macdDeath: 'MACD 死叉，短线动能转弱', macdHist: 'MACD 柱体{{status}}', macdPositive: 'MACD 柱体为正（动能偏多）', macdNegative: 'MACD 柱体为负（动能偏空）', rsiOversold: 'RSI 超卖，可能存在反弹', rsiStrong: 'RSI 偏强，买盘占优', rsiOverbought: 'RSI 超买，注意回调风险', rsiWeak: 'RSI 偏弱，短线承压', rsiNeutral: 'RSI 中性', kdjGolden: 'KDJ 金叉，短线转强', kdjDeath: 'KDJ 死叉，短线转弱', bollUpper: '突破布林上轨，趋势强势', bollLower: '跌破布林下轨，走势偏弱', volumeUp: '放量配合，资金参与度提升', volumeDown: '缩量，动能不足', nearSupport: '价格接近支撑位，止跌反弹概率提升', nearResistance: '价格接近压力位，上行空间受限' },
+    tags: { bullish: '多头', bearish: '空头', macdGolden: 'MACD 金叉', macdDeath: 'MACD 死叉', rsiOversold: 'RSI 超卖', rsiStrong: 'RSI 偏强', rsiOverbought: 'RSI 超买', rsiWeak: 'RSI 偏弱', kdjGolden: 'KDJ 金叉', kdjDeath: 'KDJ 死叉', bollUpper: '突破上轨', bollLower: '跌破下轨', volumeUp: '放量', volumeDown: '缩量', nearSupport: '靠近支撑', nearResistance: '靠近压力' },
     indicators: {
       trend: { title: '趋势（均线排列）', description: '趋势标签来自 MA5 / MA10 / MA20 的相对位置。多头排列偏强，空头排列偏弱，均线交织更依赖成交量和关键价位。' },
       macd: { title: 'MACD（趋势 / 动能）', description: 'DIF 上穿 DEA 为金叉，下穿为死叉；柱体正负反映当前多空动能。需结合趋势和量价确认。' },

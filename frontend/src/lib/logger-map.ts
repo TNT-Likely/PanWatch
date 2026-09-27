@@ -1,5 +1,5 @@
-// Map Python module logger names to concise Chinese display names
-export const LOGGER_MAPPING: Record<string, string> = {
+// Map stable Python logger names to concise display names.
+export const LOGGER_MAPPING_ZH: Record<string, string> = {
   // Agents
   'src.agents.daily_report': '收盘复盘',
   'src.agents.premarket_outlook': '盘前分析',
@@ -60,17 +60,27 @@ export const LOGGER_MAPPING: Record<string, string> = {
   'tenacity': '重试库',
 }
 
-export function mapLoggerName(moduleName?: string): string {
+export const LOGGER_MAPPING_EN: Record<string, string> = {
+  'src.agents.daily_report': 'Closing review', 'src.agents.premarket_outlook': 'Pre-market analysis', 'src.agents.intraday_monitor': 'Intraday monitor', 'src.agents.base': 'Agent execution', 'src.agents.news_digest': 'News digest', 'src.agents.chart_analyst': 'Technical analysis', 'src.agents.tradingagents': 'Deep analysis', 'src.agents.tradingagents.agent': 'Deep analysis - main flow', 'src.agents.tradingagents.observability': 'Deep analysis - progress and cost', 'src.agents.tradingagents.data_context': 'Deep analysis - data context', 'src.agents.tradingagents.toolkit_adapter': 'Deep analysis - data adapter', 'src.agents.tradingagents.decision': 'Deep analysis - decisions and paper trading', 'src.agents.tradingagents.runtime_support': 'Deep analysis - runtime', 'src.agents.tradingagents.operations': 'Deep analysis - runs and evaluation', tradingagents: 'Deep analysis (upstream)',
+  'src.core.scheduler': 'Scheduler', 'src.core.ai_client': 'AI client', 'src.core.notifier': 'Notifications', 'src.core.analysis_history': 'Analysis history', 'src.core.suggestion_pool': 'Suggestion pool', 'src.core.data_collector': 'Data collection',
+  'src.collectors.akshare_collector': 'Quote collection', 'src.collectors.kline_collector': 'Chart collection', 'src.collectors.capital_flow_collector': 'Capital-flow collection', 'src.collectors.news_collector': 'News collection', 'src.collectors.screenshot_collector': 'Screenshot collection',
+  'src.web.api': 'API', 'src.web.app': 'Web app', 'src.web.database': 'Database', 'src.web.stock_list': 'Stock list', api: 'API', server: 'Service',
+  httpx: 'HTTP client', httpcore: 'HTTP core', urllib3: 'HTTP library', requests: 'HTTP client', 'uvicorn.access': 'Access log', 'uvicorn.error': 'Uvicorn errors', uvicorn: 'Uvicorn', fastapi: 'FastAPI', starlette: 'Starlette', 'sqlalchemy.engine': 'Database engine', sqlalchemy: 'SQLAlchemy', apscheduler: 'APScheduler', playwright: 'Browser', openai: 'AI SDK', tenacity: 'Retry library',
+}
+
+export function mapLoggerName(moduleName?: string, language = 'zh-CN'): string {
   if (!moduleName) return ''
+  const mapping = language.toLowerCase().startsWith('en') ? LOGGER_MAPPING_EN : LOGGER_MAPPING_ZH
   let bestKey = ''
-  for (const key of Object.keys(LOGGER_MAPPING)) {
+  for (const key of Object.keys(mapping)) {
     if (moduleName === key || moduleName.startsWith(key)) {
       if (key.length > bestKey.length) bestKey = key
     }
   }
-  return LOGGER_MAPPING[bestKey] || moduleName
+  return mapping[bestKey] || moduleName
 }
 
-export function loggerOptions(): { key: string, label: string }[] {
-  return Object.entries(LOGGER_MAPPING).map(([key, label]) => ({ key, label }))
+export function loggerOptions(language = 'zh-CN'): { key: string, label: string }[] {
+  const mapping = language.toLowerCase().startsWith('en') ? LOGGER_MAPPING_EN : LOGGER_MAPPING_ZH
+  return Object.entries(mapping).map(([key, label]) => ({ key, label }))
 }

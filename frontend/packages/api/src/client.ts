@@ -1,3 +1,5 @@
+import { interfaceText, isEnglishInterface } from './locale'
+
 const API_BASE = '/api'
 const DEFAULT_TIMEOUT_MS = 20000
 
@@ -25,7 +27,7 @@ const ENGLISH_HTTP_ERRORS: Record<string, string> = {
 
 function localizedApiError(body: ApiResponse<unknown>, status: number): string {
   const code = body.error_code || `http_${body.code || status}`
-  if (localStorage.getItem('panwatch-locale')?.toLowerCase().startsWith('en')) {
+  if (isEnglishInterface()) {
     return ENGLISH_HTTP_ERRORS[code] || 'The request failed. Try again later.'
   }
   return body.message || `HTTP ${status}`
@@ -90,7 +92,7 @@ export async function fetchAPI<T>(path: string, options?: ApiRequestOptions): Pr
     })
   } catch (error: any) {
     if (error?.name === 'AbortError') {
-      throw new Error('请求超时，请稍后重试')
+      throw new Error(interfaceText('请求超时，请稍后重试', 'The request timed out. Try again later.'))
     }
     throw error
   } finally {
@@ -101,7 +103,7 @@ export async function fetchAPI<T>(path: string, options?: ApiRequestOptions): Pr
 
   if (res.status === 401) {
     logout()
-    throw new Error('登录已过期')
+    throw new Error(interfaceText('登录已过期', 'Your session has expired. Sign in again.'))
   }
 
   const body: ApiResponse<T> = await res.json().catch(() => ({

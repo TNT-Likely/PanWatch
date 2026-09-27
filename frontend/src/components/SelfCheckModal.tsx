@@ -28,7 +28,10 @@ interface CheckRow {
   latency_ms: number
   error: string | null
   hint: string
+  hint_code?: string
   note: string | null
+  note_code?: string | null
+  note_params?: Record<string, string | number>
 }
 
 const CATEGORY_ORDER = ['system', 'datasource', 'ai', 'notify']
@@ -62,12 +65,17 @@ function StatusBadge({ status }: { status: RowStatus }) {
 }
 
 function ItemRow({ item }: { item: CheckRow }) {
+  const { t } = useTranslation('configuration')
+  const translate = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const displayName = item.key.startsWith('sys:') ? translate(`selfCheck.items.${item.key.slice(4)}`) : item.name
+  const hint = item.hint_code ? translate(`selfCheck.hints.${item.hint_code}`) : item.hint
+  const note = item.note_code ? translate(`selfCheck.notes.${item.note_code}`, item.note_params) : item.note
   return (
     <div className="rounded-lg bg-background/60 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <StatusBadge status={item.status} />
-          <span className="truncate text-[12px] font-medium text-foreground">{item.name}</span>
+          <span className="truncate text-[12px] font-medium text-foreground">{displayName}</span>
         </div>
         <span className="flex-shrink-0 font-mono text-[11px] text-muted-foreground">
           {item.status === 'checking' ? '…' : `${item.latency_ms}ms`}
@@ -80,11 +88,11 @@ function ItemRow({ item }: { item: CheckRow }) {
               {item.error}
             </p>
           )}
-          {item.hint && <p className="text-[11px] font-medium text-rose-600">{item.hint}</p>}
+          {hint && <p className="text-[11px] font-medium text-rose-600">{hint}</p>}
         </div>
       )}
-      {item.status !== 'fail' && item.status !== 'checking' && item.note && (
-        <p className="mt-1.5 text-[11px] text-muted-foreground/70">{item.note}</p>
+      {item.status !== 'fail' && item.status !== 'checking' && note && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground/70">{note}</p>
       )}
     </div>
   )
@@ -160,7 +168,7 @@ export default function SelfCheckModal({ open, onClose }: SelfCheckModalProps) {
           const res = await healthApi.selfcheckKeys([it.key], notifySend)
           const probed = res.items?.[0]
           merge(it.key, probed
-            ? { status: probed.status, latency_ms: probed.latency_ms, error: probed.error, hint: probed.hint, note: probed.note }
+            ? { status: probed.status, latency_ms: probed.latency_ms, error: probed.error, hint: probed.hint, hint_code: probed.hint_code, note: probed.note, note_code: probed.note_code, note_params: probed.note_params }
             : { status: 'fail', error: t('selfCheck.noResult'), hint: t('selfCheck.retryHint') })
         } catch (e) {
           merge(it.key, { status: 'fail', error: e instanceof Error ? e.message : t('selfCheck.requestFailed'), hint: t('selfCheck.retryHint') })

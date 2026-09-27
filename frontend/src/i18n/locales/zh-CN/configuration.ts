@@ -13,6 +13,14 @@ export const configuration = {
       slow: '慢',
       fail: '断',
     },
+    items: { db: '数据库', disk: '磁盘空间', scheduler: '调度器' },
+    hints: {
+      database_locked: 'SQLite 被锁：降低并发，或加快/关闭慢代理。', datasource_connection: '行情/新闻接口连接失败：检查系统代理与目标域名的网络出口。', datasource_default: '数据源不通：打开数据源配置页查看日志，确认提供商与接口可达。',
+      ai_auth: 'AI 鉴权失败：检查服务商 API Key。', ai_model: '模型不存在：确认模型标识与服务商一致。', ai_quota: '服务被限流或额度不足：稍后重试，并检查账户额度。', ai_connection: '无法连接 AI 服务：检查 base_url 和代理配置。', ai_default: 'AI 调用失败：检查 base_url、api_key 和 model。',
+      notify_config: '通知配置无效：检查渠道 URL 和参数格式。', notify_delivery: '通知发送失败：检查 webhook/token 及网络访问。', notify_default: '通知不通：核对渠道配置，或在渠道页发送测试。',
+      disk_space: '磁盘空间不足：清理 data 目录的旧数据/日志，或扩容磁盘。', scheduler_stopped: '调度器未运行：重启服务以恢复定时任务。', system_default: '系统项异常，请查看日志。', unknown: '未知错误，请查看日志。',
+    },
+    notes: { notify_config_only: '仅校验配置格式，未真实发送（可勾选「包含真实通知发送」）', disk_capacity: '可用 {{free}} GB / 共 {{total}} GB', scheduler_not_in_process: '当前进程无运行中的调度器（CLI 自检会跳过此项）', scheduler_running: '{{running}} 个调度器运行中，共 {{jobs}} 个任务{{stopped}}' },
     ungrouped: '未分组',
     listFailed: '获取自检清单失败',
     noResult: '未返回检查结果',
@@ -190,6 +198,12 @@ export const configuration = {
       balanced: { name: '均衡', description: '默认推荐：兼顾覆盖与打扰' },
       aggressive: { name: '激进', description: '更高频：更早捕捉变化，适合短线盯盘' },
     },
+    importFeedback: {
+      created: '新增 {{count}}', updated: '更新 {{count}}', resource: '{{label}}{{changes}}', settings: '设置 {{count}} 项',
+      listSeparator: '、', itemSeparator: '；', success: '已导入：{{details}}', empty: '导入完成：没有需要新增或更新的内容',
+      warning: '未导入：{{details}}（目标环境不存在对应配置）', droppedModels: '模型引用 {{count}} 个', droppedChannels: '通知渠道引用 {{count}} 个',
+      labels: { aiServices: 'AI 服务', models: '模型', notifyChannels: '通知渠道', stocks: '关注标的', agents: 'Agent ', stockAgents: '标的-Agent 绑定', accounts: '账户', positions: '持仓' },
+    },
     messages: {
       exportSuccess: '配置包已导出（{{count}} 个模块）', exportFailed: '导出失败', importFailed: '导入失败',
       noModules: '配置包中没有可导入的模块', avatarUpdated: '头像已更新', avatarSaveFailed: '头像保存失败',
@@ -230,6 +244,14 @@ export const configuration = {
     },
   },
   agentsPage: {
+    catalog: {
+      premarket_outlook: { name: '盘前分析', description: '开盘前综合昨日分析和隔夜信息，展望今日走势' },
+      intraday_monitor: { name: '盘中监测', description: '交易时段实时监控，AI 智能判断是否有值得关注的信号' },
+      daily_report: { name: '收盘复盘', description: '每日收盘后生成复盘报告，包含市场回顾、个股复盘和次日关注' },
+      chart_analyst: { name: '技术分析（能力）', description: '内部能力：详情页按需触发图像技术分析，不独立调度' },
+      news_digest: { name: '新闻速递', description: '汇总相关新闻与事件' },
+      tradingagents: { name: 'TradingAgents 深度分析', description: '多 Agent 投资决策框架，结合基本面、情绪、新闻、技术分析、辩论与风控' },
+    },
     title: '自动化任务管理与调度', health: '调度健康', refresh: '刷新', timezone: '时区', next24h: '未来 24h 将触发', recentFailed: '最近失败', emptyTitle: '暂无 Agent', emptyDescription: '启动后台服务后 Agent 会自动注册',
     modes: { single: '逐只分析', batch: '批量分析' }, unbound: '未绑定股票', more: '、...更多', bound: '已绑定 {{bound}} / {{total}}', deepConfig: '深度配置', futureTrigger: '未来触发时间：', futureThree: '未来 3 次：', systemDefault: '系统默认', running: '运行中', trigger: '触发', recentRun: '最近运行', enabled: '启用', disabled: '停用', recentRuns: '最近 5 次运行', loading: '加载中…', noRecords: '暂无记录',
     schedule: { title: '设置执行周期', type: '调度类型', daily: '每天定时', weekdays: '工作日定时', interval: '固定间隔', cron: '自定义 Cron', executionTime: '执行时间', weekdaysHint: '周一至周五', dailyHint: '每天', everyMinutes: '每 {{count}} 分钟', executeAt: '在此时间执行', intervalLabel: '执行间隔（分钟）', hourly: '每小时', cronLabel: 'Cron 表达式', cronHint: '格式：分 时 日 月 周（如 0 15 * * 1-5 表示工作日 15:00）', preview: '未来触发时间预览', cancel: '取消', save: '保存' },
@@ -249,6 +271,11 @@ export const configuration = {
   dashboard: {
     title: '今日该看什么', loading: '加载中…', noHoldings: '暂无持仓，添加持仓后这里展示今日盈亏与组合走势', todayPnl: '今日盈亏', unrealized: '累计浮盈', excess60: '60日超额', position: '仓位', portfolioPage: '持仓页 →', important: '今日要紧事', importantHint: '你的持仓/自选里今天该关注的', shareImage: '分享图', scanning: '扫描中…', noEventsTodo: '今日暂无异动/触发 ✓ · 待办:', addAlert: '加提醒', expiring: '将到期', noSignal: '今日暂无明显异动或触发信号 ✓', health: '组合体检', scorecard: '成绩单', healthImage: '体检图', noHoldingsHealth: '暂无持仓，添加持仓后这里给风险与相对大盘表现', myPortfolio: '我的组合', excess: '超额', benchmarkCalculating: '基准对比计算中…（需拉全部持仓 K 线，约 1 分钟）', benchmarkInsufficient: '数据不足，暂无法计算基准对比', benchmarkFailed: '基准对比加载失败（超时或网络异常）', retry: '重试', holdings: '持仓 {{count}} 只 · 最大单仓', leader: '领涨', laggard: '拖累', noRisk: '✓ 集中度/分布未见明显风险', aiChecking: 'AI 体检中…', aiReport: 'AI 体检报告', opportunities: '机会精选', opportunitiesPage: '进入机会页', noOpportunities: '暂无活跃机会信号', score: '评分', collapse: '收起', expand: '展开', alertHit: '提醒命中', holding: '持仓', watch: '自选', risk: '风险', opportunity: '机会', refreshed: '{{time}} 已刷新', weekday: '周{{day}}', alerts: { surge: '快速拉升', plunge: '快速跳水', high_volume: '放量异动', breakout: '突破', breakdown: '破位', limit_up: '涨停', limit_down: '跌停' }, feed: { alert: '提醒命中', holding: '持仓', watch: '自选', risk: '风险', opportunity: '机会' }, markets: { CN: 'A 股', HK: '港股', US: '美股' }, indices: { sseComposite: '上证指数', szseComponent: '深证成指', chinext: '创业板指', hangSeng: '恒生指数', nasdaq: '纳斯达克', dowJones: '道琼斯', csi300: '沪深300' }, diagnosticAlerts: { single_concentration: '单仓集中度过高：最大持仓占 {{weight}}%', hhi_concentration: '组合高度集中（HHI={{hhi}}）', too_few_positions: '持仓数过少（{{count}} 只），分散不足', market_concentration: '{{market}}市场占比过高（{{weight}}%）' }, defaultBenchmark: '沪深300', briefing: '盘前/盘后简报' },
   opportunities: {
+    actionCodes: { buy: '买入', hold: '观望', add: '建仓', sell: '卖出', reduce: '减仓', avoid: '回避', watch: '观望', alert: '提醒' },
+    strategies: { trend_follow: '趋势延续', macd_golden: 'MACD 金叉', volume_breakout: '放量突破', momentum: '动量强化', pullback: '回踩确认', rebound: '超跌反弹', watchlist_agent: 'Agent 建议', market_scan: '市场扫描', tradingagents: 'TradingAgents 深度分析' },
+    regimes: { bullish: '看多', bearish: '看空', neutral: '中性' },
+    sourcePools: { watchlist: '关注池', market_scan: '市场池', mixed: '市场+关注' },
+    factors: { alpha_score: 'Alpha', catalyst_score: '催化', quality_score: '质量', source_bonus: '来源加成', risk_penalty: '风险惩罚', crowd_penalty: '拥挤惩罚' },
     title: '机会页', subtitle: '市场池优先，候选必须具备可执行入场计划', latestSnapshot: '最新快照', refresh: '刷新', currentCandidates: '当前候选（全局）', actionable: '可执行', watching: '观察', marketPoolRatio: '市场池占比', marketPool: '市场池', watchPool: '关注池', mixedPool: '融合', filteredResult: '本次筛选结果', unheld: '未持仓', winRate3d: '3日胜率（自动评估）', autoSamples: '自动样本', avgAlpha: '平均 Alpha 因子', sample: '样本', avgCatalyst: '平均事件催化', crowdPenalty: '拥挤惩罚', avgQualityRisk: '平均质量/风险', qualityHint: '质量分越高越好', constraintDowngrade: '组合约束降级', constraintHint: 'Top20 被风控降级数量', marketRisk: '市场状态与组合风险', confidence: '置信', concentration: '集中度', highRiskRatio: '高风险占比', apply: '应用筛选', clear: '清空筛选', loading: '加载中...', empty: '暂无满足条件的机会', share: '分享图', autoEvaluation: '评估：自动后验', factorWeights: '因子权重与战绩', score: '评分', entry: '入场', stopLoss: '止损', target: '目标', invalidation: '失效', strategy: '策略', sourcePool: '来源池', sourceAgent: '来源 Agent', risk: '风险', regime: '市场状态', holding: '持仓', held: '持仓中', unheldStatus: '未持仓', market: '市场', catalyst: '催化', quality: '质量', riskPenalty: '风险惩罚', relativeStrength: '相对强弱', eventCatalyst: '事件催化', constraint: '组合约束', autoDowngraded: '已自动降级', source: '来源', marketCandidate: '市场候选', watchedStock: '已关注标的', watchPoolShort: '关注池', marketPlusWatch: '市场+关注', marketPoolShort: '市场池', riskLevels: { low: '低风险', medium: '中风险', high: '高风险' }, actions: { hold: '观望', add: '建仓', entryMissing: '待补充入场位', noEntry: '当前不建议开仓', candidate: '候选建议' }, agents: { premarket_outlook: '盘前分析', intraday_monitor: '盘中监测', daily_report: '收盘复盘', news_digest: '新闻速递', market_scan: '市场扫描' }, markets: { ALL: '全部市场', CN: 'A股', HK: '港股', US: '美股' }, filters: { allSources: '全部来源', marketScan: '市场池', mixed: '融合池', watchlist: '关注池', allHolding: '全部持仓状态', onlyUnheld: '仅未持仓', onlyHeld: '仅持仓中', allStrategies: '全部策略', allRisks: '全部风险等级', score90: '评分90+', score80: '评分80+', score70: '评分70+', score60: '评分60+', score50: '评分50+', scoreAny: '评分不过滤' }, errors: { timeout: '策略层请求超时，已降级展示候选快照', noMarket: '当前{{market}}暂无满足条件机会，已展示全市场结果', noSnapshot: '暂无机会快照，请点击“刷新”生成一次', loadFailed: '加载失败', refreshBackground: '后台刷新失败：{{message}}', stillRunning: '刷新任务仍在后台执行，请稍后重试', submitted: '已提交后台刷新任务，完成后自动更新', running: '刷新任务已在执行中，完成后自动更新', slow: '刷新任务耗时较长，已在后台继续执行，请稍后再点刷新', refreshFailed: '刷新失败' },
   },
   stocksPage: {

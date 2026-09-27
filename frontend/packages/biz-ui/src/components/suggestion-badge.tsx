@@ -144,6 +144,8 @@ export function SuggestionBadge({
   const { t, i18n } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`suggestionBadge.${key}`, options)
+  const klineTr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`kline.${key}`, options)
   const locale = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
   const english = locale === 'en-US'
   const isTechnical = suggestion?.agent_name === 'technical_fallback' || suggestion?.agent_label === '技术指标'
@@ -206,7 +208,7 @@ export function SuggestionBadge({
   if (showFullInline) {
     if (!suggestion) return null
     const isAI = !!suggestion.agent_name && !isTechnical
-    const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
+    const tech = kline ? buildKlineSuggestion(kline as any, hasPosition, klineTr) : null
     const timeStr = formatSuggestionTime(suggestion.created_at, locale)
     const klineMetaStr = formatKlineMeta(suggestion.meta, locale, tr)
     return (
@@ -451,7 +453,7 @@ export function SuggestionBadge({
           />
           {showTechnicalCompanion && !isTechnical && (
             (() => {
-              const tech = kline ? buildKlineSuggestion(kline as any, hasPosition) : null
+              const tech = kline ? buildKlineSuggestion(kline as any, hasPosition, klineTr) : null
               return (
                 <TechnicalBadge
                   label={tech ? localizedAction(tech.action, tech.action_label) : tr('watch')}

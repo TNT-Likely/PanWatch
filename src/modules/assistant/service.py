@@ -739,9 +739,11 @@ class AssistantService:
         except LookupError as exc:
             raise AssistantNotFoundError(str(exc)) from exc
 
-    @staticmethod
-    def _approval_presentation(pending) -> dict[str, str]:
+    def _approval_presentation(self, pending) -> dict[str, str]:
         """Translate host tool arguments into the text a human needs to approve."""
+        from src.platform.language import resolve_report_language
+
+        english = resolve_report_language(self._repository.session) == "en-US"
         arguments = pending.arguments
 
         if pending.tool_name == "update_price_alert":
@@ -754,39 +756,39 @@ class AssistantService:
                     display_price = str(arguments["target_price"])
                 if "direction" in arguments:
                     direction = "≥" if arguments.get("direction") == "above" else "≤"
-                    changes.append(f"目标价 {direction} {display_price}")
+                    changes.append((f"Target price {direction} {display_price}" if english else f"目标价 {direction} {display_price}"))
                 else:
-                    changes.append(f"目标价改为 {display_price}（方向保持不变）")
+                    changes.append((f"Target price to {display_price} (direction unchanged)" if english else f"目标价改为 {display_price}（方向保持不变）"))
             elif "direction" in arguments:
                 direction = "≥" if arguments.get("direction") == "above" else "≤"
-                changes.append(f"方向改为 {direction}")
+                changes.append((f"Direction to {direction}" if english else f"方向改为 {direction}"))
             if "enabled" in arguments:
-                changes.append("启用" if arguments["enabled"] else "停用")
+                changes.append(("Enable" if arguments["enabled"] else "Disable") if english else ("启用" if arguments["enabled"] else "停用"))
             if "name" in arguments:
-                changes.append(f"名称改为 {arguments['name']}")
+                changes.append((f"Rename to {arguments['name']}" if english else f"名称改为 {arguments['name']}"))
             if "cooldown_minutes" in arguments:
-                changes.append(f"冷却 {arguments['cooldown_minutes']} 分钟")
+                changes.append((f"Cooldown {arguments['cooldown_minutes']} minutes" if english else f"冷却 {arguments['cooldown_minutes']} 分钟"))
             if "max_triggers_per_day" in arguments:
-                changes.append(f"每日最多触发 {arguments['max_triggers_per_day']} 次")
+                changes.append((f"At most {arguments['max_triggers_per_day']} triggers per day" if english else f"每日最多触发 {arguments['max_triggers_per_day']} 次"))
             if "repeat_mode" in arguments:
-                changes.append(f"重复模式改为 {arguments['repeat_mode']}")
-            summary = "；".join(changes) or "更新规则"
+                changes.append((f"Repeat mode to {arguments['repeat_mode']}" if english else f"重复模式改为 {arguments['repeat_mode']}"))
+            summary = ("; " if english else "；").join(changes) or ("Update the rule" if english else "更新规则")
             return {
-                "tool_title": "修改价格提醒",
-                "summary": f"修改价格提醒 #{rule_id}：{summary}。",
+                "tool_title": "Update price alert" if english else "修改价格提醒",
+                "summary": f"Update price alert #{rule_id}: {summary}." if english else f"修改价格提醒 #{rule_id}：{summary}。",
             }
 
         if pending.tool_name == "delete_price_alert":
             rule_id = arguments.get("rule_id", "?")
             return {
-                "tool_title": "删除价格提醒",
-                "summary": f"删除价格提醒 #{rule_id} 及其历史命中记录。",
+                "tool_title": "Delete price alert" if english else "删除价格提醒",
+                "summary": f"Delete price alert #{rule_id} and its trigger history." if english else f"删除价格提醒 #{rule_id} 及其历史命中记录。",
             }
 
         if pending.tool_name != "create_price_alert":
             return {
-                "tool_title": "需要授权的操作",
-                "summary": f"将调用 {pending.tool_name}。",
+                "tool_title": "Action requiring approval" if english else "需要授权的操作",
+                "summary": f"Run {pending.tool_name}." if english else f"将调用 {pending.tool_name}。",
             }
 
         market = str(arguments.get("market") or "CN").upper()
@@ -797,14 +799,17 @@ class AssistantService:
         try:
             display_price = f"{float(target_price):g}"
         except (TypeError, ValueError):
-            display_price = str(target_price or "未知价格")
+            display_price = str(target_price or ("unknown price" if english else "未知价格"))
         try:
             display_cooldown = f"{int(cooldown_minutes)}"
         except (TypeError, ValueError):
             display_cooldown = "30"
         return {
-            "tool_title": "创建价格提醒",
+            "tool_title": "Create price alert" if english else "创建价格提醒",
             "summary": (
+                f"Create an intraday alert for {market}:{symbol} at price {direction} {display_price}, "
+                f"with a {display_cooldown}-minute cooldown."
+                if english else
                 f"为 {market}:{symbol} 创建价格 {direction} {display_price} 的盘中提醒，"
                 f"冷却 {display_cooldown} 分钟。"
             ),

@@ -19,17 +19,6 @@ export const suggestionActionColors: Record<SuggestionAction, string> = {
   avoid: 'bg-red-600 text-white',
 }
 
-export const suggestionActionLabels: Record<SuggestionAction, string> = {
-  buy: '买入',
-  add: '加仓',
-  reduce: '减仓',
-  sell: '卖出',
-  hold: '持有',
-  watch: '观望',
-  avoid: '回避',
-  alert: '提醒',
-}
-
 export function normalizeSuggestionAction(action?: string, label?: string): SuggestionAction | null {
   const raw = (action || label || '').toLowerCase()
   if (!raw) return null
@@ -53,12 +42,6 @@ export function normalizeSuggestionAction(action?: string, label?: string): Sugg
 
 export function resolveSuggestionAction(action?: string, label?: string): SuggestionAction {
   return normalizeSuggestionAction(action, label) || 'watch'
-}
-
-export function resolveSuggestionLabel(action?: string, label?: string, fallback = '观望'): string {
-  const normalized = normalizeSuggestionAction(action, label)
-  if (normalized) return suggestionActionLabels[normalized] || fallback
-  return String(label || '').trim() || fallback
 }
 
 export function resolveSuggestionColorClass(action?: string, label?: string): string {

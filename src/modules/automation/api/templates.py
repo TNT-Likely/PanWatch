@@ -145,6 +145,12 @@ _MODULES = set(_MODULE_ORDER)
 _LEGACY_MODULES = {"settings", "agents", "watchlist"}
 
 
+def _portable_agent_config(config: dict | None) -> dict:
+    value = dict(config or {})
+    value.pop("output_language", None)
+    return value
+
+
 def _selected_modules(
     raw: str | None, payload: TemplatePayload | None = None
 ) -> set[str]:
@@ -275,7 +281,7 @@ def export_template(
                         for channel_id in agent.notify_channel_ids or []
                         if (ref := _channel_ref(channel_by_id.get(channel_id)))
                     ],
-                    "config": agent.config or {},
+                    "config": _portable_agent_config(agent.config),
                 }
             )
 
@@ -670,15 +676,17 @@ def import_template(
             row.enabled = False
             row.schedule = ""
         cfg = row.config or {}
+        imported_config = _portable_agent_config(a.config)
         if mode == "replace":
-            row.config = a.config or {}
+            row.config = imported_config
         else:
             # merge
-            if isinstance(cfg, dict) and isinstance(a.config, dict):
-                cfg.update(a.config)
-                row.config = cfg
+            if isinstance(cfg, dict):
+                merged_config = _portable_agent_config(cfg)
+                merged_config.update(imported_config)
+                row.config = merged_config
             else:
-                row.config = a.config or {}
+                row.config = imported_config
 
     # Stocks + StockAgents
     for s in payload.stocks if "watchlist" in selected else []:

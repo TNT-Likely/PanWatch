@@ -158,7 +158,9 @@ def group_prediction_outcomes(rows: Sequence[Any]) -> list[dict[str, Any]]:
                 "stock_market": str(getattr(row, "stock_market", "") or ""),
                 "prediction_date": str(getattr(row, "prediction_date", "") or ""),
                 "action": str(getattr(row, "action", "") or ""),
-                "action_label": str(getattr(row, "action_label", "") or ""),
+                # UI derives the display label from the stable action code and
+                # current interface language. Historical labels may be Chinese.
+                "action_label": "",
                 "confidence": getattr(row, "confidence", None),
                 "trigger_price": getattr(row, "trigger_price", None),
                 "reason": str(meta.get("reason", "") or ""),

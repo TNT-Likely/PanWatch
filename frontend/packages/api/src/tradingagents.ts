@@ -4,6 +4,7 @@
  * 进度走新增的 /api/agents/runs/:trace_id/progress。
  */
 import { fetchAPI, getToken } from './client'
+import { interfaceText } from './locale'
 
 export interface TradingAgentsTriggerResult {
   ok: boolean
@@ -206,7 +207,7 @@ export const tradingAgentsApi = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!resp.ok) {
-      let msg = `导出失败 (${resp.status})`
+      let msg = interfaceText(`导出失败 (${resp.status})`, `Export failed (${resp.status})`)
       try {
         const j = await resp.json()
         msg = (j && (j.message || j.detail)) || msg
@@ -216,7 +217,7 @@ export const tradingAgentsApi = {
       throw new Error(msg)
     }
     const blob = await resp.blob()
-    let filename = `深度分析-${date}.pdf`
+    let filename = interfaceText(`深度分析-${date}.pdf`, `deep-analysis-${date}.pdf`)
     const cd = resp.headers.get('Content-Disposition') || ''
     const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
     if (m) {

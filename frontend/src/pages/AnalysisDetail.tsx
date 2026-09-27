@@ -27,6 +27,7 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { useTranslation } from 'react-i18next'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import ShareCardModal from '../components/ShareCardModal'
+import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-rose-500',
@@ -158,7 +159,11 @@ export default function AnalysisDetailPage() {
   const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
   const sug = rawData.suggestion
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
-  const decisionLabel = reviewRequired ? analysisT('assistantPage.analysis.reviewHint') : sug?.action_label
+  const localizedAction = (action?: string, label?: string) => {
+    const normalized = normalizeSuggestionAction(action, label)
+    return normalized ? analysisT(`bizUi:kline.actions.${normalized}`) : label || action || '--'
+  }
+  const decisionLabel = reviewRequired ? analysisT('assistantPage.analysis.reviewHint') : localizedAction(sug?.action, sug?.action_label)
   const decisionColor = reviewRequired ? 'text-orange-500' : (sug ? DECISION_COLOR[sug.action] || '' : '')
   const sections = buildAnalysisSections(rawData, {
     english: (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en'),
@@ -411,7 +416,7 @@ export default function AnalysisDetailPage() {
                     {items.map((it, i) => (
                       <tr key={i} className="border-b border-border/50">
                         <td className="py-2 pr-3">{it.analysis_date}</td>
-                        <td className="py-2 px-2">{it.action_label}{it.confidence != null ? ` (${it.confidence.toFixed(1)})` : ''}</td>
+                        <td className="py-2 px-2">{localizedAction(it.action, it.action_label)}{it.confidence != null ? ` (${it.confidence.toFixed(1)})` : ''}</td>
                         <td className="text-right py-2 px-2">{it.price_at_analysis ?? '-'}</td>
                         <td className={`text-right py-2 px-2 ${pctClass(it.return_1d_pct)}`}>{fmtPct(it.return_1d_pct)}</td>
                         <td className={`text-right py-2 px-2 ${pctClass(it.return_5d_pct)}`}>{fmtPct(it.return_5d_pct)}</td>

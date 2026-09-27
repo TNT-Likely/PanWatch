@@ -30,18 +30,12 @@ type GroupedSignal = {
   topScore: number
 }
 
-const sourceAgentLabelMap: Record<string, string> = {
-  premarket_outlook: 'Pre-market analysis',
-  intraday_monitor: 'Intraday monitor',
-  daily_report: 'Closing review',
-  news_digest: 'News digest',
-  market_scan: 'Market scan',
-}
+type Translate = (key: string, options?: Record<string, unknown>) => string
 
-const sourceAgentLabel = (agent?: string) => {
+const sourceAgentLabel = (agent: string | undefined, tr: Translate) => {
   const key = (agent || '').trim()
   if (!key) return '--'
-  return sourceAgentLabelMap[key] || key
+  return tr(`opportunities.agents.${key}`, { defaultValue: key })
 }
 
 const formatPlanPrice = (value: number | null | undefined) => {
@@ -102,11 +96,11 @@ const actionBadgeClass = (action?: string) => {
   return 'bg-accent text-muted-foreground border border-border/50'
 }
 
-const displayActionLabel = (item: StrategySignalItem) => {
+const displayActionLabel = (item: StrategySignalItem, tr: Translate) => {
   const action = (item.action || '').toLowerCase()
-  if (!item.is_holding_snapshot && action === 'hold') return 'Watch'
-  if (!item.is_holding_snapshot && action === 'add') return 'Build position'
-  return item.action_label || item.action
+  if (!item.is_holding_snapshot && action === 'hold') return tr('opportunities.actionCodes.hold')
+  if (!item.is_holding_snapshot && action === 'add') return tr('opportunities.actionCodes.add')
+  return tr(`opportunities.actionCodes.${action}`, { defaultValue: item.action || '--' })
 }
 
 const scoreOf = (item: StrategySignalItem) => Number(item.rank_score || item.score || 0)
@@ -144,9 +138,7 @@ const shouldReplacePrimary = (next: StrategySignalItem, current: StrategySignalI
 
 const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
   const source = row.candidate_source || 'watchlist'
-  const sourceLabel = row.candidate_source_label || (source === 'market_scan' ? 'Market pool' : source === 'mixed' ? 'Market + watchlist' : 'Watchlist')
   const riskLevel: 'low' | 'medium' | 'high' = Number(row.score || 0) >= 85 ? 'high' : Number(row.score || 0) >= 70 ? 'medium' : 'low'
-  const riskLabel = riskLevel === 'high' ? 'High risk' : riskLevel === 'low' ? 'Low risk' : 'Medium risk'
   return {
     id: Number(row.id || 0),
     snapshot_date: row.snapshot_date || '',
@@ -154,18 +146,18 @@ const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
     stock_market: row.stock_market || 'CN',
     stock_name: row.stock_name || row.stock_symbol,
     strategy_code: (row.strategy_tags && row.strategy_tags[0]) || 'watchlist_agent',
-    strategy_name: (row.strategy_labels && row.strategy_labels[0]) || 'Candidate suggestion',
+    strategy_name: (row.strategy_labels && row.strategy_labels[0]) || '',
     strategy_version: 'v1',
     risk_level: riskLevel,
-    risk_level_label: riskLabel,
+    risk_level_label: '',
     source_pool: source,
-    source_pool_label: sourceLabel,
+    source_pool_label: '',
     score: Number(row.score || 0),
     rank_score: Number(row.score || 0),
     confidence: row.confidence ?? null,
     status: row.status || 'inactive',
     action: row.action || 'watch',
-    action_label: row.action_label || 'Watch',
+    action_label: row.action_label || '',
     signal: row.signal || '',
     reason: row.reason || '',
     evidence: row.evidence || [],
@@ -201,13 +193,13 @@ const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
   }
 }
 
-const formatEntryDisplay = (action: string | undefined, entryLow: number | null, entryHigh: number | null) => {
+const formatEntryDisplay = (action: string | undefined, entryLow: number | null, entryHigh: number | null, tr: Translate) => {
   if (entryLow != null || entryHigh != null) {
     return `${formatPlanPrice(entryLow)} ~ ${formatPlanPrice(entryHigh)}`
   }
   const key = (action || '').toLowerCase()
-  if (key === 'buy' || key === 'add') return 'Entry plan needed'
-  return 'Do not open a position now'
+  if (key === 'buy' || key === 'add') return tr('opportunities.actions.entryMissing')
+  return tr('opportunities.actions.noEntry')
 }
 
 const regimeToneClass = (regime?: string) => {
@@ -426,8 +418,8 @@ export default function OpportunitiesPage() {
   }, [setHolding, setMarket, setMinScore, setRisk, setSource, setStrategy])
 
   const strategyOptions = useMemo(() => {
-    return strategyCatalog.map((row) => ({ value: row.code, label: row.name || row.code }))
-  }, [strategyCatalog])
+    return strategyCatalog.map((row) => ({ value: row.code, label: oppT(`opportunities.strategies.${row.code}`, { defaultValue: row.name || row.code }) }))
+  }, [strategyCatalog, t])
 
   const groupedItems = useMemo<GroupedSignal[]>(() => {
     const grouped = new Map<string, { primary: StrategySignalItem; members: StrategySignalItem[] }>()
@@ -446,8 +438,8 @@ export default function OpportunitiesPage() {
 
     const out: GroupedSignal[] = []
     for (const [key, val] of grouped.entries()) {
-      const strategyNames = Array.from(new Set(val.members.map((x) => x.strategy_name || x.strategy_code).filter(Boolean)))
-      const sourceAgents = Array.from(new Set(val.members.map((x) => sourceAgentLabel(x.source_agent)).filter((x) => x && x !== '--')))
+      const strategyNames = Array.from(new Set(val.members.map((x) => oppT(`opportunities.strategies.${x.strategy_code}`, { defaultValue: x.strategy_name || x.strategy_code })).filter(Boolean)))
+      const sourceAgents = Array.from(new Set(val.members.map((x) => sourceAgentLabel(x.source_agent, oppT)).filter((x) => x && x !== '--')))
       const hasMarketScan = val.members.some((x) => x.source_pool === 'market_scan' || x.source_pool === 'mixed')
       const topScore = Math.max(...val.members.map(scoreOf))
       out.push({
@@ -468,7 +460,7 @@ export default function OpportunitiesPage() {
       return actionPriority(b.primary) - actionPriority(a.primary)
     })
     return out
-  }, [items])
+  }, [items, t])
 
   const filteredSummary = useMemo(() => {
     const total = groupedItems.length
@@ -500,12 +492,12 @@ export default function OpportunitiesPage() {
   const regimeSummary = useMemo(() => {
     return (stats?.regimes || []).map((r) => ({
       market: r.market,
-      label: r.regime_label || r.regime || 'Neutral',
+      label: oppT(`opportunities.regimes.${r.regime || 'neutral'}`, { defaultValue: r.regime || 'neutral' }),
       regime: r.regime || 'neutral',
       confidence: Number(r.confidence || 0),
       score: Number(r.regime_score || 0),
     }))
-  }, [stats])
+  }, [stats, t])
 
   const riskSummary = useMemo(() => {
     return (stats?.portfolio_risk || []).map((r) => ({
@@ -614,7 +606,7 @@ export default function OpportunitiesPage() {
             ))}
             {riskSummary.map((r) => (
               <span key={`risk-${r.market}`} className="text-[11px] px-2.5 py-1 rounded bg-accent/70 text-muted-foreground border border-border/60">
-                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}{oppT('opportunities.risk')}: {r.riskLevel} · {oppT('opportunities.concentration')}{(r.concentration * 100).toFixed(0)}% · {oppT('opportunities.highRiskRatio')}{(r.highRiskRatio * 100).toFixed(0)}%
+                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}{oppT('opportunities.risk')}: {oppT(`opportunities.riskLevels.${r.riskLevel}`, { defaultValue: r.riskLevel })} · {oppT('opportunities.concentration')}{(r.concentration * 100).toFixed(0)}% · {oppT('opportunities.highRiskRatio')}{(r.highRiskRatio * 100).toFixed(0)}%
               </span>
             ))}
           </div>
@@ -712,7 +704,7 @@ export default function OpportunitiesPage() {
           const newsMetric = item.news_metric || {}
           const strategyHead = group.strategyNames.slice(0, 2).join(' / ') || (item.strategy_name || item.strategy_code)
           const strategyTailCount = Math.max(0, group.strategyNames.length - 2)
-          const sourceAgentHead = group.sourceAgents[0] || sourceAgentLabel(item.source_agent)
+          const sourceAgentHead = group.sourceAgents[0] || sourceAgentLabel(item.source_agent, oppT)
           const sourceAgentTailCount = Math.max(0, group.sourceAgents.length - 1)
           const eventScore = toNumberOrNull(newsMetric.event_score)
           const eventCount = Number(newsMetric.news_count || 0)
@@ -722,7 +714,7 @@ export default function OpportunitiesPage() {
           if (sourceFlags.length <= 0) sourceFlags.push(oppT('opportunities.watchPoolShort'))
           const sourcePoolLabel = group.hasMarketScan
             ? (group.members.some((x) => x.source_pool === 'mixed') ? oppT('opportunities.marketPlusWatch') : oppT('opportunities.marketPoolShort'))
-            : (item.source_pool_label || oppT('opportunities.watchPoolShort'))
+            : oppT(`opportunities.sourcePools.${item.source_pool || 'watchlist'}`, { defaultValue: oppT('opportunities.watchPoolShort') })
           return (
             <div key={stateKey} className={`card p-4 transition-colors ${toneClass(item)}`}>
               <button className="w-full text-left" onClick={() => openInsight(item)}>
@@ -734,7 +726,7 @@ export default function OpportunitiesPage() {
                   <div className="text-right">
                     <div className="text-[12px]">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${actionBadgeClass(item.action)}`}>
-                        {displayActionLabel(item)}
+                        {displayActionLabel(item, oppT)}
                       </span>
                     </div>
                     <div className={`text-[12px] font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -752,7 +744,7 @@ export default function OpportunitiesPage() {
                 </div>
                 <div className="mt-2 text-[12px] text-foreground line-clamp-2">{item.signal || item.reason || '--'}</div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                  <div>{oppT('opportunities.entry')}: {formatEntryDisplay(item.action, entryLow, entryHigh)}</div>
+                  <div>{oppT('opportunities.entry')}: {formatEntryDisplay(item.action, entryLow, entryHigh, oppT)}</div>
                   <div>{oppT('opportunities.stopLoss')}: {formatPlanPrice(stopLoss)}</div>
                   <div>{oppT('opportunities.target')}: {formatPlanPrice(targetPrice)}</div>
                   <div>{oppT('opportunities.invalidation')}: {item.invalidation || '--'}</div>
@@ -765,8 +757,8 @@ export default function OpportunitiesPage() {
                     {oppT('opportunities.sourceAgent')}: {sourceAgentHead}
                     {sourceAgentTailCount > 0 ? ` +${sourceAgentTailCount}` : ''}
                   </div>
-                  <div>{oppT('opportunities.risk')}: {item.risk_level_label || item.risk_level || '--'}</div>
-                  <div>{oppT('opportunities.regime')}: {marketRegime.regime_label || marketRegime.regime || '--'}</div>
+                  <div>{oppT('opportunities.risk')}: {oppT(`opportunities.riskLevels.${item.risk_level || 'medium'}`, { defaultValue: item.risk_level || '--' })}</div>
+                  <div>{oppT('opportunities.regime')}: {oppT(`opportunities.regimes.${String(marketRegime.regime || 'neutral')}`, { defaultValue: String(marketRegime.regime || '--') })}</div>
                   <div>{oppT('opportunities.holding')}: {item.is_holding_snapshot ? oppT('opportunities.held') : oppT('opportunities.unheldStatus')}</div>
                   <div>{oppT('opportunities.market')}: {oppT(`opportunities.markets.${item.stock_market}`, { defaultValue: item.stock_market })}</div>
                 </div>
@@ -782,12 +774,12 @@ export default function OpportunitiesPage() {
                   <div className="mt-2 flex flex-wrap gap-1">
                     {(item.factor_explain.positive ?? []).map((f) => (
                       <span key={`p-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-green-500/15 text-green-400">
-                        {f.label} +{Math.abs(f.contribution).toFixed(1)}
+                        {oppT(`opportunities.factors.${f.factor}`, { defaultValue: f.label || f.factor })} +{Math.abs(f.contribution).toFixed(1)}
                       </span>
                     ))}
                     {(item.factor_explain.negative ?? []).map((f) => (
                       <span key={`n-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-red-500/15 text-red-400">
-                        {f.label} {f.contribution.toFixed(1)}
+                        {oppT(`opportunities.factors.${f.factor}`, { defaultValue: f.label || f.factor })} {f.contribution.toFixed(1)}
                       </span>
                     ))}
                   </div>

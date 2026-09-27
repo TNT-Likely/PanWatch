@@ -1,7 +1,7 @@
 import { fetchAPI } from './client'
 
 export interface SelfCheckItem {
-  category: 'datasource' | 'ai' | 'notify'
+  category: 'system' | 'datasource' | 'ai' | 'notify'
   key: string
   name: string
   status: 'ok' | 'slow' | 'fail'
@@ -9,8 +9,11 @@ export interface SelfCheckItem {
   error: string | null
   /** 中文修复提示(仅 fail 时非空)。 */
   hint: string
+  hint_code?: string
   /** 例如通知"仅校验配置未真发"。 */
   note: string | null
+  note_code?: string | null
+  note_params?: Record<string, string | number>
   /** 二级分组(AI 类目=服务商名);其余类目为 null。 */
   group: string | null
 }

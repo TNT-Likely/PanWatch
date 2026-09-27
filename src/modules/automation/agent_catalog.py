@@ -125,7 +125,6 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "monthly_budget_usd": 10.0,
             "over_budget_action": "reject",
             "cache_ttl_hours": 12,
-            "output_language": "Chinese",
             "deep_model": "",       # 留空走默认 AI Service 的 model;可填如 "claude-sonnet-4"
             "quick_model": "",      # 留空 = deep_model;可填便宜模型如 "deepseek-chat"
             "timeout_minutes": 15,

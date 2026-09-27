@@ -2,6 +2,7 @@
 // - readSSE: 单次连接，流结束后 resolve；连接失败直接 reject（调用方据此降级轮询/非流式）
 // - subscribeSSE: 自动重连订阅（带 Last-Event-ID 续推），用于进度/日志等 GET 流
 import { getToken } from './client'
+import { interfaceText } from './locale'
 
 export interface SSEEvent {
   /** 事件序号（服务端自增，断线重连用） */
@@ -67,8 +68,8 @@ export async function readSSE(path: string, options: ReadSSEOptions): Promise<{ 
   })
   if (!res.ok) throw new Error(`SSE HTTP ${res.status}`)
   const contentType = res.headers.get('content-type') || ''
-  if (!contentType.includes('text/event-stream')) throw new Error(`非 SSE 响应: ${contentType}`)
-  if (!res.body) throw new Error('SSE 响应无 body')
+  if (!contentType.includes('text/event-stream')) throw new Error(interfaceText(`非 SSE 响应: ${contentType}`, `Expected an SSE response, received: ${contentType}`))
+  if (!res.body) throw new Error(interfaceText('SSE 响应无 body', 'The SSE response has no body.'))
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

@@ -1,7 +1,8 @@
 import type { MouseEventHandler } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@panwatch/base-ui'
 import { BadgeChip, type BadgeChipSize } from '@panwatch/biz-ui/components/badge-chip'
-import { resolveSuggestionColorClass, resolveSuggestionLabel } from '@panwatch/biz-ui/components/suggestion-action'
+import { normalizeSuggestionAction, resolveSuggestionColorClass } from '@panwatch/biz-ui/components/suggestion-action'
 
 interface AiSuggestionBadgeProps {
   action?: string
@@ -24,7 +25,11 @@ export function AiSuggestionBadge({
   title,
   onClick,
 }: AiSuggestionBadgeProps) {
-  const label = resolveSuggestionLabel(action, actionLabel)
+  const { t } = useTranslation('bizUi')
+  const normalized = normalizeSuggestionAction(action, actionLabel)
+  const label = normalized
+    ? t(`kline.actions.${normalized}`)
+    : String(actionLabel || '').trim() || t('kline.actions.watch')
   const colorClass = resolveSuggestionColorClass(action, actionLabel)
   return (
     <BadgeChip

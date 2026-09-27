@@ -370,7 +370,7 @@ export default function SettingsPage() {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      const feedback = buildTemplateImportFeedback(resp.summary)
+      const feedback = buildTemplateImportFeedback(resp.summary, configT)
       setLastImportFeedback(feedback)
       toast(feedback.successMessage, 'success')
       if (feedback.warningMessage) toast(feedback.warningMessage, 'info')

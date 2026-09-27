@@ -25,6 +25,7 @@ import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { useTranslation } from 'react-i18next'
+import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 
 interface AgentResult {
   success?: boolean
@@ -381,6 +382,9 @@ const mergePortfolioQuotes = (
 export default function StocksPage() {
   const { t } = useTranslation('configuration')
   const stockT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const klineT = (key: string, options?: Record<string, unknown>) =>
+    stockT(`bizUi:kline.${key}`, options)
+  const agentName = (name: string, fallback?: string) => localizeAgentName(name, fallback, stockT)
   const [stocks, setStocks] = useState<Stock[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [agents, setAgents] = useState<AgentConfig[]>([])
@@ -1471,7 +1475,7 @@ export default function StocksPage() {
     // 无池建议时，使用 K 线评分构建轻量建议（仅用于徽章展示）
     const ks = klineSummaries[key]
     if (ks) {
-      const scored = buildKlineSuggestion(ks as any, hasPosition)
+      const scored = buildKlineSuggestion(ks as any, hasPosition, klineT)
       return {
         suggestion: {
           action: scored.action,
@@ -2137,7 +2141,7 @@ export default function StocksPage() {
                                               const isRunning = runningAgents[stock.id] === sa.agent_name
                                               return (
                                                 <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                                  <Badge variant="default" className="text-[10px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
+                                                  <Badge variant="default" className="text-[10px]">{agentName(sa.agent_name, sa.display_name || agent?.display_name)}</Badge>
                                                   {isRunning && (
                                                     <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                                                       <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -2304,7 +2308,7 @@ export default function StocksPage() {
                                         const isRunning = runningAgents[stock.id] === sa.agent_name
                                         return (
                                           <span key={sa.agent_name} className="inline-flex items-center gap-1">
-                                          <Badge variant="secondary" className="text-[9px]">{sa.display_name || agent?.display_name || sa.agent_name}</Badge>
+                                          <Badge variant="secondary" className="text-[9px]">{agentName(sa.agent_name, sa.display_name || agent?.display_name)}</Badge>
                                             {isRunning && (
                                               <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                                                 <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
@@ -2509,7 +2513,7 @@ export default function StocksPage() {
                         {runningAgents[stock.id] && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-amber-600">
                             <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                            {agents.find(a => a.name === runningAgents[stock.id])?.display_name || runningAgents[stock.id]}
+                            {agentName(runningAgents[stock.id] || '', agents.find(a => a.name === runningAgents[stock.id])?.display_name)}
                           </span>
                         )}
                       </div>
@@ -2879,12 +2883,12 @@ export default function StocksPage() {
                         <div className={`w-2 h-2 rounded-full ${agent.enabled ? 'bg-emerald-500' : 'bg-border'}`} />
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-foreground">{agent.display_name}</span>
+                            <span className="text-[13px] font-medium text-foreground">{agentName(agent.name, agent.display_name)}</span>
                             <Badge variant="secondary" className="text-[9px]">
                               {isBatchMode ? stockT('stocksPage.messages.batch') : stockT('stocksPage.messages.single')}
                             </Badge>
                           </div>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{agent.description}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{localizeAgentDescription(agent.name, agent.description, stockT)}</p>
                         </div>
                       </div>
                       <Switch

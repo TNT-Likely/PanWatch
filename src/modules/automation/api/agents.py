@@ -93,6 +93,12 @@ def _spawn_async_run(fn, *args, name: str) -> None:
 router = APIRouter()
 
 
+def _public_agent_config(config: dict | None) -> dict:
+    value = dict(config or {})
+    value.pop("output_language", None)
+    return value
+
+
 @router.get("/health")
 def agents_health(
     include_internal: bool = Query(default=False),
@@ -253,7 +259,7 @@ def _agent_to_response(agent: AgentConfig) -> dict:
         "execution_mode": agent.execution_mode or "batch",
         "ai_model_id": agent.ai_model_id,
         "notify_channel_ids": agent.notify_channel_ids or [],
-        "config": agent.config or {},
+        "config": _public_agent_config(agent.config),
     }
 
 
@@ -277,6 +283,8 @@ def update_agent(
         raise HTTPException(404, f"Agent {agent_name} 不存在")
 
     for key, value in update.model_dump(exclude_unset=True).items():
+        if key == "config":
+            value = _public_agent_config(value)
         setattr(agent, key, value)
 
     # capability 仅支持手动调用，不参与调度。

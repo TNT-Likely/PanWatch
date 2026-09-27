@@ -385,6 +385,37 @@ def test_service_presents_price_alert_approval_in_plain_language():
     engine.dispose()
 
 
+def test_service_presents_price_alert_approval_in_interface_language():
+    from src.modules.assistant.service import AssistantService
+    from src.platform.persistence.models import AppSettings
+
+    engine, session, repository, _task = _repository()
+    session.add(AppSettings(key="ui_language", value="en-US"))
+    session.commit()
+
+    presentation = AssistantService(repository)._approval_presentation(
+        PendingApproval(
+            call_id="call-price-alert-en",
+            tool_name="create_price_alert",
+            risk=ToolRisk.WRITE,
+            arguments={
+                "symbol": "AAPL",
+                "market": "US",
+                "direction": "below",
+                "target_price": 180,
+                "cooldown_minutes": 15,
+            },
+        )
+    )
+
+    assert presentation == {
+        "tool_title": "Create price alert",
+        "summary": "Create an intraday alert for US:AAPL at price ≤ 180, with a 15-minute cooldown.",
+    }
+    session.close()
+    engine.dispose()
+
+
 def test_service_presents_update_and_delete_alert_approvals_with_effects():
     from src.modules.assistant.service import AssistantService
 

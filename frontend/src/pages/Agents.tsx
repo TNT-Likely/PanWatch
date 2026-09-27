@@ -9,6 +9,7 @@ import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
+import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 
 interface AgentConfig {
   id: number
@@ -153,6 +154,7 @@ function formatSchedule(cron: string, translate: (key: string, options?: Record<
 export default function AgentsPage() {
   const { t } = useTranslation('configuration')
   const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const agentName = (agent: AgentConfig | null | undefined) => agent ? localizeAgentName(agent.name, agent.display_name, configT) : ''
   const [agents, setAgents] = useState<AgentConfig[]>([])
   const [stocks, setStocks] = useState<StockConfig[]>([])
   const [services, setServices] = useState<AIService[]>([])
@@ -448,7 +450,8 @@ export default function AgentsPage() {
   // 当 taConfigAgent 切换时,把它的 config 拷到表单
   useEffect(() => {
     if (taConfigAgent) {
-      setTaConfigForm({ ...(taConfigAgent.config || {}) })
+      const { output_language: _legacyOutputLanguage, ...visibleConfig } = taConfigAgent.config || {}
+      setTaConfigForm(visibleConfig)
     }
   }, [taConfigAgent])
 
@@ -547,7 +550,7 @@ export default function AgentsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${agent.enabled ? 'bg-emerald-500' : 'bg-border'}`} />
-                      <h3 className="text-[15px] font-semibold text-foreground">{agent.display_name}</h3>
+                      <h3 className="text-[15px] font-semibold text-foreground">{agentName(agent)}</h3>
                       <Badge variant="secondary" className="text-[10px]">{modeLabel}</Badge>
                       <button
                         type="button"
@@ -562,7 +565,7 @@ export default function AgentsPage() {
                         {boundSummary}
                       </button>
                     </div>
-                    <p className="text-[13px] text-muted-foreground mt-2.5 ml-[22px] leading-relaxed">{agent.description}</p>
+                    <p className="text-[13px] text-muted-foreground mt-2.5 ml-[22px] leading-relaxed">{localizeAgentDescription(agent.name, agent.description, configT)}</p>
 
                     {/* 执行周期 - 可点击编辑 */}
                     <div className="flex items-center gap-2.5 mt-3.5 ml-[22px] flex-wrap">
@@ -750,7 +753,7 @@ export default function AgentsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{configT('schedule.title')}</DialogTitle>
-            <DialogDescription>{scheduleDialogAgent?.display_name}</DialogDescription>
+            <DialogDescription>{agentName(scheduleDialogAgent)}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
@@ -868,7 +871,7 @@ export default function AgentsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {bindDialogAgent ? configT('binding.titleWithAgent', { agent: bindDialogAgent.display_name }) : configT('binding.title')}
+              {bindDialogAgent ? configT('binding.titleWithAgent', { agent: agentName(bindDialogAgent) }) : configT('binding.title')}
             </DialogTitle>
             <DialogDescription>{configT('binding.description')}</DialogDescription>
           </DialogHeader>

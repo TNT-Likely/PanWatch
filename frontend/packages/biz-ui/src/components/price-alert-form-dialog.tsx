@@ -417,7 +417,7 @@ export default function PriceAlertFormDialog(props: {
                       <SelectItem value=">">{'>'}</SelectItem>
                       <SelectItem value="<">{'<'}</SelectItem>
                       <SelectItem value="==">{'=='}</SelectItem>
-                      <SelectItem value="between">between</SelectItem>
+                      <SelectItem value="between">{alertT('stockPriceAlert.between')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

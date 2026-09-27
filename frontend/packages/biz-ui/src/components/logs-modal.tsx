@@ -269,7 +269,8 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
     return parts.length > 0 ? parts.join(' | ') : tr('summary.none')
   }, [query, selectedLevels, timeRange, domain, selectedFlow, selectedLoggers, i18n.language])
 
-  const loggerFilterOptions = loggerOptions()
+  const language = i18n.resolvedLanguage || i18n.language
+  const loggerFilterOptions = loggerOptions(language)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -413,7 +414,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
                             <span className="text-muted-foreground">{log.level}</span>
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground truncate max-w-[144px]" title={log.logger_name}>{mapLoggerName(log.logger_name)}</td>
+                        <td className="px-4 py-2 text-muted-foreground truncate max-w-[144px]" title={log.logger_name}>{mapLoggerName(log.logger_name, language)}</td>
                         <td className="px-4 py-2 text-[11px] text-muted-foreground">
                           <div className="truncate" title={log.trace_id || ''}>{log.trace_id || '-'}</div>
                           <div className="truncate">{log.event || '-'}</div>

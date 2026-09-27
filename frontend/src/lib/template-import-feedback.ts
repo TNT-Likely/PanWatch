@@ -21,87 +21,98 @@ export interface TemplateImportSummary {
 }
 
 const count = (value?: number) => Number(value || 0)
+type Translate = (key: string, options?: Record<string, unknown>) => string
 
-const formatCreatedAndUpdated = (label: string, created: number, updated: number) => {
+const formatCreatedAndUpdated = (label: string, created: number, updated: number, tr: Translate) => {
   const changes: string[] = []
-  if (created > 0) changes.push(`新增 ${created}`)
-  if (updated > 0) changes.push(`更新 ${updated}`)
-  return changes.length > 0 ? `${label}${changes.join('、')}` : null
+  if (created > 0) changes.push(tr('configuration:settingsPage.importFeedback.created', { count: created }))
+  if (updated > 0) changes.push(tr('configuration:settingsPage.importFeedback.updated', { count: updated }))
+  return changes.length > 0
+    ? tr('configuration:settingsPage.importFeedback.resource', { label, changes: changes.join(tr('configuration:settingsPage.importFeedback.listSeparator')) })
+    : null
 }
 
-export function buildTemplateImportFeedback(summary?: TemplateImportSummary) {
+export function buildTemplateImportFeedback(summary: TemplateImportSummary | undefined, tr: Translate) {
   const imported: string[] = []
   const updatedSettings = count(summary?.updated_settings)
-  if (updatedSettings > 0) imported.push(`设置 ${updatedSettings} 项`)
+  if (updatedSettings > 0) imported.push(tr('configuration:settingsPage.importFeedback.settings', { count: updatedSettings }))
 
   const aiServices = formatCreatedAndUpdated(
-    'AI 服务',
+    tr('configuration:settingsPage.importFeedback.labels.aiServices'),
     count(summary?.created_ai_services),
     count(summary?.updated_ai_services),
+    tr,
   )
   if (aiServices) imported.push(aiServices)
 
   const aiModels = formatCreatedAndUpdated(
-    '模型',
+    tr('configuration:settingsPage.importFeedback.labels.models'),
     count(summary?.created_ai_models),
     count(summary?.updated_ai_models),
+    tr,
   )
   if (aiModels) imported.push(aiModels)
 
   const notifyChannels = formatCreatedAndUpdated(
-    '通知渠道',
+    tr('configuration:settingsPage.importFeedback.labels.notifyChannels'),
     count(summary?.created_notify_channels),
     count(summary?.updated_notify_channels),
+    tr,
   )
   if (notifyChannels) imported.push(notifyChannels)
 
   const stocks = formatCreatedAndUpdated(
-    '关注标的',
+    tr('configuration:settingsPage.importFeedback.labels.stocks'),
     count(summary?.created_stocks),
     count(summary?.updated_stocks),
+    tr,
   )
   if (stocks) imported.push(stocks)
 
   const agents = formatCreatedAndUpdated(
-    'Agent ',
+    tr('configuration:settingsPage.importFeedback.labels.agents'),
     count(summary?.created_agents),
     count(summary?.updated_agents),
+    tr,
   )
   if (agents) imported.push(agents)
 
   const stockAgents = formatCreatedAndUpdated(
-    '标的-Agent 绑定',
+    tr('configuration:settingsPage.importFeedback.labels.stockAgents'),
     count(summary?.created_stock_agents),
     count(summary?.updated_stock_agents),
+    tr,
   )
   if (stockAgents) imported.push(stockAgents)
 
   const accounts = formatCreatedAndUpdated(
-    '账户',
+    tr('configuration:settingsPage.importFeedback.labels.accounts'),
     count(summary?.created_accounts),
     count(summary?.updated_accounts),
+    tr,
   )
   if (accounts) imported.push(accounts)
 
   const positions = formatCreatedAndUpdated(
-    '持仓',
+    tr('configuration:settingsPage.importFeedback.labels.positions'),
     count(summary?.created_positions),
     count(summary?.updated_positions),
+    tr,
   )
   if (positions) imported.push(positions)
 
   const skipped: string[] = []
   const droppedModels = count(summary?.dropped_ai_model_refs)
   const droppedChannels = count(summary?.dropped_notify_channel_refs)
-  if (droppedModels > 0) skipped.push(`模型引用 ${droppedModels} 个`)
-  if (droppedChannels > 0) skipped.push(`通知渠道引用 ${droppedChannels} 个`)
+  if (droppedModels > 0) skipped.push(tr('configuration:settingsPage.importFeedback.droppedModels', { count: droppedModels }))
+  if (droppedChannels > 0) skipped.push(tr('configuration:settingsPage.importFeedback.droppedChannels', { count: droppedChannels }))
 
   return {
     successMessage: imported.length > 0
-      ? `已导入：${imported.join('；')}`
-      : '导入完成：没有需要新增或更新的内容',
+      ? tr('configuration:settingsPage.importFeedback.success', { details: imported.join(tr('configuration:settingsPage.importFeedback.itemSeparator')) })
+      : tr('configuration:settingsPage.importFeedback.empty'),
     warningMessage: skipped.length > 0
-      ? `未导入：${skipped.join('、')}（目标环境不存在对应配置）`
+      ? tr('configuration:settingsPage.importFeedback.warning', { details: skipped.join(tr('configuration:settingsPage.importFeedback.listSeparator')) })
       : null,
   }
 }

@@ -345,6 +345,8 @@ export default function StockInsightModal(props: {
   const { t, i18n } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
+  const klineTr = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`kline.${key}`, options)
   const locale = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
   const english = locale === 'en-US'
   const agentLabel = (name: string) => name === 'daily_report' ? tr('reports.afterMarketAgent') : name === 'premarket_outlook' ? tr('reports.premarketAgent') : name
@@ -781,8 +783,8 @@ export default function StockInsightModal(props: {
   const hasHolding = !!props.hasPosition || !!holdingAgg
   const technicalScored = useMemo(() => {
     if (!klineSummary) return null
-    return buildKlineSuggestion(klineSummary as any, hasHolding)
-  }, [klineSummary, hasHolding])
+    return buildKlineSuggestion(klineSummary as any, hasHolding, klineTr)
+  }, [klineSummary, hasHolding, i18n.resolvedLanguage, i18n.language])
   const technicalFallbackSuggestion = useMemo<SuggestionInfo | null>(() => {
     if (!klineSummary || !technicalScored) return null
     const topEvidence = (technicalScored.evidence || []).filter(e => e.delta !== 0).slice(0, 3).map(e => e.text)

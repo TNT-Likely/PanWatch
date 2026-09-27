@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { buildTemplateImportFeedback } from '@/lib/template-import-feedback'
+import { configuration as zhConfiguration } from '@/i18n/locales/zh-CN/configuration'
+import { configuration as enConfiguration } from '@/i18n/locales/en-US/configuration'
+
+function translator(resource: unknown) {
+  return (key: string, options?: Record<string, unknown>) => {
+    const path = key.replace(/^configuration:/, '').split('.')
+    let value: unknown = resource
+    for (const part of path) value = (value as Record<string, unknown>)[part]
+    return String(value).replace(/{{(\w+)}}/g, (_, name: string) => String(options?.[name] ?? ''))
+  }
+}
+
+const zh = translator(zhConfiguration)
+const en = translator(enConfiguration)
 
 describe('buildTemplateImportFeedback', () => {
   it('separates imported resources from references missing in the target environment', () => {
@@ -13,14 +27,14 @@ describe('buildTemplateImportFeedback', () => {
       updated_stock_agents: 0,
       dropped_ai_model_refs: 2,
       dropped_notify_channel_refs: 8,
-    })).toEqual({
+    }, zh)).toEqual({
       successMessage: '已导入：设置 5 项；关注标的新增 14、更新 5；Agent 更新 6；标的-Agent 绑定新增 2',
       warningMessage: '未导入：模型引用 2 个、通知渠道引用 8 个（目标环境不存在对应配置）',
     })
   })
 
   it('reports a no-op import without claiming resources were imported', () => {
-    expect(buildTemplateImportFeedback({})).toEqual({
+    expect(buildTemplateImportFeedback({}, zh)).toEqual({
       successMessage: '导入完成：没有需要新增或更新的内容',
       warningMessage: null,
     })
@@ -33,9 +47,20 @@ describe('buildTemplateImportFeedback', () => {
       created_notify_channels: 1,
       created_accounts: 1,
       created_positions: 3,
-    })).toEqual({
+    }, zh)).toEqual({
       successMessage: '已导入：AI 服务新增 1；模型新增 2；通知渠道新增 1；账户新增 1；持仓新增 3',
       warningMessage: null,
+    })
+  })
+
+  it('uses the active interface language', () => {
+    expect(buildTemplateImportFeedback({
+      created_ai_services: 1,
+      updated_agents: 2,
+      dropped_notify_channel_refs: 3,
+    }, en)).toEqual({
+      successMessage: 'Imported: AI services: 1 added; Agents: 2 updated',
+      warningMessage: 'Not imported: 3 notification-channel references because matching configuration was not found in the target environment',
     })
   })
 })
