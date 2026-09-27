@@ -81,7 +81,11 @@ function conditionText(item: AlertConditionItem, translate: (key: string) => str
 
 export default function PriceAlertsPage() {
   const { t } = useTranslation('configuration')
-  const alertT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const alertT = (key: string, options?: Record<string, unknown>) =>
+    (t as unknown as (translationKey: string, interpolation?: Record<string, unknown>) => string)(
+      `priceAlerts.${key}`,
+      options,
+    )
   const { toast } = useToast()
   const location = useLocation()
   const [loading, setLoading] = useState(true)
