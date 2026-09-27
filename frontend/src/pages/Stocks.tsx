@@ -1413,6 +1413,8 @@ export default function StocksPage() {
   }
 
   const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const marketStatusLabel = (status: string, fallback: string) =>
+    stockT(`stocksPage.marketStatus.${status}`, { defaultValue: fallback })
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
@@ -1659,16 +1661,17 @@ export default function StocksPage() {
               after_hours: 'bg-slate-400',
               closed: 'bg-slate-400',
             }
+            const localizedStatus = marketStatusLabel(m.status, m.status_text)
             return (
               <div
                 key={m.code}
                 className="shrink-0 flex items-center gap-1 md:gap-1.5"
-                title={`${m.sessions.join(', ')} (${m.local_time}) · ${m.status_text}`}
+                title={`${m.sessions.join(', ')} (${m.local_time}) · ${localizedStatus}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${statusColors[m.status] || 'bg-slate-400'}`} />
-                <span className="text-[11px] text-muted-foreground">{m.name}</span>
+                <span className="text-[11px] text-muted-foreground">{marketLabel(m.code)}</span>
                 <span className={`text-[10px] ${m.is_trading ? 'text-emerald-600' : 'text-muted-foreground/60'} hidden sm:inline`}>
-                  {m.status_text}
+                  {localizedStatus}
                 </span>
               </div>
             )
