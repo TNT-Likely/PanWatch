@@ -4,6 +4,7 @@ import { Moon, Sun, Monitor, Check, LogOut, User, Stethoscope, type LucideIcon }
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
+import { useTranslation } from 'react-i18next'
 
 export interface AccountNavItem {
   to: string
@@ -11,10 +12,10 @@ export interface AccountNavItem {
   label: string
 }
 
-const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; label: string }[] = [
-  { value: 'light', icon: Sun, label: '亮色' },
-  { value: 'dark', icon: Moon, label: '暗色' },
-  { value: 'system', icon: Monitor, label: '跟随系统' },
+const THEME_OPTIONS: { value: ThemeMode; icon: LucideIcon; labelKey: 'light' | 'dark' | 'system' }[] = [
+  { value: 'light', icon: Sun, labelKey: 'light' },
+  { value: 'dark', icon: Moon, labelKey: 'dark' },
+  { value: 'system', icon: Monitor, labelKey: 'system' },
 ]
 
 interface AccountMenuProps {
@@ -40,6 +41,7 @@ export default function AccountMenu({
   onOpenSelfCheck,
   size = 'md',
 }: AccountMenuProps) {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
   const location = useLocation()
@@ -80,11 +82,11 @@ export default function AccountMenu({
         className={`${avatarSize} rounded-full overflow-hidden bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm ring-1 transition-all ${
           open ? 'ring-primary/50' : 'ring-border/40 hover:ring-primary/40'
         }`}
-        title="账户与设置"
-        aria-label="账户与设置"
+        title={t('account.menuTitle')}
+        aria-label={t('account.menuTitle')}
       >
         {avatar ? (
-          <img src={avatar} alt="头像" className="w-full h-full object-cover" />
+          <img src={avatar} alt={t('account.avatarAlt')} className="w-full h-full object-cover" />
         ) : (
           <User className={`${iconSize} text-white`} />
         )}
@@ -117,8 +119,8 @@ export default function AccountMenu({
           <div className="my-1 h-px bg-border/50" />
 
           {/* 主题色:亮 / 暗 / 跟随系统 */}
-          <div className="px-2.5 pt-0.5 pb-1 text-[11px] text-muted-foreground">主题</div>
-          {THEME_OPTIONS.map(({ value, icon: Icon, label }) => {
+          <div className="px-2.5 pt-0.5 pb-1 text-[11px] text-muted-foreground">{t('account.themeTitle')}</div>
+          {THEME_OPTIONS.map(({ value, icon: Icon, labelKey }) => {
             const active = mode === value
             return (
               <button
@@ -131,7 +133,7 @@ export default function AccountMenu({
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {label}
+                {t(`account.theme.${labelKey}`)}
                 {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
               </button>
             )
@@ -147,7 +149,7 @@ export default function AccountMenu({
             className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
           >
             <Stethoscope className="w-3.5 h-3.5" />
-            系统自检
+            {t('account.selfCheck')}
           </button>
 
           {isAuthenticated() && (
@@ -158,7 +160,7 @@ export default function AccountMenu({
                 className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                退出登录
+                {t('account.signOut')}
               </button>
             </>
           )}

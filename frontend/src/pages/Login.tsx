@@ -1,15 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, Lock, Eye, EyeOff, User } from 'lucide-react'
+import { TrendingUp, Lock, Eye, EyeOff, User, Languages } from 'lucide-react'
 import { authApi } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { useTranslation } from 'react-i18next'
+import { changeLocale, normalizeLocale } from '@/i18n'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { t, i18n: i18nInstance } = useTranslation(['auth', 'common', 'settings'])
+  const currentLocale = normalizeLocale(i18nInstance.resolvedLanguage || i18nInstance.language)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -34,11 +38,11 @@ export default function LoginPage() {
 
     if (isSetup) {
       if (password !== confirmPassword) {
-        toast('两次密码不一致', 'error')
+        toast(t('auth:messages.passwordMismatch'), 'error')
         return
       }
       if (password.length < 6) {
-        toast('密码长度至少 6 位', 'error')
+        toast(t('auth:messages.passwordTooShort'), 'error')
         return
       }
     }
@@ -53,10 +57,10 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token)
       localStorage.setItem('token_expires', data.expires_at)
 
-      toast(isSetup ? '密码设置成功' : '登录成功', 'success')
+      toast(isSetup ? t('auth:messages.setupSuccess') : t('auth:messages.loginSuccess'), 'success')
       navigate('/')
     } catch (e) {
-      toast(e instanceof Error ? e.message : '操作失败', 'error')
+      toast(e instanceof Error ? e.message : t('auth:messages.operationFailed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -72,14 +76,25 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="fixed right-4 top-4 gap-1.5 text-xs text-muted-foreground"
+        aria-label={t('settings:language.switchAria')}
+        onClick={() => void changeLocale(currentLocale === 'zh-CN' ? 'en-US' : 'zh-CN')}
+      >
+        <Languages className="h-3.5 w-3.5" />
+        {t('settings:language.quickSwitch')}
+      </Button>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
             <TrendingUp className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">盯盘侠</h1>
-          <p className="text-sm text-muted-foreground mt-1">PanWatch</p>
+          <h1 className="text-2xl font-bold text-foreground">{t('common:product.name')}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t('common:product.englishName')}</p>
         </div>
 
         {/* Form */}
@@ -87,26 +102,27 @@ export default function LoginPage() {
           <div className="flex items-center gap-2 mb-6">
             <Lock className="w-5 h-5 text-primary" />
             <h2 className="text-lg font-semibold">
-              {isSetup ? '设置访问密码' : '登录'}
+              {isSetup ? t('auth:title.setup') : t('auth:title.login')}
             </h2>
           </div>
 
           {isSetup && (
             <p className="text-sm text-muted-foreground mb-4">
-              首次使用，请设置访问密码以保护您的数据
+              {t('auth:setupHint')}
             </p>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>用户名</Label>
+              <Label htmlFor="login-username">{t('auth:fields.username')}</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  id="login-username"
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="请输入用户名"
+                  placeholder={t('auth:fields.usernamePlaceholder')}
                   className="pl-10"
                   autoFocus
                 />
@@ -114,14 +130,15 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <Label>{isSetup ? '设置密码' : '密码'}</Label>
+              <Label htmlFor="login-password">{isSetup ? t('auth:fields.passwordSetup') : t('auth:fields.password')}</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder={isSetup ? '至少 6 位' : '请输入密码'}
+                  placeholder={isSetup ? t('auth:fields.passwordSetupPlaceholder') : t('auth:fields.passwordPlaceholder')}
                   className="pl-10 pr-10"
                 />
                 <Button
@@ -130,6 +147,7 @@ export default function LoginPage() {
                   size="icon"
                   className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? t('auth:actions.hidePassword') : t('auth:actions.showPassword')}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </Button>
@@ -138,12 +156,13 @@ export default function LoginPage() {
 
             {isSetup && (
               <div>
-                <Label>确认密码</Label>
+                <Label htmlFor="login-confirm-password">{t('auth:fields.confirmPassword')}</Label>
                 <Input
+                  id="login-confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="再次输入密码"
+                  placeholder={t('auth:fields.confirmPasswordPlaceholder')}
                 />
               </div>
             )}
@@ -152,16 +171,16 @@ export default function LoginPage() {
               {loading ? (
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : isSetup ? (
-                '设置密码并进入'
+                t('auth:actions.setup')
               ) : (
-                '登录'
+                t('auth:actions.login')
               )}
             </Button>
           </form>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          AI 驱动的股票监控助手
+          {t('common:product.tagline')}
         </p>
       </div>
     </div>

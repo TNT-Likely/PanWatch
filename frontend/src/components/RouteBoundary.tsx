@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface RouteErrorBoundaryProps {
   children: ReactNode
@@ -9,17 +10,24 @@ interface RouteErrorBoundaryState {
 }
 
 export function RouteLoadingFallback() {
+  const { t } = useTranslation('common')
   return (
     <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-border/40 bg-card/30">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
-        页面加载中…
+        {t('route.loading')}
       </div>
     </div>
   )
 }
 
-export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
+interface RouteErrorBoundaryImplProps extends RouteErrorBoundaryProps {
+  loadFailed: string
+  loadFailedHint: string
+  reload: string
+}
+
+class RouteErrorBoundaryImpl extends Component<RouteErrorBoundaryImplProps, RouteErrorBoundaryState> {
   state: RouteErrorBoundaryState = { error: null }
 
   static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
@@ -34,14 +42,14 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
     if (this.state.error) {
       return (
         <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/20 bg-card/30 px-6 text-center">
-          <p className="text-sm font-medium text-foreground">页面加载失败</p>
-          <p className="max-w-md text-xs text-muted-foreground">请重试；如果问题持续存在，可能是浏览器缓存了旧版本页面。</p>
+          <p className="text-sm font-medium text-foreground">{this.props.loadFailed}</p>
+          <p className="max-w-md text-xs text-muted-foreground">{this.props.loadFailedHint}</p>
           <button
             type="button"
             className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
             onClick={() => window.location.reload()}
           >
-            重新加载
+            {this.props.reload}
           </button>
         </div>
       )
@@ -49,4 +57,17 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
 
     return this.props.children
   }
+}
+
+export function RouteErrorBoundary({ children }: RouteErrorBoundaryProps) {
+  const { t } = useTranslation('common')
+  return (
+    <RouteErrorBoundaryImpl
+      loadFailed={t('route.loadFailed')}
+      loadFailedHint={t('route.loadFailedHint')}
+      reload={t('actions.reload')}
+    >
+      {children}
+    </RouteErrorBoundaryImpl>
+  )
 }

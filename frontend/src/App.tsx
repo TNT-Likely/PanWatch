@@ -13,6 +13,8 @@ import { RouteErrorBoundary, RouteLoadingFallback } from '@/components/RouteBoun
 import { preloadRoute, routePages } from '@/router/page-loaders'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
+import { useTranslation } from 'react-i18next'
+import type { NavigationItemKey } from '@/i18n/resources'
 
 const {
   LoginPage,
@@ -30,23 +32,19 @@ const {
   AssistantPage,
 } = routePages
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: '首页' },
-  { to: '/portfolio', icon: List, label: '持仓' },
-  { to: '/opportunities', icon: Sparkles, label: '机会' },
-  { to: '/paper-trading', icon: Activity, label: '模拟盘' },
-  { to: '/assistant', icon: MessageCircle, label: '助手' },
-  { to: '/alerts', icon: BellRing, label: '提醒' },
-  { to: '/agents', icon: Bot, label: 'Agent' },
-  { to: '/evaluations', icon: ClipboardCheck, label: '验证中心' },
-  { to: '/history', icon: Clock, label: '历史' },
-  { to: '/datasources', icon: Database, label: '数据源' },
-  { to: '/settings', icon: Settings, label: '设置' },
+const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: NavigationItemKey }> = [
+  { to: '/', icon: LayoutDashboard, labelKey: 'home' },
+  { to: '/portfolio', icon: List, labelKey: 'portfolio' },
+  { to: '/opportunities', icon: Sparkles, labelKey: 'opportunities' },
+  { to: '/paper-trading', icon: Activity, labelKey: 'paperTrading' },
+  { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
+  { to: '/alerts', icon: BellRing, labelKey: 'alerts' },
+  { to: '/agents', icon: Bot, labelKey: 'agents' },
+  { to: '/evaluations', icon: ClipboardCheck, labelKey: 'evaluations' },
+  { to: '/history', icon: Clock, labelKey: 'history' },
+  { to: '/datasources', icon: Database, labelKey: 'dataSources' },
+  { to: '/settings', icon: Settings, labelKey: 'settings' },
 ]
-const desktopPrimaryNavItems = navItems.slice(0, 5)
-const desktopMoreNavItems = navItems.slice(5)
-const mobilePrimaryNavItems = navItems.slice(0, 5)
-const mobileMoreNavItems = navItems.slice(5)
 
 // 认证守卫组件
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -80,6 +78,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { t } = useTranslation(['common', 'navigation'])
   const { mode, setMode } = useTheme()
   const location = useLocation()
   const isAssistantRoute = location.pathname === '/assistant' || location.pathname.startsWith('/assistant/')
@@ -90,6 +89,15 @@ function App() {
   const [upgradeInfo, setUpgradeInfo] = useState<{ latest: string; url: string } | null>(null)
   const checkedUpdateRef = useRef(false)
   const repoUrl = 'https://github.com/TNT-Likely/PanWatch'
+  const navItems = NAV_ITEMS.map(item => ({
+    to: item.to,
+    icon: item.icon,
+    label: t(`navigation:items.${item.labelKey}`),
+  }))
+  const desktopPrimaryNavItems = navItems.slice(0, 5)
+  const desktopMoreNavItems = navItems.slice(5)
+  const mobilePrimaryNavItems = navItems.slice(0, 5)
+  const mobileMoreNavItems = navItems.slice(5)
 
   useEffect(() => {
     appApi.version()
@@ -190,14 +198,14 @@ function App() {
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
-                title="GitHub 项目"
+                title={t('common:links.github')}
               >
                 <Github className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setLogsOpen(true)}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
-                title="查看日志"
+                title={t('common:links.logs')}
               >
                 <ScrollText className="w-4 h-4" />
               </button>
@@ -227,14 +235,14 @@ function App() {
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
-                title="GitHub 项目"
+                title={t('common:links.github')}
               >
                 <Github className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setLogsOpen(true)}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
-                title="查看日志"
+                title={t('common:links.logs')}
               >
                 <ScrollText className="w-4 h-4" />
               </button>
@@ -307,13 +315,13 @@ function App() {
       <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>发现新版本</DialogTitle>
+            <DialogTitle>{t('common:update.title')}</DialogTitle>
             <DialogDescription>
-              当前版本 v{version}，可升级到 v{upgradeInfo?.latest}。
+              {t('common:update.description', { current: version, latest: upgradeInfo?.latest ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="text-[12px] text-muted-foreground">
-            建议升级以获取最新功能和修复。
+            {t('common:update.recommendation')}
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -323,7 +331,7 @@ function App() {
                 setUpgradeOpen(false)
               }}
             >
-              稍后提醒
+              {t('common:actions.remindLater')}
             </Button>
             <Button
               onClick={() => {
@@ -331,7 +339,7 @@ function App() {
                 window.open(url, '_blank', 'noopener,noreferrer')
               }}
             >
-              去升级
+              {t('common:actions.upgrade')}
             </Button>
           </div>
         </DialogContent>
