@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1080" viewBox="0 0 1680 1080" role="img" aria-labelledby="chart-title chart-desc">
+  <title id="chart-title">PanWatch TradingAgents deep-analysis flow</title>
+  <desc id="chart-desc">PanWatch starts a deep analysis with a trigger, data collection, and budget checks. TradingAgents then runs specialist analysis, bull and bear debate, research planning, trading, and risk review. PanWatch maps the decision into recommendations, optional paper-trading signals, and notifications.</desc>
+  <rect width="1680" height="1080" fill="#ffffff" />
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#63748b" />
+    </marker>
+    <marker id="arrow-dash" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8b9ab0" />
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #233047; }
+    .main-title { font-size: 31px; font-weight: 700; }
+    .subtitle { font-size: 17px; fill: #61708a; }
+    .lane-label { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+    .node-title { font-size: 19px; font-weight: 650; }
+    .node-body { font-size: 16px; fill: #52627a; }
+    .small { font-size: 14px; fill: #687890; }
+    .step-text { font-size: 14px; font-weight: 700; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+    .center { text-anchor: middle; }
+    .panel-pw { fill: #f4f7ff; stroke: #d8e2f7; }
+    .panel-ta { fill: #f7f5fc; stroke: #e0daf0; }
+    .panel-out { fill: #f2faf6; stroke: #d5ebe0; }
+    .card-pw { fill: #fff; stroke: #8ba7df; }
+    .card-ta { fill: #fff; stroke: #aa9aca; }
+    .card-out { fill: #fff; stroke: #79b89d; }
+    .card-note { fill: #fff; stroke: #a8b5c6; stroke-dasharray: 7 6; }
+    .arrow { fill: none; stroke: #63748b; stroke-width: 2.5; marker-end: url(#arrow); }
+    .arrow-dashed { fill: none; stroke: #8b9ab0; stroke-width: 2.2; stroke-dasharray: 7 6; marker-end: url(#arrow-dash); }
+  </style>
+
+  <text x="56" y="60" class="main-title">TradingAgents Deep-Analysis Flow</text>
+  <text x="58" y="94" class="subtitle">PanWatch integration: from a single-symbol trigger to collaborative analysis and delivered recommendations</text>
+
+  <rect x="40" y="130" width="965" height="240" rx="20" class="panel-pw" />
+  <text x="64" y="166" class="lane-label" fill="#4568ad">PANWATCH · TRIGGER &amp; DATA PREP</text>
+  <rect x="1025" y="130" width="615" height="240" rx="20" class="panel-ta" />
+  <text x="1049" y="166" class="lane-label" fill="#705d9f">TRADINGAGENTS · ANALYSIS &amp; DEBATE</text>
+
+  <rect x="65" y="205" width="240" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="65" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="91" cy="229" r="16" fill="#5379c9" />
+  <text x="91" y="229" class="step-text">1</text>
+  <text x="116" y="239" class="node-title">Analysis trigger</text>
+  <text x="88" y="274" class="node-body">Portfolio · scheduler</text>
+  <text x="88" y="301" class="node-body">Intraday rule (optional)</text>
+
+  <rect x="375" y="205" width="260" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="375" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="401" cy="229" r="16" fill="#5379c9" />
+  <text x="401" y="229" class="step-text">2</text>
+  <text x="426" y="239" class="node-title">Parallel collection</text>
+  <text x="398" y="274" class="node-body" font-size="14">Price · candles · capital flow</text>
+  <text x="398" y="301" class="node-body" font-size="14">Technical and financial data</text>
+
+  <rect x="705" y="205" width="260" height="125" rx="16" class="card-pw" stroke-width="1.6" />
+  <rect x="705" y="205" width="6" height="125" rx="3" fill="#5b80cf" />
+  <circle cx="731" cy="229" r="16" fill="#5379c9" />
+  <text x="731" y="229" class="step-text">3</text>
+  <text x="756" y="239" class="node-title">Pre-run checks</text>
+  <text x="728" y="274" class="node-body">Reuse same-day cached result</text>
+  <text x="728" y="301" class="node-body" font-size="14">Otherwise, check the monthly budget</text>
+
+  <rect x="1045" y="205" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1045" y="205" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1071" cy="229" r="16" fill="#7865a8" />
+  <text x="1071" y="229" class="step-text">4</text>
+  <text x="1096" y="239" class="node-title">Analyst team</text>
+  <text x="1068" y="274" class="node-body">Market · sentiment · news</text>
+  <text x="1068" y="301" class="node-body" font-size="14">Fundamental research, as needed</text>
+
+  <rect x="1335" y="205" width="280" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1335" y="205" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1361" cy="229" r="16" fill="#7865a8" />
+  <text x="1361" y="229" class="step-text">5</text>
+  <text x="1386" y="239" class="node-title">Bull / bear debate</text>
+  <text x="1358" y="274" class="node-body">Bull ↔ Bear take turns</text>
+  <text x="1358" y="301" class="node-body">Continue after configured rounds</text>
+
+  <path d="M305 267 H375" class="arrow" />
+  <path d="M635 267 H705" class="arrow" />
+  <path d="M965 267 H1045" class="arrow" />
+  <path d="M1295 267 H1335" class="arrow" />
+
+  <rect x="40" y="415" width="260" height="255" rx="20" class="panel-out" />
+  <text x="62" y="451" class="lane-label" font-size="14" fill="#36795e">PANWATCH · RESULT HANDLING</text>
+  <rect x="320" y="415" width="1320" height="255" rx="20" class="panel-ta" />
+  <text x="344" y="451" class="lane-label" fill="#705d9f">TRADINGAGENTS · RESEARCH PLAN &amp; RISK DECISION</text>
+
+  <path d="M1475 330 V480 H1470 V485" class="arrow" />
+  <text x="1492" y="447" class="small">Proceed to decision</text>
+
+  <rect x="1340" y="485" width="260" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1340" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1366" cy="509" r="16" fill="#7865a8" />
+  <text x="1366" y="509" class="step-text">6</text>
+  <text x="1391" y="519" class="node-title">Research manager</text>
+  <text x="1363" y="554" class="node-body">Combine bull / bear views</text>
+  <text x="1363" y="581" class="node-body" font-size="14">Create a structured investment plan</text>
+
+  <rect x="1035" y="485" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="1035" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="1061" cy="509" r="16" fill="#7865a8" />
+  <text x="1061" y="509" class="step-text">7</text>
+  <text x="1086" y="519" class="node-title">Trader</text>
+  <text x="1058" y="554" class="node-body">Propose trade direction</text>
+  <text x="1058" y="581" class="node-body">and position plan</text>
+
+  <rect x="730" y="485" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="730" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="756" cy="509" r="16" fill="#7865a8" />
+  <text x="756" y="509" class="step-text">8</text>
+  <text x="781" y="519" class="node-title">Risk debate</text>
+  <text x="753" y="554" class="node-body" font-size="13">Aggressive → conservative → neutral</text>
+  <text x="753" y="581" class="node-body" font-size="14">Take turns based on configuration</text>
+
+  <rect x="415" y="485" width="260" height="125" rx="16" class="card-ta" stroke-width="1.6" />
+  <rect x="415" y="485" width="6" height="125" rx="3" fill="#806caf" />
+  <circle cx="441" cy="509" r="16" fill="#7865a8" />
+  <text x="441" y="509" class="step-text">9</text>
+  <text x="466" y="519" class="node-title">Portfolio manager</text>
+  <text x="438" y="554" class="node-body" font-size="14">Combine plan, risk, and holdings</text>
+  <text x="438" y="581" class="node-body" font-size="14">Output rating and decision memo</text>
+
+  <rect x="60" y="485" width="250" height="125" rx="16" class="card-out" stroke-width="1.6" />
+  <rect x="60" y="485" width="6" height="125" rx="3" fill="#419273" />
+  <circle cx="86" cy="509" r="16" fill="#39896d" />
+  <text x="86" y="509" class="step-text">10</text>
+  <text x="111" y="519" class="node-title" font-size="17">PanWatch result mapping</text>
+  <text x="83" y="554" class="node-body" font-size="14">Five-level rating → buy / hold / sell</text>
+  <text x="83" y="581" class="node-body" font-size="14">Save analysis and recommendations</text>
+
+  <path d="M1340 547 H1285" class="arrow" />
+  <path d="M1035 547 H980" class="arrow" />
+  <path d="M730 547 H675" class="arrow" />
+  <path d="M415 547 H310" class="arrow" />
+
+  <rect x="40" y="690" width="960" height="300" rx="20" class="panel-out" />
+  <text x="365" y="727" class="lane-label" fill="#36795e">PANWATCH · RECOMMENDATION DELIVERY</text>
+
+  <path d="M185 610 V697" class="arrow" />
+  <path d="M185 697 L312 747 L185 797 L58 747 Z" fill="#fffaf0" stroke="#d5a552" stroke-width="1.8" />
+  <text x="185" y="744" class="node-title center" font-size="16">Paper trading enabled?</text>
+  <text x="185" y="768" class="small center">Default: off</text>
+
+  <rect x="60" y="855" width="300" height="100" rx="16" class="card-out" stroke-width="1.6" stroke-dasharray="7 5" />
+  <text x="210" y="895" class="node-title center" font-size="17">Optional: write paper-trading signal</text>
+  <text x="210" y="925" class="node-body center" font-size="14">Write qualifying buy / sell signals only</text>
+
+  <rect x="515" y="855" width="430" height="100" rx="16" class="card-out" stroke-width="1.6" />
+  <text x="730" y="895" class="node-title center">Dashboard + notification channels</text>
+  <text x="730" y="925" class="node-body center">Review history; deliver summaries per policy</text>
+
+  <path d="M185 797 V827 H210 V855" class="arrow-dashed" />
+  <text x="198" y="824" class="small">Yes</text>
+  <path d="M312 747 H730 V855" class="arrow" />
+  <text x="532" y="738" class="small">No</text>
+  <path d="M360 905 H515" class="arrow" />
+
+  <rect x="1025" y="690" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
+  <text x="1053" y="728" class="node-title">Runtime observability</text>
+  <text x="1053" y="764" class="node-body">Collection phase, LangGraph progress, and model cost</text>
+  <text x="1053" y="791" class="node-body">Stored as traces for run-progress status</text>
+
+  <rect x="1025" y="850" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
+  <text x="1053" y="888" class="node-title">Historical feedback ↻</text>
+  <text x="1053" y="924" class="node-body">Compare to a benchmark after the holding period</text>
+  <text x="1053" y="951" class="node-body">Use it as context for the next analysis of this symbol</text>
+
+  <circle cx="61" cy="1030" r="8" fill="#5379c9" />
+  <text x="78" y="1036" class="small">PanWatch integration</text>
+  <circle cx="255" cy="1030" r="8" fill="#7865a8" />
+  <text x="272" y="1036" class="small">TradingAgents reasoning</text>
+  <circle cx="465" cy="1030" r="8" fill="#39896d" />
+  <text x="482" y="1036" class="small">PanWatch result handling</text>
+  <line x1="705" y1="1030" x2="745" y2="1030" stroke="#8b9ab0" stroke-width="2" stroke-dasharray="6 5" />
+  <text x="755" y="1036" class="small">Optional step / cross-run feedback</text>
+</svg>

@@ -66,6 +66,7 @@
 - 3-5 分钟输出完整推理链，结论同步推送到 Telegram / 微信 / 钉钉
 - 默认 deepseek-chat，单次 ~$0.05，月度预算可控
 - [查看 TradingAgents 深度分析流程图](docs/tradingagents-flow.md)
+- [阅读后端架构设计](src/ARCHITECTURE.md)
 
 ## 核心功能
 

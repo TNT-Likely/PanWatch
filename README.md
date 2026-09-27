@@ -68,6 +68,7 @@ PanWatch integrates [TradingAgents](https://github.com/TauricResearch/TradingAge
 - A complete reasoning trail is generated in 3–5 minutes and can be delivered to Telegram, WeCom, or DingTalk.
 - The default model is `deepseek-chat`; a typical run costs about USD 0.05, keeping monthly spending predictable.
 - [View the TradingAgents deep-analysis flowchart](docs/tradingagents-flow.en.md)
+- [Read the backend architecture guide](src/ARCHITECTURE.en.md)
 
 ## Core Features
 

@@ -1,5 +1,7 @@
 # PanWatch 后端架构
 
+[English](ARCHITECTURE.en.md)
+
 ## 目标与形态
 
 PanWatch 是一个**模块化单体**：一个 FastAPI 应用、一个共享数据库，但以稳定的

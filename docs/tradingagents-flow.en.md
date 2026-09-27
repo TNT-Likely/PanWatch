@@ -4,7 +4,7 @@
 
 PanWatch can trigger a single-symbol analysis from the portfolio page, a scheduled agent, or an enabled intraday-event rule. The flow combines PanWatch data preparation and result handling with TradingAgents' multi-agent decision process.
 
-> The linked flowchart currently uses Chinese labels: [TradingAgents flowchart](diagrams/tradingagents-flow.svg).
+![PanWatch TradingAgents deep-analysis flowchart](diagrams/tradingagents-flow.en.svg)
 
 The number of research-debate and risk-discussion rounds is configurable. Paper-trading integration is disabled by default; when enabled, only qualifying buy or sell recommendations are written as paper-trading signals. TradingAgents ratings are mapped to PanWatch buy, hold, or sell recommendations. Ratings that cannot be parsed are marked for human review.
 
