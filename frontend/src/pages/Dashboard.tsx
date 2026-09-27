@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
+import { ChevronDown, RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
 import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
 import {
   dashboardApi,
@@ -97,6 +97,16 @@ function rationaleFirstLine(rationale?: string): string {
   return ''
 }
 
+/** 板块行唯一键:优先后端 id,兜底 board_code/board_name(列表 key 与展开态同源) */
+function sectorRowKey(s: SectorPredictionItem): string {
+  return s.id != null ? `id-${s.id}` : s.board_code || s.board_name
+}
+
+/** catalysts API 侧为 unknown[],仅收编非空字符串,防异常载荷污染渲染 */
+function catalystList(catalysts?: unknown[]): string[] {
+  return (catalysts || []).filter((c): c is string => typeof c === 'string' && c.trim() !== '')
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -118,6 +128,8 @@ export default function DashboardPage() {
   // 今日板块预判:独立加载(不阻塞首屏),loading/ready/empty 三态优雅降级
   const [sectorForecast, setSectorForecast] = useState<SectorPredictionItem[]>([])
   const [sectorDate, setSectorDate] = useState('')
+  // 板块预判手风琴:至多展开一行,再点收起(数据刷新后残留 id 无匹配行即无展开,无副作用)
+  const [expandedSector, setExpandedSector] = useState<string | null>(null)
   const [sectorState, setSectorState] = useState<'loading' | 'ready' | 'empty'>('loading')
   const [portfolioSummary, setPortfolioSummary] = useState<DashboardPortfolioSummary | null>(null)
   const [marketStatus, setMarketStatus] = useState<DashboardMarketStatus[]>([])
@@ -749,8 +761,13 @@ export default function DashboardPage() {
               {sectorRows.map((s) => {
                 const badge = sectorDirectionBadge(s.direction)
                 const rationale = rationaleFirstLine(s.rationale)
-                return (
-                  <div key={s.board_code || s.board_name} className="flex items-center gap-2 py-2">
+                const rowKey = sectorRowKey(s)
+                // rationale 为空的行不展开:不渲染箭头、不可点击
+                const hasDetail = Boolean(s.rationale && s.rationale.trim())
+                const catalysts = hasDetail ? catalystList(s.catalysts) : []
+                const expanded = hasDetail && expandedSector === rowKey
+                const rowBody = (
+                  <>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-body font-medium">{s.board_name || s.board_code}</span>
@@ -767,6 +784,49 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-mini text-muted-foreground">置信度</div>
                     </div>
+                  </>
+                )
+                return (
+                  <div key={rowKey}>
+                    {hasDetail ? (
+                      <button
+                        type="button"
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={expanded}
+                        aria-controls={`sector-detail-${rowKey}`}
+                        onClick={() => setExpandedSector((cur) => (cur === rowKey ? null : rowKey))}
+                      >
+                        {rowBody}
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 py-2">{rowBody}</div>
+                    )}
+                    {expanded && (
+                      <div id={`sector-detail-${rowKey}`} className="px-2 pb-2">
+                        <MarkdownView
+                          content={s.rationale}
+                          className="max-h-[280px] overflow-y-auto text-body-sm [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1"
+                        />
+                        {catalysts.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {catalysts.map((c, i) => (
+                              <span
+                                key={`${i}-${c}`}
+                                className="rounded bg-accent px-1 py-0.5 text-mini text-muted-foreground"
+                              >
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-1.5 text-mini text-muted-foreground">
+                          阶段 {s.stage || '--'} · 动量 {s.momentum_score ?? '--'} · 来源 {s.source_agent || '--'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
