@@ -4,30 +4,30 @@ import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const collectTsxFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+const collectSourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const absolutePath = path.join(directory, entry.name)
-  if (entry.isDirectory()) return collectTsxFiles(absolutePath)
-  return entry.name.endsWith('.tsx') ? [path.relative(frontendRoot, absolutePath)] : []
+  if (entry.isDirectory()) return collectSourceFiles(absolutePath)
+  if (!/\.(ts|tsx)$/.test(entry.name) || /\.(test|spec)\.(ts|tsx)$/.test(entry.name)) return []
+  const relativePath = path.relative(frontendRoot, absolutePath)
+  return relativePath.includes('/i18n/locales/') ? [] : [relativePath]
 })
 
-// App-owned TSX is checked exhaustively. Shared biz-ui components are added as
-// they migrate so legacy screens do not weaken coverage for the main app.
+// App and shared-package code are both checked. Locale resources and tests are
+// excluded because their literals are intentionally not rendered directly.
 const migratedFiles = [
-  ...collectTsxFiles(path.join(frontendRoot, 'src')),
-  'packages/biz-ui/src/components/InteractiveKline.tsx',
-  'packages/biz-ui/src/components/KlineModal.tsx',
-  'packages/biz-ui/src/components/add-position-calculator.tsx',
-  'packages/biz-ui/src/components/deep-analysis-modal.tsx',
-  'packages/biz-ui/src/components/kline-indicators.tsx',
-  'packages/biz-ui/src/components/kline-summary-dialog.tsx',
-  'packages/biz-ui/src/components/logs-modal.tsx',
-  'packages/biz-ui/src/components/onboarding.tsx',
-  'packages/biz-ui/src/components/price-alert-form-dialog.tsx',
-  'packages/biz-ui/src/components/stock-insight-modal.tsx',
-  'packages/biz-ui/src/components/stock-price-alert-panel.tsx',
-  'packages/biz-ui/src/components/suggestion-badge.tsx',
-]
+  ...collectSourceFiles(path.join(frontendRoot, 'src')),
+  ...collectSourceFiles(path.join(frontendRoot, 'packages', 'api', 'src')),
+  ...collectSourceFiles(path.join(frontendRoot, 'packages', 'biz-ui', 'src')),
+].sort()
 const hanPattern = /[\u3400-\u9fff]/u
+const fixedEnglishFallbackPattern = /\b(?:build position|do not open|entry plan|unknown|watch)\b/i
+const englishPhrasePattern = /\b[A-Za-z]{3,}(?:[ -][A-Za-z]{3,})+\b/
+const displayPropertyNames = new Set([
+  'aria-label', 'description', 'emptyText', 'helperText', 'hint', 'label',
+  'message', 'placeholder', 'summary', 'title', 'tooltip',
+])
+const translatorNames = new Set(['configT', 'interfaceText', 'klineT', 'klineTr', 'oppT', 'stockT', 't', 'tr'])
+const isTranslatorName = (name) => translatorNames.has(name) || /(?:T|Tr|Translate)$/.test(name)
 
 const enclosingCall = (node) => {
   let current = node.parent
@@ -63,10 +63,14 @@ const isLogicMatcher = (node) => {
   return false
 }
 
-const isInsideJsx = (node) => {
+const isInsidePresentationJsx = (node) => {
   let current = node.parent
   while (current && !ts.isStatement(current) && !ts.isFunctionLike(current)) {
-    if (ts.isJsxExpression(current) || ts.isJsxAttribute(current)) return true
+    if (ts.isJsxAttribute(current)) return displayPropertyNames.has(current.name.text)
+    if (ts.isJsxExpression(current)) {
+      // A JSX expression that is not an attribute is rendered child content.
+      if (!ts.isJsxAttribute(current.parent)) return true
+    }
     current = current.parent
   }
   return false
@@ -80,6 +84,76 @@ const isUserFacingCall = (node) => {
   }
   return false
 }
+
+const isTranslationArgument = (node) => {
+  let current = node.parent
+  while (current && !ts.isCallExpression(current) && !ts.isStatement(current)) current = current.parent
+  if (!current || !ts.isCallExpression(current)) return false
+  if (ts.isIdentifier(current.expression)) return isTranslatorName(current.expression.text)
+  return ts.isPropertyAccessExpression(current.expression)
+    && isTranslatorName(current.expression.name.text)
+}
+
+const isDisplayProperty = (node) => {
+  const parent = node.parent
+  if (!parent || !ts.isPropertyAssignment(parent)) return false
+  const name = parent.name
+  const key = ts.isIdentifier(name) || ts.isStringLiteralLike(name) ? name.text : ''
+  return displayPropertyNames.has(key)
+}
+
+const functionNameFor = (node) => {
+  let current = node.parent
+  while (current) {
+    if (ts.isFunctionDeclaration(current) && current.name) return current.name.text
+    if ((ts.isArrowFunction(current) || ts.isFunctionExpression(current)) && ts.isVariableDeclaration(current.parent)) {
+      return ts.isIdentifier(current.parent.name) ? current.parent.name.text : ''
+    }
+    if (ts.isMethodDeclaration(current) && ts.isIdentifier(current.name)) return current.name.text
+    current = current.parent
+  }
+  return ''
+}
+
+const isIndirectUserFacing = (node) => {
+  if (isDisplayProperty(node)) return true
+  const call = enclosingCall(node)
+  if (call && ts.isIdentifier(call.expression) && call.expression.text === 'Error') return true
+  let current = node.parent
+  let returned = false
+  while (current && !ts.isFunctionLike(current)) {
+    if (ts.isJsxAttribute(current) || ts.isJsxElement(current) || ts.isJsxFragment(current)) return false
+    if (ts.isReturnStatement(current)) {
+      returned = true
+      break
+    }
+    current = current.parent
+  }
+  if (!returned) return false
+  const name = functionNameFor(node)
+  return /(display|format|label|message|summary|text|title|description|hint|error)/i.test(name)
+}
+
+const isLocaleMapping = (node) => {
+  let current = node.parent
+  while (current) {
+    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
+      return /_(ZH|EN)$/.test(current.name.text)
+    }
+    current = current.parent
+  }
+  return false
+}
+
+const looksLikePresentationLiteral = (text) => (
+  hanPattern.test(text) || fixedEnglishFallbackPattern.test(text) || englishPhrasePattern.test(text)
+)
+const isTechnicalLiteral = (text) => (
+  text === 'panwatch-locale'
+  || text.startsWith('/')
+  || text.includes('://')
+  || text.includes('github.com/')
+)
 
 const failures = []
 
@@ -102,9 +176,13 @@ for (const relativePath of migratedFiles) {
         : null
 
     const userFacing = ts.isJsxText(node)
-      || (ts.isStringLiteralLike(node) && (isInsideJsx(node) || isUserFacingCall(node)))
+      || (ts.isStringLiteralLike(node) && (
+        isInsidePresentationJsx(node) || isUserFacingCall(node) || isIndirectUserFacing(node)
+      ))
 
-    if (text && hanPattern.test(text) && userFacing && !isLogicMatcher(node) && !isConsoleDiagnostic(node)) {
+    if (text && looksLikePresentationLiteral(text) && userFacing && !isLogicMatcher(node)
+      && !isConsoleDiagnostic(node) && !isTranslationArgument(node) && !isLocaleMapping(node)
+      && !isTechnicalLiteral(text)) {
       const position = source.getLineAndCharacterOfPosition(node.getStart(source))
       failures.push(`${relativePath}:${position.line + 1}:${position.character + 1} ${text}`)
     }
@@ -115,7 +193,7 @@ for (const relativePath of migratedFiles) {
 }
 
 if (failures.length > 0) {
-  console.error('Migrated UI files contain untranslated Chinese literals:')
+  console.error('Migrated UI files contain direct or indirect untranslated literals:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exitCode = 1
 } else {

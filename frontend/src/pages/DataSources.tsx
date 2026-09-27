@@ -103,15 +103,15 @@ const ALL_DATASOURCE_CATEGORIES = UNCATEGORIZED_TYPES.length > 0
   ? [...DATASOURCE_CATEGORIES, { key: 'other', types: UNCATEGORIZED_TYPES }]
   : DATASOURCE_CATEGORIES
 
-interface CredentialFieldDef { key: string; label: string; labelKey?: string; placeholderKey: string; secret?: boolean; helpKey?: string }
+interface CredentialFieldDef { key: string; labelKey: string; placeholderKey: string; secret?: boolean; helpKey?: string }
 
 // provider → 凭证字段(前端持有 UI 元数据,新增带凭证的 provider 时在此加一行)
 const PROVIDER_CREDENTIAL_FIELDS: Record<string, CredentialFieldDef[]> = {
   tushare: [
-    { key: 'token', label: 'Tushare Token', placeholderKey: 'dataSources.credentials.tusharePlaceholder', secret: true, helpKey: 'dataSources.credentials.tushareHelp' },
+    { key: 'token', labelKey: 'dataSources.credentials.tushareLabel', placeholderKey: 'dataSources.credentials.tusharePlaceholder', secret: true, helpKey: 'dataSources.credentials.tushareHelp' },
   ],
   xueqiu: [
-    { key: 'cookies', label: 'Xueqiu Cookies', labelKey: 'dataSources.credentials.xueqiuLabel', placeholderKey: 'dataSources.credentials.xueqiuPlaceholder', secret: true, helpKey: 'dataSources.credentials.xueqiuHelp' },
+    { key: 'cookies', labelKey: 'dataSources.credentials.xueqiuLabel', placeholderKey: 'dataSources.credentials.xueqiuPlaceholder', secret: true, helpKey: 'dataSources.credentials.xueqiuHelp' },
   ],
 }
 
@@ -451,7 +451,7 @@ export default function DataSourcesPage() {
             {/* 凭证类配置:按 provider 动态渲染对应字段 */}
             {(PROVIDER_CREDENTIAL_FIELDS[form.provider] || []).map(field => (
               <div key={field.key}>
-                <Label>{field.labelKey ? configT(field.labelKey) : field.label}
+                <Label>{configT(field.labelKey)}
                   {field.helpKey && <span className="text-muted-foreground font-normal ml-1">({configT(field.helpKey)})</span>}
                 </Label>
                 <div className="relative">

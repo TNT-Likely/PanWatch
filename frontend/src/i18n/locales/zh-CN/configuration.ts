@@ -109,6 +109,7 @@ export const configuration = {
       other: '其他',
     },
     credentials: {
+      tushareLabel: 'Tushare Token',
       tusharePlaceholder: '粘贴 Token，留空则读取环境变量 TUSHARE_TOKEN',
       tushareHelp: '登录 tushare.pro 后从个人主页获取',
       xueqiuLabel: '雪球 Cookies',
@@ -192,6 +193,9 @@ export const configuration = {
       pushplusToken: '你的 PushPlus Token', groupCode: '群组编码', userKey: '用户 Key', appToken: '应用 Token',
       optional: '选填', commaSeparated: '逗号分隔', keywordHint: '若群机器人启用“关键字”，填入以自动附加',
       channelNamePlaceholder: '如 我的 Telegram', serverUrlLabel: '服务器地址',
+      types: { telegram: 'Telegram', bark: 'Bark', dingtalk: '钉钉机器人', wecom: '企业微信机器人', lark: '飞书机器人', serverchan: 'ServerChan', pushplus: 'PushPlus', discord: 'Discord', pushover: 'Pushover' },
+      fields: { botToken: 'Bot Token', chatId: 'Chat ID', proxy: '代理', deviceKey: '设备 Key', serverUrl: '服务器地址', webhookToken: 'Webhook Token', signSecret: '加签密钥', phones: '@手机号', keyword: '关键字', webhookKey: 'Webhook Key', sendKey: 'SendKey', token: 'Token', groupCode: '群组编码', webhookId: 'Webhook ID', userKey: '用户 Key', appToken: '应用 Token' },
+      placeholders: { botToken: '123456:ABC-DEF...', chatId: '-100123456789', proxy: 'http://192.168.1.1:7890 或 socks5://...', deviceKey: '你的 Bark Device Key', serverUrl: '默认 api.day.app，支持自建服务地址', accessToken: 'access_token 的值', signSecret: 'SEC...（可选）', phones: '逗号分隔，例如 13800138000,13900139000', keyword: '群机器人要求关键字时填写', webhookKey: 'Webhook URL 中 key= 后的值', webhookToken: 'hook/ 后面的 token', sendKey: 'SCT...', pushplusToken: '你的 PushPlus Token', groupCode: '可选，用于群组通知', webhookId: 'Webhook URL 中的 ID', userKey: '你的用户 Key', appToken: '你的应用 Token' },
     },
     templates: {
       conservative: { name: '保守', description: '低打扰：盘中更严格触发，静默时段建议开启' },
@@ -237,7 +241,7 @@ export const configuration = {
     },
     feedback: { title: '建议反馈', description: '用于评估推送质量与策略迭代', refresh: '刷新', days: '近 {{days}} 天', total: '反馈', useful: '有用', useless: '没用', usefulRate: '有用率', byAgent: '按 Agent', empty: '暂无反馈数据' },
     dialogs: {
-      providerEdit: '编辑 AI 服务商', providerAdd: '添加 AI 服务商', providerDescription: '配置 AI 服务商的 API 连接信息', name: '名称', providerPlaceholder: '如 OpenAI、智谱、DeepSeek', cancel: '取消', save: '保存', create: '创建',
+      providerEdit: '编辑 AI 服务商', providerAdd: '添加 AI 服务商', providerDescription: '配置 AI 服务商的 API 连接信息', name: '名称', baseUrl: '服务地址', apiKey: 'API Key', providerPlaceholder: '如 OpenAI、智谱、DeepSeek', cancel: '取消', save: '保存', create: '创建',
       modelEdit: '编辑模型', modelAdd: '添加模型', modelDescription: '配置 AI 模型', provider: '所属服务商', providerSelect: '选择服务商', displayName: '显示名称', optionalDefault: '（选填，默认同模型标识）', modelNamePlaceholder: '不填则使用模型标识', modelIdentifier: '模型标识', discoverHint: '（可用服务商上的“嗅探”批量发现）', modelPlaceholder: '请先选择服务商',
       discovered: '发现 {{count}} 个模型', discoveredDescription: '勾选要添加的模型，并可指定一个默认模型', selected: '已选', selectAll: '全选', deselectAll: '取消全选', default: '默认', setDefault: '设默认', skip: '跳过', adding: '添加中…', addCount: '添加 {{count}} 个',
       channelEdit: '编辑通知渠道', channelAdd: '添加通知渠道', channelDescription: '配置通知推送方式', channelName: '名称', channelType: '类型', optional: '选填',

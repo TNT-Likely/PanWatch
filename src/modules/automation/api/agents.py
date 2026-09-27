@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -15,6 +15,7 @@ from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
 from src.platform.scheduling.schedule_parser import preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
 from src.platform.runtime.config import Settings
+from src.web.errors import api_error
 from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
@@ -280,7 +281,7 @@ def update_agent(
 ):
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
-        raise HTTPException(404, f"Agent {agent_name} 不存在")
+        raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
 
     for key, value in update.model_dump(exclude_unset=True).items():
         if key == "config":
@@ -308,7 +309,8 @@ def preview_schedule_expr(schedule: str, count: int = 5):
     try:
         runs = preview_schedule(schedule, count=count, timezone=tz)
     except Exception as e:
-        raise HTTPException(400, f"schedule 无法解析: {e}")
+        logger.warning("调度表达式无法解析: %s", e)
+        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from e
 
     return {
         "schedule": schedule,
@@ -325,14 +327,15 @@ def preview_agent_schedule(
     tz = Settings().app_timezone or "UTC"
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
-        raise HTTPException(404, f"Agent {agent_name} 不存在")
+        raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
     if not agent.schedule:
         return {"schedule": "", "timezone": tz, "next_runs": []}
 
     try:
         runs = preview_schedule(agent.schedule, count=count, timezone=tz)
     except Exception as e:
-        raise HTTPException(400, f"schedule 无法解析: {e}")
+        logger.warning("Agent %s 调度表达式无法解析: %s", agent_name, e)
+        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from e
 
     return {
         "schedule": agent.schedule,
@@ -346,7 +349,7 @@ def delete_agent(agent_name: str, db: Session = Depends(get_db)):
     """删除 Agent 配置"""
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
-        raise HTTPException(404, f"Agent {agent_name} 不存在")
+        raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
 
     # 删除关联的 stock_agents 记录
     from src.platform.persistence.models import StockAgent
@@ -370,10 +373,10 @@ async def trigger_agent_endpoint(
     """手动触发 Agent 执行"""
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
-        raise HTTPException(404, f"Agent {agent_name} 不存在")
+        raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
     agent_kind = (agent.kind or "").strip() or infer_agent_kind(agent.name)
     if agent_kind == AGENT_KIND_WORKFLOW and not agent.enabled:
-        raise HTTPException(400, f"Agent {agent_name} 未启用")
+        raise api_error(400, "agent_not_enabled", f"Agent {agent_name} 未启用")
 
     from server import trigger_agent
 
@@ -392,9 +395,11 @@ async def trigger_agent_endpoint(
         result = await trigger_agent(agent_name)
         return {"ok": True, "queued": False, "message": result}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        logger.warning("Agent %s 执行参数无效: %s", agent_name, e)
+        raise api_error(400, "agent_trigger_invalid", "Agent 执行参数无效") from e
     except Exception as e:
-        raise HTTPException(500, f"Agent 执行失败: {e}")
+        logger.exception("Agent %s 执行失败", agent_name)
+        raise api_error(500, "agent_trigger_failed", "Agent 执行失败") from e
 
 
 @router.get("/tradingagents/running")
@@ -585,7 +590,7 @@ def export_tradingagents_analysis_pdf(
         .first()
     )
     if not record:
-        raise HTTPException(status_code=404, detail="未找到该深度分析记录")
+        raise api_error(404, "analysis_not_found", "未找到该深度分析记录")
 
     # 用 raw_data 拼详情页同款完整分节(含 4 分析师全文 + 辩论全文);raw_data 缺失时回退 content
     from src.platform.language import resolve_report_language
@@ -629,7 +634,7 @@ def get_tradingagents_budget(db: Session = Depends(get_db)):
         db.query(AgentConfig).filter(AgentConfig.name == "tradingagents").first()
     )
     if not agent:
-        raise HTTPException(404, "tradingagents agent 未注册")
+        raise api_error(404, "tradingagents_not_registered", "tradingagents agent 未注册")
 
     cfg = agent.config or {}
     monthly_budget = float(cfg.get("monthly_budget_usd", 10.0))
@@ -684,7 +689,7 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
     from src.modules.automation.tradingagents.observability import aggregate_progress
 
     if not trace_id or len(trace_id) > 64:
-        raise HTTPException(400, "无效的 trace_id")
+        raise api_error(400, "trace_id_invalid", "无效的 trace_id")
 
     logs = (
         db.query(LogEntry)
@@ -807,7 +812,7 @@ async def stream_run_progress(trace_id: str):
     from src.platform.persistence.database import SessionLocal
 
     if not trace_id or len(trace_id) > 64:
-        raise HTTPException(400, "无效的 trace_id")
+        raise api_error(400, "trace_id_invalid", "无效的 trace_id")
 
     def _snapshot() -> dict:
         """开独立会话取一次进度快照（复用轮询端点的聚合逻辑）。"""

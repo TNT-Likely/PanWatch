@@ -2,7 +2,7 @@
 import logging
 import time
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ from src.platform.persistence.models import Account, PriceAlertRule, Position, S
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -171,7 +172,7 @@ def get_account(account_id: int, db: Session = Depends(get_db)):
     """获取单个账户"""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
-        raise HTTPException(404, "账户不存在")
+        raise api_error(404, "account_not_found", "账户不存在")
     return account
 
 
@@ -191,7 +192,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     """更新账户"""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
-        raise HTTPException(404, "账户不存在")
+        raise api_error(404, "account_not_found", "账户不存在")
 
     if data.name is not None:
         account.name = data.name
@@ -211,7 +212,7 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     """删除账户（会同时删除该账户的所有持仓）"""
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
-        raise HTTPException(404, "账户不存在")
+        raise api_error(404, "account_not_found", "账户不存在")
 
     # Read relationship-independent values before commit.  SQLAlchemy expires
     # and detaches deleted instances, so accessing ``account.name`` after the
@@ -263,11 +264,11 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
     # 检查账户和股票是否存在
     account = db.query(Account).filter(Account.id == data.account_id).first()
     if not account:
-        raise HTTPException(400, "账户不存在")
+        raise api_error(400, "account_not_found", "账户不存在")
 
     stock = db.query(Stock).filter(Stock.id == data.stock_id).first()
     if not stock:
-        raise HTTPException(400, "股票不存在")
+        raise api_error(400, "stock_not_found", "股票不存在")
 
     # 检查是否已存在该账户的该股票持仓
     existing = db.query(Position).filter(
@@ -275,7 +276,7 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
         Position.stock_id == data.stock_id,
     ).first()
     if existing:
-        raise HTTPException(400, f"账户 {account.name} 已有 {stock.name} 的持仓，请编辑现有持仓")
+        raise api_error(400, "position_already_exists", f"账户 {account.name} 已有 {stock.name} 的持仓，请编辑现有持仓")
 
     max_order = db.query(func.max(Position.sort_order)).filter(
         Position.account_id == data.account_id
@@ -315,7 +316,7 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
     """更新持仓"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
-        raise HTTPException(404, "持仓不存在")
+        raise api_error(404, "position_not_found", "持仓不存在")
 
     if data.cost_price is not None:
         position.cost_price = data.cost_price
@@ -351,7 +352,7 @@ def delete_position(position_id: int, db: Session = Depends(get_db)):
     """删除持仓"""
     position = db.query(Position).filter(Position.id == position_id).first()
     if not position:
-        raise HTTPException(404, "持仓不存在")
+        raise api_error(404, "position_not_found", "持仓不存在")
 
     # Capture lazy relationships before the row is deleted/committed.  The
     # deleted Position is no longer session-bound afterwards; logging its
@@ -895,6 +896,7 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
     try:
         content = await get_configured_failover_client(db, model_id).chat(system_prompt, user_content, temperature=0.3)
     except Exception as e:
-        raise HTTPException(502, f"AI 体检失败: {e}")
+        logger.exception("AI 体检失败")
+        raise api_error(502, "portfolio_ai_review_failed", "AI 体检失败") from e
 
     return {"content": content, "top": top, "worst": worst, "diagnostics": diag, "benchmark": bench, "account_totals": totals}

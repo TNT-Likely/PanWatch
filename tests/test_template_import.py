@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -165,6 +167,17 @@ def test_import_with_only_dangling_ids_finishes_without_foreign_key_error(monkey
     assert result["ok"] is True
     assert result["summary"]["dropped_ai_model_refs"] == 2
     assert result["summary"]["dropped_notify_channel_refs"] == 2
+
+
+def test_import_rejects_unsupported_template_version_with_stable_error_code():
+    with pytest.raises(HTTPException) as exc_info:
+        import_template(payload=TemplatePayload(version=3), mode="merge", db=None)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {
+        "code": "template_version_unsupported",
+        "message": "不支持的配置包版本: 3",
+    }
 
 
 def test_v2_round_trip_recreates_sensitive_config_positions_and_relations(monkeypatch):

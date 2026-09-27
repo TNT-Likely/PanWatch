@@ -861,7 +861,7 @@ export default function StockInsightModal(props: {
     if (value < quote.prev_close) return 'text-emerald-500'
     return 'text-foreground'
   }
-  const badge = getMarketBadge(market)
+  const badge = getMarketBadge(market, (code) => tr(`markets.${code}`))
   const amplitudePct = useMemo(() => {
     const hi = quote?.high_price
     const lo = quote?.low_price

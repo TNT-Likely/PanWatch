@@ -11,7 +11,36 @@ interface ApiResponse<T> {
   message: string
 }
 
-const ENGLISH_HTTP_ERRORS: Record<string, string> = {
+const API_ERROR_TEXT_EN: Record<string, string> = {
+  account_not_found: 'The account could not be found.',
+  agent_binding_unsupported: 'This Agent is an internal capability and cannot be bound to a stock.',
+  agent_not_enabled: 'This Agent is disabled.',
+  agent_not_found: 'The selected Agent could not be found.',
+  agent_schedule_invalid: 'The schedule expression is invalid.',
+  agent_trigger_failed: 'The Agent could not be run. Try again later.',
+  agent_trigger_invalid: 'The Agent request is invalid.',
+  analysis_not_found: 'The requested analysis could not be found.',
+  market_unsupported: 'This market is not supported.',
+  portfolio_ai_review_failed: 'The AI portfolio review failed. Try again later.',
+  position_already_exists: 'This account already has a position in that stock.',
+  position_not_found: 'The position could not be found.',
+  price_alert_invalid: 'The price-alert settings are invalid.',
+  price_alert_not_found: 'The price alert could not be found.',
+  price_alert_stock_not_found: 'The selected stock could not be found.',
+  quote_not_found: 'No quote is available for this stock.',
+  stock_agent_not_bound: 'This stock is not bound to the selected Agent.',
+  stock_agent_unbound_not_allowed: 'Allow an unbound Agent run before running it for a stock that is not in the watchlist.',
+  stock_already_exists: 'This stock is already in the watchlist.',
+  stock_has_position: 'Remove the positions before removing this stock.',
+  stock_not_found: 'The stock could not be found.',
+  stock_symbol_required: 'Enter a stock symbol before running an unbound Agent.',
+  template_mode_invalid: 'Choose either merge or replace as the import mode.',
+  template_module_invalid: 'The configuration package contains an unsupported module.',
+  template_module_required: 'Choose at least one configuration module.',
+  template_reference_invalid: 'The configuration package contains invalid references and was not imported.',
+  template_version_unsupported: 'This configuration package version is not supported.',
+  trace_id_invalid: 'The analysis trace ID is invalid.',
+  tradingagents_not_registered: 'The TradingAgents workflow is not registered.',
   http_400: 'The request is invalid. Check the submitted values and try again.',
   http_401: 'Your session has expired. Sign in again.',
   http_403: 'You do not have permission to perform this action.',
@@ -23,12 +52,13 @@ const ENGLISH_HTTP_ERRORS: Record<string, string> = {
   http_502: 'An upstream service failed. Try again later.',
   http_503: 'The service is temporarily unavailable. Try again later.',
   http_504: 'The service timed out. Try again later.',
+  unknown: 'The request failed. Try again later.',
 }
 
 function localizedApiError(body: ApiResponse<unknown>, status: number): string {
   const code = body.error_code || `http_${body.code || status}`
   if (isEnglishInterface()) {
-    return ENGLISH_HTTP_ERRORS[code] || 'The request failed. Try again later.'
+    return API_ERROR_TEXT_EN[code] || API_ERROR_TEXT_EN.unknown
   }
   return body.message || `HTTP ${status}`
 }

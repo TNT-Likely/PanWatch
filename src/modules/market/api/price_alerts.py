@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
@@ -11,6 +11,7 @@ from src.modules.market import price_alert_service
 from src.modules.market.price_alert_engine import ENGINE
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import PriceAlertHit, PriceAlertRule, Stock
+from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -119,9 +120,10 @@ def create_alert_rule(body: PriceAlertCreate, db: Session = Depends(get_db)):
             notify_channel_ids=body.notify_channel_ids,
         )
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise api_error(404, "price_alert_stock_not_found", "股票不存在") from exc
     except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        logger.warning("创建价格提醒参数无效: %s", exc)
+        raise api_error(400, "price_alert_invalid", "价格提醒参数无效") from exc
     return _to_response(row)
 
 
@@ -131,9 +133,10 @@ def update_alert_rule(rule_id: int, body: PriceAlertUpdate, db: Session = Depend
     try:
         row = price_alert_service.update_alert_rule(db, rule_id, updates)
     except LookupError as exc:
-        raise HTTPException(404, "规则不存在") from exc
+        raise api_error(404, "price_alert_not_found", "规则不存在") from exc
     except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        logger.warning("更新价格提醒参数无效: %s", exc)
+        raise api_error(400, "price_alert_invalid", "价格提醒参数无效") from exc
     return _to_response(row)
 
 
@@ -141,7 +144,7 @@ def update_alert_rule(rule_id: int, body: PriceAlertUpdate, db: Session = Depend
 def toggle_alert_rule(rule_id: int, body: ToggleBody, db: Session = Depends(get_db)):
     row = db.query(PriceAlertRule).filter(PriceAlertRule.id == rule_id).first()
     if not row:
-        raise HTTPException(404, "规则不存在")
+        raise api_error(404, "price_alert_not_found", "规则不存在")
     row.enabled = bool(body.enabled)
     db.commit()
     db.refresh(row)
@@ -153,7 +156,7 @@ def delete_alert_rule(rule_id: int, db: Session = Depends(get_db)):
     try:
         price_alert_service.delete_alert_rule(db, rule_id)
     except LookupError as exc:
-        raise HTTPException(404, "规则不存在") from exc
+        raise api_error(404, "price_alert_not_found", "规则不存在") from exc
     return {"ok": True}
 
 

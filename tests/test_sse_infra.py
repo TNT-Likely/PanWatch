@@ -170,3 +170,30 @@ def test_middleware_exposes_stable_http_error_code():
         assert body["error_code"] == "http_404"
 
     asyncio.run(run())
+
+
+def test_middleware_preserves_structured_error_code():
+    async def run():
+        async def app(scope, receive, send):
+            body = json.dumps(
+                {"detail": {"code": "template_module_invalid", "message": "不支持的配置模块"}},
+                ensure_ascii=False,
+            ).encode()
+            await send({
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({"type": "http.response.body", "body": body})
+
+        sent_messages: list[dict] = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await ResponseWrapperMiddleware(app)(_make_scope(), None, send)
+        body = json.loads(sent_messages[-1]["body"])
+        assert body["error_code"] == "template_module_invalid"
+        assert body["message"] == "不支持的配置模块"
+
+    asyncio.run(run())

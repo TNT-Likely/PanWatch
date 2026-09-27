@@ -112,6 +112,7 @@ export const configuration = {
       other: 'Other',
     },
     credentials: {
+      tushareLabel: 'Tushare token',
       tusharePlaceholder: 'Paste a token, or leave empty to use TUSHARE_TOKEN',
       tushareHelp: 'Sign in to tushare.pro and copy it from your profile',
       xueqiuLabel: 'Xueqiu cookies',
@@ -195,6 +196,9 @@ export const configuration = {
       pushplusToken: 'Your PushPlus Token', groupCode: 'Group code', userKey: 'User Key', appToken: 'App Token',
       optional: 'optional', commaSeparated: 'comma-separated', keywordHint: 'If the group bot requires a keyword, append it here',
       channelNamePlaceholder: 'For example My Telegram', serverUrlLabel: 'Server URL',
+      types: { telegram: 'Telegram', bark: 'Bark', dingtalk: 'DingTalk bot', wecom: 'WeCom bot', lark: 'Feishu bot', serverchan: 'ServerChan', pushplus: 'PushPlus', discord: 'Discord', pushover: 'Pushover' },
+      fields: { botToken: 'Bot token', chatId: 'Chat ID', proxy: 'Proxy', deviceKey: 'Device key', serverUrl: 'Server URL', webhookToken: 'Webhook token', signSecret: 'Signing secret', phones: '@Phone numbers', keyword: 'Keyword', webhookKey: 'Webhook key', sendKey: 'SendKey', token: 'Token', groupCode: 'Group code', webhookId: 'Webhook ID', userKey: 'User key', appToken: 'App token' },
+      placeholders: { botToken: '123456:ABC-DEF...', chatId: '-100123456789', proxy: 'http://192.168.1.1:7890 or socks5://...', deviceKey: 'Your Bark Device Key', serverUrl: 'Defaults to api.day.app; self-hosted URL is supported', accessToken: 'access_token value', signSecret: 'SEC... (optional)', phones: 'Comma-separated, for example 13800138000,13900139000', keyword: 'Append when the group bot requires a keyword', webhookKey: 'Value after key= in the Webhook URL', webhookToken: 'Token after hook/', sendKey: 'SCT...', pushplusToken: 'Your PushPlus Token', groupCode: 'Optional; used for group notifications', webhookId: 'ID from the Webhook URL', userKey: 'Your user key', appToken: 'Your app token' },
     },
     templates: {
       conservative: { name: 'Conservative', description: 'Fewer interruptions: stricter intraday triggers; quiet hours recommended' },
@@ -240,7 +244,7 @@ export const configuration = {
     },
     feedback: { title: 'Feedback', description: 'Evaluate notification quality and guide strategy iteration', refresh: 'Refresh', days: 'Last {{days}} days', total: 'Feedback', useful: 'Useful', useless: 'Not useful', usefulRate: 'Useful rate', byAgent: 'By Agent', empty: 'No feedback yet' },
     dialogs: {
-      providerEdit: 'Edit AI service', providerAdd: 'Add AI service', providerDescription: 'Configure the AI service API connection', name: 'Name', providerPlaceholder: 'For example OpenAI, Zhipu, DeepSeek', cancel: 'Cancel', save: 'Save', create: 'Create',
+      providerEdit: 'Edit AI service', providerAdd: 'Add AI service', providerDescription: 'Configure the AI service API connection', name: 'Name', baseUrl: 'Base URL', apiKey: 'API key', providerPlaceholder: 'For example OpenAI, Zhipu, DeepSeek', cancel: 'Cancel', save: 'Save', create: 'Create',
       modelEdit: 'Edit model', modelAdd: 'Add model', modelDescription: 'Configure the AI model', provider: 'Service', providerSelect: 'Select a service', displayName: 'Display name', optionalDefault: '(optional; defaults to model ID)', modelNamePlaceholder: 'Leave empty to use the model ID', modelIdentifier: 'Model ID', discoverHint: '(can be batch-discovered from the service)', modelPlaceholder: 'Select a service first',
       discovered: 'Found {{count}} models', discoveredDescription: 'Select models to add and optionally choose a default', selected: 'Selected', selectAll: 'Select all', deselectAll: 'Clear all', default: 'Default', setDefault: 'Set default', skip: 'Skip', adding: 'Adding…', addCount: 'Add {{count}}',
       channelEdit: 'Edit notification channel', channelAdd: 'Add notification channel', channelDescription: 'Configure notification delivery', channelName: 'Name', channelType: 'Type', optional: 'optional',

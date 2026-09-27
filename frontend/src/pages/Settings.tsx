@@ -106,76 +106,76 @@ interface ChannelForm {
 
 interface ChannelFieldDef {
   key: string
-  label: string
-  placeholder: string
-  labelKey?: string
-  placeholderKey?: string
+  labelKey: string
+  placeholderKey: string
   secret?: boolean
   required?: boolean
 }
 
-const CHANNEL_TYPE_FIELDS: Record<string, { label: string; fields: ChannelFieldDef[] }> = {
+interface ChannelTypeDef { labelKey: string; fields: ChannelFieldDef[] }
+
+const CHANNEL_TYPE_FIELDS: Record<string, ChannelTypeDef> = {
   telegram: {
-    label: 'Telegram',
+    labelKey: 'telegram',
     fields: [
-      { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...', secret: true, required: true },
-      { key: 'chat_id', label: 'Chat ID', placeholder: '-100123456789', required: true },
-      { key: 'proxy', label: 'Proxy', labelKey: 'channels.proxy', placeholder: 'http://192.168.1.1:7890 or socks5://...' },
+      { key: 'bot_token', labelKey: 'botToken', placeholderKey: 'botToken', secret: true, required: true },
+      { key: 'chat_id', labelKey: 'chatId', placeholderKey: 'chatId', required: true },
+      { key: 'proxy', labelKey: 'proxy', placeholderKey: 'proxy' },
     ],
   },
   bark: {
-    label: 'Bark',
+    labelKey: 'bark',
     fields: [
-      { key: 'device_key', label: 'Device Key', placeholder: 'Your Bark Device Key', required: true },
-      { key: 'server_url', label: 'Server URL', labelKey: 'channels.serverUrlLabel', placeholder: 'Defaults to api.day.app; self-hosted URL is supported' },
+      { key: 'device_key', labelKey: 'deviceKey', placeholderKey: 'deviceKey', required: true },
+      { key: 'server_url', labelKey: 'serverUrl', placeholderKey: 'serverUrl' },
     ],
   },
   dingtalk: {
-    label: 'DingTalk bot',
+    labelKey: 'dingtalk',
     fields: [
-      { key: 'token', label: 'Webhook Token', placeholder: 'access_token value', secret: true, required: true },
-      { key: 'secret', label: 'Signing secret', labelKey: 'channels.signSecret', placeholder: 'SEC... (optional)', secret: true },
-      { key: 'phones', label: '@Phone numbers', labelKey: 'channels.phones', placeholder: 'Comma-separated, for example 13800138000,13900139000' },
-      { key: 'keyword', label: 'Keyword', labelKey: 'channels.keyword', placeholder: 'Append when the group bot requires a keyword' },
+      { key: 'token', labelKey: 'webhookToken', placeholderKey: 'accessToken', secret: true, required: true },
+      { key: 'secret', labelKey: 'signSecret', placeholderKey: 'signSecret', secret: true },
+      { key: 'phones', labelKey: 'phones', placeholderKey: 'phones' },
+      { key: 'keyword', labelKey: 'keyword', placeholderKey: 'keyword' },
     ],
   },
   wecom: {
-    label: 'WeCom bot',
+    labelKey: 'wecom',
     fields: [
-      { key: 'webhook_key', label: 'Webhook Key', placeholder: 'Value after key= in the Webhook URL', secret: true, required: true },
+      { key: 'webhook_key', labelKey: 'webhookKey', placeholderKey: 'webhookKey', secret: true, required: true },
     ],
   },
   lark: {
-    label: 'Feishu bot',
+    labelKey: 'lark',
     fields: [
-      { key: 'webhook_token', label: 'Webhook Token', placeholder: 'Token after hook/', secret: true, required: true },
+      { key: 'webhook_token', labelKey: 'webhookToken', placeholderKey: 'webhookToken', secret: true, required: true },
     ],
   },
   serverchan: {
-    label: 'ServerChan',
+    labelKey: 'serverchan',
     fields: [
-      { key: 'sendkey', label: 'SendKey', placeholder: 'SCT...', secret: true, required: true },
+      { key: 'sendkey', labelKey: 'sendKey', placeholderKey: 'sendKey', secret: true, required: true },
     ],
   },
   pushplus: {
-    label: 'PushPlus',
+    labelKey: 'pushplus',
     fields: [
-      { key: 'token', label: 'Token', placeholder: 'Your PushPlus Token', secret: true, required: true },
-      { key: 'topic', label: 'Group code', labelKey: 'channels.groupCode', placeholder: 'Optional; used for group notifications' },
+      { key: 'token', labelKey: 'token', placeholderKey: 'pushplusToken', secret: true, required: true },
+      { key: 'topic', labelKey: 'groupCode', placeholderKey: 'groupCode' },
     ],
   },
   discord: {
-    label: 'Discord',
+    labelKey: 'discord',
     fields: [
-      { key: 'webhook_id', label: 'Webhook ID', placeholder: 'ID from the Webhook URL', required: true },
-      { key: 'webhook_token', label: 'Webhook Token', placeholder: 'Token from the Webhook URL', secret: true, required: true },
+      { key: 'webhook_id', labelKey: 'webhookId', placeholderKey: 'webhookId', required: true },
+      { key: 'webhook_token', labelKey: 'webhookToken', placeholderKey: 'webhookToken', secret: true, required: true },
     ],
   },
   pushover: {
-    label: 'Pushover',
+    labelKey: 'pushover',
     fields: [
-      { key: 'user_key', label: 'User Key', placeholder: 'Your user key', required: true },
-      { key: 'app_token', label: 'App Token', placeholder: 'Your app token', secret: true, required: true },
+      { key: 'user_key', labelKey: 'userKey', placeholderKey: 'userKey', required: true },
+      { key: 'app_token', labelKey: 'appToken', placeholderKey: 'appToken', secret: true, required: true },
     ],
   },
 }
@@ -957,7 +957,7 @@ export default function SettingsPage() {
                     {ch.is_default && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
                     <div className="min-w-0">
                       <span className="text-[13px] font-medium text-foreground">{ch.name}</span>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{CHANNEL_TYPE_FIELDS[ch.type]?.label || ch.type}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{configT(`configuration:settingsPage.channels.types.${CHANNEL_TYPE_FIELDS[ch.type]?.labelKey || ch.type}`)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -1355,7 +1355,7 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label>Base URL</Label>
+              <Label>{configT('configuration:settingsPage.dialogs.baseUrl')}</Label>
               <Input
                 value={serviceForm.base_url}
                 onChange={e => setServiceForm({ ...serviceForm, base_url: e.target.value })}
@@ -1364,7 +1364,7 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label>API Key</Label>
+              <Label>{configT('configuration:settingsPage.dialogs.apiKey')}</Label>
               <div className="relative">
                 <Input
                   type={serviceKeyVisible ? 'text' : 'password'}
@@ -1545,14 +1545,14 @@ export default function SettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(CHANNEL_TYPE_FIELDS).map(([key, def]) => (
-                    <SelectItem key={key} value={key}>{def.label}</SelectItem>
+                    <SelectItem key={key} value={key}>{configT(`configuration:settingsPage.channels.types.${def.labelKey}`)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             {CHANNEL_TYPE_FIELDS[channelForm.type]?.fields.map(field => (
               <div key={field.key}>
-                <Label>{field.labelKey ? configT(`configuration:settingsPage.${field.labelKey}`) : field.label}{!field.required && <span className="text-muted-foreground font-normal"> ({configT('configuration:settingsPage.dialogs.optional')})</span>}</Label>
+                <Label>{configT(`configuration:settingsPage.channels.fields.${field.labelKey}`)}{!field.required && <span className="text-muted-foreground font-normal"> ({configT('configuration:settingsPage.dialogs.optional')})</span>}</Label>
                 <div className="relative">
                   <Input
                     type={field.secret && !channelKeyVisible ? 'password' : 'text'}
@@ -1561,7 +1561,7 @@ export default function SettingsPage() {
                       ...channelForm,
                       config: { ...channelForm.config, [field.key]: e.target.value },
                     })}
-                    placeholder={field.placeholder}
+                    placeholder={configT(`configuration:settingsPage.channels.placeholders.${field.placeholderKey}`)}
                     className={`font-mono ${field.secret ? 'pr-10' : ''}`}
                   />
                   {field.secret && (

@@ -2666,7 +2666,7 @@ export default function StocksPage() {
               <Input
                 value={accountForm.name}
                 onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
-                placeholder="e.g. Interactive Brokers, Fidelity"
+                placeholder={stockT('stocksPage.messages.accountName')}
               />
             </div>
             <div>

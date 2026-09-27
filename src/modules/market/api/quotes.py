@@ -1,10 +1,11 @@
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode
+from src.web.errors import api_error
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ def _parse_market(market: str) -> MarketCode:
     try:
         return MarketCode(market)
     except ValueError:
-        raise HTTPException(400, f"不支持的市场: {market}")
+        raise api_error(400, "market_unsupported", f"不支持的市场: {market}")
 
 
 def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> dict:
@@ -72,11 +73,11 @@ async def get_quote(symbol: str, market: str = "CN"):
     market_code = _parse_market(market)
     rows = await asyncio.to_thread(md_quote_rows, [symbol], market_code.value)
     if not rows:
-        raise HTTPException(404, "行情不存在")
+        raise api_error(404, "quote_not_found", "行情不存在")
     quote_map = {item.get("symbol"): item for item in rows}
     quote = quote_map.get(symbol)
     if not quote:
-        raise HTTPException(404, "行情不存在")
+        raise api_error(404, "quote_not_found", "行情不存在")
     return _quote_to_response(symbol, market_code, quote)
 
 
