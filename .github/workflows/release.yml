@@ -42,23 +42,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install system libs for WeasyPrint (PDF export tests)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
-            libcairo2 libcairo-gobject2 libgdk-pixbuf-2.0-0 \
-            libffi-dev libfontconfig1 fonts-noto-cjk
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: python -m pytest tests/ -x -q
-
-      - name: Run marketdata package tests
-        run: python -m pytest packages/marketdata/tests -q
-
       - name: Resolve version
         id: vars
         shell: bash
@@ -83,6 +66,51 @@ jobs:
           echo "version_no_v=$version_no_v" >> "$GITHUB_OUTPUT"
           echo "push_latest=$push_latest" >> "$GITHUB_OUTPUT"
           echo "platforms=$platforms" >> "$GITHUB_OUTPUT"
+
+      - name: Validate and prepare release notes
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="${{ steps.vars.outputs.version }}"
+          notes_version="${{ steps.vars.outputs.version_no_v }}"
+          notes_file="docs/releases/${notes_version}.md"
+
+          previous=""
+          while IFS= read -r tag; do
+            if [[ "$tag" != "$current" ]]; then
+              previous="$tag"
+              break
+            fi
+          done < <(git tag --list --sort=-v:refname)
+
+          args=(
+            --version "$current"
+            --repository "${{ github.repository }}"
+            --source "$notes_file"
+            --output release-notes.md
+          )
+          if [[ -n "$previous" ]]; then
+            args+=(--previous-tag "$previous")
+          fi
+          python scripts/prepare_release_notes.py "${args[@]}"
+
+      - name: Install system libs for WeasyPrint (PDF export tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+            libcairo2 libcairo-gobject2 libgdk-pixbuf-2.0-0 \
+            libffi-dev libfontconfig1 fonts-noto-cjk
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -x -q
+
+      - name: Run marketdata package tests
+        run: python -m pytest packages/marketdata/tests -q
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -124,51 +152,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Generate release notes (tag push only)
-        if: ${{ github.event_name == 'push' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          current="${{ steps.vars.outputs.version }}"
-          repo="${{ github.repository }}"
-
-          # Find previous tag by semver sort (best effort).
-          prev=""
-          while IFS= read -r t; do
-            if [[ "$t" != "$current" ]]; then
-              prev="$t"
-              break
-            fi
-          done < <(git tag --list --sort=-v:refname)
-
-          echo "Current tag: $current"
-          if [[ -n "$prev" ]]; then
-            echo "Previous tag: $prev"
-            range="$prev..$current"
-          else
-            echo "Previous tag: (none)"
-            range="$current"
-          fi
-
-          {
-            echo "## Docker"
-            echo "- $IMAGE_NAME:$current"
-            echo "- $IMAGE_NAME:latest"
-            echo ""
-            echo "## Commits"
-            if [[ -n "$prev" ]]; then
-              echo "Compare: https://github.com/$repo/compare/$prev...$current"
-              echo ""
-              echo "Changes since $prev:"
-              echo ""
-              # Non-merge commits only (exclude MR/PR merges).
-              git log --no-merges --pretty=format:'- %s (%h)' "$range" || true
-            else
-              echo "First release tag."
-            fi
-            echo ""
-          } > release-notes.md
-
       - name: Create GitHub Release (tag push only)
         if: ${{ github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2
@@ -183,34 +166,22 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          set -euo pipefail
           TAG="${{ steps.vars.outputs.version }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          MESSAGE="📊 <b>PanWatch ${TAG} is available</b>
 
-          # 获取 commit 变更列表
-          PREV_TAG=$(git tag --list --sort=-version:refname | grep -v "^${TAG}$" | head -n1)
-          if [ -n "$PREV_TAG" ]; then
-            COMMITS=$(git log --no-merges --pretty=format:"- %s" "$PREV_TAG"..HEAD)
-          else
-            COMMITS=$(git log --no-merges --pretty=format:"- %s")
-          fi
+          📦 <code>${IMAGE_NAME}:${TAG}</code>
+          📝 <a href=\"${RELEASE_URL}\">Release notes</a>"
 
-          # 转义 Markdown 特殊字符，然后进行 URL 编码
-          COMMITS_ESCAPED=$(echo "$COMMITS" | sed 's/\*/\\*/g; s/_/\\_/g; s/\[/\\[/g; s/\]/\\]/g; s/`/\\`/g')
-          COMMITS_ENCODED=$(echo "$COMMITS_ESCAPED" | sed 's/$/%0A/g' | tr -d '\n')
-
-          # 构建消息
-          MESSAGE="📊 *PanWatch ${TAG}* 发布%0A%0A"
-          MESSAGE="${MESSAGE}🔗 [查看完整说明](${RELEASE_URL})%0A%0A"
-          MESSAGE="${MESSAGE}*变更内容*:%0A${COMMITS_ENCODED}"
-
-          # 发送到 Telegram
           if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            curl --fail-with-body --silent --show-error \
+              -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
               -d "chat_id=${TELEGRAM_CHAT_ID}" \
-              -d "text=${MESSAGE}" \
-              -d "parse_mode=Markdown" \
-              -d "disable_web_page_preview=true"
-            echo "✅ Telegram notification sent successfully!"
+              --data-urlencode "text=${MESSAGE}" \
+              -d "parse_mode=HTML" \
+              -d "disable_web_page_preview=true" >/dev/null
+            echo "Telegram release notification sent."
           else
-            echo "⚠️  Telegram credentials not configured, skipping notification"
+            echo "Telegram credentials are not configured; skipping notification."
           fi
