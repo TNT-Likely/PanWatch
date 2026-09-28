@@ -94,6 +94,7 @@ class AgentScheduler:
                     processed = 0
                     skipped = 0
                     errors: list[str] = []
+                    notify_errors: list[str] = []
                     for stock in list(context.watchlist):
                         market_def = MARKETS.get(stock.market)
                         if market_def and not market_def.is_trading_time():
@@ -115,7 +116,8 @@ class AgentScheduler:
                             except Exception:
                                 notify_error = ""
                             if notify_error:
-                                errors.append(f"{stock.symbol} notify: {notify_error}")
+                                # 通知失败不影响运行成败（分析本体成功）；仅记录到 error 字段
+                                notify_errors.append(f"{stock.symbol} notify: {notify_error}")
                         except Exception as e:
                             logger.error(
                                 f"Agent [{agent_name}] 单只执行失败 {stock.symbol}: {e}",
@@ -130,7 +132,7 @@ class AgentScheduler:
                         agent_name=agent_name,
                         status="failed" if errors else "success",
                         result=f"single mode executed {processed}, skipped {skipped}, total {len(context.watchlist)}",
-                        error="; ".join(errors),
+                        error="; ".join(errors + notify_errors),
                         duration_ms=duration_ms,
                         trace_id=trace_id,
                         trigger_source="schedule",
@@ -148,7 +150,8 @@ class AgentScheduler:
                     raw = result.raw_data or {}
                     record_agent_run(
                         agent_name=agent_name,
-                        status="failed" if notify_error else "success",
+                        # 通知失败不影响运行成败（分析本体成功）；error 字段保留原因
+                        status="success",
                         result=(result.content or "")[:2000],
                         error=(notify_error or "")[:2000],
                         duration_ms=duration_ms,

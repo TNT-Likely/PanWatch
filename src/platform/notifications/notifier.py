@@ -248,8 +248,9 @@ class NotifierManager:
     ) -> dict:
         """向所有已注册渠道发送通知，返回结果"""
         if self._channel_count == 0:
+            # 无渠道属于「未配置」而非「发送失败」：走 skipped 软路径（不计入运行失败）
             logger.warning("没有可用的通知渠道")
-            return {"success": False, "error": "没有可用的通知渠道"}
+            return {"success": False, "skipped": "no_channel"}
 
         # Quiet hours
         try:
