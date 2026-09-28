@@ -154,8 +154,10 @@ function formatSchedule(cron: string, translate: (key: string, options?: Record<
 
 export default function AgentsPage() {
   const { t } = useTranslation('configuration')
-  const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const agentName = (agent: AgentConfig | null | undefined) => agent ? localizeAgentName(agent.name, agent.display_name, configT) : ''
+  const configurationT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const configT = (key: string, options?: Record<string, unknown>) =>
+    configurationT(`agentsPage.${key}`, options)
+  const agentName = (agent: AgentConfig | null | undefined) => agent ? localizeAgentName(agent.name, agent.display_name, configurationT) : ''
   const [agents, setAgents] = useState<AgentConfig[]>([])
   const [stocks, setStocks] = useState<StockConfig[]>([])
   const [services, setServices] = useState<AIService[]>([])
@@ -566,7 +568,7 @@ export default function AgentsPage() {
                         {boundSummary}
                       </button>
                     </div>
-                    <p className="text-[13px] text-muted-foreground mt-2.5 ml-[22px] leading-relaxed">{localizeAgentDescription(agent.name, agent.description, configT)}</p>
+                    <p className="text-[13px] text-muted-foreground mt-2.5 ml-[22px] leading-relaxed">{localizeAgentDescription(agent.name, agent.description, configurationT)}</p>
 
                     {/* 执行周期 - 可点击编辑 */}
                     <div className="flex items-center gap-2.5 mt-3.5 ml-[22px] flex-wrap">

@@ -84,8 +84,13 @@ export default function PriceAlertFormDialog(props: {
   submitLabel?: string
   onSubmit: (payload: PriceAlertSubmitPayload) => Promise<void> | void
 }) {
-  const { t } = useTranslation('configuration')
-  const alertT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const { t: configurationT } = useTranslation('configuration')
+  const { t: bizUiT } = useTranslation('bizUi')
+  const alertT = (key: string, options?: Record<string, unknown>) =>
+    (configurationT as unknown as (key: string, options?: Record<string, unknown>) => string)(
+      `priceAlerts.${key}`,
+      options,
+    )
   const typeLabel: Record<ConditionType, string> = {
     price: alertT('conditions.price'), change_pct: alertT('conditions.change_pct'), turnover: alertT('conditions.turnover'), volume: alertT('conditions.volume'), volume_ratio: alertT('conditions.volume_ratio'),
   }
@@ -417,7 +422,7 @@ export default function PriceAlertFormDialog(props: {
                       <SelectItem value=">">{'>'}</SelectItem>
                       <SelectItem value="<">{'<'}</SelectItem>
                       <SelectItem value="==">{'=='}</SelectItem>
-                      <SelectItem value="between">{alertT('stockPriceAlert.between')}</SelectItem>
+                      <SelectItem value="between">{bizUiT('stockPriceAlert.between')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
