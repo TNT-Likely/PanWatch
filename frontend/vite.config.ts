@@ -17,7 +17,8 @@ export default defineConfig({
     port: 5183,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      // 本机 8000 被无关服务占用，后端实际跑 8001；需要其他端口时用 BACKEND_PORT 覆盖
+      '/api': `http://127.0.0.1:${process.env.BACKEND_PORT || 8001}`,
     },
   },
 })
