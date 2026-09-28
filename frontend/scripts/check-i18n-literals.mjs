@@ -22,6 +22,8 @@ const migratedFiles = [
 const hanPattern = /[\u3400-\u9fff]/u
 const fixedEnglishFallbackPattern = /\b(?:build position|do not open|entry plan|unknown|watch)\b/i
 const englishPhrasePattern = /\b[A-Za-z]{3,}(?:[ -][A-Za-z]{3,})+\b/
+const singleWordEnglishPattern = /^[A-Za-z][A-Za-z0-9_-]{1,30}$/
+const allowedDirectJsxTerms = new Set(['AI', 'HIT', 'MISS', 'PanWatch', 'PB', 'PE', 'ROE', 'TZ', 'ms'])
 const displayPropertyNames = new Set([
   'aria-label', 'description', 'emptyText', 'helperText', 'hint', 'label',
   'message', 'placeholder', 'summary', 'title', 'tooltip',
@@ -145,8 +147,11 @@ const isLocaleMapping = (node) => {
   return false
 }
 
-const looksLikePresentationLiteral = (text) => (
-  hanPattern.test(text) || fixedEnglishFallbackPattern.test(text) || englishPhrasePattern.test(text)
+const looksLikePresentationLiteral = (node, text) => (
+  hanPattern.test(text)
+  || fixedEnglishFallbackPattern.test(text)
+  || englishPhrasePattern.test(text)
+  || (ts.isJsxText(node) && singleWordEnglishPattern.test(text))
 )
 const isTechnicalLiteral = (text) => (
   text === 'panwatch-locale'
@@ -180,7 +185,7 @@ for (const relativePath of migratedFiles) {
         isInsidePresentationJsx(node) || isUserFacingCall(node) || isIndirectUserFacing(node)
       ))
 
-    if (text && looksLikePresentationLiteral(text) && userFacing && !isLogicMatcher(node)
+    if (text && looksLikePresentationLiteral(node, text) && userFacing && !allowedDirectJsxTerms.has(text) && !isLogicMatcher(node)
       && !isConsoleDiagnostic(node) && !isTranslationArgument(node) && !isLocaleMapping(node)
       && !isTechnicalLiteral(text)) {
       const position = source.getLineAndCharacterOfPosition(node.getStart(source))

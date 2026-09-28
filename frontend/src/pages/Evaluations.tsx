@@ -18,6 +18,7 @@ import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
+import { localizeAgentName } from '@/i18n/agent-labels'
 
 type FilterState = {
   agentName: string
@@ -77,8 +78,25 @@ function SummaryCard({ label, value, hint, tone = 'default' }: { label: string; 
 
 export default function EvaluationsPage() {
   const { t } = useTranslation('configuration')
+  const { t: commonT } = useTranslation('common')
   const evaluationT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const ev = (key: string, options?: Record<string, unknown>) => evaluationT(`p4.evaluations.${key}`, options)
+  const actionLabel = useCallback((action: string, fallback = '') => (
+    ACTION_KEYS[action] ? ev(`actions.${ACTION_KEYS[action]}`) : fallback || action
+  ), [t])
+  const agentLabel = useCallback((name: string) => localizeAgentName(name, name, evaluationT), [t])
+  const marketLabel = useCallback((market: string) => commonT(`markets.${market}`, { defaultValue: market }), [commonT])
+  const localizePolicy = useCallback(<T extends { flat_threshold_pct: number; actions: Record<string, string> },>(policy: T): T => ({
+    ...policy,
+    actions: Object.fromEntries(Object.keys(policy.actions).map((action) => {
+      const key = ['buy', 'add'].includes(action)
+        ? 'up'
+        : ['sell', 'reduce', 'avoid'].includes(action)
+          ? 'down'
+          : 'flat'
+      return [action, evaluationT(`p4.evaluationRules.${key}`, { threshold: policy.flat_threshold_pct })]
+    })),
+  }), [t])
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS)
@@ -101,14 +119,23 @@ export default function EvaluationsPage() {
       const [list, nextSummary] = await Promise.all([
         evaluationsApi.listAgentPredictions(apiFilters), evaluationsApi.getAgentPredictionSummary(apiFilters),
       ])
-      setData(list)
-      setSummary(nextSummary)
+      setData({
+        ...list,
+        items: list.items.map(item => ({
+          ...item,
+          agent_name: agentLabel(item.agent_name),
+          stock_market: marketLabel(item.stock_market),
+          action_label: actionLabel(item.action, item.action_label),
+        })),
+        policy: localizePolicy(list.policy),
+      })
+      setSummary({ ...nextSummary, policy: localizePolicy(nextSummary.policy) })
     } catch (error) {
       toast(error instanceof Error ? error.message : ev('messages.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [apiFilters, toast])
+  }, [apiFilters, toast, actionLabel, agentLabel, localizePolicy, marketLabel])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -143,8 +170,8 @@ export default function EvaluationsPage() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3"><SummaryCard label={ev('suggestionsRecorded')} value={String(summary?.suggestion_count ?? '--')} hint={ev('deduplicated')} /><SummaryCard label={ev('pending')} value={String(summary?.pending_count ?? '--')} hint={ev('pendingHint')} tone="warning" /><SummaryCard label={ev('dayHitRate', { days: 1 })} value={oneDay?.hit_rate != null ? `${(oneDay.hit_rate * 100).toFixed(0)}%` : '--'} hint={ev('samples', { count: oneDay?.completed_count ?? 0 })} tone="positive" /><SummaryCard label={ev('dayHitRate', { days: 5 })} value={fiveDay?.hit_rate != null ? `${(fiveDay.hit_rate * 100).toFixed(0)}%` : '--'} hint={ev('samples', { count: fiveDay?.completed_count ?? 0 })} tone="positive" /><SummaryCard label={ev('averageReturn')} value={formatPct(fiveDay?.avg_return_pct)} hint={ev('completedOnly')} /></div>
         {summary?.insufficient_sample && <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300"><Target className="w-3.5 h-3.5 shrink-0" />{ev('insufficientSample')}</div>}
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 pt-1">
-          <Select value={filters.agentName} onValueChange={value => updateFilter('agentName', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allAgents')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allAgents')}</SelectItem>{options?.agent_names.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
-          <Select value={filters.market} onValueChange={value => updateFilter('market', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allMarkets')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allMarkets')}</SelectItem>{options?.markets.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <Select value={filters.agentName} onValueChange={value => updateFilter('agentName', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allAgents')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allAgents')}</SelectItem>{options?.agent_names.map(value => <SelectItem key={value} value={value}>{agentLabel(value)}</SelectItem>)}</SelectContent></Select>
+          <Select value={filters.market} onValueChange={value => updateFilter('market', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allMarkets')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allMarkets')}</SelectItem>{options?.markets.map(value => <SelectItem key={value} value={value}>{marketLabel(value)}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.action} onValueChange={value => updateFilter('action', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allActions')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allActions')}</SelectItem>{options?.actions.map(value => <SelectItem key={value} value={value}>{ACTION_KEYS[value] ? ev(`actions.${ACTION_KEYS[value]}`) : value}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.status} onValueChange={value => updateFilter('status', value)}><SelectTrigger className="h-8 text-[12px]"><SelectValue placeholder={ev('allStatuses')} /></SelectTrigger><SelectContent><SelectItem value="all">{ev('allStatuses')}</SelectItem>{options?.statuses.map(value => <SelectItem key={value} value={value}>{value === 'evaluated' ? ev('verified') : value === 'pending' ? ev('outcomes.pending') : value}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.horizonUnit} onValueChange={value => updateFilter('horizonUnit', value as EvaluationHorizonUnit)}><SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="trading_days">{ev('tradingDayBasis')}</SelectItem><SelectItem value="calendar_days_legacy">{ev('legacyCalendarBasis')}</SelectItem><SelectItem value="all">{ev('allBasis')}</SelectItem></SelectContent></Select>

@@ -499,7 +499,7 @@ export default function AgentsPage() {
   return (
     <div>
       <div className="mb-4 md:mb-8">
-        <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">Agent</h1>
+        <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight">{configT('pageTitle')}</h1>
         <p className="text-[12px] md:text-[13px] text-muted-foreground mt-0.5 md:mt-1">{configT('title')}</p>
       </div>
 
@@ -735,7 +735,9 @@ export default function AgentsPage() {
                                   <div className="mt-0.5 text-[11px] text-rose-600 break-words">{r.error}</div>
                                 ) : null}
                               </div>
-                              <div className="text-[10px] text-muted-foreground/70 font-mono">{r.status}</div>
+                              <div className="text-[10px] text-muted-foreground/70 font-mono">
+                                {configT(`runStatuses.${r.status}`, { defaultValue: r.status })}
+                              </div>
                             </div>
                           ))}
                         </div>

@@ -399,7 +399,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
                     <tr>
                       <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-32">{tr('columns.time')}</th>
                       <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20">{tr('columns.level')}</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-36">Logger</th>
+                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-36">{t('logsLogger')}</th>
                       <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-44">{tr('columns.flow')}</th>
                       <th className="text-left px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{tr('columns.message')}</th>
                     </tr>

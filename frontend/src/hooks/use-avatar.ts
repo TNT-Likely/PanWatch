@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchAPI } from '@panwatch/api'
+import { fetchAPI, interfaceText } from '@panwatch/api'
 
 const EVENT = 'panwatch:avatar-changed'
 
@@ -62,17 +62,17 @@ export function useAvatar(): string {
 export function fileToAvatarDataUrl(file: File, size = 128): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.onerror = () => reject(new Error(interfaceText('读取文件失败', 'Failed to read the image file')))
     reader.onload = () => {
       const img = new Image()
-      img.onerror = () => reject(new Error('图片解析失败'))
+      img.onerror = () => reject(new Error(interfaceText('图片解析失败', 'Failed to decode the image')))
       img.onload = () => {
         const canvas = document.createElement('canvas')
         canvas.width = size
         canvas.height = size
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          reject(new Error('canvas 不可用'))
+          reject(new Error(interfaceText('canvas 不可用', 'Canvas is unavailable')))
           return
         }
         const scale = Math.max(size / img.width, size / img.height)

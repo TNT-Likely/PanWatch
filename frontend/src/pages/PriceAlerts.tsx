@@ -261,7 +261,9 @@ export default function PriceAlertsPage() {
     try {
       const res = await fetchAPI<any>(`/price-alerts/${r.id}/test`, { method: 'POST' })
       const st = (res?.items || [])[0]?.status || 'unknown'
-      toast(alertT('messages.testDone', { status: st }), 'info')
+      toast(alertT('messages.testDone', {
+        status: alertT(`testStatuses.${st}`, { defaultValue: st }),
+      }), 'info')
     } catch (e) {
       toast(e instanceof Error ? e.message : alertT('messages.testFailed'), 'error')
     }

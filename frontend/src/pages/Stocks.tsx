@@ -2015,7 +2015,7 @@ export default function StocksPage() {
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">{stockT('stocksPage.messages.pnl')}</th>
                               <th className="text-right px-4 py-2 text-[11px] font-semibold text-muted-foreground">{stockT('stocksPage.messages.today')}</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">{stockT('stocksPage.messages.style')}</th>
-                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">Agent</th>
+                              <th className="text-left px-4 py-2 text-[11px] font-semibold text-muted-foreground">{stockT('stocksPage.messages.agent')}</th>
                               <th className="text-center px-4 py-2 text-[11px] font-semibold text-muted-foreground">{stockT('stocksPage.messages.actions')}</th>
                             </tr>
                           </thead>
@@ -2325,7 +2325,7 @@ export default function StocksPage() {
                                     </button>
                                   ) : (
                                     <button onClick={() => stock && setAgentDialogStock(stock)} className="text-[10px] text-muted-foreground/50 flex items-center gap-1">
-                                      <Bot className="w-3 h-3" /> Agent
+                                      <Bot className="w-3 h-3" /> {stockT('stocksPage.messages.agent')}
                                     </button>
                                   )}
                                 </div>
@@ -2510,7 +2510,7 @@ export default function StocksPage() {
                     <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1 flex-wrap">
                         {stock.agents && stock.agents.length > 0 ? (
-                          <Badge variant="secondary" className="text-[10px]">{stock.agents.length} Agent</Badge>
+                          <Badge variant="secondary" className="text-[10px]">{stockT('stocksPage.messages.agentCount', { count: stock.agents.length })}</Badge>
                         ) : (
                           <span className="text-[10px] text-muted-foreground/60">{stockT('stocksPage.messages.notConfigured')}</span>
                         )}

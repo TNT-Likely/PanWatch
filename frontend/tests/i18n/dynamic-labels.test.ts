@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { mapLoggerName } from '@/lib/logger-map'
+import { localizeTechnicalStatus } from '@panwatch/biz-ui/components/kline-indicators'
 import { bizUi as enBizUi } from '@/i18n/locales/en-US/biz-ui'
 import { configuration as enConfiguration } from '@/i18n/locales/en-US/configuration'
 
@@ -27,6 +28,13 @@ describe('dynamic interface labels', () => {
     expect(result.action_label).toBe('Buy')
     expect(result.signal).toContain('Bullish MAs')
     expect(result.evidence.every(item => !/[\u4e00-\u9fff]/.test(item.text))).toBe(true)
+  })
+
+  it('localizes backend technical statuses before they enter English AI context', () => {
+    const tr = translator(enBizUi.kline)
+    expect(localizeTechnicalStatus('多头排列', tr)).toBe('Bullish alignment')
+    expect(localizeTechnicalStatus('MACD 死叉', tr)).toBe('Death cross')
+    expect(localizeTechnicalStatus('放量', tr)).toBe('High volume')
   })
 
   it('localizes known Agent catalog fields while preserving custom Agents', () => {

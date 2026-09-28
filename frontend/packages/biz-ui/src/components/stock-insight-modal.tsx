@@ -17,7 +17,7 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
-import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
+import { KlineIndicators, localizeTechnicalStatus } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
@@ -821,13 +821,14 @@ export default function StockInsightModal(props: {
     }
     if (klineSummary) {
       const k = klineSummary as any
+      const technicalStatus = (value: string | null | undefined) => localizeTechnicalStatus(value, klineTr)
       const items = []
-      if (k.trend) items.push(english ? `Trend ${k.trend}` : `趋势${k.trend}`)
-      if (k.macd_status) items.push(`MACD${k.macd_status}`)
-      if (k.rsi_status) items.push(`RSI${k.rsi_status}${k.rsi6 != null ? `(${k.rsi6})` : ''}`)
-      if (k.kdj_status) items.push(`KDJ${k.kdj_status}`)
-      if (k.boll_status) items.push(`${english ? 'Bollinger ' : '布林'}${k.boll_status}`)
-      if (k.volume_trend) items.push(`${english ? 'Volume ' : '量能'}${k.volume_trend}${k.volume_ratio != null ? `(${k.volume_ratio}x)` : ''}`)
+      if (k.trend) items.push(english ? `Trend ${technicalStatus(k.trend)}` : `趋势${technicalStatus(k.trend)}`)
+      if (k.macd_status) items.push(`MACD ${technicalStatus(k.macd_status)}`)
+      if (k.rsi_status) items.push(`RSI ${technicalStatus(k.rsi_status)}${k.rsi6 != null ? ` (${k.rsi6})` : ''}`)
+      if (k.kdj_status) items.push(`KDJ ${technicalStatus(k.kdj_status)}`)
+      if (k.boll_status) items.push(`${english ? 'Bollinger ' : '布林'}${technicalStatus(k.boll_status)}`)
+      if (k.volume_trend) items.push(`${english ? 'Volume ' : '量能'}${technicalStatus(k.volume_trend)}${k.volume_ratio != null ? ` (${k.volume_ratio}x)` : ''}`)
       if (k.support != null) items.push(`${english ? 'Support ' : '支撑'}${k.support}`)
       if (k.resistance != null) items.push(`${english ? 'Resistance ' : '压力'}${k.resistance}`)
       if (items.length) parts.push(english ? `Technical: ${items.join(', ')}` : `技术面：${items.join('，')}`)

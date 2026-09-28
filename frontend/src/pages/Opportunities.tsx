@@ -601,7 +601,7 @@ export default function OpportunitiesPage() {
           <div className="flex flex-wrap gap-2">
             {regimeSummary.map((r) => (
               <span key={`regime-${r.market}`} className={`text-[11px] px-2.5 py-1 rounded ${regimeToneClass(r.regime)}`}>
-                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}: {r.label} · {oppT('opportunities.confidence')} {Math.round(r.confidence * 100)}%
+                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}: {oppT(`opportunities.regimes.${r.regime}`, { defaultValue: r.regime })} · {oppT('opportunities.confidence')} {Math.round(r.confidence * 100)}%
               </span>
             ))}
             {riskSummary.map((r) => (
