@@ -37,6 +37,7 @@ export interface AssistantTaskSnapshot {
   id: number
   conversation_id: number
   status: string
+  error_code?: string | null
   model?: string | null
   duration_ms?: number
   usage?: {
@@ -258,10 +259,16 @@ export interface ChatStreamCallbacks {
   }) => void
   /** 最终回答（已落库） */
   onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
-  /** AI 服务异常（服务端已把错误文案落库） */
-  onError?: (message: string) => void
+  /** AI service failure with a safe stable code and localized fallback text. */
+  onError?: (error: AssistantStreamError) => void
   /** Factual runtime events for the user-facing trace panel. */
   onTrace?: (event: AssistantTraceEvent) => void
+}
+
+export interface AssistantStreamError {
+  code: string
+  message: string
+  retryable: boolean
 }
 
 export interface AssistantTraceEvent {
@@ -290,7 +297,7 @@ interface AssistantStreamState {
   lastEventId: number
   finished: boolean
   paused: boolean
-  terminalError: string
+  terminalError: AssistantStreamError | null
 }
 
 function dispatchAssistantEvent(
@@ -385,7 +392,11 @@ function dispatchAssistantEvent(
       })
       break
     case 'error':
-      state.terminalError = d.message || interfaceText('未知错误', 'Unknown error')
+      state.terminalError = {
+        code: d.code || 'assistant_unknown_error',
+        message: d.message || interfaceText('未知错误', 'Unknown error'),
+        retryable: d.retryable !== false,
+      }
       callbacks.onError?.(state.terminalError)
       break
   }
@@ -409,7 +420,7 @@ async function sendMessageStream(
     lastEventId: 0,
     finished: false,
     paused: false,
-    terminalError: '',
+    terminalError: null,
   }
   let primaryError: unknown = null
 
@@ -433,7 +444,7 @@ async function sendMessageStream(
     primaryError = error
   }
 
-  if (state.terminalError && !state.finished) throw new Error(state.terminalError)
+  if (state.terminalError && !state.finished) throw new Error(state.terminalError.message)
 
   // 连接被中断但生成未结束，经持久化任务事件流接回。
   let reconnects = 0
@@ -466,7 +477,7 @@ async function subscribeAssistantTaskStream(
     lastEventId: Math.max(0, afterEventId),
     finished: false,
     paused: false,
-    terminalError: '',
+    terminalError: null,
   }
   let primaryError: unknown = null
   let reconnects = 0
@@ -494,7 +505,7 @@ async function subscribeAssistantTaskStream(
     }
   }
 
-  if (state.terminalError && !state.finished) throw new Error(state.terminalError)
+  if (state.terminalError && !state.finished) throw new Error(state.terminalError.message)
   if (!state.finished && !state.paused && !signal?.aborted) {
     throw primaryError || new Error(interfaceText('任务事件流未完成', 'The task event stream did not complete.'))
   }
@@ -511,7 +522,7 @@ async function decideAssistantApprovalStream(
     lastEventId: 0,
     finished: false,
     paused: false,
-    terminalError: '',
+    terminalError: null,
   }
   let primaryError: unknown = null
   try {
@@ -551,6 +562,6 @@ async function decideAssistantApprovalStream(
     }
   }
 
-  if (state.terminalError && !state.finished) throw new Error(state.terminalError)
+  if (state.terminalError && !state.finished) throw new Error(state.terminalError.message)
   if (!state.finished && !state.paused) throw primaryError || new Error(interfaceText('流式回复未完成', 'The streaming response did not complete.'))
 }

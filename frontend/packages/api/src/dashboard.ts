@@ -115,6 +115,7 @@ export interface DashboardHistoryItem {
 export interface DashboardSuggestion {
   action: string
   action_label: string
+  error_code?: string | null
   signal?: string | null
   reason?: string | null
   should_alert?: boolean

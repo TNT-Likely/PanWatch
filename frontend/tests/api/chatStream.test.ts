@@ -92,4 +92,29 @@ describe('assistant task stream', () => {
       created_at: '',
     })
   })
+
+  it('preserves structured AI failure details from the task stream', async () => {
+    readSSE.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({
+        id: 3,
+        event: 'error',
+        data: {
+          code: 'ai_quota_exhausted',
+          message: 'AI 服务额度已用尽，请充值或切换可用模型后重试。',
+          retryable: false,
+        },
+      })
+      return { lastEventId: 3 }
+    })
+
+    const onError = vi.fn()
+
+    await expect(chatApi.sendAssistantMessageStream(1, '分析市场', { onError }))
+      .rejects.toThrow('AI 服务额度已用尽')
+    expect(onError).toHaveBeenCalledWith({
+      code: 'ai_quota_exhausted',
+      message: 'AI 服务额度已用尽，请充值或切换可用模型后重试。',
+      retryable: false,
+    })
+  })
 })

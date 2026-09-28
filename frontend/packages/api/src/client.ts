@@ -3,7 +3,7 @@ import { interfaceText, isEnglishInterface } from './locale'
 const API_BASE = '/api'
 const DEFAULT_TIMEOUT_MS = 20000
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   code: number
   error_code?: string
   success?: boolean
@@ -13,6 +13,17 @@ interface ApiResponse<T> {
 
 const API_ERROR_TEXT_EN: Record<string, string> = {
   account_not_found: 'The account could not be found.',
+  ai_authentication_failed: 'AI service authentication failed. Check that the API key is correct and still valid.',
+  ai_connection_failed: 'Could not connect to the AI service. Check the service URL, proxy, and network.',
+  ai_content_rejected: 'The AI service rejected this content. Revise the request and try again.',
+  ai_context_limit_exceeded: 'The request exceeds the model context limit. Start a new conversation, compress the context, or switch models.',
+  ai_permission_denied: 'The API key cannot use this AI model. Check the provider permissions or switch models.',
+  ai_quota_exhausted: 'The AI service quota is exhausted. Add credits or switch to an available model.',
+  ai_rate_limited: 'The AI service is receiving too many requests. Wait and retry or switch models.',
+  ai_request_invalid: 'The AI service could not accept this request. Check model compatibility and configuration.',
+  ai_request_timeout: 'The AI service timed out. Try again later or switch models.',
+  ai_service_failed: 'The AI service call failed. Check the model configuration or try again later.',
+  ai_service_unavailable: 'The AI service is temporarily unavailable. Try again later or switch models.',
   ai_announcement_interpretation_failed: 'The AI announcement interpretation failed. Try again later.',
   ai_evaluation_failed: 'The AI evaluation failed. Try again later.',
   ai_model_discovery_failed: 'Model discovery failed. Try again later or add a model manually.',
@@ -102,7 +113,7 @@ const API_ERROR_TEXT_EN: Record<string, string> = {
   unknown: 'The request failed. Try again later.',
 }
 
-function localizedApiError(body: ApiResponse<unknown>, status: number): string {
+export function localizedApiError(body: ApiResponse<unknown>, status: number): string {
   const code = body.error_code || `http_${body.code || status}`
   if (isEnglishInterface()) {
     return API_ERROR_TEXT_EN[code] || API_ERROR_TEXT_EN.unknown

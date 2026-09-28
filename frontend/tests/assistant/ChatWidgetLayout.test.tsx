@@ -244,7 +244,11 @@ describe('ChatWidget layout', () => {
     const user = userEvent.setup()
     vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
       callbacks.onRunStarted?.({ taskId: 45 })
-      callbacks.onError?.('助手没有执行写入操作，因为本轮没有收到对应工具的成功结果。')
+      callbacks.onError?.({
+        code: 'required_tool_call_missing',
+        message: '助手没有执行写入操作，因为本轮没有收到对应工具的成功结果。',
+        retryable: true,
+      })
       throw new Error('助手没有执行写入操作，因为本轮没有收到对应工具的成功结果。')
     })
 
@@ -253,6 +257,41 @@ describe('ChatWidget layout', () => {
 
     await waitFor(() => expect(screen.queryByRole('button', { name: '重试执行' })).toBeNull())
     expect(screen.queryByText(/尚未执行/)).toBeNull()
+  })
+
+  it('shows the actionable reason when the AI quota is exhausted', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks) => {
+      callbacks.onRunStarted?.({ taskId: 49 })
+      callbacks.onError?.({
+        code: 'ai_quota_exhausted',
+        message: 'provider fallback',
+        retryable: false,
+      })
+      throw new Error('provider raw error')
+    })
+
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: '诊断我的持仓' }))
+
+    expect(await screen.findByText('AI 服务额度已用尽，请充值或切换可用模型后重试。')).toBeTruthy()
+    expect(screen.queryByText('provider raw error')).toBeNull()
+  })
+
+  it('restores the failure reason for a durable task after refresh', async () => {
+    sessionStorage.setItem('panwatch:assistant-task:1', '91')
+    vi.mocked(chatApi.getAssistantTask).mockResolvedValue({
+      id: 91,
+      conversation_id: 1,
+      status: 'failed',
+      error_code: 'ai_authentication_failed',
+      pending_approvals: [],
+    })
+
+    render(<ChatWidget embedded conversationIdFromUrl={1} onConversationChange={vi.fn()} />)
+
+    expect(await screen.findByText('AI 服务认证失败，请检查 API Key 是否正确且仍然有效。')).toBeTruthy()
+    expect(sessionStorage.getItem('panwatch:assistant-task:1')).toBeNull()
   })
 
   it('does not downgrade the embedded assistant to the legacy non-streaming endpoint', async () => {
