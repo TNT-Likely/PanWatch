@@ -134,7 +134,6 @@ function App() {
         <div className="flex min-h-dvh">
           {/* 桌面侧边栏（md+，可折叠，全部页面分组可达） */}
           <AppSidebar
-            version={version}
             mode={mode}
             onSetMode={setMode}
             onOpenLogs={() => setLogsOpen(true)}
@@ -144,7 +143,6 @@ function App() {
           <div className="flex min-w-0 flex-1 flex-col">
             {/* 移动端顶栏（<md） */}
             <MobileTopBar
-              version={version}
               mode={mode}
               onSetMode={setMode}
               onOpenLogs={() => setLogsOpen(true)}

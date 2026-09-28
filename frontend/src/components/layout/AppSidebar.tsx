@@ -7,7 +7,6 @@ import { useLocalStorage } from '@/lib/utils'
 import { NAV_GROUPS, isNavItemActive } from './nav-config'
 
 interface AppSidebarProps {
-  version: string
   mode: ThemeMode
   onSetMode: (m: ThemeMode) => void
   onOpenLogs: () => void
@@ -21,7 +20,7 @@ const iconBtnCls =
  * 桌面端可折叠侧边栏（md+）。
  * 全部 11 个页面按「盯盘 / 决策 / 复盘 / 系统」分组一级可达；折叠态持久化。
  */
-export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpenSelfCheck }: AppSidebarProps) {
+export default function AppSidebar({ mode, onSetMode, onOpenLogs, onOpenSelfCheck }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useLocalStorage('aiwatch_sidebar_collapsed', false)
   const location = useLocation()
 
@@ -58,7 +57,6 @@ export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpe
         {!collapsed && (
           <span className="flex items-baseline gap-1.5 overflow-hidden">
             <span className="text-body font-bold tracking-tight text-foreground">AiWatch</span>
-            {version && <span className="text-mini text-muted-foreground">v{version}</span>}
           </span>
         )}
       </NavLink>

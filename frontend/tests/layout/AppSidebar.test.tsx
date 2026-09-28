@@ -13,7 +13,6 @@ describe('AppSidebar 底部工具行', () => {
     render(
       <MemoryRouter>
         <AppSidebar
-          version="1.0.0"
           mode="light"
           onSetMode={vi.fn()}
           onOpenLogs={vi.fn()}

@@ -4,7 +4,6 @@ import type { ThemeMode } from '@/hooks/use-theme'
 import AccountMenu from '@/components/AccountMenu'
 
 interface MobileTopBarProps {
-  version: string
   mode: ThemeMode
   onSetMode: (m: ThemeMode) => void
   onOpenLogs: () => void
@@ -18,7 +17,6 @@ const iconBtnCls =
 
 /** 移动端顶栏（<md）：Logo + 全部导航入口 + 工具；导航分组抽屉由 onOpenNav 打开。 */
 export default function MobileTopBar({
-  version,
   mode,
   onSetMode,
   onOpenLogs,
@@ -34,7 +32,6 @@ export default function MobileTopBar({
             <TrendingUp className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
           <span className="text-body font-bold tracking-tight text-foreground">AiWatch</span>
-          {version && <span className="text-mini text-muted-foreground">v{version}</span>}
         </NavLink>
 
         <div className="flex items-center gap-0.5">
