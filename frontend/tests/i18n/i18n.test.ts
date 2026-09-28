@@ -87,6 +87,18 @@ describe('internationalization runtime', () => {
     expect(i18n.t('configuration:priceAlerts.form.stock')).toBe('Stock')
     expect(i18n.t('bizUi:stockPriceAlert.between')).toBe('between')
   })
+
+  it('resolves translations used by conditional page states', async () => {
+    expect(i18n.t('configuration:opportunities.errors.timeout')).toBe('策略层请求超时，已降级展示候选快照')
+    expect(i18n.t('configuration:opportunities.markets.CN')).toBe('A股')
+    expect(i18n.t('configuration:p4.paperTrading.exitReasons.manual')).toBe('手动平仓')
+
+    await changeLocale('en-US')
+
+    expect(i18n.t('configuration:opportunities.errors.timeout')).toBe('Strategy request timed out; showing the candidate snapshot')
+    expect(i18n.t('configuration:opportunities.markets.CN')).toBe('Mainland China')
+    expect(i18n.t('configuration:p4.paperTrading.exitReasons.manual')).toBe('Manual close')
+  })
 })
 
 describe('locale-sensitive formatters', () => {

@@ -594,7 +594,7 @@ export default function PaperTradingPage() {
                         <td className="text-right py-2 px-2">{t.exit_price.toFixed(2)}</td>
                         <td className="text-right py-2 px-2"><PnlText value={t.pnl} /></td>
                         <td className="text-right py-2 px-2"><PnlPctText value={t.pnl_pct} /></td>
-                        <td className="py-2 px-2 text-xs">{message(`exitReasons.${t.exit_reason}`, { defaultValue: t.exit_reason })}</td>
+                        <td className="py-2 px-2 text-xs">{tr(`exitReasons.${t.exit_reason}`, { defaultValue: t.exit_reason })}</td>
                         <td className="py-2 px-2 text-xs text-muted-foreground">{t.strategy_code || '-'}</td>
                         <td className="text-right py-2 px-2">{tr('days', { count: t.holding_days })}</td>
                         <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{t.closed_at?.slice(0, 10) || '-'}</td>

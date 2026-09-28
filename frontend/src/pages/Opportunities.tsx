@@ -319,7 +319,7 @@ export default function OpportunitiesPage() {
             count: fallback.count || 0,
             items: (fallback.items || []).map(toSignalFromCandidate),
           }
-          setError(oppT('errors.timeout'))
+          setError(oppT('opportunities.errors.timeout'))
         }
       }
       if ((!data.items || data.items.length === 0) && market !== 'ALL') {
@@ -329,17 +329,17 @@ export default function OpportunitiesPage() {
           timeoutMs: 45000,
         })
         if (fallback.items && fallback.items.length > 0) {
-          setError(oppT('errors.noMarket', { market: oppT(`markets.${market}`) }))
+          setError(oppT('opportunities.errors.noMarket', { market: oppT(`opportunities.markets.${market}`) }))
           data = fallback
         }
       }
       setItems(data.items || [])
       setSnapshotDate(data.snapshot_date || '')
       if (!data.snapshot_date) {
-        setError(oppT('errors.noSnapshot'))
+        setError(oppT('opportunities.errors.noSnapshot'))
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : oppT('errors.loadFailed'))
+      setError(e instanceof Error ? e.message : oppT('opportunities.errors.loadFailed'))
       setItems([])
     } finally {
       setLoading(false)
@@ -360,7 +360,7 @@ export default function OpportunitiesPage() {
         const state = await recommendationsApi.getStrategyRefreshStatus()
         if (!state.running) {
           if (state.last_error) {
-            setError(oppT('errors.refreshBackground', { message: state.last_error }))
+            setError(oppT('opportunities.errors.refreshBackground', { message: state.last_error }))
           } else {
             setError('')
           }
@@ -373,7 +373,7 @@ export default function OpportunitiesPage() {
       await sleep(3000)
     }
     await Promise.all([load(), loadStats()])
-    setError((prev) => prev || oppT('errors.stillRunning'))
+    setError((prev) => prev || oppT('opportunities.errors.stillRunning'))
   }, [load, loadStats])
 
   const handleRefresh = async () => {
@@ -389,15 +389,15 @@ export default function OpportunitiesPage() {
         wait: false,
       })
       if (resp.queued) {
-        setError(resp.accepted ? oppT('errors.submitted') : oppT('errors.running'))
+        setError(resp.accepted ? oppT('opportunities.errors.submitted') : oppT('opportunities.errors.running'))
         void pollRefreshCompletion()
         return
       }
       await Promise.all([load(), loadStats()])
     } catch (e) {
-      const msg = e instanceof Error ? e.message : oppT('errors.refreshFailed')
+      const msg = e instanceof Error ? e.message : oppT('opportunities.errors.refreshFailed')
       if (/(timeout|timed out)/i.test(msg)) {
-        setError(oppT('errors.slow'))
+        setError(oppT('opportunities.errors.slow'))
         await load()
       } else {
         setError(msg)
