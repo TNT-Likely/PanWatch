@@ -121,7 +121,16 @@ class DailyReportAgent(BaseAgent):
         )
 
         if not all_indices and not any(p.quote for p in packs.values()):
-            raise RuntimeError("数据采集失败：未获取到任何行情数据，请检查网络连接")
+            # 可操作诊断：数据源被禁用时行情为空且不发任何请求（非网络问题）
+            diag = getattr(builder, "last_build_diagnostics", {}) or {}
+            disabled = diag.get("disabled_source_types") or []
+            parts = ["数据采集失败：未获取到任何行情数据"]
+            if disabled:
+                parts.append(
+                    "以下数据源已禁用：" + "、".join(disabled) + "（请到「数据源」页启用）"
+                )
+            parts.append("指数行情获取" + ("成功" if all_indices else "失败"))
+            raise RuntimeError("；".join(parts))
 
         return {
             "indices": all_indices,

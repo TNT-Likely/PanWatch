@@ -149,10 +149,21 @@ class SignalPackBuilder:
         flow_providers, flow_disabled = self._source_policy(
             "capital_flow", default_providers=["eastmoney"]
         )
-
         events_providers, events_disabled = self._source_policy(
             "events", default_providers=["eastmoney"]
         )
+        # 诊断信息：数据源被禁用会让对应数据直接为空（不发请求），供上层错误信息指明真实原因
+        disabled_types = [
+            name
+            for name, disabled in (
+                ("quote", quote_disabled),
+                ("kline", kline_disabled),
+                ("capital_flow", flow_disabled),
+                ("events", events_disabled),
+            )
+            if disabled
+        ]
+        self.last_build_diagnostics = {"disabled_source_types": disabled_types}
 
         # 1) Quotes (batch per market)
         by_market: dict[MarketCode, list[tuple[str, str]]] = {}
