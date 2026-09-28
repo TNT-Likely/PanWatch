@@ -635,7 +635,13 @@ export default function DashboardPage() {
                 ) : (
                   <div className="flex h-[150px] flex-col items-center justify-center gap-2 rounded-lg bg-accent/10 text-caption text-muted-foreground">
                     {benchState === 'loading' && <span>基准对比计算中…(需拉全部持仓 K 线,约 1 分钟)</span>}
-                    {benchState === 'empty' && <span>{bench?.reason || '数据不足,暂无法计算基准对比'}</span>}
+                    {benchState === 'empty' && (
+                      <span>
+                        {bench?.reason === 'no_holdings'
+                          ? '暂无持仓，无法计算基准对比'
+                          : '基准指数数据暂不可用（行情源受限），稍后将自动重试'}
+                      </span>
+                    )}
                     {benchState === 'error' && (
                       <>
                         <span>基准对比加载失败(超时或网络异常)</span>

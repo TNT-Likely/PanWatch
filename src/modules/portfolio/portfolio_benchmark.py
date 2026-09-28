@@ -126,8 +126,61 @@ def compute_benchmark_metrics(
     }
 
 
+_SINA_KLINE_URL = (
+    "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20d=/"
+    "CN_MarketDataService.getKLineData"
+)
+_SINA_HEADERS = {
+    "Referer": "https://finance.sina.com.cn",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _fetch_benchmark_series_sina(code: str, days: int) -> tuple[list[str], list[float]]:
+    """备用源：新浪指数日K(jsonp)。腾讯 WAF 风控期(501 拦截页)的降级路径。"""
+    symbol = INDEX_TENCENT.get(
+        code, (code if code.startswith(("sh", "sz")) else f"sh{code}", code)
+    )[0]
+    payload = market_get(
+        _SINA_KLINE_URL,
+        host_key="quotes.sina.cn",
+        params={"symbol": symbol, "scale": 240, "ma": "no", "datalen": int(days) + 10},
+        headers=_SINA_HEADERS,
+        parse="text",
+        raise_for_status=False,
+        log_label="基准指数(新浪备用)",
+        symbol=symbol,
+    )
+    if not payload or not isinstance(payload, str):
+        return [], []
+    # jsonp 形如 var d=([{...},...]);(可能带前置防劫持注释行)——提取首个 [ ... ] JSON 数组
+    start = payload.find("[")
+    end = payload.rfind("]")
+    if start < 0 or end <= start:
+        return [], []
+    try:
+        items = json.loads(payload[start : end + 1])
+    except (ValueError, TypeError):
+        return [], []
+    dates: list[str] = []
+    closes: list[float] = []
+    for item in items:
+        try:
+            dates.append(str(item["day"])[:10])
+            closes.append(float(item["close"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return dates, closes
+
+
 def _fetch_benchmark_series(code: str, days: int) -> tuple[list[str], list[float]]:
-    """取基准指数日K → (dates, closes);失败返回 ([], [])。"""
+    """取基准指数日K → (dates, closes);失败返回 ([], [])。
+
+    主源 web.ifzq.gtimg.cn(腾讯日K);被 WAF/IP 风控拦截(501 页)时降级新浪。
+    """
     tsym = INDEX_TENCENT.get(
         code, (code if code.startswith(("sh", "sz")) else f"sh{code}", code)
     )[0]
@@ -141,10 +194,12 @@ def _fetch_benchmark_series(code: str, days: int) -> tuple[list[str], list[float
         log_label="基准指数",
         symbol=tsym,
     )
-    if not text:
-        return [], []
-    bars = _parse_tencent_kline(text, tsym)
-    return [b.date for b in bars], [b.close for b in bars]
+    if text:
+        bars = _parse_tencent_kline(text, tsym)
+        if bars:
+            return [b.date for b in bars], [b.close for b in bars]
+    # 主源被 WAF 拦截或解析为空 → 新浪备用
+    return _fetch_benchmark_series_sina(code, days)
 
 
 def _ffill_closes(bars: list[KlineData], dates: list[str]) -> list[float]:
