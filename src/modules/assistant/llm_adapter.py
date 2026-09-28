@@ -1,16 +1,16 @@
-"""AiWatch's AI failover adapter for the generic PanAgent model port."""
+"""AiWatch's AI failover adapter for the generic AiAgent model port."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from pan_agent import ModelMessage, ModelTurn, ToolCall, ToolSpec
-from pan_agent_token_meter import normalize_provider_usage
+from ai_agent import ModelMessage, ModelTurn, ToolCall, ToolSpec
+from ai_agent_token_meter import normalize_provider_usage
 
 
 class FailoverModelAdapter:
-    """Adapt the existing failover client without leaking it into PanAgent."""
+    """Adapt the existing failover client without leaking it into AiAgent."""
 
     def __init__(self, client: Any, *, temperature: float = 0.5) -> None:
         self._client = client
@@ -18,7 +18,7 @@ class FailoverModelAdapter:
 
     @staticmethod
     def _to_provider_messages(messages: list[ModelMessage]) -> list[dict[str, Any]]:
-        """Translate PanAgent's neutral tool-call history to OpenAI format."""
+        """Translate AiAgent's neutral tool-call history to OpenAI format."""
         provider_messages: list[dict[str, Any]] = []
         for message in messages:
             payload = message.model_dump(exclude_none=True, exclude={"tool_calls"})

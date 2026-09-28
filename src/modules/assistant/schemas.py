@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
+from ai_agent import ApprovalDecision, PermissionMode, ToolRisk
 from pydantic import BaseModel, Field
 
 

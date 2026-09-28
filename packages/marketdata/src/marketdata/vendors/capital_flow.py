@@ -1,4 +1,4 @@
-"""资金流向 vendor:东财 + 新浪(CN)。移植自 PanWatch capital_flow_collector 抓取核。"""
+"""资金流向 vendor:东财 + 新浪(CN)。移植自 AiWatch capital_flow_collector 抓取核。"""
 from __future__ import annotations
 
 import json

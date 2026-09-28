@@ -16,7 +16,7 @@ from src.platform.persistence.migrations import (
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "panwatch.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "aiwatch.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # SQLite 适合本地开发和单实例部署，但并发写入时不能无限等待锁。

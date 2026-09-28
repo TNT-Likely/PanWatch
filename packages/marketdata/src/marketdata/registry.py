@@ -4,7 +4,7 @@
 `PACKAGE_VENDORS_BY_TYPE` 由同一份 `VENDOR_CLASSES_BY_TYPE` 派生 vendor 名集合。
 两者共享同一份类映射,不会出现"改了 Engine 忘了改权威表"的漂移。
 
-宿主(PanWatch `DataSource` 表)据此判定某行 `(type, provider)` 是否为孤儿:
+宿主(AiWatch `DataSource` 表)据此判定某行 `(type, provider)` 是否为孤儿:
 `legal(type) = PACKAGE_VENDORS_BY_TYPE.get(type, frozenset()) | seed 内该 type 的 provider 集合`。
 discovery/index 是市场级、非 symbol 模型,不进 Engine/不进 DataSource,故不出现在此表。
 """

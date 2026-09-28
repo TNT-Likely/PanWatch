@@ -6,7 +6,7 @@ import json
 import time
 from types import SimpleNamespace
 
-from pan_agent import ContextBuildResult, ContextUsage, EventType, ModelMessage, RunResult, RunStatus, RuntimeEvent
+from ai_agent import ContextBuildResult, ContextUsage, EventType, ModelMessage, RunResult, RunStatus, RuntimeEvent
 
 import src.modules.assistant.api as assistant_api
 

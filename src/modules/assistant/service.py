@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from pan_agent import (
+from ai_agent import (
     AgentCheckpoint,
     AgentRuntime,
     ApprovalDecision,
@@ -22,8 +22,8 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
-from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService
-from pan_agent_token_meter import HeuristicTokenMeter
+from ai_agent_tool_research import ToolResearchPlugin, ToolResearchService
+from ai_agent_token_meter import HeuristicTokenMeter
 
 from src.platform.ai.ai_failover import (
     build_failover_client,
@@ -363,7 +363,7 @@ class AssistantService:
         )
 
     def build_runtime(self, failover_client) -> AgentRuntime:
-        """Compose host adapters into the business-agnostic PanAgent runtime."""
+        """Compose host adapters into the business-agnostic AiAgent runtime."""
         tools = build_aiwatch_tool_registry(self._repository.session)
         return AgentRuntime(
             FailoverModelAdapter(failover_client),

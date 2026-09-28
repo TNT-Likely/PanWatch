@@ -1,7 +1,7 @@
 """新闻资讯 vendor:xueqiu(雪球个股新闻)/ eastmoney_news(东财个股新闻搜索)/
 eastmoney(东财公告),均 markets={"CN"}。
 
-移植自 PanWatch src/collectors/news_collector.py 的 XueqiuNewsCollector /
+移植自 AiWatch src/collectors/news_collector.py 的 XueqiuNewsCollector /
 EastMoneyStockNewsCollector / EastMoneyNewsCollector 抓取核(端点/params/headers/
 _parse_item 字段全部照搬)。原实现是 async(httpx.AsyncClient),此处改为同步 market_get。
 

@@ -1,8 +1,8 @@
-"""Model adaptation stays in the AiWatch host, outside pan_agent."""
+"""Model adaptation stays in the AiWatch host, outside ai_agent."""
 
 import asyncio
 
-from pan_agent import ModelMessage, ToolCall, ToolRisk, ToolSpec
+from ai_agent import ModelMessage, ToolCall, ToolRisk, ToolSpec
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -151,7 +151,7 @@ def test_failover_model_adapter_requires_a_tool_without_streaming_action_preambl
     assert emitted == []
 
 
-def test_assistant_service_builds_panagent_runtime_from_host_adapters():
+def test_assistant_service_builds_aiagent_runtime_from_host_adapters():
     from src.modules.assistant.repository import AssistantRepository
     from src.modules.assistant.service import AssistantService
 

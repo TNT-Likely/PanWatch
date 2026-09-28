@@ -73,7 +73,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "price_color_mode": "up-red",
-        "aiwatch_base_url": os.getenv("AIWATCH_BASE_URL") or os.getenv("PANWATCH_BASE_URL") or "",
+        "aiwatch_base_url": os.getenv("AIWATCH_BASE_URL") or os.getenv("AIWATCH_BASE_URL") or "",
     }
 
 

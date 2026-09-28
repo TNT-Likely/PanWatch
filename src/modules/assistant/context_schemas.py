@@ -1,11 +1,11 @@
-"""Assistant-facing context DTOs built on the reusable PanAgent contracts."""
+"""Assistant-facing context DTOs built on the reusable AiAgent contracts."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
 
-from pan_agent import (
+from ai_agent import (
     ContextCompressionMode,
     ContextSummary,
     ContextUsage,

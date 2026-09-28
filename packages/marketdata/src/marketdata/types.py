@@ -50,7 +50,7 @@ class Quote:
 
 @dataclass
 class Bar:
-    """标准化日K(对齐 PanWatch KlineData:date/open/close/high/low/volume)。"""
+    """标准化日K(对齐 AiWatch KlineData:date/open/close/high/low/volume)。"""
 
     date: str
     open: float
@@ -62,7 +62,7 @@ class Bar:
 
 @dataclass
 class CapitalFlow:
-    """资金流向(对齐 PanWatch src/collectors/capital_flow_collector.CapitalFlow)。"""
+    """资金流向(对齐 AiWatch src/collectors/capital_flow_collector.CapitalFlow)。"""
 
     symbol: str
     name: str
@@ -77,7 +77,7 @@ class CapitalFlow:
 
 @dataclass(frozen=True)
 class HotStock:
-    """热门/异动股(对齐 PanWatch src/collectors/discovery_collector.HotStock)。"""
+    """热门/异动股(对齐 AiWatch src/collectors/discovery_collector.HotStock)。"""
 
     symbol: str
     market: str
@@ -90,7 +90,7 @@ class HotStock:
 
 @dataclass(frozen=True)
 class HotBoard:
-    """热门板块(对齐 PanWatch src/collectors/discovery_collector.HotBoard)。"""
+    """热门板块(对齐 AiWatch src/collectors/discovery_collector.HotBoard)。"""
 
     code: str
     name: str
@@ -101,7 +101,7 @@ class HotBoard:
 
 @dataclass
 class EventItem:
-    """结构化事件(对齐 PanWatch src/collectors/events_collector.EventItem)。"""
+    """结构化事件(对齐 AiWatch src/collectors/events_collector.EventItem)。"""
 
     source: str
     external_id: str
@@ -228,7 +228,7 @@ class FlashNews:
 
 @dataclass
 class NewsArticle:
-    """新闻资讯(个股新闻+公告,对齐 PanWatch src/collectors/news_collector.NewsItem)。
+    """新闻资讯(个股新闻+公告,对齐 AiWatch src/collectors/news_collector.NewsItem)。
     来源可为 xueqiu(雪球个股新闻)/ eastmoney_news(东财个股新闻搜索)/ eastmoney(东财公告)。"""
 
     source: str

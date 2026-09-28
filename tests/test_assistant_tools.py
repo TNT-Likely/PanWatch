@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from pan_agent import ModelMessage, ReadOnlyToolPolicy, RunRequest, ToolExposure
+from ai_agent import ModelMessage, ReadOnlyToolPolicy, RunRequest, ToolExposure
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool

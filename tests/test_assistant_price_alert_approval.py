@@ -2,7 +2,7 @@
 
 import asyncio
 
-from pan_agent import (
+from ai_agent import (
     AgentRuntime,
     ApprovalDecision,
     ModelMessage,

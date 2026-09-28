@@ -7,7 +7,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from pan_agent import ContextCompressionMode, ContextSummary, ModelMessage
+from ai_agent import ContextCompressionMode, ContextSummary, ModelMessage
 
 _SUMMARY_SYSTEM_PROMPT = """你是对话上下文压缩器。
 只输出一个合法 JSON 对象，不要输出 Markdown、解释或额外文本。

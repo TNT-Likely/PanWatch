@@ -1,4 +1,4 @@
-"""事件 vendor:东财公告(单源)。移植自 PanWatch EastMoneyEventsCollector.fetch_events 抓取核
+"""事件 vendor:东财公告(单源)。移植自 AiWatch EastMoneyEventsCollector.fetch_events 抓取核
 (src/collectors/events_collector.py:fetch_events/_parse_item/_guess_event_type/_guess_importance)。
 
 原实现是 async(httpx.AsyncClient);此处改为同步 market_get,URL/params/headers/

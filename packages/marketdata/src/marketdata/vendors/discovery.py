@@ -1,6 +1,6 @@
 """发现(东财热门榜)vendor:单源、市场级、非 symbol 模型。
 
-移植自 PanWatch src/collectors/discovery_collector.py 的
+移植自 AiWatch src/collectors/discovery_collector.py 的
 fetch_hot_stocks(L55-105)/fetch_hot_boards(L107-149)/fetch_board_stocks(L151-196)/
 _get_json(L198-248):fid/fields/fs/params 计算与 f-code 字段映射(f12/f14/f2/f3/f4/f5/f6)
 逐一照搬。原实现是 async(httpx.AsyncClient);此处改为同步 market_get。

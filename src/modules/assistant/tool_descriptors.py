@@ -5,8 +5,8 @@ The runtime can use it for discovery, while the host still owns executable
 tool registration and permission decisions.
 """
 
-from pan_agent import ToolRisk
-from pan_agent_tool_research import ToolDataFreshness, ToolDescriptor
+from ai_agent import ToolRisk
+from ai_agent_tool_research import ToolDataFreshness, ToolDescriptor
 
 
 AIWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (

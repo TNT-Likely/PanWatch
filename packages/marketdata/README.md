@@ -1,8 +1,8 @@
 # marketdata
 
-多市场(A股 / 港股 / 美股)行情数据抓取层,**可插拔数据源 + 主备故障转移**。脱胎于 PanWatch,但**零 `src/` / web / DB 依赖**——通过两个注入端口(`ConfigProvider` / `MetricsSink`)解耦宿主,可独立使用或嵌入任意项目。
+多市场(A股 / 港股 / 美股)行情数据抓取层,**可插拔数据源 + 主备故障转移**。脱胎于 AiWatch,但**零 `src/` / web / DB 依赖**——通过两个注入端口(`ConfigProvider` / `MetricsSink`)解耦宿主,可独立使用或嵌入任意项目。
 
-宿主(PanWatch)接入是**单一路径**:数据抓取全部经由本包,`src/core/providers`/`akshare_collector` 等旧实现已删除,没有灰度 flag、没有回退分支。
+宿主(AiWatch)接入是**单一路径**:数据抓取全部经由本包,`src/core/providers`/`akshare_collector` 等旧实现已删除,没有灰度 flag、没有回退分支。
 
 ## 设计
 
@@ -79,7 +79,7 @@ md.health()                                     # {vendor: {success_rate, p50_la
 | `hot_stocks` / `hot_boards` / `board_stocks` | 见下 | `list[HotStock/HotBoard]` | 东财热门榜。**市场级、不经 Engine**(非 symbol 模型),直连 `DiscoveryVendor`。`hot_stocks(*, market="CN", mode="turnover", limit=20, proxy=None)`、`hot_boards(*, market="CN", mode="gainers", limit=12, proxy=None)`、`board_stocks(*, board_code, mode="gainers", limit=20, proxy=None)`。 |
 | `health` | — | `dict[str, dict]` | 每个 vendor 的内存健康度快照(成功率 / p50 延迟 / 最近错误 / 样本数)。 |
 
-> `klines`/`capital_flow`/`events` **不在包内缓存**(`cache_ttl_sec=0`),缓存/节流交给宿主(PanWatch 的 collector 层有市场态感知缓存);`quotes` 有 5s 短 TTL 防抖;`flash_news` 30s、`fundamentals`/`dragon_tiger`/`margin`/`shareholders`/`dividend` 300s、`northbound` 60s(均为包内 Engine 层 TTL,详见 `client.py`)。
+> `klines`/`capital_flow`/`events` **不在包内缓存**(`cache_ttl_sec=0`),缓存/节流交给宿主(AiWatch 的 collector 层有市场态感知缓存);`quotes` 有 5s 短 TTL 防抖;`flash_news` 30s、`fundamentals`/`dragon_tiger`/`margin`/`shareholders`/`dividend` 300s、`northbound` 60s(均为包内 Engine 层 TTL,详见 `client.py`)。
 
 ### 类型
 
@@ -115,7 +115,7 @@ class SourceConfig:
     supports_batch: bool = False
 ```
 
-内置默认实现:`StaticConfigProvider({datatype: [SourceConfig, ...]})`、`InMemoryMetricsSink()`(滚动窗口最近 100 次)。宿主可换成自己的实现(如 PanWatch 用 DB 表驱动的 `DbConfigProvider`,见下)。
+内置默认实现:`StaticConfigProvider({datatype: [SourceConfig, ...]})`、`InMemoryMetricsSink()`(滚动窗口最近 100 次)。宿主可换成自己的实现(如 AiWatch 用 DB 表驱动的 `DbConfigProvider`,见下)。
 
 ## 数据类型覆盖矩阵(11 类)
 
@@ -145,7 +145,7 @@ class SourceConfig:
 
 `registry.py` 里的 `PACKAGE_VENDORS_BY_TYPE`(由 `VENDOR_CLASSES_BY_TYPE` 派生)是"某 type 合法 vendor 名集合"的**唯一真相源**——不会出现"改了 Engine 忘了改文档/权威表"的漂移。
 
-宿主(PanWatch `DataSource` 表)据此判定某行 `(type, provider)` 是否为孤儿:
+宿主(AiWatch `DataSource` 表)据此判定某行 `(type, provider)` 是否为孤儿:
 
 ```python
 legal(type) = PACKAGE_VENDORS_BY_TYPE.get(type, frozenset()) | seed 内该 type 的 provider 集合
@@ -155,7 +155,7 @@ legal(type) = PACKAGE_VENDORS_BY_TYPE.get(type, frozenset()) | seed 内该 type 
 
 ### ⚠️ 字段映射校准现状
 
-B 阶段新增类型(`flash_news` / `fundamentals` / `dragon_tiger` / `margin` / `shareholders` / `dividend` / `northbound`)的字段解析,多数**未经真实网络抓取验证**(开发沙箱代理会拦截东财/同花顺等接口,只能靠接口文档 + 历史 PanWatch collector 实现推断字段映射)。各 dataclass 的 docstring 里已标注"字段待实抓校准"。首次在生产接入这些类型时,建议:
+B 阶段新增类型(`flash_news` / `fundamentals` / `dragon_tiger` / `margin` / `shareholders` / `dividend` / `northbound`)的字段解析,多数**未经真实网络抓取验证**(开发沙箱代理会拦截东财/同花顺等接口,只能靠接口文档 + 历史 AiWatch collector 实现推断字段映射)。各 dataclass 的 docstring 里已标注"字段待实抓校准"。首次在生产接入这些类型时,建议:
 
 1. 在「数据源」页对该 `(type, provider)` 点「测试」,核对返回字段是否符合预期(尤其是 `NorthboundItem.sgt_net` 这类已知不稳定字段)。
 2. 若字段错位/为空,对照 vendor 源码(`src/marketdata/vendors/*.py`)与东财/同花顺接口实际响应调整解析逻辑,而不是照抄文档字段名。
@@ -167,7 +167,7 @@ B 阶段新增类型(`flash_news` / `fundamentals` / `dragon_tiger` / `margin` /
 3. 通过 `ConfigProvider` 给它一条 `SourceConfig(vendor="<name>", priority=...)`(宿主侧配置/种子)。
 4. 加解析单测(monkeypatch 该 vendor 模块的 `market_get`)。
 
-## 嵌入宿主(PanWatch 为例)
+## 嵌入宿主(AiWatch 为例)
 
 宿主实现两个端口即可接入:
 
@@ -182,7 +182,7 @@ class DbConfigProvider:                       # 读 DataSource 表 → SourceCon
 md = MarketData(config=DbConfigProvider())    # metrics 用默认内存 sink
 ```
 
-PanWatch 侧是**单一路径**:`src/core/marketdata_client.py` 用进程级单例 `get_market_data()` 持有一个 `MarketData(config=DbConfigProvider())`,各 collector/agent 直接调用它取数;没有 flag、没有兼容层分支、没有回退到旧 `akshare_collector`(旧实现已删除)。`health()` 喂到「数据源」页的健康度面板。
+AiWatch 侧是**单一路径**:`src/core/marketdata_client.py` 用进程级单例 `get_market_data()` 持有一个 `MarketData(config=DbConfigProvider())`,各 collector/agent 直接调用它取数;没有 flag、没有兼容层分支、没有回退到旧 `akshare_collector`(旧实现已删除)。`health()` 喂到「数据源」页的健康度面板。
 
 > 历史备注(已移除,仅存档参考):早期 Phase 1 曾用 `USE_MARKETDATA` 环境变量做灰度切换,新旧两套并存;该 flag 与旧路径已在后续阶段整体下线,现在只有一条路径。
 

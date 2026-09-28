@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from pan_agent import (
+from ai_agent import (
     AgentCheckpoint,
     ApprovalDecision,
     ModelMessage,

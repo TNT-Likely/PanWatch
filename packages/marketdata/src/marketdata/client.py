@@ -243,7 +243,7 @@ class MarketData:
         """新闻资讯(个股新闻 + 公告)—— 聚合语义,非失败转移:查询所有已启用源、结果合并去重,
         而非"找到一个就停"(这与 quotes()/klines() 的主备语义不同),故不经 Engine。
 
-        对齐 PanWatch NewsCollector.fetch_all 的聚合语义:
+        对齐 AiWatch NewsCollector.fetch_all 的聚合语义:
         - 公告源(vendor="eastmoney")用 max(since_hours, 72) 更宽窗口(公告发布频率低,
           窗口太窄容易一条都捞不到);其余源用 since_hours。窗口值会透传进 vendor 的
           config(当前 3 个 vendor 均未读取——真正的 since 过滤在本方法做,vendor 内

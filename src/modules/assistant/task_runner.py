@@ -2,7 +2,7 @@
 
 The runner is intentionally small and host-owned.  P2 can replace its
 ``asyncio`` task registry with a queue adapter without changing task/event
-contracts or the PanAgent runtime.
+contracts or the AiAgent runtime.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import logging
 import time
 from collections.abc import Callable
 
-from pan_agent import (
+from ai_agent import (
     EventType,
     ModelMessage,
     RunLimits,

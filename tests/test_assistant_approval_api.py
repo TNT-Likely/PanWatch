@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from pan_agent import (
+from ai_agent import (
     AgentCheckpoint,
     ApprovalDecision,
     EventType,

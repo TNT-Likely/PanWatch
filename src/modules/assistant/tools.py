@@ -1,4 +1,4 @@
-"""AiWatch business adapters for the framework-free PanAgent runtime."""
+"""AiWatch business adapters for the framework-free AiAgent runtime."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pan_agent import (
+from ai_agent import (
     RunRequest,
     ToolExposure,
     ToolRegistry,

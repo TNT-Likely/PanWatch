@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from openai import AsyncOpenAI
-from pan_agent_token_meter import normalize_provider_usage
+from ai_agent_token_meter import normalize_provider_usage
 
 from src.platform.observability import otel
 

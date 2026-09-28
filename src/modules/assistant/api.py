@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pan_agent import (
+from ai_agent import (
     EventType,
     ModelMessage,
     RunLimits,
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 ASSISTANT_RUN_TIMEOUT_SECONDS = 180
 ASSISTANT_TOOL_TIMEOUT_SECONDS = 15
 # 研究型请求可能需要行情、K 线、新闻和持仓多轮组合调用；同时由
-# PanAgent runtime 的重复调用保护避免小模型陷入同一工具循环。
+# AiAgent runtime 的重复调用保护避免小模型陷入同一工具循环。
 ASSISTANT_MAX_STEPS = 12
 ASSISTANT_MAX_TOOL_CALLS = 24
 
@@ -430,7 +430,7 @@ async def stream_assistant_message(
     body: SendAssistantMessageCommand,
     service: AssistantService = Depends(get_assistant_service),
 ):
-    """Run the navigation assistant through PanAgent and stream its portable events."""
+    """Run the navigation assistant through AiAgent and stream its portable events."""
     if isinstance(service, AssistantService):
         try:
             user_message = service.record_user_message(conversation_id, body.content)
@@ -605,7 +605,7 @@ async def compress_context(
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "runtime": "pan-agent-runtime"}
+    return {"status": "ok", "runtime": "ai-agent-runtime"}
 
 
 @router.get("/tool-permissions")

@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from pan_agent import ContextCompressionMode, ContextSummary, ContextUsage
+from ai_agent import ContextCompressionMode, ContextSummary, ContextUsage
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import ChatConversation, ChatMessage  # noqa: F401
 

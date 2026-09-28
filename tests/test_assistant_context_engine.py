@@ -126,7 +126,7 @@ def test_service_exposes_context_usage_and_latest_summary_for_the_ui():
 
 
 def test_prepare_context_includes_durable_tool_findings_as_trusted_facts(monkeypatch):
-    from pan_agent import ExtractiveContextSummarizer
+    from ai_agent import ExtractiveContextSummarizer
     engine, session, service = _service()
     monkeypatch.setattr(
         service,

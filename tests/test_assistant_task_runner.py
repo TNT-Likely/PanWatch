@@ -3,7 +3,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from pan_agent import EventType, RunResult, RunStatus, RuntimeEvent
+from ai_agent import EventType, RunResult, RunStatus, RuntimeEvent
 from sqlalchemy.orm import sessionmaker
 
 from src.platform.tasking.contracts import TaskEventType

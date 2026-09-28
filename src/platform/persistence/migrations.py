@@ -2157,8 +2157,8 @@ def _m128_tradingagents_timeout_default(conn: Connection) -> None:
     )
 
 def _m129_rename_settings_key(conn: Connection) -> None:
-    """品牌切换 PanWatch→AiWatch：设置键 panwatch_base_url 改名为 aiwatch_base_url。"""
-    conn.execute(text("UPDATE app_settings SET key = 'aiwatch_base_url' WHERE key = 'panwatch_base_url'"))
+    """品牌切换 AiWatch→AiWatch：设置键 aiwatch_base_url 改名为 aiwatch_base_url。"""
+    conn.execute(text("UPDATE app_settings SET key = 'aiwatch_base_url' WHERE key = 'aiwatch_base_url'"))
 
 
 MIGRATIONS: tuple[Migration, ...] = (

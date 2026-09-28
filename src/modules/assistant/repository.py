@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from pan_agent import (
+from ai_agent import (
     AgentCheckpoint,
     ApprovalDecision,
     CheckpointEnvelope,
@@ -19,8 +19,8 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
-from pan_agent import (
-    __version__ as PAN_AGENT_RUNTIME_VERSION,
+from ai_agent import (
+    __version__ as AI_AGENT_RUNTIME_VERSION,
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -478,7 +478,7 @@ class AssistantRepository:
             run_id=str(task_run_id),
             checkpoint=checkpoint,
             reason=reason,
-            runtime_version=f"pan-agent-runtime@{PAN_AGENT_RUNTIME_VERSION}",
+            runtime_version=f"ai-agent-runtime@{AI_AGENT_RUNTIME_VERSION}",
             metadata=metadata,
         )
         task.status = TaskStatus.WAITING_APPROVAL.value

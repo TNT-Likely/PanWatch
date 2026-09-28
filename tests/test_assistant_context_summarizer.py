@@ -1,6 +1,6 @@
 import asyncio
 
-from pan_agent import ContextCompressionMode, ModelMessage
+from ai_agent import ContextCompressionMode, ModelMessage
 
 
 class _FakeClient:

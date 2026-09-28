@@ -1,6 +1,6 @@
 """Shared, provider-neutral instructions for AiWatch's interactive assistant."""
 
-from pan_agent import ModelMessage
+from ai_agent import ModelMessage
 
 ASSISTANT_SYSTEM_PROMPT = """你是 AiWatch 的 AI 投资助手。
 
