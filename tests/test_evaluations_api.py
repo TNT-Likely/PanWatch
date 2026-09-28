@@ -129,3 +129,79 @@ def test_status_filter_keeps_all_horizons_for_matched_suggestion():
         assert result["items"][0]["outcomes"]["5"]["status"] == "pending"
     finally:
         db.close()
+
+
+def _suggestion(symbol: str, market: str, name: str) -> "StockSuggestion":
+    from src.platform.persistence.models import StockSuggestion
+
+    return StockSuggestion(
+        stock_symbol=symbol,
+        stock_market=market,
+        stock_name=name,
+        agent_name="intraday_monitor",
+        action="watch",
+        action_label="观望",
+    )
+
+
+def test_stock_name_resolved_from_suggestion_with_watchlist_fallback():
+    """标的名称：建议表优先，watchlist 兜底，两者皆无降级为空串。"""
+    from src.platform.persistence.models import Stock, StockSuggestion  # noqa: F401
+    from src.modules.research.api import evaluations
+
+    db = _mem_db()
+    try:
+        # 三只标的：601766 命中建议表、000001 仅在 watchlist、999999 两处皆无
+        db.add_all([_row(1)])  # 600000 默认行：无任何名称来源
+        row = _row(1)
+        row.stock_symbol = "601766"
+        row.prediction_group_id = "group-jh"
+        db.add(row)
+        row2 = _row(1)
+        row2.stock_symbol = "000001"
+        row2.prediction_group_id = "group-pa"
+        db.add(row2)
+        db.add(_suggestion("601766", "CN", "中国中车"))
+        db.add(Stock(symbol="000001", name="平安银行", market="CN"))
+        db.commit()
+
+        result = evaluations.list_agent_predictions(
+            db=db,
+            days=90,
+            limit=100,
+            offset=0,
+        )
+
+        by_group = {g["prediction_group_id"]: g for g in result["items"]}
+        assert by_group["group-jh"]["stock_name"] == "中国中车"  # 建议表优先
+        assert by_group["group-pa"]["stock_name"] == "平安银行"  # watchlist 兜底
+        assert by_group["group-api-1"]["stock_name"] == ""  # 无来源降级空串
+    finally:
+        db.close()
+
+
+def test_stock_name_latest_suggestion_wins():
+    """同名标的多条建议时取最新一条的名称（按 id 升序后写覆盖）。"""
+    from src.modules.research.api import evaluations
+
+    db = _mem_db()
+    try:
+        db.add(_row(1))
+        row = _row(1)
+        row.stock_symbol = "601766"
+        row.prediction_group_id = "group-jh"
+        db.add(row)
+        db.add(_suggestion("601766", "CN", "旧名"))
+        db.add(_suggestion("601766", "CN", "中国中车"))
+        db.commit()
+
+        result = evaluations.list_agent_predictions(
+            db=db,
+            days=90,
+            limit=100,
+            offset=0,
+        )
+
+        assert result["items"][0]["stock_name"] == "中国中车"
+    finally:
+        db.close()

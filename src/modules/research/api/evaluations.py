@@ -15,10 +15,51 @@ from src.modules.automation.agent_prediction_evaluation import (
 )
 from src.modules.research.prediction_outcome import evaluate_pending_prediction_outcomes
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AgentPredictionOutcome
+from src.platform.persistence.models import AgentPredictionOutcome, Stock, StockSuggestion
 
 
 router = APIRouter()
+
+
+def _resolve_stock_names(
+    db: Session, pairs: set[tuple[str, str]]
+) -> dict[tuple[str, str], str]:
+    """批量解析标的名称：建议表优先(按 id 升序后写覆盖=取最新)，watchlist 兜底。
+
+    都查不到的标的不写入返回，由调用方降级为仅代码展示。
+    """
+    names: dict[tuple[str, str], str] = {}
+    if not pairs:
+        return names
+    symbols = [s for s, _ in pairs]
+    rows = (
+        db.query(
+            StockSuggestion.stock_symbol,
+            StockSuggestion.stock_market,
+            StockSuggestion.stock_name,
+        )
+        .filter(
+            StockSuggestion.stock_symbol.in_(symbols),
+            StockSuggestion.stock_name != "",
+        )
+        .order_by(StockSuggestion.id)
+        .all()
+    )
+    for sym, mkt, name in rows:
+        names[(sym, mkt)] = name
+    missing = pairs - set(names)
+    if missing:
+        watch = (
+            db.query(Stock.symbol, Stock.name)
+            .filter(Stock.symbol.in_([s for s, _ in missing]))
+            .all()
+        )
+        watch_names = {sym: name for sym, name in watch if name}
+        for pair in missing:
+            name = watch_names.get(pair[0])
+            if name:
+                names[pair] = name
+    return names
 
 
 def query_prediction_rows(
@@ -111,8 +152,14 @@ def list_agent_predictions(
     groups = filter_prediction_groups_by_status(
         group_prediction_outcomes(rows), status
     )
+    items = groups[offset : offset + limit]
+    name_map = _resolve_stock_names(
+        db, {(g["stock_symbol"], g["stock_market"]) for g in items}
+    )
+    for g in items:
+        g["stock_name"] = name_map.get((g["stock_symbol"], g["stock_market"]), "")
     return {
-        "items": groups[offset : offset + limit],
+        "items": items,
         "total": len(groups),
         "available_filters": _available_filters(rows),
         "policy": EVALUATION_POLICY,

@@ -17,6 +17,7 @@ export interface AgentPredictionGroup {
   agent_name: string
   stock_symbol: string
   stock_market: string
+  stock_name: string
   prediction_date: string
   action: string
   action_label: string
