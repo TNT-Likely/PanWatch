@@ -1,0 +1,32 @@
+name: sync distribution metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+      - README.zh-CN.md
+      - docs/README.md
+      - .github/workflows/sync-distribution-metadata.yml
+
+permissions:
+  contents: read
+
+jobs:
+  dockerhub-description:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: sunxiao0721/panwatch
+          short-description: Self-hosted AI stock monitoring for A-shares, HK & US | A股/港股/美股 AI 盯盘助手
+          readme-filepath: ./README.md
+          enable-url-completion: true
