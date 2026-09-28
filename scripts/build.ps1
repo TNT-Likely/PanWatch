@@ -22,12 +22,12 @@ foreach ($command in "node", "pnpm", "docker") {
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $staticDirectory = Join-Path $projectRoot "static"
-$imageName = "sunxiao0721/panwatch"
+$imageName = "sunxiao0721/aiwatch"
 $fullImage = "${imageName}:$Version"
 
 Push-Location $projectRoot
 try {
-    Write-Host "🚀 PanWatch 构建脚本"
+    Write-Host "🚀 AiWatch 构建脚本"
     Write-Host "版本: $Version"
 
     Write-Host "📦 构建前端..."

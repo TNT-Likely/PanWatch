@@ -21,7 +21,7 @@ VENV_PYTHON := .venv/bin/python
 endif
 
 help:
-	@echo "PanWatch 开发命令:"
+	@echo "AiWatch 开发命令:"
 	@echo "  make setup-backend   创建 venv 并安装后端依赖"
 	@echo "  make dev-api         启动后端（:8000，自动 setup-backend）"
 	@echo "  make dev-web         启动前端（:5183，自动 pnpm install）"

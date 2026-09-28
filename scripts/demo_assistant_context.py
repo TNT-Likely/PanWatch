@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from pan_agent import ContextBudget, ContextEngine, ModelMessage
+from ai_agent import ContextBudget, ContextEngine, ModelMessage
 
 
 async def main() -> None:

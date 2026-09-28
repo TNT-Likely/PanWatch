@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags:
-      # PanWatch tags are like 0.2.3 (no "v" prefix)
+      # AiWatch tags are like 0.2.3 (no "v" prefix)
       - '*.*.*'
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ on:
         default: 'linux/amd64,linux/arm64'
 
 env:
-  IMAGE_NAME: sunxiao0721/panwatch
+  IMAGE_NAME: sunxiao0721/aiwatch
 
 jobs:
   docker:
@@ -106,7 +106,7 @@ jobs:
             type=raw,value=${{ steps.vars.outputs.version_no_v }},enable=${{ steps.vars.outputs.version_no_v != steps.vars.outputs.version }}
             type=raw,value=latest,enable=${{ steps.vars.outputs.push_latest == 'true' }}
           labels: |
-            org.opencontainers.image.title=PanWatch
+            org.opencontainers.image.title=AiWatch
             org.opencontainers.image.version=${{ steps.vars.outputs.version }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
 
@@ -199,7 +199,7 @@ jobs:
           COMMITS_ENCODED=$(echo "$COMMITS_ESCAPED" | sed 's/$/%0A/g' | tr -d '\n')
 
           # 构建消息
-          MESSAGE="📊 *PanWatch ${TAG}* 发布%0A%0A"
+          MESSAGE="📊 *AiWatch ${TAG}* 发布%0A%0A"
           MESSAGE="${MESSAGE}🔗 [查看完整说明](${RELEASE_URL})%0A%0A"
           MESSAGE="${MESSAGE}*变更内容*:%0A${COMMITS_ENCODED}"
 

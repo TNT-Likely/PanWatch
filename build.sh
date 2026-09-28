@@ -9,9 +9,9 @@ NC='\033[0m' # No Color
 
 # 默认值
 VERSION=${1:-"latest"}
-IMAGE_NAME="sunxiao0721/panwatch"
+IMAGE_NAME="sunxiao0721/aiwatch"
 
-echo -e "${GREEN}🚀 PanWatch 构建脚本${NC}"
+echo -e "${GREEN}🚀 AiWatch 构建脚本${NC}"
 echo -e "版本: ${YELLOW}${VERSION}${NC}"
 echo ""
 
@@ -54,7 +54,7 @@ echo ""
 echo -e "${GREEN}🎉 构建完成！${NC}"
 echo ""
 echo "运行容器:"
-echo -e "  ${YELLOW}docker run -d -p 8000:8000 -v panwatch_data:/app/data ${FULL_IMAGE}${NC}"
+echo -e "  ${YELLOW}docker run -d -p 8000:8000 -v aiwatch_data:/app/data ${FULL_IMAGE}${NC}"
 echo ""
 echo "推送镜像:"
 echo -e "  ${YELLOW}docker push ${FULL_IMAGE}${NC}"

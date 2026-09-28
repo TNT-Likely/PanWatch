@@ -1,14 +1,14 @@
-# 盯盘侠 PanWatch
+# AI 盯盘 AiWatch
 
 **自托管 AI 盯盘助手 · 集成 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投资决策** — A 股 / 港股 / 美股实时监控、持仓管理、智能分析、全渠道推送
 
-[![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
-[![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
+[![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/AiWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/AiWatch/stargazers)
+[![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/aiwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/aiwatch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/PanWatch)](https://github.com/TNT-Likely/PanWatch/commits/main)
-[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/PanWatch)
+[![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/AiWatch)](https://github.com/TNT-Likely/AiWatch/commits/main)
+[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/AiWatch)
 
-![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
+![AI 盯盘 AiWatch · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
 
 > 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
 
@@ -31,7 +31,7 @@
 
 </details>
 
-> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
+> 💡 如果AI 盯盘对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
 
 ## 🧠 深度分析：TradingAgents 多 Agent 决策
 
@@ -46,7 +46,7 @@
 交易日 08:15 自动运行五阶段流水线：**宏观三卡 → 板块预测 → 选股三价 → 财报核验 → 落库推送**。事件日历导入、Agent 配置、数据源矩阵与降级语义、质量门禁、命中率校准与模拟盘信号开启条件见 [盘前决策引擎文档](docs/premarket-engine.md)。
 
 
-## 为什么选择盯盘侠？
+## 为什么选择AI 盯盘？
 
 - **数据私有** — 自托管部署，持仓数据不经过任何第三方
 - **AI 原生** — 不是简单的指标堆砌，而是让 AI 理解你的持仓、风格和目标
@@ -107,10 +107,10 @@ Telegram / 企业微信 / 钉钉 / 飞书 / Bark / 自定义 Webhook
 
 ```bash
 docker run -d \
-  --name panwatch \
+  --name aiwatch \
   -p 8000:8000 \
-  -v panwatch_data:/app/data \
-  sunxiao0721/panwatch:latest
+  -v aiwatch_data:/app/data \
+  sunxiao0721/aiwatch:latest
 ```
 
 访问 `http://localhost:8000`，首次使用设置账号密码即可。
@@ -125,17 +125,17 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  panwatch:
-    image: sunxiao0721/panwatch:latest
-    container_name: panwatch
+  aiwatch:
+    image: sunxiao0721/aiwatch:latest
+    container_name: aiwatch
     ports:
       - "8000:8000"
     volumes:
-      - panwatch_data:/app/data
+      - aiwatch_data:/app/data
     restart: unless-stopped
 
 volumes:
-  panwatch_data:
+  aiwatch_data:
 ```
 
 ```bash
@@ -206,7 +206,7 @@ cd frontend && pnpm install && pnpm dev       # 前端 :5183
 <details>
 <summary><b>OTel 导出（可选，默认关闭）</b></summary>
 
-PanWatch 内建一套自建可观测体系(结构化日志 `trace_id` 贯穿 / `agent_runs` 运行表 / TradingAgents 节点级进度与成本),开箱即用、无需任何外部组件。
+AiWatch 内建一套自建可观测体系(结构化日志 `trace_id` 贯穿 / `agent_runs` 运行表 / TradingAgents 节点级进度与成本),开箱即用、无需任何外部组件。
 
 在此之上,可**可选地**再挂一层标准 [OpenTelemetry](https://opentelemetry.io/) 导出,把 trace 送到 Jaeger / Tempo / Langfuse 等标准 APM。三类 span 映射:
 
@@ -224,7 +224,7 @@ pip install -r requirements-otel.txt
 
 # 2. 配置 OTLP 端点(指向你的 collector / APM)
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-export OTEL_SERVICE_NAME=panwatch   # 可选,默认 panwatch
+export OTEL_SERVICE_NAME=aiwatch   # 可选,默认 aiwatch
 
 # 3. 正常启动;启动日志出现 "OTel 导出已启用" 即生效
 python server.py
@@ -235,7 +235,7 @@ python server.py
 ```bash
 docker run -d --name jaeger -p 16686:16686 -p 4318:4318 \
   jaegertracing/all-in-one:latest
-# 触发任意 Agent 运行后,打开 http://localhost:16686 选 service=panwatch 查看 trace
+# 触发任意 Agent 运行后,打开 http://localhost:16686 选 service=aiwatch 查看 trace
 ```
 
 Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入口即可。
@@ -248,8 +248,8 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 本项目内置 GitHub Actions 发布流程：
 
 - 打 tag（例如 `0.2.3`）会自动构建并推送 Docker 镜像
-  - `sunxiao0721/panwatch:0.2.3`
-  - `sunxiao0721/panwatch:latest`
+  - `sunxiao0721/aiwatch:0.2.3`
+  - `sunxiao0721/aiwatch:latest`
 - 也支持在 GitHub Actions 里手动触发（workflow_dispatch）指定版本号
 
 需要在仓库 Secrets 中配置：
@@ -261,7 +261,7 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 
 ## 捐赠支持
 
-如果你觉得 PanWatch 有帮助，欢迎请作者喝杯咖啡：
+如果你觉得 AiWatch 有帮助，欢迎请作者喝杯咖啡：
 
 | 微信赞赏 | 支付宝 |
 |:---:|:---:|
@@ -270,7 +270,7 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 ## 贡献
 
 欢迎提交 Issue 和 PR！自定义 Agent 和数据源开发请参考 [贡献指南](CONTRIBUTING.md)。
-社区交流（Telegram）：[t.me/panwatch](https://t.me/panwatch)
+社区交流（Telegram）：[t.me/aiwatch](https://t.me/aiwatch)
 
 ## License
 
