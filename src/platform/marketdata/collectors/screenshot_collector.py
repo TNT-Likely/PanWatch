@@ -17,8 +17,14 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 # 默认配置
 DEFAULT_CONFIG = {
     "viewport": {"width": 1280, "height": 900},
-    "wait_selector": ".quote_title",  # 等待页面主体加载
     "extra_wait_ms": 3000,  # 等待图表渲染
+}
+
+# 各数据源「页面主体已加载」的标志选择器：等错选择器会固定耗满超时
+_PROVIDER_WAIT_SELECTORS = {
+    "eastmoney": ".quote_title",
+    "xueqiu": ".stock-price",
+    "sina": "#kline_web",
 }
 
 
@@ -136,6 +142,7 @@ class ScreenshotCollector:
         url = self._get_url(symbol, market, provider)
         filepath = str(SCREENSHOT_DIR / f"{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
 
+        context = None
         try:
             # 使用真实的 User-Agent 和反检测设置
             context = await self._browser.new_context(
@@ -158,10 +165,13 @@ class ScreenshotCollector:
             logger.debug(f"正在加载 {name}({symbol}) K线图: {url}")
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-            # 等待页面主体加载
+            # 等待页面主体加载（选择器随 provider 匹配）
+            wait_selector = _PROVIDER_WAIT_SELECTORS.get(
+                provider, self.config.get("wait_selector", ".quote_title")
+            )
             try:
                 await page.wait_for_selector(
-                    self.config["wait_selector"],
+                    wait_selector,
                     timeout=15000,
                     state="visible",
                 )
@@ -194,6 +204,12 @@ class ScreenshotCollector:
         except Exception as e:
             logger.error(f"截图失败 {name}({symbol}): {e}")
             return None
+        finally:
+            # 失败路径同样释放 context，防浏览器资源泄漏（成功路径已显式关闭，重复关闭幂等）
+            try:
+                await context.close()
+            except Exception:
+                pass
 
     async def _capture_xueqiu(self, page, filepath: str, period: str):
         """雪球截图逻辑"""

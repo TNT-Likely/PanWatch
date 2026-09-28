@@ -31,7 +31,6 @@ class ChartAnalystAgent(BaseAgent):
             period: K线周期 (daily/weekly/monthly)
         """
         self.period = period
-        self._collector: ScreenshotCollector | None = None
 
     async def collect(self, context: AgentContext) -> dict:
         """采集自选股 K 线图截图"""
@@ -49,10 +48,10 @@ class ChartAnalystAgent(BaseAgent):
             for stock in context.watchlist
         ]
 
-        # 截图
-        self._collector = ScreenshotCollector()
+        # 截图（每次运行独立 collector：实例级共享会被并发运行互相关闭，引发 TargetClosedError）
+        collector = ScreenshotCollector()
         try:
-            screenshots = await self._collector.capture_batch(
+            screenshots = await collector.capture_batch(
                 stocks, period=self.period
             )
 
@@ -75,7 +74,7 @@ class ChartAnalystAgent(BaseAgent):
                 logger.warning(f"SignalPack 获取失败（chart_analyst 继续执行）：{e}")
 
             # 清理旧截图
-            self._collector.cleanup_old_screenshots(max_age_hours=24)
+            collector.cleanup_old_screenshots(max_age_hours=24)
 
             return {
                 "screenshots": screenshots,
@@ -85,8 +84,10 @@ class ChartAnalystAgent(BaseAgent):
                 "timestamp": datetime.now().isoformat(),
             }
         finally:
-            await self._collector.close()
-            self._collector = None
+            try:
+                await collector.close()
+            except Exception:
+                pass
 
     def build_prompt(self, data: dict, context: AgentContext) -> tuple[str, str]:
         """构建技术分析 Prompt"""
