@@ -1440,11 +1440,11 @@ export default function StockInsightModal(props: {
                       <div className="text-[11px] text-muted-foreground mb-2">{tr('holding.title')}</div>
                       {holdingAgg ? (
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.quantity')}</div>
                             <div className="font-mono">{holdingAgg.quantity}</div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.cost')}</div>
                             <div
                               className={`font-mono ${
@@ -1460,11 +1460,11 @@ export default function StockInsightModal(props: {
                               {formatNumber(holdingAgg.unitCost)}
                             </div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.marketValue')}</div>
                             <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue, english)}</div>
                           </div>
-                          <div className="rounded bg-emerald-500/10 px-2 py-1.5">
+                          <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.pnl')}</div>
                             <div className={`font-mono ${marketSignTextClass(holdingAgg.pnl)}`}>
                               {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl, english)}

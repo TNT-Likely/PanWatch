@@ -68,7 +68,13 @@ function outcomeLabel(outcome: AgentPredictionOutcomeItem | undefined, t: (key: 
 
 function OutcomeCell({ outcome, t }: { outcome?: AgentPredictionOutcomeItem; t: (key: string) => string }) {
   if (!outcome || outcome.status === 'pending') return <span className="text-[12px] text-muted-foreground">{outcomeLabel(outcome, t)}</span>
-  return <div className="text-right"><div className={`font-mono text-[12px] ${pctClass(outcome.return_pct)}`}>{formatPct(outcome.return_pct)}</div><div className={`text-[10px] ${outcome.hit ? 'text-emerald-600' : 'text-muted-foreground'}`}>{outcomeLabel(outcome, t)}</div></div>
+  const hitClass = outcome.hit ? 'text-emerald-600' : 'text-muted-foreground' // market-color-fixed: evaluation success status
+  return (
+    <div className="text-right">
+      <div className={`font-mono text-[12px] ${pctClass(outcome.return_pct)}`}>{formatPct(outcome.return_pct)}</div>
+      <div className={`text-[10px] ${hitClass}`}>{outcomeLabel(outcome, t)}</div>
+    </div>
+  )
 }
 
 function SummaryCard({ label, value, hint, tone = 'default' }: { label: string; value: string; hint?: string; tone?: 'default' | 'positive' | 'warning' }) {

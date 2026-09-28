@@ -5,6 +5,8 @@ import { changeLocale } from '@/i18n'
 import { MarketColorProvider, useMarketColors } from '@/hooks/use-market-colors'
 import {
   MARKET_COLOR_STORAGE_KEY,
+  getMarketColorPalette,
+  marketColorWithAlpha,
   marketDirection,
   marketSignTextClass,
   normalizeMarketColorPreference,
@@ -50,6 +52,17 @@ describe('market color preferences', () => {
     expect(marketSignTextClass(0)).toBe('text-market-flat')
   })
 
+  it('inverts concrete palettes without changing semantic directions', () => {
+    const redUp = getMarketColorPalette('red-up')
+    const greenUp = getMarketColorPalette('green-up')
+
+    expect(redUp.up).toEqual(greenUp.down)
+    expect(redUp.down).toEqual(greenUp.up)
+    expect(marketColorWithAlpha(redUp.up.text, 0.25)).toBe('rgba(225, 29, 72, 0.25)')
+    expect(marketColorWithAlpha(redUp.up.text, 2)).toBe('rgba(225, 29, 72, 1)')
+    expect(marketColorWithAlpha('currentColor', 0.5)).toBe('currentColor')
+  })
+
   it('persists manual choices and lets automatic mode react to language changes', async () => {
     const user = userEvent.setup()
     render(<MarketColorProvider><Probe /></MarketColorProvider>)
@@ -75,5 +88,20 @@ describe('market color preferences', () => {
     })
     expect(screen.getByTestId('effective').textContent).toBe('red-up')
     expect(document.documentElement.dataset.marketColorScheme).toBe('red-up')
+  })
+
+  it('syncs a preference changed in another browser tab', async () => {
+    render(<MarketColorProvider><Probe /></MarketColorProvider>)
+
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: MARKET_COLOR_STORAGE_KEY,
+        newValue: 'green-up',
+      }))
+    })
+
+    expect(screen.getByTestId('preference').textContent).toBe('green-up')
+    expect(screen.getByTestId('effective').textContent).toBe('green-up')
+    expect(document.documentElement.dataset.marketColorScheme).toBe('green-up')
   })
 })

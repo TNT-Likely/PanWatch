@@ -10,6 +10,7 @@
   },
   "scripts": {
     "check:i18n": "node scripts/check-i18n-literals.mjs",
+    "check:market-colors": "node scripts/check-market-colors.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest",
