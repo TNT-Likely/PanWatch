@@ -1,6 +1,10 @@
+import base64
+import hashlib
+import hmac
 import logging
 import os
 import re
+import time
 
 import apprise
 import asyncio
@@ -90,7 +94,7 @@ CHANNEL_TYPES = {
     },
     "lark": {
         "label": "飞书机器人",
-        "fields": ["webhook_token"],
+        "fields": ["webhook_token", "secret"],  # secret=群机器人「签名校验」密钥(选填)
     },
     "serverchan": {
         "label": "Server酱",
@@ -111,13 +115,15 @@ CHANNEL_TYPES = {
 }
 
 # 通过 Apprise 支持的渠道类型（无代理配置时）
-_APPRISE_TYPES = {"telegram", "bark", "dingtalk", "lark", "discord", "pushover"}
+# 注意：lark 不在此列——apprise 的 NotifyLark 硬编码 open.larksuite.com(Lark 海外版)，
+# 国内飞书为 open.feishu.cn，走 _send_lark 自定义实现(含签名校验支持)。
+_APPRISE_TYPES = {"telegram", "bark", "dingtalk", "discord", "pushover"}
 
 # 自定义实现的渠道类型（带代理或特殊需求）
 _CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus"}
 
 # 支持 Markdown 的渠道（不需要 sanitize）
-_MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "discord"}
+_MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "discord"}
 
 # 不支持 Markdown 的渠道（需要 sanitize）
 _PLAIN_TEXT_CHANNELS = {"telegram", "bark", "pushover"}
@@ -172,12 +178,6 @@ def build_apprise_url(channel_type: str, config: dict) -> str | None:
             if phone_list:
                 base += f"?to={','.join(phone_list)}"
         return base
-
-    elif channel_type == "lark":
-        webhook_token = config.get("webhook_token", "")
-        if not webhook_token:
-            raise ValueError("飞书需要 webhook_token")
-        return f"lark://{webhook_token}/"
 
     elif channel_type == "discord":
         webhook_id = config.get("webhook_id", "")
@@ -359,8 +359,52 @@ class NotifierManager:
             await self._send_serverchan(config, title, content)
         elif ch_type == "pushplus":
             await self._send_pushplus(config, title, content)
+        elif ch_type == "lark":
+            await self._send_lark(config, title, content)
         else:
             logger.warning(f"未知的自定义渠道类型: {ch_type}")
+
+    async def _send_lark(self, config: dict, title: str, content: str):
+        """飞书群自定义机器人 Webhook（open.feishu.cn）。
+
+        webhook_token = 群机器人 Webhook 地址末段 UUID；
+        secret 为可选的「签名校验」密钥（飞书算法：key="{timestamp}\\n{secret}"，对空串
+        HMAC-SHA256 后 base64）。校验响应 code/StatusCode，非 0 抛错（避免假成功）。
+        """
+        token = (config.get("webhook_token") or "").strip()
+        if not token:
+            raise ValueError("飞书需要 webhook_token")
+
+        url = f"https://open.feishu.cn/open-apis/bot/v2/hook/{token}"
+        text = f"{title}\n{content}" if title else content
+        payload: dict = {"msg_type": "text", "content": {"text": text}}
+
+        secret = (config.get("secret") or "").strip()
+        if secret:
+            timestamp = str(int(time.time()))
+            string_to_sign = f"{timestamp}\n{secret}"
+            digest = hmac.new(
+                string_to_sign.encode("utf-8"), digestmod=hashlib.sha256
+            ).digest()
+            payload["timestamp"] = timestamp
+            payload["sign"] = base64.b64encode(digest).decode("utf-8")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=30)
+            try:
+                data = resp.json()
+            except ValueError:
+                raise RuntimeError(
+                    f"飞书响应异常（HTTP {resp.status_code}）：请确认 webhook_token "
+                    "是群自定义机器人 Webhook 地址末段"
+                )
+            code = data.get("code", data.get("StatusCode"))
+            if code != 0:
+                raise RuntimeError(
+                    f"飞书发送失败({code}): {data.get('msg')}——请核对 webhook_token 是否正确、"
+                    "机器人是否开启签名校验（开启后需填签名密钥）"
+                )
+            logger.info(f"飞书通知发送成功: {title}")
 
     async def _send_telegram(self, config: dict, title: str, content: str):
         """Telegram Bot API（支持代理）

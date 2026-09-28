@@ -104,7 +104,8 @@ const CHANNEL_TYPE_FIELDS: Record<string, { label: string; fields: ChannelFieldD
   lark: {
     label: '飞书机器人',
     fields: [
-      { key: 'webhook_token', label: 'Webhook Token', placeholder: 'hook/ 后面的 token', secret: true, required: true },
+      { key: 'webhook_token', label: 'Webhook Token', placeholder: '群自定义机器人 Webhook 地址末段 UUID', secret: true, required: true },
+      { key: 'secret', label: '签名密钥', placeholder: '群机器人开启「签名校验」时填写（选填）', secret: true },
     ],
   },
   serverchan: {
