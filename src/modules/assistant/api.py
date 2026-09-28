@@ -20,6 +20,7 @@ from pan_agent import (
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from src.platform.ai.errors import descriptor_for_code
 from src.platform.persistence.database import get_db
 from src.platform.tasking.contracts import TaskStatus
 from src.web.errors import api_error
@@ -80,6 +81,8 @@ _SSE_HEADERS = {
 }
 
 def _error_message(error_code: str) -> str:
+    if error_code.startswith("ai_"):
+        return descriptor_for_code(error_code).message
     return _ERROR_MESSAGES.get(error_code, "助手暂时不可用，请稍后重试。")
 
 
@@ -101,8 +104,14 @@ def _finish_failed_task(
 
 def _error_response(error_code: str) -> StreamingResponse:
     async def events():
+        descriptor = descriptor_for_code(error_code)
         yield _encode_sse(
-            "error", {"message": _error_message(error_code), "code": error_code}
+            "error",
+            {
+                "message": _error_message(error_code),
+                "code": error_code,
+                "retryable": descriptor.retryable if error_code.startswith("ai_") else True,
+            },
         )
 
     return StreamingResponse(
@@ -220,9 +229,15 @@ async def _stream_runtime(
             exc_info=exc_info,
         )
         _finish_failed_task(service, task_id, error_code)
-        await queue.put(
-            ("error", {"message": _error_message(error_code), "code": error_code})
-        )
+        descriptor = descriptor_for_code(error_code)
+        await queue.put((
+            "error",
+            {
+                "message": _error_message(error_code),
+                "code": error_code,
+                "retryable": descriptor.retryable if error_code.startswith("ai_") else True,
+            },
+        ))
 
     async def run_runtime_with_timeout() -> RunResult:
         runtime_task = asyncio.create_task(

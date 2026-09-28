@@ -726,12 +726,19 @@ class AssistantService:
 
     def fail_task(self, task_id: int, error_code: str) -> None:
         """Close a task that could not yield a usable assistant answer."""
+        from src.platform.ai.errors import descriptor_for_code
+
+        descriptor = descriptor_for_code(error_code)
         self._repository.finish_task(
             task_id,
             status="failed",
             final_message_id=None,
             error_code=error_code,
-            event_data={"code": error_code, "message": error_code},
+            event_data={
+                "code": error_code,
+                "message": descriptor.message if error_code.startswith("ai_") else error_code,
+                "retryable": descriptor.retryable if error_code.startswith("ai_") else True,
+            },
         )
 
     def cancel_task(self, task_id: int) -> dict:

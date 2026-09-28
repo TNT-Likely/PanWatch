@@ -15,7 +15,7 @@ from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
 from src.platform.scheduling.schedule_parser import preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
 from src.platform.runtime.config import Settings
-from src.web.errors import api_error
+from src.web.errors import ai_api_error, api_error
 from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
@@ -399,7 +399,7 @@ async def trigger_agent_endpoint(
         raise api_error(400, "agent_trigger_invalid", "Agent 执行参数无效") from e
     except Exception as e:
         logger.exception("Agent %s 执行失败", agent_name)
-        raise api_error(500, "agent_trigger_failed", "Agent 执行失败") from e
+        raise ai_api_error(e) from e
 
 
 @router.get("/tradingagents/running")
@@ -1224,11 +1224,15 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
                             },
                         )
                 except Exception as e:
+                    from src.platform.ai.errors import classify_ai_service_error
+
+                    ai_error = classify_ai_service_error(e)
                     item["suggestion"] = {
                         "action": "watch",
                         "action_label": "观望",
                         "signal": "",
-                        "reason": f"分析失败: {e}",
+                        "reason": ai_error.message,
+                        "error_code": ai_error.code,
                         "should_alert": False,
                     }
                     logger.error(f"AI 分析失败 {item['symbol']}: {e}")

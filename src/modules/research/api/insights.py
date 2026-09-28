@@ -17,7 +17,7 @@ from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock
-from src.web.errors import api_error
+from src.web.errors import ai_api_error, api_error
 import asyncio
 import logging
 import time
@@ -255,7 +255,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
         content = await client.chat(system_prompt, user_content, temperature=0.3)
     except Exception as exc:
         logger.warning("AI 加仓评估失败: %s", exc)
-        raise api_error(502, "ai_evaluation_failed", "AI 评估失败") from exc
+        raise ai_api_error(exc) from exc
 
     return {
         "symbol": req.symbol,
@@ -345,7 +345,7 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
         )
     except Exception as exc:
         logger.warning("AI 公告解读失败: %s", exc)
-        raise api_error(502, "ai_announcement_interpretation_failed", "AI 公告解读失败") from exc
+        raise ai_api_error(exc) from exc
 
     tone_map: dict[int, tuple[str, str]] = {}
     for line in (content or "").splitlines():

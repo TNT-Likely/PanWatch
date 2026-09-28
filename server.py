@@ -1316,10 +1316,12 @@ async def trigger_agent(agent_name: str) -> str:
                 )
                 return result.content
         except Exception as e:
+            from src.platform.ai.errors import safe_ai_error_message
+
             record_agent_run(
                 agent_name=agent_name,
                 status="failed",
-                error=str(e),
+                error=safe_ai_error_message(e),
                 duration_ms=int((time.monotonic() - start) * 1000),
                 trace_id=trace_id,
                 trigger_source="manual",
@@ -1438,10 +1440,12 @@ async def trigger_agent_for_stock(
                 model_label=context.model_label,
             )
         except Exception as e:
+            from src.platform.ai.errors import safe_ai_error_message
+
             record_agent_run(
                 agent_name=agent_name,
                 status="failed",
-                error=str(e),
+                error=safe_ai_error_message(e),
                 duration_ms=int((time.monotonic() - start) * 1000),
                 trace_id=trace_id,
                 trigger_source="manual",

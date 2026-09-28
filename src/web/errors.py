@@ -2,6 +2,8 @@
 
 from fastapi import HTTPException
 
+from src.platform.ai.errors import classify_ai_service_error
+
 
 def api_error(
     status_code: int,
@@ -20,4 +22,18 @@ def api_error(
         status_code=status_code,
         detail={"code": code, "message": message},
         headers=headers,
+    )
+
+
+def ai_api_error(
+    error: BaseException,
+    *,
+    status_code: int | None = None,
+) -> HTTPException:
+    """Convert an AI provider exception to a safe, translatable API error."""
+    descriptor = classify_ai_service_error(error)
+    return api_error(
+        status_code or descriptor.status_code,
+        descriptor.code,
+        descriptor.message,
     )

@@ -46,6 +46,12 @@ def _duration_ms(started_at: float) -> int:
     return max(0, round((time.monotonic() - started_at) * 1000))
 
 
+def _stable_error_code(error: BaseException, fallback: str) -> str:
+    """Preserve an explicitly public host error code without coupling layers."""
+    code = getattr(error, "error_code", "")
+    return code if isinstance(code, str) and code else fallback
+
+
 class AgentRuntime:
     """A serial tool loop with hard limits and durable approval pauses.
 
@@ -144,9 +150,14 @@ class AgentRuntime:
             return await self._finish(
                 sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled"
             )
-        except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
+        except Exception as exc:  # noqa: BLE001 - hosts receive a stable terminal runtime result
             return await self._finish(
-                sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed"
+                sink,
+                request,
+                RunStatus.FAILED,
+                answer,
+                tool_calls,
+                _stable_error_code(exc, "runtime_failed"),
             )
 
         if remaining_pending:
@@ -263,7 +274,7 @@ class AgentRuntime:
                         },
                     )
                     raise
-                except Exception:
+                except Exception as exc:
                     await self._publish(
                         sink,
                         request,
@@ -272,7 +283,7 @@ class AgentRuntime:
                             "source": "estimated",
                             "duration_ms": _duration_ms(model_started_at),
                             "usage_available": False,
-                            "error_code": "model_failed",
+                            "error_code": _stable_error_code(exc, "model_failed"),
                         },
                     )
                     raise
@@ -462,9 +473,14 @@ class AgentRuntime:
             return await self._finish(
                 sink, request, RunStatus.CANCELLED, answer, tool_calls, "cancelled"
             )
-        except Exception:  # noqa: BLE001 - hosts receive a stable terminal runtime result
+        except Exception as exc:  # noqa: BLE001 - hosts receive a stable terminal runtime result
             return await self._finish(
-                sink, request, RunStatus.FAILED, answer, tool_calls, "runtime_failed"
+                sink,
+                request,
+                RunStatus.FAILED,
+                answer,
+                tool_calls,
+                _stable_error_code(exc, "runtime_failed"),
             )
 
     async def _run_model_turn(
@@ -612,8 +628,12 @@ class AgentRuntime:
                 )
         except TimeoutError:
             result = ToolResult.failure(summary="扩展工具调用超时", error_code="tool_timeout")
-        except Exception:  # noqa: BLE001 - extension is an optional boundary
-            result = ToolResult.failure(summary="扩展工具调用失败", error_code="tool_failed")
+        except Exception as exc:  # noqa: BLE001 - extension is an optional boundary
+            error_code = _stable_error_code(exc, "tool_failed")
+            result = ToolResult.failure(
+                summary="扩展工具调用失败",
+                error_code=error_code,
+            )
         if result is None:
             result = ToolResult.failure(
                 summary="请求的扩展工具不可用", error_code="unknown_tool"

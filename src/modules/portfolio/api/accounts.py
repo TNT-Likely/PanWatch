@@ -14,7 +14,7 @@ from src.platform.persistence.models import Account, PriceAlertRule, Position, S
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
-from src.web.errors import api_error
+from src.web.errors import ai_api_error, api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -897,6 +897,6 @@ async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends
         content = await get_configured_failover_client(db, model_id).chat(system_prompt, user_content, temperature=0.3)
     except Exception as e:
         logger.exception("AI 体检失败")
-        raise api_error(502, "portfolio_ai_review_failed", "AI 体检失败") from e
+        raise ai_api_error(e) from e
 
     return {"content": content, "top": top, "worst": worst, "diagnostics": diag, "benchmark": bench, "account_totals": totals}

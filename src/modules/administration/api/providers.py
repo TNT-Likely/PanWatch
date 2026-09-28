@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from src.platform.ai.ai_client import AIClient
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AIModel, AIService
-from src.web.errors import api_error
+from src.web.errors import ai_api_error, api_error
 
 router = APIRouter()
 
@@ -212,7 +212,7 @@ async def test_model(model_id: int, db: Session = Depends(get_db)):
         )
         return {"ok": True, "reply": reply.strip()}
     except Exception as exc:
-        raise api_error(400, "ai_model_test_failed", "AI 模型测试失败") from exc
+        raise ai_api_error(exc, status_code=400) from exc
 
 
 @router.post("/services/{service_id}/discover-models")
@@ -225,7 +225,7 @@ async def discover_models(service_id: int, db: Session = Depends(get_db)):
         models = await client.list_models()
         return {"models": models}
     except Exception as exc:
-        raise api_error(400, "ai_model_discovery_failed", "模型发现失败") from exc
+        raise ai_api_error(exc, status_code=400) from exc
 
 
 def _batch_add_models_once(service_id: int, body: BatchModelCreate, db: Session):

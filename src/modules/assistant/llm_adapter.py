@@ -8,6 +8,8 @@ from typing import Any
 from pan_agent import ModelMessage, ModelTurn, ToolCall, ToolSpec
 from pan_agent_token_meter import normalize_provider_usage
 
+from src.platform.ai.errors import as_ai_service_error
+
 
 class FailoverModelAdapter:
     """Adapt the existing failover client without leaking it into PanAgent."""
@@ -70,25 +72,28 @@ class FailoverModelAdapter:
         if tool_choice is not None:
             stream_kwargs["tool_choice"] = tool_choice
 
-        async for event_type, payload in self._client.chat_stream(
-            self._to_provider_messages(messages), **stream_kwargs
-        ):
-            if event_type == "token":
-                token = str(payload or "")
-                if token:
-                    content_parts.append(token)
-                    # A required-tool turn is an internal proposal.  The
-                    # runtime will expose the final answer after the tool
-                    # result, not the model's pre-tool narration.
-                    if tool_choice != "required":
-                        await emit_token(token)
-            elif event_type == "message" and isinstance(payload, dict):
-                final_content = str(payload.get("content") or "")
-                raw_tool_calls = payload.get("tool_calls") or []
-                provider_usage = normalize_provider_usage(
-                    payload.get("usage"),
-                    model=payload.get("model") or getattr(self._client, "model", None),
-                )
+        try:
+            async for event_type, payload in self._client.chat_stream(
+                self._to_provider_messages(messages), **stream_kwargs
+            ):
+                if event_type == "token":
+                    token = str(payload or "")
+                    if token:
+                        content_parts.append(token)
+                        # A required-tool turn is an internal proposal.  The
+                        # runtime will expose the final answer after the tool
+                        # result, not the model's pre-tool narration.
+                        if tool_choice != "required":
+                            await emit_token(token)
+                elif event_type == "message" and isinstance(payload, dict):
+                    final_content = str(payload.get("content") or "")
+                    raw_tool_calls = payload.get("tool_calls") or []
+                    provider_usage = normalize_provider_usage(
+                        payload.get("usage"),
+                        model=payload.get("model") or getattr(self._client, "model", None),
+                    )
+        except Exception as exc:
+            raise as_ai_service_error(exc) from exc
 
         tool_calls: list[ToolCall] = []
         for call in raw_tool_calls:

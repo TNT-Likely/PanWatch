@@ -22,6 +22,7 @@ from pan_agent import (
     RuntimeEvent,
 )
 
+from src.platform.ai.errors import descriptor_for_code
 from src.platform.persistence.database import SessionLocal
 from src.platform.tasking.contracts import TaskEventType, TaskStatus
 
@@ -374,6 +375,12 @@ class AssistantTaskRunner:
         service.complete_task_with_message(task_id, conversation_id, result.answer)
 
     def _fail(self, service: AssistantService, task_id: int, error_code: str) -> None:
+        descriptor = descriptor_for_code(error_code)
+        message = (
+            descriptor.message
+            if error_code.startswith("ai_")
+            else _ERROR_MESSAGES.get(error_code, _ERROR_MESSAGES["transport_failed"])
+        )
         service._repository.finish_task(
             task_id,
             status=TaskStatus.FAILED.value,
@@ -381,7 +388,8 @@ class AssistantTaskRunner:
             error_code=error_code,
             event_data={
                 "code": error_code,
-                "message": _ERROR_MESSAGES.get(error_code, _ERROR_MESSAGES["transport_failed"]),
+                "message": message,
+                "retryable": descriptor.retryable if error_code.startswith("ai_") else True,
             },
         )
 

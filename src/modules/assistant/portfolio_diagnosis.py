@@ -22,6 +22,11 @@ from pan_agent import (
     ToolSpec,
 )
 
+from src.platform.ai.errors import (
+    AIServiceError,
+    as_ai_service_error,
+    safe_ai_error_message,
+)
 from src.platform.language import resolve_report_language
 
 from .tool_metadata import localized_tool_presentation
@@ -245,9 +250,10 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
             if not replanned:
                 replanned = True
                 logger.info("步骤「%s」失败,触发重规划: %s", step["title"], e)
+                safe_error = safe_ai_error_message(e)
                 try:
                     raw = await ai_client.chat_multi(
-                        _replan_messages(portfolio_text, step["title"], str(e)),
+                        _replan_messages(portfolio_text, step["title"], safe_error),
                         temperature=0.3,
                     )
                     new_steps = parse_plan(raw)
@@ -259,7 +265,7 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
                     continue  # 从当前位置用新计划重试
             # 已重规划过或重规划失败:标记失败,带失败信息继续汇总
             step["status"] = "failed"
-            results.append((step["title"], f"(该步执行失败:{e})"))
+            results.append((step["title"], f"(该步执行失败:{safe_ai_error_message(e)})"))
         await _publish_plan(stream, steps, status="running")
         i += 1
 
@@ -279,9 +285,8 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
         try:
             summary = await ai_client.chat_multi(_summary_messages(results), temperature=0.4)
             await stream.publish("token", {"text": summary})
-        except Exception:
-            summary = "抱歉,诊断汇总失败。"
-            await stream.publish("token", {"text": summary})
+        except Exception as fallback_error:
+            raise as_ai_service_error(fallback_error) from fallback_error
 
     await _publish_plan(stream, steps, status="done")
     return summary
@@ -353,6 +358,8 @@ class PortfolioDiagnosisExtension:
                 self._ai_client,
                 self._execute_tool,
             )
+        except AIServiceError:
+            raise
         except Exception as exc:  # noqa: BLE001 - runtime converts this to a tool failure
             logger.exception("持仓诊断扩展执行失败")
             return ToolResult.failure(summary=f"持仓诊断失败：{exc}", error_code="diagnosis_failed")

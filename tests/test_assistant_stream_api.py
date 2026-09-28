@@ -362,7 +362,7 @@ def test_assistant_stream_surfaces_runtime_timeout_instead_of_saving_empty_reply
 
     assert events[-1] == (
         "error",
-        {"message": "助手响应超时，请稍后重试。", "code": "run_timeout"},
+        {"message": "助手响应超时，请稍后重试。", "code": "run_timeout", "retryable": True},
     )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "run_timeout")]
@@ -382,7 +382,7 @@ def test_assistant_stream_rejects_an_empty_completed_reply():
 
     assert events[-1] == (
         "error",
-        {"message": "助手暂时不可用，请稍后重试。", "code": "empty_answer"},
+        {"message": "助手暂时不可用，请稍后重试。", "code": "empty_answer", "retryable": True},
     )
     assert service.recorded_assistant_messages == []
     assert service.finished == [("failed", "empty_answer")]
@@ -523,7 +523,7 @@ def test_assistant_stream_enforces_the_transport_timeout(monkeypatch):
     assert elapsed < 1.5
     assert events[-1] == (
         "error",
-        {"message": "助手响应超时，请稍后重试。", "code": "transport_timeout"},
+        {"message": "助手响应超时，请稍后重试。", "code": "transport_timeout", "retryable": True},
     )
     assert service.finished == [("failed", "transport_timeout")]
 
@@ -587,10 +587,11 @@ def test_assistant_stream_closes_the_task_when_runtime_setup_fails():
     assert events == [
         (
             "error",
-            {
-                "message": "助手任务执行失败，请稍后重试。",
-                "code": "transport_setup_failed",
-            },
+                {
+                    "message": "助手任务执行失败，请稍后重试。",
+                    "code": "transport_setup_failed",
+                    "retryable": True,
+                },
         )
     ]
     assert service.finished == [("failed", "transport_setup_failed")]

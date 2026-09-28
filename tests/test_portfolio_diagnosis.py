@@ -6,8 +6,10 @@
 
 import asyncio
 
+import pytest
 from pan_agent import BeforeModelTurnContext, ModelMessage, ReadOnlyToolPolicy, RunRequest
 
+from src.platform.ai.errors import AIServiceError
 from src.modules.assistant.portfolio_diagnosis import (
     PortfolioDiagnosisExtension,
     build_default_plan,
@@ -182,6 +184,29 @@ def test_run_diagnosis_degrades_when_plan_generation_fails():
     assert plans[-1]["status"] == "done"
     # 默认计划只有组合风险一步
     assert len(plans[-1]["steps"]) == 1
+
+
+def test_run_diagnosis_surfaces_provider_failure_when_both_summaries_fail():
+    plan = '{"steps":[{"title":"组合整体风险","action":"portfolio_risk"}]}'
+
+    class FailingSummaryAI(FakeAI):
+        async def chat_stream(self, messages, tools=None, temperature=0.4):
+            raise RuntimeError("insufficient_quota: secret provider payload")
+            yield  # pragma: no cover - keeps this an async generator
+
+    ai = FailingSummaryAI(
+        multi_queue=[
+            plan,
+            "风险评估结果",
+            RuntimeError("insufficient_quota: secret provider payload"),
+        ]
+    )
+
+    with pytest.raises(AIServiceError) as error:
+        asyncio.run(run_portfolio_diagnosis(None, FakeStream(), ai, _exec_ok))
+
+    assert error.value.error_code == "ai_quota_exhausted"
+    assert "secret provider payload" not in str(error.value)
 
 
 def test_build_default_plan_shape():
