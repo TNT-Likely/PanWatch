@@ -127,7 +127,7 @@ def test_run_versioned_migrations_full_chain_twice(tmp_path):
         versions = [int(r[0]) for r in applied]
     engine.dispose()
 
-    assert versions[-1] == 127
+    assert versions[-1] == 128
     assert len(versions) == len(set(versions))  # 无重复版本
 
 

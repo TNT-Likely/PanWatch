@@ -170,7 +170,7 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "output_language": "Chinese",
             "deep_model": "",       # 留空走默认 AI Service 的 model;可填如 "claude-sonnet-4"
             "quick_model": "",      # 留空 = deep_model;可填便宜模型如 "deepseek-chat"
-            "timeout_minutes": 15,
+            "timeout_minutes": 30,
             "llm_timeout_seconds": 380,  # 单次 LLM 请求超时：思考型模型非流式调用单轮常超 2 分钟，120 会误杀
             "llm_max_retries": 0,         # 深度分析失败快速落终态，不在图内重复重试
             "llm_max_tokens": 4096,       # 限制模型输出，避免网关空闲超时

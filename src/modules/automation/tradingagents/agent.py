@@ -381,8 +381,21 @@ class TradingAgentsAgent(BaseAgent):
         except asyncio.CancelledError:
             cancel_event.set()
             raise
-        except Exception:
+        except Exception as exc:
             cancel_event.set()
+            # 智谱等端点的内容安全审核(1301)非瞬态错误：重试无效，给出可操作指引
+            msg = str(exc)
+            code_attr = getattr(exc, "code", None)
+            is_content_filter = (
+                "1301" in msg
+                or "contentFilter" in msg
+                or (isinstance(code_attr, str) and "1301" in code_attr)
+            )
+            if is_content_filter:
+                raise RuntimeError(
+                    "内容被模型安全审核拦截(code 1301)。建议:① 更换模型(如 deepseek-chat);"
+                    "② 在深度配置中降低新闻/舆情分析深度后重试。"
+                ) from exc
             raise
 
         # 5) 映射成 AnalysisResult

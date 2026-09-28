@@ -176,6 +176,7 @@ def apply_compat_patches() -> None:
 
     _patch_tool_call_args_coercion()
     _patch_ai_message_init()
+    _patch_normalize_symbol_cn()
     _PATCH_APPLIED = True
 
 
@@ -296,3 +297,32 @@ def _patch_ai_message_validator() -> None:
     目前不启用,只在 tool_call_coercion 不够用时启用。
     """
     pass
+
+
+def _patch_normalize_symbol_cn() -> None:
+    """上游 normalize_symbol 对裸 6 位 A 股代码原样返回，yfinance 404（如 600276）。
+
+    按 Yahoo 口径补后缀：60/68/9 开头 → .SS，00/30/2 开头 → .SZ；其余路径保持原行为。
+    引用点两处：symbol_utils（源，覆盖 agent_utils/trading_graph 的函数内 import）
+    与 y_finance（模块级 from-import 绑定的副本）。幂等由 _PATCH_APPLIED 门保证。
+    """
+    try:
+        from tradingagents.dataflows import symbol_utils, y_finance
+    except ImportError:
+        return
+
+    orig = symbol_utils.normalize_symbol
+
+    def _patched_normalize_symbol(raw):
+        if isinstance(raw, str):
+            s = raw.strip().upper().rstrip("+")
+            if s.isdigit() and len(s) == 6:
+                if s.startswith(("60", "68", "9")):
+                    return f"{s}.SS"
+                if s.startswith(("00", "30", "2")):
+                    return f"{s}.SZ"
+        return orig(raw)
+
+    symbol_utils.normalize_symbol = _patched_normalize_symbol
+    if getattr(y_finance, "normalize_symbol", None) is orig:
+        y_finance.normalize_symbol = _patched_normalize_symbol

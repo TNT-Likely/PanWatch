@@ -2131,6 +2131,31 @@ CREATE TABLE IF NOT EXISTS valuation_series (
     )
 
 
+
+def _m128_tradingagents_timeout_default(conn: Connection) -> None:
+    """tradingagents 默认 timeout_minutes 15→30。
+
+    旧 seed 写死的 15 对 research_manager 阶段（单轮 LLM 最长 6.3 分钟）过紧，
+    实测 6 阶段完成后超时失败。仅迁移仍未定制值(=15)，用户显式改过的值不动。
+    """
+    row = conn.execute(
+        text("SELECT config FROM agent_configs WHERE name = 'tradingagents' LIMIT 1")
+    ).fetchone()
+    if row is None:
+        return
+    raw = row[0]
+    try:
+        cfg = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+    except (ValueError, TypeError):
+        return
+    if not isinstance(cfg, dict) or cfg.get("timeout_minutes") != 15:
+        return
+    cfg["timeout_minutes"] = 30
+    conn.execute(
+        text("UPDATE agent_configs SET config = :cfg WHERE name = 'tradingagents'"),
+        {"cfg": json.dumps(cfg, ensure_ascii=False)},
+    )
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2159,6 +2184,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(125, "assistant_task_protocol", _m125_assistant_task_protocol),
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
     Migration(127, "premarket_data_foundation", _m127_premarket_data_foundation),
+    Migration(128, "tradingagents_timeout_default", _m128_tradingagents_timeout_default),
 )
 
 
