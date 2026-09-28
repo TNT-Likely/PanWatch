@@ -37,7 +37,7 @@ const RATING_FALLBACK = {
   label: '观望',
   color: '#475569',
   soft: '#f8fafc',
-  gradFrom: '#94a3b8',
+  gradFrom: '#64748b',
   gradTo: '#475569',
 }
 const REVIEW_VISUAL = {
@@ -108,7 +108,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
         <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>
           {stockName}
         </div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>{date}</div>
+        <div style={{ fontSize: 14, color: '#64748b', fontWeight: 500, flexShrink: 0 }}>{date}</div>
       </div>
 
       {/* Hero:大评级 + 置信度条 + 成本 */}
@@ -205,7 +205,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
       )}
 
       {/* TA 卡专属副标(9-Agent),置于外壳分割线/页脚之上 */}
-      <div style={{ marginTop: 22, fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+      <div style={{ marginTop: 22, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
         AI 投研团队(9-Agent)深度分析
       </div>
     </ShareCardDialog>

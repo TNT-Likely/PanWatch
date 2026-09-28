@@ -72,7 +72,7 @@ function Sparkline({
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
       {/* 基准:灰色 */}
-      <path d={path('benchmark')} fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path('benchmark')} fill="none" stroke="#64748b" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       {/* 组合:品牌红(看多色,突出主角) */}
       <path d={path('portfolio')} fill="none" stroke={UP} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
@@ -116,7 +116,7 @@ export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkSh
         <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>
           AI 模拟盘成绩单
         </div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>近 {days} 天</div>
+        <div style={{ fontSize: 14, color: '#64748b', fontWeight: 500, flexShrink: 0 }}>近 {days} 天</div>
       </div>
 
       {/* Hero:超额收益 */}
@@ -165,7 +165,7 @@ export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkSh
               组合净值
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-              <span style={{ width: 14, height: 3, borderRadius: 2, background: '#94a3b8', display: 'inline-block' }} />
+              <span style={{ width: 14, height: 3, borderRadius: 2, background: '#64748b', display: 'inline-block' }} />
               {benchLabel}
             </span>
           </div>

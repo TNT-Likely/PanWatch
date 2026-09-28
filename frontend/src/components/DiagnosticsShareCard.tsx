@@ -55,7 +55,7 @@ function StatBox({ label, value, sub, color }: { label: string; value: string; s
       <div style={{ fontSize: 22, fontWeight: 800, color: color ?? SLATE, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
@@ -84,7 +84,7 @@ export default function DiagnosticsShareCard({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: SLATE }}>组合体检</div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>持仓结构 · 风险</div>
+        <div style={{ fontSize: 14, color: '#64748b', fontWeight: 500, flexShrink: 0 }}>持仓结构 · 风险</div>
       </div>
 
       {/* Hero:集中度(HHI) */}

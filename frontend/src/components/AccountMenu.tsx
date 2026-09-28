@@ -167,7 +167,7 @@ export default function AccountMenu({
                   <span className={value === 'up-red' ? 'text-stock-down' : 'text-stock-up'}>▼</span>
                 </span>
                 {sample}
-                <span className="text-mini text-muted-foreground/70">({label})</span>
+                <span className="text-mini text-muted-foreground/85">({label})</span>
                 {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
               </button>
             )

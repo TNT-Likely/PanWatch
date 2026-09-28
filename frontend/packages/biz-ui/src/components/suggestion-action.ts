@@ -9,14 +9,15 @@ export type SuggestionAction =
   | 'avoid'
 
 export const suggestionActionColors: Record<SuggestionAction, string> = {
-  buy: 'bg-stock-up text-white',
-  add: 'bg-stock-up text-white',
-  reduce: 'bg-stock-down text-white',
-  sell: 'bg-stock-down text-white',
-  hold: 'bg-amber-500 text-white',
-  watch: 'bg-slate-500 text-white',
-  alert: 'bg-blue-500 text-white',
-  avoid: 'bg-stock-up text-white',
+  // 动作徽章：暗色改「暗底亮字」——亮底白字在暗底上对比 1.67-3.06 不达 AA（审计）
+  buy: 'bg-stock-up text-white dark:bg-stock-up/15 dark:text-stock-up',
+  add: 'bg-stock-up text-white dark:bg-stock-up/15 dark:text-stock-up',
+  reduce: 'bg-stock-down text-white dark:bg-stock-down/15 dark:text-stock-down',
+  sell: 'bg-stock-down text-white dark:bg-stock-down/15 dark:text-stock-down',
+  hold: 'bg-amber-500 text-white dark:bg-amber-400/15 dark:text-amber-300',
+  watch: 'bg-slate-500 text-white dark:bg-slate-400/15 dark:text-slate-300',
+  alert: 'bg-blue-500 text-white dark:bg-blue-400/15 dark:text-blue-300',
+  avoid: 'bg-stock-up text-white dark:bg-stock-up/15 dark:text-stock-up',
 }
 
 export const suggestionActionLabels: Record<SuggestionAction, string> = {

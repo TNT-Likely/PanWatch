@@ -54,7 +54,7 @@ export interface ShareStockPalette {
  * 需在导出时读取当前生效值（自动跟随主题与口径）。
  */
 export function shareStockPalette(): ShareStockPalette {
-  const neutral = '#94a3b8'
+  const neutral = '#64748b'
   if (typeof document === 'undefined') {
     return { up: 'hsl(0 72% 51%)', down: 'hsl(152 70% 29%)', upSoft: 'hsl(0 72% 51% / 0.08)', downSoft: 'hsl(152 70% 29% / 0.08)', neutral }
   }

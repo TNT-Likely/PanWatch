@@ -313,8 +313,8 @@ export default function InteractiveKline(props: {
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       grid: {
-        vertLines: { color: 'rgba(148, 163, 184, 0.08)' },
-        horzLines: { color: 'rgba(148, 163, 184, 0.08)' },
+        vertLines: { color: 'rgba(148, 163, 184, 0.12)' },
+        horzLines: { color: 'rgba(148, 163, 184, 0.12)' },
       },
       crosshair: { mode: 1 },
     })
@@ -365,17 +365,17 @@ export default function InteractiveKline(props: {
         height: 150,
         layout: {
           background: { color: `hsl(${bg})` },
-          textColor: `hsl(${fg} / 0.75)`,
+          textColor: `hsl(${fg} / 0.85)`,
         },
         rightPriceScale: { borderVisible: false },
         timeScale: { borderVisible: false, visible: false },
         grid: {
-          vertLines: { color: 'rgba(148, 163, 184, 0.06)' },
-          horzLines: { color: 'rgba(148, 163, 184, 0.06)' },
+          vertLines: { color: 'rgba(148, 163, 184, 0.12)' },
+          horzLines: { color: 'rgba(148, 163, 184, 0.12)' },
         },
         crosshair: { mode: 0 },
       })
-      const macdLine = addLine(macdChart, LW, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
+      const macdLine = addLine(macdChart, LW, { color: 'rgba(129, 140, 248, 0.95)', lineWidth: 2 })
       const sigLine = addLine(macdChart, LW, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
       const hist = addHistogram(macdChart, LW, {
         priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
@@ -420,13 +420,13 @@ export default function InteractiveKline(props: {
         height: 110,
         layout: {
           background: { color: `hsl(${bg})` },
-          textColor: `hsl(${fg} / 0.75)`,
+          textColor: `hsl(${fg} / 0.85)`,
         },
         rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.15, bottom: 0.1 } },
         timeScale: { borderVisible: false, visible: false },
         grid: {
-          vertLines: { color: 'rgba(148, 163, 184, 0.06)' },
-          horzLines: { color: 'rgba(148, 163, 184, 0.06)' },
+          vertLines: { color: 'rgba(148, 163, 184, 0.12)' },
+          horzLines: { color: 'rgba(148, 163, 184, 0.12)' },
         },
       })
       const rsiLine = addLine(rsiChart, LW, { color: 'rgba(234, 88, 12, 0.9)', lineWidth: 2 })

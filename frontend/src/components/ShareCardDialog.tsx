@@ -88,7 +88,7 @@ export default function ShareCardDialog({
             <div style={{ height: 1, background: '#e2e8f0', margin: '24px 0 16px' }} />
 
             {/* 页脚:免责 + 品牌引流行(全体分享卡一致) */}
-            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
               仅供参考,不构成投资建议
             </div>
             <div

@@ -52,7 +52,7 @@ export default function DigestShareCard({ open, onClose, date, items }: DigestSh
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>今日盯盘</div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>{date}</div>
+        <div style={{ fontSize: 14, color: '#64748b', fontWeight: 500, flexShrink: 0 }}>{date}</div>
       </div>
       <div style={{ marginTop: 6, fontSize: 13, color: '#64748b' }}>
         持仓异动 / 机会 / 风险提醒 · AI 为你梳理的今日要点

@@ -57,21 +57,22 @@
   }
 
   .dark {
-    /* 暖黑暗色 · 与亮色同一色相系（非冷灰） */
-    --background: 24 8% 8%;
-    --foreground: 30 12% 92%;
-    --card: 24 7% 10%;
-    --card-foreground: 30 12% 92%;
-    --popover: 24 7% 11%;
-    --popover-foreground: 30 12% 92%;
+    /* 暖黑暗色 · 与亮色同一色相系（非冷灰）
+       文字三级阶梯经对比度审计上移（10px 非加粗 CJK 的舒适线：muted ≥8:1） */
+    --background: 24 6% 7%;
+    --foreground: 30 12% 95%;
+    --card: 24 5% 11%;
+    --card-foreground: 30 12% 95%;
+    --popover: 24 6% 11%;
+    --popover-foreground: 30 12% 95%;
     --primary: 234 85% 62%;
     --primary-foreground: 0 0% 100%;
     --secondary: 24 6% 15%;
-    --secondary-foreground: 30 10% 75%;
+    --secondary-foreground: 30 10% 82%;
     --muted: 24 6% 15%;
-    --muted-foreground: 26 6% 58%;
-    --accent: 24 6% 17%;
-    --accent-foreground: 30 12% 92%;
+    --muted-foreground: 26 8% 68%;
+    --accent: 24 5% 18%;
+    --accent-foreground: 30 12% 95%;
     --destructive: 0 65% 55%;
     --destructive-foreground: 0 0% 100%;
     --success: 161 60% 45%;
@@ -84,23 +85,23 @@
     --border-strong: 24 6% 24%;
     --input: 24 6% 18%;
     --ring: 234 85% 62%;
-    --highlight: 230 40% 20%;
-    --chip-amber-fg: 43 96% 70%;
+    --highlight: 230 40% 22%;
+    --chip-amber-fg: 43 96% 74%;
     --chip-amber-bg: 26 60% 14%;
-    --chip-sky-fg: 198 88% 66%;
+    --chip-sky-fg: 198 88% 70%;
     --chip-sky-bg: 205 60% 14%;
-    --chip-emerald-fg: 160 76% 60%;
+    --chip-emerald-fg: 160 76% 64%;
     --chip-emerald-bg: 165 60% 12%;
-    --chip-violet-fg: 258 90% 74%;
+    --chip-violet-fg: 258 90% 78%;
     --chip-violet-bg: 258 50% 16%;
-    --chip-rose-fg: 350 89% 72%;
+    --chip-rose-fg: 350 89% 76%;
     --chip-rose-bg: 348 55% 15%;
-    --chip-slate-fg: 213 20% 72%;
+    --chip-slate-fg: 213 20% 78%;
     --chip-slate-bg: 215 25% 14%;
     --chart-ma1: 201 90% 58%;
     --chart-ma2: 263 80% 68%;
     --chart-ma3: 38 92% 58%;
-    --chart-baseline: 26 6% 46%;
+    --chart-baseline: 26 8% 62%;
   }
 
   /* 涨跌色口径切换：绿涨红跌（欧美）——交换 stock-up/down 值，亮暗分别覆盖 */

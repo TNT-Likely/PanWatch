@@ -103,7 +103,7 @@ export default function SignalScoreShareCard({ open, onClose, item }: SignalScor
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: '#0f172a' }}>AI 选股评分</div>
-        <div style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>
+        <div style={{ fontSize: 14, color: '#64748b', fontWeight: 500, flexShrink: 0 }}>
           {marketLabel(item.stock_market)}
         </div>
       </div>
