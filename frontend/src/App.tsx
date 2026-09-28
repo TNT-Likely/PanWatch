@@ -139,7 +139,6 @@ function App() {
             onSetMode={setMode}
             onOpenLogs={() => setLogsOpen(true)}
             onOpenSelfCheck={() => setSelfCheckOpen(true)}
-            repoUrl={REPO_URL}
           />
 
           <div className="flex min-w-0 flex-1 flex-col">

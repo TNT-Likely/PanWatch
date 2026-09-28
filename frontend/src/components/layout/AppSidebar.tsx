@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Github, PanelLeftClose, PanelLeftOpen, ScrollText, Stethoscope, TrendingUp } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, ScrollText, Stethoscope, TrendingUp } from 'lucide-react'
 import type { ThemeMode } from '@/hooks/use-theme'
 import AccountMenu from '@/components/AccountMenu'
 import { preloadRoute } from '@/router/page-loaders'
@@ -12,7 +12,6 @@ interface AppSidebarProps {
   onSetMode: (m: ThemeMode) => void
   onOpenLogs: () => void
   onOpenSelfCheck: () => void
-  repoUrl: string
 }
 
 const iconBtnCls =
@@ -22,20 +21,12 @@ const iconBtnCls =
  * 桌面端可折叠侧边栏（md+）。
  * 全部 11 个页面按「盯盘 / 决策 / 复盘 / 系统」分组一级可达；折叠态持久化。
  */
-export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpenSelfCheck, repoUrl }: AppSidebarProps) {
+export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpenSelfCheck }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useLocalStorage('panwatch_sidebar_collapsed', false)
   const location = useLocation()
 
   const tools = (
     <>
-      <button
-        onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
-        className={iconBtnCls}
-        title="GitHub 项目"
-        aria-label="GitHub 项目"
-      >
-        <Github className="h-4 w-4" />
-      </button>
       <button onClick={onOpenLogs} className={iconBtnCls} title="查看日志" aria-label="查看日志">
         <ScrollText className="h-4 w-4" />
       </button>
@@ -111,7 +102,7 @@ export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpe
       <div
         className={`shrink-0 border-t border-border/60 p-2 ${collapsed ? 'flex flex-col items-center gap-1' : 'flex items-center gap-1'}`}
       >
-        <AccountMenu size="sm" mode={mode} onSetMode={onSetMode} onOpenSelfCheck={onOpenSelfCheck} />
+        <AccountMenu size="sm" side="top" mode={mode} onSetMode={onSetMode} onOpenSelfCheck={onOpenSelfCheck} />
         {tools}
       </div>
     </aside>
