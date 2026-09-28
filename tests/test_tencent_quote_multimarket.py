@@ -91,8 +91,8 @@ def test_us_fields_per_us_layout():
     assert q.prev_close == 335.92
     assert q.change_amount == 5.15  # 算术推导 341.07-335.92（与腾讯 30 位实测值一致）
     assert abs(q.change_pct - 1.5331) < 0.001  # 5.15/335.92
-    assert q.high_price is None  # 变长布局无稳定锚，宁缺勿错
-    assert q.low_price is None
+    assert q.high_price == 341.67  # USD 锚 -2（AAPL 振幅位 42=2.13 与此高低对算术互证）
+    assert q.low_price == 334.53  # USD 锚 -1
     assert q.turnover == 10179398058.0  # USD 锚 +2，USD
     assert q.pe_ratio == 39.11  # USD 锚 +4
     assert q.total_market_value == 49776.36973  # USD 锚 +10，亿 USD（Apple 双源核验）
@@ -100,6 +100,16 @@ def test_us_fields_per_us_layout():
     # 换手率推导：流通股数 = 49745.43亿/341.07 = 145.85 亿股；30002507/145.85e8*100 ≈ 0.2057%
     assert q.turnover_rate is not None
     assert abs(q.turnover_rate - 0.2057) < 0.0005
+
+
+def test_us_high_low_sanity_guard():
+    """USD-2 位若低于现价（锚漂移），最高价置 None 而不是输出错误值。"""
+    parts = US_LINE.rstrip('";').split('="', 1)[1].split("~")
+    parts[32] = "300.00"  # 低于现价 341.07，显然不是日内最高
+    q = _parse_line('v_usAAPL="' + "~".join(parts) + '";', "US")
+    assert q is not None
+    assert q.high_price is None
+    assert q.low_price == 334.53  # 低位不受影响
 
 
 def test_us_variable_length_layout_shift_robust():

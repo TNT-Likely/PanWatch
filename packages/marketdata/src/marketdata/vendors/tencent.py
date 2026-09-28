@@ -3,9 +3,9 @@
 三市场字段布局互不相同（2026-09-28 qt.gtimg.cn 实测取证）：
 - CN: 35=「价/量/额」复合(额为元)、38=换手%、39=PE、44=流通市值(亿)、45=总市值(亿)、49=量比
 - HK: 35 无复合结构、37=成交额(元)、无换手率字段(38 恒 0)、39=PE、44/45=市值(亿 HKD)、49 非量比
-- US: 变长布局(实测 67/70 字段,30 位后整体漂移)——以字面量锚 "USD" 的相对偏移取
-      成交额(+2,USD)/PE(+4)/流通市值(+9,亿 USD)/总市值(+10,亿 USD);涨跌由现价/昨收算术推导
-      (Apple 双源核验：$339.33→$4.98T，折算收盘价吻合，差 0.6% 为回购缩股)；高低位无稳定锚置 None
+- US: 变长布局(实测 67/70/71 字段,30 位后整体漂移)——以字面量锚 "USD" 的相对偏移取
+      最高(-2)/最低(-1)/成交额(+2,USD)/PE(+4)/流通市值(+9,亿 USD)/总市值(+10,亿 USD);
+      涨跌由现价/昨收算术推导(Apple 市值双源核验：$339.33→$4.98T，折算吻合，差 0.6% 为回购缩股)
 """
 
 from __future__ import annotations
@@ -103,10 +103,11 @@ def _parse_us_fields(parts: list[str], price: float, volume: float) -> dict:
     # 美股为变长布局(实测 67/70 字段两种,盘前/盘中字段增删使 30 位之后整体移位,绝对索引不可靠)。
     # 仅接三类可靠来源:
     #   1) 头部固定区: 3=现价 4=昨收 5=今开 6=成交量(股) —— 三次取样稳定
-    #   2) 字面量锚 "USD"(货币标记,唯一)之后的相对偏移: +2=成交额(USD) +4=PE +9=流通市值(亿 USD)
-    #      +10=总市值(亿 USD) —— 两种布局交叉验证一致(Apple 市值另经外部报道双源核验)
+    #   2) 字面量锚 "USD"(货币标记,唯一)之后的相对偏移: -2=最高 -1=最低 +2=成交额(USD) +4=PE
+    #      +9=流通市值(亿 USD) +10=总市值(亿 USD) —— 三样本交叉验证(usCD/usAAPL 两种字段数),
+    #      且 AAPL 振幅位 42=2.13 与 (最高-最低)/昨收 精确互证;Apple 市值另经外部报道双源核验
     #   3) 算术推导: 涨跌额/涨跌% = 现价-昨收 / 现价/昨收-1(与取样值精确吻合)
-    # 最高/最低位无稳定锚,置 None(宁缺勿错),后续取到稳定锚再接。
+    # 最高/最低取 USD 锚相对位并加合理性守卫(最高>=现价、最低<=现价),漂移即置 None(前端显示 --)。
     prev_close = _to_float(parts[4]) or 0.0
     open_price = _to_float(parts[5]) or 0.0
     change_amount = round(price - prev_close, 4) if price and prev_close else 0.0
@@ -119,6 +120,14 @@ def _parse_us_fields(parts: list[str], price: float, volume: float) -> dict:
         return _to_float(parts[idx]) if usd >= 0 and 0 <= idx < len(parts) else None
 
     circulating = _at(9)
+
+    high = _at(-2)
+    low = _at(-1)
+    if high is not None and price and high < price:
+        high = None
+    if low is not None and price and low > price:
+        low = None
+
     return {
         "turnover": _at(2) or 0.0,
         "turnover_rate": _derived_turnover_rate(volume, price, circulating),
@@ -128,8 +137,8 @@ def _parse_us_fields(parts: list[str], price: float, volume: float) -> dict:
         "volume_ratio": None,
         "change_amount": change_amount,
         "change_pct": change_pct,
-        "high_price": None,  # 变长布局无稳定锚,置 None(前端显示 --)
-        "low_price": None,
+        "high_price": high,
+        "low_price": low,
         "prev_close": prev_close,
         "open_price": open_price,
     }
