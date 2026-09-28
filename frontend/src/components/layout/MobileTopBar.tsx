@@ -33,7 +33,7 @@ export default function MobileTopBar({
           <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary shadow-sm">
             <TrendingUp className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="text-body font-bold tracking-tight text-foreground">PanWatch</span>
+          <span className="text-body font-bold tracking-tight text-foreground">AiWatch</span>
           {version && <span className="text-mini text-muted-foreground">v{version}</span>}
         </NavLink>
 

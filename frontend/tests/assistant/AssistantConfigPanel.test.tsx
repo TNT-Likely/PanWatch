@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AssistantConfigPanel } from '@/components/assistant/AssistantConfigPanel'
-import { chatApi } from '@panwatch/api'
+import { chatApi } from '@aiwatch/api'
 
 const config = {
   compression_model_id: 6,

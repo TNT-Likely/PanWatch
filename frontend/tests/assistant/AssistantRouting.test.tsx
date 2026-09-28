@@ -4,10 +4,10 @@ import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
-import { chatApi } from '@panwatch/api'
+import { chatApi } from '@aiwatch/api'
 import AssistantPage from '@/pages/Assistant'
 
-vi.mock('@panwatch/api', () => ({
+vi.mock('@aiwatch/api', () => ({
   chatApi: {
     listConversations: vi.fn(),
     getConversation: vi.fn(),

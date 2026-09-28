@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
+import MarkdownView from '@aiwatch/biz-ui/components/markdown-view'
 
 /** 与生产同构的 GFM 管道表样例:表头 + 对齐分隔行 + 数据行。 */
 const GFM_TABLE = ['| 指标 | 数值 |', '| --- | ---: |', '| 涨幅 | 3.2% |', '| 回撤 | -1.8% |'].join('\n')

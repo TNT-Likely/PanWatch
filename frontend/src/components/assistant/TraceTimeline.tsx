@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, ChevronDown, FileClock, Gauge, ListTree, PauseCircle, Search, Wrench } from 'lucide-react'
 import { useState } from 'react'
-import type { AssistantTraceEvent } from '@panwatch/api'
+import type { AssistantTraceEvent } from '@aiwatch/api'
 
 interface TraceTimelineProps {
   events: AssistantTraceEvent[]

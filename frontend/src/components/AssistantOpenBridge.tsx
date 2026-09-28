@@ -31,8 +31,8 @@ export default function AssistantOpenBridge() {
         },
       })
     }
-    window.addEventListener('panwatch-open-chat', handler)
-    return () => window.removeEventListener('panwatch-open-chat', handler)
+    window.addEventListener('aiwatch-open-chat', handler)
+    return () => window.removeEventListener('aiwatch-open-chat', handler)
   }, [navigate])
 
   return null

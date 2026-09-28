@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { klinesApi } from '@panwatch/api/klines'
+import { klinesApi } from '@aiwatch/api/klines'
 
 describe('klinesApi', () => {
   afterEach(() => {

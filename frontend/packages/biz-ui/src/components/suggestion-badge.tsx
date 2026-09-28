@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
-import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import { KlineSummaryDialog } from '@aiwatch/biz-ui/components/kline-summary-dialog'
+import { KlineIndicators } from '@aiwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { fetchAPI } from '@panwatch/api'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { AiSuggestionBadge } from '@panwatch/biz-ui/components/ai-suggestion-badge'
-import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
+import { fetchAPI } from '@aiwatch/api'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import { AiSuggestionBadge } from '@aiwatch/biz-ui/components/ai-suggestion-badge'
+import { TechnicalBadge, technicalToneFromSuggestionAction } from '@aiwatch/biz-ui/components/technical-badge'
 
 export interface SuggestionInfo {
   id?: number
@@ -168,7 +168,7 @@ export function SuggestionBadge({
     setDialogOpen(open)
     if (!open) {
       try {
-        ;(window as any).__panwatch_suppress_card_click_until = Date.now() + 600
+        ;(window as any).__aiwatch_suppress_card_click_until = Date.now() + 600
       } catch {
         // ignore
       }

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { fetchAPI, isAuthenticated } from '@panwatch/api'
+import { fetchAPI, isAuthenticated } from '@aiwatch/api'
 
 /**
  * 涨跌颜色口径（红涨绿跌 ↔ 绿涨红跌）全局状态。
@@ -9,7 +9,9 @@ import { fetchAPI, isAuthenticated } from '@panwatch/api'
  */
 export type StockColorMode = 'up-red' | 'up-green'
 
-const STORAGE_KEY = 'panwatch-stock-mode'
+const STORAGE_KEY = 'aiwatch-stock-mode'
+// 旧版品牌键：仅用于读取回落，读到后回写新键（write-through），保留不清除
+const LEGACY_KEY = 'panwatch-stock-mode'
 
 let current: StockColorMode = 'up-red'
 const listeners = new Set<() => void>()
@@ -23,9 +25,23 @@ function apply(m: StockColorMode) {
   else delete document.documentElement.dataset.stockMode
 }
 
+// 读取：新键优先，缺失时回落旧品牌键，并把旧值回写新键（write-through）
+function readStoredValue(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  const v = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
+  if (v !== null && localStorage.getItem(STORAGE_KEY) === null) {
+    try {
+      localStorage.setItem(STORAGE_KEY, v)
+    } catch {
+      /* ignore */
+    }
+  }
+  return v
+}
+
 // 模块加载即同步 localStorage 已有口径到状态与 DOM（index.html 内联脚本只设 DOM，
 // React 状态必须在此处对齐，否则 Select 等受控组件与实际口径不一致）
-const initialMode = parseMode(typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null) ?? 'up-red'
+const initialMode = parseMode(readStoredValue()) ?? 'up-red'
 current = initialMode
 apply(initialMode)
 
@@ -59,7 +75,7 @@ export function useStockColorMode(): StockColorMode {
  */
 export async function initStockModeFromBackend(): Promise<void> {
   if (typeof localStorage === 'undefined') return
-  if (parseMode(localStorage.getItem(STORAGE_KEY))) return // 本地值优先
+  if (parseMode(readStoredValue())) return // 本地值优先
   if (!isAuthenticated()) return
   try {
     const settings = await fetchAPI<Array<{ key: string; value: string }>>('/settings')

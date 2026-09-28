@@ -1,5 +1,5 @@
 import { Gauge } from 'lucide-react'
-import type { ContextUsage } from '@panwatch/api'
+import type { ContextUsage } from '@aiwatch/api'
 
 interface ContextUsageIndicatorProps {
   usage: ContextUsage | null

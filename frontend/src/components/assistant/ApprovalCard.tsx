@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
-import type { AssistantApproval } from '@panwatch/api'
+import type { AssistantApproval } from '@aiwatch/api'
 
 interface ApprovalCardProps {
   approval: AssistantApproval

@@ -18,7 +18,7 @@ describe('AssistantOpenBridge', () => {
       </MemoryRouter>,
     )
 
-    window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
+    window.dispatchEvent(new CustomEvent('aiwatch-open-chat', {
       detail: { symbol: '600519', market: 'CN', stockName: '贵州茅台', pageContext: '行情上下文' },
     }))
 

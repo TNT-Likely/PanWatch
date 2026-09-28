@@ -1,4 +1,4 @@
-import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
+import { shareStockPalette } from '@aiwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 /** digest 单条:与 Dashboard 的 feed(CurateCandidate & { why }）同构。 */

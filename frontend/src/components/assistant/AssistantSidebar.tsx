@@ -1,5 +1,5 @@
 import { MessageSquareText, Plus, Trash2 } from 'lucide-react'
-import type { ChatConversation } from '@panwatch/api'
+import type { ChatConversation } from '@aiwatch/api'
 
 interface AssistantSidebarProps {
   conversations: ChatConversation[]

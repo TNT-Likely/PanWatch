@@ -1,5 +1,5 @@
 import { Check, Loader2, Minimize2, X } from 'lucide-react'
-import type { AssistantContextDetail, AssistantContextSnapshot, ContextUsage } from '@panwatch/api'
+import type { AssistantContextDetail, AssistantContextSnapshot, ContextUsage } from '@aiwatch/api'
 
 interface ContextPanelProps {
   detail: AssistantContextDetail | null

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { fetchAPI } from '@panwatch/api'
+import { fetchAPI } from '@aiwatch/api'
 
-const EVENT = 'panwatch:avatar-changed'
+const EVENT = 'aiwatch:avatar-changed'
 
 // 仅 SPA 会话内的内存缓存(避免一次会话内重复请求)。
-// 真正的持久化在后端 DB(data/panwatch.db 的 ui_avatar),刷新后会重新从后端拉取。
+// 真正的持久化在后端 DB(data/aiwatch.db 的 ui_avatar),刷新后会重新从后端拉取。
 let cache: string | null = null
 let inflight: Promise<string> | null = null
 

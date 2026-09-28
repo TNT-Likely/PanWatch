@@ -22,7 +22,7 @@ const iconBtnCls =
  * 全部 11 个页面按「盯盘 / 决策 / 复盘 / 系统」分组一级可达；折叠态持久化。
  */
 export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpenSelfCheck }: AppSidebarProps) {
-  const [collapsed, setCollapsed] = useLocalStorage('panwatch_sidebar_collapsed', false)
+  const [collapsed, setCollapsed] = useLocalStorage('aiwatch_sidebar_collapsed', false)
   const location = useLocation()
 
   const tools = (
@@ -57,7 +57,7 @@ export default function AppSidebar({ version, mode, onSetMode, onOpenLogs, onOpe
         </div>
         {!collapsed && (
           <span className="flex items-baseline gap-1.5 overflow-hidden">
-            <span className="text-body font-bold tracking-tight text-foreground">PanWatch</span>
+            <span className="text-body font-bold tracking-tight text-foreground">AiWatch</span>
             {version && <span className="text-mini text-muted-foreground">v{version}</span>}
           </span>
         )}

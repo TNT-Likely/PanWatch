@@ -10,11 +10,11 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@panwatch/base-ui/components/ui/tabs'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@aiwatch/base-ui/components/ui/tabs'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import { HoverPopover } from '@aiwatch/base-ui/components/ui/hover-popover'
 import {
   subscribeSSE,
   tradingAgentsApi,
@@ -23,7 +23,7 @@ import {
   type ProgressResponse,
   type ProgressDataSource,
   type ProgressStage,
-} from '@panwatch/api'
+} from '@aiwatch/api'
 import {
   isTerminalProgressStatus,
   shouldContinueProgressWatch,
@@ -51,7 +51,7 @@ const DECISION_COLOR: Record<string, string> = {
 const POLL_INTERVAL_MS = 2000
 
 /** localStorage 里记录某只股票最近一次触发的 trace_id;关闭重开弹窗时恢复 polling */
-const STORAGE_KEY_PREFIX = 'panwatch:tradingagents:running:'
+const STORAGE_KEY_PREFIX = 'aiwatch:tradingagents:running:'
 /** trace_id 持续多久后认为可能已不再运行(避免显示过期 trace 的 idle) */
 const TRACE_MAX_AGE_MS = 60 * 60 * 1000  // 与后端 running 生命周期窗口保持一致并留出恢复余量
 
@@ -590,7 +590,7 @@ export function ToolkitDiagnostics({
       <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
         <span className="font-medium">数据注入诊断</span>
         <span className="text-caption text-muted-foreground">
-          (PanWatch 数据 → TradingAgents 工具)
+          (AiWatch 数据 → TradingAgents 工具)
         </span>
         <span className="ml-auto text-caption whitespace-nowrap">
           <span className={ACTION_CLS.HIT}>HIT {hit}</span>
@@ -601,8 +601,8 @@ export function ToolkitDiagnostics({
         </span>
       </summary>
       <div className="text-mini text-muted-foreground mt-2 leading-relaxed">
-        <span className={ACTION_CLS.HIT}>HIT</span>: 用 PanWatch 数据 ·{' '}
-        <span className={ACTION_CLS.MISS}>MISS</span>: 命中但 PanWatch 未实现 ·{' '}
+        <span className={ACTION_CLS.HIT}>HIT</span>: 用 AiWatch 数据 ·{' '}
+        <span className={ACTION_CLS.MISS}>MISS</span>: 命中但 AiWatch 未实现 ·{' '}
         <span className={ACTION_CLS.PASSTHROUGH}>透传</span>: 非 A 股直接走上游 vendor ·{' '}
         <span className={ACTION_CLS.FALLTHROUGH}>兜底</span>: A 股但 cache 为空,走了上游
       </div>

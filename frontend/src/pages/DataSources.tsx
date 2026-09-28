@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight, Globe, Activity } from 'lucide-react'
-import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { Badge } from '@panwatch/base-ui/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@aiwatch/api'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { Badge } from '@aiwatch/base-ui/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 interface TestLogItem {
   timestamp: string

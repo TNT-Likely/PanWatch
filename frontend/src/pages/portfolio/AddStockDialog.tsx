@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { RefreshCw, Search } from 'lucide-react'
-import { fetchAPI, stocksApi } from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { Badge } from '@panwatch/base-ui/components/ui/badge'
+import { fetchAPI, stocksApi } from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { Badge } from '@aiwatch/base-ui/components/ui/badge'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@panwatch/base-ui/components/ui/dialog'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+} from '@aiwatch/base-ui/components/ui/dialog'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 import { type SearchResult, type StockForm, emptyStockForm } from './types'
 
 function marketLabel(m: string): string {

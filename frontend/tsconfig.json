@@ -18,12 +18,12 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@panwatch/api": ["./packages/api/src/index.ts"],
-      "@panwatch/api/*": ["./packages/api/src/*"],
-      "@panwatch/base-ui": ["./packages/base-ui/src/index.ts"],
-      "@panwatch/base-ui/*": ["./packages/base-ui/src/*"],
-      "@panwatch/biz-ui": ["./packages/biz-ui/src/index.ts"],
-      "@panwatch/biz-ui/*": ["./packages/biz-ui/src/*"]
+      "@aiwatch/api": ["./packages/api/src/index.ts"],
+      "@aiwatch/api/*": ["./packages/api/src/*"],
+      "@aiwatch/base-ui": ["./packages/base-ui/src/index.ts"],
+      "@aiwatch/base-ui/*": ["./packages/base-ui/src/*"],
+      "@aiwatch/biz-ui": ["./packages/biz-ui/src/index.ts"],
+      "@aiwatch/biz-ui/*": ["./packages/biz-ui/src/*"]
     }
   },
   "include": ["src", "packages/*/src"]

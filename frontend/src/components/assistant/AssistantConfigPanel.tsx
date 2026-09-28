@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, Cpu } from 'lucide-react'
-import { chatApi, type AssistantConfig, type AssistantConfigUpdate } from '@panwatch/api'
+import { chatApi, type AssistantConfig, type AssistantConfigUpdate } from '@aiwatch/api'
 
 interface AssistantConfigForm {
   compression_model_id: string

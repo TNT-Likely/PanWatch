@@ -1,4 +1,4 @@
-import type { AgentPermissions } from '@panwatch/api'
+import type { AgentPermissions } from '@aiwatch/api'
 
 type ToolRisk = 'read' | 'write' | 'external' | 'destructive'
 type PermissionMode = 'allow' | 'ask' | 'deny'

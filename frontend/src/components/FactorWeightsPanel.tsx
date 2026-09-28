@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Scale } from 'lucide-react'
-import { factorsApi, type FactorWeight } from '@panwatch/api'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
+import { factorsApi, type FactorWeight } from '@aiwatch/api'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
 
 const FACTOR_LABELS: Record<string, string> = {
   alpha_score: '选股α',

@@ -10,7 +10,7 @@ import {
   type AssistantTraceEvent,
   type ChatConversation,
   type ChatMessage,
-} from '@panwatch/api'
+} from '@aiwatch/api'
 import { ApprovalCard } from '@/components/assistant/ApprovalCard'
 import { AssistantPermissionsDrawer } from '@/components/assistant/AssistantPermissionsDrawer'
 import { AssistantSidebar } from '@/components/assistant/AssistantSidebar'
@@ -42,7 +42,7 @@ interface ChatWidgetProps {
 }
 
 function taskStorageKey(conversationId: number): string {
-  return 'panwatch:assistant-task:' + conversationId
+  return 'aiwatch:assistant-task:' + conversationId
 }
 
 function approvalFromSnapshot(approval: {

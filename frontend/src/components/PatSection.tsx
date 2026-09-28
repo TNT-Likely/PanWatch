@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Copy, Plus, Trash2, KeyRound } from 'lucide-react'
-import { patsApi, type PatItem } from '@panwatch/api'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { patsApi, type PatItem } from '@aiwatch/api'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 /**
  * MCP 访问令牌(PAT)管理。
  *
- * 令牌用于 Claude 等 MCP client 连接 PanWatch 的 MCP 端点(/mcp)。
+ * 令牌用于 Claude 等 MCP client 连接 AiWatch 的 MCP 端点(/mcp)。
  * 明文仅创建时返回一次;列表只显示前缀。
  */
 export default function PatSection() {

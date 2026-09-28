@@ -1,21 +1,21 @@
 import { Suspense, useState, useEffect, useRef } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { useTheme } from '@/hooks/use-theme'
-import { appApi } from '@panwatch/api/app'
-import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
-import LogsModal from '@panwatch/biz-ui/components/logs-modal'
-import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
+import { appApi } from '@aiwatch/api/app'
+import { fetchAPI, isAuthenticated } from '@aiwatch/api/client'
+import LogsModal from '@aiwatch/biz-ui/components/logs-modal'
+import AmbientBackground from '@aiwatch/biz-ui/components/AmbientBackground'
 import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
 import { RouteErrorBoundary, RouteLoadingFallback } from '@/components/RouteBoundary'
 import { routePages } from '@/router/page-loaders'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
 import AppSidebar from '@/components/layout/AppSidebar'
 import MobileTopBar from '@/components/layout/MobileTopBar'
 import MobileTabBar from '@/components/layout/MobileTabBar'
 import MobileNavDrawer from '@/components/layout/MobileNavDrawer'
-import { initStockModeFromBackend } from '@panwatch/base-ui/hooks/use-stock-mode'
+import { initStockModeFromBackend } from '@aiwatch/base-ui/hooks/use-stock-mode'
 
 const {
   LoginPage,
@@ -33,7 +33,7 @@ const {
   AssistantPage,
 } = routePages
 
-const REPO_URL = 'https://github.com/TNT-Likely/PanWatch'
+const REPO_URL = 'https://github.com/TNT-Likely/AiWatch'
 
 // 认证守卫组件
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -101,9 +101,9 @@ function App() {
         const latest = String(res?.latest_version || '').trim()
         const shouldOpen = !!res?.update_available && !!latest
         if (!shouldOpen) return
-        const dismissed = localStorage.getItem('panwatch_upgrade_dismissed_version') || ''
+        const dismissed = localStorage.getItem('aiwatch_upgrade_dismissed_version') || ''
         if (dismissed === latest) return
-        setUpgradeInfo({ latest, url: String(res?.release_url || 'https://github.com/sunxiao0721/PanWatch/releases') })
+        setUpgradeInfo({ latest, url: String(res?.release_url || 'https://github.com/TNT-Likely/AiWatch/releases') })
         setUpgradeOpen(true)
       })
       .catch(() => {})
@@ -211,7 +211,7 @@ function App() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  if (upgradeInfo?.latest) localStorage.setItem('panwatch_upgrade_dismissed_version', upgradeInfo.latest)
+                  if (upgradeInfo?.latest) localStorage.setItem('aiwatch_upgrade_dismissed_version', upgradeInfo.latest)
                   setUpgradeOpen(false)
                 }}
               >
@@ -219,7 +219,7 @@ function App() {
               </Button>
               <Button
                 onClick={() => {
-                  const url = upgradeInfo?.url || 'https://github.com/sunxiao0721/PanWatch/releases'
+                  const url = upgradeInfo?.url || 'https://github.com/TNT-Likely/AiWatch/releases'
                   window.open(url, '_blank', 'noopener,noreferrer')
                 }}
               >

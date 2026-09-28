@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Search, Trash2, RefreshCw, ScrollText, ChevronDown } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { fetchAPI, subscribeSSE } from '@panwatch/api'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { fetchAPI, subscribeSSE } from '@aiwatch/api'
 import { mapLoggerName, loggerOptions } from '@/lib/logger-map'
 import { useLocalStorage } from '@/lib/utils'
 
@@ -67,7 +67,7 @@ const FLOW_PRESETS: Array<{ key: string, label: string, loggers: string[] }> = [
   {
     key: 'tradingagents',
     label: '深度分析',
-    // 'tradingagents' 子串同时匹配 PanWatch 适配层 (src.agents.tradingagents.*) 和上游 (tradingagents.*)
+    // 'tradingagents' 子串同时匹配 AiWatch 适配层 (src.agents.tradingagents.*) 和上游 (tradingagents.*)
     loggers: ['tradingagents', 'src.agents.base', 'src.core.scheduler', 'src.core.notifier'],
   },
 ]
@@ -87,8 +87,8 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
   const [timeRange, setTimeRange] = useState(0)
   const [selectedLoggers, setSelectedLoggers] = useState<string[]>([])
   const [selectedFlow, setSelectedFlow] = useState('')
-  const [domain, setDomain] = useLocalStorage<'business' | 'all' | 'infra'>('panwatch_logs_modal_domain', 'business')
-  const [autoRefresh, setAutoRefresh] = useLocalStorage('panwatch_logs_modal_autoRefresh', false)
+  const [domain, setDomain] = useLocalStorage<'business' | 'all' | 'infra'>('aiwatch_logs_modal_domain', 'business')
+  const [autoRefresh, setAutoRefresh] = useLocalStorage('aiwatch_logs_modal_autoRefresh', false)
   const [showAllLoggerFilters, setShowAllLoggerFilters] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [beforeId, setBeforeId] = useState<number>(0)

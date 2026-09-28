@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, Plus, Pencil, Trash2 } from 'lucide-react'
-import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { fetchAPI, stocksApi, type NotifyChannel } from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@aiwatch/biz-ui/components/price-alert-form-dialog'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 interface StockItem {
   id: number

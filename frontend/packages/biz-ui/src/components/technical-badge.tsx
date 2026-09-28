@@ -1,7 +1,7 @@
 import type { MouseEventHandler } from 'react'
-import { cn } from '@panwatch/base-ui'
-import { BadgeChip, type BadgeChipSize } from '@panwatch/biz-ui/components/badge-chip'
-import { normalizeSuggestionAction, type SuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
+import { cn } from '@aiwatch/base-ui'
+import { BadgeChip, type BadgeChipSize } from '@aiwatch/biz-ui/components/badge-chip'
+import { normalizeSuggestionAction, type SuggestionAction } from '@aiwatch/biz-ui/components/suggestion-action'
 
 export type TechnicalBadgeTone = 'neutral' | 'bullish' | 'bearish' | 'warning' | 'info' | SuggestionAction
 

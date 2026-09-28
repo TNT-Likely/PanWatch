@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { chatApi } from '@panwatch/api'
+import { chatApi } from '@aiwatch/api'
 import ChatWidget from '@/components/ChatWidget'
 
-vi.mock('@panwatch/api', () => ({
+vi.mock('@aiwatch/api', () => ({
   chatApi: {
     listConversations: vi.fn().mockResolvedValue([]),
     createConversation: vi.fn().mockResolvedValue({
@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe('ChatWidget layout', () => {
   it('reconnects a running durable task after a refresh', async () => {
-    sessionStorage.setItem('panwatch:assistant-task:1', '88')
+    sessionStorage.setItem('aiwatch:assistant-task:1', '88')
     vi.mocked(chatApi.getAssistantTask)
       .mockResolvedValueOnce({
         id: 88,
@@ -69,7 +69,7 @@ describe('ChatWidget layout', () => {
       expect.any(AbortSignal),
     ))
     await screen.findByText('后台任务已完成')
-    await waitFor(() => expect(sessionStorage.getItem('panwatch:assistant-task:1')).toBeNull())
+    await waitFor(() => expect(sessionStorage.getItem('aiwatch:assistant-task:1')).toBeNull())
   })
 
   it('does not restore an approval from a conversation that was left before the response arrived', async () => {
@@ -85,7 +85,7 @@ describe('ChatWidget layout', () => {
     vi.mocked(chatApi.getAssistantTask).mockImplementationOnce(() => new Promise((resolve) => {
       resolveTask = resolve
     }))
-    sessionStorage.setItem('panwatch:assistant-task:1', '99')
+    sessionStorage.setItem('aiwatch:assistant-task:1', '99')
 
     const onConversationChange = vi.fn()
     const { rerender } = render(
@@ -110,7 +110,7 @@ describe('ChatWidget layout', () => {
     })
 
     await waitFor(() => expect(screen.queryByText('不应显示')).toBeNull())
-    sessionStorage.removeItem('panwatch:assistant-task:1')
+    sessionStorage.removeItem('aiwatch:assistant-task:1')
   })
 
   it('uses the sidebar new research entry instead of a duplicate header plus', async () => {

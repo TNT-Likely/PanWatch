@@ -1,5 +1,5 @@
-import { type PortfolioDiagnostics } from '@panwatch/api'
-import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
+import { type PortfolioDiagnostics } from '@aiwatch/api'
+import { shareStockPalette } from '@aiwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface DiagnosticsShareCardProps {

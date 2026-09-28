@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-export { cn } from '@panwatch/base-ui'
+export { cn } from '@aiwatch/base-ui'
 
 /**
  * 持久化到 localStorage 的 useState

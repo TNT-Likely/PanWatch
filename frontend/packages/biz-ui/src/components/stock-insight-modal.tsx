@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
-import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
+import MarkdownView from '@aiwatch/biz-ui/components/markdown-view'
 import {
   insightApi,
   stocksApi,
   tradingAgentsApi,
   type DeepAnalysisResult,
   type HistoryComparisonResponse,
-} from '@panwatch/api'
-import { getMarketBadge } from '@panwatch/biz-ui'
+} from '@aiwatch/api'
+import { getMarketBadge } from '@aiwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import InteractiveKline from '@panwatch/biz-ui/components/InteractiveKline'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aiwatch/base-ui/components/ui/select'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@aiwatch/biz-ui/components/suggestion-badge'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import InteractiveKline from '@aiwatch/biz-ui/components/InteractiveKline'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
+import StockPriceAlertPanel from '@aiwatch/biz-ui/components/stock-price-alert-panel'
 import {
   formatNumber,
   formatCompactNumber,
@@ -35,7 +35,7 @@ import {
   TechnicalIndicatorStrip,
   DeepAnalysisSection,
 } from './stock-insight-parts'
-import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
+import AddPositionCalculator from '@aiwatch/biz-ui/components/add-position-calculator'
 
 function stockHslRaw(which: 'up' | 'down'): string {
   const s = getComputedStyle(document.documentElement)
@@ -801,7 +801,7 @@ export default function StockInsightModal(props: {
   const shareText = useMemo(() => {
     const { marketLabel, price, chg, action, signal, reason, risks, trigger, invalidation, technicalBrief, levelsBrief, source, ts } = shareCardPayload
     const lines = [
-      `【PanWatch 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
+      `【AiWatch 洞察】${resolvedName}（${symbol} · ${marketLabel}）`,
       `时间：${ts}`,
       `现价：${price}（${chg}）`,
       `建议：${action}`,
@@ -844,7 +844,7 @@ export default function StockInsightModal(props: {
   </defs>
   <rect x="0" y="0" width="1200" height="630" fill="url(#bg)"/>
   <rect x="40" y="30" width="1120" height="570" rx="22" fill="#0f172a" stroke="#1f2937"/>
-  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">PanWatch 洞察</text>
+  <text x="76" y="104" fill="#93c5fd" font-size="26" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">AiWatch 洞察</text>
   <text x="76" y="150" fill="#f8fafc" font-size="42" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(trim(`${resolvedName}（${symbol} · ${marketLabel}）`, 28))}</text>
   <text x="76" y="198" fill="#94a3b8" font-size="22" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">${esc(ts)}</text>
 
@@ -889,7 +889,7 @@ export default function StockInsightModal(props: {
       const png = canvas.toDataURL('image/png')
       const a = document.createElement('a')
       a.href = png
-      a.download = `panwatch-${symbol}-${Date.now()}.png`
+      a.download = `aiwatch-${symbol}-${Date.now()}.png`
       a.click()
       toast('分享图片已生成并下载', 'success')
     } catch {
@@ -1146,7 +1146,7 @@ export default function StockInsightModal(props: {
                   size="sm"
                   className="h-8 px-2.5"
                   onClick={() => {
-                    window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
+                    window.dispatchEvent(new CustomEvent('aiwatch-open-chat', {
                       detail: { symbol, market, stockName: resolvedName, pageContext: buildPageContext() }
                     }))
                     props.onOpenChange(false)
@@ -1187,7 +1187,7 @@ export default function StockInsightModal(props: {
                 size="sm"
                 className="h-8 px-2.5 shrink-0"
                 onClick={() => {
-                  window.dispatchEvent(new CustomEvent('panwatch-open-chat', {
+                  window.dispatchEvent(new CustomEvent('aiwatch-open-chat', {
                     detail: { symbol, market, stockName: resolvedName, pageContext: buildPageContext() }
                   }))
                   props.onOpenChange(false)

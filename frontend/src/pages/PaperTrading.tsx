@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
+import { useStockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
   paperTradingApi,
@@ -10,11 +10,11 @@ import {
   type StrategyPerformanceItem,
   type NotifyChannelItem,
   type MarketView,
-} from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+} from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 const EXIT_REASON_MAP: Record<string, string> = {
   stop_loss: '止损',

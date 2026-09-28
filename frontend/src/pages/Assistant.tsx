@@ -9,7 +9,7 @@ function parseConversationId(rawId: string | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
-/** Navigation-level home for the PanAgent-powered interactive assistant. */
+/** Navigation-level home for the AiAgent-powered interactive assistant. */
 export default function AssistantPage() {
   const { conversationId: rawConversationId } = useParams<{ conversationId?: string }>()
   const conversationId = parseConversationId(rawConversationId)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2, TrendingUp } from 'lucide-react'
-import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
+import MarkdownView from '@aiwatch/biz-ui/components/markdown-view'
 import {
   dashboardApi,
   portfolioApi,
@@ -24,17 +24,17 @@ import {
   type PortfolioAiReview,
   type DashboardBrief,
   type SectorPredictionItem,
-} from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+} from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Onboarding } from '@aiwatch/biz-ui/components/onboarding'
+import StockInsightModal from '@aiwatch/biz-ui/components/stock-insight-modal'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
 import Sparkline from '@/components/Sparkline'
 import BenchChart from '@/components/BenchChart'
 import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
-import { moveColor, pctChipCls, fmtMoney, fmtPct as pct, PageHeader, PnlText } from '@panwatch/base-ui/components/patterns'
+import { moveColor, pctChipCls, fmtMoney, fmtPct as pct, PageHeader, PnlText } from '@aiwatch/base-ui/components/patterns'
 import { useSlowLaneScheduler } from '@/hooks/useSlowLaneScheduler'
 
 /** 去掉常见 markdown 标记,供简报摘要行取纯文本用。 */
@@ -266,11 +266,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-    if (!localStorage.getItem('panwatch_onboarding_completed')) setShowOnboarding(true)
+    if (!localStorage.getItem('aiwatch_onboarding_completed')) setShowOnboarding(true)
   }, [load])
 
   const handleOnboardingComplete = () => {
-    localStorage.setItem('panwatch_onboarding_completed', 'true')
+    localStorage.setItem('aiwatch_onboarding_completed', 'true')
     setShowOnboarding(false)
   }
 

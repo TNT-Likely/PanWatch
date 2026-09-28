@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Lock, Eye, EyeOff, User } from 'lucide-react'
-import { authApi } from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { authApi } from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -78,8 +78,8 @@ export default function LoginPage() {
           <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
             <TrendingUp className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">盯盘侠</h1>
-          <p className="text-sm text-muted-foreground mt-1">PanWatch</p>
+          <h1 className="text-2xl font-bold text-foreground">AI 盯盘</h1>
+          <p className="text-sm text-muted-foreground mt-1">AiWatch</p>
         </div>
 
         {/* Form */}

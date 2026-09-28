@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
-import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
-import { klinesApi } from '@panwatch/api/klines'
+import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@aiwatch/api'
+import { klinesApi } from '@aiwatch/api/klines'
 import { useLocalStorage } from '@/lib/utils'
 import {
   buildPortfolioStockKeys,
@@ -9,22 +9,22 @@ import {
   loadPortfolioPageCoreData,
   loadPortfolioPageQuoteData,
 } from '@/lib/portfolio-page-data'
-import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
+import { SuggestionBadge, type SuggestionInfo, type KlineSummary } from '@aiwatch/biz-ui/components/suggestion-badge'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { Badge } from '@panwatch/base-ui/components/ui/badge'
-import { Skeleton } from '@panwatch/base-ui/components/ui/skeleton'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
+import { KlineSummaryDialog } from '@aiwatch/biz-ui/components/kline-summary-dialog'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { Badge } from '@aiwatch/base-ui/components/ui/badge'
+import { Skeleton } from '@aiwatch/base-ui/components/ui/skeleton'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@aiwatch/base-ui/components/ui/select'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import StockInsightModal from '@aiwatch/biz-ui/components/stock-insight-modal'
 import AddStockDialog from './portfolio/AddStockDialog'
-import { DeepAnalysisModal } from '@panwatch/biz-ui/components/deep-analysis-modal'
-import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-panel'
+import { DeepAnalysisModal } from '@aiwatch/biz-ui/components/deep-analysis-modal'
+import StockPriceAlertPanel from '@aiwatch/biz-ui/components/stock-price-alert-panel'
 
 import {
   AgentResult,
@@ -218,8 +218,8 @@ export default function StocksPage() {
   const [klineSummaries, setKlineSummaries] = useState<Record<string, KlineSummary>>({})
 
   // Auto-refresh (持久化到 localStorage)
-  const [autoRefresh, setAutoRefresh] = useLocalStorage('panwatch_stocks_autoRefresh', false)
-  const [refreshInterval, setRefreshInterval] = useLocalStorage('panwatch_stocks_refreshInterval', 30)
+  const [autoRefresh, setAutoRefresh] = useLocalStorage('aiwatch_stocks_autoRefresh', false)
+  const [refreshInterval, setRefreshInterval] = useLocalStorage('aiwatch_stocks_refreshInterval', 30)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>()
 
@@ -227,7 +227,7 @@ export default function StocksPage() {
   const [scanning, setScanning] = useState(false)
 
   type ViewTab = 'positions' | 'watchlist'
-  const [viewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
+  const [viewTab, setViewTab] = useLocalStorage<ViewTab>('aiwatch_stocks_viewTab', 'positions')
 
   // 股票 AI 建议（来自盘中监控 API）
   const [suggestions] = useState<Record<string, StockSuggestionData>>({})
@@ -305,7 +305,7 @@ export default function StocksPage() {
 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
-  const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
+  const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('aiwatch_watchlist_only_alerts', false)
 
   // Remove watchlist modal
   const [removeWatchStock, setRemoveWatchStock] = useState<Stock | null>(null)
@@ -391,7 +391,7 @@ export default function StocksPage() {
 
   const isSuppressCardClick = () => {
     try {
-      const until = (window as any).__panwatch_suppress_card_click_until
+      const until = (window as any).__aiwatch_suppress_card_click_until
       return typeof until === 'number' && Date.now() < until
     } catch {
       return false

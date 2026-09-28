@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Play, Power, Clock, Cpu, Bot, Bell, Settings2 } from 'lucide-react'
-import { fetchAPI, type AIService, type NotifyChannel } from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Badge } from '@panwatch/base-ui/components/ui/badge'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@panwatch/base-ui/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { fetchAPI, type AIService, type NotifyChannel } from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Badge } from '@aiwatch/base-ui/components/ui/badge'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectLabel, SelectItem } from '@aiwatch/base-ui/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 interface AgentConfig {
   id: number

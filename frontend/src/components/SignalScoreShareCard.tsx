@@ -1,5 +1,5 @@
-import { type StrategySignalItem } from '@panwatch/api'
-import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
+import { type StrategySignalItem } from '@aiwatch/api'
+import { shareStockPalette } from '@aiwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface SignalScoreShareCardProps {

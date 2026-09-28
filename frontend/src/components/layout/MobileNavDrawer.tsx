@@ -1,9 +1,9 @@
 import { useLocation, NavLink } from 'react-router-dom'
 import { LogOut, Monitor, Moon, Stethoscope, Sun, type LucideIcon } from 'lucide-react'
-import { isAuthenticated, logout } from '@panwatch/api'
+import { isAuthenticated, logout } from '@aiwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
-import { useStockColorMode, setStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
+import { useStockColorMode, setStockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
 import { NAV_GROUPS, isNavItemActive } from './nav-config'
 
 interface MobileNavDrawerProps {

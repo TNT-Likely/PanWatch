@@ -1,6 +1,6 @@
-import { type DeepAnalysisResult } from '@panwatch/api'
-import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
-import { shareStockPalette } from '@panwatch/base-ui/lib/stock-format'
+import { type DeepAnalysisResult } from '@aiwatch/api'
+import { normalizeSuggestionAction } from '@aiwatch/biz-ui/components/suggestion-action'
+import { shareStockPalette } from '@aiwatch/base-ui/lib/stock-format'
 import ShareCardDialog from './ShareCardDialog'
 
 interface ShareCardModalProps {

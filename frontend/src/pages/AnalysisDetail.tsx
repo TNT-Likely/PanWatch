@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { moveColor as pctClass } from '@panwatch/base-ui/components/patterns'
+import { moveColor as pctClass } from '@aiwatch/base-ui/components/patterns'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -23,9 +23,9 @@ import {
   tradingAgentsApi,
   type DeepAnalysisResult,
   type HistoryComparisonResponse,
-} from '@panwatch/api'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
+} from '@aiwatch/api'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { buildAnalysisSections } from '@aiwatch/biz-ui/analysis-sections'
 import ShareCardModal from '../components/ShareCardModal'
 
 const DECISION_COLOR: Record<string, string> = {
@@ -46,7 +46,7 @@ const SECTION_ICON: Record<string, LucideIcon> = {
 }
 
 /** 二级目录显示开关的 localStorage 键(记住用户选择) */
-const TOC_SUB_KEY = 'panwatch_toc_show_sub'
+const TOC_SUB_KEY = 'aiwatch_toc_show_sub'
 
 /** 从代码粗略推断市场:6 位数字=A股, 5 位数字=港股, 其余=美股 */
 function inferMarket(symbol: string): string {

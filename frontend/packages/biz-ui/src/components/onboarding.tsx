@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Bot, Bell, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
-import { Dialog, DialogContent } from '@panwatch/base-ui/components/ui/dialog'
-import { Button } from '@panwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent } from '@aiwatch/base-ui/components/ui/dialog'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
 
 interface OnboardingProps {
   open: boolean
@@ -66,7 +66,7 @@ export function Onboarding({ open, onComplete, hasStocks }: OnboardingProps) {
                 <TrendingUp className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-headline font-bold text-foreground mb-2">
-                欢迎使用盯盘侠
+                欢迎使用AI 盯盘
               </h2>
               <p className="text-body-lg text-muted-foreground mb-6">
                 {hasStocks

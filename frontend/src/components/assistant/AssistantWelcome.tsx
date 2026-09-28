@@ -26,13 +26,13 @@ export function AssistantWelcome({ onSubmit, disabled = false }: AssistantWelcom
   return (
     <section className="flex min-h-[calc(100vh-12rem)] flex-1 flex-col items-center justify-center px-5 py-12 text-center md:px-10">
       <p className="mb-4 text-caption font-semibold tracking-[0.16em] text-primary sm:text-body-sm">
-        PANWATCH · AI INVESTING RESEARCH
+        AIWATCH · AI INVESTING RESEARCH
       </p>
       <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
         今天想研究什么？
       </h1>
       <p className="mt-5 max-w-2xl text-title leading-7 text-muted-foreground md:text-heading">
-        输入一只股票、一个市场问题，或让 PanWatch 诊断你的持仓。助手会先查询可用数据，再给出有依据的结论。
+        输入一只股票、一个市场问题，或让 AiWatch 诊断你的持仓。助手会先查询可用数据，再给出有依据的结论。
       </p>
 
       <form

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { insightApi, type AddPositionEvalResult } from '@panwatch/api'
-import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import { insightApi, type AddPositionEvalResult } from '@aiwatch/api'
+import MarkdownView from '@aiwatch/biz-ui/components/markdown-view'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
 
 export interface AddPositionCalc {
   newQty: number

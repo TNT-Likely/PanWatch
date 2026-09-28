@@ -2,16 +2,16 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <script>try{if(localStorage.getItem('panwatch-stock-mode')==='up-green')document.documentElement.dataset.stockMode='up-green'}catch(e){}</script>
+    <script>try{var m=localStorage.getItem('aiwatch-stock-mode')||localStorage.getItem('panwatch-stock-mode');if(m==='up-green')document.documentElement.dataset.stockMode='up-green'}catch(e){}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>盯盘侠 | PanWatch</title>
+    <title>AI 盯盘 | AiWatch</title>
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="盯盘侠" />
+    <meta name="apple-mobile-web-app-title" content="AI 盯盘" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <!-- Meta -->

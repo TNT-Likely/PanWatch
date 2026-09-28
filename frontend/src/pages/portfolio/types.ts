@@ -1,4 +1,4 @@
-import type { SuggestionInfo, KlineSummary } from '@panwatch/biz-ui/components/suggestion-badge'
+import type { SuggestionInfo, KlineSummary } from '@aiwatch/biz-ui/components/suggestion-badge'
 
 // 持仓页领域类型与表单初值（由 Stocks.tsx 外移，纯移动不改语义）
 

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun, Monitor, Check, LogOut, User, Stethoscope, type LucideIcon } from 'lucide-react'
-import { isAuthenticated, logout } from '@panwatch/api'
+import { isAuthenticated, logout } from '@aiwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
-import { useStockColorMode, setStockColorMode, type StockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
+import { useStockColorMode, setStockColorMode, type StockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
 
 export interface AccountNavItem {
   to: string

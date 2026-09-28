@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Plus, RefreshCw, Play, Trash2, BarChart3, BellRing } from 'lucide-react'
-import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
+import { fetchAPI, stocksApi, type NotifyChannel } from '@aiwatch/api'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aiwatch/base-ui/components/ui/dialog'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@aiwatch/biz-ui/components/price-alert-form-dialog'
 
 type RuleOp = 'and' | 'or'
 

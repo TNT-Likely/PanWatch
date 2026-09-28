@@ -5,10 +5,19 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 /** 实际生效的主题(system 解析后的结果)。 */
 export type Theme = 'light' | 'dark'
 
-const STORAGE_KEY = 'panwatch-theme'
+const STORAGE_KEY = 'aiwatch-theme'
+// 旧版品牌键：仅用于读取回落，读到后回写新键（write-through），保留不清除
+const LEGACY_KEY = 'panwatch-theme'
 
 function readMode(): ThemeMode {
-  const stored = localStorage.getItem(STORAGE_KEY)
+  const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
+  if (stored !== null && localStorage.getItem(STORAGE_KEY) === null) {
+    try {
+      localStorage.setItem(STORAGE_KEY, stored)
+    } catch {
+      /* ignore */
+    }
+  }
   if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
   return 'system'
 }

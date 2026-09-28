@@ -1,5 +1,5 @@
 import type { MouseEventHandler, ReactNode } from 'react'
-import { cn } from '@panwatch/base-ui'
+import { cn } from '@aiwatch/base-ui'
 
 export type BadgeChipSize = 'xs' | 'sm' | 'md' | 'lg'
 

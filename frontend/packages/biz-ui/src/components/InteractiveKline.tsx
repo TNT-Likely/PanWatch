@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as LW from 'lightweight-charts'
 import { RefreshCw } from 'lucide-react'
-import { fetchAPI } from '@panwatch/api'
-import { useStockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
-import { Button } from '@panwatch/base-ui/components/ui/button'
+import { fetchAPI } from '@aiwatch/api'
+import { useStockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
 
 type BusinessDay = { year: number; month: number; day: number }
 

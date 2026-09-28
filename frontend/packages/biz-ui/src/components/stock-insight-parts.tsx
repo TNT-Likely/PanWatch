@@ -1,10 +1,10 @@
 import { RefreshCw } from 'lucide-react'
-import { type DeepAnalysisResult, type HistoryComparisonResponse } from '@panwatch/api'
-import MarkdownView from '@panwatch/biz-ui/components/markdown-view'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@panwatch/biz-ui/components/suggestion-badge'
-import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
-import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
+import { type DeepAnalysisResult, type HistoryComparisonResponse } from '@aiwatch/api'
+import MarkdownView from '@aiwatch/biz-ui/components/markdown-view'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { SuggestionBadge, type KlineSummary, type SuggestionInfo } from '@aiwatch/biz-ui/components/suggestion-badge'
+import { TechnicalBadge } from '@aiwatch/biz-ui/components/technical-badge'
+import { KlineIndicators } from '@aiwatch/biz-ui/components/kline-indicators'
 
 export function formatNumber(value: number | null | undefined, digits = 2): string {
   if (value == null) return '--'

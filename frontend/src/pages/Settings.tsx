@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, FileJson, BarChart3, User, Radar } from 'lucide-react'
-import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
+import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@aiwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import PatSection from '@/components/PatSection'
-import { Input } from '@panwatch/base-ui/components/ui/input'
-import { Label } from '@panwatch/base-ui/components/ui/label'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { Switch } from '@panwatch/base-ui/components/ui/switch'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { useStockColorMode, setStockColorMode, type StockColorMode } from '@panwatch/base-ui/hooks/use-stock-mode'
+import { Input } from '@aiwatch/base-ui/components/ui/input'
+import { Label } from '@aiwatch/base-ui/components/ui/label'
+import { Button } from '@aiwatch/base-ui/components/ui/button'
+import { Switch } from '@aiwatch/base-ui/components/ui/switch'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@aiwatch/base-ui/components/ui/dialog'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@aiwatch/base-ui/components/ui/select'
+import { useToast } from '@aiwatch/base-ui/components/ui/toast'
+import { useStockColorMode, setStockColorMode, type StockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
 
 interface Setting {
   key: string
@@ -329,7 +329,7 @@ export default function SettingsPage() {
     try {
       const data = await fetchAPI<TemplatePayload>('/templates/export')
       const date = new Date().toISOString().slice(0, 10)
-      downloadJson(`panwatch-config-${date}.json`, data)
+      downloadJson(`aiwatch-config-${date}.json`, data)
       toast('配置包已导出', 'success')
     } catch (e) {
       toast(e instanceof Error ? e.message : '导出失败', 'error')
@@ -1393,7 +1393,7 @@ export default function SettingsPage() {
       {/* Version Footer */}
       {version && (
         <div className="mt-8 text-center text-caption text-muted-foreground">
-          PanWatch v{version}
+          AiWatch v{version}
         </div>
       )}
     </div>
