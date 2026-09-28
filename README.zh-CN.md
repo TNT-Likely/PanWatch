@@ -26,7 +26,7 @@
   </a>
 </p>
 
-![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/tradingagents-demo.gif)
+![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/zh-CN/tradingagents-demo.gif)
 
 > 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
 
@@ -41,16 +41,16 @@
 
 | 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
 |:---:|:---:|
-| ![持仓管理](./docs/screenshots/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/opportunities.png) |
+| ![持仓管理](./docs/screenshots/zh-CN/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/zh-CN/opportunities.png) |
 | **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
-| ![模拟盘](./docs/screenshots/papertrading.png) | ![个股详情](./docs/screenshots/stock-detail.png) |
+| ![模拟盘](./docs/screenshots/zh-CN/papertrading.png) | ![个股详情](./docs/screenshots/zh-CN/stock-detail.png) |
 | **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
-| ![技术指标](./docs/screenshots/technicals.png) | ![价格提醒](./docs/screenshots/alerts.png) |
+| ![技术指标](./docs/screenshots/zh-CN/technicals.png) | ![价格提醒](./docs/screenshots/zh-CN/alerts.png) |
 
 <details>
 <summary>移动端截图</summary>
 
-<img src="./docs/screenshots/mobile.png" width="300" /> <img src="./docs/screenshots/mobile-detail.png" width="300" />
+<img src="./docs/screenshots/zh-CN/mobile.png" width="300" /> <img src="./docs/screenshots/zh-CN/mobile-detail.png" width="300" />
 
 > 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
 
