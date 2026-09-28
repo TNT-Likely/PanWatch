@@ -9,10 +9,20 @@ import pytest
 from src.modules.automation.tradingagents import operations as auto_trigger
 
 
-def _make_agent(raw_config: dict):
+def _make_agent(config: dict):
     agent = MagicMock()
-    agent.raw_config = raw_config
+    agent.config = config
     return agent
+
+
+def test_auto_trigger_config_uses_real_model_column():
+    """回归：真实 AgentConfig 模型的 JSON 列是 config 而非 raw_config（2026-09 生产 AttributeError 事故）。"""
+    from src.platform.persistence.models import AgentConfig
+
+    agent = AgentConfig(name="tradingagents", config={"auto_trigger": {"enabled": True, "change_pct_threshold": 5.0}})
+    assert getattr(agent, "raw_config", None) is None  # 列名不存在
+    raw = agent.config or {}
+    assert raw["auto_trigger"]["enabled"] is True
 
 
 def test_no_change_pct_skips():
