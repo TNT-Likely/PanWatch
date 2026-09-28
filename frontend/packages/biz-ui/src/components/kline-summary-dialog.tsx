@@ -226,7 +226,7 @@ export function KlineSummaryDialog({
                     {suggestion.items.map((item, index) => (
                       <div key={`${item.text}-${index}`} className="flex items-center justify-between gap-3 text-[11px]">
                         <span className="text-muted-foreground">{item.text}</span>
-                        <span className={`font-mono ${item.delta > 0 ? 'text-rose-500' : item.delta < 0 ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                        <span className={`font-mono ${item.delta > 0 ? 'text-market-up' : item.delta < 0 ? 'text-market-down' : 'text-market-flat'}`}>
                           {item.delta > 0 ? '+' : ''}{item.delta}
                         </span>
                       </div>

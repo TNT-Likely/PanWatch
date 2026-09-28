@@ -2,6 +2,8 @@ import { type DeepAnalysisResult } from '@panwatch/api'
 import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
 import ShareCardDialog from './ShareCardDialog'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import type { MarketColorPalette, MarketTone } from '@/lib/market-colors'
 
 interface ShareCardModalProps {
   open: boolean
@@ -12,22 +14,37 @@ interface ShareCardModalProps {
 }
 
 /**
- * 五档评级 → 展示标签 + A股配色(红涨绿跌)。
- * 复用 technical-badge / suggestion-action 的归一化:买入/增持=红(看多)、卖出/减持=绿(看空)、持有=琥珀(中性)。
+ * 五档评级 → 展示标签 + 当前市场涨跌配色。
+ * 复用 technical-badge / suggestion-action 的归一化:买入/增持=看多、卖出/减持=看空、持有=琥珀(中性)。
  * 这里用自包含的显式十六进制色,保证导出 PNG 在任何主题(亮/暗)下都正确。
  */
-const RATING_VISUAL: Record<
-  string,
-  { color: string; soft: string; gradFrom: string; gradTo: string }
-> = {
-  // 看多(红)
-  buy: { color: '#e11d48', soft: '#fff1f2', gradFrom: '#fb7185', gradTo: '#e11d48' },
-  add: { color: '#e11d48', soft: '#fff1f2', gradFrom: '#fda4af', gradTo: '#e11d48' },
-  // 中性(琥珀)
-  hold: { color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
-  // 看空(绿)
-  reduce: { color: '#059669', soft: '#ecfdf5', gradFrom: '#34d399', gradTo: '#059669' },
-  sell: { color: '#059669', soft: '#ecfdf5', gradFrom: '#6ee7b7', gradTo: '#059669' },
+type RatingVisual = {
+  color: string
+  soft: string
+  gradFrom: string
+  gradTo: string
+}
+
+function ratingVisual(tone: MarketTone): RatingVisual {
+  return {
+    color: tone.text,
+    soft: tone.soft,
+    gradFrom: tone.gradientFrom,
+    gradTo: tone.text,
+  }
+}
+
+function ratingVisuals(palette: MarketColorPalette): Record<string, RatingVisual> {
+  return {
+    // 看多
+    buy: ratingVisual(palette.up),
+    add: ratingVisual(palette.up),
+    // 中性(琥珀)
+    hold: { color: '#d97706', soft: '#fffbeb', gradFrom: '#fbbf24', gradTo: '#d97706' },
+    // 看空
+    reduce: ratingVisual(palette.down),
+    sell: ratingVisual(palette.down),
+  }
 }
 const RATING_FALLBACK = {
   color: '#475569',
@@ -76,6 +93,7 @@ function cleanConclusion(text: string): string {
 
 export default function ShareCardModal({ open, onClose, result, symbol, date }: ShareCardModalProps) {
   const { t } = useTranslation('configuration')
+  const { palette } = useMarketColors()
   const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.analysis.${key}`, options)
   const sug = result.raw_data?.suggestion
@@ -83,7 +101,8 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
   const ratingRaw = mapRatingRaw(sug?.rating_raw)
   const normalized = normalizeSuggestionAction(ratingRaw || sug?.action, sug?.action_label)
   const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
-  const visual = reviewRequired ? REVIEW_VISUAL : (normalized && RATING_VISUAL[normalized]) || RATING_FALLBACK
+  const visuals = ratingVisuals(palette)
+  const visual = reviewRequired ? REVIEW_VISUAL : (normalized && visuals[normalized]) || RATING_FALLBACK
   const visualLabel = reviewRequired
     ? shareT('p5.share.actions.review')
     : normalized && ['buy', 'add', 'hold', 'reduce', 'sell'].includes(normalized)

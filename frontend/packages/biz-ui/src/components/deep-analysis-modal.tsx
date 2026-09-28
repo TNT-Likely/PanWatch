@@ -31,9 +31,11 @@ import {
 import { useTranslation } from 'react-i18next'
 
 const DECISION_COLOR: Record<string, string> = {
-  buy: 'text-emerald-600 dark:text-emerald-400',
+  buy: 'text-market-up',
+  add: 'text-market-up',
   hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-rose-600 dark:text-rose-400',
+  reduce: 'text-market-down',
+  sell: 'text-market-down',
 }
 
 const POLL_INTERVAL_MS = 2000

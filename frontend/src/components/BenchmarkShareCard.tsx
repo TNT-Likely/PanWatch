@@ -1,6 +1,8 @@
 import { type PortfolioBenchmark } from '@panwatch/api'
 import ShareCardDialog from './ShareCardDialog'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import type { MarketColorPalette } from '@/lib/market-colors'
 
 interface BenchmarkShareCardProps {
   open: boolean
@@ -8,15 +10,12 @@ interface BenchmarkShareCardProps {
   bench: PortfolioBenchmark
 }
 
-// A股配色:红=涨/正、绿=跌/负、中性=琥珀
-const UP = '#e11d48'
-const DOWN = '#059669'
 const NEUTRAL = '#d97706'
 
-function signColor(v?: number | null): string {
+function signColor(palette: MarketColorPalette, v?: number | null): string {
   if (v == null || !isFinite(v)) return NEUTRAL
-  if (v > 0) return UP
-  if (v < 0) return DOWN
+  if (v > 0) return palette.up.text
+  if (v < 0) return palette.down.text
   return NEUTRAL
 }
 
@@ -38,10 +37,12 @@ function num(v?: number | null, digits = 2): string {
  */
 function Sparkline({
   curve,
+  portfolioColor,
   width = 568,
   height = 96,
 }: {
   curve: { date: string; portfolio: number; benchmark: number }[]
+  portfolioColor: string
   width?: number
   height?: number
 }) {
@@ -73,8 +74,7 @@ function Sparkline({
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
       {/* 基准:灰色 */}
       <path d={path('benchmark')} fill="none" stroke="#94a3b8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      {/* 组合:品牌红(看多色,突出主角) */}
-      <path d={path('portfolio')} fill="none" stroke={UP} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path('portfolio')} fill="none" stroke={portfolioColor} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
 }
@@ -103,12 +103,13 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
  */
 export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkShareCardProps) {
   const { t } = useTranslation('configuration')
+  const { palette } = useMarketColors()
   const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.benchmark.${key}`, options)
   const days = bench.days ?? 60
   const benchLabel = bench.benchmark_label || tr('defaultBenchmark')
   const excess = bench.excess_return
-  const heroColor = signColor(excess)
+  const heroColor = signColor(palette, excess)
   const curve = (bench.curve || []).filter((p) => isFinite(p.portfolio) && isFinite(p.benchmark))
 
   return (
@@ -142,12 +143,12 @@ export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkSh
 
       {/* 关键指标四宫格 */}
       <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-        <StatBox label={tr('portfolioReturn')} value={pct(bench.portfolio_return, 1)} color={signColor(bench.portfolio_return)} />
-        <StatBox label={`${benchLabel}`} value={pct(bench.benchmark_return, 1)} color={signColor(bench.benchmark_return)} />
+        <StatBox label={tr('portfolioReturn')} value={pct(bench.portfolio_return, 1)} color={signColor(palette, bench.portfolio_return)} />
+        <StatBox label={`${benchLabel}`} value={pct(bench.benchmark_return, 1)} color={signColor(palette, bench.benchmark_return)} />
       </div>
       <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
         <StatBox label={tr('informationRatio')} value={num(bench.information_ratio, 2)} />
-        <StatBox label={tr('relativeDrawdown')} value={pct(bench.relative_drawdown, 1)} color={signColor(bench.relative_drawdown)} />
+        <StatBox label={tr('relativeDrawdown')} value={pct(bench.relative_drawdown, 1)} color={signColor(palette, bench.relative_drawdown)} />
       </div>
 
       {/* 净值 vs 基准 sparkline */}
@@ -163,7 +164,7 @@ export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkSh
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 6 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-              <span style={{ width: 14, height: 3, borderRadius: 2, background: UP, display: 'inline-block' }} />
+              <span style={{ width: 14, height: 3, borderRadius: 2, background: palette.up.text, display: 'inline-block' }} />
               {tr('portfolioNav')}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
@@ -171,7 +172,7 @@ export default function BenchmarkShareCard({ open, onClose, bench }: BenchmarkSh
               {benchLabel}
             </span>
           </div>
-          <Sparkline curve={curve} />
+          <Sparkline curve={curve} portfolioColor={palette.up.text} />
         </div>
       )}
     </ShareCardDialog>

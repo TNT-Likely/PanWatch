@@ -1,5 +1,7 @@
 import ShareCardDialog from './ShareCardDialog'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import type { MarketColorPalette } from '@/lib/market-colors'
 
 /** digest 单条:与 Dashboard 的 feed(CurateCandidate & { why }）同构。 */
 export interface DigestItem {
@@ -17,13 +19,10 @@ interface DigestShareCardProps {
   items: DigestItem[]
 }
 
-const UP = '#e11d48'
-const DOWN = '#059669'
-
-function moveColor(v?: number | null): string {
+function moveColor(palette: MarketColorPalette, v?: number | null): string {
   if (v == null || !isFinite(v)) return '#94a3b8'
-  if (v > 0) return UP
-  if (v < 0) return DOWN
+  if (v > 0) return palette.up.text
+  if (v < 0) return palette.down.text
   return '#94a3b8'
 }
 function pct(v?: number | null): string {
@@ -46,6 +45,7 @@ const FALLBACK_BADGE = { key: 'other', icon: '•', color: '#475569', bg: '#f1f5
  */
 export default function DigestShareCard({ open, onClose, date, items }: DigestShareCardProps) {
   const { t } = useTranslation('configuration')
+  const { palette } = useMarketColors()
   const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.digest.${key}`, options)
   const list = (items || []).slice(0, 8)
@@ -144,7 +144,7 @@ export default function DigestShareCard({ open, onClose, date, items }: DigestSh
                       flexShrink: 0,
                       fontSize: 14,
                       fontWeight: 800,
-                      color: moveColor(it.change_pct),
+                      color: moveColor(palette, it.change_pct),
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >

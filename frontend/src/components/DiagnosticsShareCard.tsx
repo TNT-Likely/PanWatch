@@ -1,6 +1,8 @@
 import { type PortfolioDiagnostics } from '@panwatch/api'
 import ShareCardDialog from './ShareCardDialog'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import type { MarketColorPalette } from '@/lib/market-colors'
 
 interface DiagnosticsShareCardProps {
   open: boolean
@@ -11,15 +13,14 @@ interface DiagnosticsShareCardProps {
   benchmarkLabel?: string
 }
 
-const UP = '#e11d48'
-const DOWN = '#059669'
 const NEUTRAL = '#d97706'
 const SLATE = '#0f172a'
+const SUCCESS = '#059669'
 
-function signColor(v?: number | null): string {
+function signColor(palette: MarketColorPalette, v?: number | null): string {
   if (v == null || !isFinite(v)) return NEUTRAL
-  if (v > 0) return UP
-  if (v < 0) return DOWN
+  if (v > 0) return palette.up.text
+  if (v < 0) return palette.down.text
   return NEUTRAL
 }
 
@@ -34,7 +35,7 @@ function pct(v?: number | null, digits = 1): string {
 function hhiBand(hhi: number, tr: (key: string) => string): { label: string; color: string } {
   if (hhi >= 0.4) return { label: tr('bands.concentrated'), color: NEUTRAL }
   if (hhi >= 0.25) return { label: tr('bands.balanced'), color: SLATE }
-  return { label: tr('bands.diversified'), color: DOWN }
+  return { label: tr('bands.diversified'), color: SUCCESS }
 }
 
 function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
@@ -69,6 +70,7 @@ export default function DiagnosticsShareCard({
   benchmarkLabel,
 }: DiagnosticsShareCardProps) {
   const { t } = useTranslation('configuration')
+  const { palette } = useMarketColors()
   const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.diagnostics.${key}`, options)
   const marketLabel = (market: string) => {
@@ -135,7 +137,7 @@ export default function DiagnosticsShareCard({
           <StatBox
             label={tr('recentPerformance', { benchmark: benchmarkLabel || tr('defaultBenchmark') })}
             value={pct(excessReturn)}
-            color={signColor(excessReturn)}
+            color={signColor(palette, excessReturn)}
           />
         )}
       </div>

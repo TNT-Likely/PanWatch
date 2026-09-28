@@ -1894,9 +1894,11 @@ export default function StockInsightModal(props: {
 }
 
 const DEEP_DECISION_COLOR: Record<string, string> = {
-  buy: 'text-emerald-600 dark:text-emerald-400',
+  buy: 'text-market-up',
+  add: 'text-market-up',
   hold: 'text-amber-600 dark:text-amber-400',
-  sell: 'text-rose-600 dark:text-rose-400',
+  reduce: 'text-market-down',
+  sell: 'text-market-down',
 }
 
 function DeepAnalysisSection({
@@ -2092,11 +2094,11 @@ function DeepHistoryComparison({
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">{tr('deep.buy', { count: stats.buy_count })}</div>
-          <div className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtPct(stats.buy_hit_rate)}</div>
+          <div className="font-semibold text-market-up">{fmtPct(stats.buy_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">{tr('deep.sell', { count: stats.sell_count })}</div>
-          <div className="font-semibold text-rose-600 dark:text-rose-400">{fmtPct(stats.sell_hit_rate)}</div>
+          <div className="font-semibold text-market-down">{fmtPct(stats.sell_hit_rate)}</div>
         </div>
         <div className="rounded bg-accent/30 px-2 py-1.5">
           <div className="text-muted-foreground">{tr('deep.avg20d')}</div>
