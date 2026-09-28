@@ -45,4 +45,15 @@ describe('AccountMenu 弹出方向', () => {
     expect(wrapper.className).toContain('right-0')
     expect(wrapper.className).not.toContain('bottom-full')
   })
+
+  it('涨跌颜色行使用可读字阶类,无 text-secondary 撞名残留(近白不可读)', async () => {
+    const user = userEvent.setup()
+    renderMenu({ size: 'sm' })
+
+    await openMenu(user)
+
+    const upRedRow = screen.getByRole('button', { name: /红涨绿跌/ })
+    expect(upRedRow.className).toContain('text-body-sm')
+    expect(upRedRow.className).not.toContain('text-secondary')
+  })
 })

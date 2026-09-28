@@ -156,7 +156,7 @@ export default function AccountMenu({
               <button
                 key={value}
                 onClick={() => setStockColorMode(value)}
-                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-secondary transition-colors ${
+                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-body-sm transition-colors ${
                   active
                     ? 'text-foreground bg-accent/40'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
