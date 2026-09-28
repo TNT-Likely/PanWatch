@@ -234,10 +234,10 @@ describe('ChatWidget layout', () => {
 
     await screen.findByText('已完成分析')
     expect(screen.getAllByTestId('assistant-trace')).toHaveLength(1)
-    expect(screen.queryByText('调用工具：get_portfolio')).toBeNull()
+    expect(screen.queryByText('正在查询：持仓')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: /执行记录/ }))
-    expect(screen.getByText('调用工具：get_portfolio')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /研究进度/ }))
+    expect(screen.getByText('正在查询：持仓')).toBeTruthy()
   })
 
   it('does not render a generic retry card when a stream fails', async () => {

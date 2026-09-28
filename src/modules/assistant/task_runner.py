@@ -25,9 +25,11 @@ from pan_agent import (
 from src.platform.ai.errors import descriptor_for_code
 from src.platform.persistence.database import SessionLocal
 from src.platform.tasking.contracts import TaskEventType, TaskStatus
+from src.platform.language import resolve_report_language
 
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
+from .result_builder import build_assistant_result
 from .service import AssistantService
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,8 @@ _ERROR_MESSAGES = {
     "empty_answer": "助手暂时不可用，请稍后重试。",
     "transport_failed": "助手任务执行失败，请稍后重试。",
     "worker_cancelled": "助手任务已停止。",
+    "permission_denied": "当前助手权限不允许执行该操作，请在助手设置中调整后重试。",
+    "required_tool_call_missing": "未能生成可审批的操作，请重试。",
 }
 
 
@@ -217,6 +221,7 @@ class AssistantTaskRunner:
                 return
             if service._repository.is_task_cancelled(task_id):
                 return
+            task_run = service._repository.get_task_run(task_id)
             context_result = await service.prepare_context(conversation_id)
             if context_result is not None:
                 service._repository.append_task_event(
@@ -232,7 +237,8 @@ class AssistantTaskRunner:
                         "compressed_message_count": context_result.compressed_message_count,
                     },
                 )
-            runtime = service.build_runtime(service.build_failover_client())
+            client = service.build_failover_client()
+            runtime = service.build_runtime(client)
             messages = (
                 context_result.messages
                 if context_result is not None
@@ -246,14 +252,17 @@ class AssistantTaskRunner:
             request = RunRequest(
                 run_id=str(task_id),
                 messages=messages,
-                context=(
-                    {
-                        "context_usage": context_result.usage_after.model_dump(mode="json"),
-                        "context_compressed": context_result.compressed,
-                    }
-                    if context_result is not None
-                    else {}
-                ),
+                context={
+                    **dict(task_run.context or {}),
+                    **(
+                        {
+                            "context_usage": context_result.usage_after.model_dump(mode="json"),
+                            "context_compressed": context_result.compressed,
+                        }
+                        if context_result is not None
+                        else {}
+                    ),
+                },
                 limits=RunLimits(
                     max_steps=ASSISTANT_MAX_STEPS,
                     max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,
@@ -270,7 +279,13 @@ class AssistantTaskRunner:
                 timeout=ASSISTANT_RUN_TIMEOUT_SECONDS,
             )
             await sink.flush()
-            await self._finish_result(service, task_id, conversation_id, result)
+            await self._finish_result(
+                service,
+                task_id,
+                conversation_id,
+                result,
+                composer_client=client,
+            )
         except TaskCancelledError:
             await self._flush_sink(sink)
             self._cancel_if_needed(service, task_id)
@@ -300,7 +315,8 @@ class AssistantTaskRunner:
                 return
             if service._repository.is_task_cancelled(task_id):
                 return
-            runtime = service.build_runtime(service.build_failover_client())
+            client = service.build_failover_client()
+            runtime = service.build_runtime(client)
             request = RunRequest(
                 run_id=str(task_id),
                 messages=checkpoint.messages,
@@ -322,7 +338,13 @@ class AssistantTaskRunner:
                 timeout=ASSISTANT_RUN_TIMEOUT_SECONDS,
             )
             await sink.flush()
-            await self._finish_result(service, task_id, conversation_id, result)
+            await self._finish_result(
+                service,
+                task_id,
+                conversation_id,
+                result,
+                composer_client=client,
+            )
         except TaskCancelledError:
             await self._flush_sink(sink)
             self._cancel_if_needed(service, task_id)
@@ -342,7 +364,13 @@ class AssistantTaskRunner:
             db.close()
 
     async def _finish_result(
-        self, service: AssistantService, task_id: int, conversation_id: int, result: RunResult
+        self,
+        service: AssistantService,
+        task_id: int,
+        conversation_id: int,
+        result: RunResult,
+        *,
+        composer_client=None,
     ) -> None:
         if result.status is RunStatus.WAITING_FOR_APPROVAL:
             approvals = service.pause_task(task_id, result)
@@ -372,7 +400,36 @@ class AssistantTaskRunner:
         if result.status is not RunStatus.COMPLETED or not result.answer.strip():
             self._fail(service, task_id, result.error_code or "empty_answer")
             return
-        service.complete_task_with_message(task_id, conversation_id, result.answer)
+        tokens_before = int(getattr(composer_client, "total_tokens_used", 0) or 0)
+        structured_result = await build_assistant_result(
+            task_id=task_id,
+            answer=result.answer,
+            invocations=service._repository.list_task_tool_invocations(task_id),
+            language=resolve_report_language(service._repository.session),
+            client=composer_client,
+        )
+        tokens_after = int(getattr(composer_client, "total_tokens_used", 0) or 0)
+        composer_usage = getattr(composer_client, "last_usage", None)
+        if tokens_after > tokens_before and composer_usage is not None:
+            usage_data = (
+                composer_usage.model_dump(mode="json")
+                if hasattr(composer_usage, "model_dump")
+                else dict(composer_usage)
+            )
+            usage_data["phase"] = "result_composition"
+            service._repository.record_model_usage(task_id, usage_data)
+            service._repository.append_task_event(
+                task_id,
+                TaskEventType.MODEL_USAGE,
+                status=TaskStatus.RUNNING,
+                data=usage_data,
+            )
+        service._repository.complete_task_with_message(
+            task_id,
+            conversation_id,
+            result.answer,
+            result_data=structured_result.model_dump(mode="json"),
+        )
 
     def _fail(self, service: AssistantService, task_id: int, error_code: str) -> None:
         descriptor = descriptor_for_code(error_code)

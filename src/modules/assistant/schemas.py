@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
 from pydantic import BaseModel, Field
+
+from .result_schemas import AssistantResult
 
 
 class CreateConversationCommand(BaseModel):
@@ -39,6 +41,8 @@ class MessageDTO(BaseModel):
     role: str
     content: str
     created_at: datetime | None = None
+    result: AssistantResult | None = None
+    trace: list[dict[str, Any]] | None = None
 
 
 class ConversationDetailDTO(BaseModel):

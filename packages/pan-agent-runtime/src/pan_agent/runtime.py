@@ -239,6 +239,15 @@ class AgentRuntime:
                     {"step": current_step, "status": "running"},
                 )
                 current_tool_choice = self._tool_choice_for_turn(request, messages)
+                if current_tool_choice == _REQUIRED_TOOL_CHOICE and not model_tools:
+                    return await self._finish(
+                        sink,
+                        request,
+                        RunStatus.PARTIAL,
+                        answer,
+                        tool_calls,
+                        "permission_denied",
+                    )
                 model_started_at = time.monotonic()
                 try:
                     turn = await self._run_model_turn(
@@ -512,7 +521,20 @@ class AgentRuntime:
         deadline: float,
     ) -> tuple[list[ToolSpec], dict[str, tuple[ToolSpec, RuntimeExtension]]]:
         """Resolve registered tools plus virtual tools owned by extensions."""
-        model_tools = self._tools.model_tools(request, self._policy)
+        raw_allowed_tool_names = request.context.get("allowed_tool_names")
+        tools_are_restricted = raw_allowed_tool_names is not None
+        allowed_tool_names = (
+            [name for name in raw_allowed_tool_names if isinstance(name, str)]
+            if isinstance(raw_allowed_tool_names, (list, tuple, set))
+            else []
+        )
+        allowed_tool_name_set = set(allowed_tool_names)
+        model_tools = self._tools.model_tools(
+            request,
+            self._policy,
+            names=allowed_tool_names if tools_are_restricted else None,
+            include_deferred=tools_are_restricted,
+        )
         extension_tools: dict[str, tuple[ToolSpec, RuntimeExtension]] = {}
         for extension in self._extensions:
             extension_name = getattr(extension, "name", extension.__class__.__name__)
@@ -553,14 +575,21 @@ class AgentRuntime:
                 )
                 continue
             if decision is not None and decision.tool_names is not None:
+                selected_names = list(decision.tool_names)
+                if tools_are_restricted:
+                    selected_names = [
+                        name for name in selected_names if name in allowed_tool_name_set
+                    ]
                 model_tools = self._tools.model_tools(
                     request,
                     self._policy,
-                    names=list(decision.tool_names),
+                    names=selected_names,
                     include_deferred=True,
                 )
             if decision is not None and decision.additional_tools:
                 for tool in decision.additional_tools:
+                    if tools_are_restricted and tool.name not in allowed_tool_name_set:
+                        continue
                     if tool.name in extension_tools or any(
                         item.name == tool.name for item in model_tools
                     ):
@@ -756,6 +785,11 @@ class AgentRuntime:
                 "tool": call.name,
                 "ok": result.ok,
                 "summary": result.summary,
+                "data": result.model_dump(mode="json")["data"],
+                "sources": [source.model_dump(mode="json") for source in result.sources],
+                "observed_at": (
+                    result.observed_at.isoformat() if result.observed_at else None
+                ),
                 "error_code": result.error_code,
                 "duration_ms": duration_ms,
                 "attempt_count": attempt_count,

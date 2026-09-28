@@ -31,6 +31,8 @@ def test_task_snapshot_contains_completed_tool_after_stream_expiry():
         "duration_ms": 0,
         "attempt_count": 1,
         "error_code": None,
+        "sources": [],
+        "observed_at": None,
     }]
     session.close()
 

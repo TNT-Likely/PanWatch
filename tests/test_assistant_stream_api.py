@@ -313,7 +313,16 @@ def test_assistant_stream_preserves_runtime_step_and_tool_trace_events():
     }] == [
         ("step_updated", {"step": 1, "status": "running"}),
         ("tool_call_start", {"name": "get_price_alerts", "arguments": {"limit": 20}}),
-        ("tool_result", {"name": "get_price_alerts", "ok": True, "preview": "找到 1 条提醒"}),
+        (
+            "tool_result",
+            {
+                "name": "get_price_alerts",
+                "ok": True,
+                "preview": "找到 1 条提醒",
+                "sources": [],
+                "observed_at": None,
+            },
+        ),
     ]
 
 

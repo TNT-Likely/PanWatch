@@ -88,6 +88,16 @@ def _published_at(value: object) -> str:
     return str(value or "")
 
 
+def _data_as_of(data: object, *keys: str) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return _published_at(value)[:200]
+    return None
+
+
 def _json_safe(value: object) -> object:
     if isinstance(value, datetime):
         return value.isoformat()
@@ -311,14 +321,15 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             )
         }
         name = data.get("name") or symbol
+        observed_at = datetime.now(UTC)
         return ToolResult.success(
             summary=(
                 f"{name}（{market.value}:{symbol}）最新价 {data.get('current_price')}，"
                 f"涨跌幅 {data.get('change_pct')}%。"
             ),
             data=data,
-            sources=[{"name": "PanWatch 行情数据"}],
-            observed_at=datetime.now(UTC),
+            sources=[{"name": "PanWatch 行情数据", "as_of": observed_at.isoformat()}],
+            observed_at=observed_at,
         )
 
     async def get_kline_summary(_request: RunRequest, arguments: dict) -> ToolResult:
@@ -342,7 +353,20 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{market.value}:{symbol} 的 K 线摘要已就绪：{summary}",
             data=summary,
-            sources=[{"name": "PanWatch K 线数据"}],
+            sources=[{
+                "name": "PanWatch K 线数据",
+                "as_of": _data_as_of(
+                    summary,
+                    "asof",
+                    "date",
+                    "trade_date",
+                    "latest_date",
+                    "period_end",
+                    "end_date",
+                ),
+                "period_start": _data_as_of(summary, "period_start", "start_date"),
+                "period_end": _data_as_of(summary, "period_end", "end_date", "asof"),
+            }],
             observed_at=datetime.now(UTC),
         )
 
@@ -378,7 +402,24 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{market.value}:{symbol} 近 7 天相关新闻 {len(items)} 条。",
             data={"symbol": symbol, "market": market.value, "items": items},
-            sources=[{"name": "PanWatch 新闻数据"}],
+            sources=(
+                [
+                    {
+                        "name": " · ".join(
+                            value
+                            for value in (
+                                str(item.get("source") or "").strip(),
+                                str(item.get("title") or "").strip(),
+                            )
+                            if value
+                        )[:200] or "新闻来源",
+                        "url": item.get("url") or None,
+                        "published_at": str(item.get("published_at") or "")[:200] or None,
+                    }
+                    for item in items
+                ][:5]
+                or [{"name": "PanWatch 新闻数据"}]
+            ),
             observed_at=datetime.now(UTC),
         )
 
@@ -588,7 +629,16 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"已获取 {market.value}:{symbol} 的基本面摘要。",
             data=data,
-            sources=[{"name": "PanWatch 基本面数据"}],
+            sources=[{
+                "name": "PanWatch 基本面数据",
+                "as_of": _data_as_of(
+                    data,
+                    "report_date",
+                    "report_period",
+                    "reporting_period",
+                    "date",
+                ),
+            }],
             observed_at=datetime.now(UTC),
         )
 
@@ -610,10 +660,14 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 summary=f"未找到 {market.value}:{symbol} 的资金流向数据。",
                 error_code="capital_flow_unavailable",
             )
+        data = _json_safe(item)
         return ToolResult.success(
             summary=f"已获取 {market.value}:{symbol} 的资金流向摘要。",
-            data=_json_safe(item),
-            sources=[{"name": "PanWatch 资金流向"}],
+            data=data,
+            sources=[{
+                "name": "PanWatch 资金流向",
+                "as_of": _data_as_of(data, "date", "trade_date", "updated_at"),
+            }],
             observed_at=datetime.now(UTC),
         )
 
@@ -650,7 +704,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{trade_date} 找到 {len(data)} 条龙虎榜记录。",
             data={"market": market.value, "date": trade_date, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 龙虎榜"}],
+            sources=[{"name": "PanWatch 龙虎榜", "as_of": trade_date}],
             observed_at=datetime.now(UTC),
         )
 

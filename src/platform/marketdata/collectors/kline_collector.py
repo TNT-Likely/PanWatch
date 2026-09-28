@@ -713,6 +713,8 @@ class KlineCollector:
             "timeframe": "1d",
             "computed_at": now,
             "asof": last_date,
+            "period_start": klines[0].date,
+            "period_end": last_date,
             "params": {
                 "ma": [5, 10, 20, 60],
                 "macd": {"fast": 12, "slow": 26, "signal": 9},

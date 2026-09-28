@@ -27,14 +27,15 @@ function describeExtensionEvent(event: AssistantTraceEvent, tr: (key: string, op
 
 function describe(event: AssistantTraceEvent, tr: (key: string, options?: Record<string, unknown>) => string): { label: string; icon: typeof FileClock } {
   const name = typeof event.data.name === 'string' ? event.data.name : ''
+  const displayName = name ? tr(`tools.${name}`, { defaultValue: name }) : name
   const extension = event.event === 'extension_event' ? describeExtensionEvent(event, tr) : null
   if (extension) return extension
   switch (event.event) {
     case 'context_prepared': return { label: tr(event.data.compressed ? 'events.contextCompressed' : 'events.contextPrepared'), icon: FileClock }
     case 'step_updated': return { label: tr('events.step', { step: event.data.step || '' }), icon: ListTree }
-    case 'tool_call_start': return { label: tr('events.toolStart', { name }), icon: Wrench }
+    case 'tool_call_start': return { label: tr('events.toolStart', { name: displayName }), icon: Wrench }
     case 'tool_result': return {
-      label: `${tr(event.data.ok ? 'events.toolDone' : 'events.toolFailed', { name })}${formatDurationSuffix(event.data.duration_ms)}`,
+      label: `${tr(event.data.ok ? 'events.toolDone' : 'events.toolFailed', { name: displayName })}${formatDurationSuffix(event.data.duration_ms)}`,
       icon: event.data.ok ? CheckCircle2 : AlertCircle,
     }
     case 'model_usage': {
@@ -81,13 +82,6 @@ function detail(event: AssistantTraceEvent): string {
 }
 
 function summary(events: AssistantTraceEvent[], tr: (key: string, options?: Record<string, unknown>) => string): string {
-  const toolCalls = events.filter((event) => event.event === 'tool_call_start').length
-  const totalTokens = events
-    .filter((event) => event.event === 'model_usage')
-    .reduce((total, event) => total + Number(
-      event.data.total_tokens
-      || Number(event.data.input_tokens || 0) + Number(event.data.output_tokens || 0),
-    ), 0)
   const terminal = [...events].reverse().find((event) => ['done', 'error', 'paused'].includes(event.event))
   const duration = Number(terminal?.data.duration_ms || 0)
   const status = terminal?.event === 'done'
@@ -97,12 +91,26 @@ function summary(events: AssistantTraceEvent[], tr: (key: string, options?: Reco
     : terminal?.event === 'paused'
     ? tr('status.paused')
     : tr('status.running')
-  const details = [
-    formatDuration(duration),
+  const details = [formatDuration(duration)].filter(Boolean)
+  return details.length > 0 ? `${status} · ${details.join(' · ')}` : status
+}
+
+function developerSummary(events: AssistantTraceEvent[], tr: (key: string, options?: Record<string, unknown>) => string): string {
+  const toolCalls = events.filter((event) => event.event === 'tool_call_start').length
+  const totalTokens = events
+    .filter((event) => event.event === 'model_usage')
+    .reduce((total, event) => total + Number(
+      event.data.total_tokens
+      || Number(event.data.input_tokens || 0) + Number(event.data.output_tokens || 0),
+    ), 0)
+  return [
     toolCalls > 0 ? tr('toolCalls', { count: toolCalls }) : '',
     totalTokens > 0 ? `${totalTokens} tokens` : '',
-  ].filter(Boolean)
-  return details.length > 0 ? `${status} · ${details.join(' · ')}` : status
+  ].filter(Boolean).join(' · ')
+}
+
+function userVisible(event: AssistantTraceEvent): boolean {
+  return !['model_usage', 'extension_event'].includes(event.event)
 }
 
 export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
@@ -110,6 +118,8 @@ export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
   const traceT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => traceT(`p4.components.trace.${key}`, options)
   const [expanded, setExpanded] = useState(live)
+  const [developerExpanded, setDeveloperExpanded] = useState(false)
+  const userEvents = events.filter(userVisible)
   if (events.length === 0) return null
   return (
     <section data-testid="assistant-trace" className="rounded-lg border border-border/50 bg-background/70 px-3 py-2 text-[11px]">
@@ -126,19 +136,47 @@ export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
       </button>
       {expanded && (
         <ol className="mt-2 space-y-1.5 border-t border-border/40 pt-2">
-          {events.map((event, index) => {
+          {userEvents.map((event, index) => {
             const { label, icon: Icon } = describe(event, tr)
-            const eventDetail = detail(event)
             return (
               <li key={`${event.id ?? index}-${event.event}-${index}`} className="flex items-start gap-2 text-foreground">
                 <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
                   <div>{label}</div>
-                  {eventDetail && <div className="break-words text-muted-foreground">{eventDetail}</div>}
                 </div>
               </li>
             )
           })}
+          <li className="border-t border-border/40 pt-1.5">
+            <button
+              type="button"
+              className="flex w-full items-center gap-1.5 text-left text-[10px] text-muted-foreground hover:text-foreground"
+              aria-expanded={developerExpanded}
+              onClick={() => setDeveloperExpanded((value) => !value)}
+            >
+              <Wrench className="h-3 w-3" />
+              <span>{tr('developer.title')}</span>
+              <span className="flex-1 truncate">{developerSummary(events, tr)}</span>
+              <ChevronDown className={`h-3 w-3 transition-transform ${developerExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {developerExpanded && (
+              <ol className="mt-1.5 space-y-1.5 rounded-md bg-muted/30 p-2">
+                {events.map((event, index) => {
+                  const { label, icon: Icon } = describe(event, tr)
+                  const eventDetail = detail(event)
+                  return (
+                    <li key={`developer-${event.id ?? index}-${event.event}`} className="flex items-start gap-2">
+                      <Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <div>{label}</div>
+                        {eventDetail && <div className="break-words font-mono text-[9px] text-muted-foreground">{eventDetail}</div>}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </li>
         </ol>
       )}
     </section>

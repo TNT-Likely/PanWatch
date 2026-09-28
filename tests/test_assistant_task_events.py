@@ -224,6 +224,8 @@ def test_task_snapshot_contains_usage_and_tool_timing_summary():
             "duration_ms": 420,
             "attempt_count": 2,
             "error_code": None,
+            "sources": [],
+            "observed_at": None,
         }
     ]
 
@@ -315,3 +317,32 @@ def test_m126_creates_event_store_idempotently(tmp_path):
     engine.dispose()
 
     assert "assistant_task_events" in tables
+
+
+def test_m128_adds_trusted_result_columns_idempotently(tmp_path):
+    from src.platform.persistence.migrations import (
+        _m122_assistant_task_snapshots,
+        _m128_assistant_trusted_results,
+    )
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'trusted-results.db'}")
+    with engine.begin() as conn:
+        _m122_assistant_task_snapshots(conn)
+        _m128_assistant_trusted_results(conn)
+        _m128_assistant_trusted_results(conn)
+        task_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(assistant_task_runs)"))
+        }
+        invocation_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(assistant_tool_invocations)"))
+        }
+        indexes = {
+            row[1]
+            for row in conn.execute(text("PRAGMA index_list(assistant_task_runs)"))
+        }
+    engine.dispose()
+
+    assert {"result_schema_version", "result_data"} <= task_columns
+    assert {"observed_at", "result_data"} <= invocation_columns
+    assert "ix_assistant_task_run_final_message" in indexes

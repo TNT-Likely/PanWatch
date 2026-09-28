@@ -88,6 +88,10 @@ class EventType(StrEnum):
 class Source(BaseModel):
     name: str = Field(min_length=1)
     url: str | None = None
+    as_of: str | None = Field(default=None, max_length=200)
+    published_at: str | None = Field(default=None, max_length=200)
+    period_start: str | None = Field(default=None, max_length=200)
+    period_end: str | None = Field(default=None, max_length=200)
 
 
 class ToolSpec(BaseModel):

@@ -17,6 +17,56 @@ export interface ChatMessage {
   created_at: string
   /** Runtime facts captured while producing this assistant response. */
   trace?: AssistantTraceEvent[]
+  result?: AssistantResult | null
+}
+
+export interface AssistantEvidence {
+  id: string
+  tool_name: string
+  source_name: string
+  source_url?: string | null
+  summary: string
+  observed_at?: string | null
+  data_at?: string | null
+  period_start?: string | null
+  period_end?: string | null
+  freshness: 'fresh' | 'delayed' | 'stale' | 'unknown'
+  freshness_basis: 'published_at' | 'as_of' | 'observed_at' | 'unknown'
+  symbol?: string | null
+  market?: string | null
+}
+
+export interface AssistantSource {
+  name: string
+  url?: string | null
+  as_of?: string | null
+  published_at?: string | null
+  period_start?: string | null
+  period_end?: string | null
+}
+
+export interface AssistantFact {
+  text: string
+  evidence_ids: string[]
+}
+
+export interface AssistantNextAction {
+  id: string
+  kind: 'follow_up' | 'navigate' | 'tool_proposal'
+  label: string
+  payload: Record<string, any>
+  requires_approval: boolean
+}
+
+export interface AssistantResult {
+  schema_version: number
+  summary: string
+  facts: AssistantFact[]
+  inferences: string[]
+  risks: string[]
+  missing_data: string[]
+  evidence: AssistantEvidence[]
+  next_actions: AssistantNextAction[]
 }
 
 export interface ConversationDetail {
@@ -57,7 +107,10 @@ export interface AssistantTaskSnapshot {
     duration_ms: number
     attempt_count: number
     error_code?: string | null
+    sources?: AssistantSource[]
+    observed_at?: string | null
   }>
+  result?: AssistantResult | null
   pending_approvals: Array<{
     id: string
     call_id: string
@@ -241,7 +294,13 @@ export interface ChatStreamCallbacks {
   /** 模型开始调用工具（前端应清空当前 token 缓冲并展示"正在查询…"） */
   onToolCallStart?: (info: { name: string; arguments: Record<string, unknown> }) => void
   /** 工具执行完成 */
-  onToolResult?: (info: { name: string; ok: boolean; preview: string }) => void
+  onToolResult?: (info: {
+    name: string
+    ok: boolean
+    preview: string
+    sources: AssistantSource[]
+    observedAt?: string | null
+  }) => void
   /** 计划驱动(全面诊断持仓):计划生成/步骤推进/完成 */
   onPlan?: (info: {
     status: string
@@ -258,7 +317,7 @@ export interface ChatStreamCallbacks {
     resolvedStatus?: AssistantApproval['status']
   }) => void
   /** 最终回答（已落库） */
-  onDone?: (msg: { message_id: number; content: string; created_at: string }) => void
+  onDone?: (msg: { message_id: number; content: string; created_at: string; result?: AssistantResult | null }) => void
   /** AI service failure with a safe stable code and localized fallback text. */
   onError?: (error: AssistantStreamError) => void
   /** Factual runtime events for the user-facing trace panel. */
@@ -308,7 +367,10 @@ function dispatchAssistantEvent(
   if (ev.id > 0) state.lastEventId = ev.id
   const d = ev.data || {}
   if (TRACE_EVENTS.has(ev.event)) {
-    callbacks.onTrace?.({ event: ev.event, data: d, id: ev.id })
+    const traceData = ev.event === 'done'
+      ? Object.fromEntries(Object.entries(d).filter(([key]) => !['content', 'result'].includes(key)))
+      : d
+    callbacks.onTrace?.({ event: ev.event, data: traceData, id: ev.id })
   }
   switch (ev.event) {
     case 'task_created':
@@ -355,7 +417,13 @@ function dispatchAssistantEvent(
       callbacks.onToolCallStart?.({ name: d.name || d.tool || '', arguments: d.arguments || {} })
       break
     case 'tool_result':
-      callbacks.onToolResult?.({ name: d.name || d.tool || '', ok: !!d.ok, preview: d.preview || d.summary || '' })
+      callbacks.onToolResult?.({
+        name: d.name || d.tool || '',
+        ok: !!d.ok,
+        preview: d.preview || d.summary || '',
+        sources: Array.isArray(d.sources) ? d.sources : [],
+        observedAt: d.observed_at || null,
+      })
       break
     case 'plan':
       callbacks.onPlan?.({ status: d.status || '', steps: d.steps || [], current: d.current })
@@ -389,6 +457,7 @@ function dispatchAssistantEvent(
         message_id: d.message_id || 0,
         content: d.content || '',
         created_at: d.created_at || '',
+        result: d.result || null,
       })
       break
     case 'error':

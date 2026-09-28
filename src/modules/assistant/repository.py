@@ -39,6 +39,8 @@ from src.platform.persistence.models import (
 )
 from src.platform.tasking.contracts import TaskEvent, TaskEventType, TaskStatus
 
+from .trace import historical_trace_event
+
 
 class AssistantRepository:
     def __init__(self, session: Session) -> None:
@@ -78,6 +80,86 @@ class AssistantRepository:
             .order_by(ChatMessage.created_at.asc())
             .all()
         )
+
+    def get_message(self, message_id: int) -> ChatMessage | None:
+        return self._session.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+
+    def message_results(self, conversation_id: int) -> dict[int, dict]:
+        """Return structured results keyed by their final assistant message."""
+        rows = (
+            self._session.query(AssistantTaskRun)
+            .filter(
+                AssistantTaskRun.conversation_id == conversation_id,
+                AssistantTaskRun.final_message_id.isnot(None),
+                AssistantTaskRun.result_data.isnot(None),
+            )
+            .all()
+        )
+        return {
+            int(row.final_message_id): row.result_data
+            for row in rows
+            if row.final_message_id is not None and isinstance(row.result_data, dict)
+        }
+
+    def message_task_runs(self, conversation_id: int) -> dict[int, AssistantTaskRun]:
+        """Return completed task runs keyed by their final assistant message."""
+        rows = (
+            self._session.query(AssistantTaskRun)
+            .filter(
+                AssistantTaskRun.conversation_id == conversation_id,
+                AssistantTaskRun.final_message_id.isnot(None),
+            )
+            .order_by(AssistantTaskRun.created_at.asc())
+            .all()
+        )
+        return {
+            int(row.final_message_id): row
+            for row in rows
+            if row.final_message_id is not None
+        }
+
+    def tool_invocations_for_tasks(
+        self, task_run_ids: list[int]
+    ) -> dict[int, list[AssistantToolInvocation]]:
+        if not task_run_ids:
+            return {}
+        rows = (
+            self._session.query(AssistantToolInvocation)
+            .filter(AssistantToolInvocation.task_run_id.in_(task_run_ids))
+            .order_by(
+                AssistantToolInvocation.task_run_id.asc(),
+                AssistantToolInvocation.created_at.asc(),
+            )
+            .all()
+        )
+        grouped: dict[int, list[AssistantToolInvocation]] = {}
+        for row in rows:
+            grouped.setdefault(int(row.task_run_id), []).append(row)
+        return grouped
+
+    def message_traces(self, conversation_id: int) -> dict[int, list[dict]]:
+        """Restore the user-visible execution trace for persisted answers."""
+        tasks = self.message_task_runs(conversation_id)
+        if not tasks:
+            return {}
+        message_by_task = {
+            int(task.id): message_id for message_id, task in tasks.items()
+        }
+        rows = (
+            self._session.query(AssistantTaskEvent)
+            .filter(AssistantTaskEvent.task_run_id.in_(list(message_by_task)))
+            .order_by(
+                AssistantTaskEvent.task_run_id.asc(),
+                AssistantTaskEvent.sequence.asc(),
+            )
+            .all()
+        )
+        traces: dict[int, list[dict]] = {}
+        for row in rows:
+            item = historical_trace_event(row.event_type, row.data, row.sequence)
+            if item is not None:
+                traces.setdefault(message_by_task[int(row.task_run_id)], []).append(item)
+        return traces
 
     def get_latest_context_snapshot(
         self, conversation_id: int
@@ -365,6 +447,9 @@ class AssistantRepository:
         duration_ms: int = 0,
         attempt_count: int = 1,
         error_code: str | None = None,
+        result_data: dict | None = None,
+        sources: list[dict] | None = None,
+        observed_at: str | datetime | None = None,
     ) -> AssistantToolInvocation:
         invocation = (
             self._session.query(AssistantToolInvocation)
@@ -387,6 +472,15 @@ class AssistantRepository:
         invocation.duration_ms = max(0, int(duration_ms or 0))
         invocation.attempt_count = max(1, int(attempt_count or 1))
         invocation.error_code = error_code
+        invocation.result_data = result_data or {}
+        invocation.source_data = sources or []
+        if isinstance(observed_at, str) and observed_at:
+            try:
+                invocation.observed_at = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+            except ValueError:
+                invocation.observed_at = None
+        elif isinstance(observed_at, datetime):
+            invocation.observed_at = observed_at
         invocation.completed_at = datetime.now(timezone.utc)
         self.append_task_event(
             task_run_id,
@@ -402,6 +496,10 @@ class AssistantRepository:
                 "duration_ms": invocation.duration_ms,
                 "attempt_count": invocation.attempt_count,
                 "error_code": error_code,
+                "sources": invocation.source_data,
+                "observed_at": (
+                    invocation.observed_at.isoformat() if invocation.observed_at else None
+                ),
             },
             commit=False,
         )
@@ -500,6 +598,14 @@ class AssistantRepository:
             .filter(AssistantToolInvocation.status == "completed")
             .order_by(AssistantToolInvocation.created_at.desc())
             .limit(limit)
+            .all()
+        )
+
+    def list_task_tool_invocations(self, task_run_id: int) -> list[AssistantToolInvocation]:
+        return (
+            self._session.query(AssistantToolInvocation)
+            .filter(AssistantToolInvocation.task_run_id == task_run_id)
+            .order_by(AssistantToolInvocation.created_at.asc())
             .all()
         )
 
@@ -804,7 +910,12 @@ class AssistantRepository:
         self._session.commit()
 
     def complete_task_with_message(
-        self, task_run_id: int, conversation_id: int, content: str
+        self,
+        task_run_id: int,
+        conversation_id: int,
+        content: str,
+        *,
+        result_data: dict | None = None,
     ) -> ChatMessage | None:
         """Commit the final message and task transition as one cancellation-safe unit."""
         task = self._require_task(task_run_id)
@@ -813,11 +924,13 @@ class AssistantRepository:
         conversation = self.get_conversation(conversation_id)
         if conversation is None:
             raise LookupError(f"conversation {conversation_id} not found")
-        conversation.updated_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(timezone.utc)
+        conversation.updated_at = completed_at
         message = ChatMessage(
             conversation_id=conversation.id,
             role="assistant",
             content=content,
+            created_at=completed_at,
         )
         self._session.add(message)
         self._session.flush()
@@ -835,7 +948,9 @@ class AssistantRepository:
                     "error_code": None,
                     "checkpoint": None,
                     "checkpoint_id": "",
-                    "finished_at": datetime.now(timezone.utc),
+                    "finished_at": completed_at,
+                    "result_schema_version": int((result_data or {}).get("schema_version") or 1),
+                    "result_data": result_data,
                 },
                 synchronize_session=False,
             )
@@ -853,6 +968,8 @@ class AssistantRepository:
             data={
                 "message_id": message.id,
                 "content": content,
+                "created_at": completed_at.isoformat(),
+                "result": result_data,
                 **self._task_metrics(completed_task),
             },
         )
@@ -880,6 +997,7 @@ class AssistantRepository:
             "retry_count": int(task.retry_count or 0),
             "context": task.context or {},
             "error_code": task.error_code,
+            "result": task.result_data,
             "model": task.model,
             "duration_ms": self._task_duration_ms(task),
             "usage": {
@@ -916,6 +1034,8 @@ class AssistantRepository:
                     "duration_ms": int(tool.duration_ms or 0),
                     "attempt_count": int(tool.attempt_count or 1),
                     "error_code": tool.error_code,
+                    "sources": tool.source_data or [],
+                    "observed_at": tool.observed_at,
                 }
                 for tool in tools
             ],

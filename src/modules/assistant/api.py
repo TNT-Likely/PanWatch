@@ -182,6 +182,8 @@ class _SSEEventSink:
                         "name": data.get("tool", ""),
                         "ok": data.get("ok", False),
                         "preview": data.get("summary", ""),
+                        "sources": data.get("sources") or [],
+                        "observed_at": data.get("observed_at"),
                     },
                 )
             )

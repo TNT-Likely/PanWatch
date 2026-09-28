@@ -1147,6 +1147,7 @@ class AssistantTaskRun(Base):
     __table_args__ = (
         Index("ix_assistant_task_run_conversation_created", "conversation_id", "created_at"),
         Index("ix_assistant_task_run_status_created", "status", "created_at"),
+        Index("ix_assistant_task_run_final_message", "final_message_id"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -1170,6 +1171,8 @@ class AssistantTaskRun(Base):
     total_tokens = Column(Integer, nullable=False, default=0)
     cached_input_tokens = Column(Integer, nullable=False, default=0)
     reasoning_output_tokens = Column(Integer, nullable=False, default=0)
+    result_schema_version = Column(Integer, nullable=False, default=1)
+    result_data = Column(JSON, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
@@ -1228,6 +1231,8 @@ class AssistantToolInvocation(Base):
     status = Column(String, nullable=False, default="started")
     summary = Column(Text, nullable=False, default="")
     source_data = Column(JSON, default=[])
+    result_data = Column(JSON, default={})
+    observed_at = Column(DateTime, nullable=True)
     duration_ms = Column(Integer, nullable=False, default=0)
     attempt_count = Column(Integer, nullable=False, default=1)
     error_code = Column(String, nullable=True)

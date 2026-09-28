@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { klinesApi } from '@panwatch/api/klines'
@@ -28,6 +29,7 @@ import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
 import { marketSignTextClass } from '@/lib/market-colors'
+import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
 
 interface AgentResult {
   success?: boolean
@@ -382,6 +384,7 @@ const mergePortfolioQuotes = (
 }
 
 export default function StocksPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation('configuration')
   const stockT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const klineT = (key: string, options?: Record<string, unknown>) =>
@@ -870,6 +873,24 @@ export default function StocksPage() {
     setKlineDialogInitialSummary(klineSummaries[`${m}:${symbol}`] || null)
     setKlineDialogOpen(true)
   }, [klineSummaries])
+
+  const handledAssistantTargetRef = useRef<string | null>(null)
+  useEffect(() => {
+    const target = parseAssistantPortfolioTarget(searchParams)
+    if (!target) {
+      handledAssistantTargetRef.current = null
+      return
+    }
+    const key = `${target.market}:${target.symbol}`
+    if (handledAssistantTargetRef.current === key) return
+    handledAssistantTargetRef.current = key
+    openKlineDialog(target.symbol, target.market)
+    const next = new URLSearchParams(searchParams)
+    next.delete('view')
+    next.delete('symbol')
+    next.delete('market')
+    setSearchParams(next, { replace: true })
+  }, [openKlineDialog, searchParams, setSearchParams])
 
   // Open news dialog - pass stock name for more stable search
   const openNewsDialog = useCallback((stockName?: string) => {

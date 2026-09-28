@@ -37,7 +37,8 @@ describe('TraceTimeline', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    await user.click(screen.getByRole('button', { name: /研究进度/ }))
+    await user.click(screen.getByRole('button', { name: /开发者详情/ }))
     expect(screen.getByText('模型用量：输入 120，输出 30')).toBeTruthy()
   })
 
@@ -54,10 +55,11 @@ describe('TraceTimeline', () => {
       />,
     )
 
-    expect(screen.getByText('已完成 · 1.2s · 1 次工具调用 · 150 tokens')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    expect(screen.getByText('已完成 · 1.2s')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /研究进度/ }))
+    await user.click(screen.getByRole('button', { name: /开发者详情/ }))
     expect(screen.getByText('模型用量：输入 120，输出 30 · 800ms')).toBeTruthy()
-    expect(screen.getByText('工具完成：get_portfolio · 420ms')).toBeTruthy()
+    expect(screen.getAllByText('数据已就绪：持仓 · 420ms').length).toBeGreaterThan(0)
   })
 
   it('expands the factual steps from the compact summary', async () => {
@@ -80,9 +82,10 @@ describe('TraceTimeline', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    await user.click(screen.getByRole('button', { name: /研究进度/ }))
+    await user.click(screen.getByRole('button', { name: /开发者详情/ }))
 
-    expect(screen.getByText('调用工具：get_portfolio')).toBeTruthy()
+    expect(screen.getAllByText('正在查询：持仓').length).toBeGreaterThan(0)
     expect(screen.getByText('{"market":"CN"}')).toBeTruthy()
     expect(screen.getByText('持仓查询完成')).toBeTruthy()
     expect(screen.getByText('工具研究完成：选出 1 个')).toBeTruthy()
@@ -115,10 +118,11 @@ describe('TraceTimeline', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /执行记录/ }))
+    await user.click(screen.getByRole('button', { name: /研究进度/ }))
+    await user.click(screen.getByRole('button', { name: /开发者详情/ }))
 
     expect(screen.getByText('工具目录已准备：1 个直达，0 个已加载')).toBeTruthy()
     expect(screen.getByText('工具搜索完成：加载 1 个')).toBeTruthy()
-    expect(screen.getByText('调用工具：get_fundamentals')).toBeTruthy()
+    expect(screen.getAllByText('正在查询：get_fundamentals').length).toBeGreaterThan(0)
   })
 })

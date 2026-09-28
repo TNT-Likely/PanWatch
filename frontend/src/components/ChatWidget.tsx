@@ -22,6 +22,7 @@ import { ContextUsageIndicator } from '@/components/assistant/ContextUsageIndica
 import { TraceTimeline } from '@/components/assistant/TraceTimeline'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
 import { useTranslation } from 'react-i18next'
+import { AssistantResultCard } from '@/components/assistant/AssistantResultCard'
 
 interface StockContext {
   symbol: string
@@ -42,6 +43,8 @@ interface ChatWidgetProps {
   onConversationChange?: (conversationId: number | null, options?: ConversationChangeOptions) => void
   /** Stock context handed off by the application shell when a page opens “问 AI”. */
   initialStockContext?: StockContext | null
+  /** Navigate to a trusted application route selected from a result action. */
+  onNavigate?: (path: string) => void
 }
 
 function taskStorageKey(conversationId: number): string {
@@ -98,6 +101,7 @@ export default function ChatWidget({
   conversationIdFromUrl = null,
   onConversationChange,
   initialStockContext = null,
+  onNavigate,
 }: ChatWidgetProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
@@ -730,6 +734,7 @@ export default function ChatWidget({
             content: m.content,
             created_at: m.created_at || new Date().toISOString(),
             trace: completedTrace.length > 0 ? completedTrace : undefined,
+            result: m.result,
           }])
           traceEventsRef.current = []
           setTraceEvents([])
@@ -840,6 +845,7 @@ export default function ChatWidget({
             content: message.content,
             created_at: message.created_at || new Date().toISOString(),
             trace: completedTrace.length > 0 ? completedTrace : undefined,
+            result: message.result,
           }])
           traceEventsRef.current = []
           setTraceEvents([])
@@ -1142,6 +1148,18 @@ export default function ChatWidget({
                       msg.content
                     )}
                   </div>
+                  {msg.role === 'assistant' && msg.result && (
+                    <AssistantResultCard
+                      result={msg.result}
+                      disabled={interactionLocked}
+                      onPrefill={(prompt) => {
+                        setInput(prompt)
+                        requestAnimationFrame(() => inputRef.current?.focus())
+                      }}
+                      onNavigate={(path) => onNavigate?.(path)}
+                      onSubmitPrompt={(prompt) => { void handleSend(prompt) }}
+                    />
+                  )}
                   {msg.role === 'assistant' && msg.trace && msg.trace.length > 0 && (
                     <TraceTimeline events={msg.trace} />
                   )}

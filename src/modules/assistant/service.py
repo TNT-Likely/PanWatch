@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -52,12 +53,14 @@ from .llm_adapter import FailoverModelAdapter
 from .prompt import build_assistant_messages
 from .portfolio_diagnosis import PortfolioDiagnosisExtension
 from .repository import AssistantRepository
+from .result_builder import build_deterministic_assistant_result
 from .schemas import (
     ConversationDetailDTO,
     ConversationDTO,
     CreateConversationCommand,
     MessageDTO,
 )
+from .result_schemas import AssistantResult
 from .tool_descriptors import localized_tool_descriptors
 from .tool_adapters import execute_tool
 from .tools import build_panwatch_tool_registry
@@ -167,11 +170,35 @@ class AssistantService:
 
     def get_conversation(self, conversation_id: int) -> ConversationDetailDTO:
         conversation = self._require_conversation(conversation_id)
+        results = self._repository.message_results(conversation_id)
+        traces = self._repository.message_traces(conversation_id)
+        tasks = self._repository.message_task_runs(conversation_id)
+        invocations = self._repository.tool_invocations_for_tasks(
+            [int(task.id) for task in tasks.values()]
+        )
+        messages = self._repository.list_messages(conversation_id)
+        language = self._report_language()
+        for message in messages:
+            task = tasks.get(int(message.id))
+            if message.role != "assistant" or int(message.id) in results or task is None:
+                continue
+            task_invocations = invocations.get(int(task.id), [])
+            if task_invocations:
+                results[int(message.id)] = build_deterministic_assistant_result(
+                    task_id=int(task.id),
+                    answer=message.content,
+                    invocations=task_invocations,
+                    language=language,
+                ).model_dump(mode="json")
         return ConversationDetailDTO(
             conversation=self._conversation_dto(conversation),
             messages=[
-                self._message_dto(row)
-                for row in self._repository.list_messages(conversation_id)
+                self._message_dto(
+                    row,
+                    result=results.get(row.id),
+                    trace=traces.get(row.id),
+                )
+                for row in messages
             ],
         )
 
@@ -669,9 +696,44 @@ class AssistantService:
 
     def create_task(self, conversation_id: int, user_message_id: int):
         self._require_conversation(conversation_id)
+        message = self._repository.get_message(user_message_id)
         return self._repository.create_task(
-            conversation_id=conversation_id, user_message_id=user_message_id, context={}
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            context=self._write_action_context(message.content if message else ""),
         )
+
+    @staticmethod
+    def _write_action_context(content: str) -> dict:
+        """Constrain explicit write requests to one approval-protected tool."""
+        normalized = content.strip().lower()
+        alert_request = any(term in normalized for term in ("提醒", "预警", "alert"))
+        if not alert_request:
+            return {}
+        create_request = any(
+            term in normalized
+            for term in ("创建", "设置", "新增", "提醒我", "create", "set ")
+        )
+        has_exact_target = re.search(
+            r"(?<![a-z0-9.])(?:cn|hk|us):[a-z0-9.]+(?![a-z0-9.])",
+            normalized,
+        )
+        content_without_target = (
+            f"{normalized[:has_exact_target.start()]} {normalized[has_exact_target.end():]}"
+            if has_exact_target
+            else normalized
+        )
+        has_price = re.search(
+            r"(?<![a-z0-9.])\d+(?:\.\d+)?(?![a-z0-9.])",
+            content_without_target,
+        )
+        if not create_request or not has_exact_target or not has_price:
+            return {}
+        return {
+            "tool_choice": "required",
+            "allowed_tool_names": ["create_price_alert"],
+            "action_source": "explicit_user_request",
+        }
 
     def record_tool_completion(self, task_id: int, data: dict) -> None:
         self._repository.record_tool_completed(
@@ -683,6 +745,9 @@ class AssistantService:
             duration_ms=int(data.get("duration_ms") or 0),
             attempt_count=int(data.get("attempt_count") or 1),
             error_code=data.get("error_code"),
+            result_data=data.get("data") or {},
+            sources=data.get("sources") or [],
+            observed_at=data.get("observed_at"),
         )
 
     def record_tool_started(self, task_id: int, data: dict) -> None:
@@ -705,12 +770,27 @@ class AssistantService:
         )
 
     def complete_task_with_message(
-        self, task_id: int, conversation_id: int, content: str
+        self,
+        task_id: int,
+        conversation_id: int,
+        content: str,
+        *,
+        result: AssistantResult | None = None,
     ) -> MessageDTO | None:
         message = self._repository.complete_task_with_message(
-            task_id, conversation_id, content
+            task_id,
+            conversation_id,
+            content,
+            result_data=result.model_dump(mode="json") if result else None,
         )
-        return self._message_dto(message) if message is not None else None
+        return (
+            self._message_dto(
+                message,
+                result=result.model_dump(mode="json") if result else None,
+            )
+            if message is not None
+            else None
+        )
 
     def finish_task(self, task_id: int, result, final_message_id: int) -> None:
         self._repository.finish_task(
@@ -862,10 +942,17 @@ class AssistantService:
         )
 
     @staticmethod
-    def _message_dto(message) -> MessageDTO:
+    def _message_dto(
+        message,
+        *,
+        result: dict | None = None,
+        trace: list[dict] | None = None,
+    ) -> MessageDTO:
         return MessageDTO(
             id=message.id,
             role=message.role,
             content=message.content,
             created_at=message.created_at,
+            result=AssistantResult.model_validate(result) if result else None,
+            trace=trace,
         )

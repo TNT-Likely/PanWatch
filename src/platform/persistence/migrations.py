@@ -2012,6 +2012,38 @@ def _m127_assistant_trace_metrics(conn: Connection) -> None:
         _add_column_if_missing(conn, "assistant_tool_invocations", name, statement)
 
 
+def _m128_assistant_trusted_results(conn: Connection) -> None:
+    """Persist versioned assistant results and evidence observation times."""
+    for name, statement in (
+        (
+            "result_schema_version",
+            "ALTER TABLE assistant_task_runs ADD COLUMN result_schema_version INTEGER NOT NULL DEFAULT 1",
+        ),
+        (
+            "result_data",
+            "ALTER TABLE assistant_task_runs ADD COLUMN result_data JSON",
+        ),
+    ):
+        _add_column_if_missing(conn, "assistant_task_runs", name, statement)
+    _add_column_if_missing(
+        conn,
+        "assistant_tool_invocations",
+        "observed_at",
+        "ALTER TABLE assistant_tool_invocations ADD COLUMN observed_at DATETIME",
+    )
+    _add_column_if_missing(
+        conn,
+        "assistant_tool_invocations",
+        "result_data",
+        "ALTER TABLE assistant_tool_invocations ADD COLUMN result_data JSON",
+    )
+    _create_index_if_missing(
+        conn,
+        "ix_assistant_task_run_final_message",
+        "CREATE INDEX ix_assistant_task_run_final_message ON assistant_task_runs(final_message_id)",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2040,6 +2072,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(125, "assistant_task_protocol", _m125_assistant_task_protocol),
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
     Migration(127, "assistant_trace_metrics", _m127_assistant_trace_metrics),
+    Migration(128, "assistant_trusted_results", _m128_assistant_trusted_results),
 )
 
 

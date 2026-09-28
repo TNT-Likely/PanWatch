@@ -50,6 +50,7 @@ describe('assistant task stream', () => {
       message_id: 7,
       content: '完成',
       created_at: '',
+      result: null,
     })
   })
 
@@ -90,6 +91,38 @@ describe('assistant task stream', () => {
       message_id: 10,
       content: '全部完成',
       created_at: '',
+      result: null,
+    })
+  })
+
+  it('preserves a structured result on the terminal event', async () => {
+    const result = {
+      schema_version: 1,
+      summary: '结论',
+      facts: [],
+      inferences: [],
+      risks: [],
+      missing_data: [],
+      evidence: [],
+      next_actions: [],
+    }
+    readSSE.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({
+        id: 4,
+        event: 'done',
+        data: { message_id: 7, content: '完成', created_at: '', result },
+      })
+      return { lastEventId: 4 }
+    })
+
+    const onDone = vi.fn()
+    await chatApi.sendAssistantMessageStream(1, '分析市场', { onDone })
+
+    expect(onDone).toHaveBeenCalledWith({
+      message_id: 7,
+      content: '完成',
+      created_at: '',
+      result,
     })
   })
 

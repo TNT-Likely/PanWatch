@@ -44,6 +44,7 @@ export default function AssistantPage() {
       conversationIdFromUrl={conversationId}
       onConversationChange={setConversationId}
       initialStockContext={launchContext}
+      onNavigate={(path) => navigate(path)}
     />
   )
 }

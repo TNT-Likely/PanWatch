@@ -60,6 +60,14 @@ class DenyPolicy:
         return ToolPermissionDecision.deny("not allowed")
 
 
+class AllowPolicy:
+    def is_tool_visible(self, _request, _tool):
+        return True
+
+    async def decide(self, _request, _tool, _call):
+        return ToolPermissionDecision.allow()
+
+
 class CapturingModel:
     def __init__(self):
         self.received_tools = []
@@ -421,7 +429,11 @@ def test_required_tool_choice_repairs_a_text_only_turn_without_leaking_text():
     registry = write_registry(write_note)
     sink = CollectingSink()
 
-    result = asyncio.run(AgentRuntime(model, registry).run(request_with_required_tool, sink))
+    result = asyncio.run(
+        AgentRuntime(model, registry, policy=AllowPolicy()).run(
+            request_with_required_tool, sink
+        )
+    )
 
     assert result.status is RunStatus.COMPLETED
     assert result.answer == "提醒已成功更新。"
@@ -448,7 +460,9 @@ def test_required_tool_choice_returns_stable_error_after_one_repair_attempt():
     )
 
     result = asyncio.run(
-        AgentRuntime(TextOnlyModel(), write_registry(lambda *_: None)).run(
+        AgentRuntime(
+            TextOnlyModel(), write_registry(lambda *_: None), policy=AllowPolicy()
+        ).run(
             request_with_required_tool, CollectingSink()
         )
     )

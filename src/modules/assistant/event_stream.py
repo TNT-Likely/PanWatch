@@ -13,27 +13,7 @@ from src.platform.persistence.database import SessionLocal
 from src.platform.tasking.contracts import TaskEventType, TaskStatus
 
 from .repository import AssistantRepository
-
-_SSE_EVENT_NAMES = {
-    TaskEventType.TASK_CREATED: "task_created",
-    TaskEventType.TASK_QUEUED: "task_queued",
-    TaskEventType.TASK_STARTED: "run_started",
-    TaskEventType.CONTEXT_PREPARED: "context_prepared",
-    TaskEventType.STEP_STARTED: "step_started",
-    TaskEventType.STEP_PROGRESS: "step_updated",
-    TaskEventType.EXTENSION_EVENT: "extension_event",
-    TaskEventType.ANSWER_TOKEN: "token",
-    TaskEventType.MODEL_USAGE: "model_usage",
-    TaskEventType.TOOL_STARTED: "tool_call_start",
-    TaskEventType.TOOL_COMPLETED: "tool_result",
-    TaskEventType.CHECKPOINT_SAVED: "checkpoint_saved",
-    TaskEventType.APPROVAL_REQUIRED: "approval_required",
-    TaskEventType.TASK_PAUSED: "paused",
-    TaskEventType.TASK_RETRY_SCHEDULED: "retry_scheduled",
-    TaskEventType.TASK_COMPLETED: "done",
-    TaskEventType.TASK_FAILED: "error",
-    TaskEventType.TASK_CANCELLED: "cancelled",
-}
+from .trace import SSE_EVENT_NAMES
 
 
 def _load_task_events(
@@ -69,7 +49,7 @@ async def subscribe_task_events(
         if events:
             for event in events:
                 cursor = event.sequence
-                event_type = _SSE_EVENT_NAMES.get(TaskEventType(event.event_type), event.event_type)
+                event_type = SSE_EVENT_NAMES.get(TaskEventType(event.event_type), event.event_type)
                 yield format_sse_event(event.sequence, event_type, event.data or {})
             last_activity = time.monotonic()
             continue
