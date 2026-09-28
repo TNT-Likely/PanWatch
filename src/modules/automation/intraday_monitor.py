@@ -1039,6 +1039,11 @@ class IntradayMonitorAgent(BaseAgent):
                     result.content,
                     result.images,
                 )
+                if notify_result.get("skipped"):
+                    # 无渠道/静默时段等软跳过：不计为通知失败（与 base.py 行为对齐）
+                    result.raw_data["notified"] = False
+                    result.raw_data["notify_skipped"] = notify_result.get("skipped")
+                    return result
                 notified = bool(notify_result.get("success"))
                 result.raw_data["notified"] = notified
                 if notified:
