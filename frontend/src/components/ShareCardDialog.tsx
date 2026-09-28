@@ -120,10 +120,6 @@ export default function ShareCardDialog({
                 盯
               </span>
               <span>AI 盯盘 AiWatch</span>
-              <span style={{ color: '#cbd5e1', fontWeight: 400 }}>·</span>
-              <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12.5 }}>
-                github.com/TNT-Likely/AiWatch
-              </span>
             </div>
           </div>
         </div>
