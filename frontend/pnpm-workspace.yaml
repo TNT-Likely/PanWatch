@@ -4,3 +4,11 @@ packages:
 # 安装会被判过期并触发自动 install/purge，在非交互(验证)环境直接失败。
 # 脚本执行(tsc/vite/vitest)不依赖该检查，关闭之。.npmrc 中同名键 pnpm 11 不再读取。
 verifyDepsBeforeRun: false
+# node_modules 原由 pnpm@9.15.9 创建(.modules.yaml: packageManager: pnpm@9.15.9)，
+# pnpm 11 install 判定布局不兼容会请求确认后整目录 purge；验证环境无 TTY 直接
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 中止。关闭确认使非交互 install 可过。
+confirmModulesPurge: false
+# pnpm 10+ 默认不执行依赖 install 脚本，esbuild(vite^5 传递依赖)被跳过时
+# pnpm 11 以 ERR_PNPM_IGNORED_BUILDS 退出 1。由 pnpm approve-builds esbuild 写入。
+allowBuilds:
+  esbuild: true
