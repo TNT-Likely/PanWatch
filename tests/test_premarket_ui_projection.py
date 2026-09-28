@@ -1,7 +1,7 @@
 """UI 呈现地基单测:策略信号投影的 earnings_verification 徽章字段 + dashboard brief 的盘前决策优先级。
 
 全离线:信号投影用未落库的 ORM 行对象;brief 端点用内存 SQLite + TestClient,
-不连外部、不触碰真实 data/panwatch.db。
+不连外部、不触碰真实 data/aiwatch.db。
 """
 
 from __future__ import annotations

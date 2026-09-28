@@ -34,7 +34,7 @@ router = APIRouter()
 
 # 协议版本(客户端未协商时的默认值)
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "PanWatch", "version": "0.1.0"}
+SERVER_INFO = {"name": "AiWatch", "version": "0.1.0"}
 
 # 只读工具白名单(复用 chat 的工具定义,新增工具自动纳入)
 READ_TOOL_NAMES = {t["function"]["name"] for t in CHAT_TOOLS}

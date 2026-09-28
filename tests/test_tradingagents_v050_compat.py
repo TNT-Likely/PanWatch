@@ -11,7 +11,7 @@ from tradingagents.graph.propagation import Propagator
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 
 
-def test_v050_exposes_the_panwatch_extension_contract():
+def test_v050_exposes_the_aiwatch_extension_contract():
     """升级或上游重构时，公开持仓入口和既有补丁签名必须仍然可用。"""
     assert version("tradingagents") == "0.5.0"
     assert "portfolio" in inspect.signature(TradingAgentsGraph.propagate).parameters

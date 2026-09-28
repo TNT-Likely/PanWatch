@@ -87,9 +87,9 @@
 在整篇 Markdown 正文的最后，追加一个用于程序解析的 JSON 块（必须是有效 JSON，使用双引号；不要 Markdown 代码块）。
 
 输出格式（必须一字不差包含标签）：
-<!--PANWATCH_JSON-->
+<!--AIWATCH_JSON-->
 {...}
-<!--/PANWATCH_JSON-->
+<!--/AIWATCH_JSON-->
 
 JSON Schema（字段说明）：
 - suggestions: 数组，每只自选股必须有 1 条
@@ -103,4 +103,4 @@ JSON Schema（字段说明）：
   - risks: 风险点数组（最多3条）
 
 注意：
-- JSON 块必须放在全文末尾，且在 <!--/PANWATCH_JSON--> 之后不能再输出任何内容。
+- JSON 块必须放在全文末尾，且在 <!--/AIWATCH_JSON--> 之后不能再输出任何内容。

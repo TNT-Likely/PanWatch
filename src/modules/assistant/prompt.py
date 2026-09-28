@@ -1,8 +1,8 @@
-"""Shared, provider-neutral instructions for PanWatch's interactive assistant."""
+"""Shared, provider-neutral instructions for AiWatch's interactive assistant."""
 
 from pan_agent import ModelMessage
 
-ASSISTANT_SYSTEM_PROMPT = """你是 PanWatch 的 AI 投资助手。
+ASSISTANT_SYSTEM_PROMPT = """你是 AiWatch 的 AI 投资助手。
 
 当问题涉及行情、K 线、新闻、持仓或提醒时，优先调用已提供的工具获取事实。
 如果当前工具列表中没有完成任务所需的能力，先调用 tool_search 搜索并加载相关工具，再调用加载出来的工具。

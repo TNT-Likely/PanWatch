@@ -1,6 +1,6 @@
 # OpenTelemetry 导出(可选依赖组)
 #
-# PanWatch 的自建可观测(log_context / agent_runs / progress)不依赖这些包;
+# AiWatch 的自建可观测(log_context / agent_runs / progress)不依赖这些包;
 # 仅当你想把 trace 导出到标准 APM(Jaeger / Tempo / Langfuse OTLP 等)时才需安装:
 #
 #   pip install -r requirements-otel.txt

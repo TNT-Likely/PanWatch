@@ -1,4 +1,4 @@
-"""PanWatch 回测模块(Phase 0 地基)。
+"""AiWatch 回测模块(Phase 0 地基)。
 
 轻量、纯 Python、零第三方依赖的事件式回测内核,服务于:
 - 历史验证现有 StrategySignalRun 信号的真实表现

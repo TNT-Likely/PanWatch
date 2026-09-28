@@ -250,9 +250,9 @@ def test_progress_keeps_other_parallel_tool_active_after_one_finishes():
 
 def test_progress_handler_uses_run_id_to_close_the_same_langgraph_node():
     """LangChain 1.x 的 on_chain_end 不再稳定提供 name，必须按 run_id 关联。"""
-    from src.modules.automation.tradingagents.observability import PanWatchProgressHandler
+    from src.modules.automation.tradingagents.observability import AiWatchProgressHandler
 
-    handler = PanWatchProgressHandler(trace_id="trace-1")
+    handler = AiWatchProgressHandler(trace_id="trace-1")
     emitted = []
     handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
 
@@ -276,9 +276,9 @@ def test_progress_handler_uses_run_id_to_close_the_same_langgraph_node():
 
 def test_progress_handler_drops_empty_node_name_instead_of_data_collection():
     """空名称不能命中 `n in stage`，否则所有未知结束事件都会变成数据采集完成。"""
-    from src.modules.automation.tradingagents.observability import PanWatchProgressHandler
+    from src.modules.automation.tradingagents.observability import AiWatchProgressHandler
 
-    handler = PanWatchProgressHandler(trace_id="trace-2")
+    handler = AiWatchProgressHandler(trace_id="trace-2")
     emitted = []
     handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
 
@@ -289,9 +289,9 @@ def test_progress_handler_drops_empty_node_name_instead_of_data_collection():
 
 def test_progress_handler_exposes_agent_for_llm_and_tool_operations():
     """活动操作必须能解释是哪个子 Agent 发起的，避免 UI 只显示一个泛化工具名。"""
-    from src.modules.automation.tradingagents.observability import PanWatchProgressHandler
+    from src.modules.automation.tradingagents.observability import AiWatchProgressHandler
 
-    handler = PanWatchProgressHandler(trace_id="trace-3")
+    handler = AiWatchProgressHandler(trace_id="trace-3")
     emitted = []
     handler._emit = lambda stage, action, **extra: emitted.append((stage, action, extra))
 
@@ -393,7 +393,7 @@ def test_empty_required_market_source_is_visible_as_error(monkeypatch):
         market_data.klines.return_value = []
         market_data.capital_flow.return_value = None
         market_data.events.return_value = []
-        monkeypatch.setattr(agent_module, "PanWatchProgressHandler", _Handler)
+        monkeypatch.setattr(agent_module, "AiWatchProgressHandler", _Handler)
         monkeypatch.setattr(agent_module, "get_market_data", lambda: market_data)
         monkeypatch.setattr(
             "src.platform.marketdata.collectors.kline_collector.KlineCollector.get_technical_indicators",

@@ -56,7 +56,7 @@ SETTING_DESCRIPTIONS = {
     "notify_dedupe_ttl_overrides": "通知幂等窗口覆盖（JSON，空为默认）",
     "stock_link_platform": "股票链接平台（点击股票代码跳转的行情网站）",
     "price_color_mode": "涨跌颜色口径：up-red=红涨绿跌(默认) / up-green=绿涨红跌",
-    "panwatch_base_url": "PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）",
+    "aiwatch_base_url": "AiWatch 公开访问地址（用于通知里的分析详情页链接，如 https://aiwatch.example.com）",
 }
 
 SETTING_KEYS = list(SETTING_DESCRIPTIONS.keys())
@@ -73,7 +73,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "price_color_mode": "up-red",
-        "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
+        "aiwatch_base_url": os.getenv("AIWATCH_BASE_URL") or os.getenv("PANWATCH_BASE_URL") or "",
     }
 
 

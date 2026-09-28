@@ -1,4 +1,4 @@
-"""PanWatch's AI failover adapter for the generic PanAgent model port."""
+"""AiWatch's AI failover adapter for the generic PanAgent model port."""
 
 from __future__ import annotations
 

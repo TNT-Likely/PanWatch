@@ -44,7 +44,7 @@ tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.5.0
 # Optional provider usage normalization and token measurement plugin.
 -e ./packages/pan-agent-token-meter
 
-# 可选的工具检索插件；PanWatch 默认启用 shadow 模式。
+# 可选的工具检索插件；AiWatch 默认启用 shadow 模式。
 -e ./packages/pan-agent-tool-research
 
 # OpenTelemetry 导出为「可选依赖组」,不在主依赖内(默认关闭,未装即 no-op)。

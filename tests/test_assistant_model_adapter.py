@@ -1,4 +1,4 @@
-"""Model adaptation stays in the PanWatch host, outside pan_agent."""
+"""Model adaptation stays in the AiWatch host, outside pan_agent."""
 
 import asyncio
 

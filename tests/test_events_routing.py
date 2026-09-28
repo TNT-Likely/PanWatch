@@ -6,7 +6,7 @@ import src.platform.marketdata.collectors.events_collector as ec
 
 
 def test_fetch_events_uses_marketdata(monkeypatch):
-    """走 marketdata 包的 events,转换为 PanWatch EventItem"""
+    """走 marketdata 包的 events,转换为 AiWatch EventItem"""
     from marketdata.types import EventItem as MdEventItem
 
     now = datetime.now()

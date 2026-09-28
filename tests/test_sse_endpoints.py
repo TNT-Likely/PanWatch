@@ -93,7 +93,7 @@ def _make_log_db(monkeypatch):
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
             level=level,
-            logger_name="panwatch.test",
+            logger_name="aiwatch.test",
             message=msg,
         ))
     db.commit()
@@ -178,7 +178,7 @@ def test_logs_sse_tail_only_new(monkeypatch):
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
             level="WARNING",
-            logger_name="panwatch.test",
+            logger_name="aiwatch.test",
             message="新增日志",
         ))
         db.commit()

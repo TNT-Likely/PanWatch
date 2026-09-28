@@ -1,6 +1,6 @@
-"""PanWatch 内部页面链接生成：深度分析详情页等。
+"""AiWatch 内部页面链接生成：深度分析详情页等。
 
-全局设置 key: panwatch_base_url(公开访问地址,用于通知里的详情页绝对链接)。
+全局设置 key: aiwatch_base_url(公开访问地址,用于通知里的详情页绝对链接)。
 读取模式与 stock_link.py 一致(AppSettings,miss 回退默认)。
 """
 
@@ -13,7 +13,7 @@ from src.platform.persistence.models import AppSettings
 
 logger = logging.getLogger(__name__)
 
-SETTING_KEY = "panwatch_base_url"
+SETTING_KEY = "aiwatch_base_url"
 
 
 def get_base_url() -> str:

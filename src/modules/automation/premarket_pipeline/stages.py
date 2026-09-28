@@ -475,7 +475,7 @@ async def run_macro_stage(
             continue
         payload = try_extract_tagged_json(content)
         if payload is None:
-            failure_note = "未找到有效的 <!--PANWATCH_JSON--> 标签或 JSON 解析失败"
+            failure_note = "未找到有效的 <!--AIWATCH_JSON--> 标签或 JSON 解析失败"
             continue
         errors = _cards_check_errors(payload)
         if not errors:

@@ -1,7 +1,7 @@
 """盘前决策流水线单测:五阶段正反用例 + 门禁/互斥/幂等/V11/防覆盖/东财全禁端到端。
 
 全部离线:LLM(ai_client)、akshare、行情通道与 SessionLocal 均以替身注入,
-不发起真实网络请求,不触碰真实 data/panwatch.db。
+不发起真实网络请求,不触碰真实 data/aiwatch.db。
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def db(monkeypatch):
     monkeypatch.setattr(engine_mod, "SessionLocal", factory)
     monkeypatch.setattr(catalog_mod, "SessionLocal", factory)
     # `from ... import SessionLocal` 的模块级绑定:流水线写库经由的模块逐个替换,
-    # 否则先于本用例导入的模块会把写入落到真实 data/panwatch.db。
+    # 否则先于本用例导入的模块会把写入落到真实 data/aiwatch.db。
     import src.modules.automation.agent_runs as agent_runs_mod
     import src.modules.research.analysis_history as analysis_history_mod
     import src.modules.research.context_store as context_store_mod
@@ -1298,7 +1298,7 @@ def test_prompts_render_with_config_tokens():
         assert pcfg.TAG_START in text
         assert pcfg.TAG_END in text
         assert "{{" + "RR_MIN" + "}}" not in text  # 占位符已被配置值替换
-        assert "PanWatch" in text
+        assert "AiWatch" in text
     sector_prompt = pcfg.render_prompt(pcfg.PROMPT_SECTOR)
     assert str(pcfg.MOMENTUM_WEIGHTS["d5"]) in sector_prompt
     assert str(pcfg.HEAT_LIMIT_UP["industry"]) in sector_prompt

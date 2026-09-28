@@ -1,6 +1,6 @@
 """OpenTelemetry 导出层(可选,默认关闭)。
 
-在**不改动** PanWatch 自建可观测体系(``log_context`` / ``agent_runs`` /
+在**不改动** AiWatch 自建可观测体系(``log_context`` / ``agent_runs`` /
 ``tradingagents.observability``)的前提下,额外挂一层标准 OTel 导出,让"自建 + 标准栈"
 都能拿到实证。三类桥接:
 
@@ -40,14 +40,14 @@ GEN_AI_RESPONSE_MODEL = "gen_ai.response.model"
 GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
 GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 
-# PanWatch 自定义属性(桥接自建 trace 模型,便于在 APM 里与 agent_runs 对齐)
-ATTR_AGENT_NAME = "panwatch.agent.name"
-ATTR_TRACE_ID = "panwatch.trace_id"
-ATTR_TRIGGER_SOURCE = "panwatch.trigger_source"
-ATTR_TA_STAGE = "panwatch.tradingagents.stage"
+# AiWatch 自定义属性(桥接自建 trace 模型,便于在 APM 里与 agent_runs 对齐)
+ATTR_AGENT_NAME = "aiwatch.agent.name"
+ATTR_TRACE_ID = "aiwatch.trace_id"
+ATTR_TRIGGER_SOURCE = "aiwatch.trigger_source"
+ATTR_TA_STAGE = "aiwatch.tradingagents.stage"
 
-_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "panwatch")
-_INSTRUMENTATION_SCOPE = "panwatch.otel"
+_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "aiwatch")
+_INSTRUMENTATION_SCOPE = "aiwatch.otel"
 
 # 模块级状态(单进程内单例)
 _enabled: bool = False

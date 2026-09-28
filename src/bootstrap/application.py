@@ -1,4 +1,4 @@
-"""PanWatch 的 ASGI 应用装配根。
+"""AiWatch 的 ASGI 应用装配根。
 
 这里是进程启动时唯一创建 :class:`fastapi.FastAPI` 实例的位置。它只连接
 HTTP 中间件、认证依赖和各模块 router；具体业务规则仍由 ``modules`` 与
@@ -49,7 +49,7 @@ from src.modules.strategy.api import factors
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
-    title="PanWatch API",
+    title="AiWatch API",
     version="0.1.0",
     redirect_slashes=False,  # 避免重定向丢失 Authorization header
 )
@@ -229,7 +229,7 @@ app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
 def oauth_protected_resource_metadata(request: Request, _resource_path: str = ""):
     """RFC 9728 元数据:MCP 客户端握手前会探测此端点决定鉴权方式。
 
-    PanWatch 用静态 PAT(无 OAuth server),返回 authorization_servers=[] +
+    AiWatch 用静态 PAT(无 OAuth server),返回 authorization_servers=[] +
     bearer_methods_supported=["header"],告诉客户端直接用 Authorization Bearer。
     即便不用 OAuth 此端点也必须存在,否则客户端拿到 404 会因 schema 不匹配报错。
     """

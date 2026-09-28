@@ -1,6 +1,6 @@
 """美股 get_news 路由:应透传上游(Yahoo)而非被东财关键词搜索截走;中文行业词才走东财。
 
-回归 bug:0.3.0 新闻分析师对美股 ticker(BABA)调 get_news,原逻辑只判 `not is_panwatch_routable`,
+回归 bug:0.3.0 新闻分析师对美股 ticker(BABA)调 get_news,原逻辑只判 `not is_aiwatch_routable`,
 把美股 ticker 也送进东财关键词搜索 → 搜不到 → 返回「未搜到」空结果,美股拿不到个股新闻。
 修复:关键词新闻分支再加「含中文」闸,纯字母 ticker 落到上游透传。
 """

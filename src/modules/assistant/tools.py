@@ -1,4 +1,4 @@
-"""PanWatch business adapters for the framework-free PanAgent runtime."""
+"""AiWatch business adapters for the framework-free PanAgent runtime."""
 
 from __future__ import annotations
 
@@ -172,7 +172,7 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
+def build_aiwatch_tool_registry(session: Session) -> ToolRegistry:
     """Register the host-owned market and portfolio tools for an assistant run."""
     registry = ToolRegistry()
     portfolio_service = build_portfolio_service(session)
@@ -182,7 +182,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=summary,
             data={"has_positions": summary != "用户暂无持仓。"},
-            sources=[{"name": "PanWatch 持仓"}],
+            sources=[{"name": "AiWatch 持仓"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -242,7 +242,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "count": len(items),
                 "items": items,
             },
-            sources=[{"name": "PanWatch 机会信号"}],
+            sources=[{"name": "AiWatch 机会信号"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -293,7 +293,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 f"涨跌幅 {data.get('change_pct')}%。"
             ),
             data=data,
-            sources=[{"name": "PanWatch 行情数据"}],
+            sources=[{"name": "AiWatch 行情数据"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -318,7 +318,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{market.value}:{symbol} 的 K 线摘要已就绪：{summary}",
             data=summary,
-            sources=[{"name": "PanWatch K 线数据"}],
+            sources=[{"name": "AiWatch K 线数据"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -354,7 +354,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{market.value}:{symbol} 近 7 天相关新闻 {len(items)} 条。",
             data={"symbol": symbol, "market": market.value, "items": items},
-            sources=[{"name": "PanWatch 新闻数据"}],
+            sources=[{"name": "AiWatch 新闻数据"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -398,7 +398,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=(f"找到 {len(data)} 个股票标的。" if data else "没有找到匹配的股票标的。"),
             data={"query": query, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 股票清单"}],
+            sources=[{"name": "AiWatch 股票清单"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -436,7 +436,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 for item in markets
             ),
             data={"markets": markets},
-            sources=[{"name": "PanWatch 市场日历"}],
+            sources=[{"name": "AiWatch 市场日历"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -470,7 +470,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"找到 {len(data)} 个热门股票。",
             data={"market": market.value, "mode": mode, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 热门股票"}],
+            sources=[{"name": "AiWatch 热门股票"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -504,7 +504,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"找到 {len(data)} 个热门板块。",
             data={"market": market.value, "mode": mode, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 热门板块"}],
+            sources=[{"name": "AiWatch 热门板块"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -538,7 +538,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"找到 {len(data)} 个板块成分股。",
             data={"board_code": board_code, "mode": mode, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 板块成分股"}],
+            sources=[{"name": "AiWatch 板块成分股"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -564,7 +564,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"已获取 {market.value}:{symbol} 的基本面摘要。",
             data=data,
-            sources=[{"name": "PanWatch 基本面数据"}],
+            sources=[{"name": "AiWatch 基本面数据"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -589,7 +589,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"已获取 {market.value}:{symbol} 的资金流向摘要。",
             data=_json_safe(item),
-            sources=[{"name": "PanWatch 资金流向"}],
+            sources=[{"name": "AiWatch 资金流向"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -626,7 +626,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"{trade_date} 找到 {len(data)} 条龙虎榜记录。",
             data={"market": market.value, "date": trade_date, "count": len(data), "items": data},
-            sources=[{"name": "PanWatch 龙虎榜"}],
+            sources=[{"name": "AiWatch 龙虎榜"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -707,7 +707,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         stock, stock_registered = await _find_or_register_stock(symbol, market)
         if stock is None:
             return ToolResult.failure(
-                summary=f"PanWatch 股票库中未找到 {market.value}:{symbol}，未创建提醒。",
+                summary=f"AiWatch 股票库中未找到 {market.value}:{symbol}，未创建提醒。",
                 error_code="stock_not_found",
             )
         direction_label = "≥" if direction == "above" else "≤"
@@ -750,7 +750,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "target_price": target_price,
                 "stock_registered": stock_registered,
             },
-            sources=[{"name": "PanWatch 价格提醒"}],
+            sources=[{"name": "AiWatch 价格提醒"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -788,7 +788,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             return ToolResult.success(
                 summary="没有找到符合条件的价格提醒。",
                 data={"count": 0, "items": []},
-                sources=[{"name": "PanWatch 价格提醒"}],
+                sources=[{"name": "AiWatch 价格提醒"}],
                 observed_at=datetime.now(UTC),
             )
         summary = "；".join(
@@ -801,7 +801,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"找到 {len(items)} 条价格提醒：{summary}",
             data={"count": len(items), "items": items},
-            sources=[{"name": "PanWatch 价格提醒"}],
+            sources=[{"name": "AiWatch 价格提醒"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -846,7 +846,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 f"{_alert_condition_summary(item)}，{'启用' if item['enabled'] else '停用'}。"
             ),
             data=item,
-            sources=[{"name": "PanWatch 价格提醒"}],
+            sources=[{"name": "AiWatch 价格提醒"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -875,7 +875,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"已删除价格提醒 #{rule_id}：{item['stock_name'] or item['symbol']}。",
             data={"rule_id": rule_id, "deleted": True},
-            sources=[{"name": "PanWatch 价格提醒"}],
+            sources=[{"name": "AiWatch 价格提醒"}],
             observed_at=datetime.now(UTC),
         )
 
@@ -917,7 +917,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ToolSpec(
             name="find_research_candidates",
             title="发现研究候选",
-            description="查询 PanWatch 最新机会信号，返回适合进一步研究的候选标的及其评分、风险和入场计划。只读，不会刷新策略或执行交易。",
+            description="查询 AiWatch 最新机会信号，返回适合进一步研究的候选标的及其评分、风险和入场计划。只读，不会刷新策略或执行交易。",
             risk=ToolRisk.READ,
             input_schema={
                 "type": "object",
@@ -1016,7 +1016,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ToolSpec(
             name="search_stocks",
             title="搜索股票标的",
-            description="按股票代码或名称搜索 PanWatch 股票清单，用于确认标的代码和市场。",
+            description="按股票代码或名称搜索 AiWatch 股票清单，用于确认标的代码和市场。",
             risk=ToolRisk.READ,
             input_schema={
                 "type": "object",

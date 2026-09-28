@@ -1,8 +1,8 @@
-# PanWatch 后端架构
+# AiWatch 后端架构
 
 ## 目标与形态
 
-PanWatch 是一个**模块化单体**：一个 FastAPI 应用、一个共享数据库，但以稳定的
+AiWatch 是一个**模块化单体**：一个 FastAPI 应用、一个共享数据库，但以稳定的
 业务边界组织代码。目标不是为每个领域拆微服务，而是让每段业务代码都有明确
 的所有者、依赖方向和测试边界，避免重新形成无边界的 `core` 目录。
 
@@ -131,7 +131,7 @@ Agent 执行循环。`bootstrap` 中只保留确有启动期职责的文件；�
 ```
 
 `pan-agent-runtime` 的导入名为 `pan_agent`。它只定义受限执行循环、资源限制和
-可移植事件，不能导入 FastAPI、SQLAlchemy、`src.*` 或 LangChain。PanWatch 的
+可移植事件，不能导入 FastAPI、SQLAlchemy、`src.*` 或 LangChain。AiWatch 的
 适配器、工具、持久化都属于 `modules/assistant`。
 
 ### 跨模块调用
@@ -165,7 +165,7 @@ Session 与 `get_db` 在 `database.py`；版本迁移在 `migrations.py`。
 - 不让 `platform` 导入 `modules`；
 - 不跨模块导入 `models.py`、`repository.py`；
 - 不把业务规则、SQL 或工具循环塞进 HTTP router；
-- 不让 `pan_agent` 依赖 PanWatch、数据库或具体 AI SDK；
+- 不让 `pan_agent` 依赖 AiWatch、数据库或具体 AI SDK；
 - 不以“通用 helper”为名创建没有所有者的根目录模块。
 
 这些规则不是为了增加层数，而是让每段代码的归属、依赖和演进方式都清晰可见。

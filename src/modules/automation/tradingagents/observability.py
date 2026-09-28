@@ -4,7 +4,7 @@
 1. LangChain `BaseCallbackHandler`:捕获 LangGraph 节点、LLM 和工具的真实生命周期
 2. `agent.py` 将同一个 handler 注入 `Propagator.get_graph_args(callbacks=...)`，不依赖 debug 文本解析
 
-进度写入 PanWatch 的 `log_context`,前端轮询 `/api/agents/runs/{trace_id}/progress`
+进度写入 AiWatch 的 `log_context`,前端轮询 `/api/agents/runs/{trace_id}/progress`
 聚合返回阶段；同一文件下半部提供成本提取、预算检查和估算入口。
 """
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # 进度和预算共用同一套 TradingAgents 运行观测入口；数据库生命周期仍由 agent_runs 负责。
 __all__ = [
     "STAGES_ORDER",
-    "PanWatchProgressHandler",
+    "AiWatchProgressHandler",
     "aggregate_progress",
     "check_budget",
     "estimate_cost",
@@ -80,7 +80,7 @@ except ImportError:  # tradingagents 未装时仍允许 import 本模块,测试�
         pass
 
 
-class PanWatchProgressHandler(_LCBaseCallbackHandler):
+class AiWatchProgressHandler(_LCBaseCallbackHandler):
     """LangChain BaseCallbackHandler 兼容的进度处理器。
 
     新版 langchain (1.x) 把 callbacks 字段用 pydantic 校验为 BaseCallbackHandler 实例,

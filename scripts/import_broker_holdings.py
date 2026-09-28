@@ -1,10 +1,10 @@
-"""券商持仓导入:广发 Hippo 提取的持仓 → PanWatch 持仓 + 模拟盘。
+"""券商持仓导入:广发 Hippo 提取的持仓 → AiWatch 持仓 + 模拟盘。
 
 用法:
     python scripts/import_broker_holdings.py --file data/imports/broker_holdings-20260924.json [--dry-run]
 
 约定(与用户确认的口径一致):
-- **跳过已存在**:PanWatch 持仓 (account_id, stock) 已有、或模拟盘已有同股 open 持仓 → 跳过;
+- **跳过已存在**:AiWatch 持仓 (account_id, stock) 已有、或模拟盘已有同股 open 持仓 → 跳过;
 - **模拟盘资金按市值扣减**:新建仓位同步从 current_capital 扣减市值占用
   (总资产 = 现金 + 持仓市值,与资金配置的总资金保持一致);不改 initial_capital;
 - **模拟盘开关保持不变**(脚本绝不触碰 enabled);
@@ -46,7 +46,7 @@ class Holding:
 @dataclass
 class ImportPlan:
     to_create: list[Holding] = field(default_factory=list)
-    skipped_positions: list[str] = field(default_factory=list)   # PanWatch 持仓已存在
+    skipped_positions: list[str] = field(default_factory=list)   # AiWatch 持仓已存在
     skipped_paper: list[str] = field(default_factory=list)       # 模拟盘已存在
     invalid: list[str] = field(default_factory=list)             # 校验失败剔除
 
@@ -79,7 +79,7 @@ def plan_import(
     existing_position_symbols: set[str],
     existing_paper_open_symbols: set[str],
 ) -> ImportPlan:
-    """纯查重判定:PanWatch 持仓以 symbol 计,模拟盘以 open 状态同股计。"""
+    """纯查重判定:AiWatch 持仓以 symbol 计,模拟盘以 open 状态同股计。"""
     plan = ImportPlan()
     for h in holdings:
         if h.code in existing_position_symbols:
@@ -216,9 +216,9 @@ def _run_once(db, today: str, account_id: int, holdings: list, dry_run: bool) ->
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="券商持仓导入 PanWatch(持仓+模拟盘)")
+    ap = argparse.ArgumentParser(description="券商持仓导入 AiWatch(持仓+模拟盘)")
     ap.add_argument("--file", required=True, help="持仓 JSON 文件")
-    ap.add_argument("--account-id", type=int, default=1, help="PanWatch 账户 id(默认 1)")
+    ap.add_argument("--account-id", type=int, default=1, help="AiWatch 账户 id(默认 1)")
     ap.add_argument("--dry-run", action="store_true", help="只打印清单不写库")
     ns = ap.parse_args()
     return run(ns.file, ns.account_id, ns.dry_run)

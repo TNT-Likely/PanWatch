@@ -128,7 +128,7 @@ POLICY_SCORE = {"event_high_hit": 1.0, "event_medium_hit": 0.7, "default": 0.5}
 #: 披露新鲜度:最新报告期距今天数上限(约两个季度)
 DISCLOSURE_FRESH_MAX_DAYS = 190
 #: EPS 锚突变判定界(相邻可比期 EPS 比值越界即判除权/拆股,锚失效强制最新 TTM)。
-#: 这是启发式:PanWatch 暂无逐笔分红/拆股数据源,不能声称覆盖精确的 60 天窗口。
+#: 这是启发式:AiWatch 暂无逐笔分红/拆股数据源,不能声称覆盖精确的 60 天窗口。
 EPS_ANCHOR_MUTATION_BOUNDS = (0.4, 2.5)
 #: 未来 N 个交易日内有预约披露 → warn 降置信度(不剔除)
 DISCLOSURE_WINDOW_TRADING_DAYS = 10
@@ -174,8 +174,8 @@ PROMPT_SECTOR = "premarket_pipeline_sector.txt"
 PROMPT_PICK = "premarket_pipeline_pick.txt"
 
 #: 输出契约标签(structured_output 同款)
-TAG_START = "<!--PANWATCH_JSON-->"
-TAG_END = "<!--/PANWATCH_JSON-->"
+TAG_START = "<!--AIWATCH_JSON-->"
+TAG_END = "<!--/AIWATCH_JSON-->"
 
 
 def render_prompt(name: str, extra: dict | None = None) -> str:

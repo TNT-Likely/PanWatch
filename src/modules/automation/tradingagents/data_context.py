@@ -1,11 +1,11 @@
 """TradingAgents 数据上下文适配。
 
 本文件同时负责 A 股财务摘要、PortfolioContext、instrument_context 和标的元数据，
-把 PanWatch 的业务数据转换成 TradingAgents 可消费的结构化上下文。
+把 AiWatch 的业务数据转换成 TradingAgents 可消费的结构化上下文。
 
 A 股财务数据采集 — 用 akshare 拉真实财务报表给 TradingAgents 分析师用。
 
-之前 PanWatch 没采集财报,fundamentals/balance/cashflow/income 工具都返回占位文本,
+之前 AiWatch 没采集财报,fundamentals/balance/cashflow/income 工具都返回占位文本,
 LLM 没法做真正的基本面分析。本模块用 akshare 的 stock_financial_abstract 拉最近 2 期
 真实数据(归母净利润 / 营收 / ROE / 毛利率 / 资产负债率 / 经营现金流等),塞给
 对应工具。
@@ -134,7 +134,7 @@ def render_fundamentals_summary(data: dict) -> str:
     if not periods or not ind:
         return "[No financial data available]"
 
-    lines = ["[Real Financial Data from PanWatch (akshare)]"]
+    lines = ["[Real Financial Data from AiWatch (akshare)]"]
     lines.append(f"Reporting periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
 
@@ -170,7 +170,7 @@ def render_income_statement(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No income statement data]"
-    lines = ["[Income Statement (real data from PanWatch / akshare)]"]
+    lines = ["[Income Statement (real data from AiWatch / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [
@@ -198,7 +198,7 @@ def render_balance_sheet(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No balance sheet data]"
-    lines = ["[Balance Sheet (real data from PanWatch / akshare)]"]
+    lines = ["[Balance Sheet (real data from AiWatch / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [
@@ -224,7 +224,7 @@ def render_cashflow(data: dict) -> str:
     ind = data.get("indicators", {})
     if not periods or not ind:
         return "[No cash flow data]"
-    lines = ["[Cash Flow Statement (real data from PanWatch / akshare)]"]
+    lines = ["[Cash Flow Statement (real data from AiWatch / akshare)]"]
     lines.append(f"Periods: {' | '.join(_fmt_period(p) for p in periods)}")
     lines.append("")
     metrics = [
@@ -337,7 +337,7 @@ def to_tradingagents_portfolio(portfolio: Any):
 
 
 def patch_instrument_context(graph: Any, metadata_context: str) -> None:
-    """把 PanWatch 标的元数据注入 TradingAgents 0.5.0 的 ``instrument_context``。
+    """把 AiWatch 标的元数据注入 TradingAgents 0.5.0 的 ``instrument_context``。
 
     ``past_context`` 是上游用于历史研究记忆的扩展点，业务标的元数据放进去会
     混淆提示词语义，也会让后续研究回放把本次股票信息当成历史经验。0.5.0 的

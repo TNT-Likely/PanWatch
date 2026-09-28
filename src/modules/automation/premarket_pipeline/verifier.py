@@ -287,7 +287,7 @@ def check_single_quarter(summary: dict) -> dict:
 def check_ex_rights(db: Session, symbol: str) -> dict:
     """EPS 锚突变启发式:相邻可比期 EPS 比值越界 → 判除权/拆股,锚失效强制最新 TTM。
 
-    诚实口径:PanWatch 暂无逐笔分红/拆股数据源,这是 EPS 序列启发式,**不是**
+    诚实口径:AiWatch 暂无逐笔分红/拆股数据源,这是 EPS 序列启发式,**不是**
     精确的 60 天除权检测;三价始终按最新报告期数据计算(锚失效语义由此保证)。
     序列不足(检测不可得)按 fail-closed 给 WARN,不给无数据支撑的 PASS。
     """
@@ -341,7 +341,7 @@ def check_disclosure_window(db: Session, events: list[dict], symbol: str) -> dic
     """未来 N 个交易日内有该标的预约披露 → WARN(降置信度,不剔除)。
 
     fail-closed 口径:传入 events 完全不含按标的的披露数据(无任何 symbol 字段,
-    当前 PanWatch 的事件日历只有宏观事件)时,检测缺失 → WARN,绝不输出
+    当前 AiWatch 的事件日历只有宏观事件)时,检测缺失 → WARN,绝不输出
     「无预约披露」这类无数据支撑的肯定性结论。
     """
     from src.modules.automation.premarket_pipeline.stages import next_trading_days

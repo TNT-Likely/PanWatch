@@ -61,7 +61,7 @@ def _scan(session_factory, rule_id: int, notify_impl) -> dict:
     """跑一次 scan_once;notify_impl() 为通知桩,返回 (ok, err) 或抛异常。
 
     注意:必须 patch 模块级 ``eng_mod.SessionLocal``(scan_once 引用的是模块全局,
-    而非实例属性)——否则测试会连到生产库 panwatch.db!
+    而非实例属性)——否则测试会连到生产库 aiwatch.db!
     """
     engine = PriceAlertEngine()
 

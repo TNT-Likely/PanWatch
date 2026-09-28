@@ -14,7 +14,7 @@ import server
 
 
 def _make_session():
-    """独立内存 sqlite,不碰真实 data/panwatch.db。"""
+    """独立内存 sqlite,不碰真实 data/aiwatch.db。"""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},

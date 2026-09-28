@@ -1,11 +1,11 @@
 """TradingAgents toolkit 并发数据隔离回归测试。
 
-根因 bug:_PANWATCH_DATA_CACHE 曾是模块级全局 dict,两只标的并发深度分析时
+根因 bug:_AIWATCH_DATA_CACHE 曾是模块级全局 dict,两只标的并发深度分析时
 (asyncio.to_thread worker 线程)互相覆盖 —— 广汽 601238 的报告混入赛力斯 601127
 的 K线/价格。改成 ContextVar 后,每个并发任务(copy_context)拿独立副本,互不串台。
 
 本测试用 contextvars.copy_context() 模拟两个并发任务,直接复现并验证修复。
-注意:只测 _serve_from_panwatch / _stock_meta_header 的直接路径,不经过
+注意:只测 _serve_from_aiwatch / _stock_meta_header 的直接路径,不经过
 _patched_route_to_vendor(避免触发 _emit_toolkit_log → log_context/DB)。
 """
 
@@ -40,7 +40,7 @@ SERES = _data("601127", "赛力斯", 83.26)        # 赛力斯
 def test_stock_meta_header_uses_current_context():
     """_stock_meta_header 读当前 context 的 stock,而非进程全局。"""
     def _run():
-        with ta.panwatch_data_context(GAC):
+        with ta.aiwatch_data_context(GAC):
             return ta._stock_meta_header("601238")
     header = contextvars.copy_context().run(_run)
     assert "广汽集团" in header
@@ -55,13 +55,13 @@ def test_two_concurrent_contexts_do_not_cross_talk():
     ctx_b = contextvars.copy_context()
 
     # A 先进入 context(模拟 worker A 开始,数据已注入但还没跑完工具)
-    ctx_a.run(lambda: ta._PANWATCH_DATA.set(dict(GAC)))
+    ctx_a.run(lambda: ta._AIWATCH_DATA.set(dict(GAC)))
     # B 随后进入 context(并发任务 B 启动)—— 旧实现此处会覆盖全局
-    ctx_b.run(lambda: ta._PANWATCH_DATA.set(dict(SERES)))
+    ctx_b.run(lambda: ta._AIWATCH_DATA.set(dict(SERES)))
 
     # A 继续跑工具调用:get_stock_data(601238) 必须返回广汽 K线/价格
-    out_a = ctx_a.run(lambda: ta._serve_from_panwatch("get_stock_data", "601238", {}, args=("601238",)))
-    out_b = ctx_b.run(lambda: ta._serve_from_panwatch("get_stock_data", "601127", {}, args=("601127",)))
+    out_a = ctx_a.run(lambda: ta._serve_from_aiwatch("get_stock_data", "601238", {}, args=("601238",)))
+    out_b = ctx_b.run(lambda: ta._serve_from_aiwatch("get_stock_data", "601127", {}, args=("601127",)))
 
     assert "广汽集团" in out_a and "赛力斯" not in out_a
     assert "9.5" in out_a            # 广汽收盘价
@@ -71,10 +71,10 @@ def test_two_concurrent_contexts_do_not_cross_talk():
 
 
 def test_context_restored_after_exit():
-    """panwatch_data_context 退出后,当前 context 的数据还原为空。"""
+    """aiwatch_data_context 退出后,当前 context 的数据还原为空。"""
     def _run():
         assert ta._cache() == {}
-        with ta.panwatch_data_context(SERES):
+        with ta.aiwatch_data_context(SERES):
             assert ta._cache().get("stock").symbol == "601127"
         # 退出后还原
         return ta._cache()
@@ -84,9 +84,9 @@ def test_context_restored_after_exit():
 def test_nested_contexts_restore_outer():
     """嵌套 context:内层退出后外层数据恢复(token reset 语义)。"""
     def _run():
-        with ta.panwatch_data_context(GAC):
+        with ta.aiwatch_data_context(GAC):
             assert ta._cache().get("stock").symbol == "601238"
-            with ta.panwatch_data_context(SERES):
+            with ta.aiwatch_data_context(SERES):
                 assert ta._cache().get("stock").symbol == "601127"
             # 内层退出,外层广汽恢复
             assert ta._cache().get("stock").symbol == "601238"

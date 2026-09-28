@@ -5,8 +5,8 @@ from __future__ import annotations
 from src.modules.automation.tradingagents.data_context import build_stock_metadata_context
 from src.modules.automation.tradingagents.toolkit_adapter import (
     _stock_meta_header,
-    _serve_from_panwatch,
-    panwatch_data_context,
+    _serve_from_aiwatch,
+    aiwatch_data_context,
 )
 
 
@@ -55,10 +55,10 @@ def test_metadata_context_us_market_label():
 
 
 def test_stock_meta_header_from_cache():
-    """工具返回前缀包含公司名(来自 panwatch_data_context 注入的数据)"""
+    """工具返回前缀包含公司名(来自 aiwatch_data_context 注入的数据)"""
     stock = _FakeStock("赛力斯", "601127", "CN")
     quote = {"current_price": 83.26, "change_pct": -2.5, "industry": "汽车"}
-    with panwatch_data_context({"stock": stock, "quote": quote}):
+    with aiwatch_data_context({"stock": stock, "quote": quote}):
         header = _stock_meta_header("601127")
     assert "赛力斯" in header
     assert "601127" in header
@@ -71,8 +71,8 @@ def test_stock_meta_header_from_cache():
 def test_serve_fundamentals_includes_company_name():
     """fundamentals 工具返回必须带公司名,避免 LLM 把 601127 当中国平安"""
     stock = _FakeStock("赛力斯", "601127", "CN")
-    with panwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
-        result = _serve_from_panwatch("get_fundamentals_openai", "601127", {})
+    with aiwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
+        result = _serve_from_aiwatch("get_fundamentals_openai", "601127", {})
     assert "赛力斯" in result
     assert "601127" in result
 
@@ -80,8 +80,8 @@ def test_serve_fundamentals_includes_company_name():
 def test_serve_news_empty_does_not_leak_global_news():
     """新闻为空时,工具返回明确说"没有个股新闻",阻止 LLM 拉无关全球新闻"""
     stock = _FakeStock("广汽集团", "601238", "CN")
-    with panwatch_data_context({"stock": stock, "events": []}):
-        result = _serve_from_panwatch("get_news", "601238", {})
+    with aiwatch_data_context({"stock": stock, "events": []}):
+        result = _serve_from_aiwatch("get_news", "601238", {})
     assert "广汽集团" in result
     assert "DO NOT pull unrelated global news" in result
 
@@ -89,8 +89,8 @@ def test_serve_news_empty_does_not_leak_global_news():
 def test_serve_klines_empty_returns_company_aware_message():
     """K 线为空时返回明确空提示,带公司名"""
     stock = _FakeStock("赛力斯", "601127", "CN")
-    with panwatch_data_context({"stock": stock, "klines": []}):
-        result = _serve_from_panwatch("get_stockstats_indicators", "601127", {})
+    with aiwatch_data_context({"stock": stock, "klines": []}):
+        result = _serve_from_aiwatch("get_stockstats_indicators", "601127", {})
     assert "赛力斯" in result
     assert "601127" in result
 
@@ -98,8 +98,8 @@ def test_serve_klines_empty_returns_company_aware_message():
 def test_serve_get_balance_sheet_hits_with_balance_keyword():
     """get_balance_sheet 必须命中(之前没 balance 关键词,会 MISS)"""
     stock = _FakeStock("赛力斯", "601127", "CN")
-    with panwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
-        result = _serve_from_panwatch("get_balance_sheet", "601127", {})
+    with aiwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
+        result = _serve_from_aiwatch("get_balance_sheet", "601127", {})
     assert "601127" in result
     assert "Balance sheet" in result
     assert "Avoid invented" in result
@@ -108,9 +108,9 @@ def test_serve_get_balance_sheet_hits_with_balance_keyword():
 def test_serve_get_cashflow_distinct_from_balance_sheet():
     """get_cashflow 返回独立内容,不和 balance sheet 复用同一段文字"""
     stock = _FakeStock("赛力斯", "601127", "CN")
-    with panwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
-        bs = _serve_from_panwatch("get_balance_sheet", "601127", {})
-        cf = _serve_from_panwatch("get_cashflow", "601127", {})
+    with aiwatch_data_context({"stock": stock, "quote": {"current_price": 83.26}}):
+        bs = _serve_from_aiwatch("get_balance_sheet", "601127", {})
+        cf = _serve_from_aiwatch("get_cashflow", "601127", {})
     assert "Cash flow" in cf
     assert bs != cf  # 不能完全一样
 
@@ -119,8 +119,8 @@ def test_serve_get_stock_data_hits():
     """get_stock_data 必须命中(之前 method 关键词缺 stock_data)"""
     stock = _FakeStock("赛力斯", "601127", "CN")
     klines = [type("K", (), {"date": "2026-05-15", "open": 80, "high": 85, "low": 79, "close": 83, "volume": 1000})()]
-    with panwatch_data_context({"stock": stock, "klines": klines, "quote": {}}):
-        result = _serve_from_panwatch("get_stock_data", "601127", {})
+    with aiwatch_data_context({"stock": stock, "klines": klines, "quote": {}}):
+        result = _serve_from_aiwatch("get_stock_data", "601127", {})
     assert "2026-05-15" in result  # CSV 命中
 
 
@@ -129,8 +129,8 @@ def test_serve_get_indicators_without_args_fallback_to_kline_csv():
     stock = _FakeStock("赛力斯", "601127", "CN")
     klines = [type("K", (), {"date": "2026-05-15", "open": 80, "high": 85, "low": 79, "close": 83, "volume": 1000})()]
     # args 为空 → 不命中单指标分支,落到 stockstats/yfin 分支返回完整 CSV
-    with panwatch_data_context({"stock": stock, "klines": klines, "quote": {}}):
-        result = _serve_from_panwatch("get_indicators", "601127", {}, args=())
+    with aiwatch_data_context({"stock": stock, "klines": klines, "quote": {}}):
+        result = _serve_from_aiwatch("get_indicators", "601127", {}, args=())
     # 因为没匹配到单指标,降级走 stockstats 分支 → 返回完整 K 线 CSV
     assert "2026-05-15" in result
 
@@ -144,8 +144,8 @@ def test_serve_fundamentals_uses_real_quote_data():
         "total_market_value": 125_000_000_000,
         "turnover_rate": 3.2,
     }
-    with panwatch_data_context({"stock": stock, "quote": quote}):
-        result = _serve_from_panwatch("get_fundamentals", "601127", {})
+    with aiwatch_data_context({"stock": stock, "quote": quote}):
+        result = _serve_from_aiwatch("get_fundamentals", "601127", {})
     assert "25.5" in result  # PE
     assert "125000000000" in result or "1.25e" in result.lower()  # 市值
     assert "3.2" in result  # 换手率
@@ -156,8 +156,8 @@ def test_serve_klines_with_data_returns_csv():
     """K 线有数据时返回 CSV,前缀带公司名"""
     stock = _FakeStock("赛力斯", "601127", "CN")
     klines = [type("K", (), {"date": "2026-05-15", "open": 80, "high": 85, "low": 79, "close": 83.26, "volume": 1000})()]
-    with panwatch_data_context({"stock": stock, "klines": klines}):
-        result = _serve_from_panwatch("get_stockstats_indicators", "601127", {})
+    with aiwatch_data_context({"stock": stock, "klines": klines}):
+        result = _serve_from_aiwatch("get_stockstats_indicators", "601127", {})
     assert "赛力斯" in result
     assert "2026-05-15,80,85,79,83.26,1000" in result
 
@@ -189,7 +189,7 @@ def test_patch_route_to_vendor_handles_positional_args():
 
     try:
         stock = _FakeStock("赛力斯", "601127", "CN")
-        with panwatch_data_context({"stock": stock, "klines": [], "quote": {}}):
+        with aiwatch_data_context({"stock": stock, "klines": [], "quote": {}}):
             with patch_route_to_vendor():
                 # 模拟上游 positional 调用:route_to_vendor("get_fundamentals", "601127", "2026-05-17")
                 result = fake_module.route_to_vendor("get_fundamentals", "601127", "2026-05-17")
@@ -222,7 +222,7 @@ def test_patch_route_to_vendor_intercepts_global_news_with_cache():
 
     try:
         stock = _FakeStock("赛力斯", "601127", "CN")
-        with panwatch_data_context({"stock": stock, "events": [], "quote": {}}):
+        with aiwatch_data_context({"stock": stock, "events": [], "quote": {}}):
             with patch_route_to_vendor():
                 # get_global_news 第一个参数是日期,不是 ticker
                 result = fake_module.route_to_vendor(

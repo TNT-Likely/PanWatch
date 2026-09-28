@@ -1,4 +1,4 @@
-"""Search metadata for PanWatch tools.
+"""Search metadata for AiWatch tools.
 
 This metadata is intentionally separate from the model-facing JSON schemas.
 The runtime can use it for discovery, while the host still owns executable
@@ -9,7 +9,7 @@ from pan_agent import ToolRisk
 from pan_agent_tool_research import ToolDataFreshness, ToolDescriptor
 
 
-PANWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (
+AIWATCH_TOOL_DESCRIPTORS: tuple[ToolDescriptor, ...] = (
     ToolDescriptor(
         tool_name="get_portfolio",
         title="查询持仓",

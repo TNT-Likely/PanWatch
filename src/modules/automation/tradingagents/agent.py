@@ -1,9 +1,9 @@
-"""TradingAgentsAgent — PanWatch 的 BaseAgent 子类,集成 TauricResearch/TradingAgents。
+"""TradingAgentsAgent — AiWatch 的 BaseAgent 子类,集成 TauricResearch/TradingAgents。
 
 设计要点(详见 .docs/tradingagents/02-technical-design.md):
-1. collect() 走 PanWatch Provider Orchestrator,4 类数据并发拉
+1. collect() 走 AiWatch Provider Orchestrator,4 类数据并发拉
 2. analyze() 重写,不走单次 ai_client.chat,而是调 TradingAgentsGraph
-3. monkeypatch route_to_vendor 让 TradingAgents 拿到 PanWatch 数据(A 股专用)
+3. monkeypatch route_to_vendor 让 TradingAgents 拿到 AiWatch 数据(A 股专用)
 4. progress callback + cost tracker + 月度预算 + 同日缓存
 """
 
@@ -33,10 +33,10 @@ from src.modules.automation.tradingagents.data_context import (
     patch_instrument_context,
     to_tradingagents_portfolio,
 )
-from src.modules.automation.tradingagents.observability import PanWatchProgressHandler
+from src.modules.automation.tradingagents.observability import AiWatchProgressHandler
 from src.modules.automation.tradingagents.decision import map_state_to_result
 from src.modules.automation.tradingagents.toolkit_adapter import (
-    panwatch_data_context,
+    aiwatch_data_context,
     patch_route_to_vendor,
 )
 from src.modules.research.analysis_history import get_analysis, save_analysis
@@ -136,7 +136,7 @@ class TradingAgentsAgent(BaseAgent):
     # ---- BaseAgent 抽象方法 ----
 
     async def collect(self, context: AgentContext) -> dict:
-        """从 PanWatch 数据体系收集数据,并发拉 4 类(走 marketdata 包)。"""
+        """从 AiWatch 数据体系收集数据,并发拉 4 类(走 marketdata 包)。"""
         if not context.watchlist:
             raise ValueError("TradingAgents 需要至少 1 只股票")
         # 单只标的为粒度;若 watchlist 多只,取第一只
@@ -147,7 +147,7 @@ class TradingAgentsAgent(BaseAgent):
         trace_id = getattr(context, "_trace_id", "")
         if not isinstance(trace_id, str) or not trace_id:
             trace_id = self._make_trace_id(stock.symbol)
-        progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        progress_handler = AiWatchProgressHandler(trace_id, self.name)
         setattr(context, "_progress_handler", progress_handler)
         progress_handler.emit("data_collection", "stage_start", symbol=stock.symbol)
 
@@ -328,8 +328,8 @@ class TradingAgentsAgent(BaseAgent):
 
         # 3) 进度回调
         progress_handler = getattr(context, "_progress_handler", None)
-        if not isinstance(progress_handler, PanWatchProgressHandler):
-            progress_handler = PanWatchProgressHandler(trace_id, self.name)
+        if not isinstance(progress_handler, AiWatchProgressHandler):
+            progress_handler = AiWatchProgressHandler(trace_id, self.name)
         cancel_event = threading.Event()
         progress_handler.cancel_event = cancel_event
 
@@ -355,7 +355,7 @@ class TradingAgentsAgent(BaseAgent):
                     market=stock.market.value,
                     ta_config=ta_config,
                     progress_handler=progress_handler,
-                    panwatch_data=data,
+                    aiwatch_data=data,
                     stock_metadata_context=meta_context,
                     portfolio=getattr(context, "portfolio", None),
                     cancel_event=cancel_event,
@@ -544,7 +544,7 @@ class TradingAgentsAgent(BaseAgent):
         market: str,
         ta_config: dict,
         progress_handler,
-        panwatch_data: dict,
+        aiwatch_data: dict,
         stock_metadata_context: str = "",
         portfolio: Any | None = None,
         cancel_event: threading.Event | None = None,
@@ -553,7 +553,7 @@ class TradingAgentsAgent(BaseAgent):
 
         步骤:
         1. inject_api_key_env 注入 API key 到环境变量
-        2. patch_route_to_vendor 让 A 股请求路由到 PanWatch 数据
+        2. patch_route_to_vendor 让 A 股请求路由到 AiWatch 数据
         3. TradingAgentsGraph.propagate 跑 3-5 分钟
         4. 返回 decision + final_state + cost_usd
         """
@@ -565,10 +565,10 @@ class TradingAgentsAgent(BaseAgent):
         apply_compat_patches()
         inject_api_key_env(ai_client)
 
-        # patch + 数据上下文,确保 TradingAgents 调 route_to_vendor 时拿到 PanWatch 数据
+        # patch + 数据上下文,确保 TradingAgents 调 route_to_vendor 时拿到 AiWatch 数据
         trace_id_for_ctx = getattr(progress_handler, "trace_id", "") if progress_handler else ""
-        with patch_route_to_vendor(), panwatch_data_context(
-            panwatch_data,
+        with patch_route_to_vendor(), aiwatch_data_context(
+            aiwatch_data,
             trace_id=trace_id_for_ctx,
             cancel_event=cancel_event,
         ):

@@ -1,4 +1,4 @@
-"""PanWatch ↔ marketdata 接线:DB 配置端口 + 单例 + flag 门控的报价兼容层。
+"""AiWatch ↔ marketdata 接线:DB 配置端口 + 单例 + flag 门控的报价兼容层。
 
 - DbConfigProvider:把 DataSource 表映射成 marketdata 的 SourceConfig(实现 ConfigProvider 端口)。
 - get_market_data():进程级单例(无状态 vendor + 现查 DB 的配置端口)。

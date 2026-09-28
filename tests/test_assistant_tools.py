@@ -1,4 +1,4 @@
-"""PanWatch business tool adapters exposed to the generic agent runtime."""
+"""AiWatch business tool adapters exposed to the generic agent runtime."""
 
 import asyncio
 from types import SimpleNamespace
@@ -33,9 +33,9 @@ def _request() -> RunRequest:
     )
 
 
-def test_panwatch_registry_keeps_core_tools_direct_and_defers_specialized_tools():
+def test_aiwatch_registry_keeps_core_tools_direct_and_defers_specialized_tools():
     engine, session = _session()
-    registry = assistant_tools.build_panwatch_tool_registry(session)
+    registry = assistant_tools.build_aiwatch_tool_registry(session)
     visible = {
         tool.name
         for tool in registry.model_tools(_request(), ReadOnlyToolPolicy())
@@ -64,12 +64,12 @@ def test_portfolio_tool_is_read_only_and_includes_provenance():
     )
     session.commit()
 
-    registry = assistant_tools.build_panwatch_tool_registry(session)
+    registry = assistant_tools.build_aiwatch_tool_registry(session)
     result = asyncio.run(registry.execute("get_portfolio", _request(), {}))
 
     assert result.ok is True
     assert "贵州茅台" in result.summary
-    assert result.sources[0].name == "PanWatch 持仓"
+    assert result.sources[0].name == "AiWatch 持仓"
     session.close()
     engine.dispose()
 
@@ -98,7 +98,7 @@ def test_quote_tool_returns_compact_fact_summary(monkeypatch):
     )
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "get_stock_quote",
             _request(),
             {"symbol": "600519", "market": "CN"},
@@ -117,7 +117,7 @@ def test_quote_tool_returns_controlled_failure_without_quote(monkeypatch):
     monkeypatch.setattr(assistant_tools, "md_quote_rows", lambda *_: [], raising=False)
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "get_stock_quote",
             _request(),
             {"symbol": "600519", "market": "CN"},
@@ -173,7 +173,7 @@ def test_research_candidates_tool_reuses_strategy_signals_and_returns_compact_ca
     monkeypatch.setattr(assistant_tools, "list_strategy_signals", _list_strategy_signals, raising=False)
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "find_research_candidates",
             _request(),
             {"market": "CN", "holding": "unheld", "min_score": 80, "limit": 3},
@@ -223,7 +223,7 @@ def test_research_candidates_tool_rejects_invalid_filters():
     engine, session = _session()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "find_research_candidates",
             _request(),
             {"market": "JP", "limit": 0},
@@ -286,7 +286,7 @@ def test_market_discovery_tools_return_compact_read_only_data(monkeypatch):
         "search_stocks",
         lambda *_args: [{"symbol": "600519", "name": "贵州茅台", "market": "CN"}],
     )
-    registry = assistant_tools.build_panwatch_tool_registry(session)
+    registry = assistant_tools.build_aiwatch_tool_registry(session)
 
     search = asyncio.run(
         registry.execute("search_stocks", _request(), {"query": "茅台"})
@@ -340,7 +340,7 @@ def test_market_research_tools_use_marketdata_contracts(monkeypatch):
             ]
 
     monkeypatch.setattr(assistant_tools, "get_market_data", lambda: _MarketData())
-    registry = assistant_tools.build_panwatch_tool_registry(session)
+    registry = assistant_tools.build_aiwatch_tool_registry(session)
 
     fundamentals = asyncio.run(
         registry.execute(
@@ -383,7 +383,7 @@ def test_kline_summary_tool_returns_compact_summary(monkeypatch):
     monkeypatch.setattr(assistant_tools, "KlineCollector", _Collector, raising=False)
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "get_kline_summary",
             _request(),
             {"symbol": "600519", "market": "CN"},
@@ -421,7 +421,7 @@ def test_news_tool_limits_compact_items(monkeypatch):
     )
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "get_stock_news",
             _request(),
             {"symbol": "600519", "market": "CN", "limit": 1},
@@ -448,7 +448,7 @@ def test_create_price_alert_validates_and_persists_rule():
     session.commit()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "create_price_alert",
             _request(),
             {
@@ -481,7 +481,7 @@ def test_create_price_alert_registers_a_known_quote_before_writing_rule(monkeypa
     )
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "create_price_alert",
             _request(),
             {
@@ -510,7 +510,7 @@ def test_create_price_alert_does_not_write_for_unknown_stock(monkeypatch):
     monkeypatch.setattr(assistant_tools, "md_quote_rows", lambda *_: [], raising=False)
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "create_price_alert",
             _request(),
             {
@@ -555,7 +555,7 @@ def test_get_price_alerts_returns_compact_rules_and_supports_symbol_filter():
     session.commit()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "get_price_alerts",
             _request(),
             {"symbol": "600519", "market": "CN"},
@@ -600,7 +600,7 @@ def test_update_price_alert_changes_rule_and_resets_trigger_state():
     session.commit()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "update_price_alert",
             _request(),
             {
@@ -633,7 +633,7 @@ def test_update_price_alert_returns_controlled_failure_for_unknown_rule():
     engine, session = _session()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "update_price_alert", _request(), {"rule_id": 999, "enabled": False}
         )
     )
@@ -663,7 +663,7 @@ def test_delete_price_alert_removes_rule_and_its_hits():
     session.commit()
 
     result = asyncio.run(
-        assistant_tools.build_panwatch_tool_registry(session).execute(
+        assistant_tools.build_aiwatch_tool_registry(session).execute(
             "delete_price_alert", _request(), {"rule_id": rule.id}
         )
     )

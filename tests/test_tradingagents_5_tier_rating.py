@@ -1,4 +1,4 @@
-"""上游 5 档评级 → PanWatch 3 档 action 映射回归测试。
+"""上游 5 档评级 → AiWatch 3 档 action 映射回归测试。
 
 根因 bug:上游 PM 用 Buy/Overweight/Hold/Underweight/Sell 五档,我们只识别 3 档,
 Overweight/Underweight 被兜底到 hold,导致顶层显示"持有"但 PM 实际给出"减持"。

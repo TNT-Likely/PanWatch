@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.modules.assistant.repository import AssistantRepository
 from src.modules.assistant.service import AssistantService
-from src.modules.assistant.tools import build_panwatch_tool_registry
+from src.modules.assistant.tools import build_aiwatch_tool_registry
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import PriceAlertRule, Stock
 
@@ -84,7 +84,7 @@ def test_price_alert_is_written_only_after_the_durable_approval_is_accepted():
     paused = asyncio.run(
         AgentRuntime(
             _FixedModel([_proposed_price_alert("price-alert")]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).run(request, _CollectingSink())
     )
@@ -99,7 +99,7 @@ def test_price_alert_is_written_only_after_the_durable_approval_is_accepted():
     resumed = asyncio.run(
         AgentRuntime(
             _FixedModel([ModelTurn(content="价格提醒已创建。")]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).resume(request, outcome.checkpoint, outcome.decisions, _CollectingSink())
     )
@@ -116,7 +116,7 @@ def test_rejected_price_alert_never_writes_a_rule():
     paused = asyncio.run(
         AgentRuntime(
             _FixedModel([_proposed_price_alert("price-alert")]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).run(request, _CollectingSink())
     )
@@ -128,7 +128,7 @@ def test_rejected_price_alert_never_writes_a_rule():
     resumed = asyncio.run(
         AgentRuntime(
             _FixedModel([ModelTurn(content="已取消创建价格提醒。")]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).resume(request, outcome.checkpoint, outcome.decisions, _CollectingSink())
     )
@@ -174,7 +174,7 @@ def test_multiple_price_alert_approvals_execute_one_card_at_a_time():
                     )
                 ]
             ),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).run(request, _CollectingSink())
     )
@@ -186,7 +186,7 @@ def test_multiple_price_alert_approvals_execute_one_card_at_a_time():
     partially_resumed = asyncio.run(
         AgentRuntime(
             _FixedModel([]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).resume(request, first.checkpoint, first.decisions, _CollectingSink())
     )
@@ -204,7 +204,7 @@ def test_multiple_price_alert_approvals_execute_one_card_at_a_time():
     completed = asyncio.run(
         AgentRuntime(
             _FixedModel([ModelTurn(content="两条提醒已创建")]),
-            build_panwatch_tool_registry(session),
+            build_aiwatch_tool_registry(session),
             policy=service.build_tool_policy(),
         ).resume(request, second.checkpoint, second.decisions, _CollectingSink())
     )

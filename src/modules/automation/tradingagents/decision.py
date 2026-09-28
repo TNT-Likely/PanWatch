@@ -1,4 +1,4 @@
-"""TradingAgents 输出 → PanWatch AnalysisResult 映射。
+"""TradingAgents 输出 → AiWatch AnalysisResult 映射。
 
 TradingAgents 的 `final_state` 是 LangGraph 累积的 dict,关键字段(摘自上游):
 - market_report / social_report / news_report / fundamentals_report: 4 个分析师报告
@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-# 上游 5 档评级 → PanWatch 显示标签
+# 上游 5 档评级 → AiWatch 显示标签
 RATING_LABEL_MAP = {
     "buy": "买入",
     "overweight": "增持",
@@ -63,7 +63,7 @@ def map_state_to_result(
     """主入口:把 TradingAgents 的 final_state 映射成 AnalysisResult。
 
     Args:
-        stock: PanWatch StockConfig(symbol/name/market)
+        stock: AiWatch StockConfig(symbol/name/market)
         ta_result: {"decision": str, "final_state": dict, "cost_usd": float}
         model_label: 形如 "deepseek/deepseek-chat",写到 markdown 末尾
     """
@@ -108,7 +108,7 @@ def map_state_to_result(
     }
 
     content = _render_markdown(state, suggestion, model_label, cost_usd)
-    # 详情页可点击链接(配了 panwatch_base_url 才出现)
+    # 详情页可点击链接(配了 aiwatch_base_url 才出现)
     from datetime import date as _date
     from src.modules.research.analysis_link import analysis_detail_markdown
     _link = analysis_detail_markdown(stock.symbol, _date.today().isoformat())

@@ -1,4 +1,4 @@
-"""Versioned database migrations for PanWatch."""
+"""Versioned database migrations for AiWatch."""
 
 from __future__ import annotations
 
@@ -2156,6 +2156,11 @@ def _m128_tradingagents_timeout_default(conn: Connection) -> None:
         {"cfg": json.dumps(cfg, ensure_ascii=False)},
     )
 
+def _m129_rename_settings_key(conn: Connection) -> None:
+    """品牌切换 PanWatch→AiWatch：设置键 panwatch_base_url 改名为 aiwatch_base_url。"""
+    conn.execute(text("UPDATE app_settings SET key = 'aiwatch_base_url' WHERE key = 'panwatch_base_url'"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2185,6 +2190,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
     Migration(127, "premarket_data_foundation", _m127_premarket_data_foundation),
     Migration(128, "tradingagents_timeout_default", _m128_tradingagents_timeout_default),
+    Migration(129, "rename_settings_key", _m129_rename_settings_key),
 )
 
 

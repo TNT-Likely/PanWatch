@@ -28,7 +28,7 @@ from src.modules.automation.tradingagents.runtime_support import (
     inject_api_key_env,
 )
 from src.modules.automation.tradingagents.observability import (
-    PanWatchProgressHandler,
+    AiWatchProgressHandler,
     aggregate_progress,
     STAGES_ORDER,
 )
@@ -38,7 +38,7 @@ from src.modules.automation.tradingagents.decision import (
 )
 from src.modules.automation.tradingagents.toolkit_adapter import (
     is_a_share,
-    panwatch_data_context,
+    aiwatch_data_context,
     patch_route_to_vendor,
 )
 
@@ -93,7 +93,7 @@ class TestLLMAdapter(unittest.TestCase):
                 ai_client, selected_analysts=["market", "technical"]
             )
 
-    def test_build_ta_llm_config_uses_panwatch_runtime_and_opt_in_sec_edgar(self):
+    def test_build_ta_llm_config_uses_aiwatch_runtime_and_opt_in_sec_edgar(self):
         """美股显式启用时才把三张报表路由到 SEC EDGAR，并隔离上游运行文件。"""
         from pathlib import Path
         from tempfile import TemporaryDirectory
@@ -311,11 +311,11 @@ class TestToolkitAdapter(unittest.TestCase):
         self.assertFalse(is_a_share("12345"))   # 5 位
         self.assertFalse(is_a_share(""))
 
-    def test_panwatch_data_context_isolation(self):
+    def test_aiwatch_data_context_isolation(self):
         """数据上下文 — 进入/退出时不污染外部(基于 ContextVar)"""
         from src.modules.automation.tradingagents import toolkit_adapter
         self.assertEqual(toolkit_adapter._cache(), {})
-        with panwatch_data_context({"klines": [1, 2, 3]}):
+        with aiwatch_data_context({"klines": [1, 2, 3]}):
             self.assertEqual(toolkit_adapter._cache().get("klines"), [1, 2, 3])
         self.assertEqual(toolkit_adapter._cache(), {})
 
@@ -334,7 +334,7 @@ class TestToolkitAdapter(unittest.TestCase):
 class TestProgress(unittest.TestCase):
     def test_progress_handler_records_cost(self):
         """ProgressHandler — record_cost 累加 total_cost"""
-        handler = PanWatchProgressHandler(trace_id="test-123")
+        handler = AiWatchProgressHandler(trace_id="test-123")
         handler.record_cost(0.01)
         handler.record_cost(0.02)
         self.assertAlmostEqual(handler._total_cost, 0.03)
@@ -582,7 +582,7 @@ class TestPortfolioContext(unittest.TestCase):
         ])
 
     def test_to_tradingagents_portfolio_preserves_cash_and_positions(self):
-        """PanWatch 持仓聚合为 0.5.0 的结构化现金、标的、数量和均价。"""
+        """AiWatch 持仓聚合为 0.5.0 的结构化现金、标的、数量和均价。"""
         from tradingagents.portfolio import PortfolioContext
         from src.modules.automation.tradingagents.data_context import to_tradingagents_portfolio
 
@@ -717,7 +717,7 @@ class TestPortfolioContext(unittest.TestCase):
             patch.object(agent_module, "apply_compat_patches"),
             patch.object(agent_module, "inject_api_key_env"),
             patch.object(agent_module, "patch_route_to_vendor", lambda: nullcontext()),
-            patch.object(agent_module, "panwatch_data_context", lambda *args, **kwargs: nullcontext()),
+            patch.object(agent_module, "aiwatch_data_context", lambda *args, **kwargs: nullcontext()),
         ):
             result = agent._run_tradingagents_sync(
                 ai_client=ai_client,
@@ -725,7 +725,7 @@ class TestPortfolioContext(unittest.TestCase):
                 market="CN",
                 ta_config=ta_config,
                 progress_handler=None,
-                panwatch_data={},
+                aiwatch_data={},
                 stock_metadata_context="",
                 portfolio=self._portfolio(),
             )

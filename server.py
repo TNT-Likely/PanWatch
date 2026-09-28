@@ -1,4 +1,4 @@
-"""PanWatch 统一服务入口 - Web 后台 + Agent 调度"""
+"""AiWatch 统一服务入口 - Web 后台 + Agent 调度"""
 
 import asyncio
 import logging
@@ -156,7 +156,7 @@ def setup_logging():
 
     # reload/server restart 时避免重复 handler 导致日志放大。
     for h in list(root.handlers):
-        if isinstance(h, DBLogHandler) or getattr(h, "_panwatch_console", False):
+        if isinstance(h, DBLogHandler) or getattr(h, "_aiwatch_console", False):
             root.removeHandler(h)
             try:
                 h.close()
@@ -165,7 +165,7 @@ def setup_logging():
 
     # 控制台输出: 按 LOG_LEVEL 过滤,且丢弃三方库的低级别噪音
     console = logging.StreamHandler()
-    console._panwatch_console = True  # type: ignore[attr-defined]
+    console._aiwatch_console = True  # type: ignore[attr-defined]
     console.setLevel(console_level)
     console.addFilter(_ConsoleNoiseFilter())
     console.setFormatter(
@@ -1668,7 +1668,7 @@ if os.path.exists(static_dir):
 
 
 if __name__ == "__main__":
-    print("盯盘侠启动: http://127.0.0.1:8000")
+    print("AI 盯盘启动: http://127.0.0.1:8000")
     print("API 文档: http://127.0.0.1:8000/docs")
     # 生产(Docker `python server.py`)不应开 reload:uvicorn 文件监听会多起一个 reloader
     # 子进程、浪费资源,且监听 data/ 写入易误触发重启。本地热重载用 `make dev-api`

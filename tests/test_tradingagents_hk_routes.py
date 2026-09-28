@@ -3,7 +3,7 @@
 策略:
 1. 港股 ticker(5 位数字)→ 先转 yfinance 格式(0241.HK)试上游
 2. yfinance 拿到真实数据 → 用 yfinance 返回
-3. yfinance 无数据(返回"No data found"或极短)→ fallback 到 PanWatch
+3. yfinance 无数据(返回"No data found"或极短)→ fallback 到 AiWatch
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from src.modules.automation.tradingagents.toolkit_adapter import (
     hk_symbol_to_yfinance,
     is_a_share,
     is_hk_share,
-    is_panwatch_routable,
-    panwatch_data_context,
+    is_aiwatch_routable,
+    aiwatch_data_context,
 )
 from src.modules.automation.tradingagents import toolkit_adapter as ta
 
@@ -45,10 +45,10 @@ def test_is_hk_share_rejects_6_digits_and_letters():
     assert is_hk_share("0241.HK") is False
 
 
-def test_is_panwatch_routable_covers_a_and_hk():
-    assert is_panwatch_routable("601127") is True
-    assert is_panwatch_routable("00241") is True
-    assert is_panwatch_routable("AAPL") is False
+def test_is_aiwatch_routable_covers_a_and_hk():
+    assert is_aiwatch_routable("601127") is True
+    assert is_aiwatch_routable("00241") is True
+    assert is_aiwatch_routable("AAPL") is False
 
 
 # ============================================================
@@ -112,7 +112,7 @@ def test_yfinance_delisted_msg_detected():
 
 
 def test_yfinance_unavailable_sentinel_detected():
-    """上游的 NO_DATA_AVAILABLE 哨兵不是有效行情，必须触发 PanWatch fallback。"""
+    """上游的 NO_DATA_AVAILABLE 哨兵不是有效行情，必须触发 AiWatch fallback。"""
     assert _yfinance_response_has_data(
         "NO_DATA_AVAILABLE: No usable market data for '0700.HK' from any configured vendor"
     ) is False
@@ -126,6 +126,6 @@ def test_hk_route_propagates_programming_errors(monkeypatch):
         raise TypeError("unexpected keyword argument 'vendor'")
 
     monkeypatch.setattr(ta, "_real_route_to_vendor", boom)
-    with panwatch_data_context({"stock": _StockHK(), "quote": {}, "klines": []}):
+    with aiwatch_data_context({"stock": _StockHK(), "quote": {}, "klines": []}):
         with pytest.raises(TypeError, match="unexpected keyword"):
             ta._patched_route_to_vendor("get_fundamentals", "00700", "2026-06-18")

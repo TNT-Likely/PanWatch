@@ -1,6 +1,6 @@
 """A 股(茅台 600519)所有数据通路的端到端单测。
 
-覆盖 TradingAgents 上游工具调用的所有路径,确保 PanWatch 数据真的塞进了上下文:
+覆盖 TradingAgents 上游工具调用的所有路径,确保 AiWatch 数据真的塞进了上下文:
 - get_stock_data        → K 线 CSV
 - get_indicators        → 单指标精炼输出(不再返回 5008 字 K 线 8 次重复)
 - get_news / get_global_news → 公告/事件列表(或 fallback 明确禁止全球新闻)
@@ -20,8 +20,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from src.modules.automation.tradingagents.toolkit_adapter import (
-    _serve_from_panwatch,
-    panwatch_data_context,
+    _serve_from_aiwatch,
+    aiwatch_data_context,
 )
 
 
@@ -144,8 +144,8 @@ def _full_ctx(extras=None):
 
 def test_get_stock_data_returns_kline_csv_for_maotai():
     """get_stock_data 工具:返回茅台 K 线 CSV(含日期/收盘价)"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_stock_data", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_stock_data", "600519", {})
     assert "600519" in result
     assert "贵州茅台" in result
     assert "2026-05-15" in result
@@ -158,8 +158,8 @@ def test_get_stock_data_returns_kline_csv_for_maotai():
 
 def test_get_indicators_macd_returns_macd_values_only():
     """get_indicators(symbol, 'macd', ...) 只返回 MACD 数值,不返回 K 线 CSV"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch(
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch(
             "get_indicators", "600519", {},
             args=("600519", "macd", "2026-05-17", 30),
         )
@@ -172,8 +172,8 @@ def test_get_indicators_macd_returns_macd_values_only():
 
 def test_get_indicators_rsi_returns_rsi_values():
     """get_indicators(symbol, 'rsi', ...) 返回 RSI 6/12/24 + 状态"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch(
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch(
             "get_indicators", "600519", {},
             args=("600519", "rsi", "2026-05-17", 30),
         )
@@ -184,8 +184,8 @@ def test_get_indicators_rsi_returns_rsi_values():
 
 def test_get_indicators_kdj_returns_kdj_values():
     """get_indicators(symbol, 'kdj', ...) 返回 K/D/J 值"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch(
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch(
             "get_indicators", "600519", {},
             args=("600519", "kdj", "2026-05-17", 30),
         )
@@ -195,8 +195,8 @@ def test_get_indicators_kdj_returns_kdj_values():
 
 def test_get_indicators_boll_returns_band_values():
     """get_indicators(symbol, 'boll', ...) 返回布林带上/中/下轨"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch(
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch(
             "get_indicators", "600519", {},
             args=("600519", "boll", "2026-05-17", 30),
         )
@@ -207,10 +207,10 @@ def test_get_indicators_boll_returns_band_values():
 
 def test_get_indicators_no_repeat_full_csv():
     """关键:即使被调 8 次不同 indicator,内容也是 8 份精炼报告而非 8 份相同 K 线 CSV"""
-    with panwatch_data_context(_full_ctx()):
-        macd = _serve_from_panwatch("get_indicators", "600519", {}, args=("600519", "macd"))
-        rsi = _serve_from_panwatch("get_indicators", "600519", {}, args=("600519", "rsi"))
-        boll = _serve_from_panwatch("get_indicators", "600519", {}, args=("600519", "boll"))
+    with aiwatch_data_context(_full_ctx()):
+        macd = _serve_from_aiwatch("get_indicators", "600519", {}, args=("600519", "macd"))
+        rsi = _serve_from_aiwatch("get_indicators", "600519", {}, args=("600519", "rsi"))
+        boll = _serve_from_aiwatch("get_indicators", "600519", {}, args=("600519", "boll"))
     # 三次返回应该差异显著
     assert macd != rsi != boll
     # 每个都应小于 1k 字符(K 线 CSV 是 5k+)
@@ -223,16 +223,16 @@ def test_get_indicators_no_repeat_full_csv():
 
 def test_get_news_returns_company_announcements():
     """get_news 返回茅台真实公告标题"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_news", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_news", "600519", {})
     assert "贵州茅台" in result
     assert "营业收入同比增长" in result or "股东大会" in result
 
 
 def test_get_global_news_with_empty_events_blocks_unrelated_news():
     """get_global_news 在没事件时返回 fallback,明确禁止 LLM 拉无关全球新闻"""
-    with panwatch_data_context(_full_ctx({"events": []})):
-        result = _serve_from_panwatch("get_global_news", "600519", {})
+    with aiwatch_data_context(_full_ctx({"events": []})):
+        result = _serve_from_aiwatch("get_global_news", "600519", {})
     assert "DO NOT pull unrelated global news" in result
     assert "600519" in result
 
@@ -243,8 +243,8 @@ def test_get_global_news_with_empty_events_blocks_unrelated_news():
 
 def test_get_fundamentals_returns_real_financial_numbers():
     """get_fundamentals 返回真实营收/净利润/ROE(而非空 fallback)"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_fundamentals", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_fundamentals", "600519", {})
     assert "600519" in result
     assert "贵州茅台" in result
     # 真实财务数据
@@ -259,8 +259,8 @@ def test_get_fundamentals_returns_real_financial_numbers():
 
 def test_get_fundamentals_fallback_when_no_financial():
     """没 financial 数据时降级到 quote 轻量基本面(不能是空文本)"""
-    with panwatch_data_context(_full_ctx({"financial": None})):
-        result = _serve_from_panwatch("get_fundamentals", "600519", {})
+    with aiwatch_data_context(_full_ctx({"financial": None})):
+        result = _serve_from_aiwatch("get_fundamentals", "600519", {})
     assert "Lightweight Fundamentals" in result
     # quote 真实数据
     assert "24.5" in result  # PE
@@ -273,8 +273,8 @@ def test_get_fundamentals_fallback_when_no_financial():
 
 def test_get_balance_sheet_returns_real_equity_and_leverage():
     """get_balance_sheet 返回真实净资产 + 资产负债率"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_balance_sheet", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_balance_sheet", "600519", {})
     assert "Balance Sheet" in result
     # 净资产 2800 亿
     assert "2800.00 亿" in result or "2900.00 亿" in result
@@ -288,8 +288,8 @@ def test_get_balance_sheet_returns_real_equity_and_leverage():
 
 def test_get_cashflow_returns_real_operating_cashflow():
     """get_cashflow 返回真实经营现金流量净额(800 亿)"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_cashflow", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_cashflow", "600519", {})
     assert "Cash Flow Statement" in result
     # 经营现金流 800 亿
     assert "800.00 亿" in result or "220.00 亿" in result
@@ -300,8 +300,8 @@ def test_get_cashflow_returns_real_operating_cashflow():
 def test_get_cashflow_does_not_match_capital_flow_branch():
     """关键 bug 回归:cashflow 不能被路由到"资金流"分支
     (上次 bug:method 含 'flow' 字串就误判为资金流向)"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_cashflow", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_cashflow", "600519", {})
     # 资金流分支会返回 "No capital flow data" — 不应该出现
     assert "No capital flow data" not in result
     # 应该是现金流量表
@@ -314,8 +314,8 @@ def test_get_cashflow_does_not_match_capital_flow_branch():
 
 def test_get_income_statement_returns_real_revenue_and_profit():
     """get_income_statement 返回真实营业收入 + 净利润 + 毛利率"""
-    with panwatch_data_context(_full_ctx()):
-        result = _serve_from_panwatch("get_income_statement", "600519", {})
+    with aiwatch_data_context(_full_ctx()):
+        result = _serve_from_aiwatch("get_income_statement", "600519", {})
     assert "Income Statement" in result
     # 营收 1800 亿
     assert "1800.00 亿" in result or "500.00 亿" in result
@@ -333,9 +333,9 @@ def test_all_tools_include_stock_metadata_header():
         "get_stock_data", "get_news", "get_global_news",
         "get_fundamentals", "get_balance_sheet", "get_cashflow", "get_income_statement",
     ]
-    with panwatch_data_context(_full_ctx()):
+    with aiwatch_data_context(_full_ctx()):
         for m in methods:
             args = ("600519", "macd") if m == "get_indicators" else ("600519",)
-            result = _serve_from_panwatch(m, "600519", {}, args=args)
+            result = _serve_from_aiwatch(m, "600519", {}, args=args)
             assert "贵州茅台" in result or "600519" in result, f"{m} 缺少公司元信息"
             assert "Stock Metadata" in result or "Technical Indicator" in result, f"{m} 缺少 metadata header"

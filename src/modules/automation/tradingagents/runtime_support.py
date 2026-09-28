@@ -1,10 +1,10 @@
 """TradingAgents 运行时适配：LLM 配置、密钥注入和 LangChain 兼容补丁。
 
-桥接 PanWatch AIClient 配置 → TradingAgents LLM config。
+桥接 AiWatch AIClient 配置 → TradingAgents LLM config。
 
 TradingAgents 通过 langchain-openai / langchain-anthropic 等驱动 LLM,
 读取 config 字典 + 环境变量(`OPENAI_API_KEY`/`DEEPSEEK_API_KEY` 等)。
-本模块把 PanWatch 的 AIClient 配置桥接过去。
+本模块把 AiWatch 的 AIClient 配置桥接过去。
 """
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ def build_ta_llm_config(
     """生成 TradingAgents 期望的 config dict。
 
     继承 tradingagents.default_config.DEFAULT_CONFIG (含 data_cache_dir / project_dir /
-    memory_log_path 等必需字段),再覆盖 PanWatch 配置:
+    memory_log_path 等必需字段),再覆盖 AiWatch 配置:
     - llm_provider: 统一走 openrouter 兼容协议(走 chat completions,避开 OpenAI Responses API)
-    - backend_url: PanWatch AI 服务的 base_url
+    - backend_url: AiWatch AI 服务的 base_url
     - deep_think_llm: 推理/辩论/风控/PM 用的"强模型"。默认走 ai_client.model;
       可由 deep_model 参数覆盖,允许辩论用 claude-sonnet / o3 这种贵但准的模型
     - quick_think_llm: 分析师工具调用用的"快模型"。默认 deep_model;
@@ -108,12 +108,12 @@ def build_ta_llm_config(
         "get_income_statement": statement_vendor,
     })
 
-    # PanWatch 覆盖。
+    # AiWatch 覆盖。
     # ⚠️ llm_provider 故意不用 "openai":TA 检测到 openai 会强制开 use_responses_api=True
     # (OpenAI Responses API,/v1/responses 端点),硅基流动/智谱/Ollama 等第三方 OpenAI 兼容
     # 服务不支持这个端点,会 404。
     # 用 "openrouter" 走标准 chat completions (/v1/chat/completions),同时 backend_url
-    # 覆盖默认 openrouter 端点为 PanWatch 配置的真实 base_url。
+    # 覆盖默认 openrouter 端点为 AiWatch 配置的真实 base_url。
     # 双模型解析:
     # - deep_model 未指定 → 用 ai_client.model
     # - quick_model 未指定 → 用 deep_model(单模型场景退化)
@@ -142,11 +142,11 @@ def build_ta_llm_config(
 
 
 def inject_api_key_env(ai_client: AIClient) -> None:
-    """把 PanWatch AI 服务的 API key 注入到环境变量。
+    """把 AiWatch AI 服务的 API key 注入到环境变量。
 
     TradingAgents llm_clients 按 provider 读不同 env var
     (OPENAI_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY 等)。
-    我们 PanWatch 走 openrouter 兼容模式(chat completions),所以注入
+    我们 AiWatch 走 openrouter 兼容模式(chat completions),所以注入
     OPENROUTER_API_KEY。同时也设 OPENAI_API_KEY 作 fallback。
 
     注意:这是进程级 env var,如果同进程并发跑多个不同 key 的请求,可能竞态。
@@ -211,7 +211,7 @@ def _patch_ai_message_init() -> None:
     except ImportError:
         return
 
-    if getattr(AIMessage, "_panwatch_patched", False):
+    if getattr(AIMessage, "_aiwatch_patched", False):
         return
 
     original_init = AIMessage.__init__
@@ -222,7 +222,7 @@ def _patch_ai_message_init() -> None:
         return original_init(self, *args, **kwargs)
 
     AIMessage.__init__ = _patched_init  # type: ignore[method-assign]
-    AIMessage._panwatch_patched = True  # type: ignore[attr-defined]
+    AIMessage._aiwatch_patched = True  # type: ignore[attr-defined]
     logger.info("[TA compat] 已 patch AIMessage.__init__ 容忍 tool_calls.args 字符串")
 
 
@@ -240,7 +240,7 @@ def _patch_tool_call_args_coercion() -> None:
         logger.debug("[TA compat] create_tool_call 未找到,跳过")
         return
 
-    if getattr(create_func, "_panwatch_patched", False):
+    if getattr(create_func, "_aiwatch_patched", False):
         return  # 已经 patched
 
     original = create_func
@@ -275,7 +275,7 @@ def _patch_tool_call_args_coercion() -> None:
 
         return original(*args, **kwargs)
 
-    _patched_create_tool_call._panwatch_patched = True  # type: ignore[attr-defined]
+    _patched_create_tool_call._aiwatch_patched = True  # type: ignore[attr-defined]
 
     # 替换模块级符号 + 替换内部 import
     _tool_module.create_tool_call = _patched_create_tool_call
