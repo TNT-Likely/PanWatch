@@ -14,11 +14,80 @@ const collectSourceFiles = (directory) => fs.readdirSync(directory, { withFileTy
 
 // App and shared-package code are both checked. Locale resources and tests are
 // excluded because their literals are intentionally not rendered directly.
-const migratedFiles = [
-  ...collectSourceFiles(path.join(frontendRoot, 'src')),
-  ...collectSourceFiles(path.join(frontendRoot, 'packages', 'api', 'src')),
-  ...collectSourceFiles(path.join(frontendRoot, 'packages', 'biz-ui', 'src')),
-].sort()
+const sourceArgumentIndex = process.argv.indexOf('--source')
+const requestedSource = sourceArgumentIndex >= 0 ? process.argv[sourceArgumentIndex + 1] : null
+const migratedFiles = requestedSource
+  ? [requestedSource]
+  : [
+      ...collectSourceFiles(path.join(frontendRoot, 'src')),
+      ...collectSourceFiles(path.join(frontendRoot, 'packages', 'api', 'src')),
+      ...collectSourceFiles(path.join(frontendRoot, 'packages', 'biz-ui', 'src')),
+    ].sort()
+const localeNames = ['zh-CN', 'en-US']
+
+const unwrapExpression = (expression) => {
+  let current = expression
+  while (current && (
+    ts.isAsExpression(current)
+    || ts.isSatisfiesExpression(current)
+    || ts.isParenthesizedExpression(current)
+    || ts.isNonNullExpression(current)
+    || ts.isTypeAssertionExpression(current)
+  )) {
+    current = current.expression
+  }
+  return current
+}
+
+const propertyNameText = (name) => (
+  ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)
+    ? name.text
+    : null
+)
+
+const collectResourcePaths = (expression, prefix, catalog) => {
+  const value = unwrapExpression(expression)
+  if (!value || !ts.isObjectLiteralExpression(value)) {
+    if (prefix) catalog.leaves.add(prefix)
+    return
+  }
+  if (prefix) catalog.branches.add(prefix)
+  for (const property of value.properties) {
+    if (!ts.isPropertyAssignment(property)) continue
+    const name = propertyNameText(property.name)
+    if (!name) continue
+    const childPath = prefix ? `${prefix}.${name}` : name
+    collectResourcePaths(property.initializer, childPath, catalog)
+  }
+}
+
+const loadResourceCatalog = (locale) => {
+  const localeDirectory = path.join(frontendRoot, 'src', 'i18n', 'locales', locale)
+  const namespaces = new Map()
+  for (const entry of fs.readdirSync(localeDirectory, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue
+    const absolutePath = path.join(localeDirectory, entry.name)
+    const source = ts.createSourceFile(
+      absolutePath,
+      fs.readFileSync(absolutePath, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    )
+    for (const statement of source.statements) {
+      if (!ts.isVariableStatement(statement)) continue
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue
+        const catalog = { leaves: new Set(), branches: new Set() }
+        collectResourcePaths(declaration.initializer, '', catalog)
+        namespaces.set(declaration.name.text, catalog)
+      }
+    }
+  }
+  return namespaces
+}
+
+const resourceCatalogs = new Map(localeNames.map((locale) => [locale, loadResourceCatalog(locale)]))
 const hanPattern = /[\u3400-\u9fff]/u
 const fixedEnglishFallbackPattern = /\b(?:build position|do not open|entry plan|unknown|watch)\b/i
 const englishPhrasePattern = /\b[A-Za-z]{3,}(?:[ -][A-Za-z]{3,})+\b/
@@ -162,6 +231,201 @@ const isTechnicalLiteral = (text) => (
 )
 
 const failures = []
+const keyFailures = []
+
+const namespaceArguments = (call) => {
+  const argument = call.arguments[0]
+  if (!argument) return ['common']
+  if (ts.isStringLiteralLike(argument)) return [argument.text]
+  if (ts.isArrayLiteralExpression(argument)) {
+    const namespaces = argument.elements
+      .filter(ts.isStringLiteralLike)
+      .map((element) => element.text)
+    return namespaces.length > 0 ? namespaces : ['common']
+  }
+  return ['common']
+}
+
+const bindingNames = (name) => {
+  if (ts.isIdentifier(name)) return [name.text]
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    return name.elements.flatMap((element) => ts.isBindingElement(element) ? bindingNames(element.name) : [])
+  }
+  return []
+}
+
+const translatorForKey = (binding, key) => {
+  const rawKey = `${binding.prefix}${key}`
+  const separator = rawKey.indexOf(':')
+  if (separator >= 0) {
+    return {
+      namespace: rawKey.slice(0, separator),
+      path: rawKey.slice(separator + 1),
+      prefix: '',
+    }
+  }
+  return { namespace: binding.namespace, path: rawKey, prefix: '' }
+}
+
+const formatKeyFailure = (source, node, message) => {
+  const position = source.getLineAndCharacterOfPosition(node.getStart(source))
+  return `${path.relative(frontendRoot, source.fileName)}:${position.line + 1}:${position.character + 1} ${message}`
+}
+
+const validateResourcePath = (source, node, binding, key, dynamic) => {
+  const target = translatorForKey(binding, key)
+  const resourcePath = dynamic ? target.path.replace(/\.$/, '') : target.path
+  if (!resourcePath) return
+  for (const locale of localeNames) {
+    const namespace = resourceCatalogs.get(locale)?.get(target.namespace)
+    if (!namespace) {
+      keyFailures.push(formatKeyFailure(source, node, `unknown ${locale} namespace "${target.namespace}"`))
+      continue
+    }
+    const exists = dynamic
+      ? namespace.branches.has(resourcePath)
+      : namespace.leaves.has(resourcePath)
+    if (!exists) {
+      const kind = dynamic ? 'dynamic key prefix' : 'translation key'
+      keyFailures.push(formatKeyFailure(
+        source,
+        node,
+        `missing ${locale} ${kind} "${target.namespace}:${resourcePath}${dynamic ? '.*' : ''}"`,
+      ))
+    }
+  }
+}
+
+const validateTranslationKeys = (source) => {
+  const scopes = [new Map()]
+  const currentScope = () => scopes[scopes.length - 1]
+  const resolveBinding = (name) => {
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      if (scopes[index].has(name)) return scopes[index].get(name)
+    }
+    return null
+  }
+
+  const translatorFromCall = (call) => {
+    const callee = unwrapExpression(call.expression)
+    if (ts.isIdentifier(callee)) return resolveBinding(callee.text)
+    if (ts.isPropertyAccessExpression(callee)
+      && callee.name.text === 't'
+      && ts.isIdentifier(callee.expression)
+      && ['i18n', 'i18nInstance'].includes(callee.expression.text)) {
+      return { namespace: 'common', prefix: '' }
+    }
+    return null
+  }
+
+  const returnedCall = (initializer) => {
+    const value = unwrapExpression(initializer)
+    if (!value || (!ts.isArrowFunction(value) && !ts.isFunctionExpression(value))) return null
+    const body = unwrapExpression(value.body)
+    if (body && ts.isCallExpression(body)) return { fn: value, call: body }
+    if (!ts.isBlock(value.body)) return null
+    const returned = value.body.statements.find(ts.isReturnStatement)
+    const expression = returned?.expression ? unwrapExpression(returned.expression) : null
+    return expression && ts.isCallExpression(expression) ? { fn: value, call: expression } : null
+  }
+
+  const deriveWrapperBinding = (initializer) => {
+    const returned = returnedCall(initializer)
+    if (!returned || returned.fn.parameters.length === 0) return null
+    const keyParameter = returned.fn.parameters[0].name
+    if (!ts.isIdentifier(keyParameter)) return null
+    const sourceBinding = translatorFromCall(returned.call)
+    const keyArgument = returned.call.arguments[0]
+    if (!sourceBinding || !keyArgument) return null
+
+    if (ts.isIdentifier(keyArgument) && keyArgument.text === keyParameter.text) return sourceBinding
+    if (!ts.isTemplateExpression(keyArgument) || keyArgument.templateSpans.length !== 1) return null
+    const span = keyArgument.templateSpans[0]
+    if (!ts.isIdentifier(span.expression)
+      || span.expression.text !== keyParameter.text
+      || span.literal.text !== '') return null
+    const target = translatorForKey(sourceBinding, keyArgument.head.text)
+    return { namespace: target.namespace, prefix: target.path }
+  }
+
+  const registerDeclaration = (declaration) => {
+    for (const name of bindingNames(declaration.name)) currentScope().set(name, null)
+    if (!declaration.initializer) return
+    const initializer = unwrapExpression(declaration.initializer)
+
+    if (ts.isObjectBindingPattern(declaration.name)
+      && initializer
+      && ts.isCallExpression(initializer)
+      && ts.isIdentifier(initializer.expression)
+      && initializer.expression.text === 'useTranslation') {
+      const namespace = namespaceArguments(initializer)[0]
+      for (const element of declaration.name.elements) {
+        const propertyName = element.propertyName ? propertyNameText(element.propertyName) : propertyNameText(element.name)
+        if (propertyName === 't' && ts.isIdentifier(element.name)) {
+          currentScope().set(element.name.text, { namespace, prefix: '' })
+        }
+      }
+      return
+    }
+
+    if (!ts.isIdentifier(declaration.name) || !initializer) return
+    if (ts.isIdentifier(initializer)) {
+      const binding = resolveBinding(initializer.text)
+      if (binding) currentScope().set(declaration.name.text, binding)
+      return
+    }
+    if (ts.isCallExpression(initializer)
+      && ts.isPropertyAccessExpression(initializer.expression)
+      && initializer.expression.name.text === 'getFixedT') {
+      const namespace = initializer.arguments[1]
+      if (namespace && ts.isStringLiteralLike(namespace)) {
+        currentScope().set(declaration.name.text, { namespace: namespace.text, prefix: '' })
+      }
+      return
+    }
+    const wrapper = deriveWrapperBinding(declaration.initializer)
+    if (wrapper) currentScope().set(declaration.name.text, wrapper)
+  }
+
+  const validateCall = (call) => {
+    const binding = translatorFromCall(call)
+    const key = call.arguments[0]
+    if (!binding || !key) return
+    if (ts.isStringLiteralLike(key)) {
+      validateResourcePath(source, key, binding, key.text, false)
+      return
+    }
+    if (ts.isTemplateExpression(key) && key.head.text) {
+      validateResourcePath(source, key, binding, key.head.text, true)
+    }
+  }
+
+  const visit = (node) => {
+    const createsScope = node !== source && (
+      ts.isFunctionLike(node)
+      || ts.isBlock(node)
+      || ts.isCatchClause(node)
+    )
+    if (createsScope) {
+      scopes.push(new Map())
+      if (ts.isFunctionLike(node)) {
+        for (const parameter of node.parameters) {
+          for (const name of bindingNames(parameter.name)) currentScope().set(name, null)
+        }
+      } else if (ts.isCatchClause(node) && node.variableDeclaration) {
+        for (const name of bindingNames(node.variableDeclaration.name)) currentScope().set(name, null)
+      }
+    }
+
+    if (ts.isVariableDeclaration(node)) registerDeclaration(node)
+    if (ts.isCallExpression(node)) validateCall(node)
+    ts.forEachChild(node, visit)
+
+    if (createsScope) scopes.pop()
+  }
+
+  visit(source)
+}
 
 for (const relativePath of migratedFiles) {
   const absolutePath = path.join(frontendRoot, relativePath)
@@ -196,12 +460,19 @@ for (const relativePath of migratedFiles) {
   }
 
   inspect(source)
+  validateTranslationKeys(source)
 }
 
-if (failures.length > 0) {
-  console.error('Migrated UI files contain direct or indirect untranslated literals:')
-  for (const failure of failures) console.error(`- ${failure}`)
+if (failures.length > 0 || keyFailures.length > 0) {
+  if (failures.length > 0) {
+    console.error('Migrated UI files contain direct or indirect untranslated literals:')
+    for (const failure of failures) console.error(`- ${failure}`)
+  }
+  if (keyFailures.length > 0) {
+    console.error('Translation calls reference missing resource keys:')
+    for (const failure of keyFailures) console.error(`- ${failure}`)
+  }
   process.exitCode = 1
 } else {
-  console.log(`i18n literal check passed for ${migratedFiles.length} migrated files`)
+  console.log(`i18n literal and key checks passed for ${migratedFiles.length} migrated files`)
 }
