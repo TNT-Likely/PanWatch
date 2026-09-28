@@ -1083,7 +1083,7 @@ export default function ChatWidget({
                   <div
                     className={`rounded-xl px-3 py-2 text-body leading-relaxed ${
                       msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'text-foreground'
                         : 'bg-accent/60 text-foreground'
                     }`}
                   >
