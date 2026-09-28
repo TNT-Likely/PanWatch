@@ -28,7 +28,9 @@ export function formatMarketCap(value: number | null | undefined, market?: strin
   const m = String(market || '').toUpperCase()
   const abs = Math.abs(n)
 
-  // 腾讯 A 股字段常见为“亿元”口径（如 808 表示 808 亿元）
+  // 腾讯行情 44/45 位市值三市场均为「本币亿」口径（CN/HK 实测、US 经 Apple 双源核验）
+  if (m === 'HK') return `${n.toFixed(2)}亿港元`
+  if (m === 'US') return `${n.toFixed(2)}亿美元`
   if (m === 'CN' && abs > 0 && abs < 100000) {
     return `${n.toFixed(2)}亿元`
   }
