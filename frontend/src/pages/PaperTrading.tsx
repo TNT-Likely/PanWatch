@@ -15,6 +15,8 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import { marketColorWithAlpha, marketDirection, marketSignTextClass } from '@/lib/market-colors'
 
 function formatCurrency(v: number, locale = 'zh-CN') {
   return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -23,13 +25,13 @@ function formatCurrency(v: number, locale = 'zh-CN') {
 function PnlText({ value, suffix = '' }: { value: number; suffix?: string }) {
   const { i18n } = useTranslation()
   const locale = i18n.resolvedLanguage === 'en-US' ? 'en-US' : 'zh-CN'
-  const color = value > 0 ? 'text-rose-500' : value < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+  const color = marketSignTextClass(value)
   const prefix = value > 0 ? '+' : ''
   return <span className={color}>{prefix}{formatCurrency(value, locale)}{suffix}</span>
 }
 
 function PnlPctText({ value }: { value: number }) {
-  const color = value > 0 ? 'text-rose-500' : value < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+  const color = marketSignTextClass(value)
   const prefix = value > 0 ? '+' : ''
   return <span className={color}>{prefix}{value.toFixed(2)}%</span>
 }
@@ -37,6 +39,7 @@ function PnlPctText({ value }: { value: number }) {
 function EquityChart({ data }: { data: EquityCurvePoint[] }) {
   const { t } = useTranslation('configuration')
   const paperT = t as unknown as (key: string, options?: Record<string, unknown>) => string
+  const { palette } = useMarketColors()
   if (data.length < 2) {
     return <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">{paperT('p4.paperTrading.noChartData')}</div>
   }
@@ -61,9 +64,9 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
   const areaD = pathD + ` L${points[points.length - 1].x},${pad.top + h} L${points[0].x},${pad.top + h} Z`
 
-  const isPositive = values[values.length - 1] >= values[0]
-  const strokeColor = isPositive ? '#f43f5e' : '#10b981'
-  const fillColor = isPositive ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)'
+  const direction = marketDirection(values[values.length - 1] - values[0])
+  const strokeColor = direction === 'up' ? palette.up.bright : direction === 'down' ? palette.down.bright : palette.flat
+  const fillColor = marketColorWithAlpha(strokeColor, 0.1)
 
   // Y axis ticks
   const yTicks = 4
@@ -434,7 +437,7 @@ export default function PaperTradingPage() {
               <BarChart3 className="w-3.5 h-3.5" />
               {tr('maxDrawdown')}
             </div>
-            <div className="text-lg font-bold text-emerald-500">{account.max_drawdown_pct.toFixed(2)}%</div>
+            <div className="text-lg font-bold text-destructive">{account.max_drawdown_pct.toFixed(2)}%</div>
           </div>
           <div className="card p-3">
             <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
@@ -477,7 +480,7 @@ export default function PaperTradingPage() {
                     <td className="text-right py-2 px-2">{s.total_trades}</td>
                     <td className="text-right py-2 px-2">
                       {s.total_trades > 0 ? (
-                        <span className={s.win_rate >= 50 ? 'text-rose-500' : s.win_rate > 0 ? 'text-amber-500' : 'text-muted-foreground'}>
+                        <span className={s.win_rate >= 50 ? 'text-success' : s.win_rate > 0 ? 'text-amber-500' : 'text-muted-foreground'}>
                           {s.win_rate.toFixed(1)}%
                         </span>
                       ) : '-'}

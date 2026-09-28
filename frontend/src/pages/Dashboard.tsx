@@ -34,20 +34,20 @@ import BenchmarkShareCard from '@/components/BenchmarkShareCard'
 import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
 import DigestShareCard from '@/components/DigestShareCard'
 import { formatNumber } from '@/i18n/format'
+import { marketSignTextClass } from '@/lib/market-colors'
 
 function pct(v?: number | null, digits = 2): string {
   if (v == null || !isFinite(v)) return '--'
   return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`
 }
 function moveColor(v?: number | null): string {
-  if (v == null) return 'text-muted-foreground'
-  return v > 0 ? 'text-rose-500' : v < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+  return marketSignTextClass(v)
 }
-/** 涨跌着色 chip 的背景+文字类;null/平盘 → 灰底。红涨绿跌(A股口径)。 */
+/** 涨跌着色 chip 的背景+文字类；null/平盘使用中性色。 */
 function pctChipCls(v?: number | null): string {
   if (v == null) return 'bg-accent text-muted-foreground'
-  if (v > 0) return 'bg-rose-500/10 text-rose-500'
-  if (v < 0) return 'bg-emerald-500/10 text-emerald-500'
+  if (v > 0) return 'bg-market-up/10 text-market-up'
+  if (v < 0) return 'bg-market-down/10 text-market-down'
   return 'bg-accent text-muted-foreground'
 }
 /** 金额展示:+¥2,175 风格(千分位 + 正负号),脱敏场景外的常规展示用。 */
@@ -648,7 +648,7 @@ export default function DashboardPage() {
                       <div className="relative h-1.5 flex-1 rounded-full bg-accent/30">
                         <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
                         <div
-                          className={`absolute inset-y-0 rounded-full ${positive ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                          className={`absolute inset-y-0 rounded-full ${positive ? 'bg-market-up' : 'bg-market-down'}`}
                           style={
                             positive
                               ? { left: '50%', width: `${w}%` }

@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { localizeAgentName } from '@/i18n/agent-labels'
+import { marketSignTextClass } from '@/lib/market-colors'
 
 type FilterState = {
   agentName: string
@@ -55,8 +56,7 @@ function formatPct(value: number | null | undefined) {
 }
 
 function pctClass(value: number | null | undefined) {
-  if (value == null || value === 0) return 'text-muted-foreground'
-  return value > 0 ? 'text-rose-500' : 'text-emerald-500'
+  return marketSignTextClass(value)
 }
 
 function outcomeLabel(outcome: AgentPredictionOutcomeItem | undefined, t: (key: string) => string) {

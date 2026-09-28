@@ -3,6 +3,8 @@ import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useTranslation } from 'react-i18next'
+import { useMarketColors } from '@/hooks/use-market-colors'
+import { marketColorWithAlpha, marketSignTextClass } from '@/lib/market-colors'
 
 type BusinessDay = { year: number; month: number; day: number }
 
@@ -160,6 +162,7 @@ export default function InteractiveKline(props: {
   initialDays?: '60' | '120' | '250'
 }) {
   const { t, i18n } = useTranslation('bizUi')
+  const { palette } = useMarketColors()
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`interactiveKline.${key}`, options)
   const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
@@ -259,7 +262,7 @@ export default function InteractiveKline(props: {
     const volumes = klines.map(k => ({
       time: parseBusinessDay(k.date) as BusinessDay,
       value: k.volume,
-      color: k.close >= k.open ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
+      color: marketColorWithAlpha(k.close > k.open ? palette.up.bright : k.close < k.open ? palette.down.bright : palette.flat, 0.35),
     }))
     const closes = klines.map(k => k.close)
     const ma5 = sma(closes, 5)
@@ -271,7 +274,7 @@ export default function InteractiveKline(props: {
     const macd = computeMacd(closes)
     const rsi6 = computeRsi(closes, 6)
     return { klines, candles, volumes, ma5, ma10, ma20, volMa5, volMa10, macd, rsi6 }
-  }, [data])
+  }, [data, palette])
 
   const latestMetrics = useMemo(() => {
     if (!series.klines.length) return null
@@ -338,12 +341,12 @@ export default function InteractiveKline(props: {
     })
 
     const candleSeries = addCandles(chart, LW, {
-      upColor: '#ef4444',
-      downColor: '#10b981',
-      borderUpColor: '#ef4444',
-      borderDownColor: '#10b981',
-      wickUpColor: '#ef4444',
-      wickDownColor: '#10b981',
+      upColor: palette.up.bright,
+      downColor: palette.down.bright,
+      borderUpColor: palette.up.bright,
+      borderDownColor: palette.down.bright,
+      wickUpColor: palette.up.bright,
+      wickDownColor: palette.down.bright,
     })
     candleSeries.setData(series.candles)
 
@@ -418,7 +421,7 @@ export default function InteractiveKline(props: {
           return {
             time: parseBusinessDay(k.date) as BusinessDay,
             value: v,
-            color: v >= 0 ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)',
+            color: marketColorWithAlpha(v > 0 ? palette.up.bright : v < 0 ? palette.down.bright : palette.flat, 0.35),
           }
         })
         .filter(Boolean)
@@ -550,7 +553,7 @@ export default function InteractiveKline(props: {
         // ignore
       }
     }
-  }, [series, lwReady, showRsi, indexByDate, interval])
+  }, [series, lwReady, showRsi, indexByDate, interval, palette])
 
   return (
     <div className="card p-4 md:p-5">
@@ -611,7 +614,7 @@ export default function InteractiveKline(props: {
       ) : latestMetrics ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.latest')}</span> <span className="font-mono ml-1">{latestMetrics.last.close.toFixed(2)}</span></div>
-          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.change')}</span> <span className={`font-mono ml-1 ${latestMetrics.changePct >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{latestMetrics.changePct >= 0 ? '+' : ''}{latestMetrics.changePct.toFixed(2)}%</span></div>
+          <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.change')}</span> <span className={`font-mono ml-1 ${marketSignTextClass(latestMetrics.changePct)}`}>{latestMetrics.changePct >= 0 ? '+' : ''}{latestMetrics.changePct.toFixed(2)}%</span></div>
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.amplitude')}</span> <span className="font-mono ml-1">{latestMetrics.ampPct.toFixed(2)}%</span></div>
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.range')}</span> <span className="font-mono ml-1">{latestMetrics.maxHigh.toFixed(2)}/{latestMetrics.minLow.toFixed(2)}</span></div>
           <div className="rounded-lg bg-accent/20 px-2.5 py-2 text-[11px]"><span className="text-muted-foreground">{tr('metrics.averageVolume')}</span> <span className="font-mono ml-1">{english ? `${(latestMetrics.avgVol / 1000).toFixed(1)}K` : tr('tenThousand', { value: (latestMetrics.avgVol / 10000).toFixed(1) })}</span></div>

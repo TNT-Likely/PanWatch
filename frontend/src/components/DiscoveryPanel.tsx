@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { useLocalStorage } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
+import { marketSignTextClass } from '@/lib/market-colors'
 
 interface Props {
   monitorStocks: DashboardMonitorStock[]
@@ -288,7 +289,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {hotBoards.slice(0, 6).map((b) => {
                   const pct = b.change_pct ?? 0
-                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  const color = marketSignTextClass(pct)
                   return (
                     <button
                       key={b.code}
@@ -314,7 +315,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {visibleHotStocks.slice(0, 6).map((s) => {
                   const pct = s.change_pct ?? 0
-                  const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                  const color = marketSignTextClass(pct)
                   const reasons = (s as HotStockItem & { _reasons?: string[] })._reasons
                   return (
                     <div
@@ -355,7 +356,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
             <div className="scrollbar grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2">
               {boardStocks.map((s) => {
                 const pct = s.change_pct ?? 0
-                const color = pct > 0 ? 'text-rose-500' : pct < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+                const color = marketSignTextClass(pct)
                 return (
                   <div
                     key={s.symbol}

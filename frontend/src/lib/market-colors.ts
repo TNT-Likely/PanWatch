@@ -54,6 +54,15 @@ export function getMarketColorPalette(scheme: EffectiveMarketColorScheme): Marke
     : { up: RED, down: GREEN, flat: '#64748b' }
 }
 
+export function marketColorWithAlpha(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '')
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return hex
+  const red = Number.parseInt(normalized.slice(0, 2), 16)
+  const green = Number.parseInt(normalized.slice(2, 4), 16)
+  const blue = Number.parseInt(normalized.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${Math.max(0, Math.min(1, alpha))})`
+}
+
 export function marketDirection(value: number | null | undefined): MarketDirection {
   if (value == null || !Number.isFinite(value) || value === 0) return 'flat'
   return value > 0 ? 'up' : 'down'

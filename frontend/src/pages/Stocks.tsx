@@ -27,6 +27,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
+import { marketSignTextClass } from '@/lib/market-colors'
 
 interface AgentResult {
   success?: boolean
@@ -1734,13 +1735,13 @@ export default function StocksPage() {
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               {portfolio.total.total_pnl >= 0 ? (
-                <ArrowUpRight className="w-4 h-4 text-rose-500" />
+                <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(portfolio.total.total_pnl)}`} />
               ) : (
-                <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(portfolio.total.total_pnl)}`} />
               )}
               <span className="text-[12px]">{stockT('stocksPage.messages.totalPnl')}</span>
             </div>
-            <div className={`text-[20px] font-bold font-mono ${portfolio.total.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+            <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(portfolio.total.total_pnl)}`}>
               {portfolio.total.total_pnl >= 0 ? '+' : ''}{formatMoney(portfolio.total.total_pnl)}
               <span className="text-[13px] ml-1.5">
                 ({portfolio.total.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total.total_pnl_pct.toFixed(2)}%)
@@ -1758,13 +1759,13 @@ export default function StocksPage() {
               <div className="card p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   {isUp ? (
-                    <ArrowUpRight className="w-4 h-4 text-rose-500" />
+                    <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(dayPnl)}`} />
                   ) : (
-                    <ArrowDownRight className="w-4 h-4 text-emerald-500" />
+                    <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(dayPnl)}`} />
                   )}
                   <span className="text-[12px]">{stockT('stocksPage.messages.todayPnl')}</span>
                 </div>
-                <div className={`text-[20px] font-bold font-mono ${isUp ? 'text-rose-500' : 'text-emerald-500'}`}>
+                <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(dayPnl)}`}>
                   {isUp ? '+' : ''}{formatMoney(dayPnl)}
                   <span className="text-[13px] ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
                 </div>
@@ -1964,14 +1965,14 @@ export default function StocksPage() {
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">{stockT('stocksPage.messages.pnl')}</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(account.total_pnl)}`}>
                         {account.total_pnl >= 0 ? '+' : ''}{formatMoney(account.total_pnl)}
                         <span className="text-[10px] md:text-[11px] ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
                       </div>
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">{stockT('stocksPage.messages.today')}</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${account.total_daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(account.total_daily_pnl)}`}>
                         {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
                       </div>
                     </div>
@@ -2024,12 +2025,8 @@ export default function StocksPage() {
                               const stock = stocks.find(s => s.id === pos.stock_id)
                               const badge = marketBadge(pos.market)
                               const isForeign = pos.market === 'HK' || pos.market === 'US'
-                              const changeColor = pos.change_pct != null
-                                ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
-                                : 'text-muted-foreground'
-                              const pnlColor = pos.pnl != null
-                                ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
-                                : 'text-muted-foreground'
+                              const changeColor = marketSignTextClass(pos.change_pct)
+                              const pnlColor = marketSignTextClass(pos.pnl)
                               return (
                                 <tr
                                   key={pos.id}
@@ -2118,7 +2115,7 @@ export default function StocksPage() {
                                       </div>
                                     ) : '—'}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : ''}`}>
+                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${marketSignTextClass(pos.daily_pnl)}`}>
                                     {pos.daily_pnl != null ? (
                                       <div className="flex flex-col items-end">
                                         <span>{pos.daily_pnl >= 0 ? '+' : ''}{formatMoney(pos.daily_pnl)}</span>
@@ -2195,12 +2192,8 @@ export default function StocksPage() {
                         {account.positions.map(pos => {
                           const stock = stocks.find(s => s.id === pos.stock_id)
                           const badge = marketBadge(pos.market)
-                          const changeColor = pos.change_pct != null
-                            ? (pos.change_pct > 0 ? 'text-rose-500' : pos.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
-                            : 'text-muted-foreground'
-                          const pnlColor = pos.pnl != null
-                            ? (pos.pnl > 0 ? 'text-rose-500' : pos.pnl < 0 ? 'text-emerald-500' : 'text-muted-foreground')
-                            : 'text-muted-foreground'
+                          const changeColor = marketSignTextClass(pos.change_pct)
+                          const pnlColor = marketSignTextClass(pos.pnl)
                           return (
                             <div
                               key={pos.id}
@@ -2297,7 +2290,7 @@ export default function StocksPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">{stockT('stocksPage.messages.today')}</div>
-                                  <div className={`font-mono whitespace-nowrap ${pos.daily_pnl != null ? (pos.daily_pnl >= 0 ? 'text-rose-500' : 'text-emerald-500') : 'text-muted-foreground'}`}>
+                                  <div className={`font-mono whitespace-nowrap ${marketSignTextClass(pos.daily_pnl)}`}>
                                     {pos.daily_pnl != null ? `${pos.daily_pnl >= 0 ? '+' : ''}${formatMoney(pos.daily_pnl)}` : '—'}
                                   </div>
                                 </div>
@@ -2423,9 +2416,7 @@ export default function StocksPage() {
                 })
                 .map((stock) => {
                 const quote = getStockQuote(`${stock.market}:${stock.symbol}`)
-                const changeColor = quote?.change_pct != null
-                  ? (quote.change_pct > 0 ? 'text-rose-500' : quote.change_pct < 0 ? 'text-emerald-500' : 'text-muted-foreground')
-                  : 'text-muted-foreground'
+                const changeColor = marketSignTextClass(quote?.change_pct)
                 const { suggestion, kline } = getSuggestionForStock(stock.symbol, stock.market, false)
                 return (
                   <div

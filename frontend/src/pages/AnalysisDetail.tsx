@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import ShareCardModal from '../components/ShareCardModal'
 import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
+import { marketSignTextClass } from '@/lib/market-colors'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-rose-500',
@@ -57,8 +58,7 @@ function inferMarket(symbol: string): string {
 }
 
 function pctClass(v: number | null | undefined): string {
-  if (v == null) return 'text-muted-foreground'
-  return v > 0 ? 'text-rose-500' : v < 0 ? 'text-emerald-500' : 'text-muted-foreground'
+  return marketSignTextClass(v)
 }
 
 function fmtPct(v: number | null | undefined): string {
