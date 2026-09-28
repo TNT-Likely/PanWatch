@@ -155,6 +155,7 @@ const looksLikePresentationLiteral = (node, text) => (
 )
 const isTechnicalLiteral = (text) => (
   text === 'panwatch-locale'
+  || text.startsWith('text-market-')
   || text.startsWith('/')
   || text.includes('://')
   || text.includes('github.com/')

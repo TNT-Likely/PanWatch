@@ -215,7 +215,7 @@ export const configuration = {
       testFailed: '测试失败', operationFailed: '操作失败', notificationSent: '测试通知已发送', channelSaved: '通知渠道已保存',
       configParseFailed: '配置包解析失败',
     },
-    nav: { ai: 'AI', notifications: '通知', system: '系统', feedback: '反馈', pat: 'MCP 令牌' },
+    nav: { appearance: '显示', ai: 'AI', notifications: '通知', system: '系统', feedback: '反馈', pat: 'MCP 令牌' },
     hero: {
       uploadAvatar: '点击上传头像', avatarAlt: '头像', providers: '服务商', models: '模型', channelsEnabled: '渠道启用',
       defaultModel: '默认模型', defaultNotification: '默认通知', importing: '导入中...', importPack: '导入配置包',
@@ -226,6 +226,14 @@ export const configuration = {
       addModel: '模型', discover: '嗅探模型（自动发现可用模型）', test: '测试模型', setDefault: '设为默认',
     },
     notifications: { title: '通知渠道', description: '推送到 Telegram/Bark 等渠道', add: '添加', empty: '暂无通知渠道，点击“添加”创建', sendTest: '发送测试', setDefault: '设为默认' },
+    appearance: {
+      title: '显示偏好', description: '统一行情涨跌、盈亏、K 线与分享卡的颜色习惯。', marketColors: '涨跌颜色',
+      options: {
+        auto: { label: '跟随界面语言（推荐）', description: '中文红涨绿跌，英文绿涨红跌' },
+        'red-up': { label: '红涨绿跌', description: '所有界面固定使用中文市场习惯' },
+        'green-up': { label: '绿涨红跌', description: '所有界面固定使用国际市场习惯' },
+      },
+    },
     system: { title: '系统', description: '偏好与高级选项。修改后立即生效。', searchPlaceholder: '搜索设置项（描述 / key）', stockLinkXueqiu: '雪球', settingDescriptions: { http_proxy: 'HTTP 代理地址（配置后行情、新闻、AI 和通知统一走此代理）', notify_quiet_hours: '通知静默时间段（HH:MM-HH:MM，空为关闭）', notify_retry_attempts: '通知失败重试次数（不含首次）', notify_retry_backoff_seconds: '通知重试退避秒数（基数）', notify_dedupe_ttl_overrides: '通知幂等窗口覆盖（JSON，空为默认）', stock_link_platform: '股票链接平台（点击股票代码跳转的行情网站）', panwatch_base_url: 'PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）' } },
     pack: {
       importMode: '导入模式', merge: '合并更新（推荐）',

@@ -22,6 +22,11 @@
     --destructive-foreground: 0 0% 100%;
     --success: 152 60% 42%;
     --success-foreground: 0 0% 100%;
+    --market-red: 350 83% 47%;
+    --market-green: 160 84% 30%;
+    --market-up: var(--market-red);
+    --market-down: var(--market-green);
+    --market-flat: 215 16% 47%;
     --border: 220 15% 90%;
     --input: 220 15% 90%;
     --ring: 234 85% 55%;
@@ -47,9 +52,22 @@
     --destructive-foreground: 0 0% 100%;
     --success: 152 50% 38%;
     --success-foreground: 0 0% 100%;
+    --market-red: 350 89% 60%;
+    --market-green: 158 64% 52%;
+    --market-flat: 215 16% 57%;
     --border: 224 15% 16%;
     --input: 224 15% 18%;
     --ring: 234 85% 62%;
+  }
+
+  :root[data-market-color-scheme="green-up"] {
+    --market-up: var(--market-green);
+    --market-down: var(--market-red);
+  }
+
+  :root[data-market-color-scheme="red-up"] {
+    --market-up: var(--market-red);
+    --market-down: var(--market-green);
   }
 }
 

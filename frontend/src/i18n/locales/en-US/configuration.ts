@@ -218,7 +218,7 @@ export const configuration = {
       testFailed: 'Test failed', operationFailed: 'Operation failed', notificationSent: 'Test notification sent', channelSaved: 'Notification channel saved',
       configParseFailed: 'Failed to parse configuration package',
     },
-    nav: { ai: 'AI', notifications: 'Notifications', system: 'System', feedback: 'Feedback', pat: 'MCP tokens' },
+    nav: { appearance: 'Appearance', ai: 'AI', notifications: 'Notifications', system: 'System', feedback: 'Feedback', pat: 'MCP tokens' },
     hero: {
       uploadAvatar: 'Upload avatar', avatarAlt: 'Avatar', providers: 'providers', models: 'models', channelsEnabled: 'channels enabled',
       defaultModel: 'Default model', defaultNotification: 'Default notification', importing: 'Importing...', importPack: 'Import config pack',
@@ -229,6 +229,14 @@ export const configuration = {
       addModel: 'Model', discover: 'Discover models', test: 'Test model', setDefault: 'Set as default',
     },
     notifications: { title: 'Notification channels', description: 'Send to Telegram, Bark, and other channels', add: 'Add', empty: 'No notification channels yet. Click “Add” to create one.', sendTest: 'Send test', setDefault: 'Set as default' },
+    appearance: {
+      title: 'Appearance', description: 'Use one color convention for market moves, P&L, charts, and share cards.', marketColors: 'Market movement colors',
+      options: {
+        auto: { label: 'Follow interface language (recommended)', description: 'Red-up in Chinese and green-up in English' },
+        'red-up': { label: 'Red for gains', description: 'Always use the Chinese-market convention' },
+        'green-up': { label: 'Green for gains', description: 'Always use the international-market convention' },
+      },
+    },
     system: { title: 'System', description: 'Preferences and advanced options. Changes take effect immediately.', searchPlaceholder: 'Search settings (description / key)', stockLinkXueqiu: 'Xueqiu', settingDescriptions: { http_proxy: 'HTTP proxy used for quotes, news, AI, and notifications', notify_quiet_hours: 'Notification quiet hours (HH:MM-HH:MM; empty to disable)', notify_retry_attempts: 'Notification retry attempts (excluding the first attempt)', notify_retry_backoff_seconds: 'Notification retry backoff base (seconds)', notify_dedupe_ttl_overrides: 'Notification deduplication window overrides (JSON; empty for defaults)', stock_link_platform: 'Quote website opened when clicking a stock symbol', panwatch_base_url: 'Public PanWatch URL used in notification detail links, e.g. https://panwatch.example.com' } },
     pack: {
       importMode: 'Import mode', merge: 'Merge updates (recommended)',
