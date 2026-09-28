@@ -4,75 +4,113 @@
 
 @layer base {
   :root {
-    /* 中性色板：明亮效率风（Linear 质感）· 亮色 */
-    --background: 0 0% 100%;
-    --foreground: 240 6% 7%;
+    /* 暖纸 · 标注感：暖象牙底 + 白卡 + 暖石灰阶 */
+    --background: 40 44% 97%;
+    --foreground: 28 18% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 6% 7%;
+    --card-foreground: 28 18% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 6% 7%;
+    --popover-foreground: 28 18% 12%;
     --primary: 234 85% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 6% 96%;
-    --secondary-foreground: 240 6% 30%;
-    --muted: 240 6% 96%;
-    --muted-foreground: 240 4% 40%;
-    --accent: 240 6% 94%;
-    --accent-foreground: 240 6% 7%;
-    --destructive: 0 72% 51%;
+    --secondary: 38 30% 94%;
+    --secondary-foreground: 28 12% 32%;
+    --muted: 38 30% 95%;
+    --muted-foreground: 25 6% 40%;
+    --accent: 38 36% 92%;
+    --accent-foreground: 28 18% 12%;
+    --destructive: 0 72% 46%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 60% 42%;
+    --success: 161 84% 26%;
     --success-foreground: 0 0% 100%;
-    --warning: 32 95% 44%;
+    --warning: 32 95% 40%;
     --warning-foreground: 0 0% 100%;
-    /* 涨跌语义色：A股口径 红涨绿跌（与 destructive/success 语义解耦，港美股口径切换预留） */
-    --stock-up: 0 72% 51%;
-    --stock-down: 152 70% 29%;
-    --border: 240 6% 91%;
-    --border-strong: 240 6% 84%;
-    --input: 240 6% 91%;
+    /* 涨跌语义色：A股口径 红涨绿跌（与 destructive/success 语义解耦，港美股口径切换预留）
+       up=朱红(色相 10，与分享卡风险因子玫红 347 拉开色相)；down=翡翠(161) */
+    --stock-up: 10 80% 40%;
+    --stock-down: 161 84% 24%;
+    --border: 36 24% 88%;
+    --border-strong: 36 20% 80%;
+    --input: 36 24% 88%;
     --ring: 234 85% 55%;
     --radius: 0.625rem;
+    /* 选中/高亮带（淡紫，标注工具风） */
+    --highlight: 230 70% 96%;
+    /* 柔和分类色签：fg-700 on bg-50 配对（逐对实算 ≥4.5:1） */
+    --chip-amber-fg: 26 90% 37%;
+    --chip-amber-bg: 48 100% 96%;
+    --chip-sky-fg: 201 90% 27%;
+    --chip-sky-bg: 204 100% 97%;
+    --chip-emerald-fg: 163 88% 24%;
+    --chip-emerald-bg: 166 76% 97%;
+    --chip-violet-fg: 263 70% 40%;
+    --chip-violet-bg: 251 100% 98%;
+    --chip-rose-fg: 347 77% 38%;
+    --chip-rose-bg: 350 100% 98%;
+    --chip-slate-fg: 215 25% 27%;
+    --chip-slate-bg: 210 40% 98%;
+    /* 曲线辅助色：MA1/2/3 与基准线 */
+    --chart-ma1: 201 90% 40%;
+    --chart-ma2: 263 70% 50%;
+    --chart-ma3: 26 90% 46%;
+    --chart-baseline: 25 6% 64%;
   }
 
   .dark {
-    /* Linear 深灰 · 按语义令牌重调（非反色） */
-    --background: 240 6% 8%;
-    --foreground: 240 6% 93%;
-    --card: 240 5% 10%;
-    --card-foreground: 240 6% 93%;
-    --popover: 240 5% 11%;
-    --popover-foreground: 240 6% 93%;
+    /* 暖黑暗色 · 与亮色同一色相系（非冷灰） */
+    --background: 24 8% 8%;
+    --foreground: 30 12% 92%;
+    --card: 24 7% 10%;
+    --card-foreground: 30 12% 92%;
+    --popover: 24 7% 11%;
+    --popover-foreground: 30 12% 92%;
     --primary: 234 85% 62%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 15%;
-    --secondary-foreground: 240 6% 75%;
-    --muted: 240 5% 15%;
-    --muted-foreground: 240 5% 58%;
-    --accent: 240 5% 17%;
-    --accent-foreground: 240 6% 93%;
+    --secondary: 24 6% 15%;
+    --secondary-foreground: 30 10% 75%;
+    --muted: 24 6% 15%;
+    --muted-foreground: 26 6% 58%;
+    --accent: 24 6% 17%;
+    --accent-foreground: 30 12% 92%;
     --destructive: 0 65% 55%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 55% 45%;
+    --success: 161 60% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 55%;
-    --warning-foreground: 240 6% 8%;
-    --stock-up: 0 100% 71%;
-    --stock-down: 142 69% 58%;
-    --border: 240 5% 16%;
-    --border-strong: 240 5% 24%;
-    --input: 240 5% 18%;
+    --warning-foreground: 24 8% 8%;
+    --stock-up: 10 90% 62%;
+    --stock-down: 161 75% 50%;
+    --border: 24 6% 16%;
+    --border-strong: 24 6% 24%;
+    --input: 24 6% 18%;
     --ring: 234 85% 62%;
+    --highlight: 230 40% 20%;
+    --chip-amber-fg: 43 96% 70%;
+    --chip-amber-bg: 26 60% 14%;
+    --chip-sky-fg: 198 88% 66%;
+    --chip-sky-bg: 205 60% 14%;
+    --chip-emerald-fg: 160 76% 60%;
+    --chip-emerald-bg: 165 60% 12%;
+    --chip-violet-fg: 258 90% 74%;
+    --chip-violet-bg: 258 50% 16%;
+    --chip-rose-fg: 350 89% 72%;
+    --chip-rose-bg: 348 55% 15%;
+    --chip-slate-fg: 213 20% 72%;
+    --chip-slate-bg: 215 25% 14%;
+    --chart-ma1: 201 90% 58%;
+    --chart-ma2: 263 80% 68%;
+    --chart-ma3: 38 92% 58%;
+    --chart-baseline: 26 6% 46%;
   }
 
   /* 涨跌色口径切换：绿涨红跌（欧美）——交换 stock-up/down 值，亮暗分别覆盖 */
   :root[data-stock-mode='up-green'] {
-    --stock-up: 152 70% 29%;
-    --stock-down: 0 72% 51%;
+    --stock-up: 161 84% 24%;
+    --stock-down: 10 80% 40%;
   }
   .dark[data-stock-mode='up-green'] {
-    --stock-up: 142 69% 58%;
-    --stock-down: 0 100% 71%;
+    --stock-up: 161 75% 50%;
+    --stock-down: 10 90% 62%;
   }
 }
 

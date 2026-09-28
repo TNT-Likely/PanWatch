@@ -176,12 +176,19 @@ export default function InteractiveKline(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
 
-  // 涨跌语义色（hsl 片段，来自 --stock-up/--stock-down，随主题亮暗与口径切换重建图表）
+  // 涨跌语义色与曲线辅助色（hsl 片段，来自 token，随主题亮暗与口径切换重建图表）
   const stockMode = useStockColorMode()
   const stockHsl = useMemo(() => {
     const s = getComputedStyle(document.documentElement)
     const raw = (name: string, fb: string) => (s.getPropertyValue(name) || '').trim() || fb
-    return { up: raw('--stock-up', '0 72% 51%'), down: raw('--stock-down', '152 70% 29%') }
+    return {
+      up: raw('--stock-up', '10 80% 40%'),
+      down: raw('--stock-down', '161 84% 24%'),
+      ma1: raw('--chart-ma1', '201 90% 40%'),
+      ma2: raw('--chart-ma2', '263 70% 50%'),
+      ma3: raw('--chart-ma3', '26 90% 46%'),
+      baseline: raw('--chart-baseline', '25 6% 64%'),
+    }
   }, [stockMode])
 
   const load = async () => {
@@ -328,12 +335,12 @@ export default function InteractiveKline(props: {
     })
     volSeries.setData(series.volumes)
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
-    const volMa5Series = addLine(chart, LW, { priceScaleId: 'vol', color: 'rgba(245, 158, 11, 0.9)', lineWidth: 1 })
-    const volMa10Series = addLine(chart, LW, { priceScaleId: 'vol', color: 'rgba(14, 165, 233, 0.9)', lineWidth: 1 })
+    const volMa5Series = addLine(chart, LW, { priceScaleId: 'vol', color: `hsl(${stockHsl.ma3} / 0.9)`, lineWidth: 1 })
+    const volMa10Series = addLine(chart, LW, { priceScaleId: 'vol', color: `hsl(${stockHsl.ma1} / 0.9)`, lineWidth: 1 })
 
-    const ma5Series = addLine(chart, LW, { color: 'rgba(99, 102, 241, 0.85)', lineWidth: 2 })
-    const ma10Series = addLine(chart, LW, { color: 'rgba(245, 158, 11, 0.85)', lineWidth: 2 })
-    const ma20Series = addLine(chart, LW, { color: 'rgba(14, 165, 233, 0.85)', lineWidth: 2 })
+    const ma5Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma3} / 0.85)`, lineWidth: 2 })
+    const ma10Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma1} / 0.85)`, lineWidth: 2 })
+    const ma20Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma2} / 0.85)`, lineWidth: 2 })
 
     const mapLine = (arr: Array<number | null>) =>
       series.klines

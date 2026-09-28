@@ -51,6 +51,22 @@ export default {
           up: 'hsl(var(--stock-up) / <alpha-value>)',
           down: 'hsl(var(--stock-down) / <alpha-value>)',
         },
+        // 暖纸主题：选中/高亮带 + 柔和分类色签（fg-700 on bg-50 规范，详见 index.css）
+        highlight: 'hsl(var(--highlight))',
+        chip: {
+          amber: { fg: 'hsl(var(--chip-amber-fg))', bg: 'hsl(var(--chip-amber-bg))' },
+          sky: { fg: 'hsl(var(--chip-sky-fg))', bg: 'hsl(var(--chip-sky-bg))' },
+          emerald: { fg: 'hsl(var(--chip-emerald-fg))', bg: 'hsl(var(--chip-emerald-bg))' },
+          violet: { fg: 'hsl(var(--chip-violet-fg))', bg: 'hsl(var(--chip-violet-bg))' },
+          rose: { fg: 'hsl(var(--chip-rose-fg))', bg: 'hsl(var(--chip-rose-bg))' },
+          slate: { fg: 'hsl(var(--chip-slate-fg))', bg: 'hsl(var(--chip-slate-bg))' },
+        },
+        chart: {
+          ma1: 'hsl(var(--chart-ma1))',
+          ma2: 'hsl(var(--chart-ma2))',
+          ma3: 'hsl(var(--chart-ma3))',
+          baseline: 'hsl(var(--chart-baseline))',
+        },
       },
       // 字阶（不绑定行高，与原任意值等价替换）：mini10 / caption11 / body-sm12 / body13 / body-lg14 / title16 / heading18 / headline20 / display24
       fontSize: {
