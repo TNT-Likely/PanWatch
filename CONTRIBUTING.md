@@ -164,6 +164,7 @@ Document attribution, authentication requirements, rate limits, market coverage,
 - `README.md` is the default English project introduction.
 - `README.zh-CN.md` is the complete Simplified Chinese version.
 - Update both when installation, configuration, screenshots, or user-visible features change.
+- Release notes are maintained in English under `docs/releases/`; create the versioned note from the template before tagging a release.
 - Keep historical compatibility files such as `README.en.md` and `CONTRIBUTING.en.md` working when paths move.
 - Do not present prototypes, local-only files, or unverified behavior as released functionality.
 

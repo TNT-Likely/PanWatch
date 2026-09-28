@@ -8,7 +8,7 @@ Powered by [TradingAgents](https://github.com/TauricResearch/TradingAgents) for 
 
 > 🌐 Available in English and Simplified Chinese. On first visit, PanWatch follows the browser language; a manual selection is remembered.
 
-[Quick start](#quick-start) · [Feature overview](#-feature-overview) · [Core features](#core-features) · [Development](#local-development) · [Support](#support-the-project) · [Contributing](#contributing)
+[Quick start](#quick-start) · [Feature overview](#-feature-overview) · [Core features](#core-features) · [Documentation](docs/README.md) · [Releases](https://github.com/TNT-Likely/PanWatch/releases) · [Contributing](#contributing)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -138,6 +138,38 @@ The image includes the system dependencies required by Playwright. Chromium is d
 If you do not need browser-based features such as screenshots, set `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` when starting the container to skip the initial Chromium installation.
 
 <details>
+<summary>Images, persistence, and upgrades</summary>
+
+- **Platforms:** the official image supports `linux/amd64` and `linux/arm64`.
+- **Tags:** use a version tag such as `0.15.0` for a reproducible deployment. `latest` follows the newest stable release.
+- **Persistent data:** keep `/app/data` on a named volume or host directory. It contains the database, configuration, generated artifacts, and the optional Playwright installation.
+- **Before upgrading:** back up the data volume and read the [release notes](https://github.com/TNT-Likely/PanWatch/releases/latest). Database migrations run automatically when the new container starts.
+
+For Docker Compose:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+For `docker run`, pull the desired tag, remove the old container, and recreate it with the same `/app/data` volume and environment variables. Removing the container does not remove the named volume.
+
+```bash
+docker pull sunxiao0721/panwatch:latest
+docker rm -f panwatch
+docker run -d \
+  --name panwatch \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -v panwatch_data:/app/data \
+  sunxiao0721/panwatch:latest
+```
+
+See the [documentation hub](docs/README.md) for architecture, releases, security, and contribution links.
+
+</details>
+
+<details>
 <summary>Docker Compose</summary>
 
 ```yaml
@@ -265,6 +297,7 @@ Langfuse and Tempo work the same way: point `OTEL_EXPORTER_OTLP_ENDPOINT` to the
 
 The repository includes a GitHub Actions release workflow:
 
+- Before creating a version tag, copy [`docs/releases/TEMPLATE.md`](docs/releases/TEMPLATE.md) to `docs/releases/<version>.md` and complete the user-facing release notes in English. The workflow rejects missing or incomplete notes.
 - Pushing a tag such as `0.2.3` automatically builds and publishes:
   - `sunxiao0721/panwatch:0.2.3`
   - `sunxiao0721/panwatch:latest`
@@ -274,6 +307,8 @@ Configure these repository secrets before publishing:
 
 - `DOCKERHUB_USERNAME`
 - `DOCKERHUB_TOKEN`
+
+See the [release publishing guide](docs/releases/README.md) for the required structure and local validation command.
 
 </details>
 

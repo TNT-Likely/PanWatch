@@ -8,7 +8,7 @@
 
 > 🌐 支持简体中文与英文。首次访问会跟随浏览器语言，手动切换后会记住你的选择。
 
-[快速开始](#快速开始) · [功能一览](#-功能一览) · [核心功能](#核心功能) · [本地开发](#本地开发) · [捐赠支持](#捐赠支持) · [参与贡献](#贡献)
+[快速开始](#快速开始) · [功能一览](#-功能一览) · [核心功能](#核心功能) · [项目文档](docs/README.md#简体中文) · [历史版本](https://github.com/TNT-Likely/PanWatch/releases) · [参与贡献](#贡献)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -134,6 +134,38 @@ docker run -d \
 说明：镜像内已包含 Playwright 运行所需的系统依赖；Chromium 浏览器会在容器首次启动时自动下载并安装到挂载卷（默认 `/app/data/playwright`），首次启动可能需要几分钟且需要网络可达。
 
 如果不需要截图等浏览器能力，可以在启动容器时设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过首次 Chromium 下载/安装。
+
+<details>
+<summary>镜像、持久化与升级</summary>
+
+- **支持平台：**官方镜像支持 `linux/amd64` 和 `linux/arm64`。
+- **镜像标签：**需要可重复部署时使用 `0.15.0` 等固定版本；`latest` 始终指向最新稳定版。
+- **持久化数据：**请将 `/app/data` 挂载到命名卷或宿主机目录，其中包含数据库、配置、生成文件和可选的 Playwright 浏览器。
+- **升级前：**先备份数据卷并阅读[最新版本说明](https://github.com/TNT-Likely/PanWatch/releases/latest)。新容器启动时会自动执行数据库迁移。
+
+Docker Compose 升级：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+使用 `docker run` 时，拉取目标镜像、删除旧容器，再使用相同的 `/app/data` 数据卷和环境变量重新创建。删除容器不会删除命名卷。
+
+```bash
+docker pull sunxiao0721/panwatch:latest
+docker rm -f panwatch
+docker run -d \
+  --name panwatch \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -v panwatch_data:/app/data \
+  sunxiao0721/panwatch:latest
+```
+
+架构、版本、安全和贡献入口见[项目文档中心](docs/README.md#简体中文)。
+
+</details>
 
 <details>
 <summary>Docker Compose</summary>
@@ -262,6 +294,7 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 
 本项目内置 GitHub Actions 发布流程：
 
+- 创建版本 tag 前，将 [`docs/releases/TEMPLATE.md`](docs/releases/TEMPLATE.md) 复制为 `docs/releases/<version>.md`，并用英文完成面向用户的版本说明；缺少或未完成版本说明时流水线会拒绝发版。
 - 打 tag（例如 `0.2.3`）会自动构建并推送 Docker 镜像
   - `sunxiao0721/panwatch:0.2.3`
   - `sunxiao0721/panwatch:latest`
@@ -271,6 +304,8 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 
 - `DOCKERHUB_USERNAME`
 - `DOCKERHUB_TOKEN`
+
+版本说明结构和本地校验命令见[发版指南](docs/releases/README.md#简体中文)。
 
 </details>
 
