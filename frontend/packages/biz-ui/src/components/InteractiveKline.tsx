@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as LW from 'lightweight-charts'
 import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@aiwatch/api'
+import { toLwColor } from '@aiwatch/biz-ui/lib/chart-color'
 import { useStockColorMode } from '@aiwatch/base-ui/hooks/use-stock-mode'
 import { Button } from '@aiwatch/base-ui/components/ui/button'
 
@@ -243,7 +244,7 @@ export default function InteractiveKline(props: {
     const volumes = klines.map(k => ({
       time: parseBusinessDay(k.date) as BusinessDay,
       value: k.volume,
-      color: k.close >= k.open ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`,
+      color: toLwColor(k.close >= k.open ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`),
     }))
     const closes = klines.map(k => k.close)
     const ma5 = sma(closes, 5)
@@ -298,8 +299,8 @@ export default function InteractiveKline(props: {
       width: container.clientWidth,
       height: 380,
       layout: {
-        background: { color: `hsl(${bg})` },
-        textColor: `hsl(${fg} / 0.85)`,
+        background: { color: toLwColor(`hsl(${bg})`) },
+        textColor: toLwColor(`hsl(${fg} / 0.85)`),
       },
       rightPriceScale: { borderVisible: false },
       timeScale: {
@@ -320,12 +321,12 @@ export default function InteractiveKline(props: {
     })
 
     const candleSeries = addCandles(chart, LW, {
-      upColor: `hsl(${stockHsl.up})`,
-      downColor: `hsl(${stockHsl.down})`,
-      borderUpColor: `hsl(${stockHsl.up})`,
-      borderDownColor: `hsl(${stockHsl.down})`,
-      wickUpColor: `hsl(${stockHsl.up})`,
-      wickDownColor: `hsl(${stockHsl.down})`,
+      upColor: toLwColor(`hsl(${stockHsl.up})`),
+      downColor: toLwColor(`hsl(${stockHsl.down})`),
+      borderUpColor: toLwColor(`hsl(${stockHsl.up})`),
+      borderDownColor: toLwColor(`hsl(${stockHsl.down})`),
+      wickUpColor: toLwColor(`hsl(${stockHsl.up})`),
+      wickDownColor: toLwColor(`hsl(${stockHsl.down})`),
     })
     candleSeries.setData(series.candles)
 
@@ -335,12 +336,12 @@ export default function InteractiveKline(props: {
     })
     volSeries.setData(series.volumes)
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
-    const volMa5Series = addLine(chart, LW, { priceScaleId: 'vol', color: `hsl(${stockHsl.ma3} / 0.9)`, lineWidth: 1 })
-    const volMa10Series = addLine(chart, LW, { priceScaleId: 'vol', color: `hsl(${stockHsl.ma1} / 0.9)`, lineWidth: 1 })
+    const volMa5Series = addLine(chart, LW, { priceScaleId: 'vol', color: toLwColor(`hsl(${stockHsl.ma3} / 0.9)`), lineWidth: 1 })
+    const volMa10Series = addLine(chart, LW, { priceScaleId: 'vol', color: toLwColor(`hsl(${stockHsl.ma1} / 0.9)`), lineWidth: 1 })
 
-    const ma5Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma3} / 0.85)`, lineWidth: 2 })
-    const ma10Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma1} / 0.85)`, lineWidth: 2 })
-    const ma20Series = addLine(chart, LW, { color: `hsl(${stockHsl.ma2} / 0.85)`, lineWidth: 2 })
+    const ma5Series = addLine(chart, LW, { color: toLwColor(`hsl(${stockHsl.ma3} / 0.85)`), lineWidth: 2 })
+    const ma10Series = addLine(chart, LW, { color: toLwColor(`hsl(${stockHsl.ma1} / 0.85)`), lineWidth: 2 })
+    const ma20Series = addLine(chart, LW, { color: toLwColor(`hsl(${stockHsl.ma2} / 0.85)`), lineWidth: 2 })
 
     const mapLine = (arr: Array<number | null>) =>
       series.klines
@@ -364,8 +365,8 @@ export default function InteractiveKline(props: {
         width: macdEl.clientWidth,
         height: 150,
         layout: {
-          background: { color: `hsl(${bg})` },
-          textColor: `hsl(${fg} / 0.85)`,
+          background: { color: toLwColor(`hsl(${bg})`) },
+          textColor: toLwColor(`hsl(${fg} / 0.85)`),
         },
         rightPriceScale: { borderVisible: false },
         timeScale: { borderVisible: false, visible: false },
@@ -400,7 +401,7 @@ export default function InteractiveKline(props: {
           return {
             time: parseBusinessDay(k.date) as BusinessDay,
             value: v,
-            color: v >= 0 ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`,
+            color: toLwColor(v >= 0 ? `hsl(${stockHsl.up} / 0.35)` : `hsl(${stockHsl.down} / 0.35)`),
           }
         })
         .filter(Boolean)
@@ -419,8 +420,8 @@ export default function InteractiveKline(props: {
         width: macdEl.clientWidth,
         height: 110,
         layout: {
-          background: { color: `hsl(${bg})` },
-          textColor: `hsl(${fg} / 0.85)`,
+          background: { color: toLwColor(`hsl(${bg})`) },
+          textColor: toLwColor(`hsl(${fg} / 0.85)`),
         },
         rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.15, bottom: 0.1 } },
         timeScale: { borderVisible: false, visible: false },
@@ -437,8 +438,8 @@ export default function InteractiveKline(props: {
         })
         .filter(Boolean)
       rsiLine.setData(rsiData as any)
-      rsiLine.createPriceLine?.({ price: 70, color: `hsl(${stockHsl.up} / 0.45)`, lineWidth: 1, lineStyle: 2, title: '70' })
-      rsiLine.createPriceLine?.({ price: 30, color: `hsl(${stockHsl.down} / 0.45)`, lineWidth: 1, lineStyle: 2, title: '30' })
+      rsiLine.createPriceLine?.({ price: 70, color: toLwColor(`hsl(${stockHsl.up} / 0.45)`), lineWidth: 1, lineStyle: 2, title: '70' })
+      rsiLine.createPriceLine?.({ price: 30, color: toLwColor(`hsl(${stockHsl.down} / 0.45)`), lineWidth: 1, lineStyle: 2, title: '30' })
     }
 
     const sync = (range: any) => {
