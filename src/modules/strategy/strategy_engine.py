@@ -1296,20 +1296,28 @@ def refresh_strategy_signals(
             .filter(StrategySignalRun.snapshot_date == snapshot)
             .all()
         )
-        existing: dict[tuple[int, str], StrategySignalRun] = {}
+        existing: dict[tuple[str, str, str], StrategySignalRun] = {}
         for row in existing_rows:
             cand_id = row.source_candidate_id
-            code = row.strategy_code
             # None 与 0 都视为"空候选归属":0 是直写 agent(盘前流水线/深度分析)
             # 的哨兵 source_candidate_id,不进索引 → 刷新既不覆盖它们,
             # 也不会在 stale 清理时把它们误删。
             if cand_id is None or int(cand_id) == 0:
                 continue
-            existing[(int(cand_id), str(code or ""))] = row
+            # 身份键用 (market, symbol, strategy) 而非 candidate_id:
+            # 候选快照重建会让同一 id 跨代指向不同股票(rowid 复用),
+            # 按 id 复用旧行会把 A 股票的价格写进 B 股票的信号行。
+            existing[
+                (
+                    (row.stock_market or "CN").strip().upper() or "CN",
+                    str(row.stock_symbol or "").strip(),
+                    str(row.strategy_code or ""),
+                )
+            ] = row
 
         weight_cache: dict[str, dict[str, float]] = {}
         factor_weight_cache: dict[str, dict[str, float]] = {}
-        touched_keys: set[tuple[int, str]] = set()
+        touched_keys: set[tuple[str, str, str]] = set()
         touched_rows: list[StrategySignalRun] = []
 
         with db.no_autoflush:
@@ -1385,7 +1393,7 @@ def refresh_strategy_signals(
                         "cross_feature": cross_features.get(int(c.id)) if c.id is not None else {},
                         "news_metric": normalized_news_metric,
                     }
-                    key = (int(c.id), str(code))
+                    key = (market, str(c.stock_symbol or "").strip(), str(code))
                     row = existing.get(key)
                     if not row:
                         row = StrategySignalRun(
@@ -1399,6 +1407,11 @@ def refresh_strategy_signals(
                         db.add(row)
                         existing[key] = row
 
+                    # 身份字段随候选刷新自愈:候选 id 跨代可能漂移(指向同股的新候选行),
+                    # 名称可能被上游修正;价格/评分属于当前候选,身份必须与其一致。
+                    if c.id is not None:
+                        row.source_candidate_id = int(c.id)
+                    row.stock_name = c.stock_name or row.stock_name or c.stock_symbol
                     row.strategy_name = strategy_name
                     row.strategy_version = strategy_version
                     row.risk_level = risk_level

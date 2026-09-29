@@ -1375,12 +1375,22 @@ def refresh_entry_candidates(
     db = SessionLocal()
     items: list[dict] = []
     try:
-        db.query(EntryCandidate).filter(
-            EntryCandidate.snapshot_date == snapshot
-        ).delete(synchronize_session=False)
+        # 按 (market, symbol) upsert 而非先删后插:先删后插在无 AUTOINCREMENT 的表上
+        # 会复用 rowid,同一候选 id 跨代指向不同股票,进而经由 source_candidate_id
+        # 把 A 股票的价格写进 B 股票的策略信号行(机会页卡片失真的根因)。
+        existing_map: dict[tuple[str, str], EntryCandidate] = {}
+        for r in (
+            db.query(EntryCandidate)
+            .filter(EntryCandidate.snapshot_date == snapshot)
+            .all()
+        ):
+            mkt = (r.stock_market or "CN").strip().upper() or "CN"
+            existing_map[(mkt, str(r.stock_symbol or "").strip())] = r
+        seen_keys: set[tuple[str, str]] = set()
 
         for key, inp in input_map.items():
             market, symbol = key.split(":", 1)
+            seen_keys.add(((market or "CN").strip().upper() or "CN", str(symbol or "").strip()))
             quote = dict(quotes.get(key, {}) or {})
             if _safe_float(quote.get("current_price")) is None:
                 quote.update(
@@ -1479,53 +1489,63 @@ def refresh_entry_candidates(
             if action in ("buy", "add") and quality >= 90 and score >= threshold:
                 status = "active"
 
-            row = EntryCandidate(
-                stock_symbol=symbol,
-                stock_market=market,
-                stock_name=(inp.get("stock_name") or symbol).strip(),
-                snapshot_date=snapshot,
-                status=status,
-                score=score,
-                confidence=confidence,
-                action=action,
-                action_label=action_label,
-                signal=signal,
-                reason=reason,
-                candidate_source=candidate_source,
-                strategy_tags=to_jsonable(strategy_tags),
-                is_holding_snapshot=bool(is_holding),
-                plan_quality=quality,
-                entry_low=_safe_float(plan.get("entry_low")),
-                entry_high=_safe_float(plan.get("entry_high")),
-                stop_loss=_safe_float(plan.get("stop_loss")),
-                target_price=_safe_float(plan.get("target_price")),
-                invalidation=str(plan.get("invalidation") or ""),
-                source_agent=(inp.get("source_agent") or ""),
-                source_suggestion_id=inp.get("source_suggestion_id"),
-                source_trace_id=str(inp.get("source_trace_id") or ""),
-                evidence=to_jsonable(evidence),
-                plan=to_jsonable(plan),
-                meta=to_jsonable(
-                    {
-                        "candidate_source": candidate_source,
-                        "quote": quote,
-                        "kline": {
-                            "trend": kline.get("trend"),
-                            "macd_cross": kline.get("macd_cross"),
-                            "rsi_status": kline.get("rsi_status"),
-                            "kdj_status": kline.get("kdj_status"),
-                            "volume_ratio": kline.get("volume_ratio"),
-                            "support": kline.get("support"),
-                            "resistance": kline.get("resistance"),
-                        },
-                        "strategy_tags": strategy_tags,
-                        "is_holding_snapshot": bool(is_holding),
-                        "source_meta": inp.get("meta") or {},
-                    }
-                ),
+            row = existing_map.get(((market or "CN").strip().upper() or "CN", str(symbol or "").strip()))
+            if row is None:
+                row = EntryCandidate(stock_symbol=symbol, stock_market=market, snapshot_date=snapshot)
+                db.add(row)
+            # 插入与更新共用同一段字段赋值(upsert),避免新增字段只写一半
+            row.stock_symbol = str(symbol or "").strip()
+            row.stock_market = (market or "CN").strip().upper() or "CN"
+            row.stock_name = (inp.get("stock_name") or symbol).strip()
+            row.status = status
+            row.score = score
+            row.confidence = confidence
+            row.action = action
+            row.action_label = action_label
+            row.signal = signal
+            row.reason = reason
+            row.candidate_source = candidate_source
+            row.strategy_tags = to_jsonable(strategy_tags)
+            row.is_holding_snapshot = bool(is_holding)
+            row.plan_quality = quality
+            row.entry_low = _safe_float(plan.get("entry_low"))
+            row.entry_high = _safe_float(plan.get("entry_high"))
+            row.stop_loss = _safe_float(plan.get("stop_loss"))
+            row.target_price = _safe_float(plan.get("target_price"))
+            row.invalidation = str(plan.get("invalidation") or "")
+            row.source_agent = (inp.get("source_agent") or "")
+            row.source_suggestion_id = inp.get("source_suggestion_id")
+            row.source_trace_id = str(inp.get("source_trace_id") or "")
+            row.evidence = to_jsonable(evidence)
+            row.plan = to_jsonable(plan)
+            row.meta = to_jsonable(
+                {
+                    "candidate_source": candidate_source,
+                    "quote": quote,
+                    "kline": {
+                        "trend": kline.get("trend"),
+                        "macd_cross": kline.get("macd_cross"),
+                        "rsi_status": kline.get("rsi_status"),
+                        "kdj_status": kline.get("kdj_status"),
+                        "volume_ratio": kline.get("volume_ratio"),
+                        "support": kline.get("support"),
+                        "resistance": kline.get("resistance"),
+                    },
+                    "strategy_tags": strategy_tags,
+                    "is_holding_snapshot": bool(is_holding),
+                    "source_meta": inp.get("meta") or {},
+                }
             )
-            db.add(row)
             items.append(_format_candidate_row(row))
+
+        # 删除当日输入中已消失的候选(保持"当日快照=最新输入"语义)
+        stale_ids = [
+            r.id for k, r in existing_map.items() if k not in seen_keys and r.id is not None
+        ]
+        if stale_ids:
+            db.query(EntryCandidate).filter(EntryCandidate.id.in_(stale_ids)).delete(
+                synchronize_session=False
+            )
 
         db.commit()
     except Exception as e:
