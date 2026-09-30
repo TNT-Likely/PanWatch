@@ -6,13 +6,14 @@ import type { useAssistantActivity } from '@/hooks/useAssistantActivity'
 import { formatDate } from '@/i18n/format'
 
 interface Props {
+  progressOnly?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   monitor: ReturnType<typeof useAssistantActivity>
   onOpenConversation: (conversationId: number, notificationId?: number) => void
 }
 
-export default function AssistantActivityPanel({ open, onOpenChange, monitor, onOpenConversation }: Props) {
+export default function AssistantActivityPanel({ open, onOpenChange, monitor, onOpenConversation, progressOnly = false }: Props) {
   const { activity, disconnected, loading, reading, readError, refresh, markRead } = monitor
   const { t } = useTranslation('configuration')
   const tr = t as unknown as (key: string, options?: Record<string, unknown>) => string
@@ -22,17 +23,17 @@ export default function AssistantActivityPanel({ open, onOpenChange, monitor, on
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="assistant-activity-panel" className="p-4 sm:p-6">
         <DialogHeader className="pr-10">
-          <DialogTitle>{tr('assistantPage.activity.title')}</DialogTitle>
+          <DialogTitle>{tr(progressOnly ? 'notifications.tasksTitle' : 'assistantPage.activity.title')}</DialogTitle>
           <DialogDescription>{tr('assistantPage.activity.description')}</DialogDescription>
         </DialogHeader>
         {disconnected && <p role="status" className="mb-3 rounded-lg bg-muted p-3 text-[12px] text-muted-foreground">{tr('assistantPage.activity.disconnected')}</p>}
-        <div className="mb-4 flex items-center justify-between gap-2">
+        {!progressOnly && <div className="mb-4 flex items-center justify-between gap-2">
           <span className="text-[12px] text-muted-foreground">{tr('assistantPage.activity.unread', { count: activity.unread_count })}</span>
           <div className="flex gap-2">
             <button type="button" className={buttonClass} onClick={() => void refresh()}>{tr('assistantPage.activity.refresh')}</button>
             <button type="button" className={buttonClass} disabled={reading || activity.unread_count === 0} onClick={() => void markRead({ through_id: activity.notification_cursor })}>{tr('assistantPage.activity.markAllRead')}</button>
           </div>
-        </div>
+        </div>}
         {loading && <p className="py-3 text-[12px] text-muted-foreground">{tr('assistantPage.activity.loading')}</p>}
         {readError && <p role="alert" className="mb-3 text-[12px] text-destructive">{tr('assistantPage.activity.readFailed')}</p>}
         <h3 className="mb-2 text-[13px] font-semibold">{tr('assistantPage.activity.activeTitle', { count: activity.active_tasks.length })}</h3>
@@ -50,7 +51,7 @@ export default function AssistantActivityPanel({ open, onOpenChange, monitor, on
             ))}
           </ul>
         )}
-        <h3 className="mb-2 text-[13px] font-semibold">{tr('assistantPage.activity.notificationsTitle')}</h3>
+        {!progressOnly && <><h3 className="mb-2 text-[13px] font-semibold">{tr('assistantPage.activity.notificationsTitle')}</h3>
         {activity.notifications.length === 0 ? <p className="text-[12px] text-muted-foreground">{tr('assistantPage.activity.noNotifications')}</p> : (
           <ul className="space-y-2">
             {activity.notifications.map((item: AssistantNotification) => {
@@ -68,7 +69,7 @@ export default function AssistantActivityPanel({ open, onOpenChange, monitor, on
               )
             })}
           </ul>
-        )}
+        )}</>}
       </DialogContent>
     </Dialog>
   )

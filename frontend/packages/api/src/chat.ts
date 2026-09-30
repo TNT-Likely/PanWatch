@@ -279,6 +279,7 @@ export const chatApi = {
   getAssistantTask: (taskId: number) =>
     fetchAPI<AssistantTaskSnapshot>('/assistant/tasks/' + taskId),
 
+  getActiveAssistantTasks: (signal?: AbortSignal) => fetchAPI<AssistantActivity['active_tasks']>('/assistant/active-tasks', { signal }),
   getAssistantActivity: (signal?: AbortSignal) =>
     fetchAPI<AssistantActivity>('/assistant/activity', { signal }),
 

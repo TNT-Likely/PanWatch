@@ -21,6 +21,7 @@ from src.modules.administration.api import (
 )
 from src.modules.administration.api.auth import get_current_user
 from src.modules.administration.api.settings import get_app_version
+from src.modules.notifications import api as notifications_api
 from src.modules.assistant import api as assistant_api
 from src.modules.assistant.task_runner import assistant_task_runner
 from src.modules.automation.api import agents, suggestions, templates
@@ -189,6 +190,8 @@ app.include_router(
     dependencies=protected,
 )
 
+
+app.include_router(notifications_api.router, prefix="/api/notifications", tags=["notifications"], dependencies=protected)
 
 app.router.on_startup.append(assistant_task_runner.recover_pending)
 # PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌

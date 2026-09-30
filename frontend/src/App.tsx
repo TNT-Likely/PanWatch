@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useTranslation } from 'react-i18next'
 import type { NavigationItemKey } from '@/i18n/resources'
-import { AssistantActivityBell, AssistantActivityProvider } from '@/components/assistant/AssistantActivityProvider'
+import { NotificationBell, NotificationProvider } from '@/components/notifications/NotificationProvider'
 
 const {
   LoginPage,
@@ -141,7 +141,7 @@ function App() {
 
   return (
     <RequireAuth>
-    <AssistantActivityProvider>
+    <NotificationProvider>
     <div
       className={isAssistantRoute
         ? 'relative flex h-dvh flex-col overflow-hidden bg-background'
@@ -197,7 +197,7 @@ function App() {
 
             {/* action wrapper:GitHub + 日志 + 头像(头像下拉含更多导航/主题色/退出) */}
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
-              <AssistantActivityBell />
+              <NotificationBell />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
@@ -235,7 +235,7 @@ function App() {
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
             <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
-              <AssistantActivityBell mobile />
+              <NotificationBell mobile />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
                 className="hidden w-8 h-8 rounded-xl items-center justify-center min-[360px]:flex text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
@@ -349,7 +349,7 @@ function App() {
         </DialogContent>
       </Dialog>
     </div>
-    </AssistantActivityProvider>
+    </NotificationProvider>
     </RequireAuth>
   )
 }

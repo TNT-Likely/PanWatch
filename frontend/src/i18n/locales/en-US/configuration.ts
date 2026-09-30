@@ -2,6 +2,81 @@ import type { TranslationShape } from '../../resource-types'
 import { configuration as zhConfiguration } from '../zh-CN/configuration'
 
 export const configuration = {
+  notifications: {
+    repeatedFailures: 'Show {{count}} loaded consecutive failures',
+    collapseFailures: 'Collapse consecutive failures',
+  "title": "Notification center",
+  "description": "Assistant, Agent reports and price alerts in one inbox. Reading never approves an action.",
+  "bell": "Notifications: {{count}} unread",
+  "taskEntry": "Assistant tasks: {{count}} active",
+  "tasksTitle": "Assistant tasks",
+  "summary": "{{unread}} unread · {{pending}} pending",
+  "sourceFilter": "Notification source",
+  "viewFilter": "Notification view",
+  "sources": {
+    "all": "All sources",
+    "assistant": "Assistant",
+    "agent": "Agent reports",
+    "market": "Price alerts"
+  },
+  "views": {
+    "all": "All",
+    "unread": "Unread",
+    "pending": "Pending",
+    "archived": "Archived"
+  },
+  "refresh": "Refresh",
+  "readFiltered": "Mark filtered notifications read",
+  "read": "Mark read",
+  "archive": "Archive",
+  "restore": "Restore",
+  "more": "Load more",
+  "pending": "Pending",
+  "resolved": "Resolved",
+  "loading": "Loading notifications…",
+  "empty": "No notifications match these filters",
+  "disconnected": "Latest notifications are unavailable. Previous records are retained. Retry after reconnecting.",
+  "changeFailed": "Could not save notification state. Try again.",
+  "sourceGone": "The source was deleted or is unavailable. The notification summary is retained.",
+  "view": "View notifications",
+  "review": "Review approval",
+  "viewReport": "View report",
+  "viewHit": "View hit",
+  "viewConversation": "View conversation",
+  "report": "Agent run result",
+  "hit": "Price alert hit",
+  "runCompleted": "Run completed",
+  "runFailed": "Run failed",
+  "deliverySent": "External delivery succeeded",
+  "deliveryFailed": "External delivery was unsuccessful, unconfigured or skipped",
+  "price": "Price at trigger",
+  "actual": "Actual",
+  "multiple": "{{count}} new notifications",
+  "metrics": {
+    "price": "Price",
+    "change_pct": "Change",
+    "turnover": "Turnover",
+    "volume": "Volume",
+    "volume_ratio": "Volume ratio",
+    "other": "Metric"
+  },
+  "events": {
+    "assistant_completed": "Research completed. View the result.",
+    "assistant_failed": "Task failed. View the cause and recovery options.",
+    "assistant_awaiting_approval": "An action needs approval. Reading does not execute it.",
+    "agent_completed": "The report is ready. View the run result.",
+    "agent_failed": "Agent execution failed. View the run record.",
+    "price_alert_hit": "{{market}}:{{symbol}} matched the rule at {{price}}."
+  },
+  "toasts": {
+    "assistant_completed": "“{{title}}” completed",
+    "assistant_failed": "“{{title}}” failed",
+    "assistant_awaiting_approval": "“{{title}}” needs approval",
+    "agent_completed": "“{{title}}” report is ready",
+    "agent_failed": "“{{title}}” failed",
+    "price_alert_hit": "“{{title}}” price alert triggered"
+  }
+},
   selfCheck: {
     title: 'System check',
     categories: {

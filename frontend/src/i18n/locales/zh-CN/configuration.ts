@@ -1,4 +1,79 @@
 export const configuration = {
+  notifications: {
+    repeatedFailures: '展开已加载的 {{count}} 条连续失败记录',
+    collapseFailures: '合并连续失败记录',
+  "title": "通知中心",
+  "description": "集中查看助手、Agent 报告和价格提醒。阅读通知不会批准操作。",
+  "bell": "通知：{{count}} 条未读",
+  "taskEntry": "助手任务：{{count}} 项进行中",
+  "tasksTitle": "助手任务",
+  "summary": "{{unread}} 条未读 · {{pending}} 项待处理",
+  "sourceFilter": "通知来源",
+  "viewFilter": "通知视图",
+  "sources": {
+    "all": "全部来源",
+    "assistant": "助手",
+    "agent": "Agent 报告",
+    "market": "价格提醒"
+  },
+  "views": {
+    "all": "全部",
+    "unread": "未读",
+    "pending": "待处理",
+    "archived": "已归档"
+  },
+  "refresh": "刷新",
+  "readFiltered": "当前筛选全部已读",
+  "read": "设为已读",
+  "archive": "归档",
+  "restore": "恢复",
+  "more": "加载更多",
+  "pending": "待处理",
+  "resolved": "已处理",
+  "loading": "正在读取通知…",
+  "empty": "当前筛选没有通知",
+  "disconnected": "暂时无法获取最新通知，保留上次记录。恢复网络后重试。",
+  "changeFailed": "未能保存通知状态，请重试。",
+  "sourceGone": "来源已删除或不可用，保留通知摘要。",
+  "view": "查看通知",
+  "review": "处理审批",
+  "viewReport": "查看报告",
+  "viewHit": "查看命中",
+  "viewConversation": "查看会话",
+  "report": "Agent 运行结果",
+  "hit": "价格提醒命中",
+  "runCompleted": "运行已完成",
+  "runFailed": "运行失败",
+  "deliverySent": "外部渠道已送达",
+  "deliveryFailed": "外部渠道未送达、未配置或已跳过",
+  "price": "命中时价格",
+  "actual": "实际值",
+  "multiple": "有 {{count}} 条新的通知",
+  "metrics": {
+    "price": "价格",
+    "change_pct": "涨跌幅",
+    "turnover": "换手率",
+    "volume": "成交量",
+    "volume_ratio": "量比",
+    "other": "指标"
+  },
+  "events": {
+    "assistant_completed": "研究已完成，可以查看结果。",
+    "assistant_failed": "任务失败，可以查看原因和恢复方式。",
+    "assistant_awaiting_approval": "有操作等待审批；已读不会执行操作。",
+    "agent_completed": "报告已生成，可以查看运行结果。",
+    "agent_failed": "Agent 执行失败，可以查看运行记录。",
+    "price_alert_hit": "{{market}}:{{symbol}} 命中规则，价格 {{price}}。"
+  },
+  "toasts": {
+    "assistant_completed": "“{{title}}”已完成",
+    "assistant_failed": "“{{title}}”执行失败",
+    "assistant_awaiting_approval": "“{{title}}”等待审批",
+    "agent_completed": "“{{title}}”报告已生成",
+    "agent_failed": "“{{title}}”执行失败",
+    "price_alert_hit": "“{{title}}”价格提醒已命中"
+  }
+},
   selfCheck: {
     title: '系统自检',
     categories: {

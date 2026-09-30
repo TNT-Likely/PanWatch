@@ -1200,6 +1200,52 @@ class AssistantTaskEvent(Base):
     occurred_at = Column(DateTime, server_default=func.now())
 
 
+class NotificationEvent(Base):
+    """Source event identity and minimal presentation data, shared by all inboxes."""
+
+    __tablename__ = "notification_events"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="ux_notification_event_dedupe"),
+        Index("ix_notification_event_source", "source", "id"),
+        Index("ix_notification_event_subject", "subject_kind", "subject_id"),
+        Index("ix_notification_event_group", "group_key", "resolved_at"),
+        {"sqlite_autoincrement": True},
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    schema_version = Column(Integer, nullable=False, default=1)
+    source = Column(String, nullable=False)
+    event_type = Column(String, nullable=False)
+    severity = Column(String, nullable=False, default="info")
+    attention = Column(String, nullable=False, default="informational")
+    dedupe_key = Column(String, nullable=False)
+    group_key = Column(String, nullable=False, default="")
+    subject_kind = Column(String, nullable=False)
+    subject_id = Column(String, nullable=False)
+    correlation_id = Column(String, nullable=False, default="")
+    template_key = Column(String, nullable=False)
+    template_params = Column(JSON, nullable=False, default=dict)
+    display_snapshot = Column(JSON, nullable=False, default=dict)
+    actions = Column(JSON, nullable=False, default=list)
+    toast_eligible = Column(Boolean, nullable=False, default=True)
+    occurred_at = Column(DateTime, nullable=False, server_default=func.now())
+    resolved_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+
+class NotificationReceipt(Base):
+    __tablename__ = "notification_receipts"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "recipient_key", name="ux_notification_receipt_recipient"),
+        Index("ix_notification_receipt_inbox", "recipient_key", "archived_at", "read_at", "notification_id"),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    notification_id = Column(Integer, ForeignKey("notification_events.id", ondelete="CASCADE"), nullable=False)
+    recipient_key = Column(String, nullable=False)
+    read_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
 class AssistantTaskNotification(Base):
     """Transactional in-app attention records for durable assistant tasks."""
 

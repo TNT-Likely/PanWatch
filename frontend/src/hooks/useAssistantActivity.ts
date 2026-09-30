@@ -5,7 +5,7 @@ import { ASSISTANT_ACTIVITY_CHANGED } from '@/lib/assistant-activity'
 const EMPTY_ACTIVITY: AssistantActivity = { active_tasks: [], notifications: [], unread_count: 0, notification_cursor: 0 }
 
 /** One compact monitor stays mounted in the authenticated application shell. */
-export function useAssistantActivity() {
+export function useAssistantActivity(progressOnly = false) {
   const [activity, setActivity] = useState<AssistantActivity>(EMPTY_ACTIVITY)
   const activityRef = useRef(activity)
   const [disconnected, setDisconnected] = useState(false)
@@ -31,7 +31,9 @@ export function useAssistantActivity() {
     controllerRef.current = controller
     const request = (async () => {
       try {
-        const next = await chatApi.getAssistantActivity(controller.signal)
+        const next = progressOnly
+          ? { ...EMPTY_ACTIVITY, active_tasks: await chatApi.getActiveAssistantTasks(controller.signal) }
+          : await chatApi.getAssistantActivity(controller.signal)
         if (!mountedRef.current || generationRef.current !== generation) return
         update(next)
         setDisconnected(false)
@@ -43,7 +45,7 @@ export function useAssistantActivity() {
     })()
     requestRef.current = request
     return request
-  }, [update])
+  }, [progressOnly, update])
 
   useEffect(() => {
     mountedRef.current = true

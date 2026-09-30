@@ -2061,6 +2061,44 @@ def _m129_assistant_task_notifications(conn: Connection) -> None:
     _create_index_if_missing(conn, "ix_assistant_notification_task", "CREATE INDEX ix_assistant_notification_task ON assistant_task_notifications(task_run_id)")
 
 
+def _m130_global_notifications(conn: Connection) -> None:
+    from datetime import datetime
+    from sqlalchemy.dialects.sqlite import insert
+    from src.platform.persistence.models import NotificationEvent, NotificationReceipt
+
+    NotificationEvent.__table__.create(conn, checkfirst=True)
+    NotificationReceipt.__table__.create(conn, checkfirst=True)
+    if not all(_has_table(conn, name) for name in ('assistant_task_notifications', 'assistant_task_runs', 'chat_conversations')):
+        return
+    expiry = "(SELECT MIN(a.expires_at) FROM assistant_tool_approvals a WHERE a.task_run_id=n.task_run_id AND a.status='pending')" if _has_table(conn, 'assistant_tool_approvals') else 'NULL'
+    rows = conn.execute(text(f"""
+        SELECT n.*, t.conversation_id, c.title, {expiry} AS approval_expires_at
+        FROM assistant_task_notifications n
+        JOIN assistant_task_runs t ON t.id = n.task_run_id
+        JOIN chat_conversations c ON c.id = t.conversation_id
+        ORDER BY n.id
+    """)).mappings()
+    for row in rows:
+        def stamp(value):
+            return datetime.fromisoformat(value) if isinstance(value, str) else value
+        values = dict(id=row['id'], source='assistant', event_type=f"assistant_{row['kind']}",
+                      severity='warning' if row['kind'] == 'failed' else 'info',
+                      attention='action_required' if row['kind'] == 'awaiting_approval' else 'informational',
+                      dedupe_key=f"assistant:{row['task_run_id']}:{row['event_sequence']}",
+                      group_key=f"assistant:{row['task_run_id']}", subject_kind='assistant_task',
+                      subject_id=str(row['task_run_id']), correlation_id=str(row['task_run_id']),
+                      template_key=f"assistant_{row['kind']}", template_params={},
+                      display_snapshot={'title': (row['title'] or '')[:200]},
+                      actions=[dict(kind='assistant_conversation', conversation_id=row['conversation_id'], task_id=row['task_run_id'])],
+                      toast_eligible=False, occurred_at=stamp(row['created_at']), resolved_at=stamp(row['resolved_at']),
+                      expires_at=stamp(row['approval_expires_at']) if row['kind'] == 'awaiting_approval' else None)
+        conn.execute(insert(NotificationEvent).values(**values).on_conflict_do_nothing(index_elements=['dedupe_key']))
+        notification_id = conn.execute(text('SELECT id FROM notification_events WHERE dedupe_key=:key'), {'key': values['dedupe_key']}).scalar_one()
+        conn.execute(insert(NotificationReceipt).values(notification_id=notification_id, recipient_key='installation:default',
+                     read_at=stamp(row['read_at']), created_at=stamp(row['created_at']))
+                     .on_conflict_do_nothing(index_elements=['notification_id', 'recipient_key']))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2091,6 +2129,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(127, "assistant_trace_metrics", _m127_assistant_trace_metrics),
     Migration(128, "assistant_trusted_results", _m128_assistant_trusted_results),
     Migration(129, "assistant_task_notifications", _m129_assistant_task_notifications),
+    Migration(130, "global_notifications", _m130_global_notifications),
 )
 
 

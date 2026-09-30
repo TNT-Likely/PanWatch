@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import AssistantTaskNotification
+from src.platform.persistence.models import NotificationEvent
 from src.platform.tasking.contracts import TaskEventType, TaskStatus
 from src.modules.assistant.repository import AssistantRepository
 from src.modules.assistant.service import AssistantService
@@ -61,9 +61,9 @@ def test_notification_is_committed_with_its_event():
     engine, session, repository, task = setup()
     repository.append_task_event(task.id, TaskEventType.TASK_FAILED, status=TaskStatus.FAILED, commit=False)
     session.flush()
-    assert session.query(AssistantTaskNotification).count() == 1
+    assert session.query(NotificationEvent).count() == 1
     session.rollback()
-    assert session.query(AssistantTaskNotification).count() == 0
+    assert session.query(NotificationEvent).count() == 0
     assert len(repository.list_task_events(task.id)) == 2
     session.close()
     engine.dispose()

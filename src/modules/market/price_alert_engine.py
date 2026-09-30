@@ -410,10 +410,6 @@ class PriceAlertEngine:
                     items.append({"rule_id": rule.id, "status": "duplicated"})
                     continue
 
-                notify_ok, notify_err = await self._send_notify(db, rule, ev.snapshot)
-                hit.notify_success = bool(notify_ok)
-                hit.notify_error = notify_err or ""
-
                 rule.last_trigger_at = now
                 rule.last_trigger_price = _safe_float(quote.get("current_price"))
                 rule.trigger_count_today = int(rule.trigger_count_today or 0) + 1
@@ -421,6 +417,14 @@ class PriceAlertEngine:
                 if rule.repeat_mode == "once":
                     rule.enabled = False
 
+                from src.modules.notifications.sources import price_hit
+                price_hit(db, hit, rule)
+                db.commit()
+                # External channel I/O starts only after the hit and inbox event
+                # are durable; delivery failure cannot undo the business result.
+                notify_ok, notify_err = await self._send_notify(db, rule, ev.snapshot)
+                hit.notify_success = bool(notify_ok)
+                hit.notify_error = notify_err or ""
                 db.commit()
                 triggered += 1
                 items.append(

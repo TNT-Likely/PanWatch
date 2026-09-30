@@ -12,6 +12,9 @@ export interface ApiResponse<T> {
 }
 
 const API_ERROR_TEXT_EN: Record<string, string> = {
+  notification_cursor_invalid: 'The notification page cursor is invalid. Refresh the list.',
+  notification_pending_action: 'Resolve pending approvals before archiving.',
+  notification_source_unavailable: 'The notification source was deleted or is unavailable.',
   account_not_found: 'The account could not be found.',
   ai_authentication_failed: 'AI service authentication failed. Check that the API key is correct and still valid.',
   ai_connection_failed: 'Could not connect to the AI service. Check the service URL, proxy, and network.',

@@ -401,6 +401,12 @@ async def stream_assistant_task_events(
     )
 
 
+@router.get("/active-tasks")
+def get_active_assistant_tasks(db: Session = Depends(get_db)):
+    from .repository import AssistantRepository
+    return AssistantRepository(db).get_active_tasks()
+
+
 @router.get("/activity", response_model=AssistantActivityDTO)
 def get_assistant_activity(service: AssistantService = Depends(get_assistant_service)) -> AssistantActivityDTO:
     return service.get_activity()

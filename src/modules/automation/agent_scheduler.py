@@ -95,6 +95,8 @@ class AgentScheduler:
                     processed = 0
                     skipped = 0
                     errors: list[str] = []
+                    notify_attempted = False
+                    notify_sent = False
                     for stock in list(context.watchlist):
                         market_def = MARKETS.get(stock.market)
                         if market_def and not market_def.is_trading_time():
@@ -107,16 +109,11 @@ class AgentScheduler:
                             with kline_source(f"agent:{agent_name}"):
                                 res = await agent.run_single(context, stock.symbol)  # type: ignore[attr-defined]
                             processed += 1
-                            try:
-                                notify_error = (
-                                    (res.raw_data or {}).get("notify_error")
-                                    if res
-                                    else ""
-                                )
-                            except Exception:
-                                notify_error = ""
-                            if notify_error:
-                                errors.append(f"{stock.symbol} notify: {notify_error}")
+                            raw = (res.raw_data or {}) if res else {}
+                            attempted = any(key in raw for key in ("notified", "notify_error", "notify_skipped"))
+                            if attempted:
+                                notify_sent = (notify_sent if notify_attempted else True) and bool(raw.get("notified", False))
+                                notify_attempted = True
                         except Exception as e:
                             logger.error(
                                 f"Agent [{agent_name}] 单只执行失败 {stock.symbol}: {e}",
@@ -134,6 +131,8 @@ class AgentScheduler:
                         status="failed" if errors else "success",
                         result=f"single mode executed {processed}, skipped {skipped}, total {len(context.watchlist)}",
                         error="; ".join(errors),
+                        notify_attempted=notify_attempted,
+                        notify_sent=notify_sent,
                         duration_ms=duration_ms,
                         trace_id=trace_id,
                         trigger_source="schedule",
@@ -143,17 +142,12 @@ class AgentScheduler:
                     with kline_source(f"agent:{agent_name}"):
                         result = await agent.run(context)
                     duration_ms = int((time.monotonic() - start) * 1000)
-                    notify_error = ""
-                    try:
-                        notify_error = (result.raw_data or {}).get("notify_error") or ""
-                    except Exception:
-                        notify_error = ""
                     raw = result.raw_data or {}
                     record_agent_run(
                         agent_name=agent_name,
-                        status="failed" if notify_error else "success",
-                        result=(result.content or "")[:2000],
-                        error=(notify_error or "")[:2000],
+                        status="success",
+                        result=result.content or "",
+                        error="",
                         duration_ms=duration_ms,
                         trace_id=trace_id,
                         trigger_source="schedule",

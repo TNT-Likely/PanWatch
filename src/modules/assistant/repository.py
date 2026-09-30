@@ -31,6 +31,8 @@ from src.platform.persistence.models import (
     AssistantContextSnapshot,
     AssistantTaskEvent,
     AssistantTaskNotification,
+    NotificationEvent,
+    NotificationReceipt,
     AssistantTaskRun,
     AssistantToolApproval,
     AssistantToolInvocation,
@@ -230,6 +232,8 @@ class AssistantRepository:
         return message
 
     def delete_conversation(self, conversation: ChatConversation) -> None:
+        from src.modules.notifications.service import NotificationService
+        NotificationService(self._session).purge_assistant_conversation(conversation.id)
         task_ids = self._session.query(AssistantTaskRun.id).filter(AssistantTaskRun.conversation_id == conversation.id)
         self._session.query(AssistantTaskNotification).filter(AssistantTaskNotification.task_run_id.in_(task_ids)).delete(synchronize_session=False)
         self._session.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).delete()
@@ -372,22 +376,20 @@ class AssistantRepository:
             TaskEventType.TASK_FAILED: "failed",
             TaskEventType.TASK_PAUSED: "awaiting_approval",
         }.get(event_type)
+        from src.modules.notifications.service import NotificationService
+        from src.modules.notifications.sources import assistant_event
+        notifications = NotificationService(self._session)
+        if event_type == TaskEventType.TASK_PAUSED and status != TaskStatus.WAITING_APPROVAL:
+            notification_kind = None
         if event_type in {
             TaskEventType.TASK_STARTED, TaskEventType.TASK_RETRY_SCHEDULED,
             TaskEventType.TASK_COMPLETED, TaskEventType.TASK_FAILED,
             TaskEventType.TASK_CANCELLED, TaskEventType.TASK_PAUSED,
         }:
-            obsolete = self._session.query(AssistantTaskNotification).filter(
-                AssistantTaskNotification.task_run_id == task_run_id,
-                AssistantTaskNotification.resolved_at.is_(None),
-            )
-            if event_type != TaskEventType.TASK_RETRY_SCHEDULED:
-                obsolete = obsolete.filter(AssistantTaskNotification.kind == "awaiting_approval")
-            obsolete.update({"resolved_at": datetime.now(timezone.utc)}, synchronize_session=False)
+            notifications.resolve(subject_kind="assistant_task", subject_id=str(task_run_id),
+                                  approvals_only=event_type != TaskEventType.TASK_RETRY_SCHEDULED)
         if notification_kind:
-            self._session.add(AssistantTaskNotification(
-                task_run_id=task_run_id, event_sequence=next_sequence, kind=notification_kind,
-            ))
+            assistant_event(self._session, task, next_sequence, notification_kind, occurred_at=row.occurred_at)
         if commit:
             self._session.commit()
             self._session.refresh(row)
@@ -408,8 +410,8 @@ class AssistantRepository:
             .all()
         )
 
-    def get_activity(self) -> dict:
-        """Compact status discovery works even when no browser marker survived."""
+    def get_active_tasks(self) -> list[dict]:
+        """Task progress is independent from inbox/read state."""
         active = (
             self._session.query(AssistantTaskRun, ChatConversation)
             .join(ChatConversation, ChatConversation.id == AssistantTaskRun.conversation_id)
@@ -417,55 +419,48 @@ class AssistantRepository:
             .order_by(AssistantTaskRun.id.desc())
             .all()
         )
-        inbox = (
-            self._session.query(AssistantTaskNotification, AssistantTaskRun, ChatConversation)
-            .join(AssistantTaskRun, AssistantTaskRun.id == AssistantTaskNotification.task_run_id)
-            .join(ChatConversation, ChatConversation.id == AssistantTaskRun.conversation_id)
-            .filter(AssistantTaskNotification.resolved_at.is_(None))
-        )
-        rows = inbox.order_by(AssistantTaskNotification.read_at.isnot(None), AssistantTaskNotification.id.desc()).limit(30).all()
+        return [{
+            "id": task.id, "conversation_id": task.conversation_id,
+            "title": conversation.title or "", "status": task.status,
+            "current_step": int(task.current_step or 0),
+            "started_at": self._utc_timestamp(task.started_at), "created_at": self._utc_timestamp(task.created_at),
+        } for task, conversation in active]
+
+    def get_activity(self) -> dict:
+        from src.modules.notifications.service import NotificationService
+        notifications = NotificationService(self._session)
+        inbox = notifications.query(source="assistant").filter(NotificationEvent.resolved_at.is_(None))
+        rows = inbox.order_by(NotificationReceipt.read_at.isnot(None), NotificationEvent.id.desc()).limit(30).all()
+        available_ids = notifications.available_ids(rows)
         return {
-            "active_tasks": [{
-                "id": task.id, "conversation_id": task.conversation_id,
-                "title": conversation.title or "", "status": task.status,
-                "current_step": int(task.current_step or 0),
-                "started_at": self._utc_timestamp(task.started_at),
-                "created_at": self._utc_timestamp(task.created_at),
-            } for task, conversation in active],
+            "active_tasks": self.get_active_tasks(),
             "notifications": [{
-                "id": notification.id, "task_id": task.id,
-                "conversation_id": task.conversation_id, "title": conversation.title or "",
-                "kind": notification.kind,
-                "created_at": self._utc_timestamp(notification.created_at),
-                "read_at": self._utc_timestamp(notification.read_at),
-            } for notification, task, conversation in rows],
-            "unread_count": inbox.filter(AssistantTaskNotification.read_at.is_(None)).count(),
-            "notification_cursor": max((notification.id for notification, _, _ in rows), default=0),
+                "id": event.id, "task_id": int(event.subject_id),
+                "conversation_id": event.actions[0]["conversation_id"], "title": event.display_snapshot.get("title", ""),
+                "kind": event.event_type.removeprefix("assistant_"),
+                "created_at": self._utc_timestamp(event.occurred_at), "read_at": self._utc_timestamp(receipt.read_at),
+            } for event, receipt in rows if event.id in available_ids],
+            "unread_count": inbox.filter(NotificationReceipt.read_at.is_(None)).count(),
+            "notification_cursor": inbox.with_entities(func.max(NotificationEvent.id)).scalar() or 0,
         }
 
     def restore_waiting_notifications(self) -> None:
         """Surface approvals that were already waiting before inbox deployment."""
         waiting = self._session.query(AssistantTaskRun).filter(AssistantTaskRun.status == TaskStatus.WAITING_APPROVAL.value).all()
         for task in waiting:
-            existing = self._session.query(AssistantTaskNotification.id).filter(
-                AssistantTaskNotification.task_run_id == task.id,
-                AssistantTaskNotification.kind == "awaiting_approval",
-                AssistantTaskNotification.resolved_at.is_(None),
+            existing = self._session.query(NotificationEvent.id).filter(
+                NotificationEvent.subject_kind == "assistant_task", NotificationEvent.subject_id == str(task.id),
+                NotificationEvent.event_type == "assistant_awaiting_approval", NotificationEvent.resolved_at.is_(None),
             ).first()
             if existing is None:
                 self.append_task_event(task.id, TaskEventType.TASK_PAUSED, status=TaskStatus.WAITING_APPROVAL, data={"reason": "approval_required"})
 
     def read_notifications(self, *, ids: list[int], through_id: int | None = None) -> int:
-        visible_tasks = self._session.query(AssistantTaskRun.id).join(ChatConversation, ChatConversation.id == AssistantTaskRun.conversation_id)
-        query = self._session.query(AssistantTaskNotification).filter(
-            AssistantTaskNotification.read_at.is_(None),
-            AssistantTaskNotification.resolved_at.is_(None),
-            AssistantTaskNotification.task_run_id.in_(visible_tasks),
-        )
-        query = query.filter(AssistantTaskNotification.id <= through_id) if through_id is not None else query.filter(AssistantTaskNotification.id.in_(ids))
-        updated = query.update({"read_at": datetime.now(timezone.utc)}, synchronize_session=False)
-        self._session.commit()
-        return updated
+        from src.modules.notifications.schemas import NotificationSelection
+        from src.modules.notifications.service import NotificationService
+        if not ids and through_id is None:
+            return 0
+        return NotificationService(self._session).mark_read(NotificationSelection(ids=ids, through_id=through_id, source="assistant"))
 
     def is_task_cancelled(self, task_run_id: int) -> bool:
         task = self._require_task(task_run_id)
