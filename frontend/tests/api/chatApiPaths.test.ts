@@ -36,4 +36,14 @@ describe('assistant conversation API paths', () => {
       ['/assistant/tasks/42/retry', { method: 'POST' }],
     ])
   })
+
+  it('uses compact activity and read-state endpoints for background tracking', async () => {
+    const controller = new AbortController()
+    await chatApi.getAssistantActivity(controller.signal)
+    await chatApi.readAssistantNotifications({ ids: [8] })
+    expect(fetchAPI.mock.calls).toEqual([
+      ['/assistant/activity', { signal: controller.signal }],
+      ['/assistant/notifications/read', { method: 'POST', body: JSON.stringify({ ids: [8] }) }],
+    ])
+  })
 })

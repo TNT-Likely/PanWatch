@@ -36,6 +36,8 @@ from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
     ApprovalDecisionCommand,
+    AssistantActivityDTO,
+    ReadAssistantNotificationsCommand,
     ConversationDetailDTO,
     ConversationDTO,
     CreateConversationCommand,
@@ -397,6 +399,19 @@ async def stream_assistant_task_events(
         request=request,
         after_sequence=last_event_id,
     )
+
+
+@router.get("/activity", response_model=AssistantActivityDTO)
+def get_assistant_activity(service: AssistantService = Depends(get_assistant_service)) -> AssistantActivityDTO:
+    return service.get_activity()
+
+
+@router.post("/notifications/read")
+def read_assistant_notifications(
+    body: ReadAssistantNotificationsCommand,
+    service: AssistantService = Depends(get_assistant_service),
+) -> dict[str, int]:
+    return {"updated": service.read_notifications(ids=body.ids, through_id=body.through_id)}
 
 
 @router.get("/tasks/{task_id}")

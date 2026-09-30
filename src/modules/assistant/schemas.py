@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PositiveInt
 
 from .result_schemas import AssistantResult
 
@@ -49,3 +49,35 @@ class ConversationDetailDTO(BaseModel):
     conversation: ConversationDTO
     messages: list[MessageDTO]
     latest_task: dict[str, Any] | None = None
+
+
+class AssistantActivityTaskDTO(BaseModel):
+    id: int
+    conversation_id: int
+    title: str
+    status: str
+    current_step: int
+    started_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class AssistantNotificationDTO(BaseModel):
+    id: int
+    task_id: int
+    conversation_id: int
+    title: str
+    kind: Literal["completed", "failed", "awaiting_approval"]
+    created_at: datetime | None = None
+    read_at: datetime | None = None
+
+
+class AssistantActivityDTO(BaseModel):
+    active_tasks: list[AssistantActivityTaskDTO]
+    notifications: list[AssistantNotificationDTO]
+    unread_count: int
+    notification_cursor: int
+
+
+class ReadAssistantNotificationsCommand(BaseModel):
+    ids: list[PositiveInt] = Field(default_factory=list, max_length=100)
+    through_id: PositiveInt | None = None

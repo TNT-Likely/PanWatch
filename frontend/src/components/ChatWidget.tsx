@@ -890,6 +890,7 @@ export default function ChatWidget({
             control={task.control}
             controlError={task.controlError}
             onStop={() => { void task.cancel() }}
+            onBackground={onNavigate ? () => onNavigate('/') : undefined}
             onRetry={() => { traceEventsRef.current = []; setTraceEvents([]); void task.retry() }}
             onReconnect={() => { void task.reconnect() }}
             onConfigure={() => onNavigate?.('/settings')}

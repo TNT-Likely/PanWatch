@@ -86,6 +86,33 @@ export interface AssistantApproval {
 
 export type AssistantTaskStatus = 'pending' | 'queued' | 'dispatched' | 'running' | 'awaiting_approval' | 'waiting_retry' | 'waiting_callback' | 'completed' | 'failed' | 'cancelled' | 'expired' | 'dead_letter'
 
+export interface AssistantActivityTask {
+  id: number
+  conversation_id: number
+  title: string
+  status: AssistantTaskStatus
+  current_step: number
+  started_at?: string | null
+  created_at?: string | null
+}
+
+export interface AssistantNotification {
+  id: number
+  task_id: number
+  conversation_id: number
+  title: string
+  kind: 'completed' | 'failed' | 'awaiting_approval'
+  created_at?: string | null
+  read_at?: string | null
+}
+
+export interface AssistantActivity {
+  active_tasks: AssistantActivityTask[]
+  notifications: AssistantNotification[]
+  unread_count: number
+  notification_cursor: number
+}
+
 export interface AssistantTaskSnapshot {
   id: number
   conversation_id: number
@@ -251,6 +278,12 @@ export const chatApi = {
 
   getAssistantTask: (taskId: number) =>
     fetchAPI<AssistantTaskSnapshot>('/assistant/tasks/' + taskId),
+
+  getAssistantActivity: (signal?: AbortSignal) =>
+    fetchAPI<AssistantActivity>('/assistant/activity', { signal }),
+
+  readAssistantNotifications: (command: { ids?: number[]; through_id?: number }) =>
+    fetchAPI<{ updated: number }>('/assistant/notifications/read', { method: 'POST', body: JSON.stringify(command) }),
 
   cancelAssistantTask: (taskId: number) =>
     fetchAPI<AssistantTaskSnapshot>(`/assistant/tasks/${taskId}/cancel`, { method: 'POST' }),

@@ -19,9 +19,10 @@ interface AssistantTaskBarProps {
   onContext: () => void
   onRevise: () => void
   onReview: () => void
+  onBackground?: () => void
 }
 
-export function AssistantTaskBar({ snapshot, error, disconnected, control, controlError, onStop, onRetry, onReconnect, onConfigure, onPermissions, onContext, onRevise, onReview }: AssistantTaskBarProps) {
+export function AssistantTaskBar({ snapshot, error, disconnected, control, controlError, onStop, onRetry, onReconnect, onConfigure, onPermissions, onContext, onRevise, onReview, onBackground }: AssistantTaskBarProps) {
   const { t } = useTranslation('configuration')
   const taskT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string) => taskT(`assistantPage.task.${key}`)
@@ -55,6 +56,7 @@ export function AssistantTaskBar({ snapshot, error, disconnected, control, contr
         )}
         {seconds > 0 && <span aria-hidden="true" className="tabular-nums text-muted-foreground">{seconds}s</span>}
         {active && <button type="button" onClick={onStop} disabled={control !== null} className={buttonClass}>{tr('stop')}</button>}
+        {active && onBackground && <button type="button" onClick={onBackground} disabled={control !== null} className={buttonClass}>{taskT('assistantPage.activity.runInBackground')}</button>}
         {(disconnected || controlError) && <button type="button" onClick={onReconnect} disabled={control !== null} className={buttonClass}>{tr('checkStatus')}</button>}
         {(failed || stopped) && snapshot?.can_retry && recovery === 'retry' && error?.retryable !== false && (
           <button type="button" onClick={onRetry} disabled={control !== null} className={buttonClass}>{tr('retry')}</button>

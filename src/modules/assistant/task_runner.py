@@ -178,6 +178,7 @@ class AssistantTaskRunner:
         db = self._session_factory()
         try:
             repository = AssistantRepository(db)
+            repository.restore_waiting_notifications()
             tasks = repository.list_tasks_for_recovery()
             for task in tasks:
                 if task.status == TaskStatus.QUEUED.value:

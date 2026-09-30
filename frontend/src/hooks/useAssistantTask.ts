@@ -7,6 +7,7 @@ import {
   type AssistantTaskStatus,
   type ChatStreamCallbacks,
 } from '@panwatch/api'
+import { signalAssistantActivityChange } from '@/lib/assistant-activity'
 
 export const taskStorageKey = (conversationId: number) => 'panwatch:assistant-task:' + conversationId
 export const isActiveTask = (status: AssistantTaskStatus) => (
@@ -52,8 +53,10 @@ export function useAssistantTask(callbacks: TaskCallbacks) {
   const streamRef = useRef<AbortController | null>(null)
 
   const updateSnapshot = useCallback((next: AssistantTaskSnapshot | null) => {
+    const previous = snapshotRef.current
     snapshotRef.current = next
     setSnapshot(next)
+    if (next && (previous?.id !== next.id || previous.status !== next.status)) signalAssistantActivityChange()
   }, [])
 
   const reset = useCallback((conversationId: number | null) => {

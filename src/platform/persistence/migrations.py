@@ -2044,6 +2044,23 @@ def _m128_assistant_trusted_results(conn: Connection) -> None:
     )
 
 
+def _m129_assistant_task_notifications(conn: Connection) -> None:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS assistant_task_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_run_id INTEGER NOT NULL,
+            event_sequence INTEGER NOT NULL,
+            kind VARCHAR NOT NULL,
+            read_at DATETIME,
+            resolved_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT ux_assistant_notification_event UNIQUE (task_run_id, event_sequence)
+        )
+    """))
+    _create_index_if_missing(conn, "ix_assistant_notification_inbox", "CREATE INDEX ix_assistant_notification_inbox ON assistant_task_notifications(resolved_at, read_at, id)")
+    _create_index_if_missing(conn, "ix_assistant_notification_task", "CREATE INDEX ix_assistant_notification_task ON assistant_task_notifications(task_run_id)")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2073,6 +2090,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(126, "assistant_task_events", _m126_assistant_task_events),
     Migration(127, "assistant_trace_metrics", _m127_assistant_trace_metrics),
     Migration(128, "assistant_trusted_results", _m128_assistant_trusted_results),
+    Migration(129, "assistant_task_notifications", _m129_assistant_task_notifications),
 )
 
 

@@ -339,6 +339,16 @@ export const configuration = {
     },
   },
   assistantPage: {
+    activity: {
+      bell: 'Assistant tasks and notifications: {{active}} active, {{unread}} unread',
+      title: 'Assistant tasks and notifications', description: 'Tasks continue when you leave the Assistant page. Return to a conversation here to review results or handle approvals.',
+      runInBackground: 'Run in background', unread: '{{count}} unread', refresh: 'Refresh', markAllRead: 'Mark all read',
+      loading: 'Loading task status…', disconnected: 'The latest status could not be confirmed. Tasks may still be running. Updates resume when you reconnect, or you can refresh manually.',
+      readFailed: 'Could not save the read status. Please try again.', activeTitle: 'Active tasks ({{count}})', noActive: 'No active Assistant tasks',
+      notificationsTitle: 'Task notifications', noNotifications: 'No task notifications', viewProgress: 'View progress', viewConversation: 'View conversation', viewNotifications: 'View notifications',
+      outcomes: { completed: 'Research is complete. Review the result.', failed: 'The task failed. Open the conversation for the cause and recovery options.', awaiting_approval: 'An action needs your approval before execution can continue.' },
+      toasts: { completed: '“{{title}}” is complete', failed: '“{{title}}” failed', awaiting_approval: '“{{title}}” needs approval', multiple: '{{count}} new Assistant task notifications' },
+    },
     task: {
       statuses: { pending: 'Preparing', queued: 'Queued', dispatched: 'Starting', running: 'Researching', awaiting_approval: 'Awaiting approval', waiting_retry: 'Waiting to retry', waiting_callback: 'Waiting for a result', completed: 'Completed', failed: 'Failed', cancelled: 'Stopped', expired: 'Expired', dead_letter: 'Needs attention' },
       stopping: 'Stopping…', retrying: 'Retrying…', checking: 'Checking status…', disconnected: 'Disconnected; status unconfirmed',

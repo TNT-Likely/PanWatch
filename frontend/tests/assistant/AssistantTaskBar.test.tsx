@@ -51,4 +51,15 @@ describe('task recovery actions', () => {
     expect(p.onReconnect).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: '停止任务' })).toBeTruthy()
   })
+
+  it('lets a running task continue in the background without stopping it', async () => {
+    const p = props()
+    p.snapshot.status = 'running'
+    p.snapshot.error_code = null
+    const onBackground = vi.fn()
+    render(<AssistantTaskBar {...p} onBackground={onBackground} />)
+    await userEvent.click(screen.getByRole('button', { name: '后台运行' }))
+    expect(onBackground).toHaveBeenCalledOnce()
+    expect(p.onStop).not.toHaveBeenCalled()
+  })
 })

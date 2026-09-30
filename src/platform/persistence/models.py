@@ -1200,6 +1200,26 @@ class AssistantTaskEvent(Base):
     occurred_at = Column(DateTime, server_default=func.now())
 
 
+class AssistantTaskNotification(Base):
+    """Transactional in-app attention records for durable assistant tasks."""
+
+    __tablename__ = "assistant_task_notifications"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "event_sequence", name="ux_assistant_notification_event"),
+        Index("ix_assistant_notification_inbox", "resolved_at", "read_at", "id"),
+        Index("ix_assistant_notification_task", "task_run_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, nullable=False)
+    event_sequence = Column(Integer, nullable=False)
+    kind = Column(String, nullable=False)
+    read_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class AssistantTaskStep(Base):
     """A planned or executed step in an assistant task."""
 

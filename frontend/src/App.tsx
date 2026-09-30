@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useTranslation } from 'react-i18next'
 import type { NavigationItemKey } from '@/i18n/resources'
+import { AssistantActivityBell, AssistantActivityProvider } from '@/components/assistant/AssistantActivityProvider'
 
 const {
   LoginPage,
@@ -140,6 +141,7 @@ function App() {
 
   return (
     <RequireAuth>
+    <AssistantActivityProvider>
     <div
       className={isAssistantRoute
         ? 'relative flex h-dvh flex-col overflow-hidden bg-background'
@@ -195,6 +197,7 @@ function App() {
 
             {/* action wrapper:GitHub + 日志 + 头像(头像下拉含更多导航/主题色/退出) */}
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+              <AssistantActivityBell />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
@@ -224,17 +227,18 @@ function App() {
       <div className="sticky top-0 z-50 shrink-0 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 md:hidden">
         <header className="card px-4">
           <div className="h-12 flex items-center justify-between">
-            <NavLink to="/" className="flex items-center gap-2 group">
+            <NavLink to="/" className="flex shrink-0 items-center gap-2 group">
               <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
               <span className="text-[14px] font-bold text-foreground">PanWatch</span>
               {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
-            <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+            <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+              <AssistantActivityBell mobile />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
+                className="hidden w-8 h-8 rounded-xl items-center justify-center min-[360px]:flex text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
                 title={t('common:links.github')}
               >
                 <Github className="w-4 h-4" />
@@ -345,6 +349,7 @@ function App() {
         </DialogContent>
       </Dialog>
     </div>
+    </AssistantActivityProvider>
     </RequireAuth>
   )
 }

@@ -56,6 +56,7 @@ from .repository import AssistantRepository
 from .result_builder import build_deterministic_assistant_result
 from .schemas import (
     ConversationDetailDTO,
+    AssistantActivityDTO,
     ConversationDTO,
     CreateConversationCommand,
     MessageDTO,
@@ -394,6 +395,12 @@ class AssistantService:
             return self._repository.get_task_snapshot(task_run_id)
         except LookupError as exc:
             raise AssistantNotFoundError(str(exc)) from exc
+
+    def get_activity(self) -> AssistantActivityDTO:
+        return AssistantActivityDTO.model_validate(self._repository.get_activity())
+
+    def read_notifications(self, *, ids: list[int], through_id: int | None = None) -> int:
+        return self._repository.read_notifications(ids=ids, through_id=through_id)
 
     def pause_task(self, task_id: int, result) -> list:
         """Persist a waiting runtime before exposing any approval to a browser."""

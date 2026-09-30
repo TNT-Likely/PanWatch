@@ -336,6 +336,16 @@ export const configuration = {
     },
   },
   assistantPage: {
+    activity: {
+      bell: '助手任务与通知：{{active}} 项进行中，{{unread}} 条未读',
+      title: '助手任务与通知', description: '离开助手页面后，任务会继续执行。可从这里返回会话查看结果或处理审批。',
+      runInBackground: '后台运行', unread: '{{count}} 条未读', refresh: '刷新', markAllRead: '全部已读',
+      loading: '正在读取任务状态…', disconnected: '暂时无法确认最新状态，任务仍可能在运行。联网后会自动更新，也可手动刷新。',
+      readFailed: '未能保存已读状态，请稍后重试。', activeTitle: '进行中的任务（{{count}}）', noActive: '暂无进行中的助手任务',
+      notificationsTitle: '任务通知', noNotifications: '暂无任务通知', viewProgress: '查看进度', viewConversation: '查看会话', viewNotifications: '查看通知',
+      outcomes: { completed: '研究已完成，可以查看结果。', failed: '任务执行失败，请打开会话查看原因和恢复方式。', awaiting_approval: '有操作等待你审批，确认后才会继续执行。' },
+      toasts: { completed: '“{{title}}”已完成', failed: '“{{title}}”执行失败', awaiting_approval: '“{{title}}”等待审批', multiple: '有 {{count}} 条新的助手任务通知' },
+    },
     task: {
       statuses: { pending: '准备提交', queued: '排队中', dispatched: '正在启动', running: '研究中', awaiting_approval: '等待审批', waiting_retry: '等待重试', waiting_callback: '等待结果', completed: '已完成', failed: '执行失败', cancelled: '已停止', expired: '已过期', dead_letter: '需要人工处理' },
       stopping: '正在停止…', retrying: '正在重试…', checking: '正在检查状态…', disconnected: '连接中断，状态待确认',

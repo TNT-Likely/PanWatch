@@ -7,10 +7,11 @@ interface Toast {
   id: number
   type: ToastType
   message: string
+  action?: { label: string; onClick: () => void }
 }
 
 interface ToastContextValue {
-  toast: (message: string, type?: ToastType) => void
+  toast: (message: string, type?: ToastType, action?: Toast['action']) => void
 }
 
 const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
@@ -31,17 +32,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     if (timer) { clearTimeout(timer); timersRef.current.delete(id) }
   }, [])
 
-  const toast = useCallback((message: string, type: ToastType = 'info') => {
+  const toast = useCallback((message: string, type: ToastType = 'info', action?: Toast['action']) => {
     const id = ++nextId
-    setToasts(prev => [...prev, { id, type, message }])
-    const timer = setTimeout(() => removeToast(id), type === 'error' ? 5000 : 3000)
+    setToasts(prev => [...prev, { id, type, message, action }])
+    const timer = setTimeout(() => removeToast(id), action ? 8000 : type === 'error' ? 5000 : 3000)
     timersRef.current.set(id, timer)
   }, [removeToast])
+
+  useEffect(() => () => {
+    timersRef.current.forEach((timer) => clearTimeout(timer))
+    timersRef.current.clear()
+  }, [])
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2.5 pointer-events-none">
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-[calc(100vw-2rem)] max-w-sm flex flex-col items-center gap-2.5 pointer-events-none">
         {toasts.map(t => (
           <ToastItem key={t.id} toast={t} onClose={() => removeToast(t.id)} />
         ))}
@@ -71,10 +77,11 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border bg-card shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-all duration-300 max-w-sm ${BG[toast.type]} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+      className={`pointer-events-auto w-full flex items-center gap-3 px-4 py-3 rounded-xl border bg-card shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-sm transition-all duration-300 max-w-sm ${BG[toast.type]} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
     >
       {ICONS[toast.type]}
-      <span className="text-[13px] text-foreground flex-1">{toast.message}</span>
+      <span role="status" className="text-[13px] text-foreground min-w-0 flex-1 break-words">{toast.message}</span>
+      {toast.action && <button type="button" onClick={() => { toast.action!.onClick(); onClose() }} className="shrink-0 rounded-md px-2 py-1 text-[12px] font-medium text-primary hover:bg-accent">{toast.action.label}</button>}
       <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
         <X className="w-3.5 h-3.5" />
       </button>
