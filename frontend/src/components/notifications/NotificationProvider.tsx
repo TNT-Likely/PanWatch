@@ -1,5 +1,5 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Bell, Loader2, PauseCircle, AlertCircle } from 'lucide-react'
+import { Bell, MessageCircle, AlertCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { notificationsApi, type AssistantActivityTask, type NotificationItem, type NotificationTarget } from '@panwatch/api'
@@ -19,21 +19,47 @@ const Context = createContext({ unread: 0, pending: 0, active: 0, tasks: [] as A
 export function useActiveAssistantTasks() { return useContext(Context).tasks }
 const foreground = () => document.visibilityState === 'visible' && document.hasFocus()
 export function NotificationBell({ mobile = false }: { mobile?: boolean }) {
-  const { unread, pending, active, tasks, disconnected, monitor, open, openTasks, openItem } = useContext(Context)
+  const { unread, pending, active, disconnected, monitor, open, openTasks, openItem } = useContext(Context)
+  const { pathname } = useLocation()
+  const onAssistantPage = pathname === '/assistant' || pathname.startsWith('/assistant/')
   const [previewOpen, setPreviewOpen] = useState(false)
   const handingOff = useRef(false)
   const handoffTimer = useRef<ReturnType<typeof setTimeout>>()
-  useEffect(() => () => clearTimeout(handoffTimer.current), [])
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>()
+  const openedByHover = useRef(false)
+  const previewRef = useRef<HTMLDivElement>(null)
+  useEffect(() => () => { clearTimeout(handoffTimer.current); clearTimeout(closeTimer.current) }, [])
+  const keepPreviewOpen = () => clearTimeout(closeTimer.current)
+  const openOnHover = () => {
+    if (mobile) return
+    keepPreviewOpen()
+    if (!previewOpen) {
+      handingOff.current = false
+      openedByHover.current = true
+      setPreviewOpen(true)
+    }
+  }
+  const closeAfterHover = () => {
+    if (mobile) return
+    keepPreviewOpen()
+    // Allow the pointer to cross the gap between the bell and its portal.
+    closeTimer.current = setTimeout(() => {
+      if (!previewRef.current?.contains(document.activeElement)) setPreviewOpen(false)
+    }, 180)
+  }
   const { t } = useTranslation('configuration')
   const css = `relative flex shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent ${mobile ? 'h-8 w-8' : 'h-9 w-9'}`
   return <>
-    {active > 0 && <button className={css} onClick={openTasks} aria-label={t('notifications.taskEntry', { count: active }) as string} data-testid="assistant-task-entry">{tasks.some(task => task.status !== 'awaiting_approval' && task.status !== 'waiting_retry') ? <Loader2 data-testid="assistant-running-indicator" className="h-4 w-4 animate-spin motion-reduce:animate-none text-primary" /> : <PauseCircle className="h-4 w-4 text-primary" />}</button>}
-    <Popover open={previewOpen} onOpenChange={next => { if (next) handingOff.current = false; setPreviewOpen(next) }}><PopoverTrigger asChild><button className={css} aria-label={t('notifications.bell', { count: unread }) as string} data-testid="notification-bell">
+    {active > 0 && !onAssistantPage && <button className={`${css} gap-1.5 ${mobile ? '' : 'w-auto px-2.5'}`} onClick={openTasks} title={t('notifications.taskEntry', { count: active }) as string} aria-label={t('notifications.taskEntry', { count: active }) as string} data-testid="assistant-task-entry">
+      <MessageCircle aria-hidden className="h-4 w-4 text-primary" />
+      {mobile ? <span aria-hidden className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-primary" /> : <span className="text-[12px]">{t('notifications.taskEntryShort', { count: active })}</span>}
+    </button>}
+    <Popover open={previewOpen} onOpenChange={next => { keepPreviewOpen(); if (next) { handingOff.current = false; openedByHover.current = false }; setPreviewOpen(next) }}><PopoverTrigger asChild><button className={css} onMouseEnter={openOnHover} onMouseLeave={closeAfterHover} aria-label={t('notifications.bell', { count: unread }) as string} data-testid="notification-bell">
       {disconnected ? <AlertCircle className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
       {unread > 0 && <span data-testid="notification-badge" aria-hidden className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] text-primary-foreground">{unread > 99 ? '99+' : unread}</span>}
       {unread === 0 && pending > 0 && <span aria-label={t('notifications.pending') as string} className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-primary" />}
     </button></PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} collisionPadding={8} onCloseAutoFocus={event => { if (handingOff.current) event.preventDefault() }} className="w-[min(23rem,calc(100vw-1rem))] overflow-hidden p-0 shadow-xl">
+      <PopoverContent ref={previewRef} data-testid="notification-preview" align="end" sideOffset={8} collisionPadding={8} onMouseEnter={keepPreviewOpen} onMouseLeave={closeAfterHover} onOpenAutoFocus={event => { if (openedByHover.current) event.preventDefault() }} onCloseAutoFocus={event => { if (handingOff.current || openedByHover.current) event.preventDefault() }} className="w-[min(23rem,calc(100vw-1rem))] overflow-hidden p-0 shadow-xl">
         <Suspense fallback={<p role="status" className="p-4 text-[12px]">{t('notifications.loading')}</p>}>
           {monitor && <NotificationInbox monitor={monitor} onHistory={() => { handingOff.current = true; setPreviewOpen(false); handoffTimer.current = setTimeout(open, 0) }} onOpen={async item => { handingOff.current = true; setPreviewOpen(false); await openItem(item) }} />}
         </Suspense>

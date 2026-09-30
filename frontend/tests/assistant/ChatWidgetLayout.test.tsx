@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chatApi, fetchAPI } from '@panwatch/api'
 import ChatWidget from '@/components/ChatWidget'
+import i18n from '@/i18n'
 
 vi.mock('@panwatch/api', () => ({
   fetchAPI: vi.fn(),
@@ -49,6 +50,25 @@ beforeEach(() => {
 })
 
 describe('ChatWidget layout', () => {
+  it.each([
+    ['zh-CN', 'tool_search', '正在查找可用工具…'],
+    ['en-US', 'tool_search', 'Finding available tools…'],
+    ['zh-CN', 'search_stocks', '正在调用 股票搜索…'],
+    ['zh-CN', 'custom_research_tool', '正在调用 custom_research_tool…'],
+    ['en-US', 'custom_research_tool', 'Calling custom_research_tool…'],
+  ])('localizes live tool status in %s for %s', async (language, name, expected) => {
+    await i18n.changeLanguage(language)
+    vi.mocked(chatApi.sendAssistantMessageStream).mockImplementation(async (_conversationId, _content, callbacks, signal) => {
+      callbacks.onRunStarted?.({ taskId: 43 })
+      callbacks.onToolCallStart?.({ name, arguments: {} })
+      await new Promise<void>(resolve => signal?.addEventListener('abort', () => resolve(), { once: true }))
+    })
+    const user = userEvent.setup()
+    render(<ChatWidget embedded />)
+    await user.click(screen.getByRole('button', { name: i18n.t('assistantPage.welcome.diagnosePortfolio', { ns: 'configuration' }) }))
+    expect(await screen.findByText(expected)).toBeTruthy()
+  })
+
   it('reconnects a running durable task after a refresh', async () => {
     sessionStorage.setItem('panwatch:assistant-task:1', '88')
     vi.mocked(chatApi.getAssistantTask)

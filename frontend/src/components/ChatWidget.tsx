@@ -51,11 +51,6 @@ interface ChatWidgetProps {
   onNavigate?: (path: string) => void
 }
 
-// 工具名 → 过程可视化文案
-const TOOL_LABELS: Record<string, string> = {
-  get_portfolio: 'get_portfolio', get_stock_quote: 'get_stock_quote', get_kline_summary: 'get_kline_summary', get_stock_news: 'get_stock_news', create_price_alert: 'create_price_alert', get_technical_analysis: 'get_technical_analysis', get_stock_suggestions: 'get_stock_suggestions', get_watchlist: 'get_watchlist',
-}
-
 function requestFailureText(
   assistantT: (key: string, options?: Record<string, unknown>) => string,
   error: unknown,
@@ -199,7 +194,10 @@ export default function ChatWidget({
     onToolCallStart: ({ name }) => {
       tokenBufRef.current = ''
       setStreamText('')
-      setStreamTool(assistantT(`assistantPage.tools.${TOOL_LABELS[name] || name}`, { defaultValue: `Calling ${name}…` }))
+      const toolName = assistantT(`p4.components.trace.tools.${name}`, { defaultValue: name })
+      setStreamTool(assistantT(`assistantPage.tools.${name}`, {
+        defaultValue: assistantT('assistantPage.callingTool', { name: toolName }),
+      }))
     },
     onPlan: (next) => { setStreamTool(null); setPlan(next) },
     onRunStarted: ({ contextUsage }) => {

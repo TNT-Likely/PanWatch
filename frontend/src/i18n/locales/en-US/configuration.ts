@@ -13,6 +13,7 @@ export const configuration = {
   "description": "Assistant, Agent reports and price alerts in one inbox. Reading never approves an action.",
   "bell": "Notifications: {{count}} unread",
   "taskEntry": "Assistant tasks: {{count}} active",
+  taskEntryShort: 'Assistant tasks · {{count}}',
   "tasksTitle": "Assistant tasks",
   "summary": "{{unread}} unread · {{pending}} pending",
   "sourceFilter": "Notification source",
@@ -447,7 +448,8 @@ export const configuration = {
       workerStoppingHint: 'Execution is still shutting down. Reconnect shortly before retrying.',
       controlFailed: 'The action outcome could not be confirmed. Reconnect to check the task status.',
     },
-    tools: { get_portfolio: 'Querying portfolio…', get_stock_quote: 'Querying quote…', get_kline_summary: 'Analyzing candlesticks…', get_stock_news: 'Searching related news…', create_price_alert: 'Creating price alert…', get_technical_analysis: 'Analyzing technicals…', get_stock_suggestions: 'Querying AI suggestions…', get_watchlist: 'Querying watchlist…' },
+    callingTool: 'Calling {{name}}…',
+    tools: { tool_search: 'Finding available tools…', get_portfolio: 'Querying portfolio…', get_stock_quote: 'Querying quote…', get_kline_summary: 'Analyzing candlesticks…', get_stock_news: 'Searching related news…', create_price_alert: 'Creating price alert…', get_technical_analysis: 'Analyzing technicals…', get_stock_suggestions: 'Querying AI suggestions…', get_watchlist: 'Querying watchlist…' },
     result: {
       facts: 'Evidence-backed facts', inferences: 'Analysis', risks: 'Risks and gaps', evidence: '{{count}} evidence items', nextActions: 'Next steps', observedAt: 'Retrieved {{time}}', dataAt: 'Data as of {{time}}', coverage: 'Covers {{start}} to {{end}}', configureAlert: 'Configure alert', targetPrice: 'Target price', above: 'at or above', below: 'at or below', requestApproval: 'Request approval', alertPrompt: 'Create an intraday alert for {{target}} when the price is {{direction}} {{price}}',
       freshness: { fresh: 'Fresh', delayed: 'Delayed', stale: 'May be stale', unknown: 'Time unknown' },

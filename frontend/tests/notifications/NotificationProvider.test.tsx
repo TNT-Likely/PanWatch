@@ -12,8 +12,8 @@ vi.mock('@panwatch/api', () => ({
 }))
 const summary = { unread_count: 0, pending_action_count: 0, observed_id: 0 }
 const notice = (id: number, source: NotificationItem['source'] = 'assistant'): NotificationItem => ({ id, source, event_type: source === 'assistant' ? 'assistant_completed' : source === 'agent' ? 'agent_completed' : 'price_alert_hit', severity: 'info', attention: 'informational', title: '后台研究', template_key: source === 'assistant' ? 'assistant_completed' : source === 'agent' ? 'agent_completed' : 'price_alert_hit', template_params: {}, group_key: '', toast_eligible: true, occurred_at: '2026-09-30T00:00:00Z', read_at: null, resolved_at: null, expires_at: null, archived_at: null, action_required: false, available: true, actions: source === 'assistant' ? [{ kind: 'assistant_conversation', conversation_id: 1 }] : [{ kind: 'agent_run', run_id: 1 }] })
-function Page() { const location = useLocation(); return <><NotificationBell /><p data-testid="path">{location.pathname}</p></> }
-function show(path = '/portfolio') { return render(<MemoryRouter initialEntries={[path]}><NotificationProvider><Page /></NotificationProvider></MemoryRouter>) }
+function Page({ mobile = false }: { mobile?: boolean }) { const location = useLocation(); return <><NotificationBell mobile={mobile} /><p data-testid="path">{location.pathname}</p></> }
+function show(path = '/portfolio', mobile = false) { return render(<MemoryRouter initialEntries={[path]}><NotificationProvider><Page mobile={mobile} /></NotificationProvider></MemoryRouter>) }
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear()
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
@@ -27,6 +27,58 @@ beforeEach(() => {
 })
 
 describe('global notifications', () => {
+  it('opens on desktop hover, preserves focus, and stays open across the portal gap', async () => {
+    show()
+    const bell = await screen.findByTestId('notification-bell')
+    const previousFocus = document.activeElement
+    fireEvent.mouseEnter(bell)
+    const preview = await screen.findByTestId('notification-preview')
+    await screen.findByText('暂无新通知')
+    expect(document.activeElement).toBe(previousFocus)
+    fireEvent.mouseLeave(bell)
+    fireEvent.mouseEnter(preview)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)) })
+    expect(screen.getByTestId('notification-preview')).toBeTruthy()
+    expect(notificationsApi.read).not.toHaveBeenCalled()
+    fireEvent.mouseLeave(preview)
+    await waitFor(() => expect(screen.queryByTestId('notification-preview')).toBeNull())
+    expect(document.activeElement).toBe(previousFocus)
+  })
+
+  it('closes after leaving the desktop bell without entering the preview', async () => {
+    show()
+    const bell = await screen.findByTestId('notification-bell')
+    fireEvent.mouseEnter(bell)
+    await screen.findByTestId('notification-preview')
+    fireEvent.mouseLeave(bell)
+    await waitFor(() => expect(screen.queryByTestId('notification-preview')).toBeNull())
+  })
+
+  it('uses click instead of hover on mobile', async () => {
+    show('/portfolio', true)
+    const bell = await screen.findByTestId('notification-bell')
+    fireEvent.mouseEnter(bell)
+    expect(screen.queryByTestId('notification-preview')).toBeNull()
+    fireEvent.click(bell)
+    expect(await screen.findByText('暂无新通知')).toBeTruthy()
+    fireEvent.mouseLeave(bell)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)) })
+    expect(screen.getByTestId('notification-preview')).toBeTruthy()
+  })
+
+  it('retains keyboard access and closes a focused preview with Escape', async () => {
+    show()
+    const bell = await screen.findByTestId('notification-bell')
+    bell.focus()
+    // A native keyboard activation dispatches a click with no pointer detail.
+    fireEvent.click(bell, { detail: 0 })
+    await screen.findByText('暂无新通知')
+    expect(screen.getByTestId('notification-preview').contains(document.activeElement)).toBe(true)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('notification-preview')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(bell))
+  })
+
   it('opens an empty lightweight preview without reading or displaying history', async () => {
     vi.mocked(notificationsApi.list).mockImplementation(async filter => ({ items: filter?.view === 'attention' ? [] : [{ ...notice(900), title: '已经读过的历史', read_at: '2026-09-30T00:00:00Z' }], observed_id: 900, next_cursor: null }))
     show(); fireEvent.click(await screen.findByRole('button', { name: '通知：0 条未读' }))
@@ -57,13 +109,23 @@ describe('global notifications', () => {
     vi.mocked(chatApi.getActiveAssistantTasks).mockResolvedValue([{ id: 42, conversation_id: 1, title: '后台研究', status: 'running', current_step: 2 }])
     show()
     const entry = await screen.findByRole('button', { name: '助手任务：1 项进行中' })
-    expect(screen.getByTestId('assistant-running-indicator').classList.contains('animate-spin')).toBe(true)
+    expect(entry.textContent).toContain('助手任务 · 1')
+    expect(entry.querySelector('.animate-spin')).toBeNull()
     expect(screen.queryByTestId('notification-badge')).toBeNull()
     fireEvent.click(entry)
     expect(await screen.findByText('步骤 2', { exact: false })).toBeTruthy()
     expect(screen.queryByText('任务通知')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '查看进度: 后台研究' }))
     expect(screen.getByTestId('path').textContent).toBe('/assistant/1')
+  })
+
+  it.each(['/assistant', '/assistant/1'])('hides the redundant global task entry on %s', async path => {
+    vi.mocked(chatApi.getActiveAssistantTasks).mockResolvedValue([{ id: 42, conversation_id: 1, title: '后台研究', status: 'running', current_step: 2 }])
+    show(path)
+    await waitFor(() => expect(chatApi.getActiveAssistantTasks).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByTestId('assistant-task-entry')).toBeNull()
+    expect(screen.getByTestId('notification-bell')).toBeTruthy()
   })
 
   it('deduplicates an actionable toast and resolves its original conversation on the server', async () => {
