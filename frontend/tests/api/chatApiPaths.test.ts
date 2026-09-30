@@ -27,4 +27,13 @@ describe('assistant conversation API paths', () => {
       '/assistant/suggested-questions?symbol=600519&market=CN',
     ])
   })
+
+  it('posts stop and retry commands to the existing task without creating another conversation', async () => {
+    await chatApi.cancelAssistantTask(42)
+    await chatApi.retryAssistantTask(42)
+    expect(fetchAPI.mock.calls).toEqual([
+      ['/assistant/tasks/42/cancel', { method: 'POST' }],
+      ['/assistant/tasks/42/retry', { method: 'POST' }],
+    ])
+  })
 })

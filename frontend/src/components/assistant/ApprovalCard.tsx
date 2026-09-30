@@ -6,14 +6,15 @@ import { useTranslation } from 'react-i18next'
 interface ApprovalCardProps {
   approval: AssistantApproval
   onDecision: (decision: 'approved' | 'rejected') => Promise<void> | void
+  blocked?: boolean
 }
 
-export function ApprovalCard({ approval, onDecision }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onDecision, blocked = false }: ApprovalCardProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null)
   const [failed, setFailed] = useState(false)
-  const disabled = approval.status !== 'pending' || decision !== null
+  const disabled = blocked || approval.status !== 'pending' || decision !== null
 
   const decide = async (next: 'approved' | 'rejected') => {
     if (disabled) return

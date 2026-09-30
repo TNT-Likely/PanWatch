@@ -154,6 +154,8 @@ def test_conversation_restores_legacy_result_and_trace_without_answer_payload():
     assert assistant_message.result.facts[0].text == "贵州茅台最新价 100。"
     assert assistant_message.trace is not None
     assert [item["event"] for item in assistant_message.trace] == [
+        "task_created",
+        "task_queued",
         "run_started",
         "context_prepared",
         "tool_call_start",

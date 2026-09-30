@@ -162,6 +162,10 @@ class AssistantTaskRunner:
             self._run_resume(task_id, conversation_id, checkpoint, decisions),
         )
 
+    def is_running(self, task_id: int) -> bool:
+        worker = self._tasks.get(task_id)
+        return worker is not None and not worker.done()
+
     def cancel(self, task_id: int) -> bool:
         worker = self._tasks.get(task_id)
         if worker is None or worker.done():

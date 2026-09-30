@@ -29,6 +29,10 @@ SSE_EVENT_NAMES = {
 }
 
 _HISTORICAL_TRACE_EVENTS = {
+    "task_created",
+    "task_queued",
+    "retry_scheduled",
+    "cancelled",
     "run_started",
     "context_prepared",
     "step_updated",

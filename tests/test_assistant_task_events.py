@@ -300,6 +300,64 @@ def test_retry_does_not_replay_completed_or_tool_side_effect_tasks():
     engine.dispose()
 
 
+def test_task_snapshot_explains_safe_retry_and_restores_cancelled_tool_trace():
+    engine, session, repository, task = _repository()
+    repository.claim_task(task.id)
+    repository.record_tool_started(task.id, call_id="alert-1", tool_name="create_price_alert", arguments={"price": 10})
+    repository.cancel_task(task.id)
+    snapshot = repository.get_task_snapshot(task.id)
+    assert snapshot["can_retry"] is False
+    assert snapshot["retry_blocked_reason"] == "tools_already_started"
+    assert [event["event"] for event in snapshot["trace"]][-2:] == ["tool_call_start", "cancelled"]
+    assert snapshot["tools"][0]["status"] == "started"
+    assert repository.latest_task_snapshot(task.conversation_id)["id"] == task.id
+    assert snapshot["created_at"].tzinfo is not None
+    session.close()
+    engine.dispose()
+
+
+def test_retry_resets_attempt_timing_and_replays_only_the_new_attempt():
+    engine, session, repository, task = _repository()
+    repository.claim_task(task.id)
+    repository.append_task_event(task.id, TaskEventType.STEP_PROGRESS, step_index=4)
+    repository.finish_task(task.id, status="failed", final_message_id=None, error_code="run_timeout")
+    failed = repository.get_task_snapshot(task.id)
+    assert failed["can_retry"] is True
+    assert failed["retry_blocked_reason"] is None
+    repository.retry_task(task.id)
+    queued = repository.get_task_snapshot(task.id)
+    assert queued["id"] == failed["id"]
+    assert queued["current_step"] == 0
+    assert queued["started_at"] is None and queued["finished_at"] is None
+    assert queued["duration_ms"] == 0
+    assert queued["attempt_event_id"] == queued["last_event_id"]
+    repository.claim_task(task.id)
+    repository.append_task_event(task.id, TaskEventType.ANSWER_TOKEN, data={"text": "new answer"})
+    running = repository.get_task_snapshot(task.id)
+    assert [event["event"] for event in running["trace"]] == ["run_started"]
+    replay = repository.list_task_events(task.id, after_sequence=int(running["attempt_event_id"]))
+    assert [event.event_type for event in replay] == [TaskEventType.TASK_STARTED.value, TaskEventType.ANSWER_TOKEN.value]
+    session.close()
+    engine.dispose()
+
+
+def test_conversation_returns_its_latest_task_without_a_browser_marker():
+    from src.modules.assistant.service import AssistantService
+
+    engine, session, repository, old = _repository()
+    repository.cancel_task(old.id)
+    latest = repository.create_task(conversation_id=old.conversation_id, user_message_id=None, context={})
+    repository.finish_task(latest.id, status="failed", final_message_id=None, error_code="ai_rate_limited")
+    other = repository.create_conversation(stock_symbol=None, stock_market=None, initial_context=None)
+    service = AssistantService(repository)
+    detail = service.get_conversation(old.conversation_id)
+    assert detail.latest_task["id"] == latest.id
+    assert detail.latest_task["error_code"] == "ai_rate_limited"
+    assert service.get_conversation(other.id).latest_task is None
+    session.close()
+    engine.dispose()
+
+
 def test_m126_creates_event_store_idempotently(tmp_path):
     from src.platform.persistence.migrations import _m126_assistant_task_events
 

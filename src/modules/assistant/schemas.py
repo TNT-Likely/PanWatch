@@ -48,3 +48,4 @@ class MessageDTO(BaseModel):
 class ConversationDetailDTO(BaseModel):
     conversation: ConversationDTO
     messages: list[MessageDTO]
+    latest_task: dict[str, Any] | None = None

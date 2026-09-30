@@ -85,3 +85,27 @@ def test_cancel_and_retry_task_controls_are_idempotent(monkeypatch):
 
     session.close()
     engine.dispose()
+
+
+def test_retry_waits_for_a_cancelling_worker_to_exit(monkeypatch):
+    import src.modules.assistant.api as assistant_api
+
+    engine, session, repository, conversation, service = _service()
+    task = repository.create_task(conversation_id=conversation.id, user_message_id=None, context={})
+    repository.cancel_task(task.id)
+    started = []
+    monkeypatch.setattr(assistant_api.assistant_task_runner, "is_running", lambda _id: True)
+    monkeypatch.setattr(assistant_api.assistant_task_runner, "start_message", lambda *args: started.append(args))
+    snapshot = asyncio.run(assistant_api.retry_assistant_task(task.id, service))
+    assert snapshot["status"] == "cancelled"
+    assert snapshot["can_retry"] is False
+    assert snapshot["retry_blocked_reason"] == "worker_stopping"
+    assert snapshot["retry_count"] == 0
+    assert started == []
+    monkeypatch.setattr(assistant_api.assistant_task_runner, "is_running", lambda _id: False)
+    retried = asyncio.run(assistant_api.retry_assistant_task(task.id, service))
+    assert retried["status"] == "queued"
+    assert retried["retry_count"] == 1
+    assert started == [(task.id, conversation.id)]
+    session.close()
+    engine.dispose()

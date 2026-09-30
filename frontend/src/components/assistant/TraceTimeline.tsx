@@ -1,11 +1,12 @@
 import { AlertCircle, CheckCircle2, ChevronDown, FileClock, Gauge, ListTree, PauseCircle, Search, Wrench } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AssistantTraceEvent } from '@panwatch/api'
 import { useTranslation } from 'react-i18next'
 
 interface TraceTimelineProps {
   events: AssistantTraceEvent[]
   live?: boolean
+  reviewRequest?: number
 }
 
 function describeExtensionEvent(event: AssistantTraceEvent, tr: (key: string, options?: Record<string, unknown>) => string): { label: string; icon: typeof FileClock } | null {
@@ -31,6 +32,10 @@ function describe(event: AssistantTraceEvent, tr: (key: string, options?: Record
   const extension = event.event === 'extension_event' ? describeExtensionEvent(event, tr) : null
   if (extension) return extension
   switch (event.event) {
+    case 'task_created':
+    case 'task_queued': return { label: tr('events.queued'), icon: FileClock }
+    case 'retry_scheduled': return { label: tr('events.retrying'), icon: FileClock }
+    case 'cancelled': return { label: tr('events.cancelled'), icon: PauseCircle }
     case 'context_prepared': return { label: tr(event.data.compressed ? 'events.contextCompressed' : 'events.contextPrepared'), icon: FileClock }
     case 'step_updated': return { label: tr('events.step', { step: event.data.step || '' }), icon: ListTree }
     case 'tool_call_start': return { label: tr('events.toolStart', { name: displayName }), icon: Wrench }
@@ -82,10 +87,12 @@ function detail(event: AssistantTraceEvent): string {
 }
 
 function summary(events: AssistantTraceEvent[], tr: (key: string, options?: Record<string, unknown>) => string): string {
-  const terminal = [...events].reverse().find((event) => ['done', 'error', 'paused'].includes(event.event))
+  const terminal = [...events].reverse().find((event) => ['done', 'error', 'paused', 'cancelled'].includes(event.event))
   const duration = Number(terminal?.data.duration_ms || 0)
   const status = terminal?.event === 'done'
     ? tr('status.done')
+    : terminal?.event === 'cancelled'
+    ? tr('status.cancelled')
     : terminal?.event === 'error'
     ? tr('status.error')
     : terminal?.event === 'paused'
@@ -113,12 +120,15 @@ function userVisible(event: AssistantTraceEvent): boolean {
   return !['model_usage', 'extension_event'].includes(event.event)
 }
 
-export function TraceTimeline({ events, live = false }: TraceTimelineProps) {
+export function TraceTimeline({ events, live = false, reviewRequest = 0 }: TraceTimelineProps) {
   const { t } = useTranslation('configuration')
   const traceT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => traceT(`p4.components.trace.${key}`, options)
   const [expanded, setExpanded] = useState(live)
   const [developerExpanded, setDeveloperExpanded] = useState(false)
+  useEffect(() => {
+    if (reviewRequest > 0) { setExpanded(true); setDeveloperExpanded(true) }
+  }, [reviewRequest])
   const userEvents = events.filter(userVisible)
   if (events.length === 0) return null
   return (

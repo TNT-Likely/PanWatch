@@ -72,6 +72,7 @@ export interface AssistantResult {
 export interface ConversationDetail {
   conversation: ChatConversation
   messages: ChatMessage[]
+  latest_task?: AssistantTaskSnapshot | null
 }
 
 export interface AssistantApproval {
@@ -83,10 +84,24 @@ export interface AssistantApproval {
   status: 'pending' | 'approved' | 'rejected'
 }
 
+export type AssistantTaskStatus = 'pending' | 'queued' | 'dispatched' | 'running' | 'awaiting_approval' | 'waiting_retry' | 'waiting_callback' | 'completed' | 'failed' | 'cancelled' | 'expired' | 'dead_letter'
+
 export interface AssistantTaskSnapshot {
   id: number
   conversation_id: number
-  status: string
+  status: AssistantTaskStatus
+  current_step?: number
+  last_event_id?: string
+  attempt_event_id?: string
+  trace?: AssistantTraceEvent[]
+  retry_count?: number
+  cancel_requested?: boolean
+  can_retry?: boolean
+  retry_blocked_reason?: 'tools_already_started' | 'not_terminal' | 'worker_stopping' | null
+  created_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  user_message_id?: number | null
   error_code?: string | null
   model?: string | null
   duration_ms?: number
@@ -237,6 +252,12 @@ export const chatApi = {
   getAssistantTask: (taskId: number) =>
     fetchAPI<AssistantTaskSnapshot>('/assistant/tasks/' + taskId),
 
+  cancelAssistantTask: (taskId: number) =>
+    fetchAPI<AssistantTaskSnapshot>(`/assistant/tasks/${taskId}/cancel`, { method: 'POST' }),
+
+  retryAssistantTask: (taskId: number) =>
+    fetchAPI<AssistantTaskSnapshot>(`/assistant/tasks/${taskId}/retry`, { method: 'POST' }),
+
   getAssistantContext: (conversationId: number) =>
     fetchAPI<AssistantContextDetail>(`/assistant/conversations/${conversationId}/context`),
 
@@ -320,6 +341,7 @@ export interface ChatStreamCallbacks {
   onDone?: (msg: { message_id: number; content: string; created_at: string; result?: AssistantResult | null }) => void
   /** AI service failure with a safe stable code and localized fallback text. */
   onError?: (error: AssistantStreamError) => void
+  onCancelled?: () => void
   /** Factual runtime events for the user-facing trace panel. */
   onTrace?: (event: AssistantTraceEvent) => void
 }
@@ -337,6 +359,10 @@ export interface AssistantTraceEvent {
 }
 
 const TRACE_EVENTS = new Set([
+  'task_created',
+  'task_queued',
+  'retry_scheduled',
+  'cancelled',
   'run_started',
   'context_prepared',
   'step_updated',
@@ -460,6 +486,10 @@ function dispatchAssistantEvent(
         result: d.result || null,
       })
       break
+    case 'cancelled':
+      state.finished = true
+      callbacks.onCancelled?.()
+      break
     case 'error':
       state.terminalError = {
         code: d.code || 'assistant_unknown_error',
@@ -518,7 +548,7 @@ async function sendMessageStream(
   // 连接被中断但生成未结束，经持久化任务事件流接回。
   let reconnects = 0
   const reconnectPath = taskEventPath
-  while (!state.finished && !state.paused && reconnectPath && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
+  while (!state.finished && !state.paused && !state.terminalError && reconnectPath && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     reconnects += 1
     try {
@@ -552,7 +582,7 @@ async function subscribeAssistantTaskStream(
   let reconnects = 0
   const path = `/assistant/tasks/${taskId}/events`
 
-  while (!state.finished && !state.paused && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
+  while (!state.finished && !state.paused && !state.terminalError && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     try {
       await readSSE(path, {
@@ -609,7 +639,7 @@ async function decideAssistantApprovalStream(
   // accepted the decision, follow the durable task stream instead of posting
   // the decision again.
   let reconnects = 0
-  while (!state.finished && !state.paused && taskId && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
+  while (!state.finished && !state.paused && !state.terminalError && taskId && reconnects < CHAT_STREAM_MAX_RECONNECTS) {
     if (signal?.aborted) return
     reconnects += 1
     try {

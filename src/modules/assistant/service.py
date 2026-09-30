@@ -192,6 +192,7 @@ class AssistantService:
                 ).model_dump(mode="json")
         return ConversationDetailDTO(
             conversation=self._conversation_dto(conversation),
+            latest_task=self._repository.latest_task_snapshot(conversation_id),
             messages=[
                 self._message_dto(
                     row,

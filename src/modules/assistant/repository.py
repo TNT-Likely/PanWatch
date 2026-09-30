@@ -84,6 +84,15 @@ class AssistantRepository:
     def get_message(self, message_id: int) -> ChatMessage | None:
         return self._session.query(ChatMessage).filter(ChatMessage.id == message_id).first()
 
+    def latest_task_snapshot(self, conversation_id: int) -> dict | None:
+        task = (
+            self._session.query(AssistantTaskRun)
+            .filter(AssistantTaskRun.conversation_id == conversation_id)
+            .order_by(AssistantTaskRun.id.desc())
+            .first()
+        )
+        return self.get_task_snapshot(task.id) if task else None
+
     def message_results(self, conversation_id: int) -> dict[int, dict]:
         """Return structured results keyed by their final assistant message."""
         rows = (
@@ -424,7 +433,10 @@ class AssistantRepository:
         task.retry_count = int(task.retry_count or 0) + 1
         task.error_code = None
         task.final_message_id = None
+        task.started_at = None
         task.finished_at = None
+        task.current_step = 0
+        task.result_data = None
         self.append_task_event(
             task.id,
             TaskEventType.TASK_RETRY_SCHEDULED,
@@ -979,6 +991,31 @@ class AssistantRepository:
 
     def get_task_snapshot(self, task_run_id: int) -> dict:
         task = self._require_task(task_run_id)
+        attempt_event_id = (
+            self._session.query(func.max(AssistantTaskEvent.sequence))
+            .filter(
+                AssistantTaskEvent.task_run_id == task_run_id,
+                AssistantTaskEvent.event_type == TaskEventType.TASK_RETRY_SCHEDULED.value,
+            )
+            .scalar()
+            or 0
+        )
+        trace_rows = (
+            self._session.query(AssistantTaskEvent)
+            .filter(
+                AssistantTaskEvent.task_run_id == task_run_id,
+                AssistantTaskEvent.sequence > attempt_event_id,
+                AssistantTaskEvent.event_type != TaskEventType.ANSWER_TOKEN.value,
+            )
+            .order_by(AssistantTaskEvent.sequence.desc())
+            .limit(80)
+            .all()
+        )
+        trace = [
+            item
+            for row in reversed(trace_rows)
+            if (item := historical_trace_event(row.event_type, row.data, row.sequence)) is not None
+        ][-40:]
         tools = (
             self._session.query(AssistantToolInvocation)
             .filter(AssistantToolInvocation.task_run_id == task_run_id)
@@ -992,11 +1029,23 @@ class AssistantRepository:
             "state_version": task.state_version,
             "current_step": task.current_step,
             "last_event_id": task.last_event_id or "",
+            "attempt_event_id": str(attempt_event_id),
+            "trace": trace,
             "checkpoint_id": task.checkpoint_id or "",
             "cancel_requested": bool(task.cancel_requested),
             "retry_count": int(task.retry_count or 0),
             "context": task.context or {},
             "error_code": task.error_code,
+            "can_retry": TaskStatus(task.status) in {TaskStatus.FAILED, TaskStatus.CANCELLED} and not tools,
+            "retry_blocked_reason": (
+                "tools_already_started" if tools
+                else "not_terminal" if TaskStatus(task.status) not in {TaskStatus.FAILED, TaskStatus.CANCELLED}
+                else None
+            ),
+            "created_at": self._utc_timestamp(task.created_at),
+            "started_at": self._utc_timestamp(task.started_at),
+            "finished_at": self._utc_timestamp(task.finished_at),
+            "user_message_id": task.user_message_id,
             "result": task.result_data,
             "model": task.model,
             "duration_ms": self._task_duration_ms(task),
@@ -1046,6 +1095,10 @@ class AssistantRepository:
         if task is None:
             raise LookupError("助手任务不存在")
         return task
+
+    @staticmethod
+    def _utc_timestamp(value: datetime | None) -> datetime | None:
+        return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
 
     @staticmethod
     def _task_duration_ms(task: AssistantTaskRun) -> int:

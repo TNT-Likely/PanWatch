@@ -150,4 +150,38 @@ describe('assistant task stream', () => {
       retryable: false,
     })
   })
+
+  it('ends cancellation normally without reconnecting or reporting failure', async () => {
+    readSSE.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({ id: 1, event: 'task_created', data: { task_id: 42 } })
+      options.onEvent({ id: 2, event: 'cancelled', data: {} })
+      return { lastEventId: 2 }
+    })
+    const onCancelled = vi.fn()
+    const onError = vi.fn()
+    await chatApi.sendAssistantMessageStream(1, '问题', { onCancelled, onError })
+    expect(readSSE).toHaveBeenCalledTimes(1)
+    expect(onCancelled).toHaveBeenCalledTimes(1)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('does not reconnect a known terminal error even if the stream contained a task ID', async () => {
+    readSSE.mockImplementation(async (_path: string, options: { onEvent: (event: unknown) => void }) => {
+      options.onEvent({ id: 1, event: 'run_started', data: { task_id: 42 } })
+      options.onEvent({ id: 2, event: 'error', data: { code: 'run_timeout', message: 'timeout' } })
+      return { lastEventId: 2 }
+    })
+    await expect(chatApi.sendAssistantMessageStream(1, '问题', {})).rejects.toThrow('timeout')
+    expect(readSSE).toHaveBeenCalledTimes(1)
+  })
+
+  it('resumes a retry after the previous terminal events', async () => {
+    readSSE.mockImplementation(async (_path: string, options: { lastEventId?: number; onEvent: (event: unknown) => void }) => {
+      expect(options.lastEventId).toBe(21)
+      options.onEvent({ id: 22, event: 'done', data: { message_id: 7, content: '完成' } })
+      return { lastEventId: 22 }
+    })
+    await chatApi.subscribeAssistantTaskStream(42, {}, undefined, 21)
+    expect(readSSE).toHaveBeenCalledTimes(1)
+  })
 })

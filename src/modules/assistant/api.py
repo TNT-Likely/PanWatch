@@ -429,6 +429,9 @@ async def retry_assistant_task(
     service: AssistantService = Depends(get_assistant_service),
 ) -> dict:
     try:
+        if assistant_task_runner.is_running(task_id):
+            snapshot = service.get_task_snapshot(task_id)
+            return {**snapshot, "can_retry": False, "retry_blocked_reason": "worker_stopping"}
         snapshot = service.retry_task(task_id)
         if snapshot["status"] == TaskStatus.QUEUED.value:
             assistant_task_runner.start_message(task_id, snapshot["conversation_id"])

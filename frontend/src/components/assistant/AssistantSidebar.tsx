@@ -21,7 +21,7 @@ export function AssistantSidebar({
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/50 bg-card/40 px-3 py-4 backdrop-blur-sm">
+    <aside className="flex h-full min-h-0 w-full flex-col border-r border-border/50 bg-card px-3 py-4">
       <button
         type="button"
         onClick={onCreate}

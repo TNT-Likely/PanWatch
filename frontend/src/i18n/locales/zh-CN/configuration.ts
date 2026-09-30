@@ -320,7 +320,7 @@ export const configuration = {
       permissionsDrawer: { loadFailed: '无法加载工具权限，请稍后重试。', saveFailed: '保存权限设置失败，请重试。', title: '小助手配置', description: '管理工具权限，以及上下文压缩使用的模型和预算。', loading: '正在加载工具权限…' },
       contextPanel: { sections: { system: '系统指令', summary: '结构化摘要', page_context: '页面上下文', tool_definitions: '工具定义', history: '历史消息', recent_messages: '最近消息' }, statuses: { not_needed: '本次无需压缩', compressed: '压缩完成', no_gain: '本次压缩无收益，已保留原上下文' }, modes: { balanced: '平衡压缩', preserve_details: '保留细节并压缩', handoff: '整理为交接摘要' }, measurement: { provider: '实际输入 Token', tokenizer: 'Tokenizer 输入 Token', estimate: '估算输入 Token' }, title: '上下文用量', description: '只影响下一次运行，不会删除对话消息。', close: '关闭上下文面板', measuring: '正在测量上下文…', needsCompression: '需要压缩', warning: '接近上限', normal: '正常', snapshot: '摘要 v{{version}}', goal: '目标：{{value}}', state: '状态：{{value}}', todo: '待办：{{value}}', savedTokens: '{{before}} → {{after}}，节省 {{saved}} Token（{{percent}}%）', compressing: '压缩中…', empty: '当前还没有可测量的会话。' },
       contextUsage: { states: { normal: '上下文正常', warning: '上下文偏大', needs_compression: '需要压缩' }, aria: '查看上下文用量', title: '{{state}}，估算输入 Token {{used}} / {{budget}}' },
-      trace: { extension: { started: '研究可用工具', exposure: '工具目录已准备：{{direct}} 个直达，{{loaded}} 个已加载', candidates: '筛选工具候选：{{count}} 个', completed: '工具研究完成：选出 {{count}} 个', searched: '工具搜索完成：加载 {{count}} 个', fallback: '工具研究回退，继续使用默认工具集', unknown: '扩展事件：{{event}}' }, tools: { get_portfolio: '持仓', get_stock_quote: '实时行情', find_research_candidates: '研究候选', get_kline_summary: 'K 线走势', get_stock_news: '近期新闻', search_stocks: '股票搜索', get_market_status: '市场状态', get_hot_stocks: '热门股票', get_hot_boards: '热门板块', get_board_stocks: '板块成分股', get_stock_fundamentals: '基本面', get_capital_flow: '资金流向', get_dragon_tiger: '龙虎榜', get_price_alerts: '价格提醒', create_price_alert: '创建价格提醒', update_price_alert: '修改价格提醒', delete_price_alert: '删除价格提醒', portfolio_diagnosis: '持仓诊断', tool_search: '可用工具' }, events: { contextCompressed: '上下文已压缩并准备', contextPrepared: '上下文已准备', step: '执行步骤 {{step}}', toolStart: '正在查询：{{name}}', toolDone: '数据已就绪：{{name}}', toolFailed: '查询失败：{{name}}', modelUsage: '模型用量：输入 {{input}}，输出 {{output}}{{extra}}', cache: '缓存 {{count}}', reasoning: '推理 {{count}}', approval: '等待用户审批', paused: '任务已暂停', done: '结果已生成', error: '任务失败', started: '任务已启动', title: '研究进度' }, developer: { title: '开发者详情' }, status: { done: '已完成', error: '已失败', paused: '等待继续', running: '执行中' }, toolCalls: '{{count}} 次工具调用' },
+      trace: { extension: { started: '研究可用工具', exposure: '工具目录已准备：{{direct}} 个直达，{{loaded}} 个已加载', candidates: '筛选工具候选：{{count}} 个', completed: '工具研究完成：选出 {{count}} 个', searched: '工具搜索完成：加载 {{count}} 个', fallback: '工具研究回退，继续使用默认工具集', unknown: '扩展事件：{{event}}' }, tools: { get_portfolio: '持仓', get_stock_quote: '实时行情', find_research_candidates: '研究候选', get_kline_summary: 'K 线走势', get_stock_news: '近期新闻', search_stocks: '股票搜索', get_market_status: '市场状态', get_hot_stocks: '热门股票', get_hot_boards: '热门板块', get_board_stocks: '板块成分股', get_stock_fundamentals: '基本面', get_capital_flow: '资金流向', get_dragon_tiger: '龙虎榜', get_price_alerts: '价格提醒', create_price_alert: '创建价格提醒', update_price_alert: '修改价格提醒', delete_price_alert: '删除价格提醒', portfolio_diagnosis: '持仓诊断', tool_search: '可用工具' }, events: { queued: '任务已排队', retrying: '正在重试任务', cancelled: '任务已停止', contextCompressed: '上下文已压缩并准备', contextPrepared: '上下文已准备', step: '执行步骤 {{step}}', toolStart: '正在查询：{{name}}', toolDone: '数据已就绪：{{name}}', toolFailed: '查询失败：{{name}}', modelUsage: '模型用量：输入 {{input}}，输出 {{output}}{{extra}}', cache: '缓存 {{count}}', reasoning: '推理 {{count}}', approval: '等待用户审批', paused: '任务已暂停', done: '结果已生成', error: '任务失败', started: '任务已启动', title: '研究进度' }, developer: { title: '开发者详情' }, status: { cancelled: '已停止', done: '已完成', error: '已失败', paused: '等待继续', running: '执行中' }, toolCalls: '{{count}} 次工具调用' },
     },
   },
   p5: {
@@ -336,12 +336,23 @@ export const configuration = {
     },
   },
   assistantPage: {
+    task: {
+      statuses: { pending: '准备提交', queued: '排队中', dispatched: '正在启动', running: '研究中', awaiting_approval: '等待审批', waiting_retry: '等待重试', waiting_callback: '等待结果', completed: '已完成', failed: '执行失败', cancelled: '已停止', expired: '已过期', dead_letter: '需要人工处理' },
+      stopping: '正在停止…', retrying: '正在重试…', checking: '正在检查状态…', disconnected: '连接中断，状态待确认',
+      step: '步骤 {{count}}', stop: '停止任务', retry: '重试任务', checkStatus: '重新连接', configure: '检查 AI 设置', permissions: '检查工具权限', context: '压缩上下文', revise: '修改问题', review: '查看已执行操作',
+      connectionHint: '任务仍可能在后台运行。重新连接后确认状态，请勿重复提交。',
+      stoppedHint: '后续步骤已停止；已经开始或完成的操作不会自动撤销。',
+      reviewHint: '此任务已调用过工具，无法自动重放。请先展开研究进度核对结果，再决定下一步。',
+      workerStoppingHint: '执行进程正在结束，请稍后重新连接，再重试。',
+      controlFailed: '未能确认操作结果，请重新连接检查任务状态。',
+    },
     tools: { get_portfolio: '正在查询持仓…', get_stock_quote: '正在查询行情…', get_kline_summary: '正在分析 K 线…', get_stock_news: '正在检索相关新闻…', create_price_alert: '正在创建价格提醒…', get_technical_analysis: '正在分析技术面…', get_stock_suggestions: '正在查询 AI 建议…', get_watchlist: '正在查询自选股…' },
     result: {
       facts: '事实依据', inferences: '分析判断', risks: '风险与不足', evidence: '{{count}} 条数据依据', nextActions: '下一步', observedAt: '获取于 {{time}}', dataAt: '数据截至 {{time}}', coverage: '覆盖 {{start}} 至 {{end}}', configureAlert: '设置提醒条件', targetPrice: '目标价格', above: '达到或高于', below: '跌至或低于', requestApproval: '提交审批', alertPrompt: '为 {{target}} 创建价格{{direction}} {{price}} 时的盘中提醒',
       freshness: { fresh: '较新', delayed: '有延迟', stale: '可能过期', unknown: '时间未知' },
     },
     errors: {
+      permission_denied: '当前助手权限不允许执行该操作，请检查工具权限后重试。',
       ai_quota_exhausted: 'AI 服务额度已用尽，请充值或切换可用模型后重试。',
       ai_rate_limited: 'AI 服务请求过于频繁，请稍后重试或切换模型。',
       ai_authentication_failed: 'AI 服务认证失败，请检查 API Key 是否正确且仍然有效。',

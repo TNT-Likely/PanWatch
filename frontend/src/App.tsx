@@ -142,12 +142,12 @@ function App() {
     <RequireAuth>
     <div
       className={isAssistantRoute
-        ? 'relative flex h-dvh flex-col overflow-hidden bg-background pb-16 md:pb-0'
+        ? 'relative flex h-dvh flex-col overflow-hidden bg-background'
         : 'min-h-screen pb-16 md:pb-0 relative overflow-x-clip bg-background'}
     >
       <AmbientBackground />
       {/* Desktop Floating Nav */}
-      <div className="sticky top-0 z-50 px-4 md:px-6 pt-3 md:pt-4 pb-2 hidden md:block">
+      <div className="sticky top-0 z-50 shrink-0 px-4 md:px-6 pt-3 md:pt-4 pb-2 hidden md:block">
         <header className="card px-4 md:px-5">
           <div className="h-14 flex items-center justify-between">
             {/* Logo */}
@@ -221,7 +221,7 @@ function App() {
       </div>
 
       {/* Mobile Top Bar */}
-      <div className="sticky top-0 z-50 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 md:hidden">
+      <div className="sticky top-0 z-50 shrink-0 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 md:hidden">
         <header className="card px-4">
           <div className="h-12 flex items-center justify-between">
             <NavLink to="/" className="flex items-center gap-2 group">
@@ -286,7 +286,7 @@ function App() {
       {/* Content */}
       <main
         className={`${isAssistantRoute
-          ? 'flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6'
+          ? 'flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-6'
           : 'pb-4 md:pb-6'} px-4 pt-4 md:px-6 md:pt-6 w-full`}
       >
         <AssistantOpenBridge />
