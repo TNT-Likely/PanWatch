@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Download, History, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatConversation } from '@panwatch/api'
 import { Popover, PopoverContent, PopoverTrigger } from '@panwatch/base-ui/components/ui/popover'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { AssistantContextExportDialog } from './AssistantContextExportDialog'
+import { AssistantExportHistoryDialog } from './AssistantExportHistoryDialog'
 
 interface Props {
   conversation: ChatConversation
@@ -17,6 +18,7 @@ export function AssistantConversationActions({ conversation, onRename, onDelete 
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(false)
@@ -30,6 +32,7 @@ export function AssistantConversationActions({ conversation, onRename, onDelete 
       <PopoverContent className="w-44 p-1" align="end" onCloseAutoFocus={event => { if (handingOff.current) event.preventDefault() }}>
         {onRename && <button type="button" onClick={() => { handingOff.current = true; setMenu(false); setTitle(conversation.title); setError(false); handoffTimer.current = setTimeout(() => setEditing(true), 0) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] hover:bg-accent"><Pencil className="h-3.5 w-3.5" />{tr('assistantPage.rename')}</button>}
         <button type="button" onClick={() => { handingOff.current = true; setMenu(false); handoffTimer.current = setTimeout(() => setExporting(true), 0) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] hover:bg-accent"><Download className="h-3.5 w-3.5" />{tr('assistantPage.exportContext.title')}</button>
+        <button type="button" onClick={() => { handingOff.current = true; setMenu(false); handoffTimer.current = setTimeout(() => setHistoryOpen(true), 0) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] hover:bg-accent"><History className="h-3.5 w-3.5" />{tr('assistantPage.exportHistory.title')}</button>
         <button type="button" onClick={() => { setMenu(false); onDelete(conversation.id) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] text-destructive hover:bg-accent"><Trash2 className="h-3.5 w-3.5" />{tr('assistantPage.deleteConversation')}</button>
       </PopoverContent>
     </Popover>
@@ -53,5 +56,6 @@ export function AssistantConversationActions({ conversation, onRename, onDelete 
       </DialogContent>
     </Dialog>
     {exporting && <AssistantContextExportDialog conversationId={conversation.id} onClose={() => setExporting(false)} />}
+    {historyOpen && <AssistantExportHistoryDialog conversationId={conversation.id} onClose={() => setHistoryOpen(false)} />}
   </>
 }

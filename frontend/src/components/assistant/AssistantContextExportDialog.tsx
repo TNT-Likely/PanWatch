@@ -21,7 +21,7 @@ function pause(signal: AbortSignal) {
   })
 }
 
-export function AssistantContextExportDialog({ conversationId, exportId, onClose }: Props) {
+export function AssistantContextExportContent({ conversationId, exportId }: Omit<Props, 'onClose'>) {
   const { t, i18n } = useTranslation('configuration')
   const tr = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const language = normalizeLocale(i18n.resolvedLanguage || i18n.language)
@@ -110,8 +110,7 @@ export function AssistantContextExportDialog({ conversationId, exportId, onClose
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  return <Dialog open onOpenChange={next => { if (!next) onClose() }}>
-    <DialogContent className="max-w-2xl">
+  return <>
       <DialogHeader>
         <DialogTitle>{tr('assistantPage.exportContext.title')}</DialogTitle>
         <DialogDescription>{tr('assistantPage.exportContext.description')}</DialogDescription>
@@ -123,6 +122,7 @@ export function AssistantContextExportDialog({ conversationId, exportId, onClose
       </>}
       {(error || jobError) && <div><p role="alert" className="mt-3 text-[13px] text-destructive">{error || jobError}</p><button type="button" disabled={loading} onClick={() => { void monitor(job?.status === 'failed') }} className="mt-4 rounded-lg border border-border px-3 py-2 text-[12px] disabled:opacity-50">{tr(job?.status === 'failed' ? 'assistantPage.exportContext.retry' : 'assistantPage.exportContext.refresh')}</button></div>}
       {result && <>
+        <p className="mb-3 text-[12px] text-muted-foreground">{tr('assistantPage.exportContext.snapshot', { date: new Date(result.exported_at).toLocaleString(language), count: result.message_count })}</p>
         {result.incomplete && <p className="mb-3 text-[12px] text-muted-foreground">{tr('assistantPage.exportContext.incomplete')}</p>}
         <textarea ref={textarea} readOnly value={result.content} aria-label={tr('assistantPage.exportContext.preview')} className="h-[min(45vh,24rem)] w-full resize-none rounded-xl border border-border bg-background p-3 font-mono text-[12px] leading-6 outline-none focus:border-primary" />
         <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -131,6 +131,11 @@ export function AssistantContextExportDialog({ conversationId, exportId, onClose
         </div>
         {copyState !== 'idle' && <p role="status" className="mt-2 text-[12px] text-muted-foreground">{tr(copyState === 'copied' ? 'assistantPage.exportContext.copied' : 'assistantPage.exportContext.copyFailed')}</p>}
       </>}
-    </DialogContent>
+  </>
+}
+
+export function AssistantContextExportDialog({ onClose, ...props }: Props) {
+  return <Dialog open onOpenChange={next => { if (!next) onClose() }}>
+    <DialogContent className="max-w-2xl"><AssistantContextExportContent {...props} /></DialogContent>
   </Dialog>
 }

@@ -85,15 +85,29 @@ export interface AssistantContextExport {
   incomplete: boolean
 }
 
-export interface AssistantContextExportJob {
+export interface AssistantContextExportJobInfo {
   id: number
   conversation_id: number
+  title: string
+  language: 'zh-CN' | 'en-US'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  message_count: number
   status: 'queued' | 'running' | 'completed' | 'failed'
   processed_chars: number
   total_chars: number
   completed_parts: number
   error_code: string | null
+}
+
+export interface AssistantContextExportJob extends AssistantContextExportJobInfo {
   result: AssistantContextExport | null
+}
+
+export interface AssistantContextExportHistory {
+  items: AssistantContextExportJobInfo[]
+  next_cursor: number | null
 }
 
 export interface AssistantApproval {
@@ -275,6 +289,13 @@ export interface AssistantConfig {
 export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
 
 export const chatApi = {
+  listContextExports: (options: { conversationId?: number; beforeId?: number; ids?: number[]; limit?: number } = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ limit: String(options.limit || 20) })
+    if (options.conversationId != null) query.set('conversation_id', String(options.conversationId))
+    if (options.beforeId != null) query.set('before_id', String(options.beforeId))
+    options.ids?.forEach(id => query.append('ids', String(id)))
+    return fetchAPI<AssistantContextExportHistory>(`/assistant/exports?${query}`, { signal })
+  },
   exportConversationContext: (conversationId: number, language: 'zh-CN' | 'en-US', signal?: AbortSignal) =>
     fetchAPI<AssistantContextExportJob>(`/assistant/conversations/${conversationId}/export`, {
       method: 'POST', body: JSON.stringify({ language }), signal,

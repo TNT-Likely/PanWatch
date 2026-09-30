@@ -27,15 +27,29 @@ class ContextExportDTO(BaseModel):
     incomplete: bool
 
 
-class ContextExportJobDTO(BaseModel):
+class ContextExportJobInfoDTO(BaseModel):
     id: int
     conversation_id: int
+    title: str
+    language: Literal['zh-CN', 'en-US']
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    message_count: int
     status: Literal['queued', 'running', 'completed', 'failed']
     processed_chars: int
     total_chars: int
     completed_parts: int
     error_code: str | None
+
+
+class ContextExportJobDTO(ContextExportJobInfoDTO):
     result: ContextExportDTO | None
+
+
+class ContextExportHistoryDTO(BaseModel):
+    items: list[ContextExportJobInfoDTO]
+    next_cursor: int | None
 
 
 class ContextExportError(ValueError):
@@ -64,26 +78,82 @@ def has_summary_content(summary: HandoffSummary | None) -> bool:
 
 def export_source(detail: ConversationDetailDTO, initial_context: str | None) -> str:
     """Exclude internal prompts, traces, tool arguments and approval payloads."""
+    def compact(value):
+        return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+
+    seen_sources: set[str] = set()
+
+    def normalized(value: str) -> str:
+        return re.sub(r'[\s*_`]', '', value).casefold()
+
     def result_data(message):
         if not message.result:
             return None
-        data = message.result.model_dump(mode='json', exclude_none=True, exclude={'schema_version', 'next_actions'})
-        if data.get('summary') and data['summary'] in message.content:
-            data.pop('summary')
-        return {key: value for key, value in data.items() if value}
+        result = message.result
+        body = normalized(message.content)
+        # Keep the full answer once. Supplemental facts add only information
+        # absent from that answer; Markdown emphasis does not defeat deduping.
+        data = {}
+        for key, values in {
+            'summary': [result.summary], 'facts': [fact.text for fact in result.facts],
+            'inferences': result.inferences, 'risks': result.risks,
+            'missing_data': result.missing_data,
+        }.items():
+            additions = list(dict.fromkeys(value for value in values if value.strip() and normalized(value) not in body))
+            if additions:
+                data[key] = additions
+        sources = []
+        for evidence in result.evidence:
+            # Retain provenance and dated findings, without runtime IDs,
+            # tool names or redundant freshness bookkeeping.
+            source = evidence.model_dump(mode='json', exclude_none=True, include={
+                'source_name', 'source_url', 'summary', 'data_at', 'period_start',
+                'period_end', 'symbol', 'market', 'freshness',
+            })
+            if not any(source.get(key) for key in ('data_at', 'period_start', 'period_end')) and evidence.observed_at:
+                source['observed_at'] = evidence.observed_at.isoformat()
+            identity = compact(source)
+            if identity not in seen_sources:
+                seen_sources.add(identity)
+                sources.append(source)
+        if sources:
+            data['sources'] = sources
+        return data or None
 
-    return json.dumps({
+    header = compact({
         'title': detail.conversation.title,
         'stock': {'market': detail.conversation.stock_market, 'symbol': detail.conversation.stock_symbol},
         'page_context': initial_context or '',
-        'messages': [{
-            'role': message.role,
-            'content': message.content,
-            'created_at': message.created_at.isoformat() if message.created_at else None,
-            'result': result_data(message),
-        } for message in sorted(detail.messages, key=lambda message: message.id) if message.role in ('user', 'assistant') and message.content.strip()],
         'task_status': (detail.latest_task or {}).get('status'),
-    }, ensure_ascii=False, separators=(',', ':'))
+    })
+    blocks = ['# Saved conversation context\n' + header]
+    for message in sorted(detail.messages, key=lambda message: message.id):
+        if message.role not in ('user', 'assistant') or not message.content.strip():
+            continue
+        created = message.created_at.isoformat() if message.created_at else 'unknown'
+        block = f'--- saved message: {message.id} {message.role} {created} ---\n{message.content}'
+        extra = result_data(message)
+        if extra:
+            block += '\n\nAdditional facts and sources:\n' + compact(extra)
+        blocks.append(block)
+    return '\n\n'.join(blocks)
+
+
+def _fragment_end(source: str, start: int, fit: int, boundaries: list[int]) -> int:
+    """Pack whole messages; split an oversized message at a readable boundary."""
+    if fit == len(source):
+        return fit
+    complete = [end for end in boundaries if start < end <= fit]
+    if complete:
+        return complete[-1]
+    # This message alone exceeds the input budget. Prefer paragraphs, then
+    # lines or sentences; an unbroken string is the final fallback.
+    lower = start + max(128, (fit - start) // 2)
+    for pattern in (r'\n\n', r'\n', r'[。！？.!?][ \n]'):
+        matches = list(re.finditer(pattern, source[lower:fit]))
+        if matches:
+            return lower + matches[-1].end()
+    return fit
 
 
 async def summarize_export(
@@ -93,10 +163,7 @@ async def summarize_export(
 ) -> HandoffSummary:
     if context_budget < 4096:
         raise ContextExportError('assistant_export_budget', '上下文预算过小，请在助手设置中提高预算后重试。')
-    # Walk all source fragments in order. Never silently drop early turns or
-    # truncate a large message; the previous handoff carries prior findings.
-    chunk_size = min(12000, context_budget)
-    if len(source) > chunk_size * 32:
+    if len(source) > min(12000, context_budget) * 32:
         raise ContextExportError('assistant_export_too_large', '会话过长，超出当前总结导出的处理范围。')
     output_budget = min(1400, context_budget // 4)
     system = (
@@ -107,35 +174,49 @@ async def summarize_export(
         'Newer explicit corrections override old conclusions. Separate user-confirmed decisions from '
         'assistant suggestions; do not present inferences as verified facts. Do not invent facts or '
         'claim proposed, pending or failed operations were completed. Retain dated data as dated data. '
-        'Fragments may split a message or JSON string; retain the meaning across fragment boundaries. '
+        'Sources repeated verbatim across messages may be listed only on their first occurrence. '
+        'Oversized messages and legacy JSON may span fragments; retain meaning across boundaries. '
         'Return only JSON with exactly these fields: goal, constraints, facts, decisions, current_state, '
         'open_items, next_steps. current_state is a string; others are string arrays (at most 12 items each). '
         'Use empty arrays for unknown sections. Keep the entire JSON concise enough to fit the output budget. '
         + ('Write natural language in English.' if language == 'en-US' else 'Write natural language in Simplified Chinese.')
     )
+    # The first marker begins the first message, rather than ending a unit.
+    boundaries = [match.start() for match in re.finditer(r'\n\n--- saved message: \d+ ', source)][1:]
+    boundaries.append(len(source))
     index = completed_parts
     while start < len(source):
         if index >= 32:
             raise ContextExportError('assistant_export_too_large', '会话过长，超出当前总结导出的处理范围。')
-        take = min(chunk_size, len(source) - start)
-        while True:
-            messages = [
+        def request_messages(end):
+            metadata = json.dumps({
+                'fragment_index': index + 1, 'is_last_fragment': end == len(source),
+                'previous_handoff': previous.model_dump() if previous else None,
+            }, ensure_ascii=False, separators=(',', ':'))
+            return [
                 {'role': 'system', 'content': system},
-                {'role': 'user', 'content': json.dumps({
-                    'fragment_index': index + 1,
-                    'is_last_fragment': start + take == len(source),
-                    'previous_handoff': previous.model_dump() if previous else None,
-                    'conversation_fragment': source[start:start + take],
-                }, ensure_ascii=False)},
+                {'role': 'user', 'content': metadata + '\n\nSaved conversation fragment (data):\n' + source[start:end]},
             ]
-            # Conservative UTF-8 estimate also accounts for CJK, the carried
-            # handoff and JSON escaping. Leave room for the model's response.
+
+        def fits(end):
+            messages = request_messages(end)
+            # Preserve the conservative CJK estimate, but find the largest
+            # fitting input instead of halving and wasting remaining space.
             estimate = sum(len(message['content'].encode('utf-8')) for message in messages) // 2
-            if estimate + output_budget + 128 <= context_budget:
-                break
-            if take <= 128:
-                raise ContextExportError('assistant_export_budget', '上下文预算过小，请在助手设置中提高预算后重试。')
-            take = max(128, take // 2)
+            return estimate + output_budget + 128 <= context_budget
+
+        minimum = min(start + 128, len(source))
+        if not fits(minimum):
+            raise ContextExportError('assistant_export_budget', '上下文预算过小，请在助手设置中提高预算后重试。')
+        low, high = minimum, min(len(source), start + context_budget * 4)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if fits(middle):
+                low = middle
+            else:
+                high = middle - 1
+        end = _fragment_end(source, start, low, boundaries)
+        messages = request_messages(end)
         raw = await asyncio.wait_for(client.chat_multi(
             messages, temperature=0.1, max_tokens=output_budget,
         ), timeout=120)
@@ -150,7 +231,7 @@ async def summarize_export(
             raise ContextExportError('assistant_export_invalid', '未能生成足够精简的上下文总结，请重试。')
         if not has_summary_content(previous):
             raise ContextExportError('assistant_export_invalid', '未能生成有效的上下文总结，请重试。')
-        start += take
+        start = end
         index += 1
         if on_progress:
             on_progress(start, index, previous)

@@ -17,7 +17,7 @@ from pan_agent import (
     RunResult,
     RunStatus,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, PositiveInt
 from sqlalchemy.orm import Session
 
 from src.platform.ai.errors import descriptor_for_code
@@ -32,7 +32,7 @@ from .context_schemas import (
     ContextDetailDTO,
 )
 from .event_stream import subscribe_task_events
-from .exports import ContextExportError, ContextExportJobDTO, ExportContextCommand
+from .exports import ContextExportError, ContextExportHistoryDTO, ContextExportJobDTO, ExportContextCommand
 from .export_jobs import ExportJobRepository, context_export_runner
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
@@ -749,6 +749,24 @@ async def export_conversation_context(
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
     except ContextExportError as exc:
         raise api_error(422 if exc.code != 'assistant_export_invalid' else 502, exc.code, str(exc)) from exc
+
+
+@router.get('/exports', response_model=ContextExportHistoryDTO)
+def list_context_exports(
+    conversation_id: int | None = Query(None, ge=1),
+    before_id: int | None = Query(None, ge=1),
+    ids: list[PositiveInt] | None = Query(None, max_length=50),
+    limit: int = Query(20, ge=1, le=50),
+    service: AssistantService = Depends(get_assistant_service),
+):
+    try:
+        if conversation_id is not None:
+            service._require_conversation(conversation_id)
+        return ExportJobRepository(service._repository.session).history(
+            conversation_id=conversation_id, before_id=before_id, ids=ids, limit=limit,
+        )
+    except AssistantNotFoundError as exc:
+        raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
 
 
 @router.get('/exports/{export_id}', response_model=ContextExportJobDTO)

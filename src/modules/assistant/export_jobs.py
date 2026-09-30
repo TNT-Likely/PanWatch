@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert
 
 from src.modules.notifications.service import NotificationService
@@ -17,7 +18,8 @@ from src.platform.persistence.models import AssistantContextExport, ChatConversa
 from src.platform.tasking.contracts import TaskStatus
 
 from .exports import (
-    ContextExportError, ContextExportJobDTO, HandoffSummary,
+    ContextExportError, ContextExportHistoryDTO, ContextExportJobDTO,
+    ContextExportJobInfoDTO, HandoffSummary,
     export_source, render_export, summarize_export,
 )
 from .repository import AssistantRepository
@@ -47,12 +49,44 @@ class ExportJobRepository:
         return job
 
     @staticmethod
-    def dto(job):
-        return ContextExportJobDTO(
+    def info(job, total_chars: int):
+        def aware(value):
+            return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
+        snapshot = job.snapshot or {}
+        return ContextExportJobInfoDTO(
             id=job.id, conversation_id=job.conversation_id, status=job.status,
-            processed_chars=job.processed_chars, total_chars=len(job.source),
+            title=(snapshot.get('conversation') or {}).get('title') or '',
+            language=job.language, created_at=aware(job.created_at),
+            started_at=aware(job.started_at), finished_at=aware(job.finished_at),
+            message_count=len(snapshot.get('messages') or []),
+            processed_chars=job.processed_chars, total_chars=total_chars,
             completed_parts=job.completed_parts, error_code=job.error_code,
-            result=job.result,
+        )
+
+    @classmethod
+    def dto(cls, job):
+        return ContextExportJobDTO(**cls.info(job, len(job.source)).model_dump(), result=job.result)
+
+    def history(self, *, conversation_id: int | None = None, before_id: int | None = None,
+                ids: list[int] | None = None, limit: int = 20):
+        model = AssistantContextExport
+        # History never loads the saved transcript or Markdown bodies.
+        query = self.db.query(
+            model.id, model.conversation_id, model.language, model.status, model.snapshot,
+            model.processed_chars, model.completed_parts, model.error_code,
+            model.created_at, model.started_at, model.finished_at,
+            func.length(model.source).label('total_chars'),
+        ).join(ChatConversation, ChatConversation.id == model.conversation_id)
+        if conversation_id is not None:
+            query = query.filter(model.conversation_id == conversation_id)
+        if before_id is not None:
+            query = query.filter(model.id < before_id)
+        if ids is not None:
+            query = query.filter(model.id.in_(ids))
+        rows = query.order_by(model.id.desc()).limit(limit + 1).all()
+        return ContextExportHistoryDTO(
+            items=[self.info(row, row.total_chars) for row in rows[:limit]],
+            next_cursor=rows[limit - 1].id if len(rows) > limit else None,
         )
 
     def create(self, conversation_id: int, language: str):
@@ -64,7 +98,7 @@ class ExportJobRepository:
             raise ContextExportError('assistant_export_empty', '会话暂无可总结的内容。')
         budget = int(service._context_config_values()['max_tokens'])
         source = export_source(detail, conversation.initial_context)
-        fingerprint = hashlib.sha256(f'v2:{language}:{source}'.encode()).hexdigest()
+        fingerprint = hashlib.sha256(f'v3:{language}:{source}'.encode()).hexdigest()
         # Rendering metadata needs IDs and roles, not another copy of messages.
         snapshot = detail.model_copy(update={
             'latest_task': {'status': (detail.latest_task or {}).get('status')},

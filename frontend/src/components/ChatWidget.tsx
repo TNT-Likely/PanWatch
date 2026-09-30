@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, X, XCircle } from 'lucide-react'
+import { ArrowDown, ChevronLeft, History, MessageCircle, Menu, Send, Settings2, X, XCircle } from 'lucide-react'
 import {
   chatApi,
   type AssistantContextDetail,
@@ -27,6 +27,7 @@ import { AssistantConversationActions } from '@/components/assistant/AssistantCo
 import { AssistantTaskIndicator } from '@/components/assistant/AssistantTaskIndicator'
 import { useActiveAssistantTasks } from '@/components/notifications/NotificationProvider'
 import { ASSISTANT_ACTIVITY_CHANGED } from '@/lib/assistant-activity'
+import { AssistantExportHistoryDialog } from '@/components/assistant/AssistantExportHistoryDialog'
 
 interface StockContext {
   symbol: string
@@ -93,6 +94,7 @@ export default function ChatWidget({
   } | null>(null)
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [exportsOpen, setExportsOpen] = useState(false)
   const [contextDetail, setContextDetail] = useState<AssistantContextDetail | null>(null)
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
   const [contextLoading, setContextLoading] = useState(false)
@@ -585,6 +587,7 @@ export default function ChatWidget({
   return (
     <>
       {embedded && <AssistantPermissionsDrawer open={permissionsOpen} onOpenChange={setPermissionsOpen} />}
+      {exportsOpen && <AssistantExportHistoryDialog onClose={() => setExportsOpen(false)} />}
       <div
         data-testid={embedded ? 'assistant-shell' : undefined}
         className={embedded
@@ -670,6 +673,16 @@ export default function ChatWidget({
           )}
         </div>
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setExportsOpen(true)}
+            className="flex items-center gap-1.5 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            title={assistantT('assistantPage.exportHistory.title')}
+            aria-label={assistantT('assistantPage.exportHistory.title')}
+          >
+            <History className="h-4 w-4" />
+            <span className="hidden text-[12px] lg:inline">{assistantT('assistantPage.exportHistory.title')}</span>
+          </button>
           {embedded && (
             <button
               type="button"
