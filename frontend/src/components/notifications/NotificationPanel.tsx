@@ -83,7 +83,7 @@ export default function NotificationPanel({ monitor, onClose, onOpen }: Props) {
           {!item.available && <p className="mt-1 text-[12px] text-muted-foreground">{tr('sourceGone')}</p>}
           {group(item).length > 1 && <button className="mt-2 text-[11px] text-primary" onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(item.group_key)) next.delete(item.group_key); else next.add(item.group_key); return next })}>{tr(expanded.has(item.group_key) ? 'collapseFailures' : 'repeatedFailures', { count: group(item).length })}</button>}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button className={button} disabled={!item.available || opening !== null} onClick={async () => { setOpening(item.id); try { await onOpen(item) } finally { setOpening(null) } }}>{tr(item.action_required ? 'review' : item.source === 'agent' ? 'viewReport' : item.source === 'market' ? 'viewHit' : 'viewConversation')}</button>
+            <button className={button} disabled={!item.available || opening !== null} onClick={async () => { setOpening(item.id); try { await onOpen(item) } finally { setOpening(null) } }}>{tr(item.action_required ? 'review' : item.actions.some(action => action.kind === 'assistant_export') ? 'viewExport' : item.source === 'agent' ? 'viewReport' : item.source === 'market' ? 'viewHit' : 'viewConversation')}</button>
             {!item.read_at && <button className={button} disabled={monitor.changing} onClick={() => void mutate(item)}>{tr('read')}</button>}
             <button className={button} disabled={monitor.changing || item.action_required} onClick={() => void mutate(item, !item.archived_at)}>{tr(item.archived_at ? 'restore' : 'archive')}</button>
           </div>

@@ -7,6 +7,7 @@ import json
 import re
 from datetime import datetime
 from typing import Literal
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,17 @@ class ContextExportDTO(BaseModel):
     incomplete: bool
 
 
+class ContextExportJobDTO(BaseModel):
+    id: int
+    conversation_id: int
+    status: Literal['queued', 'running', 'completed', 'failed']
+    processed_chars: int
+    total_chars: int
+    completed_parts: int
+    error_code: str | None
+    result: ContextExportDTO | None
+
+
 class ContextExportError(ValueError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -42,8 +54,24 @@ class HandoffSummary(BaseModel):
     next_steps: list[str] = Field(max_length=16)
 
 
+def has_summary_content(summary: HandoffSummary | None) -> bool:
+    return bool(summary and any(
+        value.strip()
+        for field in summary.model_dump().values()
+        for value in (field if isinstance(field, list) else [field])
+    ))
+
+
 def export_source(detail: ConversationDetailDTO, initial_context: str | None) -> str:
     """Exclude internal prompts, traces, tool arguments and approval payloads."""
+    def result_data(message):
+        if not message.result:
+            return None
+        data = message.result.model_dump(mode='json', exclude_none=True, exclude={'schema_version', 'next_actions'})
+        if data.get('summary') and data['summary'] in message.content:
+            data.pop('summary')
+        return {key: value for key, value in data.items() if value}
+
     return json.dumps({
         'title': detail.conversation.title,
         'stock': {'market': detail.conversation.stock_market, 'symbol': detail.conversation.stock_symbol},
@@ -52,18 +80,22 @@ def export_source(detail: ConversationDetailDTO, initial_context: str | None) ->
             'role': message.role,
             'content': message.content,
             'created_at': message.created_at.isoformat() if message.created_at else None,
-            'result': message.result.model_dump(mode='json', exclude={'next_actions'}) if message.result else None,
+            'result': result_data(message),
         } for message in sorted(detail.messages, key=lambda message: message.id) if message.role in ('user', 'assistant') and message.content.strip()],
         'task_status': (detail.latest_task or {}).get('status'),
-    }, ensure_ascii=False)
+    }, ensure_ascii=False, separators=(',', ':'))
 
 
-async def summarize_export(client, source: str, language: str, context_budget: int) -> HandoffSummary:
+async def summarize_export(
+    client, source: str, language: str, context_budget: int, *,
+    start: int = 0, previous: HandoffSummary | None = None, completed_parts: int = 0,
+    on_progress: Callable[[int, int, HandoffSummary], None] | None = None,
+) -> HandoffSummary:
     if context_budget < 4096:
         raise ContextExportError('assistant_export_budget', '上下文预算过小，请在助手设置中提高预算后重试。')
     # Walk all source fragments in order. Never silently drop early turns or
     # truncate a large message; the previous handoff carries prior findings.
-    chunk_size = min(4000, context_budget // 3)
+    chunk_size = min(12000, context_budget)
     if len(source) > chunk_size * 32:
         raise ContextExportError('assistant_export_too_large', '会话过长，超出当前总结导出的处理范围。')
     output_budget = min(1400, context_budget // 4)
@@ -81,9 +113,7 @@ async def summarize_export(client, source: str, language: str, context_budget: i
         'Use empty arrays for unknown sections. Keep the entire JSON concise enough to fit the output budget. '
         + ('Write natural language in English.' if language == 'en-US' else 'Write natural language in Simplified Chinese.')
     )
-    previous = None
-    start = 0
-    index = 0
+    index = completed_parts
     while start < len(source):
         if index >= 32:
             raise ContextExportError('assistant_export_too_large', '会话过长，超出当前总结导出的处理范围。')
@@ -108,7 +138,7 @@ async def summarize_export(client, source: str, language: str, context_budget: i
             take = max(128, take // 2)
         raw = await asyncio.wait_for(client.chat_multi(
             messages, temperature=0.1, max_tokens=output_budget,
-        ), timeout=30)
+        ), timeout=120)
         text = str(raw).strip()
         if text.startswith('```') and text.endswith('```'):
             text = '\n'.join(text.splitlines()[1:-1]).strip()
@@ -118,9 +148,13 @@ async def summarize_export(client, source: str, language: str, context_budget: i
             raise ContextExportError('assistant_export_invalid', '未能生成有效的上下文总结，请重试。') from exc
         if len(previous.model_dump_json()) > 8000:
             raise ContextExportError('assistant_export_invalid', '未能生成足够精简的上下文总结，请重试。')
+        if not has_summary_content(previous):
+            raise ContextExportError('assistant_export_invalid', '未能生成有效的上下文总结，请重试。')
         start += take
         index += 1
-    if previous is None or not any(value.strip() for field in previous.model_dump().values() for value in (field if isinstance(field, list) else [field])):
+        if on_progress:
+            on_progress(start, index, previous)
+    if not has_summary_content(previous):
         raise ContextExportError('assistant_export_invalid', '未能生成有效的上下文总结，请重试。')
     return previous
 
@@ -133,7 +167,7 @@ def render_export(detail: ConversationDetailDTO, summary: HandoffSummary, langua
     incomplete = bool(status and status not in ('completed', 'failed', 'cancelled', 'expired', 'dead_letter'))
     heading = 'Conversation context' if english else '会话上下文总结'
     separator = ': ' if english else '：'
-    lines = [f'# {heading}{separator}{title}', '', f"- {'Exported at' if english else '导出时间'}: {exported_at.isoformat()}", f"- {'Saved messages covered' if english else '已保存消息数'}: {len(visible)}"]
+    lines = [f'# {heading}{separator}{title}', '', f"- {'Snapshot captured at' if english else '快照时间'}: {exported_at.isoformat()}", f"- {'Saved messages covered' if english else '已保存消息数'}: {len(visible)}"]
     if detail.conversation.stock_symbol:
         lines.append(f"- {'Stock' if english else '关联标的'}: {detail.conversation.stock_market or ''}:{detail.conversation.stock_symbol}")
     if incomplete:

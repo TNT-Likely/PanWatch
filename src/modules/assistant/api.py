@@ -6,9 +6,8 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from pan_agent import (
     EventType,
@@ -24,7 +23,7 @@ from sqlalchemy.orm import Session
 from src.platform.ai.errors import descriptor_for_code
 from src.platform.persistence.database import get_db
 from src.platform.tasking.contracts import TaskStatus
-from src.web.errors import ai_api_error, api_error
+from src.web.errors import api_error
 
 from .context_schemas import (
     AssistantConfigDTO,
@@ -33,7 +32,8 @@ from .context_schemas import (
     ContextDetailDTO,
 )
 from .event_stream import subscribe_task_events
-from .exports import ContextExportDTO, ContextExportError, ExportContextCommand
+from .exports import ContextExportError, ContextExportJobDTO, ExportContextCommand
+from .export_jobs import ExportJobRepository, context_export_runner
 from .prompt import build_assistant_messages
 from .repository import AssistantRepository
 from .schemas import (
@@ -732,36 +732,49 @@ def rename_conversation(
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
 
 
-@router.post('/conversations/{conversation_id}/export', response_model=ContextExportDTO)
+@router.post('/conversations/{conversation_id}/export', response_model=ContextExportJobDTO, status_code=202)
 async def export_conversation_context(
     conversation_id: int,
     body: ExportContextCommand,
-    request: Request,
     service: AssistantService = Depends(get_assistant_service),
-) -> ContextExportDTO:
-    operation = asyncio.create_task(service.export_conversation_context(conversation_id, body.language))
+) -> ContextExportJobDTO:
     try:
-        async with asyncio.timeout(75):
-            while not operation.done():
-                if await request.is_disconnected():
-                    raise api_error(499, 'assistant_export_cancelled', '已取消上下文导出。')
-                await asyncio.wait({operation}, timeout=0.5)
-            return operation.result()
+        repository = ExportJobRepository(service._repository.session)
+        job = repository.create(conversation_id, body.language)
+        snapshot = repository.dto(job)
+        if job.status == 'queued':
+            context_export_runner.start(job.id)
+        return snapshot
     except AssistantNotFoundError as exc:
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
     except ContextExportError as exc:
         raise api_error(422 if exc.code != 'assistant_export_invalid' else 502, exc.code, str(exc)) from exc
-    except TimeoutError as exc:
-        raise api_error(504, 'assistant_export_timeout', '上下文总结生成超时，请重试。') from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise ai_api_error(exc) from exc
-    finally:
-        if not operation.done():
-            operation.cancel()
-        with suppress(asyncio.CancelledError, Exception):
-            await operation
+
+
+@router.get('/exports/{export_id}', response_model=ContextExportJobDTO)
+async def get_context_export(export_id: int, service: AssistantService = Depends(get_assistant_service)):
+    try:
+        repository = ExportJobRepository(service._repository.session)
+        job = repository.get(export_id)
+        snapshot = repository.dto(job)
+        if job.status == 'queued':
+            context_export_runner.start(job.id)
+        return snapshot
+    except LookupError as exc:
+        raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
+
+
+@router.post('/exports/{export_id}/retry', response_model=ContextExportJobDTO, status_code=202)
+async def retry_context_export(export_id: int, service: AssistantService = Depends(get_assistant_service)):
+    try:
+        repository = ExportJobRepository(service._repository.session)
+        job = repository.retry(export_id)
+        snapshot = repository.dto(job)
+        if job.status == 'queued':
+            context_export_runner.start(job.id)
+        return snapshot
+    except LookupError as exc:
+        raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
 
 
 @router.delete("/conversations/{conversation_id}")

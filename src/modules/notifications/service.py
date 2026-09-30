@@ -10,7 +10,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.models import (
-    AgentRun, AssistantTaskRun, ChatConversation, NotificationEvent, NotificationReceipt,
+    AgentRun, AssistantContextExport, AssistantTaskRun, ChatConversation, NotificationEvent, NotificationReceipt,
     PriceAlertHit,
 )
 
@@ -100,7 +100,7 @@ class NotificationService:
 
     def available_ids(self, rows):
         available = set()
-        for kind, model in [('assistant_task', AssistantTaskRun), ('agent_run', AgentRun), ('alert_hit', PriceAlertHit)]:
+        for kind, model in [('assistant_task', AssistantTaskRun), ('assistant_export', AssistantContextExport), ('agent_run', AgentRun), ('alert_hit', PriceAlertHit)]:
             ids = [int(e.subject_id) for e, _ in rows if e.subject_kind == kind]
             existing = {str(row[0]) for row in self.db.query(model.id).filter(model.id.in_(ids))} if ids else set()
             available.update(e.id for e, _ in rows if e.subject_kind == kind and e.subject_id in existing)
@@ -180,6 +180,9 @@ class NotificationService:
         event, _ = row
         if event.subject_kind == 'assistant_task':
             return dict(kind='assistant_conversation', conversation_id=event.actions[0]['conversation_id'])
+        if event.subject_kind == 'assistant_export':
+            job = self.db.get(AssistantContextExport, int(event.subject_id))
+            return dict(kind='assistant_export', export_id=job.id, conversation_id=job.conversation_id)
         if event.subject_kind == 'agent_run':
             run = self.db.get(AgentRun, int(event.subject_id))
             return dict(kind='agent_run', id=run.id, agent_name=run.agent_name, status=run.status, result=run.result,

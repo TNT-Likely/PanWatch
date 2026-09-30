@@ -1,65 +1,96 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Copy, Download, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { chatApi, type AssistantContextExport } from '@panwatch/api'
+import { chatApi, type AssistantContextExportJob } from '@panwatch/api'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { normalizeLocale } from '@/i18n'
+import { NOTIFICATIONS_CHANGED } from '@/lib/notifications'
 
 interface Props {
   conversationId: number
+  exportId?: number
   onClose: () => void
 }
 
-export function AssistantContextExportDialog({ conversationId, onClose }: Props) {
+function pause(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')) }
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, 2000)
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) abort()
+  })
+}
+
+export function AssistantContextExportDialog({ conversationId, exportId, onClose }: Props) {
   const { t, i18n } = useTranslation('configuration')
-  const tr = t as unknown as (key: string) => string
+  const tr = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const language = normalizeLocale(i18n.resolvedLanguage || i18n.language)
-  const [result, setResult] = useState<AssistantContextExport | null>(null)
+  const [job, setJob] = useState<AssistantContextExportJob | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const request = useRef<AbortController>()
-  const deadline = useRef<ReturnType<typeof setTimeout>>()
+  const jobId = useRef<number | undefined>(exportId)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const mounted = useRef(false)
 
-  const generate = useCallback(async () => {
+  const monitor = useCallback(async (retry = false) => {
     request.current?.abort()
-    clearTimeout(deadline.current)
     const controller = new AbortController()
     request.current = controller
-    setLoading(true); setError(''); setResult(null); setCopyState('idle')
-    deadline.current = setTimeout(() => {
-      if (request.current !== controller) return
-      setError(tr('assistantPage.exportContext.timeout'))
-      setLoading(false)
-      controller.abort()
-    }, 90000)
+    setLoading(true); setError(''); setCopyState('idle')
+    const fetchJob = async (initial: boolean) => {
+      // Only submission and status reads are bounded by an HTTP timeout.
+      const deadline = setTimeout(() => controller.abort(), 20000)
+      try {
+        if (initial && retry && jobId.current) return await chatApi.retryContextExport(jobId.current, controller.signal)
+        if (jobId.current) return await chatApi.getContextExport(jobId.current, controller.signal)
+        return await chatApi.exportConversationContext(conversationId, language, controller.signal)
+      } finally { clearTimeout(deadline) }
+    }
     try {
-      const exported = await chatApi.exportConversationContext(conversationId, language, controller.signal)
-      if (request.current === controller && !controller.signal.aborted) setResult(exported)
+      let next = await fetchJob(true)
+      while (request.current === controller && !controller.signal.aborted) {
+        jobId.current = next.id
+        setJob(next); setLoading(false)
+        if (next.status === 'completed' || next.status === 'failed') {
+          window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED))
+          break
+        }
+        await pause(controller.signal)
+        next = await fetchJob(false)
+      }
     } catch (cause) {
-      if (request.current === controller && !controller.signal.aborted) {
-        setError(cause instanceof Error ? cause.message : tr('assistantPage.exportContext.failed'))
+      if (request.current === controller) {
+        setError(controller.signal.aborted ? tr('assistantPage.exportContext.connectionHint') :
+          cause instanceof Error ? cause.message : tr('assistantPage.exportContext.connectionHint'))
       }
     } finally {
-      if (request.current === controller) { clearTimeout(deadline.current); setLoading(false) }
+      if (request.current === controller) setLoading(false)
     }
   }, [conversationId, language, tr])
 
   useEffect(() => {
     mounted.current = true
-    // Deferral avoids duplicate model requests during StrictMode setup/cleanup.
-    const start = setTimeout(() => { void generate() }, 0)
+    jobId.current = exportId
+    setJob(null)
+    // Deferral avoids duplicate submissions during StrictMode setup/cleanup.
+    const start = setTimeout(() => { void monitor() }, 0)
     return () => {
       mounted.current = false
-      clearTimeout(start); clearTimeout(deadline.current)
+      clearTimeout(start)
       const current = request.current
       request.current = undefined
+      // Leaving stops polling; the durable server job continues.
       current?.abort()
     }
-  }, [generate])
+  }, [monitor, exportId])
 
+  const result = job?.result
+  const pending = job?.status === 'queued' || job?.status === 'running'
+  const jobError = job?.status === 'failed' ? tr(`assistantPage.exportContext.errors.${job.error_code}`, {
+    defaultValue: tr(`assistantPage.errors.${job.error_code}`, { defaultValue: tr('assistantPage.exportContext.failed') }),
+  }) : ''
   const copy = async () => {
     if (!result) return
     try {
@@ -85,8 +116,12 @@ export function AssistantContextExportDialog({ conversationId, onClose }: Props)
         <DialogTitle>{tr('assistantPage.exportContext.title')}</DialogTitle>
         <DialogDescription>{tr('assistantPage.exportContext.description')}</DialogDescription>
       </DialogHeader>
-      {loading && <div role="status" className="flex items-center gap-2 py-8 text-[13px] text-muted-foreground"><Loader2 aria-hidden className="h-4 w-4 animate-spin motion-reduce:animate-none" />{tr('assistantPage.exportContext.generating')}</div>}
-      {error && <div><p role="alert" className="text-[13px] text-destructive">{error}</p><button type="button" onClick={() => { void generate() }} className="mt-4 rounded-lg border border-border px-3 py-2 text-[12px]">{tr('assistantPage.exportContext.retry')}</button></div>}
+      {(loading || (pending && !error)) && <div role="status" className="flex items-center gap-2 py-4 text-[13px] text-muted-foreground"><Loader2 aria-hidden className="h-4 w-4 animate-spin motion-reduce:animate-none" />{tr(job?.status === 'queued' ? 'assistantPage.exportContext.queued' : 'assistantPage.exportContext.generating')}</div>}
+      {pending && <>
+        <p className="text-[12px] text-muted-foreground">{tr('assistantPage.exportContext.backgroundHint')}</p>
+        {job && job.completed_parts > 0 && <p className="mt-2 text-[12px] text-muted-foreground">{tr('assistantPage.exportContext.progress', { count: job.completed_parts, percent: Math.min(99, Math.floor(job.processed_chars / Math.max(1, job.total_chars) * 100)) })}</p>}
+      </>}
+      {(error || jobError) && <div><p role="alert" className="mt-3 text-[13px] text-destructive">{error || jobError}</p><button type="button" disabled={loading} onClick={() => { void monitor(job?.status === 'failed') }} className="mt-4 rounded-lg border border-border px-3 py-2 text-[12px] disabled:opacity-50">{tr(job?.status === 'failed' ? 'assistantPage.exportContext.retry' : 'assistantPage.exportContext.refresh')}</button></div>}
       {result && <>
         {result.incomplete && <p className="mb-3 text-[12px] text-muted-foreground">{tr('assistantPage.exportContext.incomplete')}</p>}
         <textarea ref={textarea} readOnly value={result.content} aria-label={tr('assistantPage.exportContext.preview')} className="h-[min(45vh,24rem)] w-full resize-none rounded-xl border border-border bg-background p-3 font-mono text-[12px] leading-6 outline-none focus:border-primary" />

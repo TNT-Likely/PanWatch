@@ -14,6 +14,7 @@ import NotificationInbox from './NotificationInbox'
 const NotificationPanel = lazy(() => import('./NotificationPanel'))
 const SourceDialog = lazy(() => import('./NotificationSourceDialog'))
 const TaskPanel = lazy(() => import('@/components/assistant/AssistantActivityPanel'))
+const ExportDialog = lazy(() => import('@/components/assistant/AssistantContextExportDialog').then(module => ({ default: module.AssistantContextExportDialog })))
 const Context = createContext({ unread: 0, pending: 0, active: 0, tasks: [] as AssistantActivityTask[], disconnected: false,
   monitor: null as ReturnType<typeof useNotifications> | null, open: () => {}, openTasks: () => {}, openItem: async (_item: NotificationItem) => {} })
 export function useActiveAssistantTasks() { return useContext(Context).tasks }
@@ -100,21 +101,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [mutate, navigate, toast, tr, monitor.refresh])
   useEffect(() => {
     if (!focused) return
-    const visible = unread.filter(item => item.source === 'assistant' && item.actions.some(action => action.conversation_id === currentConversation))
+    const visible = unread.filter(item => item.source === 'assistant' && item.actions.some(action => action.kind === 'assistant_conversation' && action.conversation_id === currentConversation))
     if (visible.length && !changing && !error) void mutate({ ids: visible.map(item => item.id) }).catch(() => {})
     const candidates = unread.filter(item => item.toast_eligible && item.available && !item.resolved_at && !visible.includes(item))
     const claimed = claimNotifications(candidates.map(item => item.id))
     const fresh = candidates.filter(item => claimed.includes(item.id))
     if (fresh.length === 1) {
       const item = fresh[0]
-      toast(tr(`toasts.${item.event_type}`, { title: item.source === 'agent' ? localizeAgentName(item.title, item.title, t as unknown as (key: string) => string) : item.title || tr(`sources.${item.source}`) }), item.event_type.endsWith('_failed') ? 'error' : item.event_type === 'assistant_completed' ? 'success' : 'info', { label: tr('view'), onClick: () => void openItem(item) })
+      toast(tr(`toasts.${item.event_type}`, { title: item.source === 'agent' ? localizeAgentName(item.title, item.title, t as unknown as (key: string) => string) : item.title || tr(`sources.${item.source}`) }), item.event_type.endsWith('_failed') ? 'error' : item.event_type.endsWith('_completed') ? 'success' : 'info', { label: tr('view'), onClick: () => void openItem(item) })
     } else if (fresh.length > 1) toast(tr('multiple', { count: fresh.length }), 'info', { label: tr('view'), onClick: () => setOpen(true) })
   }, [unread, focused, currentConversation, changing, error, mutate, openItem, toast, tr])
   return <Context.Provider value={{ unread: monitor.summary.unread_count, pending: monitor.summary.pending_action_count, active: tasks.activity.active_tasks.length, tasks: tasks.activity.active_tasks, monitor, disconnected: monitor.disconnected, openItem, open: () => { setOpen(true); void monitor.refresh() }, openTasks: () => { setTasksOpen(true); void tasks.refresh() } }}>
     {children}
     <Suspense fallback={null}>
       {open && <NotificationPanel monitor={monitor} onClose={() => setOpen(false)} onOpen={openItem} />}
-      {target && <SourceDialog target={target} onClose={() => setTarget(null)} />}
+      {target?.kind === 'assistant_export' ? <ExportDialog conversationId={target.conversation_id} exportId={target.export_id} onClose={() => setTarget(null)} /> : target && <SourceDialog target={target} onClose={() => setTarget(null)} />}
       {tasksOpen && <TaskPanel open onOpenChange={setTasksOpen} monitor={tasks} progressOnly onOpenConversation={id => { setTasksOpen(false); navigate(`/assistant/${id}`) }} />}
     </Suspense>
   </Context.Provider>

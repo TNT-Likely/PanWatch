@@ -5,7 +5,7 @@ import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown'
 import { formatDate } from '@/i18n/format'
 import { localizeAgentName } from '@/i18n/agent-labels'
 
-export default function NotificationSourceDialog({ target, onClose }: { target: Exclude<NotificationTarget, { kind: 'assistant_conversation' }>; onClose: () => void }) {
+export default function NotificationSourceDialog({ target, onClose }: { target: Extract<NotificationTarget, { kind: 'agent_run' | 'price_alert_hit' }>; onClose: () => void }) {
   const { t } = useTranslation('configuration')
   const translate = t as unknown as (key: string) => string
   const tr = (key: string) => translate(`notifications.${key}`)

@@ -2104,6 +2104,12 @@ def _m131_assistant_conversation_titles(conn: Connection) -> None:
         "ALTER TABLE chat_conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'legacy'")
 
 
+def _m132_assistant_context_exports(conn: Connection) -> None:
+    from src.platform.persistence.models import AssistantContextExport
+
+    AssistantContextExport.__table__.create(conn, checkfirst=True)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2136,6 +2142,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(129, "assistant_task_notifications", _m129_assistant_task_notifications),
     Migration(130, "global_notifications", _m130_global_notifications),
     Migration(131, "assistant_conversation_titles", _m131_assistant_conversation_titles),
+    Migration(132, 'assistant_context_exports', _m132_assistant_context_exports),
 )
 
 

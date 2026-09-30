@@ -85,6 +85,17 @@ export interface AssistantContextExport {
   incomplete: boolean
 }
 
+export interface AssistantContextExportJob {
+  id: number
+  conversation_id: number
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  processed_chars: number
+  total_chars: number
+  completed_parts: number
+  error_code: string | null
+  result: AssistantContextExport | null
+}
+
 export interface AssistantApproval {
   id: string
   tool_title: string
@@ -265,9 +276,13 @@ export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
 
 export const chatApi = {
   exportConversationContext: (conversationId: number, language: 'zh-CN' | 'en-US', signal?: AbortSignal) =>
-    fetchAPI<AssistantContextExport>(`/assistant/conversations/${conversationId}/export`, {
-      method: 'POST', body: JSON.stringify({ language }), signal, timeoutMs: 90000,
+    fetchAPI<AssistantContextExportJob>(`/assistant/conversations/${conversationId}/export`, {
+      method: 'POST', body: JSON.stringify({ language }), signal,
     }),
+  getContextExport: (exportId: number, signal?: AbortSignal) =>
+    fetchAPI<AssistantContextExportJob>(`/assistant/exports/${exportId}`, { signal }),
+  retryContextExport: (exportId: number, signal?: AbortSignal) =>
+    fetchAPI<AssistantContextExportJob>(`/assistant/exports/${exportId}/retry`, { method: 'POST', signal }),
   renameConversation: (conversationId: number, title: string) =>
     fetchAPI<ChatConversation>(`/assistant/conversations/${conversationId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>

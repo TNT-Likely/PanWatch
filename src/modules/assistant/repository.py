@@ -251,7 +251,9 @@ class AssistantRepository:
 
     def delete_conversation(self, conversation: ChatConversation) -> None:
         from src.modules.notifications.service import NotificationService
+        from src.platform.persistence.models import AssistantContextExport
         NotificationService(self._session).purge_assistant_conversation(conversation.id)
+        self._session.query(AssistantContextExport).filter_by(conversation_id=conversation.id).delete(synchronize_session=False)
         task_ids = self._session.query(AssistantTaskRun.id).filter(AssistantTaskRun.conversation_id == conversation.id)
         self._session.query(AssistantTaskNotification).filter(AssistantTaskNotification.task_run_id.in_(task_ids)).delete(synchronize_session=False)
         self._session.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).delete()

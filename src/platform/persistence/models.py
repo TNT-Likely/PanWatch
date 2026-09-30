@@ -1141,6 +1141,35 @@ class AssistantContextSnapshot(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class AssistantContextExport(Base):
+    """Snapshot and resumable progress of a background Markdown export."""
+
+    __tablename__ = 'assistant_context_exports'
+    __table_args__ = (
+        UniqueConstraint('conversation_id', 'fingerprint', name='uq_assistant_export_source'),
+        Index('ix_assistant_export_status', 'status', 'created_at'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(Integer, ForeignKey('chat_conversations.id', ondelete='CASCADE'), nullable=False)
+    fingerprint = Column(String, nullable=False)
+    language = Column(String, nullable=False)
+    status = Column(String, nullable=False, default='queued')
+    source = Column(Text, nullable=False)
+    snapshot = Column(JSON, nullable=False)
+    context_budget = Column(Integer, nullable=False)
+    processed_chars = Column(Integer, nullable=False, default=0)
+    completed_parts = Column(Integer, nullable=False, default=0)
+    summary = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    error_code = Column(String, nullable=True)
+    lease_token = Column(String, nullable=False, default='')
+    attempt = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class AssistantTaskRun(Base):
     """Durable execution snapshot for an interactive assistant request."""
 
