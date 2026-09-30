@@ -229,3 +229,9 @@ async def health():
 async def version():
     """获取应用版本号（公开接口）"""
     return {"version": get_app_version()}
+
+
+# Capture the native context at the assembly root. The server entrypoint can
+# be imported as __mp_main__ and server in one reload worker; capturing the
+# mutable router context there would nest two complete server startups.
+application_lifespan = app.router.lifespan_context

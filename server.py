@@ -22,6 +22,7 @@ from src.platform.persistence.models import (
 from src.platform.observability.log_handler import DBLogHandler
 from src.platform.runtime.config import Settings, AppConfig, StockConfig
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.javascript_runtime import warmup_javascript_runtime
 from src.platform.ai.ai_client import AIClient
 from src.platform.ai.ai_failover import build_failover_client
 from src.platform.notifications.notifier import NotifierManager
@@ -1486,6 +1487,9 @@ async def lifespan(app):
     setup_proxy()  # 设置进程 env 代理(HTTP_PROXY/NO_PROXY);所有 httpx(trust_env=True)据此走代理
     setup_ssl()
     setup_playwright()
+    # Complete V8's first isolate initialization before market data workers race
+    # to create their first MiniRacer contexts (native fatal on macOS).
+    warmup_javascript_runtime()
 
     # 从环境变量初始化认证（Docker 部署用）
     from src.modules.administration.api.auth import init_auth_from_env
@@ -1584,7 +1588,7 @@ async def lifespan(app):
     try:
         # Preserve FastAPI's original lifespan, including registered recovery
         # hooks. Database initialization must precede this context.
-        async with _application_lifespan(app):
+        async with application_lifespan(app):
             yield
     finally:
         if scheduler:
@@ -1602,9 +1606,8 @@ async def lifespan(app):
 
 
 # 模块级 app 实例，供 uvicorn reload 使用
-from src.bootstrap.application import app  # noqa: E402
+from src.bootstrap.application import app, application_lifespan  # noqa: E402
 
-_application_lifespan = app.router.lifespan_context
 app.router.lifespan_context = lifespan
 
 # 生产环境静态文件服务

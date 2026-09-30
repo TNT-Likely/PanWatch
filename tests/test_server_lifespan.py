@@ -13,7 +13,7 @@ def _isolate_startup(monkeypatch, server):
     for name in (
         "init_db", "setup_logging", "setup_proxy", "setup_ssl", "setup_playwright",
         "seed_agents", "seed_strategies", "seed_sample_stocks", "reconcile_data_sources",
-        "register_mcp_log_cleanup",
+        "register_mcp_log_cleanup", "warmup_javascript_runtime",
     ):
         monkeypatch.setattr(server, name, Mock(side_effect=lambda *args, _name=name, **kwargs: initialization.append(_name)))
     monkeypatch.setattr(server, "SessionLocal", lambda: SimpleNamespace(close=lambda: None))
@@ -115,3 +115,35 @@ def test_production_lifespan_does_not_recover_before_database_initialization(mon
     startup.assert_not_called()
     for scheduler in schedulers:
         scheduler.start.assert_not_called()
+
+
+def test_reload_worker_double_import_initializes_server_once(monkeypatch):
+    import importlib
+    import runpy
+    from pathlib import Path
+    import server
+
+    # Uvicorn's spawned worker executes the entrypoint as __mp_main__, then
+    # imports server:app. Both names share the bootstrap app/router.
+    monkeypatch.setattr(server.app.router, "lifespan_context", server.app.router.lifespan_context)
+    worker = runpy.run_path(str(Path(server.__file__)), run_name="__mp_main__")
+    nested_startup = Mock(side_effect=AssertionError("entrypoint startup must not be nested"))
+    worker["lifespan"].__wrapped__.__globals__["init_db"] = nested_startup
+    importlib.reload(server)
+    initialization, schedulers = _isolate_startup(monkeypatch, server)
+    startup, shutdown = Mock(), Mock()
+    monkeypatch.setattr(server.app.router, "on_startup", [startup])
+    monkeypatch.setattr(server.app.router, "on_shutdown", [shutdown])
+
+    async def run():
+        async with server.app.router.lifespan_context(server.app):
+            assert initialization.count("init_db") == 1
+            assert initialization.index("warmup_javascript_runtime") < initialization.index("register_mcp_log_cleanup")
+
+    asyncio.run(run())
+    nested_startup.assert_not_called()
+    startup.assert_called_once()
+    shutdown.assert_called_once()
+    for scheduler in schedulers:
+        scheduler.start.assert_called_once()
+        scheduler.shutdown.assert_called_once()
