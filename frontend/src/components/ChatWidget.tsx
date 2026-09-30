@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import {
   chatApi,
   type AssistantContextDetail,
@@ -23,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { AssistantResultCard } from '@/components/assistant/AssistantResultCard'
 import { useAssistantTask, isActiveTask } from '@/hooks/useAssistantTask'
 import { AssistantTaskBar } from '@/components/assistant/AssistantTaskBar'
+import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown'
 
 interface StockContext {
   symbol: string
@@ -50,12 +49,6 @@ interface ChatWidgetProps {
 // 工具名 → 过程可视化文案
 const TOOL_LABELS: Record<string, string> = {
   get_portfolio: 'get_portfolio', get_stock_quote: 'get_stock_quote', get_kline_summary: 'get_kline_summary', get_stock_news: 'get_stock_news', create_price_alert: 'create_price_alert', get_technical_analysis: 'get_technical_analysis', get_stock_suggestions: 'get_stock_suggestions', get_watchlist: 'get_watchlist',
-}
-
-/** 增量渲染容错：流式文本里未闭合的代码围栏先乐观闭合，避免 markdown 渲染爆版式 */
-function safeStreamMarkdown(text: string): string {
-  const fences = (text.match(/```/g) || []).length
-  return fences % 2 === 1 ? `${text}\n\`\`\`` : text
 }
 
 function requestFailureText(
@@ -135,6 +128,10 @@ export default function ChatWidget({
         setStreamText(tokenBufRef.current)
       })
     }
+  }, [])
+
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
   }, [])
 
   const resetStream = useCallback(() => {
@@ -767,9 +764,7 @@ export default function ChatWidget({
                     }`}
                   >
                     {msg.role === 'assistant' ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                      </div>
+                      <AssistantMarkdown content={msg.content} />
                     ) : (
                       msg.content
                     )}
@@ -850,9 +845,7 @@ export default function ChatWidget({
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">
                 <div className="max-w-[92%] rounded-xl bg-accent/60 px-3 py-2 text-[13px] leading-relaxed text-foreground sm:max-w-[85%]">
-                  <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[12px] [&_th]:border [&_th]:border-border/60 [&_th]:bg-background/30 [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-semibold [&_td]:border [&_td]:border-border/60 [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeStreamMarkdown(streamText)}</ReactMarkdown>
-                  </div>
+                  <AssistantMarkdown content={streamText} streaming />
                 </div>
               </div>
             )}

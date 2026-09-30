@@ -404,3 +404,41 @@ def test_m128_adds_trusted_result_columns_idempotently(tmp_path):
     assert {"result_schema_version", "result_data"} <= task_columns
     assert {"observed_at", "result_data"} <= invocation_columns
     assert "ix_assistant_task_run_final_message" in indexes
+
+
+def test_event_tailing_uses_compact_status_without_rebuilding_a_full_snapshot(monkeypatch):
+    from src.modules.assistant.event_stream import subscribe_task_events
+    from src.modules.assistant.repository import AssistantRepository
+
+    engine, session, repository, task = _repository()
+    repository.claim_task(task.id)
+    repository.complete_task_with_message(task.id, task.conversation_id, "完整结果")
+
+    def forbidden_snapshot(*args, **kwargs):
+        raise AssertionError("SSE tailing must not reload trace, approvals and tool history")
+
+    monkeypatch.setattr(AssistantRepository, "get_task_snapshot", forbidden_snapshot)
+
+    async def run():
+        return [item async for item in subscribe_task_events(task.id, session_factory=sessionmaker(bind=engine))]
+
+    try:
+        wire = "".join(asyncio.run(run()))
+        assert "event: done" in wire
+        assert "完整结果" in wire
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_event_tailing_reports_a_missing_task():
+    from src.modules.assistant.event_stream import _load_task_events
+    import pytest
+
+    engine, session, _, _ = _repository()
+    try:
+        with pytest.raises(LookupError, match="助手任务不存在"):
+            _load_task_events(999999, 0, sessionmaker(bind=engine))
+    finally:
+        session.close()
+        engine.dispose()
