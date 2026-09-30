@@ -1581,24 +1581,30 @@ async def lifespan(app):
         register_mcp_log_cleanup(scheduler)
     except Exception as e:
         logger.error(f"MCP 日志清理任务注册失败: {e}")
-    yield
-    if scheduler:
-        scheduler.shutdown()
-        logger.info("Agent 调度器已关闭")
-    if price_alert_scheduler:
-        price_alert_scheduler.shutdown()
-        logger.info("价格提醒调度器已关闭")
-    if paper_trading_scheduler:
-        paper_trading_scheduler.shutdown()
-        logger.info("模拟盘调度器已关闭")
-    if context_maintenance_scheduler:
-        context_maintenance_scheduler.shutdown()
-        logger.info("上下文维护调度器已关闭")
+    try:
+        # Preserve FastAPI's original lifespan, including registered recovery
+        # hooks. Database initialization must precede this context.
+        async with _application_lifespan(app):
+            yield
+    finally:
+        if scheduler:
+            scheduler.shutdown()
+            logger.info("Agent 调度器已关闭")
+        if price_alert_scheduler:
+            price_alert_scheduler.shutdown()
+            logger.info("价格提醒调度器已关闭")
+        if paper_trading_scheduler:
+            paper_trading_scheduler.shutdown()
+            logger.info("模拟盘调度器已关闭")
+        if context_maintenance_scheduler:
+            context_maintenance_scheduler.shutdown()
+            logger.info("上下文维护调度器已关闭")
 
 
 # 模块级 app 实例，供 uvicorn reload 使用
 from src.bootstrap.application import app  # noqa: E402
 
+_application_lifespan = app.router.lifespan_context
 app.router.lifespan_context = lifespan
 
 # 生产环境静态文件服务
