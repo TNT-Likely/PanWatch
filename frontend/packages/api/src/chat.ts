@@ -76,6 +76,15 @@ export interface ConversationDetail {
   latest_task?: AssistantTaskSnapshot | null
 }
 
+export interface AssistantContextExport {
+  content: string
+  filename: string
+  message_count: number
+  last_message_id: number | null
+  exported_at: string
+  incomplete: boolean
+}
+
 export interface AssistantApproval {
   id: string
   tool_title: string
@@ -255,6 +264,10 @@ export interface AssistantConfig {
 export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
 
 export const chatApi = {
+  exportConversationContext: (conversationId: number, language: 'zh-CN' | 'en-US', signal?: AbortSignal) =>
+    fetchAPI<AssistantContextExport>(`/assistant/conversations/${conversationId}/export`, {
+      method: 'POST', body: JSON.stringify({ language }), signal, timeoutMs: 90000,
+    }),
   renameConversation: (conversationId: number, title: string) =>
     fetchAPI<ChatConversation>(`/assistant/conversations/${conversationId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>

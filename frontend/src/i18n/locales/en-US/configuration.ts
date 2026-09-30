@@ -423,6 +423,13 @@ export const configuration = {
     rename: 'Rename',
     deleteConversation: 'Delete conversation',
     renameDescription: 'Your custom title will be kept.',
+    exportContext: {
+      title: 'Export context summary', description: 'Create a Markdown handoff of goals, facts, conclusions and next steps to continue in another assistant.',
+      generating: 'Preparing context summary…', preview: 'Markdown context summary',
+      copy: 'Copy summary', copied: 'Copied', copyFailed: 'Automatic copy is unavailable. The text is selected; copy it manually.',
+      download: 'Download Markdown', retry: 'Generate again', failed: 'Context summary generation failed. Try again.',
+      timeout: 'Context summary generation timed out. Try again.', incomplete: 'The task is still active. This summary includes saved content only.',
+    },
     conversationTitle: 'Conversation title',
     renameFailed: 'Could not rename. Please try again.',
     renameCancel: 'Cancel',

@@ -420,6 +420,13 @@ export const configuration = {
     rename: '重命名',
     deleteConversation: '删除会话',
     renameDescription: '修改后将保留你设置的标题。',
+    exportContext: {
+      title: '导出上下文总结', description: '整理目标、事实、结论与待办，生成可在其他助手中继续使用的 Markdown 文档。',
+      generating: '正在整理上下文总结…', preview: 'Markdown 上下文总结',
+      copy: '复制总结', copied: '已复制', copyFailed: '无法自动复制，已选中文本，请手动复制。',
+      download: '下载 Markdown', retry: '重新生成', failed: '上下文总结生成失败，请重试。',
+      timeout: '上下文总结生成超时，请重试。', incomplete: '任务仍在进行，本总结仅包含已保存内容。',
+    },
     conversationTitle: '会话标题',
     renameFailed: '重命名失败，请重试。',
     renameCancel: '取消',

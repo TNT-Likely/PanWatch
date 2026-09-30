@@ -154,6 +154,25 @@ class AssistantService:
             return False
         return self._repository.set_automatic_title(conversation_id, title, expected_title)
 
+    async def export_conversation_context(self, conversation_id: int, language: str):
+        from .exports import ContextExportError, export_source, render_export, summarize_export
+
+        conversation = self._require_conversation(conversation_id)
+        initial_context = conversation.initial_context
+        detail = self.get_conversation(conversation_id)
+        if not any(message.role in ('user', 'assistant') and message.content.strip() for message in detail.messages):
+            raise ContextExportError('assistant_export_empty', '会话暂无可总结的内容。')
+        source = export_source(detail, initial_context)
+        client = self.build_context_compression_client()
+        budget = int(self._context_config_values()['max_tokens'])
+        # Snapshot saved content before awaiting the model; no conversation,
+        # task, approval or compression snapshot is changed by this export.
+        self._repository.session.commit()
+        exported_at = datetime.now(timezone.utc)
+        summary = await summarize_export(client, source, language, budget)
+        self._require_conversation(conversation_id)
+        return render_export(detail, summary, language, exported_at)
+
     def get_suggested_questions(self, symbol: str, market: str = "CN") -> list[str]:
         """Build deterministic prompts from the current local stock context."""
         questions: list[str] = []
