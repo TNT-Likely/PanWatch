@@ -1,7 +1,7 @@
 import { fetchAPI } from './client'
 
 export type NotificationSource = 'assistant' | 'agent' | 'market'
-export type NotificationView = 'all' | 'unread' | 'pending' | 'archived'
+export type NotificationView = 'all' | 'unread' | 'pending' | 'archived' | 'attention'
 export interface NotificationAction {
   kind: 'assistant_conversation' | 'agent_run' | 'price_alert_hit'
   conversation_id?: number

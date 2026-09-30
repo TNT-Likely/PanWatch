@@ -41,6 +41,7 @@ from .schemas import (
     ConversationDetailDTO,
     ConversationDTO,
     CreateConversationCommand,
+    RenameConversationCommand,
     ToolPermissionCommand,
 )
 from .service import (
@@ -715,6 +716,18 @@ def get_conversation(
         return service.get_conversation(conversation_id)
     except AssistantNotFoundError as exc:
         raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationDTO)
+def rename_conversation(
+    conversation_id: int,
+    body: RenameConversationCommand,
+    service: AssistantService = Depends(get_assistant_service),
+) -> ConversationDTO:
+    try:
+        return service.rename_conversation(conversation_id, body)
+    except AssistantNotFoundError as exc:
+        raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
 
 
 @router.delete("/conversations/{conversation_id}")

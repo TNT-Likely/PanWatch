@@ -3,6 +3,10 @@ import { configuration as zhConfiguration } from '../zh-CN/configuration'
 
 export const configuration = {
   notifications: {
+    previewTitle: 'Notifications',
+    readAll: 'Mark all read',
+    viewAll: 'View all notifications',
+    noNew: 'No new notifications',
     repeatedFailures: 'Show {{count}} loaded consecutive failures',
     collapseFailures: 'Collapse consecutive failures',
   "title": "Notification center",
@@ -414,6 +418,15 @@ export const configuration = {
     },
   },
   assistantPage: {
+    conversationActions: 'Conversation actions: {{title}}',
+    rename: 'Rename',
+    deleteConversation: 'Delete conversation',
+    renameDescription: 'Your custom title will be kept.',
+    conversationTitle: 'Conversation title',
+    renameFailed: 'Could not rename. Please try again.',
+    renameCancel: 'Cancel',
+    renameSave: 'Save',
+    renameSaving: 'Saving…',
     activity: {
       bell: 'Assistant tasks and notifications: {{active}} active, {{unread}} unread',
       title: 'Assistant tasks and notifications', description: 'Tasks continue when you leave the Assistant page. Return to a conversation here to review results or handle approvals.',

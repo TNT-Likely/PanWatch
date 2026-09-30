@@ -21,6 +21,7 @@ vi.mock('@panwatch/api', () => ({
     sendMessageStream: vi.fn(),
     sendMessage: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
     getAgentPermissions: vi.fn().mockResolvedValue({ defaults: [], tools: [] }),
     updateAgentPermission: vi.fn(),
     decideAssistantApprovalStream: vi.fn(),
@@ -84,6 +85,27 @@ beforeEach(() => {
 })
 
 describe('assistant conversation routing', () => {
+  it('updates a renamed title immediately and retains it on a list refresh', async () => {
+    const user = userEvent.setup()
+    vi.mocked(chatApi.renameConversation).mockResolvedValue({ ...conversations[0], title: '我的持仓计划', title_source: 'manual' })
+    renderAssistant('/assistant/1')
+    await user.click(await screen.findByRole('button', { name: '会话操作：第一会话' }))
+    await user.click(screen.getByRole('button', { name: '重命名' }))
+    const input = await screen.findByRole('textbox', { name: '会话标题' })
+    await user.clear(input); await user.type(input, '我的持仓计划')
+    vi.mocked(chatApi.listConversations).mockResolvedValue([{ ...conversations[0], title: '我的持仓计划', title_source: 'manual' }, conversations[1]])
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByRole('button', { name: '我的持仓计划' })).toBeTruthy()
+    expect(chatApi.renameConversation).toHaveBeenCalledWith(1, '我的持仓计划')
+  })
+
+  it('refreshes a generated title when background assistant activity changes', async () => {
+    renderAssistant('/assistant/1')
+    await screen.findByRole('button', { name: '第一会话' })
+    vi.mocked(chatApi.listConversations).mockResolvedValue([{ ...conversations[0], title: '自动总结的主题', title_source: 'automatic' }, conversations[1]])
+    window.dispatchEvent(new Event('panwatch:assistant-activity-changed'))
+    expect(await screen.findByRole('button', { name: '自动总结的主题' })).toBeTruthy()
+  })
   it('pushes an existing conversation into the URL so browser back returns to the home route', async () => {
     const user = userEvent.setup()
     renderAssistant('/assistant')

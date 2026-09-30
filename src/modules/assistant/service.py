@@ -59,6 +59,7 @@ from .schemas import (
     AssistantActivityDTO,
     ConversationDTO,
     CreateConversationCommand,
+    RenameConversationCommand,
     MessageDTO,
 )
 from .result_schemas import AssistantResult
@@ -129,6 +130,29 @@ class AssistantService:
             self._conversation_dto(row)
             for row in self._repository.list_conversations(limit)
         ]
+
+    def rename_conversation(self, conversation_id: int, command: RenameConversationCommand) -> ConversationDTO:
+        return self._conversation_dto(self._repository.rename_conversation(
+            self._require_conversation(conversation_id), command.title))
+
+    async def generate_conversation_title(self, conversation_id: int) -> bool:
+        from .titles import summarize_title
+        conversation = self._require_conversation(conversation_id)
+        if conversation.title_source not in ('provisional', 'legacy'):
+            return False
+        rows = self._repository.list_messages(conversation_id)
+        question = next((row.content for row in rows if row.role == 'user'), '')
+        answer = next((row.content for row in rows if row.role == 'assistant'), '')
+        if not question or not answer:
+            return False
+        expected_title = conversation.title or ''
+        client = self.build_context_compression_client()
+        # Release the read transaction before waiting for the model.
+        self._repository.session.commit()
+        title = await summarize_title(client, question, answer)
+        if not title:
+            return False
+        return self._repository.set_automatic_title(conversation_id, title, expected_title)
 
     def get_suggested_questions(self, symbol: str, market: str = "CN") -> list[str]:
         """Build deterministic prompts from the current local stock context."""
@@ -944,6 +968,7 @@ class AssistantService:
         return ConversationDTO(
             id=conversation.id,
             title=conversation.title or "",
+            title_source=conversation.title_source,
             stock_symbol=conversation.stock_symbol,
             stock_market=conversation.stock_market,
             created_at=conversation.created_at,

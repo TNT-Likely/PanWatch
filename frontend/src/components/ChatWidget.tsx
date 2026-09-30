@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, Trash2, X, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ArrowDown, ChevronLeft, MessageCircle, Menu, Send, Settings2, X, XCircle } from 'lucide-react'
 import {
   chatApi,
   type AssistantContextDetail,
   type AssistantContextSnapshot,
   type AssistantTraceEvent,
+  type AssistantTaskStatus,
   type ChatConversation,
   type ChatMessage,
 } from '@panwatch/api'
@@ -22,6 +23,10 @@ import { AssistantResultCard } from '@/components/assistant/AssistantResultCard'
 import { useAssistantTask, isActiveTask } from '@/hooks/useAssistantTask'
 import { AssistantTaskBar } from '@/components/assistant/AssistantTaskBar'
 import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown'
+import { AssistantConversationActions } from '@/components/assistant/AssistantConversationActions'
+import { AssistantTaskIndicator } from '@/components/assistant/AssistantTaskIndicator'
+import { useActiveAssistantTasks } from '@/components/notifications/NotificationProvider'
+import { ASSISTANT_ACTIVITY_CHANGED } from '@/lib/assistant-activity'
 
 interface StockContext {
   symbol: string
@@ -72,6 +77,8 @@ export default function ChatWidget({
   const [open, setOpen] = useState(embedded)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [conversationsLoaded, setConversationsLoaded] = useState(false)
+  const conversationRequest = useRef(0)
+  const backgroundTasks = useActiveAssistantTasks()
   const [activeConvId, setActiveConvId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -125,7 +132,7 @@ export default function ChatWidget({
     if (rafRef.current == null) {
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null
-        setStreamText(tokenBufRef.current)
+        setStreamText(tokenBufRef.current.trimEnd())
       })
     }
   }, [])
@@ -154,14 +161,23 @@ export default function ChatWidget({
   }, [])
 
   const loadConversations = useCallback(async () => {
+    const request = ++conversationRequest.current
     try {
       const list = await chatApi.listConversations(30)
-      setConversations(list)
+      if (conversationRequest.current === request) setConversations(list)
     } catch {
       // ignore
     } finally {
-      setConversationsLoaded(true)
+      if (conversationRequest.current === request) setConversationsLoaded(true)
     }
+  }, [])
+
+  useEffect(() => () => { conversationRequest.current++ }, [])
+
+  const renameConversation = useCallback(async (conversationId: number, title: string) => {
+    const updated = await chatApi.renameConversation(conversationId, title)
+    conversationRequest.current++ // Discard older list requests after a rename.
+    setConversations(previous => previous.map(item => item.id === conversationId ? updated : item))
   }, [])
 
   const loadMessages = useCallback(async (convId: number) => {
@@ -216,6 +232,30 @@ export default function ChatWidget({
     },
   })
   const { pendingApprovals } = task
+  const taskStatuses: Record<number, AssistantTaskStatus> = Object.fromEntries(backgroundTasks.map(item => [item.conversation_id, item.status]))
+  const backgroundCurrentTask = backgroundTasks.find(item => item.conversation_id === activeConvId)
+  if (task.snapshot && activeConvId && (!backgroundCurrentTask || backgroundCurrentTask.id <= task.snapshot.id)) {
+    if (isActiveTask(task.snapshot.status)) taskStatuses[activeConvId] = task.snapshot.status
+    else delete taskStatuses[activeConvId]
+  }
+  if (task.sending && activeConvId && !taskStatuses[activeConvId]) taskStatuses[activeConvId] = 'pending'
+  const activitySignature = JSON.stringify([backgroundTasks.map(item => [item.id, item.status]), task.snapshot?.id, task.snapshot?.status])
+  useEffect(() => {
+    if (!open) return
+    const refresh = () => { if (document.visibilityState !== 'hidden') void loadConversations() }
+    refresh()
+    // Metadata can arrive after the completed answer. Catch the bounded
+    // title summary, then stop polling once the conversation is idle.
+    const timers = [1000, 4000, 10_000].map(delay => setTimeout(refresh, delay))
+    const interval = backgroundTasks.length || task.sending ? setInterval(refresh, 5000) : undefined
+    window.addEventListener('focus', refresh)
+    window.addEventListener(ASSISTANT_ACTIVITY_CHANGED, refresh)
+    return () => {
+      timers.forEach(clearTimeout); clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(ASSISTANT_ACTIVITY_CHANGED, refresh)
+    }
+  }, [open, activitySignature, task.sending, loadConversations])
   const sending = creatingConversation || task.sending
   const setActiveConversationId = useCallback((conversationId: number | null) => {
     if (activeConvIdRef.current !== conversationId) {
@@ -330,9 +370,9 @@ export default function ChatWidget({
     }
   }, [open, loadConversations])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     followNewContent()
-  }, [messages, streamText, streamTool, pendingApprovals, followNewContent])
+  }, [messages, streamText, streamTool, pendingApprovals, traceEvents, plan, sending, followNewContent])
 
   const openConversation = useCallback(async (
     conv: ChatConversation,
@@ -450,11 +490,6 @@ export default function ChatWidget({
     }
   }, [activeConvId, onConversationChange])
 
-  const deleteConversation = useCallback(async (convId: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    await removeConversation(convId)
-  }, [removeConversation])
-
   const handleSend = useCallback(async (
     overrideContent?: string,
     overrideStockContext?: StockContext,
@@ -508,12 +543,10 @@ export default function ChatWidget({
     }])
     resetFollowing()
     setCreatingConversation(false)
+    setConversations(previous => previous.map(item => item.id === convId && !item.title
+      ? { ...item, title: content.slice(0, 20) } : item))
     try {
       await task.send(convId, content)
-      if (activeConvIdRef.current === convId) {
-        setConversations((previous) => previous.map((item) => item.id === convId
-          ? { ...item, title: item.title || content.slice(0, 20) } : item))
-      }
     } finally {
       if (activeConvIdRef.current === convId) {
         sendingRef.current = false
@@ -563,6 +596,8 @@ export default function ChatWidget({
           <div className="hidden w-64 shrink-0 md:flex">
             <AssistantSidebar
               conversations={conversations}
+              taskStatuses={taskStatuses}
+              onRename={renameConversation}
               activeConversationId={activeConvId}
               onOpen={openConversation}
               onCreate={beginNewResearch}
@@ -575,6 +610,8 @@ export default function ChatWidget({
             <div className="w-[min(19rem,88vw)] shadow-2xl">
               <AssistantSidebar
                 conversations={conversations}
+                taskStatuses={taskStatuses}
+                onRename={renameConversation}
                 activeConversationId={activeConvId}
                 onOpen={(conversation) => { setHistoryOpen(false); void openConversation(conversation) }}
                 onCreate={beginNewResearch}
@@ -691,27 +728,21 @@ export default function ChatWidget({
             </div>
           ) : (
             conversations.map((conv) => (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => openConversation(conv)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/30 transition-colors border-b border-border/20"
+                className="group flex w-full items-center justify-between border-b border-border/20 px-4 py-3 text-left hover:bg-accent/30"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] text-foreground truncate">
-                    {conv.title || assistantT('assistantPage.newConversation')}
+                <button type="button" onClick={() => void openConversation(conv)} className="min-w-0 flex-1 text-left">
+                  <div className="flex items-center gap-2 text-[13px] text-foreground">
+                    <span className="min-w-0 flex-1 truncate">{conv.title || assistantT('assistantPage.newConversation')}</span><AssistantTaskIndicator status={taskStatuses[conv.id]} />
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {conv.stock_symbol ? `${conv.stock_market}:${conv.stock_symbol} · ` : ''}
                     {new Date(conv.created_at).toLocaleDateString()}
                   </div>
-                </div>
-                <button
-                  onClick={(e) => deleteConversation(conv.id, e)}
-                  className="p-1 rounded text-muted-foreground/50 hover:text-rose-400 transition-colors shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
-              </button>
+                <AssistantConversationActions conversation={conv} onRename={renameConversation} onDelete={id => { void removeConversation(id) }} />
+              </div>
             ))
           )}
         </div>
@@ -724,7 +755,9 @@ export default function ChatWidget({
             ref={scrollBoxRef}
             data-testid="assistant-message-list"
             onScroll={handleScroll}
-            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 scrollbar sm:px-4"
+            tabIndex={0}
+            style={{ overflowAnchor: 'none' }}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 scrollbar sm:px-4"
           >
             {/* Suggested questions */}
             {messages.length === 0 && suggestedQuestions.length > 0 && (

@@ -201,6 +201,7 @@ describe('ChatWidget layout', () => {
       scrollTop: { configurable: true, value: 0, writable: true },
       clientHeight: { configurable: true, value: 500, writable: true },
     })
+    fireEvent.wheel(messageList, { deltaY: -200 })
     fireEvent.scroll(messageList)
 
     const scrollButton = await screen.findByRole('button', { name: '回到底部' })

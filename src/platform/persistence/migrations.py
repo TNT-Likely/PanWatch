@@ -2099,6 +2099,11 @@ def _m130_global_notifications(conn: Connection) -> None:
                      .on_conflict_do_nothing(index_elements=['notification_id', 'recipient_key']))
 
 
+def _m131_assistant_conversation_titles(conn: Connection) -> None:
+    _add_column_if_missing(conn, 'chat_conversations', 'title_source',
+        "ALTER TABLE chat_conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'legacy'")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2130,6 +2135,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(128, "assistant_trusted_results", _m128_assistant_trusted_results),
     Migration(129, "assistant_task_notifications", _m129_assistant_task_notifications),
     Migration(130, "global_notifications", _m130_global_notifications),
+    Migration(131, "assistant_conversation_titles", _m131_assistant_conversation_titles),
 )
 
 

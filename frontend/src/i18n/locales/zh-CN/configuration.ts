@@ -1,5 +1,9 @@
 export const configuration = {
   notifications: {
+    previewTitle: '通知',
+    readAll: '全部已读',
+    viewAll: '查看全部通知',
+    noNew: '暂无新通知',
     repeatedFailures: '展开已加载的 {{count}} 条连续失败记录',
     collapseFailures: '合并连续失败记录',
   "title": "通知中心",
@@ -411,6 +415,15 @@ export const configuration = {
     },
   },
   assistantPage: {
+    conversationActions: '会话操作：{{title}}',
+    rename: '重命名',
+    deleteConversation: '删除会话',
+    renameDescription: '修改后将保留你设置的标题。',
+    conversationTitle: '会话标题',
+    renameFailed: '重命名失败，请重试。',
+    renameCancel: '取消',
+    renameSave: '保存',
+    renameSaving: '保存中…',
     activity: {
       bell: '助手任务与通知：{{active}} 项进行中，{{unread}} 条未读',
       title: '助手任务与通知', description: '离开助手页面后，任务会继续执行。可从这里返回会话查看结果或处理审批。',

@@ -75,6 +75,25 @@ def test_read_boundary_filters_and_recipient_scope(db):
     with pytest.raises(LookupError): service.target(other.id)
 
 
+def test_attention_preview_keeps_read_approvals_hides_read_history_and_preserves_new_arrivals(db):
+    pending = publish(db, 1, pending=True)
+    history = publish(db, 2)
+    unread = publish(db, 3)
+    expired = publish(db, 4, pending=True)
+    expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+    service = NotificationService(db)
+    service.mark_read(NotificationSelection(ids=[pending.id, history.id]))
+    page = service.list(view='attention', limit=1)
+    assert [item['id'] for item in page['items']] == [pending.id]
+    second = service.list(view='attention', cursor=page['next_cursor'], limit=1)
+    assert [item['id'] for item in second['items']] == [unread.id]
+    later = publish(db, 5); db.commit()
+    service.mark_read(NotificationSelection(through_id=page['observed_id'], view='attention'))
+    assert [item['id'] for item in service.list(view='attention')['items']] == [pending.id, later.id]
+    assert service.summary()['pending_action_count'] == 1
+
+
 def test_pagination_freezes_upper_bound_and_unread_rank_during_reads(db):
     items = [publish(db, i) for i in range(1, 9)]; db.commit()
     service = NotificationService(db)

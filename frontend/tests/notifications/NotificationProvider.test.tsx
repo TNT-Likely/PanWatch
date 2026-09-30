@@ -27,10 +27,37 @@ beforeEach(() => {
 })
 
 describe('global notifications', () => {
+  it('opens an empty lightweight preview without reading or displaying history', async () => {
+    vi.mocked(notificationsApi.list).mockImplementation(async filter => ({ items: filter?.view === 'attention' ? [] : [{ ...notice(900), title: '已经读过的历史', read_at: '2026-09-30T00:00:00Z' }], observed_id: 900, next_cursor: null }))
+    show(); fireEvent.click(await screen.findByRole('button', { name: '通知：0 条未读' }))
+    expect(await screen.findByText('暂无新通知')).toBeTruthy()
+    expect(screen.queryByText('已经读过的历史')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByTestId('notification-panel')).toBeNull()
+    expect(notificationsApi.read).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '查看全部通知' }))
+    expect(await screen.findByText('已经读过的历史')).toBeTruthy()
+  })
+
+  it('keeps read approvals in the preview and marks only the observed attention scope read', async () => {
+    const approval = { ...notice(910), title: '等待批准', event_type: 'assistant_awaiting_approval' as const, template_key: 'assistant_awaiting_approval', read_at: '2026-09-30T00:00:00Z', action_required: true }
+    const report = { ...notice(911, 'agent'), title: '新的报告', toast_eligible: false }
+    vi.mocked(notificationsApi.summary).mockResolvedValue({ unread_count: 1, pending_action_count: 1, observed_id: 911 })
+    vi.mocked(notificationsApi.list).mockImplementation(async filter => ({ items: filter?.view === 'attention' ? [approval, report] : [report], next_cursor: null, observed_id: 911 }))
+    show(); fireEvent.click(await screen.findByRole('button', { name: '通知：1 条未读' }))
+    expect(await screen.findByText('等待批准')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '归档' })).toBeNull()
+    expect(notificationsApi.read).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '全部已读' }))
+    await waitFor(() => expect(notificationsApi.read).toHaveBeenCalledWith({ through_id: 911, view: 'attention' }))
+    expect(screen.getByText('等待批准')).toBeTruthy()
+    expect(notificationsApi.target).not.toHaveBeenCalled()
+  })
   it('shows no unread badge for running tasks and offers a separate progress entry', async () => {
     vi.mocked(chatApi.getActiveAssistantTasks).mockResolvedValue([{ id: 42, conversation_id: 1, title: '后台研究', status: 'running', current_step: 2 }])
     show()
     const entry = await screen.findByRole('button', { name: '助手任务：1 项进行中' })
+    expect(screen.getByTestId('assistant-running-indicator').classList.contains('animate-spin')).toBe(true)
     expect(screen.queryByTestId('notification-badge')).toBeNull()
     fireEvent.click(entry)
     expect(await screen.findByText('步骤 2', { exact: false })).toBeTruthy()
@@ -82,6 +109,7 @@ describe('global notifications', () => {
     const market = { ...notice(1012, 'market'), title: '价格规则', toast_eligible: false }
     vi.mocked(notificationsApi.list).mockImplementation(async (filter = {}) => ({ items: filter.cursor ? [market] : filter.source === 'agent' ? [agent] : filter.view === 'pending' ? [approval] : [approval, agent], next_cursor: !filter.cursor && !filter.source && filter.view === 'all' ? 'next' : null, observed_id: 1012 }))
     show(); fireEvent.click(await screen.findByRole('button', { name: '通知：0 条未读' }))
+    fireEvent.click(await screen.findByRole('button', { name: '查看全部通知' }))
     await screen.findByText('日报')
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
     expect(await screen.findByText('价格规则')).toBeTruthy()
@@ -100,6 +128,7 @@ describe('global notifications', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({ items: [item], next_cursor: null, observed_id: item.id })
     vi.mocked(notificationsApi.target).mockResolvedValue({ kind: 'agent_run', id: 1, agent_name: 'daily_report', status: 'success', result: '**Report result**', error: '', occurred_at: item.occurred_at, notify_attempted: true, notify_sent: false })
     show(); fireEvent.click(await screen.findByRole('button', { name: '通知：0 条未读' }))
+    fireEvent.click(await screen.findByRole('button', { name: '查看全部通知' }))
     fireEvent.click(await screen.findByRole('button', { name: '查看报告' }))
     expect(await screen.findByText('Report result')).toBeTruthy()
     expect(screen.getByText('运行已完成')).toBeTruthy()
@@ -113,6 +142,7 @@ describe('notification failure groups', () => {
     const second = { ...first, id: 1039 }
     vi.mocked(notificationsApi.list).mockResolvedValue({ items: [first, second], next_cursor: null, observed_id: first.id })
     show(); fireEvent.click(await screen.findByRole('button', { name: '通知：0 条未读' }))
+    fireEvent.click(await screen.findByRole('button', { name: '查看全部通知' }))
     expect(await screen.findByRole('button', { name: '展开已加载的 2 条连续失败记录' })).toBeTruthy()
     expect(screen.getAllByText('重复失败样例')).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: '设为已读' }))

@@ -1,29 +1,44 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Bell, ListTodo, AlertCircle } from 'lucide-react'
+import { Bell, Loader2, PauseCircle, AlertCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { notificationsApi, type NotificationItem, type NotificationTarget } from '@panwatch/api'
+import { notificationsApi, type AssistantActivityTask, type NotificationItem, type NotificationTarget } from '@panwatch/api'
+import { Popover, PopoverContent, PopoverTrigger } from '@panwatch/base-ui/components/ui/popover'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAssistantActivity } from '@/hooks/useAssistantActivity'
 import { claimNotifications } from '@/lib/notifications'
 import { localizeAgentName } from '@/i18n/agent-labels'
+import NotificationInbox from './NotificationInbox'
 
 const NotificationPanel = lazy(() => import('./NotificationPanel'))
 const SourceDialog = lazy(() => import('./NotificationSourceDialog'))
 const TaskPanel = lazy(() => import('@/components/assistant/AssistantActivityPanel'))
-const Context = createContext({ unread: 0, active: 0, disconnected: false, open: () => {}, openTasks: () => {} })
+const Context = createContext({ unread: 0, pending: 0, active: 0, tasks: [] as AssistantActivityTask[], disconnected: false,
+  monitor: null as ReturnType<typeof useNotifications> | null, open: () => {}, openTasks: () => {}, openItem: async (_item: NotificationItem) => {} })
+export function useActiveAssistantTasks() { return useContext(Context).tasks }
 const foreground = () => document.visibilityState === 'visible' && document.hasFocus()
 export function NotificationBell({ mobile = false }: { mobile?: boolean }) {
-  const { unread, active, disconnected, open, openTasks } = useContext(Context)
+  const { unread, pending, active, tasks, disconnected, monitor, open, openTasks, openItem } = useContext(Context)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const handingOff = useRef(false)
+  const handoffTimer = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => () => clearTimeout(handoffTimer.current), [])
   const { t } = useTranslation('configuration')
   const css = `relative flex shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent ${mobile ? 'h-8 w-8' : 'h-9 w-9'}`
   return <>
-    {active > 0 && <button className={css} onClick={openTasks} aria-label={t('notifications.taskEntry', { count: active }) as string} data-testid="assistant-task-entry"><ListTodo className="h-4 w-4" /></button>}
-    <button className={css} onClick={open} aria-label={t('notifications.bell', { count: unread }) as string} data-testid="notification-bell">
+    {active > 0 && <button className={css} onClick={openTasks} aria-label={t('notifications.taskEntry', { count: active }) as string} data-testid="assistant-task-entry">{tasks.some(task => task.status !== 'awaiting_approval' && task.status !== 'waiting_retry') ? <Loader2 data-testid="assistant-running-indicator" className="h-4 w-4 animate-spin motion-reduce:animate-none text-primary" /> : <PauseCircle className="h-4 w-4 text-primary" />}</button>}
+    <Popover open={previewOpen} onOpenChange={next => { if (next) handingOff.current = false; setPreviewOpen(next) }}><PopoverTrigger asChild><button className={css} aria-label={t('notifications.bell', { count: unread }) as string} data-testid="notification-bell">
       {disconnected ? <AlertCircle className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
       {unread > 0 && <span data-testid="notification-badge" aria-hidden className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] text-primary-foreground">{unread > 99 ? '99+' : unread}</span>}
-    </button>
+      {unread === 0 && pending > 0 && <span aria-label={t('notifications.pending') as string} className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-primary" />}
+    </button></PopoverTrigger>
+      <PopoverContent align="end" sideOffset={8} collisionPadding={8} onCloseAutoFocus={event => { if (handingOff.current) event.preventDefault() }} className="w-[min(23rem,calc(100vw-1rem))] overflow-hidden p-0 shadow-xl">
+        <Suspense fallback={<p role="status" className="p-4 text-[12px]">{t('notifications.loading')}</p>}>
+          {monitor && <NotificationInbox monitor={monitor} onHistory={() => { handingOff.current = true; setPreviewOpen(false); handoffTimer.current = setTimeout(open, 0) }} onOpen={async item => { handingOff.current = true; setPreviewOpen(false); await openItem(item) }} />}
+        </Suspense>
+      </PopoverContent>
+    </Popover>
   </>
 }
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -69,7 +84,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       toast(tr(`toasts.${item.event_type}`, { title: item.source === 'agent' ? localizeAgentName(item.title, item.title, t as unknown as (key: string) => string) : item.title || tr(`sources.${item.source}`) }), item.event_type.endsWith('_failed') ? 'error' : item.event_type === 'assistant_completed' ? 'success' : 'info', { label: tr('view'), onClick: () => void openItem(item) })
     } else if (fresh.length > 1) toast(tr('multiple', { count: fresh.length }), 'info', { label: tr('view'), onClick: () => setOpen(true) })
   }, [unread, focused, currentConversation, changing, error, mutate, openItem, toast, tr])
-  return <Context.Provider value={{ unread: monitor.summary.unread_count, active: tasks.activity.active_tasks.length, disconnected: monitor.disconnected, open: () => { setOpen(true); void monitor.refresh() }, openTasks: () => { setTasksOpen(true); void tasks.refresh() } }}>
+  return <Context.Provider value={{ unread: monitor.summary.unread_count, pending: monitor.summary.pending_action_count, active: tasks.activity.active_tasks.length, tasks: tasks.activity.active_tasks, monitor, disconnected: monitor.disconnected, openItem, open: () => { setOpen(true); void monitor.refresh() }, openTasks: () => { setTasksOpen(true); void tasks.refresh() } }}>
     {children}
     <Suspense fallback={null}>
       {open && <NotificationPanel monitor={monitor} onClose={() => setOpen(false)} onOpen={openItem} />}

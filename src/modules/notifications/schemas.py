@@ -2,7 +2,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, PositiveInt, model_validator
 
 Source = Literal['assistant', 'agent', 'market']
-View = Literal['all', 'unread', 'pending', 'archived']
+View = Literal['all', 'unread', 'pending', 'archived', 'attention']
 
 class NotificationSelection(BaseModel):
     ids: list[PositiveInt] = Field(default_factory=list, max_length=100)

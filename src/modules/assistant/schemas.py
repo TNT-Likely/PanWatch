@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
-from pydantic import BaseModel, Field, PositiveInt
+from pydantic import BaseModel, Field, PositiveInt, field_validator
 
 from .result_schemas import AssistantResult
 
@@ -15,6 +15,18 @@ class CreateConversationCommand(BaseModel):
     stock_symbol: str | None = Field(default=None, max_length=32)
     stock_market: str | None = Field(default=None, max_length=16)
     initial_context: str | None = Field(default=None, max_length=20_000)
+
+
+class RenameConversationCommand(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+
+    @field_validator('title')
+    @classmethod
+    def clean_title(cls, value: str) -> str:
+        value = ' '.join(value.split())
+        if not value:
+            raise ValueError('Title cannot be blank')
+        return value
 
 
 class ApprovalDecisionCommand(BaseModel):
@@ -31,6 +43,7 @@ class ToolPermissionCommand(BaseModel):
 class ConversationDTO(BaseModel):
     id: int
     title: str = ""
+    title_source: str = "provisional"
     stock_symbol: str | None = None
     stock_market: str | None = None
     created_at: datetime | None = None

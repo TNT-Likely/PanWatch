@@ -1090,6 +1090,7 @@ class ChatConversation(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String, default="")
+    title_source = Column(String, nullable=False, default="provisional", server_default="legacy")
     stock_symbol = Column(String, nullable=True)
     stock_market = Column(String, nullable=True)
     ai_model_id = Column(Integer, nullable=True)

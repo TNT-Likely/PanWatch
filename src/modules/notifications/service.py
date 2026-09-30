@@ -84,6 +84,10 @@ class NotificationService:
                                  or_(NotificationEvent.expires_at.is_(None), NotificationEvent.expires_at > now()))
         if view == 'pending':
             query = query.filter(self.pending())
+        if view == 'attention':
+            query = query.filter(NotificationEvent.resolved_at.is_(None),
+                or_(NotificationEvent.expires_at.is_(None), NotificationEvent.expires_at > now()),
+                or_(NotificationReceipt.read_at.is_(None), self.pending()))
         return query
 
     def summary(self):
@@ -107,9 +111,11 @@ class NotificationService:
 
     def serialize(self, rows):
         available = self.available_ids(rows)
+        conversation_ids = [action.get('conversation_id') for event, _ in rows if event.source == 'assistant' for action in event.actions]
+        titles = dict(self.db.query(ChatConversation.id, ChatConversation.title).filter(ChatConversation.id.in_(conversation_ids)).all()) if conversation_ids else {}
         stamp = now()
         return [dict(id=e.id, source=e.source, event_type=e.event_type, severity=e.severity, attention=e.attention,
-                     title=e.display_snapshot.get('title', ''), template_key=e.template_key, template_params=e.template_params,
+                     title=(titles.get(e.actions[0].get('conversation_id')) if e.source == 'assistant' and e.actions else None) or e.display_snapshot.get('title', ''), template_key=e.template_key, template_params=e.template_params,
                      group_key=e.group_key, toast_eligible=e.toast_eligible, occurred_at=utc(e.occurred_at),
                      resolved_at=utc(e.resolved_at), expires_at=utc(e.expires_at), read_at=utc(r.read_at), archived_at=utc(r.archived_at),
                      action_required=e.attention == 'action_required' and e.resolved_at is None and (e.expires_at is None or utc(e.expires_at) > stamp),
@@ -123,7 +129,7 @@ class NotificationService:
                 assert data['scope'] == scope
                 upper, rank_value, last = int(data['upper']), int(data['rank']), int(data['last'])
                 snapshot = datetime.fromisoformat(data['at'])
-                assert upper >= last > 0 and rank_value in (0, 1) and snapshot.tzinfo is not None
+                assert upper >= last > 0 and rank_value in ((0, 1, 2) if view == 'attention' else (0, 1)) and snapshot.tzinfo is not None
             except (ValueError, KeyError, TypeError, OverflowError, AssertionError) as exc:
                 raise ValueError('Invalid notification cursor') from exc
         else:
@@ -133,6 +139,8 @@ class NotificationService:
         # Freeze unread/read ordering at the first page's time. Reading a row
         # between pages must not move it to another rank and duplicate it.
         rank = case((or_(NotificationReceipt.read_at.is_(None), NotificationReceipt.read_at > snapshot), 0), else_=1)
+        if view == 'attention':
+            rank = case((self.pending(), 0), (or_(NotificationReceipt.read_at.is_(None), NotificationReceipt.read_at > snapshot), 1), else_=2)
         query = self.query(source, view).filter(NotificationEvent.id <= upper)
         if cursor:
             query = query.filter(or_(rank > rank_value, and_(rank == rank_value, NotificationEvent.id < last)))

@@ -1,6 +1,8 @@
-import { MessageSquareText, Plus, Trash2 } from 'lucide-react'
-import type { ChatConversation } from '@panwatch/api'
+import { MessageSquareText, Plus } from 'lucide-react'
+import type { AssistantTaskStatus, ChatConversation } from '@panwatch/api'
 import { useTranslation } from 'react-i18next'
+import { AssistantTaskIndicator } from './AssistantTaskIndicator'
+import { AssistantConversationActions } from './AssistantConversationActions'
 
 interface AssistantSidebarProps {
   conversations: ChatConversation[]
@@ -8,6 +10,8 @@ interface AssistantSidebarProps {
   onOpen: (conversation: ChatConversation) => void
   onCreate: () => void
   onDelete: (conversationId: number) => void
+  onRename?: (conversationId: number, title: string) => Promise<void>
+  taskStatuses?: Record<number, AssistantTaskStatus>
 }
 
 /** Desktop history rail; its callbacks keep transport state in ChatWidget. */
@@ -17,6 +21,8 @@ export function AssistantSidebar({
   onOpen,
   onCreate,
   onDelete,
+  onRename,
+  taskStatuses = {},
 }: AssistantSidebarProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
@@ -53,20 +59,13 @@ export function AssistantSidebar({
                 className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left"
                 aria-label={title}
               >
-                <p className="truncate text-[12px] font-medium">{title}</p>
+                <span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-[12px] font-medium">{title}</span><AssistantTaskIndicator status={taskStatuses[conversation.id]} /></span>
                 <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
                   {conversation.stock_symbol ? `${conversation.stock_market}:${conversation.stock_symbol} · ` : ''}
                   {new Date(conversation.created_at).toLocaleDateString()}
                 </p>
               </button>
-              <button
-                type="button"
-                onClick={() => onDelete(conversation.id)}
-                className="mr-1 rounded-md p-1.5 text-muted-foreground/50 opacity-0 transition-all hover:bg-rose-500/10 hover:text-rose-500 group-hover:opacity-100 focus:opacity-100"
-                aria-label={`${assistantT('assistantPage.deny')} ${title}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <AssistantConversationActions conversation={conversation} onRename={onRename} onDelete={onDelete} />
             </div>
           )
         })}

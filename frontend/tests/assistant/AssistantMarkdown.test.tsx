@@ -32,4 +32,13 @@ describe('assistant Markdown render isolation', () => {
     expect(safeStreamMarkdown('```js\nconst value = 1\n```')).toBe('```js\nconst value = 1\n```')
     expect(safeStreamMarkdown('**研究结论**')).toBe('**研究结论**')
   })
+
+  it('holds trailing blank tokens out of the streaming preview and preserves completed content', () => {
+    const text = '```text\n已有内容' + '\n'.repeat(50)
+    expect(safeStreamMarkdown(text)).toBe('```text\n已有内容\n```')
+    const { rerender } = render(<AssistantMarkdown content={text} streaming />)
+    expect(screen.getByTestId('parsed-markdown').textContent).toBe('```text\n已有内容\n```')
+    rerender(<AssistantMarkdown content={text} />)
+    expect(screen.getByTestId('parsed-markdown').textContent).toBe(text)
+  })
 })

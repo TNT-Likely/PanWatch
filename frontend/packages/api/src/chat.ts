@@ -5,6 +5,7 @@ import { readSSE, type SSEEvent } from './sse'
 export interface ChatConversation {
   id: number
   title: string
+  title_source?: 'provisional' | 'legacy' | 'automatic' | 'manual'
   stock_symbol?: string | null
   stock_market?: string | null
   created_at: string
@@ -254,6 +255,8 @@ export interface AssistantConfig {
 export type AssistantConfigUpdate = Omit<AssistantConfig, 'models'>
 
 export const chatApi = {
+  renameConversation: (conversationId: number, title: string) =>
+    fetchAPI<ChatConversation>(`/assistant/conversations/${conversationId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   createConversation: (params?: { stock_symbol?: string; stock_market?: string; initial_context?: string }) =>
     fetchAPI<ChatConversation>('/assistant/conversations', {
       method: 'POST',
