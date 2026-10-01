@@ -377,6 +377,7 @@ export const configuration = {
   },
   stocksPage: {
     markets: { all: 'All', cn: 'Mainland China', hk: 'Hong Kong', us: 'US', hkShort: 'HK', usShort: 'US' },
+    quoteStatus: { closed: 'Market closed today; no daily change', pre_market: 'Market has not opened; no daily change', stale: 'Today’s quote has not updated', missing: 'Quote unavailable', unknown: 'Market status unknown', asOf: 'Quote date: {{date}}' },
     marketStatus: { trading: 'Open', pre_market: 'Pre-market', break: 'Midday break', after_hours: 'Closed', closed: 'Closed', unknown: 'Unknown' },
     messages: {
       agent: 'Agent',

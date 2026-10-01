@@ -49,3 +49,19 @@ def test_summary_batch_keeps_other_items_when_one_summary_fails(monkeypatch):
 
     assert result[0]["summary"] == {"trend": "trend-GOOD"}
     assert result[1]["summary"]["error"] == "provider unavailable"
+
+
+def test_summary_batch_fetches_duplicate_symbols_once(monkeypatch):
+    from src.modules.market.api import klines
+
+    calls = []
+    monkeypatch.setattr(klines.KlineCollector, "get_kline_summary", lambda self, symbol: (
+        calls.append((self.market.value, symbol)), {"trend": "flat"}
+    )[1])
+    payload = klines.KlineSummaryBatchRequest(items=[
+        klines.KlineSummaryItem(symbol="600519", market="CN"),
+        klines.KlineSummaryItem(symbol="600519", market="CN"),
+    ])
+    result = klines.get_kline_summary_batch(payload)
+    assert calls == [("CN", "600519")]
+    assert len(result) == 2 and result[0] == result[1]

@@ -374,6 +374,7 @@ export const configuration = {
   },
   stocksPage: {
     markets: { all: '全部', cn: 'A股', hk: '港股', us: '美股', hkShort: '港', usShort: '美' },
+    quoteStatus: { closed: '今日休市，暂无今日涨跌', pre_market: '尚未开盘，暂无今日涨跌', stale: '今日行情尚未更新', missing: '暂无行情', unknown: '市场状态未知', asOf: '行情日期：{{date}}' },
     marketStatus: { trading: '交易中', pre_market: '盘前', break: '午间休市', after_hours: '已收盘', closed: '休市', unknown: '未知' },
     messages: {
       agent: 'Agent',

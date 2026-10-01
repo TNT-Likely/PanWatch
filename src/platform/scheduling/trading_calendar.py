@@ -7,10 +7,10 @@
 数据源
 - **A 股**:akshare 交易日历(`tool_trade_date_hist_sina`),含法定节假日,权威。
   结果缓存在内存,由 `refresh()` 更新(启动预热 + 每日凌晨刷新)。
-- **港股 / 美股**:没有等价的公开日历源,只判周末(诚实降级,不假装支持节假日)。
+- **离线兜底**:内置交易所公布的 2026 年 CN/HK/US 休市和半日市安排。
 
 降级原则
-拿不到日历时退回「只判周末」—— 宁可多发一条通知,也不能把交易日误判为休市。
+拿不到在线日历时优先使用内置年度日历;未覆盖年份退回「只判周末」。
 少发一条是遗憾,漏发一整天是事故。
 
 并发安全
@@ -25,9 +25,11 @@ import logging
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from src.platform.scheduling.exchange_calendar_data import HOLIDAYS, EARLY_CLOSES
+
 logger = logging.getLogger(__name__)
 
-# A 股交易日集合;None = 尚未加载或加载失败(此时降级为只判周末)
+# A 股交易日集合;None = 尚未加载或加载失败(此时使用内置年度日历兜底)
 _CN_TRADING_DATES: frozenset[date] | None = None
 # 日历覆盖区间,用于判断查询日期是否落在可信范围内(跨年未刷新时会超出)
 _CN_RANGE: tuple[date, date] | None = None
@@ -64,10 +66,10 @@ def refresh_blocking() -> bool:
     try:
         dates = _fetch_cn_trading_dates()
     except Exception as e:
-        logger.warning("[交易日历] A股日历拉取失败,降级为只判周末: %s", e)
+        logger.warning("[交易日历] A股日历拉取失败,保留缓存并使用内置日历兜底: %s", e)
         return False
     if not dates:
-        logger.warning("[交易日历] A股日历为空,降级为只判周末")
+        logger.warning("[交易日历] A股日历为空,保留缓存并使用内置日历兜底")
         return False
     _CN_TRADING_DATES = dates
     _CN_RANGE = (min(dates), max(dates))
@@ -141,10 +143,49 @@ def is_trading_day(market, d: date | datetime | None = None) -> bool:
     if code == MarketCode.CN and _CN_TRADING_DATES and _CN_RANGE:
         if _CN_RANGE[0] <= target <= _CN_RANGE[1]:
             return target in _CN_TRADING_DATES
-        logger.debug("[交易日历] %s 超出A股日历覆盖范围,降级为只判周末", target)
+        logger.debug("[交易日历] %s 超出A股在线日历覆盖范围,尝试内置年度日历", target)
 
-    # 港美股、日历缺失、超出覆盖范围:只判周末。
+    # 港美股或在线日历未覆盖:使用交易所公布的年度休市安排。
+    holidays = HOLIDAYS.get((code.value, target.year)) if code else None
+    if holidays is not None:
+        return target not in holidays
+
+    # 未覆盖年份:只判周末。
     return True
+
+
+def trading_sessions(market, d: date | datetime | None = None) -> list:
+    """该市场当天的常规交易时段,包含半日市;休市日返回空列表。"""
+    from src.platform.marketdata.models import MARKETS, TradingSession
+
+    code = _to_market_code(market)
+    target = _resolve_date(code, d)
+    if code not in MARKETS or not is_trading_day(code, target):
+        return []
+    sessions = MARKETS[code].sessions
+    close = EARLY_CLOSES.get((code.value, target))
+    if close is None:
+        return sessions
+    return [TradingSession(s.start, min(s.end, close)) for s in sessions if s.start < close]
+
+
+def market_status(market, dt: datetime | None = None) -> str:
+    """按当地交易日和当日时段统一判断状态,请求路径只读内存。"""
+    code = _to_market_code(market)
+    if code is None:
+        return "unknown"
+    now = dt.astimezone(_market_tz(code)) if dt is not None else _now_in_market_tz(code)
+    sessions = trading_sessions(code, now.date())
+    if not sessions:
+        return "closed"
+    current = now.time()
+    if any(s.start <= current <= s.end for s in sessions):
+        return "trading"
+    if current < sessions[0].start:
+        return "pre_market"
+    if current > sessions[-1].end:
+        return "after_hours"
+    return "break"
 
 
 def any_market_trading_day(d: date | datetime | None = None) -> bool:

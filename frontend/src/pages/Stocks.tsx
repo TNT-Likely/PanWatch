@@ -28,6 +28,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
+import { mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
 
@@ -65,59 +66,6 @@ interface Account {
   enabled: boolean
 }
 
-interface Position {
-  id: number
-  stock_id: number
-  sort_order?: number
-  symbol: string
-  name: string
-  market: string
-  cost_price: number
-  quantity: number
-  invested_amount: number | null
-  trading_style: string  // short: 短线, swing: 波段, long: 长线
-  current_price: number | null
-  current_price_cny: number | null  // 人民币价格（港股换算后）
-  change_pct: number | null
-  market_value: number | null
-  market_value_cny: number | null  // 人民币市值
-  pnl: number | null
-  pnl_pct: number | null
-  daily_pnl: number | null
-  daily_pnl_pct: number | null
-  exchange_rate: number | null  // 汇率（仅港股）
-}
-
-interface AccountSummary {
-  id: number
-  name: string
-  available_funds: number
-  total_market_value: number
-  total_cost: number
-  total_pnl: number
-  total_pnl_pct: number
-  total_daily_pnl: number
-  total_assets: number
-  positions: Position[]
-}
-
-interface PortfolioSummary {
-  accounts: AccountSummary[]
-  total: {
-    total_market_value: number
-    total_cost: number
-    total_pnl: number
-    total_pnl_pct: number
-    total_daily_pnl: number
-    available_funds: number
-    total_assets: number
-  }
-  exchange_rates?: {
-    HKD_CNY: number
-    USD_CNY?: number
-  }
-  quotes?: Record<string, { current_price: number | null; change_pct: number | null }>
-}
 
 interface AgentConfig {
   name: string
@@ -145,12 +93,6 @@ interface QuoteRequestItem {
   market: string
 }
 
-interface QuoteResponse {
-  symbol: string
-  market: string
-  current_price: number | null
-  change_pct: number | null
-}
 
 interface StockForm {
   symbol: string
@@ -252,16 +194,6 @@ const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | n
   return items
 }
 
-const toQuoteMap = (rows: QuoteResponse[]): Record<string, { current_price: number | null; change_pct: number | null }> => {
-  const map: Record<string, { current_price: number | null; change_pct: number | null }> = {}
-  for (const item of rows || []) {
-    map[`${item.market}:${item.symbol}`] = {
-      current_price: item.current_price ?? null,
-      change_pct: item.change_pct ?? null,
-    }
-  }
-  return map
-}
 
 const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, { total: number; enabled: number }> => {
   const map: Record<string, { total: number; enabled: number }> = {}
@@ -274,114 +206,6 @@ const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, {
   return map
 }
 
-const round2 = (value: number) => Math.round(value * 100) / 100
-
-const mergePortfolioQuotes = (
-  portfolio: PortfolioSummary | null,
-  quotes: Record<string, { current_price: number | null; change_pct: number | null }>
-): PortfolioSummary | null => {
-  if (!portfolio) return null
-
-  const hkdRate = portfolio.exchange_rates?.HKD_CNY ?? 0.92
-  const usdRate = portfolio.exchange_rates?.USD_CNY ?? 7.25
-
-  let grandMarketValue = 0
-  let grandCost = 0
-  let grandAvailable = 0
-  let grandDailyPnl = 0
-
-  const accounts = portfolio.accounts.map(account => {
-    let accMarketValue = 0
-    let accCost = 0
-    let accDailyPnl = 0
-
-    const positions = account.positions.map(pos => {
-      const quote = quotes[`${pos.market}:${pos.symbol}`]
-      const current_price = quote?.current_price ?? pos.current_price ?? null
-      const change_pct = quote?.change_pct ?? pos.change_pct ?? null
-      const rate = pos.market === 'HK' ? hkdRate : pos.market === 'US' ? usdRate : 1
-
-      const cost = pos.cost_price * pos.quantity * rate
-      accCost += cost
-
-      let market_value: number | null = null
-      let market_value_cny: number | null = null
-      let pnl: number | null = null
-      let pnl_pct: number | null = null
-      let daily_pnl: number | null = null
-      let daily_pnl_pct: number | null = null
-
-      if (current_price != null) {
-        market_value = current_price * pos.quantity
-        market_value_cny = market_value * rate
-        accMarketValue += market_value_cny
-        pnl = market_value_cny - cost
-        pnl_pct = cost > 0 ? (pnl / cost * 100) : 0
-      }
-
-      if (current_price != null && change_pct != null && change_pct !== -100) {
-        const prev = current_price / (1 + change_pct / 100)
-        if (isFinite(prev) && prev > 0) {
-          daily_pnl = round2((current_price - prev) * pos.quantity * rate)
-          daily_pnl_pct = round2(change_pct)
-          accDailyPnl += daily_pnl
-        }
-      }
-
-      return {
-        ...pos,
-        current_price,
-        current_price_cny: current_price != null ? current_price * rate : null,
-        change_pct,
-        market_value,
-        market_value_cny,
-        pnl,
-        pnl_pct,
-        daily_pnl,
-        daily_pnl_pct,
-        exchange_rate: pos.market === 'HK' || pos.market === 'US' ? rate : null,
-      }
-    })
-
-    const accPnl = accMarketValue - accCost
-    const accPnlPct = accCost > 0 ? (accPnl / accCost * 100) : 0
-    const accTotalAssets = accMarketValue + account.available_funds
-
-    grandMarketValue += accMarketValue
-    grandCost += accCost
-    grandAvailable += account.available_funds
-    grandDailyPnl += accDailyPnl
-
-    return {
-      ...account,
-      total_market_value: round2(accMarketValue),
-      total_cost: round2(accCost),
-      total_pnl: round2(accPnl),
-      total_pnl_pct: round2(accPnlPct),
-      total_daily_pnl: round2(accDailyPnl),
-      total_assets: round2(accTotalAssets),
-      positions,
-    }
-  })
-
-  const grandPnl = grandMarketValue - grandCost
-  const grandPnlPct = grandCost > 0 ? (grandPnl / grandCost * 100) : 0
-  const grandTotalAssets = grandMarketValue + grandAvailable
-
-  return {
-    ...portfolio,
-    accounts,
-    total: {
-      total_market_value: round2(grandMarketValue),
-      total_cost: round2(grandCost),
-      total_pnl: round2(grandPnl),
-      total_pnl_pct: round2(grandPnlPct),
-      total_daily_pnl: round2(grandDailyPnl),
-      available_funds: round2(grandAvailable),
-      total_assets: round2(grandTotalAssets),
-    },
-  }
-}
 
 export default function StocksPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -404,7 +228,7 @@ export default function StocksPage() {
   const [expandedAccounts, setExpandedAccounts] = useState<Set<number>>(new Set())
 
   // Quotes for all stocks (used in stock list)
-  const [quotes, setQuotes] = useState<Record<string, { current_price: number | null; change_pct: number | null }>>({})
+  const [quotes, setQuotes] = useState<Record<string, DisplayQuote>>({})
   const [quotesLoading, setQuotesLoading] = useState(false)
   // Keyed by `${market}:${symbol}` to avoid cross-market symbol collisions
   const [klineSummaries, setKlineSummaries] = useState<Record<string, KlineSummary>>({})
@@ -658,6 +482,34 @@ export default function StocksPage() {
     }
   }, [])
 
+  const loadNewStockSummary = useCallback(async (item: QuoteRequestItem) => {
+    const map = await requestKlineSummaries([item])
+    setKlineSummaries(prev => ({ ...prev, ...map }))
+  }, [requestKlineSummaries])
+
+  const refreshMarketStatus = useCallback(async (signal?: AbortSignal): Promise<MarketStatus[]> => {
+    try {
+      const data = await fetchAPI<MarketStatus[]>('/stocks/markets/status', { signal })
+      if (!signal?.aborted) setMarketStatus(data)
+      return data
+    } catch (error) {
+      if (!signal?.aborted) console.warn('获取市场状态失败:', error)
+      return []
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const refresh = () => { if (!document.hidden) void refreshMarketStatus(controller.signal) }
+    const timer = window.setInterval(refresh, 60_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [refreshMarketStatus])
+
   const refreshQuotes = useCallback(async () => {
     const items = buildQuoteItems()
     if (items.length === 0) return
@@ -747,15 +599,9 @@ export default function StocksPage() {
   }, [])
 
   const loadPortfolio = useCallback(async () => {
-    setPortfolioLoading(true)
     try {
-      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false')
-      const items = buildQuoteItemsFrom(stocks, portfolioData)
-      const [quoteRows, klineMap] = await Promise.all([
-        requestQuotes(items),
-        requestKlineSummaries(items),
-      ])
-      const quoteMap = toQuoteMap(quoteRows)
+      // Mutation refresh is local metadata only; render using the quotes already on screen.
+      const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false&refresh_exchange_rates=false')
       setPortfolioRaw(portfolioData)
       setAccounts(portfolioData.accounts.map(account => ({
         id: account.id,
@@ -763,16 +609,20 @@ export default function StocksPage() {
         available_funds: account.available_funds,
         enabled: true,
       })))
-      setExpandedAccounts(new Set(portfolioData.accounts.map(account => account.id)))
-      setQuotes(prev => ({ ...prev, ...quoteMap }))
-      setKlineSummaries(prev => ({ ...prev, ...klineMap }))
-      setPortfolio(mergePortfolioQuotes(portfolioData, { ...quotes, ...quoteMap }))
+      setExpandedAccounts(prev => new Set([...prev, ...portfolioData.accounts.map(account => account.id)]))
+      setPortfolio(mergePortfolioQuotes(portfolioData, quotes))
+
+      // New symbols may need a quote; cost/quantity/account edits need no market-data fetch.
+      const missing = buildQuoteItemsFrom(stocks, portfolioData).filter(item => !quotes[`${item.market}:${item.symbol}`])
+      if (missing.length > 0) {
+        void requestQuotes(missing).then(rows => {
+          setQuotes(prev => ({ ...prev, ...toQuoteMap(rows) }))
+        })
+      }
     } catch (e) {
       console.error(e)
-    } finally {
-      setPortfolioLoading(false)
     }
-  }, [requestKlineSummaries, requestQuotes, quotes, stocks])
+  }, [requestQuotes, quotes, stocks])
 
   const loadInitialData = useCallback((signal: AbortSignal): Promise<void> => {
     if (initialLoadPromiseRef.current) return initialLoadPromiseRef.current
@@ -815,22 +665,14 @@ export default function StocksPage() {
       setPortfolioLoading(false)
 
       void loadPortfolioPageBackgroundData({
-        loadMarketStatus: async requestSignal => {
-          try {
-            return await fetchAPI<MarketStatus[]>('/stocks/markets/status', { signal: requestSignal })
-          } catch (e) {
-            console.warn('获取市场状态失败:', e)
-            return []
-          }
-        },
+        loadMarketStatus: refreshMarketStatus,
         buildQuoteItems: buildQuoteItemsFrom,
         loadSuggestions: requestSuggestions,
         loadPriceAlerts: requestPriceAlerts,
         loadKlines: requestKlineSummaries,
       }, coreData.stocks, coreData.portfolio, signal).then(data => {
         if (signal.aborted) return
-        setMarketStatus(data.marketStatus)
-        setKlineSummaries(data.klines)
+        setKlineSummaries(prev => ({ ...prev, ...data.klines }))
         setPoolSuggestions(data.suggestions)
         setPriceAlertSummaryMap(toPriceAlertSummaryMap(data.priceAlerts))
       }).catch(error => {
@@ -844,7 +686,7 @@ export default function StocksPage() {
 
     initialLoadPromiseRef.current = run
     return run
-  }, [requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
+  }, [refreshMarketStatus, requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
 
   // Load news for specific stock or all watchlist
   const loadNews = useCallback(async (stockName?: string) => {
@@ -932,13 +774,14 @@ export default function StocksPage() {
 
   // Refresh quotes only (decoupled from portfolio and scans)
   const handleRefresh = useCallback(async () => {
+    void refreshKlines()
     await Promise.all([
+      refreshMarketStatus(),
       refreshQuotes(),
       loadPoolSuggestions(),
       loadPriceAlertSummaries(),
-      refreshKlines(),
     ])
-  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshQuotes])
+  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshMarketStatus, refreshQuotes])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -1106,7 +949,10 @@ export default function StocksPage() {
   const handleStockSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await stocksApi.create(stockForm)
+      const created = await stocksApi.create(stockForm)
+      const item = { symbol: created.symbol, market: created.market }
+      void requestQuotes([item]).then(rows => setQuotes(prev => ({ ...prev, ...toQuoteMap(rows) })))
+      void loadNewStockSummary(item)
       setStockForm(emptyStockForm)
       setSearchQuery('')
       setShowStockForm(false)
@@ -1264,6 +1110,7 @@ export default function StocksPage() {
   const handlePositionSubmit = async () => {
     try {
       let stockId = positionForm.stock_id
+      let createdStock: QuoteRequestItem | undefined
 
       // 如果是新增且股票不在自选中，先添加到自选
       if (!editPositionId && !stockId && positionForm.stock_symbol) {
@@ -1277,6 +1124,7 @@ export default function StocksPage() {
             })
           })
           stockId = newStock.id
+          createdStock = { symbol: newStock.symbol, market: newStock.market }
           load() // 刷新股票列表
         } catch {
           // 股票可能已存在，尝试获取（兼容并发创建/历史数据）。
@@ -1310,6 +1158,7 @@ export default function StocksPage() {
         await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
       }
       setPositionDialogOpen(false)
+      if (createdStock) void loadNewStockSummary(createdStock)
       loadPortfolio()
       toast(editPositionId ? stockT('stocksPage.messages.positionUpdated') : stockT('stocksPage.messages.positionAdded'), 'success')
     } catch (e) {
@@ -1435,6 +1284,12 @@ export default function StocksPage() {
   }
 
   const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const quoteHint = (quote: { daily_move_status?: string; quote_date?: string | null }) => {
+    const status = quote.daily_move_status
+    const label = status && status !== 'current' ? stockT(`stocksPage.quoteStatus.${status}`) : ''
+    const date = quote.quote_date ? stockT('stocksPage.quoteStatus.asOf', { date: quote.quote_date }) : ''
+    return [label, date].filter(Boolean).join(' · ')
+  }
   const marketStatusLabel = (status: string, fallback: string) =>
     stockT(`stocksPage.marketStatus.${status}`, { defaultValue: fallback })
 
@@ -2006,7 +1861,7 @@ export default function StocksPage() {
                     <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)}>
                       <Plus className="w-3 md:w-3.5 h-3 md:h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openAccountDialog(accounts.find(a => a.id === account.id))}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" aria-label={stockT('stocksPage.messages.editAccount')} onClick={() => openAccountDialog(accounts.find(a => a.id === account.id))}>
                       <Pencil className="w-3 md:w-3.5 h-3 md:h-3.5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8 hover:text-destructive" onClick={() => handleDeleteAccount(account.id)}>
@@ -2108,10 +1963,10 @@ export default function StocksPage() {
                                       ) : null
                                     })()}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                  <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
                                   </td>
-                                  <td className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
+                                  <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
                                   </td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatPrice(pos.cost_price)}</td>
@@ -2197,7 +2052,7 @@ export default function StocksPage() {
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title={stockT('stocksPage.messages.relatedNews')}><Newspaper className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
                                   </td>
@@ -2267,9 +2122,9 @@ export default function StocksPage() {
                                     </span>
                                   )}
                                 </div>
-                                <div className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
+                                <div title={quoteHint(pos)} className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
                                   {pos.current_price?.toFixed(2) || '—'}
-                                  {pos.change_pct != null && <span className="text-[11px] ml-1">{pos.change_pct >= 0 ? '+' : ''}{pos.change_pct.toFixed(2)}%</span>}
+                                  <span className="text-[11px] ml-1">{pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}</span>
                                 </div>
                               </div>
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
@@ -2359,7 +2214,7 @@ export default function StocksPage() {
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
                               </div>
@@ -2495,7 +2350,7 @@ export default function StocksPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
+                        <div title={quoteHint(quote || {})} className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
                           {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
                         </div>
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>

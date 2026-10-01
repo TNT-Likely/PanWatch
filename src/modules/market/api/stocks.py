@@ -20,6 +20,8 @@ from src.platform.persistence.models import (
 from src.platform.marketdata.stock_list import search_stocks, refresh_stock_list
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
+from src.platform.marketdata.quote_display import daily_quote_fields
+from src.platform.scheduling import trading_calendar
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 from src.web.errors import api_error
 
@@ -120,42 +122,22 @@ def _stock_to_response(stock: Stock, agent_display_names: dict[str, str] | None 
 @router.get("/markets/status")
 def get_market_status():
     """获取各市场的交易状态"""
-    from datetime import datetime
-
     result = []
     for market_code, market_def in MARKETS.items():
         try:
-            now = datetime.now(market_def.get_tz())
-            is_trading = market_def.is_trading_time()
+            now = trading_calendar._now_in_market_tz(market_code)
+            status = trading_calendar.market_status(market_code, now)
+            is_trading = status == "trading"
 
             # 获取交易时段描述
             sessions_desc = []
-            for session in market_def.sessions:
+            for session in trading_calendar.trading_sessions(market_code, now):
                 sessions_desc.append(f"{session.start.strftime('%H:%M')}-{session.end.strftime('%H:%M')}")
 
-            # 判断状态
-            weekday = now.weekday()
-            current_time = now.time()
-
-            if weekday >= 5:
-                status = "closed"
-                status_text = "休市（周末）"
-            elif is_trading:
-                status = "trading"
-                status_text = "交易中"
-            else:
-                # 判断是盘前还是盘后
-                first_session = market_def.sessions[0]
-                last_session = market_def.sessions[-1]
-                if current_time < first_session.start:
-                    status = "pre_market"
-                    status_text = "盘前"
-                elif current_time > last_session.end:
-                    status = "after_hours"
-                    status_text = "已收盘"
-                else:
-                    status = "break"
-                    status_text = "午间休市"
+            status_text = {
+                "closed": "休市", "trading": "交易中", "pre_market": "盘前",
+                "after_hours": "已收盘", "break": "午间休市", "unknown": "未知",
+            }[status]
 
             result.append({
                 "code": market_code.value,
@@ -233,6 +215,7 @@ def get_quotes(db: Session = Depends(get_db)):
                     "change_pct": item["change_pct"],
                     "change_amount": item["change_amount"],
                     "prev_close": item["prev_close"],
+                    **daily_quote_fields(market, item),
                 }
         except Exception as e:
             logger.error(f"获取 {market} 行情失败: {e}")

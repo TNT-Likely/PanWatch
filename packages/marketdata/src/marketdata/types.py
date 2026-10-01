@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 
@@ -46,6 +46,8 @@ class Quote:
     circulating_market_value: float | None = None
     total_market_value: float | None = None
     timestamp: datetime = field(default_factory=datetime.now)
+    # Source trading date, distinct from the time at which a quote was fetched.
+    quote_date: date | None = None
 
 
 @dataclass

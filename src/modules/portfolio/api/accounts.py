@@ -14,6 +14,7 @@ from src.platform.persistence.models import Account, PriceAlertRule, Position, S
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import ai_api_error, api_error
 
 logger = logging.getLogger(__name__)
@@ -390,6 +391,7 @@ def reorder_positions(data: PositionReorderRequest, db: Session = Depends(get_db
 def get_portfolio_summary(
     account_id: int | None = None,
     include_quotes: bool = True,
+    refresh_exchange_rates: bool = True,
     db: Session = Depends(get_db),
 ):
     """
@@ -433,9 +435,10 @@ def get_portfolio_summary(
     # 获取实时行情（可选）
     quotes = _fetch_quotes_for_stocks(stocks) if include_quotes else {}
 
-    # 获取汇率
-    hkd_rate = get_hkd_cny_rate()
-    usd_rate = get_usd_cny_rate()
+    # 保存后的元数据刷新可复用汇率缓存,避免等待外部源。
+    markets = {stock.market for stock in stocks}
+    hkd_rate = get_hkd_cny_rate() if refresh_exchange_rates and "HK" in markets else _hkd_rate_cache["rate"]
+    usd_rate = get_usd_cny_rate() if refresh_exchange_rates and "US" in markets else _usd_rate_cache["rate"]
 
     # 计算各账户持仓
     account_summaries = []
@@ -461,7 +464,8 @@ def get_portfolio_summary(
 
             quote = quotes.get(stock.symbol)
             current_price = quote["current_price"] if quote else None
-            change_pct = quote["change_pct"] if quote else None
+            daily_fields = daily_quote_fields(stock.market, quote)
+            change_pct = daily_fields["change_pct"]
             prev_close = quote.get("prev_close") if quote else None
 
             # 根据市场确定汇率
@@ -480,7 +484,9 @@ def get_portfolio_summary(
             daily_pnl = None
             daily_pnl_pct = None
 
-            if current_price is not None and prev_close and prev_close > 0:
+            if daily_fields["daily_move_status"] in ("closed", "pre_market"):
+                daily_pnl = 0.0
+            elif daily_fields["daily_move_status"] == "current" and current_price is not None and prev_close and prev_close > 0:
                 daily_pnl = (current_price - prev_close) * pos.quantity * rate
                 daily_pnl_pct = (current_price - prev_close) / prev_close * 100
                 acc_daily_pnl += daily_pnl
@@ -518,6 +524,8 @@ def get_portfolio_summary(
                 "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
                 "daily_pnl_pct": round(daily_pnl_pct, 2) if daily_pnl_pct is not None else None,
                 "exchange_rate": rate if is_foreign else None,
+                "daily_move_status": daily_fields["daily_move_status"],
+                "quote_date": daily_fields["quote_date"],
             })
 
         if include_quotes:
@@ -562,7 +570,7 @@ def get_portfolio_summary(
         for symbol, quote in quotes.items():
             quotes_dict[symbol] = {
                 "current_price": quote.get("current_price"),
-                "change_pct": quote.get("change_pct"),
+                **daily_quote_fields(quote.get("market", "CN"), quote),
             }
 
     return {

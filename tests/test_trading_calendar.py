@@ -12,7 +12,7 @@ from src.platform.scheduling import trading_calendar as tc
 from src.platform.marketdata.models import MARKETS, MarketCode
 
 # 2026 年真实日历切片:8/8 周六、8/9 周日休市;8/10 周一开市;
-# 10/1~10/8 国庆休市(其中 10/1 是周四 —— 工作日却休市,只靠周末判断抓不到)。
+# 10/1~10/7 国庆休市(其中 10/1 是周四 —— 工作日却休市,只靠周末判断抓不到)。
 _FAKE_CN_DATES = frozenset(
     {
         date(2026, 8, 3),
@@ -28,6 +28,7 @@ _FAKE_CN_DATES = frozenset(
         date(2026, 9, 28),
         date(2026, 9, 29),
         date(2026, 9, 30),
+        date(2026, 10, 8),
         date(2026, 10, 9),
     }
 )
@@ -70,13 +71,13 @@ def test_法定节假日不是交易日(loaded_calendar):
     """国庆(10/1 周四)靠日历识别为休市 —— 周末判断抓不到这一类。"""
     assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 1)) is False
     assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 2)) is False
-    assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 9)) is True  # 节后首个交易日
+    assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 8)) is True  # 节后首个交易日
 
 
-def test_日历缺失时降级为只判周末():
-    """拿不到日历时工作日一律视为交易日 —— 宁可多跑,不可漏发一整天。"""
+def test_日历缺失时使用内置年度日历():
+    """在线日历尚未加载时仍能正确识别已公布的休市日。"""
     assert tc._CN_TRADING_DATES is None
-    assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 1)) is True  # 降级:识别不出国庆
+    assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 1)) is False  # 离线兜底识别国庆
     assert tc.is_trading_day(MarketCode.CN, date(2026, 8, 8)) is False  # 但周末照样拦住
 
 
@@ -85,11 +86,12 @@ def test_超出日历覆盖范围时降级为只判周末(loaded_calendar):
     assert tc.is_trading_day(MarketCode.CN, date(2027, 3, 1)) is True  # 2027-03-01 是周一
 
 
-def test_港美股无日历源_只判周末(loaded_calendar):
-    """A 股日历不套用到港美股(节假日不同),它们只判周末。"""
-    # 10/1 对港股/美股不是中国法定假日,不应被 A 股日历误伤
+def test_各市场使用独立休市日历(loaded_calendar):
+    """A 股日历不套用到港美股,按各交易所休市安排判断。"""
+    # 10/1 港股休市、美股开市;10/2 港股正常开市。
     assert tc.is_trading_day(MarketCode.US, date(2026, 10, 1)) is True
-    assert tc.is_trading_day(MarketCode.HK, date(2026, 10, 1)) is True
+    assert tc.is_trading_day(MarketCode.HK, date(2026, 10, 1)) is False
+    assert tc.is_trading_day(MarketCode.HK, date(2026, 10, 2)) is True
 
 
 def test_接受字符串市场码与datetime(loaded_calendar):

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import api_error
 
 router = APIRouter()
@@ -45,6 +46,7 @@ def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> d
             "pe_ratio": None,
             "total_market_value": None,
             "circulating_market_value": None,
+            **daily_quote_fields(market.value, quote),
         }
 
     return {
@@ -64,6 +66,7 @@ def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> d
         "pe_ratio": quote.get("pe_ratio"),
         "total_market_value": quote.get("total_market_value"),
         "circulating_market_value": quote.get("circulating_market_value"),
+        **daily_quote_fields(market.value, quote),
     }
 
 

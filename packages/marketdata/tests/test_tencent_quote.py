@@ -10,6 +10,7 @@ def _fake_line() -> str:
     parts[4] = "1680.0"      # prev_close
     parts[5] = "1685.0"      # open
     parts[6] = "12345"       # volume
+    parts[30] = "20260930150000"
     parts[31] = "20.0"       # change_amount
     parts[32] = "1.19"       # change_pct
     parts[33] = "1710.0"     # high
@@ -32,6 +33,7 @@ def test_tencent_parses_quote(monkeypatch):
     assert q.symbol == "600519" and q.name == "贵州茅台" and q.market == "CN"
     assert q.current_price == 1700.0 and q.change_pct == 1.19
     assert q.turnover == 6789.0 and q.volume_ratio == 1.2 and q.pe_ratio == 35.0
+    assert q.quote_date.isoformat() == "2026-09-30"
 
 
 def test_tencent_empty_content_returns_empty(monkeypatch):
