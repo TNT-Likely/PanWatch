@@ -1,12 +1,9 @@
-"""从环境和项目配置文件读取运行期设置的技术边界。
+"""从环境变量读取运行期设置，定义应用运行所需的配置结构。
 
 该模块可同时被 HTTP、后台任务和平台适配器使用；它不包含任何投资或产品决策。
 """
 
 from dataclasses import dataclass, field
-from pathlib import Path
-
-import yaml
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings
 
@@ -95,34 +92,3 @@ class AppConfig:
 
     settings: Settings
     watchlist: list[StockConfig] = field(default_factory=list)
-
-
-def load_watchlist(path: str | Path = "config/watchlist.yaml") -> list[StockConfig]:
-    """从 YAML 加载自选股列表"""
-    path = Path(path)
-    if not path.exists():
-        return []
-
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-
-    stocks = []
-    for market_group in data.get("markets", []):
-        market_code = MarketCode(market_group["code"])
-        for stock in market_group.get("stocks", []):
-            stocks.append(
-                StockConfig(
-                    symbol=stock["symbol"],
-                    name=stock["name"],
-                    market=market_code,
-                )
-            )
-
-    return stocks
-
-
-def load_config() -> AppConfig:
-    """加载完整配置"""
-    settings = Settings()
-    watchlist = load_watchlist()
-    return AppConfig(settings=settings, watchlist=watchlist)
