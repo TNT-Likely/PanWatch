@@ -238,34 +238,21 @@ def setup_playwright():
         logger.info("本地开发环境，使用系统 Playwright")
         return
 
-    # 检查是否已安装
-    if os.path.exists(browser_dir):
-        try:
-            dirs = os.listdir(browser_dir)
-            if any(
-                d.startswith("chromium")
-                for d in dirs
-                if os.path.isdir(os.path.join(browser_dir, d))
-            ):
-                logger.info(f"Playwright 浏览器已就绪: {browser_dir}")
-                return
-        except Exception:
-            pass
-
-    # 首次安装
-    logger.info("首次启动，正在安装 Playwright 浏览器（可能需要几分钟）...")
+    # install 会复用当前版本的缓存，并补齐旧缓存缺少的 headless shell。
+    # 不能仅检查 chromium* 目录：挂载卷中可能只有旧版本或完整浏览器。
+    logger.info("正在检查 Playwright 无头浏览器（首次安装可能需要几分钟）...")
     os.makedirs(browser_dir, exist_ok=True)
 
     try:
         result = subprocess.run(
-            ["playwright", "install", "chromium"],
+            ["playwright", "install", "chromium", "--only-shell"],
             env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browser_dir},
             capture_output=True,
             text=True,
             timeout=600,  # 10 分钟超时
         )
         if result.returncode == 0:
-            logger.info("Playwright 浏览器安装完成")
+            logger.info("Playwright 无头浏览器已就绪")
         else:
             logger.error(f"Playwright 安装失败: {result.stderr}")
     except subprocess.TimeoutExpired:

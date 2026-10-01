@@ -86,7 +86,9 @@ class WindowsMakefileTests(unittest.TestCase):
         requirements = (PROJECT_ROOT / "requirements.txt").read_bytes()
         decoded = requirements.decode("utf-8")
 
-        self.assertIn("tradingagents @ git+https://", decoded)
+        self.assertIn("-r requirements-runtime.txt", decoded)
+        runtime = (PROJECT_ROOT / "requirements-runtime.txt").read_bytes().decode("utf-8")
+        self.assertIn("tradingagents @ git+https://", runtime)
 
 
 if __name__ == "__main__":

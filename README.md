@@ -133,7 +133,7 @@ docker run -d \
 
 Open `http://localhost:8000`, create your username and password, and connect an OpenAI-compatible provider. PanWatch selects English or Simplified Chinese from the browser language on first visit.
 
-The image includes the system dependencies required by Playwright. Chromium is downloaded and installed into the mounted volume (by default `/app/data/playwright`) on the first container startup. This can take a few minutes and requires network access.
+The image includes the system dependencies required by Playwright. Chromium's headless shell, used for screenshots, is downloaded and installed into the mounted volume (by default `/app/data/playwright`) on the first container startup. This can take a few minutes and requires network access.
 
 If you do not need browser-based features such as screenshots, set `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` when starting the container to skip the initial Chromium installation.
 

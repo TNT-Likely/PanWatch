@@ -1,0 +1,31 @@
+name: Docker image compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'requirements-runtime.txt'
+      - 'packages/**'
+      - 'server.py'
+      - 'src/modules/reporting/pdf_export.py'
+      - 'src/platform/marketdata/collectors/screenshot_collector.py'
+      - 'scripts/docker_smoke.py'
+      - '.github/workflows/docker-image.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime image
+        run: docker build -t panwatch:smoke --build-arg VERSION=smoke .
+      - name: Check runtime imports, PDF export, screenshots, and HTTP startup
+        run: docker run --rm -v "$PWD:/checks:ro" panwatch:smoke python /checks/scripts/docker_smoke.py

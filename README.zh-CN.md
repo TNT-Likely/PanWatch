@@ -131,7 +131,7 @@ docker run -d \
 
 访问 `http://localhost:8000`，设置账号密码并连接 OpenAI 兼容服务商即可开始使用。首次访问会根据浏览器语言进入中文或英文界面。
 
-说明：镜像内已包含 Playwright 运行所需的系统依赖；Chromium 浏览器会在容器首次启动时自动下载并安装到挂载卷（默认 `/app/data/playwright`），首次启动可能需要几分钟且需要网络可达。
+说明：镜像内已包含 Playwright 运行所需的系统依赖；用于截图的 Chromium 无头浏览器（headless shell）会在容器首次启动时自动下载并安装到挂载卷（默认 `/app/data/playwright`），首次启动可能需要几分钟且需要网络可达。
 
 如果不需要截图等浏览器能力，可以在启动容器时设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过首次 Chromium 下载/安装。
 
