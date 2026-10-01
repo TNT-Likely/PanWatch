@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="background" x1="9" y1="5" x2="92" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B88F5"/>
+      <stop offset=".6" stop-color="#655FEF"/>
+      <stop offset="1" stop-color="#514BDC"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(23 14) rotate(45) scale(72)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#FFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="skin" cx="0" cy="0" r="1" gradientTransform="translate(39 35) rotate(65) scale(52 45)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF3E3"/>
+      <stop offset=".75" stop-color="#F1CFAE"/>
+      <stop offset="1" stop-color="#D6A98B"/>
+    </radialGradient>
+    <linearGradient id="hair" x1="24" y1="12" x2="74" y2="39" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4B4B5B"/>
+      <stop offset="1" stop-color="#2C2C3A"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="33" y1="81" x2="68" y2="107" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF6EA"/>
+      <stop offset="1" stop-color="#D9CBBC"/>
+    </linearGradient>
+    <radialGradient id="blush">
+      <stop stop-color="#E7A298" stop-opacity=".65"/>
+      <stop offset="1" stop-color="#E7A298" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="circle"><circle cx="50" cy="50" r="50"/></clipPath>
+  </defs>
+  <g clip-path="url(#circle)">
+    <circle cx="50" cy="50" r="50" fill="url(#background)"/>
+    <circle cx="50" cy="50" r="50" fill="url(#glow)"/>
+    <ellipse cx="50" cy="103" rx="34" ry="26" fill="url(#shirt)"/>
+    <ellipse cx="23" cy="50" rx="6" ry="10" fill="#ECC19D"/>
+    <ellipse cx="77" cy="50" rx="6" ry="10" fill="#ECC19D"/>
+    <path d="M21 42C21 21 32 13 50 13C68 13 79 21 79 42V49C79 67 68 79 50 79C32 79 21 67 21 49V42Z" fill="#272255" opacity=".12" transform="translate(0 3)"/>
+    <path d="M21 42C21 21 32 13 50 13C68 13 79 21 79 42V49C79 67 68 79 50 79C32 79 21 67 21 49V42Z" fill="url(#skin)"/>
+    <path d="M18 37C14 29 18 18 29 13C42 5 62 5 75 12C85 18 86 29 80 37C71 40 61 35 53 29C49 40 40 45 29 42L31 29C28 35 23 38 18 37Z" fill="url(#hair)"/>
+    <path d="M29 17C38 11 49 10 60 12" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="38" cy="51" rx="3" ry="4" fill="#3D343A"/>
+    <ellipse cx="62" cy="51" rx="3" ry="4" fill="#3D343A"/>
+    <ellipse cx="33" cy="58" rx="8" ry="5" fill="url(#blush)"/>
+    <ellipse cx="67" cy="58" rx="8" ry="5" fill="url(#blush)"/>
+    <path d="M43 60C47 65 53 65 57 60" stroke="#8E635C" stroke-width="1.6" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="49.5" stroke="#FFFFFF" stroke-opacity=".15"/>
+  </g>
+</svg>

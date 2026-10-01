@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, BarChart3, User, Radar, AlertTriangle, Palette } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, BarChart3, Radar, AlertTriangle, Palette } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
 import PatSection from '@/components/PatSection'
+import { UserAvatar } from '@/components/UserAvatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -743,11 +744,7 @@ export default function SettingsPage() {
                 title={configT('configuration:settingsPage.hero.uploadAvatar')}
                 className="group relative h-9 w-9 rounded-full overflow-hidden bg-gradient-to-br from-primary to-primary/70 text-white shadow-sm flex items-center justify-center ring-1 ring-border/40 hover:ring-primary/40 transition-all shrink-0"
               >
-                {avatar ? (
-                  <img src={avatar} alt={configT('configuration:settingsPage.hero.avatarAlt')} className="w-full h-full object-cover" />
-                ) : (
-                  <User className="w-4 h-4" />
-                )}
+                <UserAvatar src={avatar} alt={configT('configuration:settingsPage.hero.avatarAlt')} />
                 <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Upload className="w-3.5 h-3.5 text-white" />
                 </span>

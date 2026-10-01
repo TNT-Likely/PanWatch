@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Moon, Sun, Monitor, Check, LogOut, User, Stethoscope, Languages, type LucideIcon } from 'lucide-react'
+import { Moon, Sun, Monitor, Check, LogOut, Stethoscope, Languages, type LucideIcon } from 'lucide-react'
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
 import { useTranslation } from 'react-i18next'
 import { changeLocale, normalizeLocale, type SupportedLocale } from '@/i18n'
 import { useInterfaceLanguage } from '@/i18n/interface-language'
+import { UserAvatar } from '@/components/UserAvatar'
 
 export interface AccountNavItem {
   to: string
@@ -77,7 +78,6 @@ export default function AccountMenu({
   }, [location.pathname])
 
   const avatarSize = size === 'sm' ? 'w-6 h-6' : 'w-7 h-7'
-  const iconSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4'
 
   return (
     <div
@@ -94,11 +94,7 @@ export default function AccountMenu({
         title={t('account.menuTitle')}
         aria-label={t('account.menuTitle')}
       >
-        {avatar ? (
-          <img src={avatar} alt={t('account.avatarAlt')} className="w-full h-full object-cover" />
-        ) : (
-          <User className={`${iconSize} text-white`} />
-        )}
+        <UserAvatar src={avatar} alt={t('account.avatarAlt')} />
       </button>
 
       {open && (
