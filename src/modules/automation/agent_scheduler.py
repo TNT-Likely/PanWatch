@@ -108,8 +108,11 @@ class AgentScheduler:
                         try:
                             with kline_source(f"agent:{agent_name}"):
                                 res = await agent.run_single(context, stock.symbol)  # type: ignore[attr-defined]
-                            processed += 1
                             raw = (res.raw_data or {}) if res else {}
+                            if res is None or raw.get("skipped"):
+                                skipped += 1
+                                continue
+                            processed += 1
                             attempted = any(key in raw for key in ("notified", "notify_error", "notify_skipped"))
                             if attempted:
                                 notify_sent = (notify_sent if notify_attempted else True) and bool(raw.get("notified", False))
@@ -125,6 +128,10 @@ class AgentScheduler:
                     logger.info(
                         f"[调度] Agent 单只模式执行完成: {agent.display_name}（执行{processed}，跳过{skipped}，共{len(context.watchlist)}）"
                     )
+                    # An idle poll is not a completed report and cannot resolve
+                    # a prior failure episode. Keep its scheduler logs only.
+                    if processed == 0 and not errors:
+                        return
                     duration_ms = int((time.monotonic() - start) * 1000)
                     record_agent_run(
                         agent_name=agent_name,
@@ -139,10 +146,16 @@ class AgentScheduler:
                         model_label=context.model_label,
                     )
                 else:
+                    if agent_name == "intraday_monitor" and not context.watchlist:
+                        logger.info("[调度] 盘中监测无关联股票，跳过执行")
+                        return
                     with kline_source(f"agent:{agent_name}"):
                         result = await agent.run(context)
                     duration_ms = int((time.monotonic() - start) * 1000)
                     raw = result.raw_data or {}
+                    if raw.get("skipped"):
+                        logger.info(f"[调度] Agent 无分析结果，跳过报告记录: {agent.display_name}")
+                        return
                     record_agent_run(
                         agent_name=agent_name,
                         status="success",

@@ -309,3 +309,80 @@ def test_source_failure_rolls_back_agent_result_and_inbox_together(db, monkeypat
     monkeypatch.setattr(sources, 'agent_result', fail)
     agent_runs.record_agent_run('daily_report', 'success', result='Uncommitted report', trace_id='rollback-fixture')
     assert db.query(AgentRun).count() == db.query(NotificationEvent).count() == 0
+
+
+def test_idle_intraday_record_does_not_publish_or_resolve_previous_failure(db, monkeypatch):
+    from src.modules.automation import agent_runs
+
+    monkeypatch.setattr(agent_runs, 'SessionLocal', sessionmaker(bind=db.bind))
+    agent_runs.record_agent_run('intraday_monitor', 'failed', trace_id='failed-intraday')
+    agent_runs.record_agent_run(
+        'intraday_monitor', 'success', trace_id='idle-intraday', trigger_source='schedule',
+        result='single mode executed 0, skipped 1, total 1',
+    )
+    db.expire_all()
+    assert db.query(AgentRun).count() == 2
+    assert db.query(NotificationEvent).count() == 1
+    failure = db.query(NotificationEvent).one()
+    assert failure.resolved_at is None
+    assert NotificationService(db).summary()['unread_count'] == 1
+    agent_runs.record_agent_run(
+        'intraday_monitor', 'success', trace_id='real-intraday', trigger_source='schedule',
+        result='single mode executed 1, skipped 0, total 1',
+    )
+    db.expire_all()
+    assert failure.resolved_at is not None
+    assert db.query(NotificationEvent).count() == 2
+
+
+def test_idle_intraday_migration_archives_only_proven_noise_and_retains_history(db, monkeypatch):
+    from src.platform.persistence import migrations
+
+    stamp = datetime(2026, 9, 30, tzinfo=timezone.utc)
+    runs = [AgentRun(agent_name='intraday_monitor', status='success', trigger_source='schedule',
+                    result='single mode executed 0, skipped 1, total 1') for _ in range(66)]
+    # Similar-looking reports, manual results and failures must remain visible.
+    retained = [
+        dict(result='single mode executed 1, skipped 0, total 1'),
+        dict(result='single mode executed 0, skipped 0, total 0', status='failed'),
+        dict(result='single mode executed 0, skipped 0, total 0', trigger_source='manual'),
+        dict(result='single mode executed 0, skipped 0, total 0', agent_name='daily_report'),
+        dict(result='single mode executed 0, skipped 1, total 2'),
+        dict(result='single mode executed 0, skipped 1, total 1\nReal report'),
+        dict(result='single mode executed 0, skipped 0, total 0', error='Analysis failed'),
+        dict(result='single mode executed 0, skipped 0, total 0', notify_attempted=True),
+        dict(result='single mode executed 0, skipped 0, total 0', notify_sent=True),
+    ]
+    for values in retained:
+        fields = dict(agent_name='intraday_monitor', status='success', trigger_source='schedule')
+        fields.update(values)
+        runs.append(AgentRun(**fields))
+    # Empty watchlist also generated idle notices in the old scheduler.
+    runs.append(AgentRun(agent_name='intraday_monitor', status='success', trigger_source='schedule',
+                         result='single mode executed 0, skipped 0, total 0'))
+    db.add_all(runs); db.flush()
+    for run in runs:
+        NotificationService(db).publish(
+            source='agent', event_type='agent_failed' if run.status == 'failed' else 'agent_completed',
+            subject_kind='agent_run', subject_id=str(run.id), dedupe_key=f'legacy:{run.id}',
+            title=run.agent_name, action=dict(kind='agent_run', run_id=run.id),
+        )
+    receipt = db.query(NotificationReceipt).filter_by(notification_id=1).one()
+    receipt.read_at = stamp; receipt.archived_at = stamp
+    # Migration must clean all recipients, not just the current installation.
+    db.add(NotificationReceipt(notification_id=2, recipient_key='installation:other'))
+    db.commit()
+    migration = next(m for m in migrations.MIGRATIONS if m.version == 133)
+    monkeypatch.setattr(migrations, 'MIGRATIONS', (migration,))
+    migrations.run_versioned_migrations(db.bind)
+    assert not migrations.has_pending_migrations(db.bind)
+    migrations.run_versioned_migrations(db.bind)
+    db.expire_all()
+    service = NotificationService(db)
+    assert len(service.list(limit=100)['items']) == len(retained)
+    assert service.summary()['unread_count'] == len(retained)
+    assert len(service.list(view='archived', limit=100)['items']) == 67
+    assert db.query(AgentRun).count() == db.query(NotificationEvent).count() == 76
+    assert receipt.read_at == receipt.archived_at == stamp.replace(tzinfo=None)
+    other = db.query(NotificationReceipt).filter_by(recipient_key='installation:other').one()
+    assert other.read_at is not None and other.archived_at is not None

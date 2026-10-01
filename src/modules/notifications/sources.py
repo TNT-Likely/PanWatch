@@ -1,5 +1,6 @@
 """Business-owned adapters; all writes share the caller's transaction."""
 from sqlalchemy import func
+from src.platform.scheduling.run_summary import is_idle_single_summary
 from src.platform.persistence.models import AssistantToolApproval, ChatConversation, NotificationEvent
 from .service import NotificationService
 
@@ -17,6 +18,11 @@ def assistant_event(db, task, sequence, kind, *, occurred_at=None, read_at=None,
 
 
 def agent_result(db, run):
+    if (run.agent_name == 'intraday_monitor' and run.status == 'success'
+            and run.trigger_source == 'schedule' and not run.error
+            and not run.notify_attempted and not run.notify_sent
+            and is_idle_single_summary(run.result)):
+        return None
     service = NotificationService(db)
     group = f'agent:{run.agent_name}:failures'
     episode = db.query(NotificationEvent).filter(NotificationEvent.source == 'agent', NotificationEvent.event_type == 'agent_failed', NotificationEvent.group_key.like(group + ':%'), NotificationEvent.resolved_at.is_(None))

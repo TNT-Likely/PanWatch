@@ -2110,6 +2110,38 @@ def _m132_assistant_context_exports(conn: Connection) -> None:
     AssistantContextExport.__table__.create(conn, checkfirst=True)
 
 
+def _m133_archive_idle_intraday_notifications(conn: Connection) -> None:
+    from src.platform.scheduling.run_summary import is_idle_single_summary
+
+    if not all(_has_table(conn, table) for table in (
+        "agent_runs", "notification_events", "notification_receipts",
+    )):
+        return
+    candidates = conn.execute(text("""
+SELECT e.id, r.result
+FROM notification_events e
+JOIN agent_runs r ON e.subject_id = CAST(r.id AS TEXT)
+WHERE e.source = 'agent' AND e.subject_kind = 'agent_run'
+  AND e.event_type = 'agent_completed' AND e.attention = 'informational'
+  AND r.agent_name = 'intraday_monitor' AND r.status = 'success'
+  AND r.trigger_source = 'schedule'
+  AND COALESCE(r.error, '') = ''
+  AND COALESCE(r.notify_attempted, 0) = 0 AND COALESCE(r.notify_sent, 0) = 0
+  AND r.result LIKE 'single mode executed 0, skipped %, total %'
+""")).mappings().all()
+    ids = [{"id": row["id"]} for row in candidates if is_idle_single_summary(row["result"])]
+    if ids:
+        # Retain both the source run and notification history. Archive only
+        # proven idle notices, preserving any existing receipt timestamps.
+        conn.execute(text("""
+UPDATE notification_receipts
+SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
+    read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+WHERE notification_id = :id
+"""), ids)
+        logger.info("Archived %s idle intraday notification events", len(ids))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2143,6 +2175,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(130, "global_notifications", _m130_global_notifications),
     Migration(131, "assistant_conversation_titles", _m131_assistant_conversation_titles),
     Migration(132, 'assistant_context_exports', _m132_assistant_context_exports),
+    Migration(133, "archive_idle_intraday_notifications", _m133_archive_idle_intraday_notifications),
 )
 
 
