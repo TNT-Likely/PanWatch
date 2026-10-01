@@ -12,6 +12,27 @@ permissions:
   contents: read
 
 jobs:
+  release-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PDF system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+            libcairo2 libcairo-gobject2 libgdk-pixbuf-2.0-0 \
+            libffi-dev libfontconfig1 fonts-noto-cjk
+      - name: Install release dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run backend release tests
+        run: python -m pytest tests/ -x -q
+      - name: Run marketdata package tests
+        run: python -m pytest packages/marketdata/tests -q
+
   native-contexts:
     runs-on: ${{ matrix.os }}
     strategy:
