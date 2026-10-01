@@ -35,10 +35,10 @@ const {
 
 const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: NavigationItemKey }> = [
   { to: '/', icon: LayoutDashboard, labelKey: 'home' },
+  { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/portfolio', icon: List, labelKey: 'portfolio' },
   { to: '/opportunities', icon: Sparkles, labelKey: 'opportunities' },
   { to: '/paper-trading', icon: Activity, labelKey: 'paperTrading' },
-  { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/alerts', icon: BellRing, labelKey: 'alerts' },
   { to: '/agents', icon: Bot, labelKey: 'agents' },
   { to: '/evaluations', icon: ClipboardCheck, labelKey: 'evaluations' },
