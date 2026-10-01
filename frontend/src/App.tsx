@@ -35,8 +35,8 @@ const {
 
 const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: NavigationItemKey }> = [
   { to: '/', icon: LayoutDashboard, labelKey: 'home' },
-  { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/portfolio', icon: List, labelKey: 'portfolio' },
+  { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/opportunities', icon: Sparkles, labelKey: 'opportunities' },
   { to: '/paper-trading', icon: Activity, labelKey: 'paperTrading' },
   { to: '/alerts', icon: BellRing, labelKey: 'alerts' },
