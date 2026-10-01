@@ -780,7 +780,7 @@ class IntradayMonitorAgent(BaseAgent):
                 agent_name=self.name,
                 title="[Intraday monitor] No data" if english else f"【{self.display_name}】无数据",
                 content="No stock data was available." if english else "未获取到股票数据",
-                raw_data=data,
+                raw_data={**data, "skipped": True},
             )
 
         system_prompt, user_content = self.build_prompt(data, context)
