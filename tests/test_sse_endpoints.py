@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 
 import src.modules.automation.api.agents as agents_api
 import src.modules.administration.api.logs as logs_api
@@ -77,12 +77,12 @@ def test_progress_sse_invalid_trace_id():
     assert ei.value.status_code == 400
 
 
-def _make_log_db(monkeypatch):
-    """内存 SQLite + 预置日志行，并替换 SessionLocal。"""
+def _make_log_db(monkeypatch, tmp_path):
+    """独立连接的临时 SQLite，避免 SSE 线程和写入共用一个原生连接。"""
     engine = create_engine(
-        "sqlite://",
+        f"sqlite:///{tmp_path / 'logs.db'}",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        poolclass=NullPool,
     )
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -101,9 +101,9 @@ def _make_log_db(monkeypatch):
     return factory
 
 
-def test_logs_sse_resume_from_last_event_id(monkeypatch):
+def test_logs_sse_resume_from_last_event_id(monkeypatch, tmp_path):
     """日志 SSE：带 Last-Event-ID 从缺口续推，事件 id 即日志行 id"""
-    _make_log_db(monkeypatch)
+    _make_log_db(monkeypatch, tmp_path)
     monkeypatch.setattr(logs_api, "LOGS_SSE_POLL_SEC", 0.01)
     monkeypatch.setattr(logs_api, "LOGS_SSE_MAX_DURATION_SEC", 0.05)
 
@@ -126,9 +126,9 @@ def test_logs_sse_resume_from_last_event_id(monkeypatch):
     assert events[-1][0] == "done"
 
 
-def test_logs_sse_filters(monkeypatch):
+def test_logs_sse_filters(monkeypatch, tmp_path):
     """日志 SSE：level 过滤生效，只推匹配的行"""
-    _make_log_db(monkeypatch)
+    _make_log_db(monkeypatch, tmp_path)
     monkeypatch.setattr(logs_api, "LOGS_SSE_POLL_SEC", 0.01)
     monkeypatch.setattr(logs_api, "LOGS_SSE_MAX_DURATION_SEC", 0.05)
 
@@ -149,17 +149,23 @@ def test_logs_sse_filters(monkeypatch):
     assert items[0]["message"] == "行情拉取失败"
 
 
-def test_logs_sse_tail_only_new(monkeypatch):
+def test_logs_sse_tail_only_new(monkeypatch, tmp_path):
     """日志 SSE：无 Last-Event-ID 时从当前最新开始，只 tail 增量"""
-    factory = _make_log_db(monkeypatch)
-    # 时序阈值放宽以抗环境负载:该用例依赖"先建立基线快照、再插入增量"的先后关系,
-    # 原 0.05s 预留在高负载下可能让首轮基线轮询尚未跑完就插入,导致新日志被并入基线
-    # 而不被 tail(基线偶发 flaky,与本次改动无关)。加大 MAX_DURATION 与插入前等待,
-    # 给事件循环足够调度余量。
+    factory = _make_log_db(monkeypatch, tmp_path)
     monkeypatch.setattr(logs_api, "LOGS_SSE_POLL_SEC", 0.02)
     monkeypatch.setattr(logs_api, "LOGS_SSE_MAX_DURATION_SEC", 1.5)
 
     async def run():
+        baseline_ready = asyncio.Event()
+        to_thread = asyncio.to_thread
+
+        async def track_baseline(function, *args, **kwargs):
+            result = await to_thread(function, *args, **kwargs)
+            if function.__name__ == '_current_max_id':
+                baseline_ready.set()
+            return result
+
+        monkeypatch.setattr(logs_api.asyncio, 'to_thread', track_baseline)
         request = SimpleNamespace(headers={})
         resp = await logs_api.stream_logs(
             request, level="", q="", logger_name="", domain="all", since="", last_event_id=0,
@@ -172,8 +178,8 @@ def test_logs_sse_tail_only_new(monkeypatch):
                 received.append(chunk)
 
         task = asyncio.create_task(consume())
-        # 等首轮基线轮询稳妥跑完后再插入新日志(放宽到 0.3s 抗负载抖动)
-        await asyncio.sleep(0.3)
+        # Wait for the actual baseline read instead of guessing its duration.
+        await asyncio.wait_for(baseline_ready.wait(), timeout=3)
         db = factory()
         db.add(LogEntry(
             timestamp=datetime.now(timezone.utc),
