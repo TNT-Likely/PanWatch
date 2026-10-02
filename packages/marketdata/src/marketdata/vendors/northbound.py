@@ -64,22 +64,27 @@ def _sgt_valid(value) -> float | None:
 
 def _unwrap_payload(resp) -> dict:
     """防御性剥离外层包裹:hexin 响应可能是 {"data": {...}} 或再套一层
-    {"data": {"data": {...}}}——具体结构待实抓校准,逐层 .get() 兜底,拿不到就 {}。
+    {"data": {"data": {...}}}, 或直接为根级字典 {"time": [...], "hgt": [...]}。
     """
     if not isinstance(resp, dict):
         return {}
     layer = resp.get("data")
-    if not isinstance(layer, dict):
-        return {}
-    inner = layer.get("data")
-    if isinstance(inner, dict):
-        return inner
-    return layer
+    if isinstance(layer, dict):
+        inner = layer.get("data")
+        if isinstance(inner, dict):
+            return inner
+        return layer
+    if "hgt" in resp or "sgt" in resp or "time" in resp:
+        return resp
+    return {}
 
 
-def _last_point(series) -> tuple[object, object]:
-    """从分钟序列取末值(当日最新累计净买入)。序列元素可能是 [time, value] 或
-    {"time":.., "value":..}(键名待实抓校准,防御多种常见键名)。取不到返回 (None, None)。
+def _last_point(series, times: list | None = None) -> tuple[object, object]:
+    """从分钟序列取末值(当日最新累计净买入)。序列元素可能是:
+    1. [time, value]
+    2. {"time":.., "value":..}
+    3. 纯数值标量 value,此时时间从同长度的 times 序列末尾获取。
+    取不到返回 (None, None)。
     """
     if not isinstance(series, (list, tuple)) or not series:
         return None, None
@@ -90,7 +95,8 @@ def _last_point(series) -> tuple[object, object]:
         t = last.get("time") or last.get("t") or last.get("x")
         v = last.get("value") or last.get("v") or last.get("y") or last.get("net")
         return t, v
-    return None, None
+    t = times[-1] if (isinstance(times, (list, tuple)) and times) else None
+    return t, last
 
 
 class HexinNorthboundVendor(_NorthboundVendorBase):
@@ -116,8 +122,9 @@ class HexinNorthboundVendor(_NorthboundVendorBase):
         if not payload:
             return []
 
-        hgt_time, hgt_raw = _last_point(payload.get("hgt"))
-        sgt_time, sgt_raw = _last_point(payload.get("sgt"))
+        times = payload.get("time") if isinstance(payload.get("time"), (list, tuple)) else None
+        hgt_time, hgt_raw = _last_point(payload.get("hgt"), times)
+        sgt_time, sgt_raw = _last_point(payload.get("sgt"), times)
         hgt_net = _to_float(hgt_raw)
         sgt_net = _sgt_valid(sgt_raw)
         if hgt_net is None and sgt_net is None:

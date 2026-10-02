@@ -31,6 +31,10 @@ class TestUnwrapPayload:
         assert nb._unwrap_payload("not a dict") == {}
         assert nb._unwrap_payload({"no_data_key": 1}) == {}
 
+    def test_root_level_payload(self):
+        payload = {"time": ["09:30"], "hgt": [1.0], "sgt": [2.0]}
+        assert nb._unwrap_payload(payload) == payload
+
 
 class TestLastPoint:
     def test_list_pairs(self):
@@ -42,6 +46,17 @@ class TestLastPoint:
         series = [{"time": "09:30", "value": 1.1}, {"time": "09:31", "value": 1.5}]
         t, v = nb._last_point(series)
         assert t == "09:31" and v == 1.5
+
+    def test_scalar_series_with_times(self):
+        series = [1.2, 3.4, 5.6]
+        times = ["09:30", "09:31", "09:32"]
+        t, v = nb._last_point(series, times=times)
+        assert t == "09:32" and v == 5.6
+
+    def test_scalar_series_without_times(self):
+        series = [1.2, 3.4, 5.6]
+        t, v = nb._last_point(series, times=None)
+        assert t is None and v == 5.6
 
     def test_empty_or_invalid_returns_none_none(self):
         assert nb._last_point([]) == (None, None)
@@ -77,6 +92,25 @@ class TestHexinNorthboundVendor:
             sgt=[["09:30", 0.5], ["09:31", 1.1], ["10:15", 2.34]],
             date="2026-07-16",
         )
+        monkeypatch.setattr(nb, "market_get", lambda *a, **k: payload)
+
+        out = nb.HexinNorthboundVendor().fetch([], {})
+        assert len(out) == 1 and isinstance(out[0], NorthboundItem)
+        item = out[0]
+        assert item.date == "2026-07-16"
+        assert item.hgt_net == 8.76
+        assert item.sgt_net == 2.34
+        assert item.total_net == 8.76 + 2.34
+        assert item.time == "10:15"
+
+    def test_actual_hexin_shape_root_scalar_series(self, monkeypatch):
+        """真实同花顺接口形态:根级字典,shared time 数组 + 纯数值标量 hgt/sgt 数组。"""
+        payload = {
+            "time": ["09:30", "09:31", "10:15"],
+            "hgt": [1.2, 3.4, 8.76],
+            "sgt": [0.5, 1.1, 2.34],
+            "date": "2026-07-16",
+        }
         monkeypatch.setattr(nb, "market_get", lambda *a, **k: payload)
 
         out = nb.HexinNorthboundVendor().fetch([], {})

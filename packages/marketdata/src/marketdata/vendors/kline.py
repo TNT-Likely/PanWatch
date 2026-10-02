@@ -13,7 +13,7 @@ from marketdata.vendors.base import KlineVendor
 logger = logging.getLogger(__name__)
 
 _TENCENT_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
-_EASTMONEY_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+_EASTMONEY_URL = "https://push2delay.eastmoney.com/api/qt/stock/kline/get"
 _STOOQ_URL = "https://stooq.com/q/d/l/"
 _YAHOO_CHART_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{sym}"
 
@@ -158,7 +158,7 @@ def fetch_eastmoney_kline(secid: str, days: int) -> list[Bar]:
     供指数等显式符号场景复用(指数与个股 secid 前缀规则不同,必须显式映射)。
     """
     payload = market_get(
-        _EASTMONEY_URL, host_key="push2his.eastmoney.com", min_interval_s=0.2,
+        _EASTMONEY_URL, host_key="push2delay.eastmoney.com", min_interval_s=0.2,
         params={"secid": secid, "klt": "101", "fqt": "1",
                 "lmt": str(min(max(int(days or 1), 1200), 20000)), "end": "20500101",
                 "fields1": "f1,f2,f3,f4,f5,f6", "fields2": "f51,f52,f53,f54,f55,f56",

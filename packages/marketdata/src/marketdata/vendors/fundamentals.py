@@ -91,8 +91,8 @@ class TencentFundamentalsVendor(FundamentalsVendor):
 
 # ============================== 东财 ==============================
 
-_PUSH2_URL = "https://push2.eastmoney.com/api/qt/stock/get"
-_PUSH2_HOST = "push2.eastmoney.com"
+_PUSH2_URL = "https://push2delay.eastmoney.com/api/qt/stock/get"
+_PUSH2_HOST = "push2delay.eastmoney.com"
 _PUSH2_FIELDS = "f57,f58,f84,f85,f116,f117"
 _PUSH2_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
