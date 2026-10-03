@@ -1487,68 +1487,62 @@ export default function StockInsightModal(props: {
 
                   <div className="card p-4 h-full">
                     <div className="text-[12px] text-muted-foreground mb-2">{tr('miniKline.title')}</div>
-                    {!klineSummary ? (
-                      <div className="text-[12px] text-muted-foreground py-8">{tr('miniKline.noSummary')}</div>
+                    {miniKlineLoading ? (
+                      <div className="h-32 rounded bg-accent/30 animate-pulse" />
+                    ) : miniKlines.length > 0 && miniKlineExtrema ? (
+                      <svg
+                        viewBox="0 0 320 120"
+                        className="w-full h-32 cursor-pointer"
+                        onClick={() => setTab('kline')}
+                        onMouseLeave={() => setMiniHoverIdx(null)}
+                        onMouseMove={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          const x = e.clientX - rect.left
+                          const ratio = rect.width > 0 ? x / rect.width : 0
+                          const idx = Math.floor(ratio * miniKlines.length)
+                          setMiniHoverIdx(Math.max(0, Math.min(miniKlines.length - 1, idx)))
+                        }}
+                      >
+                        <title>{tr('miniKline.open')}</title>
+                        {miniKlines.map((k, idx) => {
+                          const xStep = 320 / miniKlines.length
+                          const x = xStep * idx + xStep / 2
+                          const bodyW = Math.max(2, xStep * 0.5)
+                          const toY = (v: number) => 114 - ((v - miniKlineExtrema.low) / (miniKlineExtrema.high - miniKlineExtrema.low)) * 100
+                          const yOpen = toY(Number(k.open))
+                          const yClose = toY(Number(k.close))
+                          const yHigh = toY(Number(k.high))
+                          const yLow = toY(Number(k.low))
+                          const close = Number(k.close)
+                          const open = Number(k.open)
+                          const color = close > open ? palette.up.bright : close < open ? palette.down.bright : palette.flat
+                          const bodyTop = Math.min(yOpen, yClose)
+                          const bodyH = Math.max(1.4, Math.abs(yOpen - yClose))
+                          const active = miniHoverIdx === idx
+                          return (
+                            <g key={`${k.date}-${idx}`}>
+                              {active && <rect x={x - xStep / 2} y={6} width={xStep} height={108} fill="rgba(59,130,246,0.10)" />}
+                              <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={color} strokeWidth="1" />
+                              <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} rx="0.6" />
+                            </g>
+                          )
+                        })}
+                      </svg>
                     ) : (
-                      <>
-                        {miniKlineLoading ? (
-                          <div className="h-32 rounded bg-accent/30 animate-pulse" />
-                        ) : miniKlines.length > 0 && miniKlineExtrema ? (
-                          <svg
-                            viewBox="0 0 320 120"
-                            className="w-full h-32 cursor-pointer"
-                            onClick={() => setTab('kline')}
-                            onMouseLeave={() => setMiniHoverIdx(null)}
-                            onMouseMove={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect()
-                              const x = e.clientX - rect.left
-                              const ratio = rect.width > 0 ? x / rect.width : 0
-                              const idx = Math.floor(ratio * miniKlines.length)
-                              setMiniHoverIdx(Math.max(0, Math.min(miniKlines.length - 1, idx)))
-                            }}
-                          >
-                            <title>{tr('miniKline.open')}</title>
-                            {miniKlines.map((k, idx) => {
-                              const xStep = 320 / miniKlines.length
-                              const x = xStep * idx + xStep / 2
-                              const bodyW = Math.max(2, xStep * 0.5)
-                              const toY = (v: number) => 114 - ((v - miniKlineExtrema.low) / (miniKlineExtrema.high - miniKlineExtrema.low)) * 100
-                              const yOpen = toY(Number(k.open))
-                              const yClose = toY(Number(k.close))
-                              const yHigh = toY(Number(k.high))
-                              const yLow = toY(Number(k.low))
-                              const close = Number(k.close)
-                              const open = Number(k.open)
-                              const color = close > open ? palette.up.bright : close < open ? palette.down.bright : palette.flat
-                              const bodyTop = Math.min(yOpen, yClose)
-                              const bodyH = Math.max(1.4, Math.abs(yOpen - yClose))
-                              const active = miniHoverIdx === idx
-                              return (
-                                <g key={`${k.date}-${idx}`}>
-                                  {active && <rect x={x - xStep / 2} y={6} width={xStep} height={108} fill="rgba(59,130,246,0.10)" />}
-                                  <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={color} strokeWidth="1" />
-                                  <rect x={x - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} rx="0.6" />
-                                </g>
-                              )
-                            })}
-                          </svg>
-                        ) : (
-                          <div className="h-32 text-[11px] text-muted-foreground flex items-center justify-center">{tr('miniKline.empty')}</div>
-                        )}
-                        <div className="mt-2 rounded bg-accent/10 p-2.5">
-                          <TechnicalIndicatorStrip
-                            klineSummary={klineSummary}
-                            technicalSuggestion={technicalFallbackSuggestion}
-                            stockName={resolvedName}
-                            stockSymbol={symbol}
-                            market={market}
-                            hasPosition={!!props.hasPosition}
-                            score={Number(technicalScored?.score ?? 0)}
-                            evidence={technicalScored?.evidence || []}
-                          />
-                        </div>
-                      </>
+                      <div className="h-32 text-[11px] text-muted-foreground flex items-center justify-center">{tr('miniKline.empty')}</div>
                     )}
+                    <div className="mt-2 rounded bg-accent/10 p-2.5">
+                      <TechnicalIndicatorStrip
+                        klineSummary={klineSummary}
+                        technicalSuggestion={technicalFallbackSuggestion}
+                        stockName={resolvedName}
+                        stockSymbol={symbol}
+                        market={market}
+                        hasPosition={!!props.hasPosition}
+                        score={Number(technicalScored?.score ?? 0)}
+                        evidence={technicalScored?.evidence || []}
+                      />
+                    </div>
                   </div>
                 </div>
 

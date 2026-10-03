@@ -44,8 +44,8 @@ def test_db_config_provider_maps_rows(monkeypatch):
     ]
 
 
-def test_db_config_provider_skips_tencent_us_kline(monkeypatch):
-    """美股 K 线跳过腾讯探测，避免每只股票固定产生 501 后再回退。"""
+def test_db_config_provider_preserves_configured_us_kline_fallbacks(monkeypatch):
+    """A failing fallback must not exclude the configured primary provider."""
     rows = [
         SimpleNamespace(provider="tencent", priority=0, config={}, supports_batch=False),
         SimpleNamespace(provider="stooq", priority=15, config={}, supports_batch=False),
@@ -55,4 +55,4 @@ def test_db_config_provider_skips_tencent_us_kline(monkeypatch):
 
     got = cp.sources_for("kline", "US")
 
-    assert [s.vendor for s in got] == ["stooq"]
+    assert [s.vendor for s in got] == ["tencent", "stooq"]
