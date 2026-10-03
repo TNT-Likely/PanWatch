@@ -20,7 +20,7 @@ from src.platform.persistence.models import (
     Stock,
     StockAgent,
 )
-from src.modules.automation.agent_catalog import AGENT_KIND_CAPABILITY, infer_agent_kind
+from src.modules.automation.agent_catalog import AGENT_KIND_CAPABILITY, RETIRED_AGENT_NAMES, infer_agent_kind
 
 
 logger = logging.getLogger(__name__)
@@ -638,6 +638,9 @@ def import_template(
 
     # Agents
     for a in payload.agents if "agents" in selected else []:
+        if a.name in RETIRED_AGENT_NAMES:
+            warnings.append({"code": "retired_agent", "resource": "agent", "resource_key": a.name})
+            continue
         row = db.query(AgentConfig).filter(AgentConfig.name == a.name).first()
         if not row:
             # Minimal create; display_name/description fall back to name.
@@ -708,7 +711,7 @@ def import_template(
 
         existing = db.query(StockAgent).filter(StockAgent.stock_id == stock.id).all()
         existing_map = {x.agent_name: x for x in existing}
-        desired_names = {x.agent_name for x in s.agents}
+        desired_names = {x.agent_name for x in s.agents if x.agent_name not in RETIRED_AGENT_NAMES}
 
         # replace mode: remove stock-agent not in payload for this stock
         if mode == "replace":
@@ -721,6 +724,9 @@ def import_template(
 
         for sa in s.agents:
             resource_key = f"{s.market}:{s.symbol}:{sa.agent_name}"
+            if sa.agent_name in RETIRED_AGENT_NAMES:
+                warnings.append({"code": "retired_agent", "resource": "stock_agent", "resource_key": resource_key})
+                continue
             ai_model_id = resolve_model_id(
                 sa.ai_model_id,
                 sa.ai_model_ref,

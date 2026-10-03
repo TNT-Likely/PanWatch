@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_
 
+from src.modules.automation.agent_catalog import RETIRED_AGENT_NAMES
 from src.platform.runtime.config import Settings
 from src.platform.marketdata.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
@@ -1221,7 +1222,7 @@ def _load_latest_suggestions(limit: int = 300) -> list[StockSuggestion]:
                 StockSuggestion.stock_market,
                 func.max(StockSuggestion.id).label("max_id"),
             )
-            .filter(StockSuggestion.agent_name != "news_digest")
+            .filter(StockSuggestion.agent_name.notin_(RETIRED_AGENT_NAMES))
             .group_by(StockSuggestion.stock_symbol, StockSuggestion.stock_market)
             .subquery()
         )

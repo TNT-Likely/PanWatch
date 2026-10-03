@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import timezone
 from sqlalchemy import and_, func, or_
 
+from src.modules.automation.agent_catalog import RETIRED_AGENT_NAMES
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import StockSuggestion
 from src.platform.scheduling.timezone import utc_now, to_iso_with_tz
@@ -214,7 +215,7 @@ def get_suggestions_for_stock(
     try:
         query = db.query(StockSuggestion).filter(StockSuggestion.stock_symbol == stock_symbol)
         if not include_expired:
-            query = query.filter(StockSuggestion.agent_name != "news_digest")
+            query = query.filter(StockSuggestion.agent_name.notin_(RETIRED_AGENT_NAMES))
         if stock_market:
             query = query.filter(
                 StockSuggestion.stock_market == (stock_market or "CN").strip().upper()
@@ -260,7 +261,7 @@ def get_latest_suggestions(
                 StockSuggestion.stock_market,
                 func.max(StockSuggestion.id).label("max_id"),
             )
-            .filter(StockSuggestion.agent_name != "news_digest")
+            .filter(StockSuggestion.agent_name.notin_(RETIRED_AGENT_NAMES))
             .group_by(StockSuggestion.stock_symbol, StockSuggestion.stock_market)
             .subquery()
         )

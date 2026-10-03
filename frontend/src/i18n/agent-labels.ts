@@ -4,8 +4,6 @@ const KNOWN_AGENTS = new Set([
   'premarket_outlook',
   'intraday_monitor',
   'daily_report',
-  'chart_analyst',
-  'news_digest',
   'tradingagents',
 ])
 

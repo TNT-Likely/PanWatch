@@ -15,7 +15,7 @@ from src.platform.runtime.config import Settings
 from src.modules.automation.agent_catalog import (
     AGENT_KIND_CAPABILITY,
     AGENT_KIND_WORKFLOW,
-    CAPABILITY_AGENT_NAMES,
+    LEGACY_CAPABILITY_AGENT_NAMES,
     infer_agent_kind,
 )
 from src.web.errors import api_error
@@ -96,7 +96,7 @@ def list_history(
                         AnalysisHistory.agent_kind_snapshot.is_(None),
                         AnalysisHistory.agent_kind_snapshot == "",
                     ),
-                    AnalysisHistory.agent_name.in_(CAPABILITY_AGENT_NAMES),
+                    AnalysisHistory.agent_name.in_(LEGACY_CAPABILITY_AGENT_NAMES),
                 ),
             )
         )
@@ -109,7 +109,7 @@ def list_history(
                         AnalysisHistory.agent_kind_snapshot.is_(None),
                         AnalysisHistory.agent_kind_snapshot == "",
                     ),
-                    ~AnalysisHistory.agent_name.in_(CAPABILITY_AGENT_NAMES),
+                    ~AnalysisHistory.agent_name.in_(LEGACY_CAPABILITY_AGENT_NAMES),
                 ),
             )
         )

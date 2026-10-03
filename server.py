@@ -39,7 +39,6 @@ from src.modules.automation.agent_catalog import (
 from src.modules.strategy.strategy_catalog import ensure_strategy_catalog
 from src.modules.automation.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
 from src.modules.automation.daily_report import DailyReportAgent
-from src.modules.automation.chart_analyst import ChartAnalystAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 from src.modules.automation.premarket_outlook import PremarketOutlookAgent
 from src.modules.automation.tradingagents import TradingAgentsAgent
@@ -1100,7 +1099,6 @@ def build_context(agent_name: str, stock_agent_id: int | None = None) -> AgentCo
 AGENT_REGISTRY: dict[str, type] = {
     "daily_report": DailyReportAgent,
     "premarket_outlook": PremarketOutlookAgent,
-    "chart_analyst": ChartAnalystAgent,
     "intraday_monitor": IntradayMonitorAgent,
     "tradingagents": TradingAgentsAgent,
 }

@@ -343,8 +343,6 @@ export const configuration = {
       premarket_outlook: { name: 'Pre-market outlook', description: 'Independently assesses quotes, technical signals, and overnight news before the open' },
       intraday_monitor: { name: 'Intraday monitor', description: 'Monitors trading sessions in real time and uses AI to identify signals worth attention' },
       daily_report: { name: 'Closing review', description: 'Generates a daily closing report with a market review, stock-level analysis, and next-session watch items' },
-      chart_analyst: { name: 'Technical analysis (capability)', description: 'Internal on-demand chart analysis used from stock details; it is not scheduled independently' },
-      news_digest: { name: 'News digest', description: 'Summarizes relevant news and events' },
       tradingagents: { name: 'TradingAgents deep analysis', description: 'Multi-agent investment research combining fundamentals, sentiment, news, technical analysis, debate, and risk review' },
     },
     title: 'Automation and scheduling', health: 'Schedule health', refresh: 'Refresh', timezone: 'Timezone', next24h: 'Next 24h triggers', recentFailed: 'Recent failures', emptyTitle: 'No Agents', emptyDescription: 'Agents register automatically after the background service starts',

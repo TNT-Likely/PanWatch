@@ -2149,6 +2149,18 @@ def _m134_remove_manual_feedback(conn: Connection) -> None:
     conn.execute(text("DROP TABLE IF EXISTS entry_candidate_feedback"))
 
 
+def _m135_retire_unused_agents(conn: Connection) -> None:
+    # Remove executable configuration and bindings, preserving reports and
+    # run history so existing notification/report links remain readable.
+    for table, column in (
+        ("stock_agents", "agent_name"),
+        ("notify_throttle", "agent_name"),
+        ("agent_configs", "name"),
+    ):
+        if _has_table(conn, table):
+            conn.execute(text(f"DELETE FROM {table} WHERE {column} IN ('chart_analyst', 'news_digest')"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2184,6 +2196,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(132, 'assistant_context_exports', _m132_assistant_context_exports),
     Migration(133, "archive_idle_intraday_notifications", _m133_archive_idle_intraday_notifications),
     Migration(134, "remove_manual_feedback", _m134_remove_manual_feedback),
+    Migration(135, "retire_unused_agents", _m135_retire_unused_agents),
 )
 
 

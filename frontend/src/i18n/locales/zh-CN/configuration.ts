@@ -340,8 +340,6 @@ export const configuration = {
       premarket_outlook: { name: '盘前分析', description: '开盘前结合行情、技术状态和隔夜资讯，独立生成今日交易展望' },
       intraday_monitor: { name: '盘中监测', description: '交易时段实时监控，AI 智能判断是否有值得关注的信号' },
       daily_report: { name: '收盘复盘', description: '每日收盘后生成复盘报告，包含市场回顾、个股复盘和次日关注' },
-      chart_analyst: { name: '技术分析（能力）', description: '内部能力：详情页按需触发图像技术分析，不独立调度' },
-      news_digest: { name: '新闻速递', description: '汇总相关新闻与事件' },
       tradingagents: { name: 'TradingAgents 深度分析', description: '多 Agent 投资决策框架，结合基本面、情绪、新闻、技术分析、辩论与风控' },
     },
     title: '自动化任务管理与调度', health: '调度健康', refresh: '刷新', timezone: '时区', next24h: '未来 24h 将触发', recentFailed: '最近失败', emptyTitle: '暂无 Agent', emptyDescription: '启动后台服务后 Agent 会自动注册',

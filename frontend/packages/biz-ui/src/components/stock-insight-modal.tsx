@@ -1222,7 +1222,7 @@ export default function StockInsightModal(props: {
     autoTriggeredRef.current[key] = Date.now()
     setAutoSuggesting(true)
     try {
-      // intraday_monitor 较 chart_analyst 更轻量、稳定，不依赖截图链路
+      // 使用盘中分析生成详情页建议，输入来自行情和结构化技术指标。
       await stocksApi.triggerAgent(0, 'intraday_monitor', {
         allow_unbound: true,
         symbol,
