@@ -28,6 +28,6 @@ await removeItem()
 
 ## 检查与验收
 
-开 PR 前运行 `pnpm check:ui`、`pnpm check:i18n`、`pnpm check:market-colors`、相关 Vitest 测试和 `pnpm build`。`check:ui` 解析应用和共享 UI 的 TypeScript，拦截原生选择框 / 弹窗、浏览器弹窗调用和漏用滚动样式的原生元素；PR CI 会执行，无历史豁免名单。自动检查覆盖静态 JSX 类声明和直接浏览器 API 引用，动态样式和嵌套浮层仍需视觉及键盘验收。
+开 PR 前运行 `pnpm check:ui`、`pnpm check:i18n`、`pnpm check:market-colors`、相关 Vitest 测试和 `pnpm build`。`check:ui` 解析应用和共享 UI 的 TypeScript，拦截原生选择框 / 弹窗、浏览器弹窗调用和漏用滚动样式的原生元素；现有 PR 文案检查命令和前端构建都会执行，无历史豁免名单。自动检查覆盖静态 JSX 类声明和直接浏览器 API 引用，动态样式和嵌套浮层仍需视觉及键盘验收。
 
 浮层和新控件必须验收亮色 / 深色、桌面 / 手机、打开 / 关闭、键盘焦点、Escape 和滚动后的内容。没有实际进行的视觉检查，不得写成已通过。

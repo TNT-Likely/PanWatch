@@ -28,6 +28,6 @@ Keep the mutation after the awaited acceptance. Cancellation, Escape, dismissal,
 
 ## Verification and enforcement
 
-Run `pnpm check:ui`, `pnpm check:i18n`, `pnpm check:market-colors`, relevant Vitest tests, and `pnpm build` before opening a PR. `check:ui` parses application and shared UI TypeScript and rejects native selects/dialogs, browser dialog calls, and unstyled native scroll regions. It runs in PR CI without a legacy exemption list. It checks static JSX class declarations and direct browser API access; visual and keyboard QA are still required for dynamic styles and nested overlays.
+Run `pnpm check:ui`, `pnpm check:i18n`, `pnpm check:market-colors`, relevant Vitest tests, and `pnpm build` before opening a PR. `check:ui` parses application and shared UI TypeScript and rejects native selects/dialogs, browser dialog calls, and unstyled native scroll regions. It is included in the existing PR translation check and frontend build, without a legacy exemption list. It checks static JSX class declarations and direct browser API access; visual and keyboard QA are still required for dynamic styles and nested overlays.
 
 For floating panels and new controls, verify light/dark, desktop/mobile, open/close, keyboard focus, Escape, and scrolled content. Do not claim visual validation unless it was actually performed.
