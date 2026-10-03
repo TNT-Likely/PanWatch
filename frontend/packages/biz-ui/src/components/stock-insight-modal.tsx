@@ -24,6 +24,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { TechnicalBadge } from '@panwatch/biz-ui/components/technical-badge'
 import AddPositionCalculator from '@panwatch/biz-ui/components/add-position-calculator'
 import { useTranslation } from 'react-i18next'
+import { resolveSuggestionAction as normalizeSuggestionAction, suggestionPresentation, type SuggestionStateInput } from './suggestion-action'
 import { useMarketColors } from '@/hooks/use-market-colors'
 import { marketSignTextClass } from '@/lib/market-colors'
 
@@ -220,13 +221,6 @@ function parseSuggestionJson(raw: unknown): Record<string, any> | null {
   return null
 }
 
-function normalizeSuggestionAction(action?: string, actionLabel?: string): string {
-  const a = String(action || '').trim().toLowerCase()
-  const l = String(actionLabel || '').trim()
-  if (a === 'buy/add' || a === 'add/buy') return /加仓|增持|补仓/.test(l) ? 'add' : 'buy'
-  if (a === 'sell/reduce' || a === 'reduce/sell') return /减仓|减持/.test(l) ? 'reduce' : 'sell'
-  return a || 'watch'
-}
 
 function pickSuggestionText(raw: unknown, field: 'signal' | 'reason'): string {
   const plain = String(raw || '').trim()
@@ -356,13 +350,8 @@ export default function StockInsightModal(props: {
   const locale = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
   const english = locale === 'en-US'
   const agentLabel = (name: string) => name === 'daily_report' ? tr('reports.afterMarketAgent') : name === 'premarket_outlook' ? tr('reports.premarketAgent') : name
-  const actionLabel = (action?: string, label?: string) => {
-    const normalized = normalizeSuggestionAction(action, label)
-    if (english || !label) {
-      return (t as unknown as (key: string) => string)(`kline.actions.${normalized}`)
-    }
-    return label
-  }
+  const actionLabel = (action?: string, label?: string, state?: SuggestionStateInput) =>
+    (t as unknown as (key: string) => string)(suggestionPresentation({ ...state, action, action_label: label }).labelKey)
   const symbol = String(props.symbol || '').trim()
   const market = String(props.market || 'CN').trim().toUpperCase()
   const [loading, setLoading] = useState(false)
@@ -455,6 +444,7 @@ export default function StockInsightModal(props: {
       include_expired: includeExpiredSuggestions,
     })
     const list = (data || []).map(item => ({
+      ...item,
       id: item.id,
       action: normalizeSuggestionAction(item.action, item.action_label),
       action_label: item.action_label || '',
@@ -847,7 +837,7 @@ export default function StockInsightModal(props: {
       }
     }
     if (suggestions.length > 0) {
-      const lines = suggestions.slice(0, 3).map(s => `- [${s.agent_label || s.agent_name}] ${actionLabel(s.action, s.action_label)}: ${s.signal}`)
+      const lines = suggestions.slice(0, 3).map(s => `- [${s.agent_label || s.agent_name}] ${actionLabel(s.action, s.action_label, s)}: ${s.signal}`)
       parts.push(`${english ? 'Recent AI suggestions:\n' : '最近AI建议：\n'}${lines.join('\n')}`)
     }
     if (holdingAgg) {
@@ -923,7 +913,7 @@ export default function StockInsightModal(props: {
     const price = quote?.current_price != null ? formatNumber(quote.current_price) : '--'
     const chg = quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'
     const action = latestShareSuggestion
-      ? actionLabel(latestShareSuggestion.action, latestShareSuggestion.action_label)
+      ? actionLabel(latestShareSuggestion.action, latestShareSuggestion.action_label, latestShareSuggestion)
       : tr('suggestions.empty')
     const signal = firstNonEmptyText(
       latestShareSuggestion?.signal,
@@ -1570,7 +1560,7 @@ export default function StockInsightModal(props: {
                         <div className="rounded bg-accent/10 p-2 text-[11px]">
                           <div className="text-muted-foreground">{tr('cards.core')}</div>
                           <div className="mt-1 text-foreground line-clamp-2">{suggestions[0].signal || suggestions[0].reason || tr('cards.noDescription')}</div>
-                          <div className="mt-1 text-muted-foreground">{tr('cards.action')}{actionLabel(suggestions[0].action, suggestions[0].action_label)}</div>
+                          <div className="mt-1 text-muted-foreground">{tr('cards.action')}{actionLabel(suggestions[0].action, suggestions[0].action_label, suggestions[0])}</div>
                           <div className="mt-1 text-foreground line-clamp-2">{tr('cards.rationale')}{suggestions[0].reason || tr('cards.noRationale')}</div>
                           <div className="mt-1 text-muted-foreground">
                             {tr('cards.source')}{suggestions[0].agent_label || suggestions[0].agent_name || 'AI'}{suggestions[0].created_at ? ` · ${formatTime(suggestions[0].created_at, locale)}` : ''}
@@ -1581,7 +1571,7 @@ export default function StockInsightModal(props: {
                             <div className="text-muted-foreground mb-1">{tr('cards.recentSuggestions')}</div>
                             {suggestions.slice(1, 3).map((item, idx) => (
                               <div key={`${item.created_at || 'extra'}-${idx}`} className="line-clamp-1 text-foreground">
-                                {actionLabel(item.action, item.action_label)} · {item.signal || item.reason || '--'}
+                                {actionLabel(item.action, item.action_label, item)} · {item.signal || item.reason || '--'}
                               </div>
                             ))}
                           </div>
@@ -1919,13 +1909,11 @@ function DeepAnalysisSection({
   setShowDebate: (v: boolean) => void
   onRefresh: () => void
 }) {
-  const { t, i18n } = useTranslation('bizUi')
+  const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
-  const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
-  const deepAction = (action: string, label: string) => english
-    ? (t as unknown as (key: string) => string)(`kline.actions.${normalizeSuggestionAction(action, label)}`)
-    : label
+  const deepAction = (suggestion: SuggestionStateInput) =>
+    (t as unknown as (key: string) => string)(suggestionPresentation(suggestion).labelKey)
   if (loading && !loaded) {
     return (
       <div className="card p-6 text-center text-[12px] text-muted-foreground">
@@ -1966,8 +1954,8 @@ function DeepAnalysisSection({
       {sug && (
         <div className="rounded-lg bg-accent/30 p-4 space-y-2">
           <div className="flex items-center gap-3">
-            <span className={`text-[20px] font-bold ${DEEP_DECISION_COLOR[sug.action] || ''}`}>
-              {deepAction(sug.action, sug.action_label)}
+            <span className={`text-[20px] font-bold ${suggestionPresentation(sug).review ? 'text-orange-500' : DEEP_DECISION_COLOR[suggestionPresentation(sug).action] || ''}`}>
+              {deepAction(sug)}
             </span>
             {typeof sug.confidence === 'number' && (
               <span className="text-[12px] text-muted-foreground">
@@ -2053,13 +2041,11 @@ function DeepHistoryComparison({
   history: HistoryComparisonResponse | null
   loading: boolean
 }) {
-  const { t, i18n } = useTranslation('bizUi')
+  const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockInsight.${key}`, options)
-  const english = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en')
-  const deepAction = (action: string, label: string) => english
-    ? (t as unknown as (key: string) => string)(`kline.actions.${normalizeSuggestionAction(action, label)}`)
-    : label
+  const deepAction = (suggestion: SuggestionStateInput) =>
+    (t as unknown as (key: string) => string)(suggestionPresentation(suggestion).labelKey)
   if (loading && !history) {
     return (
       <div className="rounded-lg border border-border/40 p-3 text-[11px] text-muted-foreground text-center">
@@ -2116,7 +2102,7 @@ function DeepHistoryComparison({
               <tr key={`${item.analysis_date}-${i}`} className="border-b border-border/20 hover:bg-accent/10">
                 <td className="px-1 py-1 text-muted-foreground whitespace-nowrap">{item.analysis_date}</td>
                 <td className="px-1 py-1">
-                  <span className={DEEP_DECISION_COLOR[item.action] || ''}>{deepAction(item.action, item.action_label)}</span>
+                  <span className={suggestionPresentation(item).review ? 'text-orange-500' : DEEP_DECISION_COLOR[suggestionPresentation(item).action] || ''}>{deepAction(item)}</span>
                   {typeof item.confidence === 'number' && (
                     <span className="text-muted-foreground text-[10px] ml-1">({item.confidence.toFixed(1)})</span>
                   )}

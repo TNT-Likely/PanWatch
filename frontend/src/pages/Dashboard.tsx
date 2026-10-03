@@ -102,7 +102,7 @@ export default function DashboardPage() {
   const loadId = useRef(0)
   const benchLoadId = useRef(0)
   const [indices, setIndices] = useState<DashboardMarketIndex[]>([])
-  const [scan, setScan] = useState<DashboardMonitorStock[]>([])
+  const [monitorSnapshot, setMonitorSnapshot] = useState<DashboardMonitorStock[]>([])
   const [overview, setOverview] = useState<DashboardOverviewResponse | null>(null)
   const [diag, setDiag] = useState<PortfolioDiagnostics | null>(null)
   const [bench, setBench] = useState<PortfolioBenchmark | null>(null)
@@ -189,7 +189,7 @@ export default function DashboardPage() {
     })().finally(() => { if (current()) setOpportunitiesLoading(false) })
 
     await Promise.allSettled([
-      publish(dashboardApi.intradayScan({ include_technical: false }), (value) => setScan(value.stocks || [])),
+      publish(dashboardApi.intradaySnapshot(), (value) => setMonitorSnapshot(value.stocks || [])),
       opportunitiesRequest,
       publish(portfolioApi.diagnostics(), setDiag).finally(() => { if (current()) setHoldingsLoading(false) }),
       publish(homeApi.alertHitsToday(), setAlertHits),
@@ -233,11 +233,11 @@ export default function DashboardPage() {
 
   // 今日要紧事:持仓异动 + 触发的盯盘信号(有 AI 建议/告警优先)
   const urgent = useMemo(() => {
-    const items = (scan || []).filter((s) => s.has_position || s.alert_type || s.suggestion?.should_alert)
+    const items = (monitorSnapshot || []).filter((s) => s.has_position || s.alert_type)
     const weight = (s: DashboardMonitorStock) =>
-      (s.suggestion?.should_alert ? 1000 : 0) + (s.has_position ? 500 : 0) + Math.abs(s.change_pct || 0)
+      (s.has_position ? 500 : 0) + Math.abs(s.change_pct || 0)
     return items.sort((a, b) => weight(b) - weight(a)).slice(0, 8)
-  }, [scan])
+  }, [monitorSnapshot])
 
   const opportunities = useMemo(() => {
     const list = overview?.action_center?.opportunities?.length ? overview.action_center.opportunities : oppFallback
@@ -307,7 +307,7 @@ export default function DashboardPage() {
         name: s.name,
         market: s.market,
         change_pct: s.change_pct,
-        signal: s.suggestion?.signal || (s.alert_type ? dashboardT(`dashboard.alerts.${s.alert_type}`, { defaultValue: s.alert_type }) : ''),
+        signal: (s.alert_type ? dashboardT(`dashboard.alerts.${s.alert_type}`, { defaultValue: s.alert_type }) : ''),
       })
     }
     for (const a of localizedDiagnosticAlerts) out.push({ type: 'risk', name: dashboardT('dashboard.health'), market: '', signal: a })
@@ -508,7 +508,7 @@ export default function DashboardPage() {
             )}
           </div>
           {loading && candidates.length === 0 && todos.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">{dashboardT('dashboard.scanning')}</div>
+            <div className="py-6 text-center text-[12px] text-muted-foreground">{dashboardT('dashboard.loading')}</div>
           ) : candidates.length === 0 ? (
             todos.length > 0 ? (
               <div className="space-y-1.5 py-1">
@@ -798,7 +798,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <DiscoveryPanel monitorStocks={scan} portfolioSummary={portfolioSummary} onOpenStock={openStock} />
+      <DiscoveryPanel monitorStocks={monitorSnapshot} portfolioSummary={portfolioSummary} onOpenStock={openStock} />
 
       <Suspense fallback={null}>
         {modal.open && (

@@ -1,4 +1,4 @@
-"""上游 5 档评级 → PanWatch 3 档 action 映射回归测试。
+"""上游五档评级保留独立方向与复核状态的回归测试。
 
 根因 bug:上游 PM 用 Buy/Overweight/Hold/Underweight/Sell 五档,我们只识别 3 档,
 Overweight/Underweight 被兜底到 hold,导致顶层显示"持有"但 PM 实际给出"减持"。
@@ -43,11 +43,11 @@ def test_buy_rating_maps_to_buy():
     assert r.raw_data["suggestion"]["action_label"] == "买入"
 
 
-def test_overweight_rating_maps_to_buy_with_zh_label():
-    """Overweight(增持) → action=buy,但 label 显示"增持"区分于 buy"""
+def test_overweight_rating_maps_to_add_with_canonical_label():
+    """增持保留为加仓，避免被错误归并成买入。"""
     r = map_state_to_result(stock=_stock(), ta_result=_result("Overweight"))
-    assert r.raw_data["suggestion"]["action"] == "buy"
-    assert r.raw_data["suggestion"]["action_label"] == "增持"
+    assert r.raw_data["suggestion"]["action"] == "add"
+    assert r.raw_data["suggestion"]["action_label"] == "加仓"
     assert r.raw_data["suggestion"]["rating_raw"] == "overweight"
 
 
@@ -57,12 +57,12 @@ def test_hold_rating_maps_to_hold():
     assert r.raw_data["suggestion"]["action_label"] == "持有"
 
 
-def test_underweight_rating_maps_to_sell_with_zh_label():
+def test_underweight_rating_maps_to_reduce_with_canonical_label():
     """关键 bug 回归:Underweight(减持) 之前被错误兜底到 hold,
-    现在应该 action=sell + label=减持"""
+    现在应该 action=reduce + label=减仓"""
     r = map_state_to_result(stock=_stock(), ta_result=_result("Underweight"))
-    assert r.raw_data["suggestion"]["action"] == "sell"
-    assert r.raw_data["suggestion"]["action_label"] == "减持"
+    assert r.raw_data["suggestion"]["action"] == "reduce"
+    assert r.raw_data["suggestion"]["action_label"] == "减仓"
     assert r.raw_data["suggestion"]["rating_raw"] == "underweight"
     # 应触发提醒(不是 hold)
     assert r.raw_data["suggestion"]["should_alert"] is True
@@ -116,11 +116,11 @@ def test_decision_text_fallback_to_keyword_scan():
     assert _parse_rating_from_text(text) == "overweight"
 
 
-def test_decision_empty_falls_back_to_hold():
-    """propagate 返回空 + 文本也没评级词 → 默认 hold"""
+def test_unparseable_decision_requires_review():
+    """没有可解析的评级时必须复核，不伪装成持有。"""
     r = map_state_to_result(stock=_stock(), ta_result=_result("", final_decision_text=""))
-    assert r.raw_data["suggestion"]["action"] == "hold"
-    assert r.raw_data["suggestion"]["rating_raw"] == "hold"
+    assert r.raw_data["suggestion"]["action"] == "watch"
+    assert r.raw_data["suggestion"]["rating_raw"] == "review"
 
 
 def test_review_signal_is_preserved_as_manual_review():
@@ -130,7 +130,7 @@ def test_review_signal_is_preserved_as_manual_review():
         ta_result=_result("REVIEW", final_decision_text="上游无法解析最终评级"),
     )
     suggestion = r.raw_data["suggestion"]
-    assert suggestion["action"] == "hold"  # 保持现有前端 3 档 API
+    assert suggestion["action"] == "watch"  # no trade direction for REVIEW
     assert suggestion["action_label"] == "待人工复核"
     assert suggestion["rating_raw"] == "review"
     assert suggestion["should_alert"] is True
@@ -144,7 +144,7 @@ def test_review_signal_overrides_parseable_pm_rating():
         ta_result=_result("REVIEW", final_decision_text="评级：买入"),
     )
     suggestion = r.raw_data["suggestion"]
-    assert suggestion["action"] == "hold"
+    assert suggestion["action"] == "watch"
     assert suggestion["action_label"] == "待人工复核"
     assert suggestion["rating_raw"] == "review"
     assert suggestion["review_required"] is True
@@ -156,8 +156,8 @@ def test_decision_unrecognized_then_text_has_underweight():
         stock=_stock(),
         ta_result=_result("xxxx", final_decision_text="...\n**Rating**: Underweight\n..."),
     )
-    assert r.raw_data["suggestion"]["action"] == "sell"
-    assert r.raw_data["suggestion"]["action_label"] == "减持"
+    assert r.raw_data["suggestion"]["action"] == "reduce"
+    assert r.raw_data["suggestion"]["action_label"] == "减仓"
 
 
 # ============================================================
@@ -245,7 +245,7 @@ def test_markdown_shows_5_tier_rating_in_header():
 def test_raw_data_has_both_decision_and_rating():
     """前端兼容:既要有 3 档 decision 给老代码,也要有 5 档 rating 给新展示"""
     r = map_state_to_result(stock=_stock(), ta_result=_result("Overweight"))
-    assert r.raw_data["decision"] == "buy"  # 3 档
+    assert r.raw_data["decision"] == "add"  # canonical direction
     assert r.raw_data["rating"] == "overweight"  # 5 档
 
 
@@ -259,9 +259,9 @@ def test_all_5_ratings_have_label():
         assert r in RATING_ACTION_MAP
 
 
-def test_action_map_only_uses_3_actions():
-    """3 档 action 只能是 buy/hold/sell(前端类型)"""
-    assert set(RATING_ACTION_MAP.values()) == {"buy", "hold", "sell"}
+def test_action_map_preserves_all_five_directions():
+    """增持与减持保留独立动作。"""
+    assert set(RATING_ACTION_MAP.values()) == {"buy", "add", "hold", "reduce", "sell"}
 
 
 # ============================================================

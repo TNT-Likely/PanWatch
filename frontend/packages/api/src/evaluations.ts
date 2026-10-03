@@ -20,6 +20,8 @@ export interface AgentPredictionGroup {
   prediction_date: string
   action: string
   action_label: string
+  review_required?: boolean
+  attention_required?: boolean
   confidence: number | null
   trigger_price: number | null
   reason: string

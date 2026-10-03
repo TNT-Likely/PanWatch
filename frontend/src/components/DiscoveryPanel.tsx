@@ -151,7 +151,7 @@ export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfo
         reasons.push(tr('reasons.watchlist'))
       }
       const monitor = monitorMap.get(key)
-      if (monitor?.suggestion?.should_alert || monitor?.alert_type) {
+      if (monitor?.alert_type) {
         score += 5
         reasons.push(tr('reasons.monitor'))
       }

@@ -94,8 +94,8 @@ STRUCTURED_CASES: list[StructuredEvalCase] = [
     StructuredEvalCase(
         id="s-alias-build",
         text='{"action":"build","action_label":"建仓"}',
-        expect_fields={"action": "add"},
-        notes="build 别名归一化为 add",
+        expect_fields={"action": "buy"},
+        notes="build 别名归一化为 buy",
     ),
     StructuredEvalCase(
         id="s-action-upper",

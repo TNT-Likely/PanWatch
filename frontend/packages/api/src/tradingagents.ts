@@ -29,7 +29,7 @@ export interface DebateHistory {
 }
 
 export interface DeepAnalysisSuggestion {
-  action: 'buy' | 'hold' | 'sell'
+  action: 'buy' | 'add' | 'reduce' | 'sell' | 'hold' | 'watch' | 'avoid'
   action_label: string
   /** 上游五档评级；review 表示无法安全解析，需要人工复核而不是普通持有。 */
   rating_raw?: 'buy' | 'overweight' | 'hold' | 'underweight' | 'sell' | 'review'
@@ -147,9 +147,11 @@ export interface ProgressResponse {
 }
 
 export interface HistoryComparisonItem {
+  review_required?: boolean
+  rating_raw?: string
   trace_id: string
   analysis_date: string
-  action: 'buy' | 'hold' | 'sell'
+  action: 'buy' | 'add' | 'reduce' | 'sell' | 'hold' | 'watch' | 'avoid'
   action_label: string
   confidence: number | null
   cost_usd: number | null

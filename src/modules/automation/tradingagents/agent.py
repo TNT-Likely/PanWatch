@@ -406,7 +406,7 @@ class TradingAgentsAgent(BaseAgent):
             logger.warning(f"[TA] save_analysis 失败,不影响主流程: {e}")
 
         # 6b) 落库到 StockSuggestion(建议池) — 让持仓页/关注列表上的建议徽章
-        # 显示 TradingAgents 的 BUY/HOLD/SELL 决策(跟「盘前分析」「收盘复盘」并列)。
+        # 显示 TradingAgents 的七类方向建议和复核状态(跟「盘前分析」「收盘复盘」并列)。
         try:
             from src.modules.automation.suggestion_pool import save_suggestion
 
@@ -416,16 +416,14 @@ class TradingAgentsAgent(BaseAgent):
             signal_text = (sug.get("signal") or "")[:500]
             reason_text = (sug.get("reason") or "")[:1000]
             confidence = sug.get("confidence")
-            confidence_text = (
-                f" (置信度 {confidence:.1f}/10)" if isinstance(confidence, (int, float)) else ""
-            )
 
             save_suggestion(
                 stock_symbol=stock.symbol,
                 stock_name=stock.name,
                 stock_market=stock.market.value,
                 action=action,
-                action_label=f"{action_label}{confidence_text}",
+                suggestion_state=sug,
+                action_label=action_label,
                 agent_name=self.name,
                 agent_label="TradingAgents 深度",
                 signal=signal_text,

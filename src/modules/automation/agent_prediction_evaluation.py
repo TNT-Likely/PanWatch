@@ -125,6 +125,10 @@ def _outcome_payload(row: Any) -> dict[str, Any]:
     return_pct = getattr(row, "outcome_return_pct", None)
     status = str(getattr(row, "outcome_status", "pending") or "pending")
     action = str(getattr(row, "action", "") or "")
+    state = (getattr(row, "meta", None) or {}).get("suggestion_state", {})
+    has_direction = not state.get("review_required") and not (
+        action == "watch" and state.get("attention_required")
+    )
     unit = str(getattr(row, "horizon_unit", "calendar_days_legacy") or "calendar_days_legacy")
     return {
         "status": status,
@@ -132,7 +136,7 @@ def _outcome_payload(row: Any) -> dict[str, Any]:
         "outcome_price": getattr(row, "outcome_price", None),
         "return_pct": return_pct,
         "hit": classify_prediction_hit(action, return_pct)
-        if status == "evaluated"
+        if status == "evaluated" and has_direction
         else None,
         "evaluated_at": _serialize_timestamp(getattr(row, "evaluated_at", None)),
     }
@@ -161,6 +165,8 @@ def group_prediction_outcomes(rows: Sequence[Any]) -> list[dict[str, Any]]:
                 # UI derives the display label from the stable action code and
                 # current interface language. Historical labels may be Chinese.
                 "action_label": "",
+                "review_required": bool((meta.get("suggestion_state") or {}).get("review_required")),
+                "attention_required": bool((meta.get("suggestion_state") or {}).get("attention_required")),
                 "confidence": getattr(row, "confidence", None),
                 "trigger_price": getattr(row, "trigger_price", None),
                 "reason": str(meta.get("reason", "") or ""),

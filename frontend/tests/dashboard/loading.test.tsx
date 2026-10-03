@@ -7,7 +7,7 @@ import DashboardPage from '@/pages/Dashboard'
 
 vi.mock('@panwatch/api', () => ({
   dashboardApi: {
-    indices: vi.fn(), intradayScan: vi.fn(), overview: vi.fn(), portfolioSummary: vi.fn(),
+    indices: vi.fn(), intradaySnapshot: vi.fn(), overview: vi.fn(), portfolioSummary: vi.fn(),
     marketStatus: vi.fn(), brief: vi.fn(), curate: vi.fn(),
   },
   portfolioApi: { diagnostics: vi.fn(), benchmark: vi.fn(), attribution: vi.fn() },
@@ -49,8 +49,8 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals() })
 
 describe('dashboard progressive loading', () => {
-  it('renders fast data and the benchmark before a slow scan or attribution, then curates once', async () => {
-    const scan = deferred<{ stocks: [] }>()
+  it('renders fast data and the benchmark before a slow quote snapshot or attribution, then curates once', async () => {
+    const snapshot = deferred<{ stocks: [] }>()
     const alerts = deferred<[]>()
     const diag = deferred<typeof diagnostics>()
     const ps = deferred<typeof summary>()
@@ -60,7 +60,7 @@ describe('dashboard progressive loading', () => {
     vi.mocked(dashboardApi.portfolioSummary).mockReturnValue(ps.promise)
     vi.mocked(dashboardApi.overview).mockReturnValue(ov.promise)
     vi.mocked(portfolioApi.benchmark).mockReturnValue(bn.promise)
-    vi.mocked(dashboardApi.intradayScan).mockReturnValue(scan.promise)
+    vi.mocked(dashboardApi.intradaySnapshot).mockReturnValue(snapshot.promise)
     vi.mocked(homeApi.alertHitsToday).mockReturnValue(alerts.promise)
     vi.mocked(homeApi.todos).mockResolvedValue({ todos: [{ type: 'no_alert', name: '待办标的', symbol: '000001', market: 'CN' }] })
     vi.mocked(dashboardApi.marketStatus).mockResolvedValue([{ code: 'HK', is_trading: false }])
@@ -72,16 +72,16 @@ describe('dashboard progressive loading', () => {
     expect(screen.getByText('快速简报')).toBeTruthy()
     expect(screen.getByText('港股')).toBeTruthy()
     expect(portfolioApi.benchmark).toHaveBeenCalledTimes(1)
-    expect(dashboardApi.intradayScan).toHaveBeenCalledWith({ include_technical: false })
+    expect(dashboardApi.intradaySnapshot).toHaveBeenCalledWith()
 
-    // Resolve the other sections while scan/attribution/second brief remain pending.
+    // Resolve the other sections while snapshot/attribution/second brief remain pending.
     // Each result must become visible without waiting for the whole group.
     await act(async () => { diag.resolve(diagnostics); ps.resolve(summary); bn.resolve(benchmark); ov.resolve(overview) })
     expect(screen.getByText('+¥321')).toBeTruthy()
     expect(screen.getAllByText(/\+1.25%/).length).toBeGreaterThan(0)
     expect(screen.getAllByText('机会标的').length).toBeGreaterThan(0)
     expect(dashboardApi.curate).not.toHaveBeenCalled()
-    await act(async () => { scan.resolve({ stocks: [] }); alerts.resolve([]) })
+    await act(async () => { snapshot.resolve({ stocks: [] }); alerts.resolve([]) })
     await waitFor(() => expect(dashboardApi.curate).toHaveBeenCalledTimes(1))
   })
 
@@ -101,7 +101,7 @@ describe('dashboard progressive loading', () => {
     vi.mocked(portfolioApi.diagnostics).mockResolvedValue(diagnostics)
     vi.mocked(dashboardApi.portfolioSummary).mockResolvedValue(summary)
     vi.mocked(dashboardApi.overview).mockResolvedValue(overview)
-    vi.mocked(dashboardApi.intradayScan).mockResolvedValue({ stocks: [] })
+    vi.mocked(dashboardApi.intradaySnapshot).mockResolvedValue({ stocks: [] })
     vi.mocked(homeApi.alertHitsToday).mockResolvedValue([])
     vi.mocked(homeApi.todos).mockResolvedValue({ todos: [] })
     vi.mocked(dashboardApi.marketStatus).mockResolvedValue([])

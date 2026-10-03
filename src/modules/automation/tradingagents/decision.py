@@ -19,6 +19,7 @@ from datetime import date
 from typing import Any
 
 from src.modules.automation.base import AnalysisResult
+from src.modules.research.signals.actions import normalize_suggestion, ACTION_LABELS_EN
 
 __all__ = [
     "DECISION_LABEL_MAP",
@@ -43,17 +44,17 @@ RATING_LABEL_MAP_EN = {
     "sell": "Sell",
 }
 
-# 5 档 → 3 档(给 action 字段;前端 'buy' | 'hold' | 'sell')
+# Five ratings retain their distinct canonical directions.
 RATING_ACTION_MAP = {
     "buy": "buy",
-    "overweight": "buy",
+    "overweight": "add",
     "hold": "hold",
-    "underweight": "sell",
+    "underweight": "reduce",
     "sell": "sell",
 }
 
 # 0.4.0 起,上游无法解析 PM 评级时返回 REVIEW。它不是可交易的 Hold:
-# 在不扩展前端 3 档 action API 的前提下,以 hold 阻止自动交易,并保留原始状态供展示/提醒。
+# REVIEW has no actionable direction and is excluded from trading and hit-rate statistics.
 REVIEW_RATING = "review"
 REVIEW_LABEL = "待人工复核"
 
@@ -97,6 +98,8 @@ def map_state_to_result(
     if rating_raw not in RATING_LABEL_MAP and rating_raw != REVIEW_RATING:
         rating_raw = _parse_rating_from_text(final_text)
 
+    if rating_raw not in RATING_LABEL_MAP:
+        rating_raw = REVIEW_RATING
     review_required = rating_raw == REVIEW_RATING
     action = RATING_ACTION_MAP.get(rating_raw, "hold")
     action_label = ("Review required" if english else REVIEW_LABEL) if review_required else rating_labels.get(rating_raw, hold_label)
@@ -118,6 +121,12 @@ def map_state_to_result(
         "confidence": confidence,
     }
 
+    suggestion = normalize_suggestion(suggestion)
+    action = suggestion["action"]
+    suggestion["action_label"] = (
+        ("Review required" if english else REVIEW_LABEL) if review_required
+        else ACTION_LABELS_EN[action] if english else suggestion["action_label"]
+    )
     content = _render_markdown(state, suggestion, model_label, output_language)
     # 详情页可点击链接(配了 panwatch_base_url 才出现)
     from datetime import date as _date
@@ -140,7 +149,7 @@ def map_state_to_result(
             "cost_usd": cost_usd,
             "token_usage": ta_result.get("token_usage"),
             "should_alert": suggestion["should_alert"],
-            "decision": action,           # 兼容旧字段(3 档)
+            "decision": action,
             "rating": rating_raw or "hold",  # 新字段(5 档原始)
             "upstream_decision": upstream_rating,
             "confidence": confidence,

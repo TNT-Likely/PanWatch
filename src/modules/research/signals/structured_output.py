@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from .actions import ACTION_ALIASES
+
 
 ALLOWED_ACTIONS = {
     "buy",
@@ -12,10 +14,6 @@ ALLOWED_ACTIONS = {
     "watch",
     "alert",
     "avoid",
-}
-
-ACTION_ALIASES = {
-    "build": "add",
 }
 
 

@@ -6,8 +6,9 @@ import { buildKlineSuggestion } from '@/lib/kline-scorer'
 import { AiSuggestionBadge } from '@panwatch/biz-ui/components/ai-suggestion-badge'
 import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 import { useTranslation } from 'react-i18next'
+import { suggestionPresentation, type SuggestionStateInput } from './suggestion-action'
 
-export interface SuggestionInfo {
+export interface SuggestionInfo extends SuggestionStateInput {
   id?: number
   action: string  // buy/add/reduce/sell/hold/watch
   action_label: string
@@ -153,18 +154,10 @@ export function SuggestionBadge({
     : english
       ? suggestion?.agent_name || tr('unknown')
       : suggestion?.agent_label || suggestion?.agent_name || tr('unknown')
-  const localizedAction = (action?: string, label?: string) => {
-    if (!english) return label || tr('watch')
-    const value = String(action || '').toLowerCase()
-    const normalized = value.includes('reduce') ? 'reduce'
-      : value.includes('sell') ? 'sell'
-      : value.includes('add') ? 'add'
-      : value.includes('buy') ? 'buy'
-      : value.includes('avoid') ? 'avoid'
-      : value.includes('hold') ? 'hold'
-      : 'watch'
-    return (t as unknown as (key: string) => string)(`kline.actions.${normalized}`)
-  }
+  const localizedAction = (action?: string, label?: string) => (t as unknown as (key: string) => string)(suggestionPresentation({ action, action_label: label }).labelKey)
+  const technicalLabel = (tech: ReturnType<typeof buildKlineSuggestion> | null) => tech
+    ? localizedAction(tech.action, tech.action_label)
+    : tr('technicalPending')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [klineDialogOpen, setKlineDialogOpen] = useState(false)
   const onDialogOpenChange = (open: boolean) => {
@@ -193,6 +186,7 @@ export function SuggestionBadge({
           <div className="flex items-start gap-3">
             <div className="shrink-0 flex items-center gap-2">
               <AiSuggestionBadge
+                {...suggestion}
                 action={suggestion.action}
                 actionLabel={localizedAction(suggestion.action, suggestion.action_label)}
                 isAI={isAI}
@@ -207,8 +201,8 @@ export function SuggestionBadge({
               />
               {isAI && showTechnicalCompanion && (
                 <TechnicalBadge
-                  label={tech ? localizedAction(tech.action, tech.action_label) : tr('watch')}
-                  tone={technicalToneFromSuggestionAction(tech?.action, tech?.action_label)}
+                  label={technicalLabel(tech)}
+                  tone={tech ? technicalToneFromSuggestionAction(tech.action, tech.action_label) : 'neutral'}
                   size="lg"
                   onClick={(e) => { e.stopPropagation(); setKlineDialogOpen(true) }}
                   title={tr('technicalTitle')}
@@ -252,13 +246,13 @@ export function SuggestionBadge({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AiSuggestionBadge
+                  {...suggestion}
                   action={suggestion.action}
                   actionLabel={localizedAction(suggestion.action, suggestion.action_label)}
                   isAI={isAI}
                   isExpired={!!suggestion.is_expired}
                   size="lg"
                 />
-                {/* AI 标签已前置到按钮文案，不再重复 */}
                 {stockName && (
                   <span className="text-[14px] font-normal text-muted-foreground">
                     {stockName} {stockSymbol && `(${stockSymbol})`}
@@ -342,13 +336,14 @@ export function SuggestionBadge({
 
   // 仅展示技术指标（无建议）
   if (!suggestion && kline) {
+    const tech = buildKlineSuggestion(kline as any, hasPosition, klineTr)
     return (
       <>
         <div className="inline-flex flex-col items-start gap-0.5">
           <TechnicalBadge
-            label={tr('technicalShort')}
-            tone="neutral"
-            size="xs"
+            label={technicalLabel(tech)}
+            tone={technicalToneFromSuggestionAction(tech.action, tech.action_label)}
+            size="md"
             onClick={(e) => {
               e.stopPropagation()
               setKlineDialogOpen(true)
@@ -382,6 +377,7 @@ export function SuggestionBadge({
       <div className="inline-flex flex-col items-start gap-0.5">
         <div className="inline-flex items-center gap-1">
           <AiSuggestionBadge
+            {...suggestion}
             action={suggestion.action}
             actionLabel={localizedAction(suggestion.action, suggestion.action_label)}
             isAI={isAI}
@@ -399,8 +395,8 @@ export function SuggestionBadge({
               const tech = kline ? buildKlineSuggestion(kline as any, hasPosition, klineTr) : null
               return (
                 <TechnicalBadge
-                  label={tech ? localizedAction(tech.action, tech.action_label) : tr('watch')}
-                  tone={technicalToneFromSuggestionAction(tech?.action, tech?.action_label)}
+                  label={technicalLabel(tech)}
+                  tone={tech ? technicalToneFromSuggestionAction(tech.action, tech.action_label) : 'neutral'}
                   size="md"
                   onClick={(e) => { e.stopPropagation(); setKlineDialogOpen(true) }}
                   title={tr('technicalTitle')}
@@ -428,6 +424,7 @@ export function SuggestionBadge({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AiSuggestionBadge
+                {...suggestion}
                 action={suggestion.action}
                 actionLabel={localizedAction(suggestion.action, suggestion.action_label)}
                 isAI={isAI}

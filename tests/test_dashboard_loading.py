@@ -9,6 +9,7 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from src.modules.automation.api import agents
 from src.modules.portfolio.api import accounts
@@ -19,7 +20,7 @@ from src.platform.marketdata.models import MarketCode
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as session:
         yield session
@@ -78,13 +79,13 @@ def test_market_quotes_run_concurrently_and_preserve_partial_results(monkeypatch
 
 
 @pytest.fixture
-def scan_setup(db, monkeypatch):
+def snapshot_setup(db, monkeypatch):
     import server
     from src.platform.marketdata import marketdata_client, models
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
 
-    with agents._SCAN_CACHE_LOCK:
-        agents._SCAN_CACHE.clear()
+    with agents._SNAPSHOT_CACHE_LOCK:
+        agents._SNAPSHOT_CACHE.clear()
     stock = SimpleNamespace(symbol="600519", name="贵州茅台", market=MarketCode.CN)
     quote = SimpleNamespace(
         symbol=stock.symbol, name=stock.name, change_pct=4.0, current_price=12,
@@ -102,35 +103,27 @@ def scan_setup(db, monkeypatch):
     kline = Mock(return_value={"trend": "bullish"})
     monkeypatch.setattr(KlineCollector, "get_kline_summary", kline)
     yield kline
-    with agents._SCAN_CACHE_LOCK:
-        agents._SCAN_CACHE.clear()
+    with agents._SNAPSHOT_CACHE_LOCK:
+        agents._SNAPSHOT_CACHE.clear()
 
 
-def test_homepage_scan_skips_klines_and_full_scan_has_separate_cache(db, scan_setup):
-    light = asyncio.run(agents.scan_intraday(db=db, include_technical=False))
-    scan_setup.assert_not_called()
-    row = light["stocks"][0]
-    assert row["kline"] is None
+def test_homepage_snapshot_is_read_only_and_never_loads_klines(db, snapshot_setup, monkeypatch):
+    import server
+    ai_context = Mock(side_effect=AssertionError("snapshot must not invoke AI"))
+    monkeypatch.setattr(server, "build_context", ai_context)
+    result = asyncio.run(agents.intraday_snapshot(db=db))
+    snapshot_setup.assert_not_called()
+    ai_context.assert_not_called()
+    row = result["stocks"][0]
     assert row["has_position"] is True
     assert row["pnl_pct"] == 20
     assert row["alert_type"] == "急涨"
-
-    full = asyncio.run(agents.scan_intraday(db=db))
-    scan_setup.assert_called_once_with("600519")
-    assert full["stocks"][0]["kline"] == {"trend": "bullish"}
-    assert asyncio.run(agents.scan_intraday(db=db, include_technical=False)) == light
-    assert asyncio.run(agents.scan_intraday(db=db)) == full
-    assert scan_setup.call_count == 1
+    assert "suggestion" not in row
+    assert asyncio.run(agents.intraday_snapshot(db=db)) == result
 
 
-def test_ai_scan_still_loads_technical_data_when_light_flag_is_requested(db, scan_setup, monkeypatch):
-    import server
-    from src.modules.research import analysis_history
-
-    monkeypatch.setattr(analysis_history, "get_latest_analysis", lambda **_: None)
-    monkeypatch.setattr(analysis_history, "get_analysis", lambda **_: None)
-    # No real AI/context or external providers are involved in this regression test.
-    monkeypatch.setattr(server, "build_context", Mock(side_effect=RuntimeError("test context unavailable")))
-    result = asyncio.run(agents.scan_intraday(db=db, analyze=True, include_technical=False))
-    scan_setup.assert_called_once_with("600519")
-    assert result["stocks"][0]["kline"] == {"trend": "bullish"}
+def test_manual_scan_routes_are_removed():
+    paths = {route.path for route in agents.router.routes}
+    assert "/intraday/scan" not in paths
+    assert "/intraday/analysis" not in paths
+    assert "/intraday/snapshot" in paths

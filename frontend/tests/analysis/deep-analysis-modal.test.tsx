@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { tradingAgentsApi, type DeepAnalysisResult } from '@panwatch/api'
@@ -31,4 +32,14 @@ describe('deep analysis modal', () => {
     expect(screen.getByRole('button', { name: '开始分析' }).hasAttribute('disabled')).toBe(false)
     expect(screen.queryByText(/本月预算|预估成本|预算已用尽/)).toBeNull()
   })
+})
+
+it('shows REVIEW as a review state in an English historical report', async () => {
+  await i18n.changeLanguage('en-US')
+  const review = { ...result, raw_data: { ...result.raw_data, suggestion: {
+    ...result.raw_data.suggestion, action: 'hold' as const, action_label: '待人工复核', rating_raw: 'review' as const, review_required: true,
+  } } }
+  render(<DeepAnalysisModal {...props} initialResult={review} />)
+  expect(await screen.findByText('Review required')).toBeTruthy()
+  expect(screen.queryByText('Hold')).toBeNull()
 })

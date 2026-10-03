@@ -29,6 +29,7 @@ import {
   shouldContinueProgressWatch,
 } from '../../../../src/lib/tradingagents-progress'
 import { useTranslation } from 'react-i18next'
+import { suggestionPresentation } from './suggestion-action'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-market-up',
@@ -684,6 +685,7 @@ function DoneView({
     agent_label: tr('done.fallbackAgent'),
     confidence: 5.0,
   }
+  const view = suggestionPresentation(sug)
   const fromCache = rawData.from_cache
   const sections = buildAnalysisSections(rawData, { english })
   const analysisDate = analysisDateForResult(result)
@@ -702,8 +704,8 @@ function DoneView({
 
       {/* 决策与置信度；报告日期和实际用量单独展示。 */}
       <div className="rounded-lg bg-accent/30 px-4 py-2.5 flex items-center gap-3 flex-wrap">
-        <span className={`text-[18px] font-bold ${DECISION_COLOR[sug.action] || ''}`}>
-          {english ? (t as unknown as (key: string) => string)(`kline.actions.${sug.action}`) : sug.action_label}
+        <span className={`text-[18px] font-bold ${view.review ? 'text-orange-500' : DECISION_COLOR[view.action] || ''}`}>
+          {(t as unknown as (key: string) => string)(view.labelKey)}
         </span>
         <span className="text-[12px] text-muted-foreground">
           {tr('done.confidence', { value: sug.confidence?.toFixed(1) ?? '-' })}

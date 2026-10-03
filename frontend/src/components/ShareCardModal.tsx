@@ -1,5 +1,5 @@
 import { type DeepAnalysisResult } from '@panwatch/api'
-import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
+import { suggestionPresentation } from '@panwatch/biz-ui/components/suggestion-action'
 import ShareCardDialog from './ShareCardDialog'
 import { useTranslation } from 'react-i18next'
 import { useMarketColors } from '@/hooks/use-market-colors'
@@ -99,8 +99,9 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
   const sug = result.raw_data?.suggestion
   // 评级来源:优先后端五档原值，否则用 action，再叠加中文 action_label 兜底。
   const ratingRaw = mapRatingRaw(sug?.rating_raw)
-  const normalized = normalizeSuggestionAction(ratingRaw || sug?.action, sug?.action_label)
-  const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
+  const view = suggestionPresentation({ ...sug, rating_raw: ratingRaw || sug?.rating_raw })
+  const normalized = view.action
+  const reviewRequired = view.review
   const visuals = ratingVisuals(palette)
   const visual = reviewRequired ? REVIEW_VISUAL : (normalized && visuals[normalized]) || RATING_FALLBACK
   const visualLabel = reviewRequired

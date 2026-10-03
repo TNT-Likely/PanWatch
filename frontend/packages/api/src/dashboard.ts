@@ -138,10 +138,9 @@ export interface DashboardMonitorStock {
   cost_price: number | null
   pnl_pct: number | null
   trading_style: string | null
-  suggestion: DashboardSuggestion | null
 }
 
-export interface DashboardIntradayScanResponse {
+export interface DashboardIntradaySnapshotResponse {
   stocks: DashboardMonitorStock[]
   available_funds: number
 }
@@ -248,17 +247,7 @@ export const dashboardApi = {
   history: (params: Record<string, QueryValue>) =>
     fetchAPI<DashboardHistoryItem[]>(withQuery('/history', params)),
 
-  intradayScan: (params?: { analyze?: boolean; include_technical?: boolean }) =>
-    fetchAPI<DashboardIntradayScanResponse>(
-      withQuery('/agents/intraday/scan', {
-        analyze: params?.analyze,
-        include_technical: params?.include_technical,
-      }),
-      {
-        method: 'POST',
-        timeoutMs: params?.analyze ? 90000 : 30000,
-      }
-    ),
+  intradaySnapshot: () => fetchAPI<DashboardIntradaySnapshotResponse>('/agents/intraday/snapshot'),
 
   overview: (params?: {
     market?: 'ALL' | 'CN' | 'HK' | 'US'

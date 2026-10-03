@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from src.modules.research.signals.actions import ACTION_LABELS, normalize_suggestion
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.modules.research.analysis_history import save_analysis
 from src.platform.marketdata.cn_symbol import get_cn_prefix
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # 盘后建议类型映射
 DAILY_ACTION_MAP = {
+    **{label: {"action": action, "label": label} for action, label in ACTION_LABELS.items()},
     "继续持有": {"action": "hold", "label": "继续持有"},
     "考虑加仓": {"action": "add", "label": "考虑加仓"},
     "考虑减仓": {"action": "reduce", "label": "考虑减仓"},
@@ -407,7 +409,7 @@ class DailyReportAgent(BaseAgent):
         """
         suggestions: dict[str, dict] = {}
         if not content or not watchlist:
-            return suggestions
+            return {key: normalize_suggestion(value) for key, value in suggestions.items()}
 
         symbol_set = {s.symbol for s in watchlist}
         symbol_map: dict[str, str] = {}
@@ -436,13 +438,16 @@ class DailyReportAgent(BaseAgent):
             if getattr(s, "name", ""):
                 name_map[s.name] = sym
 
-        action_texts = list(DAILY_ACTION_MAP.keys())
+        action_pattern = re.compile("|".join(
+            re.escape(label) for label in sorted(DAILY_ACTION_MAP, key=len, reverse=True)
+        ))
         for raw_line in content.splitlines():
             line = raw_line.strip()
             if not line:
                 continue
             # 快速过滤：必须包含某个建议类型
-            action_text = next((t for t in action_texts if t in line), None)
+            action_match = action_pattern.search(line)
+            action_text = action_match.group(0) if action_match else None
             if not action_text:
                 continue
 
@@ -503,14 +508,14 @@ class DailyReportAgent(BaseAgent):
                 "should_alert": action_info["action"] in ["add", "reduce", "sell"],
             }
 
-        return suggestions
+        return {key: normalize_suggestion(value) for key, value in suggestions.items()}
 
     def _parse_suggestions_json(self, obj: dict, watchlist: list) -> dict[str, dict]:
         """Parse suggestions from structured JSON block."""
         suggestions: dict[str, dict] = {}
         items = obj.get("suggestions")
         if not isinstance(items, list) or not watchlist:
-            return suggestions
+            return {key: normalize_suggestion(value) for key, value in suggestions.items()}
 
         symbol_set = {s.symbol for s in watchlist}
         symbol_map: dict[str, str] = {}
@@ -552,6 +557,8 @@ class DailyReportAgent(BaseAgent):
             suggestions[canonical] = {
                 "action": action,
                 "action_label": action_label,
+                "attention_required": bool(it.get("attention_required")),
+                "review_required": bool(it.get("review_required")),
                 "reason": reason[:160],
                 "signal": signal[:60],
                 "triggers": it.get("triggers")
@@ -564,7 +571,7 @@ class DailyReportAgent(BaseAgent):
                 "should_alert": action in ["add", "reduce", "sell"],
             }
 
-        return suggestions
+        return {key: normalize_suggestion(value) for key, value in suggestions.items()}
 
     async def analyze(self, context: AgentContext, data: dict) -> AnalysisResult:
         """调用 AI 分析并保存到历史/建议池"""
@@ -632,6 +639,7 @@ class DailyReportAgent(BaseAgent):
                 )
                 await asyncio.to_thread(
                     save_suggestion,
+                    suggestion_state=sug,
                     stock_symbol=symbol,
                     stock_name=stock.name,
                     action=sug["action"],
@@ -680,6 +688,10 @@ class DailyReportAgent(BaseAgent):
                         else None,
                         trigger_price=trigger_price,
                         meta={
+                            "suggestion_state": {
+                                "review_required": sug.get("review_required", False),
+                                "attention_required": sug.get("attention_required", False),
+                            },
                             "source": "daily_report",
                             "reason": sug.get("reason", ""),
                             "signal": sug.get("signal", ""),

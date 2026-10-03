@@ -18,9 +18,9 @@ def test_try_parse_action_json_fenced_json() -> None:
     assert obj.get("action") == "reduce"
 
 
-def test_try_parse_action_json_action_alias_build_to_add() -> None:
-    """LLM 输出解析 — build 别名自动映射为 add"""
+def test_try_parse_action_json_action_alias_build_to_buy() -> None:
+    """LLM 输出解析 — build 建仓别名映射为 buy"""
     text = '\njson\n{"action":"build","action_label":"建仓","reason":"突破"}\n'
     obj = try_parse_action_json(text)
     assert obj is not None
-    assert obj.get("action") == "add"
+    assert obj.get("action") == "buy"

@@ -22,6 +22,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.modules.research.signals.actions import ACTION_LABELS, normalize_suggestion
+from src.modules.automation.agent_prediction_evaluation import classify_prediction_hit
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.database import SessionLocal
@@ -223,7 +225,7 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
         for r in records:
             checked += 1
             raw = r.raw_data or {}
-            sug = raw.get("suggestion") or {}
+            sug = normalize_suggestion(raw.get("suggestion") or {}, agent_name="tradingagents")
             action = (sug.get("action") or "hold").lower()
             action_label = sug.get("action_label") or "持有"
             confidence = sug.get("confidence")
@@ -242,12 +244,6 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
             if existing:
                 skipped += 1
                 continue
-
-            confidence_text = (
-                f" (置信度 {confidence:.1f}/10)"
-                if isinstance(confidence, (int, float))
-                else ""
-            )
 
             # 推断 market(分析记录里没存,从 stock_symbol 简单推断)
             symbol = r.stock_symbol
@@ -276,7 +272,8 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
                 stock_name=stock_name or symbol,
                 stock_market=market,
                 action=action,
-                action_label=f"{action_label}{confidence_text}",
+                suggestion_state=sug,
+                action_label=action_label,
                 agent_name="tradingagents",
                 agent_label="TradingAgents 深度",
                 signal=(sug.get("signal") or "")[:500],
@@ -322,15 +319,7 @@ def _resolve_market(market: str) -> MarketCode:
 
 def _classify_hit(action: str, ret_pct: float | None) -> bool | None:
     """根据 action 和后续收益率判断决策是否"命中"。"""
-    if ret_pct is None:
-        return None
-    if action == "buy":
-        return ret_pct > 0
-    if action == "sell":
-        return ret_pct < 0
-    if action == "hold":
-        return abs(ret_pct) < 2.0
-    return None
+    return classify_prediction_hit(action, ret_pct)
 
 
 def _find_close_on_or_after(klines_by_date: dict[str, float], target: str) -> tuple[str, float] | None:
@@ -420,7 +409,7 @@ def build_history_comparison(
     items: list[dict] = []
     for r in records:
         raw = r.raw_data or {}
-        sug = raw.get("suggestion") or {}
+        sug = normalize_suggestion(raw.get("suggestion") or {}, agent_name="tradingagents")
         action = (sug.get("action") or "hold").lower()
         confidence = sug.get("confidence")
         cost_usd = raw.get("cost_usd")
@@ -434,6 +423,8 @@ def build_history_comparison(
                 "trace_id": "",
                 "analysis_date": r.analysis_date,
                 "action": action,
+                "review_required": sug["review_required"],
+                "rating_raw": sug.get("rating_raw"),
                 "action_label": sug.get("action_label") or _action_to_label(action),
                 "confidence": confidence,
                 "cost_usd": cost_usd,
@@ -457,6 +448,8 @@ def build_history_comparison(
             "trace_id": "",
             "analysis_date": r.analysis_date,
             "action": action,
+            "review_required": sug["review_required"],
+            "rating_raw": sug.get("rating_raw"),
             "action_label": sug.get("action_label") or _action_to_label(action),
             "confidence": confidence,
             "cost_usd": cost_usd,
@@ -464,14 +457,14 @@ def build_history_comparison(
             "return_1d_pct": ret[1],
             "return_5d_pct": ret[5],
             "return_20d_pct": ret[20],
-            "hit_20d": _classify_hit(action, ret[20]),
+            "hit_20d": None if sug["review_required"] else _classify_hit(action, ret[20]),
         })
 
     return {"items": items, "stats": _compute_stats(items)}
 
 
 def _action_to_label(action: str) -> str:
-    return {"buy": "买入", "sell": "卖出", "hold": "持有"}.get(action, action)
+    return ACTION_LABELS.get(action, action)
 
 
 def _empty_stats() -> dict:
@@ -490,12 +483,22 @@ def _empty_stats() -> dict:
 
 def _compute_stats(items: list[dict]) -> dict:
     """统计:仅基于已有 20 日收益的条目。"""
-    scored = [x for x in items if x.get("return_20d_pct") is not None]
+    scored = [
+        x for x in items
+        if x.get("return_20d_pct") is not None
+        and x.get("hit_20d") is not None
+        and not x.get("review_required")
+    ]
     if not scored:
         return {**_empty_stats(), "total": len(items)}
 
     def _rate(action: str) -> float | None:
-        subset = [x for x in scored if x["action"] == action]
+        group = {
+            "buy": {"buy", "add"},
+            "sell": {"sell", "reduce", "avoid"},
+            "hold": {"hold", "watch"},
+        }[action]
+        subset = [x for x in scored if x["action"] in group]
         if not subset:
             return None
         hits = sum(1 for x in subset if x.get("hit_20d"))
@@ -506,9 +509,9 @@ def _compute_stats(items: list[dict]) -> dict:
 
     return {
         "total": len(items),
-        "buy_count": sum(1 for x in items if x["action"] == "buy"),
-        "sell_count": sum(1 for x in items if x["action"] == "sell"),
-        "hold_count": sum(1 for x in items if x["action"] == "hold"),
+        "buy_count": sum(1 for x in items if x["action"] in {"buy", "add"} and not x.get("review_required")),
+        "sell_count": sum(1 for x in items if x["action"] in {"sell", "reduce", "avoid"} and not x.get("review_required")),
+        "hold_count": sum(1 for x in items if x["action"] in {"hold", "watch"} and not x.get("review_required")),
         "buy_hit_rate": _rate("buy"),
         "sell_hit_rate": _rate("sell"),
         "hold_hit_rate": _rate("hold"),

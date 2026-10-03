@@ -221,12 +221,13 @@ class TestResultMapper(unittest.TestCase):
         result = map_state_to_result(stock=stock, ta_result=ta_result, model_label="")
         self.assertFalse(result.raw_data["suggestion"]["should_alert"])
 
-    def test_unknown_decision_falls_back_to_hold(self):
-        """未知决策值 — 兜底成 hold,不抛异常"""
+    def test_unknown_decision_requires_review(self):
+        """未知决策值 — 无操作方向，必须复核"""
         stock = self._mock_stock()
         ta_result = {"decision": "STRONG_BUY", "final_state": {}, "cost_usd": 0}
         result = map_state_to_result(stock=stock, ta_result=ta_result, model_label="")
-        self.assertEqual(result.raw_data["suggestion"]["action"], "hold")
+        self.assertEqual(result.raw_data["suggestion"]["action"], "watch")
+        self.assertTrue(result.raw_data["suggestion"]["review_required"])
 
     def test_extract_confidence_from_text(self):
         """从文本提取 confidence — 「confidence: 7/10」匹配到 7.0"""

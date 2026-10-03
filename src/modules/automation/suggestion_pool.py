@@ -6,6 +6,7 @@ from typing import Optional
 from datetime import timezone
 from sqlalchemy import and_, func, or_
 
+from src.modules.research.signals.actions import normalize_suggestion, suggestion_state as extract_suggestion_state
 from src.modules.automation.agent_catalog import RETIRED_AGENT_NAMES
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import StockSuggestion
@@ -57,6 +58,7 @@ def save_suggestion(
     ai_response: str = "",
     stock_market: str = "CN",
     meta: dict | None = None,
+    suggestion_state: dict | None = None,
 ) -> bool:
     """
     保存 Agent 建议到建议池
@@ -77,6 +79,11 @@ def save_suggestion(
     Returns:
         是否保存成功
     """
+    normalized = normalize_suggestion({
+        **(suggestion_state or {}), "action": action, "action_label": action_label,
+    }, agent_name=agent_name)
+    action, action_label = normalized["action"], normalized["action_label"]
+    meta = {**(meta or {}), "suggestion_state": extract_suggestion_state(normalized)}
     db = SessionLocal()
     try:
         market = (stock_market or "CN").strip().upper() or "CN"
@@ -116,6 +123,7 @@ def save_suggestion(
                     _norm_text(latest.action) == _norm_text(action)
                     and _norm_text(latest.action_label) == _norm_text(action_label)
                     and _norm_text(latest.signal or "") == _norm_text(signal)
+                    and (latest.meta or {}).get("suggestion_state") == meta["suggestion_state"]
                 )
 
                 if same_key and (now - latest_created) <= window:
@@ -130,36 +138,6 @@ def save_suggestion(
                     )
                     return True
 
-                # Stability: avoid flip-flopping to a less severe action within a short window.
-                try:
-                    action_rank = {
-                        "alert": 4,
-                        "avoid": 4,
-                        "sell": 4,
-                        "reduce": 3,
-                        "buy": 2,
-                        "add": 2,
-                        "hold": 1,
-                        "watch": 0,
-                    }
-                    old_r = action_rank.get((latest.action or "").strip(), 0)
-                    new_r = action_rank.get((action or "").strip(), 0)
-                    change_window = timedelta(
-                        minutes=_dedupe_window_minutes(agent_name)
-                    )
-                    if (now - latest_created) <= change_window and new_r < old_r:
-                        # Keep the previous (more severe) action; extend expiry.
-                        if not latest.expires_at or latest.expires_at < expires_at:
-                            latest.expires_at = expires_at
-                        if not (latest.stock_name or "") and stock_name:
-                            latest.stock_name = stock_name
-                        db.commit()
-                        logger.info(
-                            f"建议稳定: {stock_symbol} 新建议降级({action_label})，保持上一条({latest.action_label})"
-                        )
-                        return True
-                except Exception:
-                    db.rollback()
         except Exception:
             # Best-effort only; never block saving.
             db.rollback()
@@ -352,13 +330,18 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         expires_at_str = to_iso_with_tz(expires_at)
 
+    normalized = normalize_suggestion({
+        **(suggestion.meta or {}).get("suggestion_state", {}),
+        "action": suggestion.action, "action_label": suggestion.action_label,
+    }, agent_name=suggestion.agent_name)
     return {
+        **extract_suggestion_state(normalized),
         "id": suggestion.id,
         "stock_symbol": suggestion.stock_symbol,
         "stock_market": suggestion.stock_market or "CN",
         "stock_name": suggestion.stock_name,
-        "action": suggestion.action,
-        "action_label": suggestion.action_label,
+        "action": normalized["action"],
+        "action_label": normalized["action_label"],
         "signal": suggestion.signal,
         "reason": suggestion.reason,
         "agent_name": suggestion.agent_name,
@@ -369,8 +352,7 @@ def _to_dict(suggestion: StockSuggestion, now: Optional[datetime] = None) -> dic
         "prompt_context": suggestion.prompt_context or "",
         "ai_response": suggestion.ai_response or "",
         "meta": suggestion.meta or {},
-        "should_alert": (suggestion.action or "")
-        in ("alert", "avoid", "sell", "reduce"),
+        "should_alert": normalized["should_alert"],
     }
 
 

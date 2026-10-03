@@ -22,9 +22,13 @@ export const suggestionActionColors: Record<SuggestionAction, string> = {
 export function normalizeSuggestionAction(action?: string, label?: string): SuggestionAction | null {
   const raw = (action || label || '').toLowerCase()
   if (!raw) return null
-  if (raw === 'buy') return 'buy'
-  if (raw === 'add' || raw === 'increase') return 'add'
-  if (raw === 'reduce' || raw === 'decrease') return 'reduce'
+  if (raw === 'buy/add' || raw === 'add/buy') return /加仓|增持|补仓/.test(label || '') ? 'add' : 'buy'
+  if (raw === 'sell/reduce' || raw === 'reduce/sell') return /减仓|减持/.test(label || '') ? 'reduce' : 'sell'
+  if (raw === 'buy' && /增持|overweight/i.test(label || '')) return 'add'
+  if (raw === 'sell' && /减持|underweight/i.test(label || '')) return 'reduce'
+  if (raw === 'buy' || raw === 'build') return 'buy'
+  if (raw === 'add' || raw === 'increase' || raw === 'overweight') return 'add'
+  if (raw === 'reduce' || raw === 'decrease' || raw === 'underweight') return 'reduce'
   if (raw === 'sell') return 'sell'
   if (raw === 'hold') return 'hold'
   if (raw === 'watch' || raw === 'neutral') return 'watch'
@@ -47,4 +51,29 @@ export function resolveSuggestionAction(action?: string, label?: string): Sugges
 export function resolveSuggestionColorClass(action?: string, label?: string): string {
   const normalized = resolveSuggestionAction(action, label)
   return suggestionActionColors[normalized] || suggestionActionColors.watch
+}
+
+export interface SuggestionStateInput {
+  action?: string
+  action_label?: string
+  rating_raw?: string
+  status?: string
+  review_required?: boolean
+  attention_required?: boolean
+  meta?: Record<string, any>
+}
+
+export function suggestionPresentation(suggestion: SuggestionStateInput) {
+  const state = { ...suggestion.meta?.suggestion_state, ...Object.fromEntries(Object.entries(suggestion).filter(([, value]) => value !== undefined)) } as SuggestionStateInput
+  const review = state.review_required === true || state.status === 'review' ||
+    state.action === 'review' || state.rating_raw === 'review' || /待.*复核|review required/i.test(state.action_label || '')
+  const action = review ? 'watch' : resolveSuggestionAction(state.rating_raw || state.action, state.action_label)
+  const attention = state.attention_required === true || action === 'alert'
+  return {
+    action: action === 'alert' ? 'watch' as const : action,
+    review,
+    attention,
+    labelKey: review ? 'suggestionBadge.review' : `kline.actions.${attention && (action === 'alert' || action === 'watch') ? 'alert' : action}`,
+    colorClass: review ? 'bg-orange-500 text-white' : suggestionActionColors[attention && action === 'watch' ? 'alert' : action],
+  }
 }

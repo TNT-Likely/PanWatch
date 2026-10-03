@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import { AnalysisMetadata } from '@panwatch/biz-ui/components/analysis-metadata'
 import ShareCardModal from '../components/ShareCardModal'
-import { normalizeSuggestionAction } from '@panwatch/biz-ui/components/suggestion-action'
+import { suggestionPresentation, type SuggestionStateInput } from '@panwatch/biz-ui/components/suggestion-action'
 import { marketSignTextClass } from '@/lib/market-colors'
 
 const DECISION_COLOR: Record<string, string> = {
@@ -163,13 +163,11 @@ export default function AnalysisDetailPage() {
 
   const rawData = (result?.raw_data || {}) as Partial<DeepAnalysisResult['raw_data']>
   const sug = rawData.suggestion
-  const reviewRequired = sug?.review_required === true || sug?.rating_raw === 'review'
-  const localizedAction = (action?: string, label?: string) => {
-    const normalized = normalizeSuggestionAction(action, label)
-    return normalized ? analysisT(`bizUi:kline.actions.${normalized}`) : label || action || '--'
-  }
-  const decisionLabel = reviewRequired ? analysisT('assistantPage.analysis.reviewHint') : localizedAction(sug?.action, sug?.action_label)
-  const decisionColor = reviewRequired ? 'text-orange-500' : (sug ? DECISION_COLOR[sug.action] || '' : '')
+  const view = suggestionPresentation(sug || {})
+  const localizedAction = (action?: string, label?: string, state?: SuggestionStateInput) =>
+    analysisT(`bizUi:${suggestionPresentation({ ...state, action, action_label: label }).labelKey}`)
+  const decisionLabel = analysisT(`bizUi:${view.labelKey}`)
+  const decisionColor = view.review ? 'text-orange-500' : DECISION_COLOR[view.action] || ''
   const sections = buildAnalysisSections(rawData, {
     english: (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en'),
   })
@@ -325,7 +323,7 @@ export default function AnalysisDetailPage() {
               <span className={`text-[24px] font-bold ${decisionColor}`}>
                 {decisionLabel}
               </span>
-              {reviewRequired && <span className="text-[12px] text-orange-600">{analysisT('assistantPage.analysis.reviewHint')}</span>}
+              {view.review && <span className="text-[12px] text-orange-600">{analysisT('assistantPage.analysis.reviewHint')}</span>}
               <span className="text-[13px] text-muted-foreground">
                 {analysisT('assistantPage.analysis.confidence')} {sug.confidence?.toFixed(1) ?? '-'} / 10
               </span>
@@ -419,7 +417,7 @@ export default function AnalysisDetailPage() {
                     {items.map((it, i) => (
                       <tr key={i} className="border-b border-border/50">
                         <td className="py-2 pr-3">{it.analysis_date}</td>
-                        <td className="py-2 px-2">{localizedAction(it.action, it.action_label)}{it.confidence != null ? ` (${it.confidence.toFixed(1)})` : ''}</td>
+                        <td className="py-2 px-2">{localizedAction(it.action, it.action_label, it)}{it.confidence != null ? ` (${it.confidence.toFixed(1)})` : ''}</td>
                         <td className="text-right py-2 px-2">{it.price_at_analysis ?? '-'}</td>
                         <td className={`text-right py-2 px-2 ${pctClass(it.return_1d_pct)}`}>{fmtPct(it.return_1d_pct)}</td>
                         <td className={`text-right py-2 px-2 ${pctClass(it.return_5d_pct)}`}>{fmtPct(it.return_5d_pct)}</td>
@@ -453,7 +451,7 @@ export default function AnalysisDetailPage() {
                     {decisionLabel}
                   </span>
                 </div>
-                {reviewRequired && (
+                {view.review && (
                   <p className="mt-2 text-[11px] leading-4 text-orange-600">
                     {analysisT('assistantPage.analysis.unsafe')}
                   </p>
