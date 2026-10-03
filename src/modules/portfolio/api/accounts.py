@@ -2,6 +2,7 @@
 import logging
 import time
 import httpx
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -602,22 +603,31 @@ def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict:
     for s in stocks:
         market_stocks.setdefault(s.market, []).append(s)
 
-    quotes = {}
+    batches = []
     for market, stock_list in market_stocks.items():
         try:
             market_code = MarketCode(market)
         except ValueError:
             continue
 
-        symbols = [s.symbol for s in stock_list]
+        batches.append((market_code.value, [s.symbol for s in stock_list]))
+
+    def fetch_batch(batch):
+        market, symbols = batch
         try:
-            items = md_quote_rows(symbols, market_code.value)
-            for item in items:
-                quotes[item["symbol"]] = item
+            return md_quote_rows(symbols, market)
         except Exception as e:
             logger.error(f"获取 {market} 行情失败: {e}")
+            return []
 
-    return quotes
+    # 只把普通行情参数交给线程；数据库 Session/ORM 对象留在调用线程。
+    if len(batches) > 1:
+        with ThreadPoolExecutor(max_workers=len(batches)) as pool:
+            results = list(pool.map(fetch_batch, batches))
+    else:
+        results = [fetch_batch(batch) for batch in batches]
+
+    return {item["symbol"]: item for items in results for item in items}
 
 
 # 组合基准/归因结果缓存:重建全持仓 NAV 很贵(逐只拉 K 线),按持仓指纹缓存结果。
@@ -646,7 +656,9 @@ def _gather_holdings(db: Session) -> list[dict]:
     stocks = db.query(Stock).filter(Stock.id.in_(stock_ids)).all() if stock_ids else []
     stock_map = {s.id: s for s in stocks}
     quotes = _fetch_quotes_for_stocks(stocks) if stocks else {}
-    hkd, usd = get_hkd_cny_rate(), get_usd_cny_rate()
+    markets = {stock.market for stock in stocks}
+    hkd = get_hkd_cny_rate() if "HK" in markets else 1.0
+    usd = get_usd_cny_rate() if "US" in markets else 1.0
 
     out: list[dict] = []
     seen: dict[tuple[str, str], dict] = {}

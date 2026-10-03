@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, Share2 } from 'lucide-react'
@@ -26,15 +26,17 @@ import {
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useTranslation } from 'react-i18next'
 import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
 import Sparkline from '@/components/Sparkline'
 import BenchChart from '@/components/BenchChart'
-import BenchmarkShareCard from '@/components/BenchmarkShareCard'
-import DiagnosticsShareCard from '@/components/DiagnosticsShareCard'
-import DigestShareCard from '@/components/DigestShareCard'
 import { formatNumber } from '@/i18n/format'
 import { marketSignTextClass } from '@/lib/market-colors'
+
+// 弹窗和图片生成代码只在用户打开时下载，不参与首页首屏加载。
+const StockInsightModal = lazy(() => import('@panwatch/biz-ui/components/stock-insight-modal'))
+const BenchmarkShareCard = lazy(() => import('@/components/BenchmarkShareCard'))
+const DiagnosticsShareCard = lazy(() => import('@/components/DiagnosticsShareCard'))
+const DigestShareCard = lazy(() => import('@/components/DigestShareCard'))
 
 function pct(v?: number | null, digits = 2): string {
   if (v == null || !isFinite(v)) return '--'
@@ -95,6 +97,10 @@ export default function DashboardPage() {
   const { t } = useTranslation('configuration')
   const dashboardT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [loading, setLoading] = useState(true)
+  const [holdingsLoading, setHoldingsLoading] = useState(true)
+  const [opportunitiesLoading, setOpportunitiesLoading] = useState(true)
+  const loadId = useRef(0)
+  const benchLoadId = useRef(0)
   const [indices, setIndices] = useState<DashboardMarketIndex[]>([])
   const [scan, setScan] = useState<DashboardMonitorStock[]>([])
   const [overview, setOverview] = useState<DashboardOverviewResponse | null>(null)
@@ -104,7 +110,7 @@ export default function DashboardPage() {
   const [oppFallback, setOppFallback] = useState<StrategySignalItem[]>([])
   const [alertHits, setAlertHits] = useState<AlertHitToday[]>([])
   const [todos, setTodos] = useState<PortfolioTodo[]>([])
-  const [curated, setCurated] = useState<CuratedItem[]>([])
+  const [curated, setCurated] = useState<{ key: string; items: CuratedItem[] }>({ key: '', items: [] })
   const [attribution, setAttribution] = useState<AttributionItem[]>([])
   const [aiReview, setAiReview] = useState<PortfolioAiReview | null>(null)
   const [aiReviewLoading, setAiReviewLoading] = useState(false)
@@ -126,68 +132,84 @@ export default function DashboardPage() {
     hasPosition: false,
   })
 
-  // 慢车道:基准/归因(拉全持仓 K 线,分钟级);独立可重试,失败/为空各有明确状态
+  // 基准和归因分别回填，某个慢请求不挡住另一个结果。
   const loadBench = useCallback(() => {
+    const id = ++benchLoadId.current
     setBenchState('loading')
-    Promise.allSettled([portfolioApi.benchmark({ days: 60 }), portfolioApi.attribution(60)]).then(([bn, at]) => {
-      if (bn.status === 'fulfilled') {
-        setBench(bn.value)
-        setBenchState(!bn.value?.empty && (bn.value?.curve?.length ?? 0) >= 2 ? 'ready' : 'empty')
-      } else {
-        setBenchState('error')
-      }
-      if (at.status === 'fulfilled') setAttribution(at.value.items || [])
+    portfolioApi.benchmark({ days: 60 }).then((value) => {
+      if (id !== benchLoadId.current) return
+      setBench(value)
+      setBenchState(!value?.empty && (value?.curve?.length ?? 0) >= 2 ? 'ready' : 'empty')
+    }).catch(() => {
+      if (id === benchLoadId.current) setBenchState('error')
     })
+    portfolioApi.attribution(60).then((value) => {
+      if (id === benchLoadId.current) setAttribution(value.items || [])
+    }).catch(() => {})
   }, [])
 
   const load = useCallback(async () => {
+    const id = ++loadId.current
+    const current = () => id === loadId.current
     setLoading(true)
-    // 指数 pills:独立加载不阻塞首屏(spark 冷启动可能 ~1s,数据到了自然浮现)
-    dashboardApi.indices().then(setIndices).catch(() => {})
-    // 快车道:DB/轻量查询,先让首屏(要紧事/体检分布/组合速览)尽快出来
-    const [sc, ov, dg, ht, td, ps, ms] = await Promise.allSettled([
-      dashboardApi.intradayScan(),
-      dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 }),
-      portfolioApi.diagnostics(),
-      homeApi.alertHitsToday(),
-      homeApi.todos(),
-      dashboardApi.portfolioSummary(),
-      dashboardApi.marketStatus(),
-    ])
-    if (sc.status === 'fulfilled') setScan(sc.value.stocks || [])
-    if (ov.status === 'fulfilled') setOverview(ov.value)
-    if (dg.status === 'fulfilled') setDiag(dg.value)
-    if (ht.status === 'fulfilled') setAlertHits(ht.value)
-    if (td.status === 'fulfilled') setTodos(td.value.todos || [])
-    if (ps.status === 'fulfilled') setPortfolioSummary(ps.value)
-    if (ms.status === 'fulfilled') setMarketStatus(ms.value)
-    setLoading(false) // 首屏不再等基准/归因(要拉全持仓 K 线)
-    setRefreshedAt(new Date())
+    setHoldingsLoading(true)
+    setOpportunitiesLoading(true)
+    // 每项成功后立即显示；刷新/离开页面后丢弃旧请求结果。
+    const publish = <T,>(request: Promise<T>, apply: (value: T) => void) =>
+      request.then((value) => { if (current()) apply(value) }).catch(() => {})
 
-    // 机会兜底:overview 无机会时再取(不挡首屏)
-    if (ov.status !== 'fulfilled' || !ov.value.action_center?.opportunities?.length) {
-      recommendationsApi
-        .listStrategySignals({ status: 'active', limit: 5 })
-        .then((r) => setOppFallback(r.items || []))
-        .catch(() => {})
-    }
-
-    // 慢车道:基准/归因需拉全持仓 K 线(分钟级),独立加载,就绪后回填超额/归因
+    void publish(dashboardApi.indices(), setIndices)
     loadBench()
 
-    // 盘前/盘后简报:独立加载,取较新一条
-    Promise.allSettled([dashboardApi.brief('premarket'), dashboardApi.brief('eod')]).then((res) => {
-      const briefs = res
-        .filter((b): b is PromiseFulfilledResult<DashboardBrief> => b.status === 'fulfilled' && !b.value.empty)
-        .map((b) => b.value)
-      briefs.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
-      setBrief(briefs[0] || null)
-    })
+    // DB 简报无需等待行情；先展示返回的报告，再择新回填。
+    let latestBrief: DashboardBrief | null = null
+    void Promise.allSettled((['premarket', 'eod'] as const).map((type) =>
+      publish(dashboardApi.brief(type), (value) => {
+        if (!value.empty && (!latestBrief || (value.updated_at || '') > (latestBrief.updated_at || ''))) {
+          latestBrief = value
+          setBrief(value)
+        }
+      }),
+    )).then(() => { if (current() && !latestBrief) setBrief(null) })
+
+    const opportunitiesRequest = (async () => {
+      try {
+        const value = await dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 })
+        if (!current()) return
+        setOverview(value)
+        if (value.action_center?.opportunities?.length) {
+          setOppFallback([])
+          return
+        }
+      } catch { /* 保留原有策略机会兜底。 */ }
+      if (current()) await publish(
+        recommendationsApi.listStrategySignals({ status: 'active', limit: 5 }),
+        (value) => setOppFallback(value.items || []),
+      )
+    })().finally(() => { if (current()) setOpportunitiesLoading(false) })
+
+    await Promise.allSettled([
+      publish(dashboardApi.intradayScan({ include_technical: false }), (value) => setScan(value.stocks || [])),
+      opportunitiesRequest,
+      publish(portfolioApi.diagnostics(), setDiag).finally(() => { if (current()) setHoldingsLoading(false) }),
+      publish(homeApi.alertHitsToday(), setAlertHits),
+      publish(homeApi.todos(), (value) => setTodos(value.todos || [])),
+      publish(dashboardApi.portfolioSummary(), setPortfolioSummary),
+      publish(dashboardApi.marketStatus(), setMarketStatus),
+    ])
+    if (current()) {
+      setLoading(false)
+      setRefreshedAt(new Date())
+    }
   }, [loadBench])
 
   useEffect(() => {
     load()
     if (!localStorage.getItem('panwatch_onboarding_completed')) setShowOnboarding(true)
+    return () => {
+      loadId.current += 1
+      benchLoadId.current += 1
+    }
   }, [load])
 
   const handleOnboardingComplete = () => {
@@ -296,32 +318,34 @@ export default function DashboardPage() {
   }, [alertHits, urgent, localizedDiagnosticAlerts, opportunities])
 
   const candKey = useMemo(
-    () => candidates.map((c) => `${c.type}:${c.symbol}:${c.change_pct ?? ''}`).join('|'),
+    () => JSON.stringify(candidates),
     [candidates],
   )
 
   useEffect(() => {
+    // 渐进回填期间先用原序，候选源全部就绪后只策展一次。
+    if (loading || curated.key === candKey) return
     if (candidates.length === 0) {
-      setCurated([])
+      setCurated({ key: candKey, items: [] })
       return
     }
     let alive = true
     dashboardApi
       .curate(candidates)
-      .then((r) => alive && setCurated(r.items || []))
-      .catch(() => alive && setCurated([]))
+      .then((r) => alive && setCurated({ key: candKey, items: r.items || [] }))
+      .catch(() => alive && setCurated({ key: candKey, items: [] }))
     return () => {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candKey])
+  }, [candKey, loading])
 
   const feed = useMemo(() => {
-    const rows = curated.length
-      ? curated.map((ci) => (candidates[ci.index] ? { ...candidates[ci.index], why: ci.why } : null))
+    const rows = curated.key === candKey && curated.items.length
+      ? curated.items.map((ci) => (candidates[ci.index] ? { ...candidates[ci.index], why: ci.why } : null))
       : candidates.map((c) => ({ ...c, why: c.signal }))
     return rows.filter((x): x is CurateCandidate & { why: string } => !!x)
-  }, [curated, candidates])
+  }, [curated, candidates, candKey])
 
   const today = useMemo(() => {
     const d = new Date()
@@ -397,7 +421,7 @@ export default function DashboardPage() {
       <div className="card mb-3 p-4">
         {!hasHoldings ? (
           <div className="py-4 text-center text-[12px] text-muted-foreground">
-            {loading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noHoldings')}
+            {holdingsLoading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noHoldings')}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -483,7 +507,7 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
-          {loading && candidates.length === 0 ? (
+          {loading && candidates.length === 0 && todos.length === 0 ? (
             <div className="py-6 text-center text-[12px] text-muted-foreground">{dashboardT('dashboard.scanning')}</div>
           ) : candidates.length === 0 ? (
             todos.length > 0 ? (
@@ -562,7 +586,7 @@ export default function DashboardPage() {
           </div>
           {!hasHoldings ? (
             <div className="py-6 text-center text-[12px] text-muted-foreground">
-              {loading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noHoldingsHealth')}
+              {holdingsLoading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noHoldingsHealth')}
             </div>
           ) : (
             <div className="space-y-3 text-[12px]">
@@ -708,7 +732,7 @@ export default function DashboardPage() {
             </button>
           </div>
           {opportunities.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">{loading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noOpportunities')}</div>
+            <div className="py-6 text-center text-[12px] text-muted-foreground">{opportunitiesLoading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noOpportunities')}</div>
           ) : (
             <div className="divide-y divide-border/40">
               {opportunities.slice(0, 3).map((o) => {
@@ -774,46 +798,52 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <DiscoveryPanel monitorStocks={scan} onOpenStock={openStock} />
+      <DiscoveryPanel monitorStocks={scan} portfolioSummary={portfolioSummary} onOpenStock={openStock} />
 
-      <StockInsightModal
-        open={modal.open}
-        onOpenChange={(o) => setModal((m) => ({ ...m, open: o }))}
-        symbol={modal.symbol}
-        market={modal.market}
-        stockName={modal.name}
-        hasPosition={modal.hasPosition}
-      />
+      <Suspense fallback={null}>
+        {modal.open && (
+          <StockInsightModal
+            open={modal.open}
+            onOpenChange={(o) => setModal((m) => ({ ...m, open: o }))}
+            symbol={modal.symbol}
+            market={modal.market}
+            stockName={modal.name}
+            hasPosition={modal.hasPosition}
+          />
+        )}
 
-      {/* 分享卡:模拟盘成绩单(vs 基准) */}
-      {shareBench && bench && (
-        <BenchmarkShareCard open={shareBench} onClose={() => setShareBench(false)} bench={bench} />
-      )}
+        {/* 分享卡:模拟盘成绩单(vs 基准) */}
+        {shareBench && bench && (
+          <BenchmarkShareCard open={shareBench} onClose={() => setShareBench(false)} bench={bench} />
+        )}
 
-      {/* 分享卡:组合体检(脱敏,无金额) */}
-      {shareDiag && diag && (
-        <DiagnosticsShareCard
-          open={shareDiag}
-          onClose={() => setShareDiag(false)}
-          diag={diag}
-          excessReturn={benchReady ? bench!.excess_return : null}
-          benchmarkLabel={benchmarkLabel}
-        />
-      )}
+        {/* 分享卡:组合体检(脱敏,无金额) */}
+        {shareDiag && diag && (
+          <DiagnosticsShareCard
+            open={shareDiag}
+            onClose={() => setShareDiag(false)}
+            diag={diag}
+            excessReturn={benchReady ? bench!.excess_return : null}
+            benchmarkLabel={benchmarkLabel}
+          />
+        )}
 
-      {/* 分享卡:今日盯盘 digest */}
-      <DigestShareCard
-        open={shareDigest}
-        onClose={() => setShareDigest(false)}
-        date={today}
-        items={feed.map((it) => ({
-          type: it.type,
-          name: it.name,
-          symbol: it.symbol,
-          why: it.why,
-          change_pct: it.change_pct ?? null,
-        }))}
-      />
+        {/* 分享卡:今日盯盘 digest */}
+        {shareDigest && (
+          <DigestShareCard
+            open={shareDigest}
+            onClose={() => setShareDigest(false)}
+            date={today}
+            items={feed.map((it) => ({
+              type: it.type,
+              name: it.name,
+              symbol: it.symbol,
+              why: it.why,
+              change_pct: it.change_pct ?? null,
+            }))}
+          />
+        )}
+      </Suspense>
 
       <Onboarding open={showOnboarding} onComplete={handleOnboardingComplete} hasStocks={hasWatchlist} />
     </div>

@@ -19,17 +19,17 @@ import { marketSignTextClass } from '@/lib/market-colors'
 
 interface Props {
   monitorStocks: DashboardMonitorStock[]
+  portfolioSummary: DashboardPortfolioSummary | null
   onOpenStock: (symbol: string, market: string, name?: string, hasPosition?: boolean) => void
 }
 
-export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
+export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfolioRaw, onOpenStock }: Props) {
   const { t } = useTranslation('configuration')
   const discoveryT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = useCallback((key: string, options?: Record<string, unknown>) => discoveryT(`p4.components.discovery.${key}`, options), [discoveryT])
   const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us' } as Record<string, string>)[market] || market}`), [discoveryT])
   const navigate = useNavigate()
-  const [watchlist, setWatchlist] = useState<DashboardWatchStock[]>([])
-  const [portfolioRaw, setPortfolioRaw] = useState<DashboardPortfolioSummary | null>(null)
+  const [watchlist, setWatchlist] = useState<DashboardWatchStock[] | null>(null)
 
   const [discoverTab, setDiscoverTab] = useLocalStorage<'boards' | 'stocks'>('panwatch_dashboard_discoverTab', 'boards')
   const [discoverMarket, setDiscoverMarket] = useLocalStorage<'CN' | 'HK' | 'US'>('panwatch_dashboard_discoverMarket', 'CN')
@@ -42,15 +42,18 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
   const [boardDialogOpen, setBoardDialogOpen] = useState(false)
   const [activeBoard, setActiveBoard] = useState<HotBoardItem | null>(null)
   const [boardStocks, setBoardStocks] = useState<HotStockItem[]>([])
+  const requestId = useRef(0)
   const discoveryCacheRef = useRef<{
     boards: Record<string, { ts: number; data: HotBoardItem[] }>
     stocks: Record<string, { ts: number; data: HotStockItem[] }>
   }>({ boards: {}, stocks: {} })
 
   useEffect(() => {
-    dashboardApi.watchlist().then(setWatchlist).catch(() => {})
-    dashboardApi.portfolioSummary({ include_quotes: false }).then(setPortfolioRaw).catch(() => {})
-  }, [])
+    if (discoverTab !== 'stocks' || stocksMode !== 'for_you' || watchlist !== null) return
+    let alive = true
+    dashboardApi.watchlist().then((value) => { if (alive) setWatchlist(value) }).catch(() => {})
+    return () => { alive = false }
+  }, [discoverTab, stocksMode, watchlist])
 
   const watchlistSet = useMemo(
     () => new Set((watchlist || []).map((s) => `${s.market}:${s.symbol}`)),
@@ -71,9 +74,9 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
     return ranked[0]?.[1] ? ranked[0][0] : null
   }, [portfolioRaw])
 
-  const loadDiscovery = async (which?: 'boards' | 'stocks', opts?: { silent?: boolean; force?: boolean }) => {
+  const loadDiscovery = async (which?: 'boards' | 'stocks', opts?: { force?: boolean }) => {
+    const id = ++requestId.current
     const tab = which || discoverTab
-    const silent = !!opts?.silent
     const force = !!opts?.force
     const cacheKey = tab === 'boards' ? `${discoverMarket}:${boardsMode}` : `${discoverMarket}:${stocksMode}`
     const now = Date.now()
@@ -82,16 +85,16 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
     if (!force && cache && now - cache.ts < ttlMs) {
       if (tab === 'boards') setHotBoards(cache.data as HotBoardItem[])
       else setHotStocks(cache.data as HotStockItem[])
+      setDiscoverLoading(false)
+      setDiscoverError('')
       return
     }
-    if (!silent) {
-      setDiscoverLoading(true)
-      setDiscoverError('')
-    }
+    setDiscoverLoading(true)
+    setDiscoverError('')
     try {
       if (tab === 'boards') {
         const items = (await discoveryApi.listHotBoards({ market: discoverMarket, mode: boardsMode, limit: 12 })) || []
-        setHotBoards(items)
+        if (id === requestId.current) setHotBoards(items)
         discoveryCacheRef.current.boards[cacheKey] = { ts: now, data: items }
       } else if (stocksMode === 'for_you') {
         const [turnoverItems, gainerItems] = await Promise.all([
@@ -101,21 +104,21 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
         const map = new Map<string, HotStockItem>()
         for (const item of [...(turnoverItems || []), ...(gainerItems || [])]) map.set(item.symbol, item)
         const items = Array.from(map.values())
-        setHotStocks(items)
+        if (id === requestId.current) setHotStocks(items)
         discoveryCacheRef.current.stocks[cacheKey] = { ts: now, data: items }
       } else {
         const items = (await discoveryApi.listHotStocks({ market: discoverMarket, mode: stocksMode, limit: 20 })) || []
-        setHotStocks(items)
+        if (id === requestId.current) setHotStocks(items)
         discoveryCacheRef.current.stocks[cacheKey] = { ts: now, data: items }
       }
     } catch (e) {
-      if (!silent) {
+      if (id === requestId.current) {
         setDiscoverError(e instanceof Error ? e.message : tr('loadFailed'))
         if (tab === 'boards') setHotBoards([])
         else setHotStocks([])
       }
     } finally {
-      if (!silent) setDiscoverLoading(false)
+      if (id === requestId.current) setDiscoverLoading(false)
     }
   }
 
@@ -174,10 +177,11 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
   )
 
   useEffect(() => {
-    loadDiscovery('boards', { silent: true })
-    loadDiscovery('stocks', { silent: true })
+    // 只加载正在显示的标签；切换时复用各标签的短缓存。
+    void loadDiscovery(discoverTab)
+    return () => { requestId.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoverMarket, boardsMode, stocksMode])
+  }, [discoverTab, discoverMarket, boardsMode, stocksMode])
 
   return (
     <>
@@ -221,26 +225,20 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
         <div className="card p-4">
           <div className="mb-3 flex items-center gap-1.5">
             <button
-              onClick={() => {
-                setDiscoverTab('boards')
-                loadDiscovery('boards')
-              }}
+              onClick={() => setDiscoverTab('boards')}
               className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'boards' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
             >
               {tr('boards')}
             </button>
             <button
-              onClick={() => {
-                setDiscoverTab('stocks')
-                loadDiscovery('stocks')
-              }}
+              onClick={() => setDiscoverTab('stocks')}
               className={`rounded px-2.5 py-1 text-[11px] transition-colors ${discoverTab === 'stocks' ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground hover:bg-accent'}`}
             >
               {tr('stocks')}
             </button>
             <div className="ml-auto flex items-center gap-2">
               {discoverTab === 'boards' ? (
-                <Select value={boardsMode} onValueChange={(v) => { setBoardsMode(v as 'gainers' | 'turnover'); setTimeout(() => loadDiscovery('boards'), 0) }}>
+                <Select value={boardsMode} onValueChange={(v) => setBoardsMode(v as 'gainers' | 'turnover')}>
                   <SelectTrigger className="h-7 w-[110px] text-[12px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -250,7 +248,7 @@ export default function DiscoveryPanel({ monitorStocks, onOpenStock }: Props) {
                   </SelectContent>
                 </Select>
               ) : (
-                <Select value={stocksMode} onValueChange={(v) => { setStocksMode(v as 'turnover' | 'gainers' | 'for_you'); setTimeout(() => loadDiscovery('stocks'), 0) }}>
+                <Select value={stocksMode} onValueChange={(v) => setStocksMode(v as 'turnover' | 'gainers' | 'for_you')}>
                   <SelectTrigger className="h-7 w-[110px] text-[12px]">
                     <SelectValue />
                   </SelectTrigger>

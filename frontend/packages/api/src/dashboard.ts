@@ -248,10 +248,11 @@ export const dashboardApi = {
   history: (params: Record<string, QueryValue>) =>
     fetchAPI<DashboardHistoryItem[]>(withQuery('/history', params)),
 
-  intradayScan: (params?: { analyze?: boolean }) =>
+  intradayScan: (params?: { analyze?: boolean; include_technical?: boolean }) =>
     fetchAPI<DashboardIntradayScanResponse>(
       withQuery('/agents/intraday/scan', {
         analyze: params?.analyze,
+        include_technical: params?.include_technical,
       }),
       {
         method: 'POST',

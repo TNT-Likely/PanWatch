@@ -34,9 +34,9 @@ _SCAN_CACHE_TTL_SECONDS = {
 }
 
 
-def _build_scan_cache_key(analyze: bool, watchlist) -> str:
+def _build_scan_cache_key(analyze: bool, watchlist, include_technical: bool = True) -> str:
     symbols = sorted(f"{s.market.value}:{s.symbol}" for s in watchlist)
-    return f"intraday_scan:{int(analyze)}:{'|'.join(symbols)}"
+    return f"intraday_scan:{int(analyze)}:{int(include_technical)}:{'|'.join(symbols)}"
 
 
 def _get_scan_cache(key: str, analyze: bool) -> dict | None:
@@ -883,7 +883,11 @@ def get_agent_history(agent_name: str, limit: int = 20, db: Session = Depends(ge
 
 
 @router.post("/intraday/scan")
-async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
+async def scan_intraday(
+    analyze: bool = False,
+    db: Session = Depends(get_db),
+    include_technical: bool = True,
+):
     """
     实时扫描盘中监测 Agent 关联的股票
 
@@ -894,6 +898,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
 
     Args:
         analyze: 是否调用 AI 分析生成操作建议（默认 False）
+        include_technical: 是否附带 K 线摘要；首页只使用行情，可关闭。AI 分析始终包含技术数据。
     """
     from server import (
         load_watchlist_for_agent,
@@ -939,7 +944,8 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             "has_watchlist": True,
         }
 
-    cache_key = _build_scan_cache_key(analyze, active_watchlist)
+    include_technical = include_technical or analyze
+    cache_key = _build_scan_cache_key(analyze, active_watchlist, include_technical)
     cached = _get_scan_cache(cache_key, analyze)
     if cached is not None:
         return cached
@@ -1061,7 +1067,7 @@ async def scan_intraday(analyze: bool = False, db: Session = Depends(get_db)):
             pnl_pct = (quote.current_price - cost_price) / cost_price * 100
 
         # 获取技术分析（并发）
-        kline_summary = await _load_kline_summary(quote.symbol, market)
+        kline_summary = await _load_kline_summary(quote.symbol, market) if include_technical else None
 
         # 判断异动类型
         alert_type = None

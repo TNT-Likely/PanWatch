@@ -1,5 +1,6 @@
 """首页指数 spark(近20日收盘) 注入 + 60s 缓存 + fail-soft 测试"""
 import asyncio
+import threading
 
 import src.modules.market.api.market as mkt
 
@@ -116,3 +117,29 @@ def test_indices_response_cached_60s(monkeypatch):
     assert out1 == out2
     assert call_count["quotes"] == 1
     assert call_count["klines"] == len(mkt.MARKET_INDICES)  # 只在第一次调用时逐指数拉取一次
+
+
+def test_slow_index_quotes_do_not_block_other_async_requests(monkeypatch):
+    mkt.clear_indices_cache()
+    started, finished, release = threading.Event(), threading.Event(), threading.Event()
+
+    class _MD:
+        def index_quotes(self, symbols):
+            started.set()
+            release.wait(3)
+            finished.set()
+            return []
+
+    monkeypatch.setattr(mkt, "get_market_data", lambda: _MD())
+    monkeypatch.setattr(mkt, "get_index_klines", lambda *_, **__: [])
+
+    async def run():
+        pending = asyncio.create_task(mkt.get_market_indices())
+        try:
+            assert await asyncio.to_thread(started.wait, 1)
+            assert not finished.is_set(), "index I/O blocked the event loop"
+        finally:
+            release.set()
+            await pending
+
+    asyncio.run(run())

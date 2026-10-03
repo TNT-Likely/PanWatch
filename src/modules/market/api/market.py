@@ -79,7 +79,8 @@ async def get_market_indices():
     tencent_symbols = [idx["tencent_symbol"] for idx in MARKET_INDICES]
 
     try:
-        quotes = get_market_data().index_quotes(tencent_symbols)
+        # 外部行情是同步 I/O，不能占住事件循环，让首页其他 API 等它返回。
+        quotes = await asyncio.to_thread(lambda: get_market_data().index_quotes(tencent_symbols))
     except Exception as e:
         logger.error(f"获取市场指数失败: {e}")
         return []
