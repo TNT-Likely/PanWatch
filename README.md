@@ -4,7 +4,7 @@
 
 Monitor A-shares, Hong Kong, and U.S. stocks, manage your portfolios, and research ideas with [TradingAgents](https://github.com/TauricResearch/TradingAgents). Self-host PanWatch with your preferred OpenAI-compatible provider or local models through Ollama.
 
-[Quick start](#quick-start) · [Core features](#core-features) · [Feature overview](#-feature-overview) · [Reference](#reference) · [Contributing](#contributing)
+[Quick start](#quick-start) · [Core features](#core-features) · [Feature overview](#-feature-overview) · [Reference](#reference) · [Support](#support-the-project) · [Contributing](#contributing)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -277,6 +277,12 @@ Configure these repository secrets before publishing:
 </details>
 
 ## Support the Project
+
+### Sponsorship
+
+For sponsorship or partnership inquiries, contact [sunxiaoyes@outlook.com](mailto:sunxiaoyes@outlook.com?subject=PanWatch%20sponsorship).
+
+### Donations
 
 PanWatch is free and open source. If it saves you time or improves your workflow, you can support continued development:
 

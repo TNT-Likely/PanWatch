@@ -4,7 +4,7 @@
 
 管理 A 股、港股和美股持仓，监控行情与提醒，并通过 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 进行深度分析。自托管部署，可接入你选择的 OpenAI 兼容服务商或 Ollama 本地模型。
 
-[快速开始](#快速开始) · [核心功能](#核心功能) · [功能一览](#-功能一览) · [详细说明](#详细说明) · [参与贡献](#贡献)
+[快速开始](#快速开始) · [核心功能](#核心功能) · [功能一览](#-功能一览) · [详细说明](#详细说明) · [支持项目](#支持项目) · [参与贡献](#贡献)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -273,7 +273,13 @@ Langfuse / Tempo 同理,把 `OTEL_EXPORTER_OTLP_ENDPOINT` 指向对应 OTLP 入�
 
 </details>
 
-## 捐赠支持
+## 支持项目
+
+### 赞助合作
+
+欢迎品牌赞助与合作，点击 [sunxiaoyes@outlook.com](mailto:sunxiaoyes@outlook.com?subject=PanWatch%20sponsorship) 联系。
+
+### 个人捐赠
 
 PanWatch 完全免费开源。如果它节省了你的时间或改善了工作流，欢迎支持项目持续开发：
 
