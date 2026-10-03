@@ -1,16 +1,24 @@
-# 盯盘侠 PanWatch — 自托管 AI 盯盘助手
+<h1 align="center">盯盘侠 PanWatch — 自托管 AI 盯盘助手</h1>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-管理 A 股、港股和美股持仓，监控行情与提醒，并通过 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 进行深度分析。自托管部署，可接入你选择的 OpenAI 兼容服务商或 Ollama 本地模型。
+<p align="center">
+  管理 A 股、港股和美股持仓，监控行情与提醒，并通过 <a href="https://github.com/TauricResearch/TradingAgents">TradingAgents</a> 进行深度分析。自托管部署，可接入你选择的 OpenAI 兼容服务商或 Ollama 本地模型。
+</p>
 
-[快速开始](#快速开始) · [核心功能](#核心功能) · [功能一览](#-功能一览) · [详细说明](#详细说明) · [支持项目](#支持项目) · [参与贡献](#贡献)
+<p align="center">
+  <a href="#-功能一览">功能一览</a> · <a href="#核心功能">核心功能</a> · <a href="#快速开始">快速开始</a> · <a href="#详细说明">详细说明</a> · <a href="#支持项目">支持项目</a> · <a href="#贡献">参与贡献</a>
+</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
-[![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/PanWatch)](https://github.com/TNT-Likely/PanWatch/commits/main)
-[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/PanWatch)
+<p align="center">
+  <a href="https://github.com/TNT-Likely/PanWatch/stargazers"><img src="https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&amp;logo=github&amp;color=yellow" alt="GitHub stars" /></a>
+  <a href="https://hub.docker.com/r/sunxiao0721/panwatch"><img src="https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&amp;label=docker%20pulls&amp;color=2496ED" alt="Docker Pulls" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/TNT-Likely/PanWatch/commits/main"><img src="https://img.shields.io/github/last-commit/TNT-Likely/PanWatch" alt="Last commit" /></a>
+  <a href="https://github.com/TNT-Likely/PanWatch"><img src="https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&amp;logoColor=white" alt="PWA" /></a>
+</p>
 
 <p align="center">
   <a href="https://www.star-history.com/tnt-likely/panwatch">
@@ -25,6 +33,27 @@
 ![盯盘侠 PanWatch · TradingAgents 深度分析演示](docs/screenshots/zh-CN/tradingagents-demo.gif)
 
 > 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
+
+## 📸 功能一览
+
+| 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
+|:---:|:---:|
+| ![持仓管理](./docs/screenshots/zh-CN/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/zh-CN/opportunities.png) |
+| **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
+| ![模拟盘](./docs/screenshots/zh-CN/papertrading.png) | ![个股详情](./docs/screenshots/zh-CN/stock-detail.png) |
+| **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
+| ![技术指标](./docs/screenshots/zh-CN/technicals.png) | ![价格提醒](./docs/screenshots/zh-CN/alerts.png) |
+
+<details>
+<summary>移动端截图</summary>
+
+<img src="./docs/screenshots/zh-CN/mobile.png" width="300" /> <img src="./docs/screenshots/zh-CN/mobile-detail.png" width="300" />
+
+> 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
+
+</details>
+
+> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
 
 ## 核心功能
 
@@ -94,27 +123,6 @@ docker compose up -d
 不需要截图等浏览器能力时，可设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过安装。
 
 </details>
-
-## 📸 功能一览
-
-| 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
-|:---:|:---:|
-| ![持仓管理](./docs/screenshots/zh-CN/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/zh-CN/opportunities.png) |
-| **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
-| ![模拟盘](./docs/screenshots/zh-CN/papertrading.png) | ![个股详情](./docs/screenshots/zh-CN/stock-detail.png) |
-| **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
-| ![技术指标](./docs/screenshots/zh-CN/technicals.png) | ![价格提醒](./docs/screenshots/zh-CN/alerts.png) |
-
-<details>
-<summary>移动端截图</summary>
-
-<img src="./docs/screenshots/zh-CN/mobile.png" width="300" /> <img src="./docs/screenshots/zh-CN/mobile-detail.png" width="300" />
-
-> 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
-
-</details>
-
-> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
 
 ## 详细说明
 

@@ -1,16 +1,24 @@
-# PanWatch — Self-hosted AI stock monitoring
+<h1 align="center">PanWatch — Self-hosted AI stock monitoring</h1>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-Monitor A-shares, Hong Kong, and U.S. stocks, manage your portfolios, and research ideas with [TradingAgents](https://github.com/TauricResearch/TradingAgents). Self-host PanWatch with your preferred OpenAI-compatible provider or local models through Ollama.
+<p align="center">
+  Monitor A-shares, Hong Kong, and U.S. stocks, manage your portfolios, and research ideas with <a href="https://github.com/TauricResearch/TradingAgents">TradingAgents</a>. Self-host PanWatch with your preferred OpenAI-compatible provider or local models through Ollama.
+</p>
 
-[Quick start](#quick-start) · [Core features](#core-features) · [Feature overview](#-feature-overview) · [Reference](#reference) · [Support](#support-the-project) · [Contributing](#contributing)
+<p align="center">
+  <a href="#-feature-overview">Feature overview</a> · <a href="#core-features">Core features</a> · <a href="#quick-start">Quick start</a> · <a href="#reference">Reference</a> · <a href="#support-the-project">Support</a> · <a href="#contributing">Contributing</a>
+</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
-[![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/TNT-Likely/PanWatch)](https://github.com/TNT-Likely/PanWatch/commits/main)
-[![PWA](https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&logoColor=white)](https://github.com/TNT-Likely/PanWatch)
+<p align="center">
+  <a href="https://github.com/TNT-Likely/PanWatch/stargazers"><img src="https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&amp;logo=github&amp;color=yellow" alt="GitHub stars" /></a>
+  <a href="https://hub.docker.com/r/sunxiao0721/panwatch"><img src="https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&amp;label=docker%20pulls&amp;color=2496ED" alt="Docker Pulls" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://github.com/TNT-Likely/PanWatch/commits/main"><img src="https://img.shields.io/github/last-commit/TNT-Likely/PanWatch" alt="Last commit" /></a>
+  <a href="https://github.com/TNT-Likely/PanWatch"><img src="https://img.shields.io/badge/PWA-installable-5A0FC8?logo=pwa&amp;logoColor=white" alt="PWA" /></a>
+</p>
 
 <p align="center">
   <a href="https://www.star-history.com/tnt-likely/panwatch">
@@ -25,6 +33,29 @@ Monitor A-shares, Hong Kong, and U.S. stocks, manage your portfolios, and resear
 ![PanWatch TradingAgents deep-analysis demo](docs/screenshots/tradingagents-demo.gif)
 
 > 🧠 **Start from a portfolio holding → let a nine-agent TradingAgents research team analyze it → follow the bull/bear debate and risk review → receive a PM decision memo and the complete reasoning trail in your messaging app within 3–5 minutes.**
+
+## 📸 Feature Overview
+
+The screenshots below use the English interface; Simplified Chinese is available throughout the same product surfaces.
+
+| Portfolio · Multi-account overview | Opportunities · AI-scored ideas |
+|:---:|:---:|
+| ![Portfolio management](./docs/screenshots/portfolio.png) | ![AI-scored opportunities](./docs/screenshots/opportunities.png) |
+| **Paper trading · Equity curve and performance** | **Deep stock analysis** |
+| ![Paper trading](./docs/screenshots/papertrading.png) | ![Stock details](./docs/screenshots/stock-detail.png) |
+| **Technical confluence · MACD/RSI/KDJ at a glance** | **Price alerts · Combined conditions** |
+| ![Technical indicators](./docs/screenshots/technicals.png) | ![Price alerts](./docs/screenshots/alerts.png) |
+
+<details>
+<summary>Mobile screenshots</summary>
+
+<img src="./docs/screenshots/mobile.png" width="300" /> <img src="./docs/screenshots/mobile-detail.png" width="300" />
+
+> 📱 PanWatch is an installable PWA and can be added to your mobile home screen like a native app.
+
+</details>
+
+> 💡 If PanWatch is useful to you, please consider giving the project a ⭐ **Star**. It is the best way to support the project and help more people discover it.
 
 ## Core Features
 
@@ -94,29 +125,6 @@ The image includes Playwright's system dependencies. Chromium's headless shell f
 If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` to skip this installation.
 
 </details>
-
-## 📸 Feature Overview
-
-The screenshots below use the English interface; Simplified Chinese is available throughout the same product surfaces.
-
-| Portfolio · Multi-account overview | Opportunities · AI-scored ideas |
-|:---:|:---:|
-| ![Portfolio management](./docs/screenshots/portfolio.png) | ![AI-scored opportunities](./docs/screenshots/opportunities.png) |
-| **Paper trading · Equity curve and performance** | **Deep stock analysis** |
-| ![Paper trading](./docs/screenshots/papertrading.png) | ![Stock details](./docs/screenshots/stock-detail.png) |
-| **Technical confluence · MACD/RSI/KDJ at a glance** | **Price alerts · Combined conditions** |
-| ![Technical indicators](./docs/screenshots/technicals.png) | ![Price alerts](./docs/screenshots/alerts.png) |
-
-<details>
-<summary>Mobile screenshots</summary>
-
-<img src="./docs/screenshots/mobile.png" width="300" /> <img src="./docs/screenshots/mobile-detail.png" width="300" />
-
-> 📱 PanWatch is an installable PWA and can be added to your mobile home screen like a native app.
-
-</details>
-
-> 💡 If PanWatch is useful to you, please consider giving the project a ⭐ **Star**. It is the best way to support the project and help more people discover it.
 
 ## Reference
 
