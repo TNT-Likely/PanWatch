@@ -4,6 +4,7 @@ import logging
 from datetime import date, datetime, timedelta
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.outcome_prices import completed_outcome_bar
 from src.modules.research.context_store import (
     list_pending_prediction_outcomes,
     mark_agent_prediction_outcome,
@@ -148,7 +149,8 @@ def evaluate_pending_prediction_outcomes(
             if base_day is None:
                 stats["skipped_no_price"] += 1
                 continue
-            outcome_price = _find_close_after_n_trading_days(klines, base_day, horizon)
+            bar = completed_outcome_bar(klines, base_day, horizon, market)
+            outcome_price = bar[1] if bar else None
         else:
             target_day = pred_day + timedelta(days=horizon)
             if target_day > today:

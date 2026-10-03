@@ -25,3 +25,12 @@ def daily_quote_fields(market: str, quote: dict | None, now: datetime | None = N
         "daily_move_status": daily_status,
         "quote_date": quote_date,
     }
+
+
+def quote_date_is_current(market: str, quote: dict) -> bool:
+    """Reject a known stale date; providers without quote dates retain compatibility."""
+    quote_date = quote.get("quote_date")
+    if not quote_date:
+        return True
+    code = calendar._to_market_code(market)
+    return code is not None and str(quote_date)[:10] == calendar._now_in_market_tz(code).date().isoformat()

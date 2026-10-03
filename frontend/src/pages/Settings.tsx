@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef } from 'react'
 import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, BarChart3, Radar, AlertTriangle, Palette } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
@@ -189,6 +190,7 @@ const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
 export default function SettingsPage() {
   const { t } = useTranslation(['configuration', 'common'])
+  const confirmAction = useConfirm()
   const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const { preference: marketColorPreference, setPreference: setMarketColorPreference } = useMarketColors()
   const [settings, setSettings] = useState<Setting[]>([])
@@ -517,7 +519,7 @@ export default function SettingsPage() {
   }
 
   const deleteService = async (id: number) => {
-    if (!confirm(configT('configuration:settingsPage.messages.deleteServiceConfirm'))) return
+    if (!(await confirmAction(configT('configuration:settingsPage.messages.deleteServiceConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/providers/services/${id}`, { method: 'DELETE' })
       load()
@@ -553,7 +555,7 @@ export default function SettingsPage() {
   }
 
   const deleteModel = async (id: number) => {
-    if (!confirm(configT('configuration:settingsPage.messages.deleteModelConfirm'))) return
+    if (!(await confirmAction(configT('configuration:settingsPage.messages.deleteModelConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/providers/models/${id}`, { method: 'DELETE' })
       load()
@@ -629,7 +631,7 @@ export default function SettingsPage() {
   }
 
   const deleteChannel = async (id: number) => {
-    if (!confirm(configT('configuration:settingsPage.messages.deleteChannelConfirm'))) return
+    if (!(await confirmAction(configT('configuration:settingsPage.messages.deleteChannelConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/channels/${id}`, { method: 'DELETE' })
       load()

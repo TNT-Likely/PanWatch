@@ -1,96 +1,33 @@
-"""交易日历:回答「这一天开不开市」。
+"""Bounded exchange calendars shared by display and automatic execution.
 
-与 `MarketDef.is_trading_time()`(回答「当下是否在交易时段内」)互补 ——
-盘前计划、日终摘要这类定时任务本身就发生在交易时段之外,只能用「是不是交易日」
-来守卫,用时段判断会把它们永久拦死。
-
-数据源
-- **A 股**:akshare 交易日历(`tool_trade_date_hist_sina`),含法定节假日,权威。
-  结果缓存在内存,由 `refresh()` 更新(启动预热 + 每日凌晨刷新)。
-- **离线兜底**:内置交易所公布的 2026 年 CN/HK/US 休市和半日市安排。
-
-降级原则
-拿不到在线日历时优先使用内置年度日历;未覆盖年份退回「只判周末」。
-少发一条是遗憾,漏发一整天是事故。
-
-并发安全
-同步接口只读内存缓存,**永不发起网络请求**;网络拉取集中在 `refresh()`
-(内部 `asyncio.to_thread`)和 `refresh_blocking()`,避免阻塞事件循环。
+Published annual exchange data is bundled with the application. Runtime warmup
+only materializes the recent window (30 days back, 90 days ahead), without any
+network requests or full-history decoding. Unpublished weekdays are unknown and
+cannot authorize automatic work. Historical K-line queries remain independent.
 """
-
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import date, datetime
+import time as clock
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from src.platform.scheduling.exchange_calendar_data import HOLIDAYS, EARLY_CLOSES
 
 logger = logging.getLogger(__name__)
-
-# A 股交易日集合;None = 尚未加载或加载失败(此时使用内置年度日历兜底)
-_CN_TRADING_DATES: frozenset[date] | None = None
-# 日历覆盖区间,用于判断查询日期是否落在可信范围内(跨年未刷新时会超出)
-_CN_RANGE: tuple[date, date] | None = None
-
+_RECENT_OPEN_DAYS: dict[str, frozenset[date]] = {}
+_WARMED_ON: date | None = None
 _FALLBACK_TZ = "Asia/Shanghai"
 
 
 def reset_cache() -> None:
-    """清空日历缓存(配置变更或测试用)。"""
-    global _CN_TRADING_DATES, _CN_RANGE
-    _CN_TRADING_DATES = None
-    _CN_RANGE = None
-
-
-def _fetch_cn_trading_dates() -> frozenset[date]:
-    """阻塞拉取 A 股交易日历。仅由 `refresh_blocking()` 调用。"""
-    import akshare as ak
-
-    df = ak.tool_trade_date_hist_sina()
-    out: set[date] = set()
-    for raw in df["trade_date"]:
-        if isinstance(raw, datetime):
-            out.add(raw.date())
-        elif isinstance(raw, date):
-            out.add(raw)
-        else:
-            out.add(date.fromisoformat(str(raw)[:10]))
-    return frozenset(out)
-
-
-def refresh_blocking() -> bool:
-    """同步刷新 A 股交易日历。返回是否成功;失败不抛异常(保持降级行为)。"""
-    global _CN_TRADING_DATES, _CN_RANGE
-    try:
-        dates = _fetch_cn_trading_dates()
-    except Exception as e:
-        logger.warning("[交易日历] A股日历拉取失败,保留缓存并使用内置日历兜底: %s", e)
-        return False
-    if not dates:
-        logger.warning("[交易日历] A股日历为空,保留缓存并使用内置日历兜底")
-        return False
-    _CN_TRADING_DATES = dates
-    _CN_RANGE = (min(dates), max(dates))
-    logger.info(
-        "[交易日历] A股日历已加载: %s 个交易日 (%s ~ %s)",
-        len(dates),
-        _CN_RANGE[0],
-        _CN_RANGE[1],
-    )
-    return True
-
-
-async def refresh() -> bool:
-    """异步刷新日历(走线程池,不阻塞事件循环)。"""
-    return await asyncio.to_thread(refresh_blocking)
+    global _WARMED_ON
+    _RECENT_OPEN_DAYS.clear()
+    _WARMED_ON = None
 
 
 def _to_market_code(market):
-    """把 MarketCode / 字符串归一化为 MarketCode;无法识别返回 None。"""
     from src.platform.marketdata.models import MarketCode
-
     if isinstance(market, MarketCode):
         return market
     try:
@@ -101,63 +38,60 @@ def _to_market_code(market):
 
 def _market_tz(code) -> ZoneInfo:
     from src.platform.marketdata.models import MARKETS
-
-    md = MARKETS.get(code) if code else None
-    return md.get_tz() if md else ZoneInfo(_FALLBACK_TZ)
+    definition = MARKETS.get(code)
+    return definition.get_tz() if definition else ZoneInfo(_FALLBACK_TZ)
 
 
 def _now_in_market_tz(code) -> datetime:
-    """该市场时区的当前时间。独立成函数便于测试注入。"""
     return datetime.now(_market_tz(code))
 
 
 def _resolve_date(code, d: date | datetime | None) -> date:
-    """把入参归一化为「该市场当地日期」。"""
     if d is None:
         return _now_in_market_tz(code).date()
     if isinstance(d, datetime):
-        if d.tzinfo is not None:
-            d = d.astimezone(_market_tz(code))
-        return d.date()
+        return d.astimezone(_market_tz(code)).date() if d.tzinfo else d.date()
     return d
 
 
-def is_trading_day(market, d: date | datetime | None = None) -> bool:
-    """给定市场的某一天是否开市。
-
-    Args:
-        market: `MarketCode` 或市场码字符串(CN/HK/US)。
-        d: 目标日期;`None` 表示该市场时区的今天。带时区的 `datetime`
-           会先换算到市场时区再取日期。
-    """
-    from src.platform.marketdata.models import MarketCode
-
+def calendar_known(market, d: date | datetime | None = None) -> bool:
     code = _to_market_code(market)
     target = _resolve_date(code, d)
+    return code is not None and (target.weekday() >= 5 or (code.value, target.year) in HOLIDAYS)
 
-    # 周末:三个市场都不开。零依赖、永远准确,放在最前面。
-    if target.weekday() >= 5:
+
+def is_trading_day(market, d: date | datetime | None = None) -> bool:
+    code = _to_market_code(market)
+    target = _resolve_date(code, d)
+    if code is None or target.weekday() >= 5:
         return False
+    holidays = HOLIDAYS.get((code.value, target.year))
+    return holidays is not None and target not in holidays
 
-    # A 股:日历已加载且覆盖该日期时按日历判(含法定节假日)。
-    if code == MarketCode.CN and _CN_TRADING_DATES and _CN_RANGE:
-        if _CN_RANGE[0] <= target <= _CN_RANGE[1]:
-            return target in _CN_TRADING_DATES
-        logger.debug("[交易日历] %s 超出A股在线日历覆盖范围,尝试内置年度日历", target)
 
-    # 港美股或在线日历未覆盖:使用交易所公布的年度休市安排。
-    holidays = HOLIDAYS.get((code.value, target.year)) if code else None
-    if holidays is not None:
-        return target not in holidays
+def refresh_blocking() -> bool:
+    """Warm a bounded local window; never contact a calendar data provider."""
+    global _WARMED_ON
+    today = _now_in_market_tz(_to_market_code("CN")).date()
+    if _WARMED_ON == today:
+        return bool(_RECENT_OPEN_DAYS)
+    started = clock.monotonic()
+    start, end = today - timedelta(days=30), today + timedelta(days=90)
+    window = [start + timedelta(days=n) for n in range((end - start).days + 1)]
+    for code in ("CN", "HK", "US"):
+        _RECENT_OPEN_DAYS[code] = frozenset(day for day in window if is_trading_day(code, day))
+    _WARMED_ON = today
+    logger.info("[交易日历] 本地近期日历已加载: %s ~ %s, %.1f ms (无需网络)",
+                start, end, (clock.monotonic() - started) * 1000)
+    return any(_RECENT_OPEN_DAYS.values())
 
-    # 未覆盖年份:只判周末。
-    return True
+
+async def refresh() -> bool:
+    return refresh_blocking()
 
 
 def trading_sessions(market, d: date | datetime | None = None) -> list:
-    """该市场当天的常规交易时段,包含半日市;休市日返回空列表。"""
     from src.platform.marketdata.models import MARKETS, TradingSession
-
     code = _to_market_code(market)
     target = _resolve_date(code, d)
     if code not in MARKETS or not is_trading_day(code, target):
@@ -170,12 +104,13 @@ def trading_sessions(market, d: date | datetime | None = None) -> list:
 
 
 def market_status(market, dt: datetime | None = None) -> str:
-    """按当地交易日和当日时段统一判断状态,请求路径只读内存。"""
     code = _to_market_code(market)
     if code is None:
         return "unknown"
     now = dt.astimezone(_market_tz(code)) if dt is not None else _now_in_market_tz(code)
-    sessions = trading_sessions(code, now.date())
+    if not calendar_known(code, now):
+        return "unknown"
+    sessions = trading_sessions(code, now)
     if not sessions:
         return "closed"
     current = now.time()
@@ -188,10 +123,72 @@ def market_status(market, dt: datetime | None = None) -> str:
     return "break"
 
 
-def any_market_trading_day(d: date | datetime | None = None) -> bool:
-    """CN/HK/US 任一为交易日即 `True`。全市场休市(如周末)返回 `False`。"""
-    from src.platform.marketdata.models import MarketCode
+def eligible_markets(markets=None, dt: datetime | None = None, *, trading_hours_only: bool = False) -> list[str]:
+    from src.platform.marketdata.models import MARKETS
+    return [code.value for raw in (MARKETS if markets is None else markets)
+            if (code := _to_market_code(raw)) is not None
+            and (market_status(code, dt) == "trading" if trading_hours_only else is_trading_day(code, dt))]
 
-    return any(
-        is_trading_day(m, d) for m in (MarketCode.CN, MarketCode.HK, MarketCode.US)
-    )
+
+def any_market_trading_day(d: date | datetime | None = None) -> bool:
+    from src.platform.marketdata.models import MARKETS
+    return any(is_trading_day(code, d) for code in MARKETS)
+
+
+def next_eligible_time(market, dt: datetime, *, trading_hours_only: bool = False) -> datetime | None:
+    """Find a confirmed boundary, allowing preview to jump over closed periods."""
+    code = _to_market_code(market)
+    if code is None:
+        return None
+    local = dt.astimezone(_market_tz(code))
+    for offset in range(370):
+        day = local.date() + timedelta(days=offset)
+        if not is_trading_day(code, day):
+            continue
+        earliest = local if offset == 0 else datetime.combine(day, time.min, _market_tz(code))
+        if not trading_hours_only:
+            return earliest
+        for session in trading_sessions(code, day):
+            opening = datetime.combine(day, session.start, _market_tz(code))
+            closing = datetime.combine(day, session.end, _market_tz(code))
+            if earliest <= closing:
+                return max(earliest, opening)
+    return None
+
+
+def local_day_bounds(market, d: date | datetime | None = None) -> tuple[datetime, datetime]:
+    code = _to_market_code(market)
+    day = _resolve_date(code, d)
+    tz = _market_tz(code)
+    return (datetime.combine(day, time.min, tz).astimezone(timezone.utc),
+            datetime.combine(day + timedelta(days=1), time.min, tz).astimezone(timezone.utc))
+
+
+def upcoming_calendar(market, *, days: int = 14, start_date: date | None = None) -> dict:
+    code = _to_market_code(market)
+    now = _now_in_market_tz(code)
+    rows = []
+    for offset in range(days):
+        day = (start_date or now.date()) + timedelta(days=offset)
+        known = calendar_known(code, day)
+        opened = is_trading_day(code, day)
+        reason = ("unpublished" if not known else "weekend" if day.weekday() >= 5
+                  else "holiday" if not opened else "early_close" if (code.value, day) in EARLY_CLOSES
+                  else "trading")
+        rows.append({"date": day.isoformat(), "is_trading_day": opened if known else None,
+                     "reason": reason, "sessions": [f"{s.start:%H:%M}-{s.end:%H:%M}" for s in trading_sessions(code, day)],
+                     "session_times": [{"open": datetime.combine(day, s.start, _market_tz(code)).isoformat(),
+                                        "close": datetime.combine(day, s.end, _market_tz(code)).isoformat()}
+                                       for s in trading_sessions(code, day)]})
+    next_open = None
+    for offset in range(370):
+        day = now.date() + timedelta(days=offset)
+        openings = [datetime.combine(day, session.start, _market_tz(code))
+                    for session in trading_sessions(code, day)]
+        next_open = next((opening for opening in openings if opening > now), None)
+        if next_open is not None:
+            break
+    return {"market": code.value, "timezone": str(_market_tz(code)),
+            "local_date": now.date().isoformat(), "local_time": now.strftime("%H:%M"), "status": market_status(code, now), "source": "exchange",
+            "covered_years": sorted(year for (m, year) in HOLIDAYS if m == code.value),
+            "next_open": next_open.isoformat() if next_open else None, "days": rows}

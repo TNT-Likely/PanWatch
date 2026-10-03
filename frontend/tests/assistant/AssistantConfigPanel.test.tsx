@@ -28,7 +28,7 @@ describe('AssistantConfigPanel', () => {
 
     render(<AssistantConfigPanel />)
 
-    expect((await screen.findByLabelText('上下文压缩模型') as HTMLSelectElement).value).toBe('6')
+    expect((await screen.findByRole('combobox', { name: '上下文压缩模型' })).textContent).toContain('DeepSeek V4 Flash')
     fireEvent.change(screen.getByLabelText('最大上下文 Token'), { target: { value: '16000' } })
     fireEvent.click(screen.getByRole('button', { name: '保存上下文配置' }))
 

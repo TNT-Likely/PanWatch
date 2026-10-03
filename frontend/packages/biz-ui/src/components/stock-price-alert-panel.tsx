@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, Plus, Pencil, Trash2 } from 'lucide-react'
 import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
@@ -73,6 +74,7 @@ export default function StockPriceAlertPanel(props: {
 }) {
   const { toast } = useToast()
   const { t } = useTranslation('bizUi')
+  const confirmAction = useConfirm()
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`stockPriceAlert.${key}`, options)
   const symbol = String(props.symbol || '').trim()
@@ -236,7 +238,7 @@ export default function StockPriceAlertPanel(props: {
   }
 
   const removeRule = async (r: AlertRule) => {
-    if (!window.confirm(tr('messages.deleteConfirm', { name: r.name || tr('alert') }))) return
+    if (!(await confirmAction(tr('messages.deleteConfirm', { name: r.name || tr('alert') }), { destructive: true }))) return
     try {
       await fetchAPI(`/price-alerts/${r.id}`, { method: 'DELETE' })
       await load()

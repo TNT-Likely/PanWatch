@@ -195,3 +195,19 @@ export const mergePortfolioQuotes = (
   }
 }
 
+
+export const applyMarketStatuses = (
+  quotes: Record<string, DisplayQuote>,
+  markets: { code: string; status: string; local_date?: string }[],
+): Record<string, DisplayQuote> => {
+  const statuses = new Map(markets.map(market => [market.code, market]))
+  return Object.fromEntries(Object.entries(quotes).map(([key, quote]) => {
+    const market = statuses.get(key.split(':')[0])
+    if (!market) return [key, quote]
+    const inactive = ['closed', 'pre_market', 'unknown'].includes(market.status)
+    const stale = quote.quote_date && market.local_date && quote.quote_date !== market.local_date
+    return [key, inactive || stale ? {
+      ...quote, change_pct: null, daily_move_status: inactive ? market.status : 'stale',
+    } : quote]
+  }))
+}

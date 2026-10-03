@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.modules.paper_trading.paper_trading_engine import ENGINE
-from src.platform.scheduling.trading_calendar import any_market_trading_day
+from src.platform.scheduling import trading_calendar as calendar
+from src.platform.scheduling.exchange_calendar_data import EARLY_CLOSES
 from src.platform.marketdata.models import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
@@ -55,25 +57,33 @@ class PaperTradingScheduler:
         finally:
             self._running = False
 
-    async def _premarket_job(self):
+    async def _premarket_job(self, market: str | None = None):
         """盘前计划通知。非交易日(周末/节假日)跳过。"""
-        if not any_market_trading_day():
+        markets = calendar.eligible_markets([market] if market else None)
+        if not markets:
             logger.debug("[模拟盘] 非交易日,跳过盘前计划通知")
             return
         try:
             from src.modules.paper_trading.paper_trading_notifier import send_premarket_plan
-            await send_premarket_plan()
+            await send_premarket_plan(markets=markets)
         except Exception as e:
             logger.exception(f"[模拟盘] 盘前计划通知异常: {e}")
 
-    async def _summary_job(self):
+    async def _summary_job(self, market: str | None = None):
         """日终摘要通知。非交易日(周末/节假日)跳过。"""
-        if not any_market_trading_day():
+        markets = calendar.eligible_markets([market] if market else None)
+        if not markets:
             logger.debug("[模拟盘] 非交易日,跳过日终摘要通知")
             return
+        if market:
+            now = calendar._now_in_market_tz(calendar._to_market_code(market))
+            sessions = calendar.trading_sessions(market, now)
+            due = datetime.combine(now.date(), sessions[-1].end, now.tzinfo) + timedelta(minutes=30)
+            if (now.hour, now.minute) != (due.hour, due.minute):
+                return
         try:
             from src.modules.paper_trading.paper_trading_notifier import send_daily_summary
-            await send_daily_summary()
+            await send_daily_summary(markets=markets)
         except Exception as e:
             logger.exception(f"[模拟盘] 日终摘要通知异常: {e}")
 
@@ -88,28 +98,25 @@ class PaperTradingScheduler:
             coalesce=True,
             max_instances=1,
         )
-        # 盘前计划 - 每天 09:00
-        self.scheduler.add_job(
-            self._premarket_job,
-            "cron",
-            hour=9,
-            minute=0,
-            id="paper_trading_premarket",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-        )
-        # 日终摘要 - 每天 15:30
-        self.scheduler.add_job(
-            self._summary_job,
-            "cron",
-            hour=15,
-            minute=30,
-            id="paper_trading_summary",
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-        )
+        # Built-in paper notifications use each exchange's local clock. Agent
+        # schedules and the configured scan interval are deliberately unchanged.
+        for code, definition in MARKETS.items():
+            self.scheduler.add_job(
+                self._premarket_job, "cron", hour=9, minute=0,
+                timezone=definition.timezone, args=[code.value],
+                id=f"paper_trading_premarket_{code.value}", replace_existing=True,
+                coalesce=True, max_instances=1,
+            )
+            closes = {definition.sessions[-1].end}
+            closes.update(close for (market, _day), close in EARLY_CLOSES.items() if market == code.value)
+            for close in closes:
+                due = datetime.combine(datetime.today(), close) + timedelta(minutes=30)
+                self.scheduler.add_job(
+                    self._summary_job, "cron", hour=due.hour, minute=due.minute,
+                    timezone=definition.timezone, args=[code.value],
+                    id=f"paper_trading_summary_{code.value}_{due:%H%M}", replace_existing=True,
+                    coalesce=True, max_instances=1,
+                )
         self.scheduler.start()
         from src.platform.scheduling.scheduler_registry import register
         register("paper_trading", self.scheduler)

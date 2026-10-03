@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.modules.automation import agent_scheduler
+from src.modules.automation import agent_scheduler, scheduling_policy
 from src.platform.marketdata.models import MarketCode
 
 
@@ -25,9 +25,9 @@ def scheduler_fixture(monkeypatch, *, mode="single", markets=(), result=None):
     scheduler.agents["intraday_monitor"] = agent
     scheduler.execution_modes["intraday_monitor"] = mode
     scheduler.set_context_builder(lambda name: context)
-    monkeypatch.setattr(agent_scheduler, "MARKETS", {
-        MarketCode.CN: SimpleNamespace(name="CN", is_trading_time=lambda: False),
-        MarketCode.HK: SimpleNamespace(name="HK", is_trading_time=lambda: True),
+    monkeypatch.setattr(scheduling_policy, "MARKETS", {
+        MarketCode.CN: SimpleNamespace(name="CN", is_trading_time=lambda dt=None: False),
+        MarketCode.HK: SimpleNamespace(name="HK", is_trading_time=lambda dt=None: True),
     })
     record = Mock()
     monkeypatch.setattr(agent_scheduler, "record_agent_run", record)

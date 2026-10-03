@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from src.platform.notifications.notifier import NotifierManager
+from src.platform.scheduling import trading_calendar as calendar
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     AppSettings,
@@ -274,11 +275,13 @@ def _format_daily_summary(
     positions: list[PaperTradingPosition],
     account: PaperTradingAccount,
     english: bool = False,
+    total_equity: float | None = None,
 ) -> tuple[str, str]:
     """格式化日终摘要，返回 (title, body)。"""
     # 总资产
     positions_value = sum((p.current_price or p.entry_price) * p.quantity for p in positions)
-    total_equity = account.current_capital + positions_value
+    if total_equity is None:
+        total_equity = account.current_capital + positions_value
     unrealized = sum(p.unrealized_pnl or 0 for p in positions)
 
     title = "[Paper trading daily summary]" if english else "【模拟盘日终摘要】"
@@ -343,7 +346,7 @@ async def notify_exit(pos: dict, trade: dict) -> None:
         logger.exception("[模拟盘通知] 平仓通知发送失败")
 
 
-async def send_premarket_plan() -> None:
+async def send_premarket_plan(*, markets: list[str] | None = None) -> None:
     """盘前计划通知。"""
     try:
         if not _is_mode_enabled("pt_notify_premarket"):
@@ -358,32 +361,28 @@ async def send_premarket_plan() -> None:
             if not account or not account.enabled:
                 return
 
-            # 按投资比例排除不投入（比例为 0）的市场
-            from src.modules.paper_trading.paper_trading_engine import ALL_MARKETS, market_allocations_or_default
+            from src.modules.paper_trading.paper_trading_engine import market_allocations_or_default
             alloc = market_allocations_or_default(account)
-            excluded = [m for m in ALL_MARKETS if alloc.get(m, 0.0) <= 0]
-            query = (
-                db.query(StrategySignalRun)
-                .filter(
+            for market in calendar.eligible_markets(markets):
+                if alloc.get(market, 0.0) <= 0:
+                    continue
+                signals = (db.query(StrategySignalRun).filter(
                     StrategySignalRun.status == "active",
+                    StrategySignalRun.stock_market == market,
                     StrategySignalRun.action.in_(["buy", "add"]),
                     StrategySignalRun.entry_low.isnot(None),
                     StrategySignalRun.entry_high.isnot(None),
-                )
-            )
-            if excluded:
-                query = query.filter(StrategySignalRun.stock_market.notin_(excluded))
-            signals = query.order_by(StrategySignalRun.rank_score.desc()).all()
-
-            title, body = _format_premarket_plan(signals, account, english=_report_is_english())
-            await mgr.notify(title, body)
+                ).order_by(StrategySignalRun.rank_score.desc()).all())
+                title, body = _format_premarket_plan(signals, account, english=_report_is_english())
+                day = calendar._resolve_date(calendar._to_market_code(market), None)
+                await mgr.notify(f"{title} {market} · {day}", body)
         finally:
             db.close()
     except Exception:
         logger.exception("[模拟盘通知] 盘前计划发送失败")
 
 
-async def send_daily_summary() -> None:
+async def send_daily_summary(*, markets: list[str] | None = None) -> None:
     """日终摘要通知。"""
     try:
         if not _is_mode_enabled("pt_notify_summary"):
@@ -398,27 +397,24 @@ async def send_daily_summary() -> None:
             if not account or not account.enabled:
                 return
 
-            from datetime import datetime, timezone, timedelta
-            now = datetime.now(timezone.utc)
-            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-            # 当日已平仓
-            trades = (
-                db.query(PaperTradingTrade)
-                .filter(PaperTradingTrade.closed_at >= today_start)
-                .order_by(PaperTradingTrade.closed_at.desc())
-                .all()
-            )
-
-            # 持仓中
-            positions = (
-                db.query(PaperTradingPosition)
-                .filter(PaperTradingPosition.status == "open")
-                .all()
-            )
-
-            title, body = _format_daily_summary(trades, positions, account, english=_report_is_english())
-            await mgr.notify(title, body)
+            from src.modules.paper_trading.paper_trading_engine import market_allocations_or_default
+            alloc = market_allocations_or_default(account)
+            all_positions = db.query(PaperTradingPosition).filter(PaperTradingPosition.status == "open").all()
+            total_equity = account.current_capital + sum((p.current_price or p.entry_price) * p.quantity for p in all_positions)
+            for market in calendar.eligible_markets(markets):
+                start, end = calendar.local_day_bounds(market)
+                trades = (db.query(PaperTradingTrade).filter(
+                    PaperTradingTrade.stock_market == market,
+                    PaperTradingTrade.closed_at >= start,
+                    PaperTradingTrade.closed_at < end,
+                ).order_by(PaperTradingTrade.closed_at.desc()).all())
+                positions = [p for p in all_positions if p.stock_market == market]
+                if alloc.get(market, 0.0) <= 0 and not positions and not trades:
+                    continue
+                title, body = _format_daily_summary(trades, positions, account,
+                    english=_report_is_english(), total_equity=total_equity)
+                day = calendar._resolve_date(calendar._to_market_code(market), None)
+                await mgr.notify(f"{title} {market} · {day}", body)
         finally:
             db.close()
     except Exception:

@@ -1,3 +1,4 @@
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
@@ -106,6 +107,7 @@ function parseHeadings(markdown: string): { text: string; slug: string }[] {
 
 export default function AnalysisDetailPage() {
   const { t, i18n } = useTranslation('configuration')
+  const { toast } = useToast()
   const analysisT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const { symbol = '', date = '' } = useParams()
   const navigate = useNavigate()
@@ -130,7 +132,7 @@ export default function AnalysisDetailPage() {
     try {
       await tradingAgentsApi.downloadAnalysisPdf(symbol, date)
     } catch (e) {
-      alert(e instanceof Error ? e.message : analysisT('assistantPage.analysis.exportFailed'))
+      toast(e instanceof Error ? e.message : analysisT('assistantPage.analysis.exportFailed'), 'error')
     } finally {
       setPdfBusy(false)
     }
@@ -401,7 +403,7 @@ export default function AnalysisDetailPage() {
               </div>
             )}
             {items.length > 0 ? (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scrollbar">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground text-[12px]">

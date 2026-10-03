@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 const { getAgentPermissions, updateAgentPermission, getAssistantConfig } = vi.hoisted(() => ({
@@ -45,7 +46,8 @@ describe('AssistantPermissionsDrawer', () => {
     render(<AssistantPermissionsDrawer open onOpenChange={vi.fn()} />)
 
     await screen.findByLabelText('查询持仓')
-    fireEvent.change(screen.getByLabelText('查询持仓'), { target: { value: 'ask' } })
+    await userEvent.click(screen.getByRole('combobox', { name: '查询持仓' }))
+    await userEvent.click(await screen.findByRole('option', { name: '每次询问' }))
 
     await waitFor(() => expect(updateAgentPermission).toHaveBeenCalledWith({
       selector_kind: 'tool',

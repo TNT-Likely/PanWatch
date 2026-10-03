@@ -191,6 +191,7 @@ def test_price_hit_survives_delivery_failure_and_repeated_scan_deduplicates(db, 
     db.add(rule); db.commit()
     monkeypatch.setattr(price_alert_engine, 'SessionLocal', sessionmaker(bind=db.bind))
     engine = price_alert_engine.PriceAlertEngine()
+    monkeypatch.setattr('src.platform.scheduling.trading_calendar.is_trading_day', lambda *args: True)
     monkeypatch.setattr(engine, '_fetch_quotes_map', AsyncMock(return_value={('CN','601238'):{'current_price':6}}))
     async def delivery(session, *args):
         # The same transaction already committed both records before I/O.
@@ -267,7 +268,7 @@ def test_scheduler_delivery_failure_does_not_mark_generated_report_failed(monkey
     scheduler.agents['daily_report'] = agent
     scheduler.execution_modes['daily_report'] = mode
     scheduler.set_context_builder(lambda name: context)
-    monkeypatch.setattr(agent_scheduler, 'MARKETS', {MarketCode.US:SimpleNamespace(is_trading_time=lambda:True)})
+    monkeypatch.setattr(agent_scheduler, 'market_allowed', lambda *args: True)
     record = Mock(); monkeypatch.setattr(agent_scheduler, 'record_agent_run', record)
     asyncio.run(scheduler._run_agent('daily_report'))
     values=record.call_args.kwargs

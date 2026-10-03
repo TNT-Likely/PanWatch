@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Plus, RefreshCw, Play, Trash2, BarChart3, BellRing } from 'lucide-react'
@@ -81,6 +82,7 @@ function conditionText(item: AlertConditionItem, translate: (key: string) => str
 
 export default function PriceAlertsPage() {
   const { t } = useTranslation('configuration')
+  const confirmAction = useConfirm()
   const alertT = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (translationKey: string, interpolation?: Record<string, unknown>) => string)(
       `priceAlerts.${key}`,
@@ -234,7 +236,7 @@ export default function PriceAlertsPage() {
   }
 
   const removeRule = async (r: AlertRule) => {
-    if (!window.confirm(alertT('messages.deleteConfirm', { name: r.name || r.stock_name }))) return
+    if (!(await confirmAction(alertT('messages.deleteConfirm', { name: r.name || r.stock_name }), { destructive: true }))) return
     try {
       await fetchAPI(`/price-alerts/${r.id}`, { method: 'DELETE' })
       await load()

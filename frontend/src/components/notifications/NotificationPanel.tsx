@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { notificationsApi, type NotificationFilter, type NotificationItem, type NotificationPage, type NotificationSource, type NotificationView } from '@panwatch/api'
@@ -58,12 +59,19 @@ export default function NotificationPanel({ monitor, onClose, onOpen }: Props) {
       <DialogHeader className="pr-8"><DialogTitle>{tr('title')}</DialogTitle><DialogDescription>{tr('description')}</DialogDescription></DialogHeader>
       <p className="text-[12px] text-muted-foreground">{tr('summary', { unread: monitor.summary.unread_count, pending: monitor.summary.pending_action_count })}</p>
       <div className="my-3 flex flex-wrap items-center gap-2">
-        <select aria-label={tr('sourceFilter')} value={source} onChange={e => setSource(e.target.value as NotificationSource | '')} className={button}>
-          <option value="">{tr('sources.all')}</option>{(['assistant', 'agent', 'market'] as const).map(value => <option key={value} value={value}>{tr(`sources.${value}`)}</option>)}
-        </select>
-        <select aria-label={tr('viewFilter')} value={view} onChange={e => setView(e.target.value as NotificationView)} className={button}>
-          {(['all', 'unread', 'pending', 'archived'] as const).map(value => <option key={value} value={value}>{tr(`views.${value}`)}</option>)}
-        </select>
+        <Select value={source || 'all'} onValueChange={value => setSource(value === 'all' ? '' : value as NotificationSource)}>
+          <SelectTrigger aria-label={tr('sourceFilter')} className="h-8 w-auto min-w-[120px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{tr('sources.all')}</SelectItem>
+            {(['assistant', 'agent', 'market'] as const).map(value => <SelectItem key={value} value={value}>{tr(`sources.${value}`)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={view} onValueChange={value => setView(value as NotificationView)}>
+          <SelectTrigger aria-label={tr('viewFilter')} className="h-8 w-auto min-w-[120px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {(['all', 'unread', 'pending', 'archived'] as const).map(value => <SelectItem key={value} value={value}>{tr(`views.${value}`)}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <button className={button} disabled={loading || monitor.changing} onClick={() => { void load(); void monitor.refresh() }}>{tr('refresh')}</button>
         <button className={button} disabled={!page.observed_id || monitor.changing || loading} onClick={() => void mutate()}>{tr('readFiltered')}</button>
       </div>

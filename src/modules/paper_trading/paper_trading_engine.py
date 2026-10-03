@@ -11,7 +11,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.platform.marketdata.models import MarketCode, MARKETS
+from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.quote_display import quote_date_is_current
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     PaperTradingAccount,
@@ -87,11 +88,8 @@ def _to_market(market: str) -> MarketCode:
 
 
 def _is_trading_time(market: str) -> bool:
-    mc = _to_market(market)
-    market_def = MARKETS.get(mc)
-    if not market_def:
-        return False
-    return market_def.is_trading_time()
+    from src.platform.scheduling.trading_calendar import market_status
+    return market_status(market) == "trading"
 
 
 def _safe_float(v: Any) -> float | None:
@@ -276,11 +274,15 @@ class PaperTradingEngine:
         self, db: Session, account: PaperTradingAccount,
     ) -> tuple[int, set[tuple[str, str]], list[tuple[PaperTradingPosition, StrategySignalRun | None]]]:
         """检查可入场的策略信号，自动建仓。返回 (建仓数, 新建仓股票key集合, 建仓事件列表)。"""
+        active_markets = [market for market in ALL_MARKETS if _is_trading_time(market)]
+        if not active_markets:
+            return 0, set(), []
         # 查询最新活跃买入信号
         query = (
             db.query(StrategySignalRun)
             .filter(
                 StrategySignalRun.status == "active",
+                StrategySignalRun.stock_market.in_(active_markets),
                 StrategySignalRun.action.in_(["buy", "add"]),
                 StrategySignalRun.entry_low.isnot(None),
                 StrategySignalRun.entry_high.isnot(None),
@@ -331,9 +333,11 @@ class PaperTradingEngine:
 
         opened = 0
         for sig in candidates:
+            if not _is_trading_time(sig.stock_market):
+                continue
             key = (sig.stock_market, sig.stock_symbol)
             quote = quotes.get(key)
-            if not quote:
+            if not quote or not quote_date_is_current(sig.stock_market, quote):
                 continue
             current_price = _safe_float(quote.get("current_price"))
             if current_price is None or current_price <= 0:
@@ -492,9 +496,12 @@ class PaperTradingEngine:
     ) -> tuple[int, list[tuple[PaperTradingPosition, PaperTradingTrade]]]:
         """检查持仓止损/止盈/信号反转，自动平仓。skip_keys 中的股票跳过（本轮新建仓）。"""
         exit_events: list[tuple[PaperTradingPosition, PaperTradingTrade]] = []
+        active_markets = [market for market in ALL_MARKETS if _is_trading_time(market)]
+        if not active_markets:
+            return 0, exit_events
         positions = (
             db.query(PaperTradingPosition)
-            .filter(PaperTradingPosition.status == "open")
+            .filter(PaperTradingPosition.status == "open", PaperTradingPosition.stock_market.in_(active_markets))
             .all()
         )
         if not positions:
@@ -506,12 +513,16 @@ class PaperTradingEngine:
 
         closed = 0
         for pos in positions:
+            if not _is_trading_time(pos.stock_market):
+                continue
             # 跳过本轮刚建仓的持仓
             if skip_keys and (pos.stock_symbol, pos.stock_market) in skip_keys:
                 continue
             key = (pos.stock_market, pos.stock_symbol)
             quote = quotes.get(key)
-            current_price = _safe_float(quote.get("current_price")) if quote else None
+            if not quote or not quote_date_is_current(pos.stock_market, quote):
+                continue
+            current_price = _safe_float(quote.get("current_price"))
 
             if current_price is None or current_price <= 0:
                 continue
@@ -673,15 +684,18 @@ class PaperTradingEngine:
             if not pos:
                 return {"ok": False, "error": "持仓不存在或已平仓"}
 
+            if not _is_trading_time(pos.stock_market):
+                return {"ok": False, "error": "该市场当前非交易时段，无法成交"}
+
             # 获取最新报价(走 flag 门控的 md_quote_rows,支持故障转移)
             mc = _to_market(pos.stock_market)
             rows = md_quote_rows([pos.stock_symbol], mc.value)
 
-            exit_price = pos.current_price or pos.entry_price
-            if rows:
-                p = _safe_float(rows[0].get("current_price"))
-                if p and p > 0:
-                    exit_price = p
+            exit_price = _safe_float(rows[0].get("current_price")) if rows else None
+            if not exit_price or exit_price <= 0 or not quote_date_is_current(pos.stock_market, rows[0]):
+                return {"ok": False, "error": "暂无有效报价，无法成交"}
+            if not _is_trading_time(pos.stock_market):
+                return {"ok": False, "error": "该市场当前非交易时段，无法成交"}
 
             trade = self._close_position(db, account, pos, exit_price, "manual")
             self._update_account_metrics(db, account)

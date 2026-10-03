@@ -188,9 +188,10 @@ class ContextMaintenanceScheduler:
 
     async def _refresh_opportunities_job(self):
         """定时刷新机会池（候选 + 策略信号）。全市场休市日跳过。"""
-        from src.platform.scheduling.trading_calendar import any_market_trading_day
+        from src.platform.scheduling.trading_calendar import eligible_markets
 
-        if not any_market_trading_day():
+        markets = eligible_markets()
+        if not markets:
             logger.debug("[上下文维护] 非交易日，跳过机会刷新")
             return
         if self._refreshing:
@@ -202,6 +203,7 @@ class ContextMaintenanceScheduler:
                 result = await asyncio.to_thread(
                     refresh_strategy_signals,
                     rebuild_candidates=True,
+                    markets=markets,
                     max_inputs=500,
                     market_scan_limit=80,
                     max_kline_symbols=60,
@@ -241,11 +243,7 @@ class ContextMaintenanceScheduler:
         )
 
     async def _refresh_trading_calendar_job(self):
-        """每日刷新 A 股交易日历。
-
-        日历只覆盖到当年年底,长跑实例跨年后会超出覆盖范围而降级为"只判周末",
-        因此每天凌晨拉一次。安排在各类盘前通知之前,保证当天判断用的是新日历。
-        """
+        """刷新本地近期窗口,不联网拉取历史日历。"""
         from src.platform.scheduling.trading_calendar import refresh
 
         try:

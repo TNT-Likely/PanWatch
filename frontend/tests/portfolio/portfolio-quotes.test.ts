@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergePortfolioQuotes, toQuoteMap, type PortfolioSummary, type Position } from '@/lib/portfolio-quotes'
+import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type PortfolioSummary, type Position } from '@/lib/portfolio-quotes'
 import { marketSignTextClass } from '@/lib/market-colors'
 
 const position = (market = 'CN', symbol = '600519'): Position => ({
@@ -51,5 +51,25 @@ describe('daily portfolio quote semantics', () => {
       'US:AAPL': { current_price: 11, change_pct: 10, daily_move_status: 'current' },
     })!
     expect(merged.total.total_daily_pnl).toBe(100)
+  })
+})
+
+
+describe('market status transitions without new quotes', () => {
+  it('neutralizes yesterday’s quote on a holiday without changing its price or the cached source', () => {
+    const quotes = toQuoteMap([{ market: 'CN', symbol: '600519', current_price: 10, change_pct: 5,
+      daily_move_status: 'current', quote_date: '2026-09-30' }])
+    const displayed = applyMarketStatuses(quotes, [{ code: 'CN', status: 'closed', local_date: '2026-10-01' }])
+    expect(displayed['CN:600519']).toMatchObject({ current_price: 10, change_pct: null, daily_move_status: 'closed' })
+    expect(quotes['CN:600519'].change_pct).toBe(5)
+    expect(mergePortfolioQuotes(portfolio(), displayed)!.total.total_daily_pnl).toBe(0)
+  })
+
+  it('keeps final same-day movement after close and rejects a prior-day quote after reopening', () => {
+    const quotes = toQuoteMap([{ market: 'US', symbol: 'AAPL', current_price: 10, change_pct: 5,
+      daily_move_status: 'current', quote_date: '2026-10-02' }])
+    expect(applyMarketStatuses(quotes, [{ code: 'US', status: 'after_hours', local_date: '2026-10-02' }])['US:AAPL'].change_pct).toBe(5)
+    expect(applyMarketStatuses(quotes, [{ code: 'US', status: 'trading', local_date: '2026-10-05' }])['US:AAPL'])
+      .toMatchObject({ change_pct: null, daily_move_status: 'stale' })
   })
 })

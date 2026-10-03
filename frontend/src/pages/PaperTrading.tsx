@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
@@ -107,6 +108,7 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
 export default function PaperTradingPage() {
   const { toast } = useToast()
   const { t, i18n } = useTranslation('configuration')
+  const confirmAction = useConfirm()
   const paperT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const locale = i18n.resolvedLanguage === 'en-US' ? 'en-US' : 'zh-CN'
   const tr = (key: string, options?: Record<string, unknown>) => paperT(`p4.paperTrading.${key}`, options)
@@ -181,7 +183,7 @@ export default function PaperTradingPage() {
   }
 
   const handleReset = async () => {
-    if (!confirm(message('resetConfirm'))) return
+    if (!(await confirmAction(message('resetConfirm'), { destructive: true }))) return
     try {
       await paperTradingApi.resetAccount()
       toast(message('resetDone'), 'success')
@@ -459,7 +461,7 @@ export default function PaperTradingPage() {
       {strategyPerf.length > 0 && (
         <div className="card p-4">
           <h2 className="text-sm font-semibold mb-3">{tr('strategyPerformance')}</h2>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-muted-foreground text-xs">
@@ -506,7 +508,7 @@ export default function PaperTradingPage() {
         {positions.length === 0 ? (
           <div className="text-center text-muted-foreground text-sm py-8">{tr('noPositions')}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-muted-foreground text-xs">
@@ -568,7 +570,7 @@ export default function PaperTradingPage() {
             <div className="text-center text-muted-foreground text-sm py-8">{tr('noTrades')}</div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scrollbar">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-muted-foreground text-xs">

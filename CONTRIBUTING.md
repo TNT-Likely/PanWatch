@@ -90,6 +90,7 @@ Run the smallest focused test while iterating, then the relevant suite before op
 # Frontend suite, translation guard, type/build verification
 pnpm --dir frontend exec vitest run
 pnpm --dir frontend run check:i18n
+pnpm --dir frontend run check:ui
 pnpm --dir frontend run build
 
 # Whitespace and conflict-marker check
@@ -202,3 +203,11 @@ Use a `codex/`-prefixed branch when changes are made through Codex unless a main
 For ordinary bugs, open an issue with reproduction steps, expected and actual behavior, version information, and sanitized logs. Remove tokens, cookies, account identifiers, positions, and other private financial data.
 
 For a security-sensitive issue, do not publish exploit details or credentials in a public issue. Follow the private reporting instructions in [SECURITY.md](SECURITY.md).
+
+## Shared UI conventions
+
+Read the [UI guide](frontend/UI_GUIDELINES.md) ([简体中文](frontend/UI_GUIDELINES.zh-CN.md)) before changing controls or scrolling panels. Run `pnpm --dir frontend check:ui` to catch native selects, browser dialogs, and unstyled scroll regions; verify desktop/mobile and light/dark rendering as well.
+
+## Exchange calendar coverage
+
+Published annual closures and half-days live in `src/platform/scheduling/exchange_calendar_data.py` (currently 2026). Runtime warmup materializes only the previous 30 and upcoming 90 days without fetching historical calendars. Unpublished weekdays are unknown and cannot authorize automatic execution. Update the bundled annual data from exchange publications before the next year; preserve market-local dates, daylight-saving offsets, and half-day regression coverage. Configured Agent Cron/interval cycles remain unchanged; execution and preview share calendar gates.

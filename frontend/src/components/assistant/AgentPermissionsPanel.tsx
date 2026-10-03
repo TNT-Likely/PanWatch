@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import type { AgentPermissions } from '@panwatch/api'
 import { useTranslation } from 'react-i18next'
 
@@ -54,21 +55,14 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
             className="flex min-w-0 items-center justify-between gap-1 rounded-xl border border-border/50 bg-accent/20 px-2.5 py-2 text-[11px] text-muted-foreground"
           >
             <span className="min-w-0 shrink truncate whitespace-nowrap">{riskLabels[item.risk]}</span>
-            <select
-              aria-label={t('permissions.defaultAria', { risk: riskLabels[item.risk] })}
-              value={item.mode}
-              onChange={(event) => onChange({
-                selector_kind: 'risk',
-                selector_value: item.risk,
-                mode: event.target.value as PermissionMode,
-                risk: item.risk,
-              })}
-              className="h-7 min-w-0 shrink-0 rounded-md border border-border/60 bg-background px-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
-            >
-              {availableModesForRisk(item.risk).map((mode) => (
-                <option key={mode} value={mode}>{modeLabels[mode]}</option>
-              ))}
-            </select>
+            <Select value={item.mode} disabled={availableModesForRisk(item.risk).length === 1} onValueChange={value => onChange({
+              selector_kind: 'risk', selector_value: item.risk, mode: value as PermissionMode, risk: item.risk,
+            })}>
+              <SelectTrigger aria-label={t('permissions.defaultAria', { risk: riskLabels[item.risk] })} className="h-7 w-auto min-w-[76px] shrink-0 px-2 text-[11px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {availableModesForRisk(item.risk).map(mode => <SelectItem key={mode} value={mode}>{modeLabels[mode]}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
         ))}
       </div>
@@ -83,21 +77,14 @@ export function AgentPermissionsPanel({ permissions, onChange, variant = 'card' 
                 {tool.name} · {riskLabels[tool.risk]}{tool.confirmation_required ? t('permissions.confirmationRequired') : ''}
               </p>
             </div>
-            <select
-              aria-label={tool.title}
-              value={tool.mode}
-              onChange={(event) => onChange({
-                selector_kind: 'tool',
-                selector_value: tool.name,
-                mode: event.target.value as PermissionMode,
-                risk: tool.risk,
-              })}
-              className="h-8 rounded-lg border border-border/60 bg-background px-2 text-[12px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
-            >
-              {availableModes(tool).map((mode) => (
-                <option key={mode} value={mode}>{modeLabels[mode]}</option>
-              ))}
-            </select>
+            <Select value={tool.mode} disabled={availableModes(tool).length === 1} onValueChange={value => onChange({
+              selector_kind: 'tool', selector_value: tool.name, mode: value as PermissionMode, risk: tool.risk,
+            })}>
+              <SelectTrigger aria-label={tool.title} className="h-8 w-auto min-w-[80px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {availableModes(tool).map(mode => <SelectItem key={mode} value={mode}>{modeLabels[mode]}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         ))}
       </div>

@@ -358,8 +358,8 @@ export const configuration = {
     editor: { editTitle: '编辑提醒规则', createTitle: '新建提醒规则', description: '支持价格、涨跌幅、成交额、量比条件，支持 AND / OR 组合', submit: '保存规则' },
     hits: { title: '命中历史', empty: '暂无命中记录', notifySuccess: '通知成功', notifyFailed: '通知失败 {{error}}' },
     conditions: { price: '价格', change_pct: '涨跌幅%', turnover: '成交额', volume: '成交量', volume_ratio: '量比', and: '且', or: '或' },
-    testStatuses: { no_stock: '股票不可用', no_quote: '行情不可用', gated: '不在生效时段', not_matched: '条件未命中', would_trigger: '将触发', duplicated: '重复触发已抑制', triggered: '已触发', unknown: '未知' },
-    form: { stock: '股票', selectStock: '选择股票', ruleName: '规则名称', rulePlaceholder: '例如：突破120提醒', conditionRelation: '条件关系', marketHours: '生效时段', tradingOnly: '仅交易时段', always: '全天', cooldown: '冷却（分钟）', dailyLimit: '日上限', repeatMode: '触发模式', repeat: '可重复触发', once: '仅触发一次', expireAt: '到期时间（可选）', selectDate: '选择日期', clear: '清空', today: '今天', neverExpire: '留空表示永不过期', channels: '通知渠道（不选=系统默认）', noChannels: '暂无可用渠道', default: '默认', conditions: '条件列表', addCondition: '添加条件', cancel: '取消', saving: '保存中...', weekdays: { sun: '日', mon: '一', tue: '二', wed: '三', thu: '四', fri: '五', sat: '六' } },
+    testStatuses: { no_stock: '股票不可用', no_quote: '行情不可用', gated: '不在生效时段', not_matched: '条件未命中', would_trigger: '将触发', duplicated: '重复触发已抑制', triggered: '已触发', unknown: '日历待更新' },
+    form: { stock: '股票', selectStock: '选择股票', ruleName: '规则名称', rulePlaceholder: '例如：突破120提醒', conditionRelation: '条件关系', marketHours: '生效时段', tradingOnly: '仅交易时段', always: '交易日全天', cooldown: '冷却（分钟）', dailyLimit: '日上限', repeatMode: '触发模式', repeat: '可重复触发', once: '仅触发一次', expireAt: '到期时间（可选）', selectDate: '选择日期', clear: '清空', today: '今天', neverExpire: '留空表示永不过期', channels: '通知渠道（不选=系统默认）', noChannels: '暂无可用渠道', default: '默认', conditions: '条件列表', addCondition: '添加条件', cancel: '取消', saving: '保存中...', weekdays: { sun: '日', mon: '一', tue: '二', wed: '三', thu: '四', fri: '五', sat: '六' } },
     messages: { loadFailed: '加载失败', selectStock: '请选择股票', addCondition: '至少添加一个条件', saved: '规则已保存', saveFailed: '保存失败', toggleFailed: '切换失败', deleteConfirm: '确认删除规则「{{name}}」？', deleted: '已删除', deleteFailed: '删除失败', scanDone: '扫描完成：触发 {{triggered}}，跳过 {{skipped}}', scanFailed: '扫描失败', testDone: '测试完成：{{status}}', testFailed: '测试失败', hitsFailed: '加载命中失败' },
   },
   dashboard: {
@@ -375,7 +375,8 @@ export const configuration = {
   stocksPage: {
     markets: { all: '全部', cn: 'A股', hk: '港股', us: '美股', hkShort: '港', usShort: '美' },
     quoteStatus: { closed: '今日休市，暂无今日涨跌', pre_market: '尚未开盘，暂无今日涨跌', stale: '今日行情尚未更新', missing: '暂无行情', unknown: '市场状态未知', asOf: '行情日期：{{date}}' },
-    marketStatus: { trading: '交易中', pre_market: '盘前', break: '午间休市', after_hours: '已收盘', closed: '休市', unknown: '未知' },
+    calendar: { close: '关闭交易日历', localDate: '当地 {{date}} {{time}}', nextDay: '次日 {{time}}', previousDay: '前日 {{time}}', statusRule: '状态按市场当地日期判断：非交易日为休市，当日交易结束后为已收盘。', open: '查看各市场交易日历', title: '交易日历 · 未来14天', nextOpen: '下次开盘', displayTimezone: '时间已换算为{{timezone}}', beijing: '北京时间', date: '交易日期', pending: '日历待更新', loading: '正在读取交易日历…', error: '交易日历读取失败', retry: '重试', source: '交易所公布日历 · 交易日期按各市场当地日期', reasons: { trading: '交易日', weekend: '周末休市', holiday: '交易所休市', early_close: '半日市', unpublished: '日历待更新' } },
+    marketStatus: { trading: '交易中', pre_market: '盘前', break: '午间休市', after_hours: '已收盘', closed: '休市', unknown: '日历待更新' },
     messages: {
       agent: 'Agent',
       agentCount: '{{count}} 个 Agent',

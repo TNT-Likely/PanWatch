@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Search, Trash2, RefreshCw, ScrollText, ChevronDown } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
@@ -79,6 +80,7 @@ function unique(arr: string[]) {
 
 export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpenChange: (v: boolean) => void }) {
   const { t, i18n } = useTranslation('bizUi')
+  const confirmAction = useConfirm()
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`logs.${key}`, options)
   const locale = (i18n.resolvedLanguage || i18n.language).toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
@@ -241,7 +243,7 @@ export default function LogsModal({ open, onOpenChange }: { open: boolean, onOpe
   }
 
   const handleClear = async () => {
-    if (!confirm(tr('clearConfirm'))) return
+    if (!(await confirmAction(tr('clearConfirm'), { destructive: true }))) return
     await fetchAPI('/logs', { method: 'DELETE' })
     setLogs([])
     setTotal(0)

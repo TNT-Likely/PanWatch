@@ -265,7 +265,7 @@ export default function AgentsPage() {
     const timer = setTimeout(async () => {
       setSchedulePreviewLoading(true)
       try {
-        const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(cron)}&count=5`)
+        const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(cron)}&agent_name=${encodeURIComponent(scheduleDialogAgent.name)}&count=5`)
         setSchedulePreview(p)
       } catch (e) {
         const msg = e instanceof Error ? e.message : configT('messages.previewFailed')
@@ -902,7 +902,7 @@ export default function AgentsPage() {
               </div>
             </div>
 
-            <div className="max-h-[40vh] overflow-y-auto rounded border border-border/50 p-3">
+            <div className="max-h-[40vh] overflow-y-auto rounded border border-border/50 p-3 scrollbar">
               {filteredBindStocks.length === 0 ? (
                 <div className="p-4 text-[12px] text-muted-foreground text-center">{configT('binding.empty')}</div>
               ) : (
@@ -1047,15 +1047,14 @@ export default function AgentsPage() {
                 </div>
                 <div>
                   <Label className="text-[12px]">{configT('advanced.overBudget')}</Label>
-                  <select
-                    className="w-full h-9 rounded-md border border-border bg-background px-3 text-[13px]"
-                    value={(taConfigForm.over_budget_action as string) || 'reject'}
-                    onChange={e => setTaConfigForm({ ...taConfigForm, over_budget_action: e.target.value })}
-                  >
-                    <option value="reject">{configT('advanced.reject')}</option>
-                    <option value="warn">{configT('advanced.warn')}</option>
-                    <option value="continue">{configT('advanced.continue')}</option>
-                  </select>
+                  <Select value={(taConfigForm.over_budget_action as string) || 'reject'} onValueChange={value => setTaConfigForm({ ...taConfigForm, over_budget_action: value })}>
+                    <SelectTrigger aria-label={configT('advanced.overBudget')} className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reject">{configT('advanced.reject')}</SelectItem>
+                      <SelectItem value="warn">{configT('advanced.warn')}</SelectItem>
+                      <SelectItem value="continue">{configT('advanced.continue')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label className="text-[12px]">{configT('advanced.debateRounds')}</Label>

@@ -1,3 +1,4 @@
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useRef, useState, type ReactNode } from 'react'
 import { toPng } from 'html-to-image'
 import { ImageDown, Loader2 } from 'lucide-react'
@@ -39,6 +40,7 @@ export default function ShareCardDialog({
   children,
 }: ShareCardDialogProps) {
   const { t } = useTranslation('configuration')
+  const { toast } = useToast()
   const shareT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => shareT(`p5.share.${key}`, options)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -54,7 +56,7 @@ export default function ShareCardDialog({
       link.href = dataUrl
       link.click()
     } catch (e) {
-      alert(e instanceof Error ? tr('imageFailed', { message: e.message }) : tr('imageFailedRetry'))
+      toast(e instanceof Error ? tr('imageFailed', { message: e.message }) : tr('imageFailedRetry'), 'error')
     } finally {
       setBusy(false)
     }

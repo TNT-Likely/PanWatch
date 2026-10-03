@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, useLocation } from 'react-router-dom'
@@ -175,12 +176,15 @@ describe('global notifications', () => {
     await screen.findByText('日报')
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
     expect(await screen.findByText('价格规则')).toBeTruthy()
-    fireEvent.change(screen.getByRole('combobox', { name: '通知来源' }), { target: { value: 'agent' } })
+    await userEvent.click(screen.getByRole('combobox', { name: '通知来源' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Agent 报告' }))
     await waitFor(() => expect(notificationsApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ source: 'agent' }), expect.any(AbortSignal)))
     fireEvent.click(screen.getByRole('button', { name: '当前筛选全部已读' }))
     await waitFor(() => expect(notificationsApi.read).toHaveBeenCalledWith({ source: 'agent', view: 'all', through_id: 1012 }))
-    fireEvent.change(screen.getByRole('combobox', { name: '通知来源' }), { target: { value: '' } })
-    fireEvent.change(screen.getByRole('combobox', { name: '通知视图' }), { target: { value: 'pending' } })
+    await userEvent.click(screen.getByRole('combobox', { name: '通知来源' }))
+    await userEvent.click(await screen.findByRole('option', { name: '全部来源' }))
+    await userEvent.click(screen.getByRole('combobox', { name: '通知视图' }))
+    await userEvent.click(await screen.findByRole('option', { name: '待处理' }))
     await screen.findByText('有操作等待审批；已读不会执行操作。')
     expect((screen.getByRole('button', { name: '归档' }) as HTMLButtonElement).disabled).toBe(true)
   })

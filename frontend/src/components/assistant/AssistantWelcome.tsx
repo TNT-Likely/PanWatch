@@ -41,7 +41,7 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 py-8 text-center sm:justify-center sm:px-10 sm:py-12">
+    <section className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 py-8 text-center sm:justify-center sm:px-10 sm:py-12 scrollbar">
       <p className="mb-4 text-[11px] font-semibold tracking-[0.16em] text-primary sm:text-[12px]">
         PANWATCH · {uiT('assistantPage.welcome.brandLabel')}
       </p>

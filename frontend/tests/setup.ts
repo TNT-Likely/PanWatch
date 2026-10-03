@@ -19,3 +19,10 @@ afterEach(() => {
   window.localStorage.removeItem('panwatch-locale')
   void i18n.changeLanguage('zh-CN')
 })
+
+// Radix Select relies on browser pointer capture and scrolling APIs absent in jsdom.
+if (!window.PointerEvent) window.PointerEvent = MouseEvent as typeof PointerEvent
+if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false
+if (!Element.prototype.setPointerCapture) Element.prototype.setPointerCapture = () => {}
+if (!Element.prototype.releasePointerCapture) Element.prototype.releasePointerCapture = () => {}
+if (!HTMLElement.prototype.scrollIntoView) HTMLElement.prototype.scrollIntoView = () => {}

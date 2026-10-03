@@ -28,6 +28,7 @@ def _seed_pair(db, sid, *, market, snapshot_date, alpha, ret, horizon=5):
     db.add(StrategyOutcome(
         signal_run_id=sid, strategy_code="trend_follow", stock_symbol=f"S{sid}",
         stock_market=market, snapshot_date=snapshot_date, horizon_days=horizon,
+        meta={"horizon_unit": "trading_days"},
         target_date=snapshot_date, outcome_return_pct=ret, outcome_status="evaluated",
     ))
 

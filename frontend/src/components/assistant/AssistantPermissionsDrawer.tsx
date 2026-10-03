@@ -63,7 +63,7 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
           </DialogTitle>
           <DialogDescription>{tr('description')}</DialogDescription>
         </DialogHeader>
-        <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4">
+        <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4 scrollbar">
           {error && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
           {permissions ? (
             <AgentPermissionsPanel permissions={permissions} onChange={(change) => { void changePermission(change) }} variant="drawer" />

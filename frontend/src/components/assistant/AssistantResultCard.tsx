@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useMemo, useState } from 'react'
 import { Bell, ChevronDown, ExternalLink, FileSearch, ShieldAlert, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -215,10 +216,13 @@ export function AssistantResultCard({
         <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2">
           <div className="mb-2 font-medium">{tr('configureAlert')}</div>
           <div className="flex flex-wrap items-center gap-2">
-            <select value={direction} onChange={(event) => setDirection(event.target.value as 'above' | 'below')} className="h-8 rounded-md border border-border bg-background px-2 text-[11px]">
-              <option value="below">{tr('below')}</option>
-              <option value="above">{tr('above')}</option>
-            </select>
+            <Select value={direction} onValueChange={value => setDirection(value as 'above' | 'below')}>
+              <SelectTrigger aria-label={tr('configureAlert')} className="h-8 w-auto min-w-[100px] text-[11px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="below">{tr('below')}</SelectItem>
+                <SelectItem value="above">{tr('above')}</SelectItem>
+              </SelectContent>
+            </Select>
             <input
               type="number"
               min="0"

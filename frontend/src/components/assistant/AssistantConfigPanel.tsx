@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
 import { useEffect, useState } from 'react'
 import { Check, Cpu } from 'lucide-react'
 import { chatApi, type AssistantConfig, type AssistantConfigUpdate } from '@panwatch/api'
@@ -116,19 +117,13 @@ export function AssistantConfigPanel() {
         <div className="space-y-3">
           <label className="block text-[11px] text-muted-foreground">
             <span className="mb-1 block">{tr('model')}</span>
-            <select
-              aria-label={tr('model')}
-              value={form.compression_model_id}
-              onChange={(event) => update('compression_model_id', event.target.value)}
-              className="h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-[12px] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
-            >
-              <option value="">{tr('defaultModel')}</option>
-              {config.models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.service_name} / {model.name} ({model.model})
-                </option>
-              ))}
-            </select>
+            <Select value={form.compression_model_id || 'default'} onValueChange={value => update('compression_model_id', value === 'default' ? '' : value)}>
+              <SelectTrigger aria-label={tr('model')} className="h-9 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">{tr('defaultModel')}</SelectItem>
+                {config.models.map(model => <SelectItem key={model.id} value={String(model.id)}>{model.service_name} / {model.name} ({model.model})</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
 
           <label className="block text-[11px] text-muted-foreground">

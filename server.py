@@ -1129,8 +1129,9 @@ def build_scheduler() -> AgentScheduler:
             if not agent_cls:
                 logger.warning(f"Agent {cfg.name} 未在 AGENT_REGISTRY 中注册")
                 continue
-            if not cfg.schedule:
-                logger.info(f"Agent {cfg.name} 未设置调度计划，跳过")
+            from src.modules.automation.scheduling_policy import schedule_plans
+            plans = schedule_plans(db, cfg)
+            if not plans:
                 continue
 
             agent_kwargs = cfg.config or {}
@@ -1140,11 +1141,12 @@ def build_scheduler() -> AgentScheduler:
                 )
             except TypeError:
                 agent_instance = agent_cls()
-            sched.register(
-                agent_instance,
-                schedule=cfg.schedule,
-                execution_mode=cfg.execution_mode or "batch",
-            )
+            for plan in plans:
+                sched.register(
+                    agent_instance, schedule=plan.schedule,
+                    execution_mode=cfg.execution_mode or "batch",
+                    stock_keys=plan.stock_keys, stock_agent_id=plan.stock_agent_id,
+                )
     finally:
         db.close()
 
@@ -1182,6 +1184,7 @@ def reload_scheduler() -> bool:
             except Exception:
                 pass
         scheduler = build_scheduler()
+        register_mcp_log_cleanup(scheduler)
         scheduler.start()
         logger.info("Agent 调度器已重载")
         return True
@@ -1521,14 +1524,13 @@ async def lifespan(app):
 
     threading.Thread(target=refresh_stock_cache, daemon=True).start()
 
-    # 交易日历预热(判断周末/法定节假日是否开市)。拉取失败会自动降级为只判周末,
-    # 因此这里不阻塞启动,交给后台任务;之后每日 03:00 由上下文维护调度器刷新。
+    # 预热本地近期交易日历,不请求全历史数据;未公布年度不会授权自动交易。
     try:
         from src.platform.scheduling.trading_calendar import refresh as refresh_trading_calendar
 
         asyncio.create_task(refresh_trading_calendar())
     except Exception as e:
-        logger.warning(f"交易日历预热调度失败(降级为只判周末): {e}")
+        logger.warning(f"交易日历预热调度失败: {e}")
 
     global scheduler, price_alert_scheduler, paper_trading_scheduler, context_maintenance_scheduler
     scheduler = build_scheduler()

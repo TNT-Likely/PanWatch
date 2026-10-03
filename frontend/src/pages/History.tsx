@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Trash2, FileText, ArrowLeft } from 'lucide-react'
@@ -32,6 +33,7 @@ const CAPABILITY_AGENT_KEYS = ['news_digest', 'chart_analyst']
 export default function HistoryPage() {
   const { toast } = useToast()
   const { t } = useTranslation('configuration')
+  const confirmAction = useConfirm()
   const historyT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => historyT(`p4.history.${key}`, options)
   const agentLabel = (key: string) => {
@@ -120,7 +122,7 @@ export default function HistoryPage() {
   }, [records, selectedId])
 
   const deleteRecord = async (id: number) => {
-    if (!confirm(tr('deleteConfirm'))) return
+    if (!(await confirmAction(tr('deleteConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/history/${id}`, { method: 'DELETE' })
       toast(tr('deleted'), 'success')
@@ -338,25 +340,25 @@ export default function HistoryPage() {
           {detailRecord?.prompt_stats ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
               <div className="text-[12px] font-medium mb-1">{tr('promptStats')}</div>
-              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(detailRecord.prompt_stats, null, 2)}</pre>
+              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto scrollbar">{JSON.stringify(detailRecord.prompt_stats, null, 2)}</pre>
             </div>
           ) : null}
           {detailRecord?.context_payload ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
               <div className="text-[12px] font-medium mb-1">{tr('contextSnapshot')}</div>
-              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[280px] overflow-y-auto">{JSON.stringify(detailRecord.context_payload, null, 2)}</pre>
+              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[280px] overflow-y-auto scrollbar">{JSON.stringify(detailRecord.context_payload, null, 2)}</pre>
             </div>
           ) : null}
           {detailRecord?.news_debug ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
               <div className="text-[12px] font-medium mb-1">{tr('newsDetails')}</div>
-              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(detailRecord.news_debug, null, 2)}</pre>
+              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto scrollbar">{JSON.stringify(detailRecord.news_debug, null, 2)}</pre>
             </div>
           ) : null}
           {detailRecord?.prompt_context ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
               <div className="text-[12px] font-medium mb-1">{tr('promptOriginal')}</div>
-              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[280px] overflow-y-auto">{detailRecord.prompt_context}</pre>
+              <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[280px] overflow-y-auto scrollbar">{detailRecord.prompt_context}</pre>
             </div>
           ) : null}
         </DialogContent>

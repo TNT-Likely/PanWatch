@@ -92,7 +92,7 @@ export default function FactorWeightsPanel() {
       ) : sortedItems.length === 0 ? (
         <div className="text-[12px] text-muted-foreground text-center py-6">{tr('empty')}</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scrollbar">
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-left text-[11px] text-muted-foreground border-b border-border/50">

@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect } from 'react'
 import { Pencil, Play, Database, Newspaper, LineChart, TrendingUp, DollarSign, Image, Layers, Zap, Check, X, Clock, Trash2, ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, RotateCcw, AlertTriangle, BarChart3, Trophy, Landmark, Users, Gift, ArrowLeftRight } from 'lucide-react'
 import { fetchAPI, resetDataSourcesToSeed, type DataSource } from '@panwatch/api'
@@ -128,6 +129,7 @@ const emptyForm: DataSourceForm = {
 
 export default function DataSourcesPage() {
   const { t } = useTranslation(['configuration', 'common'])
+  const confirmAction = useConfirm()
   const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [sources, setSources] = useState<DataSource[]>([])
   const [loading, setLoading] = useState(true)
@@ -248,7 +250,7 @@ export default function DataSourcesPage() {
   }
 
   const resetToSeed = async () => {
-    if (!window.confirm(t('configuration:dataSources.messages.resetConfirm'))) return
+    if (!(await confirmAction(t('configuration:dataSources.messages.resetConfirm'), { destructive: true }))) return
     setResetting(true)
     try {
       const result = await resetDataSourcesToSeed()
@@ -263,7 +265,7 @@ export default function DataSourcesPage() {
 
   const deleteSource = async () => {
     if (!editId) return
-    if (!window.confirm(t('configuration:dataSources.messages.deleteConfirm', { name: form.name }))) return
+    if (!(await confirmAction(t('configuration:dataSources.messages.deleteConfirm', { name: form.name }), { destructive: true }))) return
     try {
       await fetchAPI(`/datasources/${editId}`, { method: 'DELETE' })
       setDialogOpen(false); load(); toast(t('configuration:dataSources.messages.deleted'), 'success')
@@ -567,7 +569,7 @@ export default function DataSourcesPage() {
                   <Clock className="w-3.5 h-3.5" />
                   {t('configuration:dataSources.result.logs')}
                 </div>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar">
                   {testResult.logs.map((log, i) => (
                     <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-accent/30 text-[11px]">
                       <span className="text-muted-foreground font-mono flex-shrink-0">{log.timestamp}</span>
@@ -603,7 +605,7 @@ export default function DataSourcesPage() {
             {testResult?.test_passed && testResult.items && testResult.source_type !== 'chart' && Array.isArray(testResult.items) && testResult.items.length > 0 && (
               <div>
                 <div className="text-[12px] font-medium text-foreground mb-2">{t('configuration:dataSources.result.preview')}</div>
-                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                <div className="space-y-1.5 max-h-60 overflow-y-auto scrollbar">
 
                   {/* News type */}
                   {testResult.source_type === 'news' && testResult.items.map((item, i) => {

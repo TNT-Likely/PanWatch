@@ -95,6 +95,7 @@ def evaluate_factor_ic(
             )
             .filter(
                 StrategyOutcome.horizon_days == int(horizon),
+                StrategyOutcome.meta["horizon_unit"].as_string() == "trading_days",
                 StrategyOutcome.outcome_status.in_(("evaluated", "hit_target", "hit_stop")),
                 StrategyOutcome.outcome_return_pct.isnot(None),
                 StrategyFactorSnapshot.snapshot_date >= cutoff,

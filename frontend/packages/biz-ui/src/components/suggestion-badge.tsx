@@ -572,7 +572,7 @@ export function SuggestionBadge({
             {suggestion.ai_response && (
               <div>
                 <div className="text-[11px] text-muted-foreground mb-1">{tr('aiResponse')}</div>
-                <div className="text-[12px] text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto">
+                <div className="text-[12px] text-foreground whitespace-pre-wrap bg-accent/30 rounded p-2 max-h-32 overflow-y-auto scrollbar">
                   {suggestion.ai_response}
                 </div>
               </div>
@@ -584,7 +584,7 @@ export function SuggestionBadge({
                 <summary className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground">
                   {tr('promptContext')} <span className="text-[10px]">{tr('expand')}</span>
                 </summary>
-                <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap bg-accent/20 rounded p-2 max-h-48 overflow-y-auto">
+                <div className="mt-2 text-[11px] text-muted-foreground whitespace-pre-wrap bg-accent/20 rounded p-2 max-h-48 overflow-y-auto scrollbar">
                   {suggestion.prompt_context}
                 </div>
               </details>

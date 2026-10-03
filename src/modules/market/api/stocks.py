@@ -22,6 +22,8 @@ from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.platform.scheduling import trading_calendar
+from src.platform.scheduling.schedule_parser import parse_schedule
+from src.modules.automation.scheduling_policy import request_scheduler_reload
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 from src.web.errors import api_error
 
@@ -147,6 +149,7 @@ def get_market_status():
                 "is_trading": is_trading,
                 "sessions": sessions_desc,
                 "local_time": now.strftime("%H:%M"),
+                "local_date": now.date().isoformat(),
                 "timezone": market_def.timezone,
             })
         except Exception as e:
@@ -165,6 +168,27 @@ def get_market_status():
             })
 
     return result
+
+
+@router.get("/markets/calendar")
+def get_market_calendars(days: int = Query(default=14, ge=1, le=31), timezone: str = "Asia/Shanghai"):
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    try:
+        display_tz = ZoneInfo(timezone)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise api_error(400, "timezone_invalid", "时区无效") from exc
+    now = trading_calendar._now_in_market_tz(MarketCode.CN).astimezone(display_tz)
+    return {"timezone": timezone, "start_date": now.date().isoformat(),
+            "markets": [trading_calendar.upcoming_calendar(code, days=days, start_date=now.date())
+                        for code in MARKETS]}
+
+
+@router.get("/markets/{market}/calendar")
+def get_market_calendar(market: str, days: int = Query(default=14, ge=1, le=31)):
+    code = trading_calendar._to_market_code(market)
+    if code is None:
+        raise api_error(400, "market_invalid", "市场代码无效")
+    return trading_calendar.upcoming_calendar(code, days=days)
 
 
 @router.get("/search")
@@ -305,6 +329,7 @@ def delete_stock(stock_id: int, db: Session = Depends(get_db)):
 
     db.delete(db_stock)
     db.commit()
+    request_scheduler_reload()
     return {"ok": True}
 
 
@@ -316,6 +341,11 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
         raise api_error(404, "stock_not_found", "股票不存在")
 
     for item in body.agents:
+        if item.schedule:
+            try:
+                parse_schedule(item.schedule)
+            except ValueError as exc:
+                raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
         agent = db.query(AgentConfig).filter(AgentConfig.name == item.agent_name).first()
         if not agent:
             raise api_error(400, "agent_not_found", f"Agent {item.agent_name} 不存在")
@@ -336,6 +366,7 @@ def update_stock_agents(stock_id: int, body: StockAgentUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(db_stock)
+    request_scheduler_reload()
     return _stock_to_response(db_stock, _agent_display_names(db, [db_stock]))
 
 

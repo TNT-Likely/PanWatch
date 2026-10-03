@@ -132,8 +132,10 @@ def test_try_auto_trigger_fires_when_should():
     """try_auto_trigger 在满足条件时调 fire_and_forget_trigger"""
     stock = MagicMock()
     stock.symbol = "601238"
+    stock.market = "CN"
     stock.change_pct = 8.0
-    with patch("src.modules.automation.tradingagents.operations.should_auto_trigger", return_value=(True, "test")), \
+    with patch("src.platform.scheduling.trading_calendar.market_status", return_value="trading"), \
+         patch("src.modules.automation.tradingagents.operations.should_auto_trigger", return_value=(True, "test")), \
          patch("src.modules.automation.tradingagents.operations.fire_and_forget_trigger", return_value="trace-abc") as fire:
         result = auto_trigger.try_auto_trigger(stock)
     assert result == "trace-abc"

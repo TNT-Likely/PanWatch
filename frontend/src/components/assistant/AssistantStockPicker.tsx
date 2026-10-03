@@ -113,7 +113,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
         {loading && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
       </label>
 
-      <div className="mt-2 max-h-56 overflow-y-auto overscroll-contain">
+      <div className="mt-2 max-h-56 overflow-y-auto overscroll-contain scrollbar">
         {error && <p className="px-3 py-3 text-[12px] text-destructive">{error}</p>}
         {!loading && !error && query.trim() && results.length === 0 && (
           <p className="px-3 py-3 text-[12px] text-muted-foreground">{assistantT('assistantPage.stockPicker.empty')}</p>

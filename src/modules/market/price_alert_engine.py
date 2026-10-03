@@ -15,6 +15,7 @@ from src.platform.marketdata.collectors.kline_collector import KlineCollector, k
 from src.platform.notifications.notifier import NotifierManager
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
+from src.platform.marketdata.quote_display import quote_date_is_current
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
 from src.platform.language import resolve_report_language
@@ -49,8 +50,8 @@ def _is_trading_time(market: MarketCode) -> bool:
     return market_def.is_trading_time()
 
 
-def _day_key(now: datetime) -> str:
-    return now.astimezone(timezone.utc).strftime("%Y-%m-%d")
+def _day_key(now: datetime, market: str) -> str:
+    return now.astimezone(MARKETS[_to_market(market)].get_tz()).strftime("%Y-%m-%d")
 
 
 def _minute_bucket(now: datetime) -> str:
@@ -235,11 +236,17 @@ class PriceAlertEngine:
             if now > exp:
                 return False, "expired"
 
+        # Automatic alerts always require a confirmed trading day. "always"
+        # means all hours on that day; dry-run tests may inspect historical quotes.
+        if not bypass_market_hours:
+            from src.platform.scheduling.trading_calendar import is_trading_day
+            if not is_trading_day(rule.stock.market):
+                return False, "non_trading_day"
         if rule.market_hours_mode == "trading_only" and not bypass_market_hours:
             if not _is_trading_time(_to_market(rule.stock.market)):
                 return False, "non_trading"
 
-        today = _day_key(now)
+        today = _day_key(now, rule.stock.market)
         if (rule.trigger_date or "") != today:
             rule.trigger_date = today
             rule.trigger_count_today = 0
@@ -338,6 +345,7 @@ class PriceAlertEngine:
         dry_run: bool = False,
         bypass_market_hours: bool = False,
     ) -> dict:
+        bypass_market_hours = bool(bypass_market_hours and dry_run)
         now = _utc_now()
         db = SessionLocal()
         try:
@@ -348,7 +356,10 @@ class PriceAlertEngine:
             if not rules:
                 return {"total_rules": 0, "triggered": 0, "skipped": 0, "items": []}
 
-            stocks = [r.stock for r in rules if r.stock is not None]
+            # Apply the gate before any quote/K-line request.
+            gates = {r.id: self._can_trigger(r, now, bypass_market_hours=bypass_market_hours)
+                     for r in rules if r.stock is not None}
+            stocks = [r.stock for r in rules if r.stock is not None and gates[r.id][0]]
             quote_map = await self._fetch_quotes_map(stocks)
 
             items: list[dict] = []
@@ -361,11 +372,21 @@ class PriceAlertEngine:
                     skipped += 1
                     items.append({"rule_id": rule.id, "status": "no_stock"})
                     continue
+                can, reason = gates[rule.id]
+                if not can:
+                    skipped += 1
+                    items.append({"rule_id": rule.id, "status": "gated", "reason": reason})
+                    continue
                 market = _to_market(stock.market)
                 quote = quote_map.get((market.value, stock.symbol))
                 if not quote:
                     skipped += 1
                     items.append({"rule_id": rule.id, "status": "no_quote"})
+                    continue
+
+                if not dry_run and not quote_date_is_current(stock.market, quote):
+                    skipped += 1
+                    items.append({"rule_id": rule.id, "status": "stale_quote"})
                     continue
 
                 can, reason = self._can_trigger(
@@ -413,7 +434,7 @@ class PriceAlertEngine:
                 rule.last_trigger_at = now
                 rule.last_trigger_price = _safe_float(quote.get("current_price"))
                 rule.trigger_count_today = int(rule.trigger_count_today or 0) + 1
-                rule.trigger_date = _day_key(now)
+                rule.trigger_date = _day_key(now, rule.stock.market)
                 if rule.repeat_mode == "once":
                     rule.enabled = False
 

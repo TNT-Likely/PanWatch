@@ -13,7 +13,7 @@ So we normalize numeric day_of_week fields before creating CronTrigger.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable
 from zoneinfo import ZoneInfo
 
@@ -173,6 +173,9 @@ def preview_schedule(
     count: int = 5,
     timezone: str = "UTC",
     start: datetime | None = None,
+    markets: Iterable | None = None,
+    trading_hours_only: bool = False,
+    end: datetime | None = None,
 ) -> list[datetime]:
     """Return next N run times for a schedule.
 
@@ -186,14 +189,30 @@ def preview_schedule(
     tz = ZoneInfo(timezone)
     now = start.astimezone(tz) if start else datetime.now(tz)
 
+    from src.platform.scheduling.trading_calendar import eligible_markets, next_eligible_time
+
+    target_markets = list(markets) if markets is not None else None
+    if target_markets == []:
+        return []
     out: list[datetime] = []
     prev = None
     current = now
-    for _ in range(count):
+    limit = end or now + timedelta(days=370)
+    for _ in range(max(1000, count * 10)):
         nxt = trigger.get_next_fire_time(prev, current)
-        if not nxt:
+        if not nxt or nxt > limit:
             break
+        if target_markets is not None and not eligible_markets(target_markets, nxt, trading_hours_only=trading_hours_only):
+            boundaries = [boundary for market in target_markets
+                          if (boundary := next_eligible_time(market, nxt, trading_hours_only=trading_hours_only)) is not None]
+            if not boundaries:
+                break
+            current = min(boundaries).astimezone(tz)
+            prev = None
+            continue
         out.append(nxt)
+        if len(out) >= count:
+            break
         prev = nxt
         current = nxt
     return out
@@ -206,23 +225,13 @@ def count_runs_within(
     end: datetime,
     timezone: str = "UTC",
     max_iters: int = 20000,
+    markets: Iterable | None = None,
+    trading_hours_only: bool = False,
 ) -> int:
     """Count fire times within (start, end]."""
     if not schedule or end <= start:
         return 0
 
-    trigger = parse_schedule(schedule, timezone=timezone)
-
-    count = 0
-    prev = None
-    current = start
-    for _ in range(max_iters):
-        nxt = trigger.get_next_fire_time(prev, current)
-        if not nxt:
-            break
-        if nxt > end:
-            break
-        count += 1
-        prev = nxt
-        current = nxt
-    return count
+    return len(preview_schedule(schedule, count=max_iters, timezone=timezone,
+                                start=start + timedelta(microseconds=1), end=end,
+                                markets=markets, trading_hours_only=trading_hours_only))

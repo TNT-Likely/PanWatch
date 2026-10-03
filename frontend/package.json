@@ -9,12 +9,13 @@
     "pnpm": "9.15.9"
   },
   "scripts": {
-    "check:i18n": "node scripts/check-i18n-literals.mjs",
+    "check:i18n": "node scripts/check-i18n-literals.mjs && node scripts/check-ui-primitives.mjs",
     "check:market-colors": "node scripts/check-market-colors.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:ui": "node scripts/check-ui-primitives.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

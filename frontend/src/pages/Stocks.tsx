@@ -1,3 +1,4 @@
+import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
@@ -28,7 +29,8 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
-import { mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
+import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
+import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
 
@@ -146,16 +148,6 @@ interface PoolSuggestion {
   should_alert?: boolean
 }
 
-interface MarketStatus {
-  code: string
-  name: string
-  status: string
-  status_text: string
-  is_trading: boolean
-  sessions: string[]
-  local_time: string
-}
-
 interface NewsItem {
   source: string
   source_label: string
@@ -210,6 +202,7 @@ const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, {
 export default function StocksPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation('configuration')
+  const confirmAction = useConfirm()
   const stockT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const klineT = (key: string, options?: Record<string, unknown>) =>
     stockT(`bizUi:kline.${key}`, options)
@@ -273,6 +266,9 @@ export default function StocksPage() {
 
   // Market status
   const [marketStatus, setMarketStatus] = useState<MarketStatus[]>([])
+  const marketStatusRef = useRef<MarketStatus[]>([])
+  const previousMarketStatusRef = useRef<MarketStatus[]>([])
+  marketStatusRef.current = marketStatus
   // Guard to prevent overlapping K线刷新任务导致实际并发超限
   const klineRefreshInFlight = useRef<Promise<void> | null>(null)
   const initialLoadPromiseRef = useRef<Promise<void> | null>(null)
@@ -510,15 +506,18 @@ export default function StocksPage() {
     }
   }, [refreshMarketStatus])
 
-  const refreshQuotes = useCallback(async () => {
-    const items = buildQuoteItems()
+  const refreshQuotes = useCallback(async (automatic = false) => {
+    const statuses = marketStatusRef.current
+    const items = buildQuoteItems().filter(item => !automatic ||
+      !statuses.some(status => status.code === item.market) ||
+      statuses.some(status => status.code === item.market && status.is_trading))
     if (items.length === 0) return
 
     setQuotesLoading(true)
     try {
       const data = await requestQuotes(items)
       if (data.length > 0) {
-        setQuotes(toQuoteMap(data))
+        setQuotes(previous => ({ ...previous, ...toQuoteMap(data) }))
         setLastRefreshTime(new Date())
       }
     } finally {
@@ -528,8 +527,8 @@ export default function StocksPage() {
 
   useEffect(() => {
     if (!portfolioRaw) return
-    setPortfolio(mergePortfolioQuotes(portfolioRaw, quotes))
-  }, [portfolioRaw, quotes])
+    setPortfolio(mergePortfolioQuotes(portfolioRaw, applyMarketStatuses(quotes, marketStatus)))
+  }, [portfolioRaw, quotes, marketStatus])
 
   // 刷新 K 线摘要（批量接口）；并防止重入
   const refreshKlines = useCallback(async () => {
@@ -544,6 +543,14 @@ export default function StocksPage() {
     klineRefreshInFlight.current = run
     try { await run } finally { klineRefreshInFlight.current = null }
   }, [buildQuoteItems, requestKlineSummaries])
+
+  // Fetch the closing snapshot once, then stop polling closed-market quotes.
+  useEffect(() => {
+    const previous = previousMarketStatusRef.current
+    previousMarketStatusRef.current = marketStatus
+    if (autoRefresh && marketStatus.some(market => market.status === 'after_hours' &&
+      previous.some(old => old.code === market.code && old.is_trading))) void refreshQuotes()
+  }, [marketStatus, autoRefresh, refreshQuotes])
 
   // 从建议池加载建议（包含历史建议和多来源建议）
   const loadPoolSuggestions = useCallback(async (itemsOverride?: QuoteRequestItem[]) => {
@@ -802,16 +809,16 @@ export default function StocksPage() {
     if (!agents || agents.length === 0) return
 
     const stockAgentMap = new Map((agentDialogStock.agents || []).map(a => [a.agent_name, a]))
-    const schedules = new Set<string>()
+    const schedules = new Map<string, { schedule: string; agent: string }>()
     for (const agent of agents) {
       if (agent.execution_mode === 'batch') continue
       const sa = stockAgentMap.get(agent.name)
       if (!sa) continue
       const eff = effectiveSchedule(agent, sa)
-      if (eff) schedules.add(eff)
+      if (eff) schedules.set(`${agent.name}|${agentDialogStock?.market}|${eff}`, { schedule: eff, agent: agent.name })
     }
 
-    const toFetch = Array.from(schedules).filter(s => !schedulePreviewCache[s] && !schedulePreviewLoading[s])
+    const toFetch = Array.from(schedules.keys()).filter(s => !schedulePreviewCache[s] && !schedulePreviewLoading[s])
     if (toFetch.length === 0) return
 
     let cancelled = false
@@ -825,7 +832,8 @@ export default function StocksPage() {
       try {
         const pairs = await Promise.all(toFetch.map(async s => {
           try {
-            const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(s)}&count=5`)
+            const plan = schedules.get(s)!
+            const p = await fetchAPI<SchedulePreview>(`/agents/schedule/preview?schedule=${encodeURIComponent(plan.schedule)}&agent_name=${encodeURIComponent(plan.agent)}&market=${agentDialogStock.market}&count=5`)
             return [s, p] as const
           } catch (e) {
             const msg = e instanceof Error ? e.message : stockT('stocksPage.messages.previewFailed')
@@ -867,9 +875,9 @@ export default function StocksPage() {
   // Auto-refresh timer
   useEffect(() => {
     if (autoRefresh) {
-      refreshQuotes()
+      refreshQuotes(true)
       refreshTimerRef.current = setInterval(() => {
-        refreshQuotes()
+        refreshQuotes(true)
       }, refreshInterval * 1000)
     } else {
       // Clear interval when disabled
@@ -1021,7 +1029,7 @@ export default function StocksPage() {
   }
 
   const handleDeleteAccount = async (id: number) => {
-    if (!confirm(stockT('stocksPage.messages.deleteAccountConfirm'))) return
+    if (!(await confirmAction(stockT('stocksPage.messages.deleteAccountConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/accounts/${id}`, { method: 'DELETE' })
       load()
@@ -1167,7 +1175,7 @@ export default function StocksPage() {
   }
 
   const handleDeletePosition = async (id: number) => {
-    if (!confirm(stockT('stocksPage.messages.deletePositionConfirm'))) return
+    if (!(await confirmAction(stockT('stocksPage.messages.deletePositionConfirm'), { destructive: true }))) return
     try {
       await fetchAPI(`/positions/${id}`, { method: 'DELETE' })
       loadPortfolio()
@@ -1290,8 +1298,6 @@ export default function StocksPage() {
     const date = quote.quote_date ? stockT('stocksPage.quoteStatus.asOf', { date: quote.quote_date }) : ''
     return [label, date].filter(Boolean).join(' · ')
   }
-  const marketStatusLabel = (status: string, fallback: string) =>
-    stockT(`stocksPage.marketStatus.${status}`, { defaultValue: fallback })
 
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
@@ -1530,29 +1536,7 @@ export default function StocksPage() {
 
         {/* 移动端 row 2：市场状态 + 自动刷新 + 时间戳合并到同一行,横向滚动避免换行；桌面端只展示市场 pills (auto-refresh 在桌面顶部已展示) */}
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:flex-wrap md:overflow-visible">
-          {marketStatus.map(m => {
-            const statusColors: Record<string, string> = {
-              trading: 'bg-emerald-500',
-              pre_market: 'bg-amber-500',
-              break: 'bg-amber-500',
-              after_hours: 'bg-slate-400',
-              closed: 'bg-slate-400',
-            }
-            const localizedStatus = marketStatusLabel(m.status, m.status_text)
-            return (
-              <div
-                key={m.code}
-                className="shrink-0 flex items-center gap-1 md:gap-1.5"
-                title={`${m.sessions.join(', ')} (${m.local_time}) · ${localizedStatus}`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${statusColors[m.status] || 'bg-slate-400'}`} />
-                <span className="text-[11px] text-muted-foreground">{marketLabel(m.code)}</span>
-                <span className={`text-[10px] ${m.is_trading ? 'text-emerald-600' : 'text-muted-foreground/60'} hidden sm:inline`}>
-                  {localizedStatus}
-                </span>
-              </div>
-            )
-          })}
+          {marketStatus.length > 0 && <MarketCalendarStatus markets={marketStatus} labelMarket={marketLabel} />}
           {/* 移动端紧凑型自动刷新控件 */}
           <div className="flex md:hidden shrink-0 items-center gap-1 px-2 py-0.5 rounded-full bg-accent/30 ml-1">
             <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-75" />
@@ -1879,7 +1863,7 @@ export default function StocksPage() {
                   ) : (
                     <>
                       {/* Desktop Table */}
-                      <div className="hidden md:block overflow-x-auto">
+                      <div className="hidden md:block overflow-x-auto scrollbar">
                         <table className="w-full">
                           <thead>
                             <tr className="border-b border-border/30 bg-accent/20">
@@ -2805,8 +2789,9 @@ export default function StocksPage() {
                         {(() => {
                           const eff = effectiveSchedule(agent, stockAgent)
                           const isFollowingGlobal = !(stockAgent?.schedule || '').trim() && !!(agent.schedule || '').trim()
-                          const preview = eff ? schedulePreviewCache[eff] : null
-                          const isLoading = eff ? !!schedulePreviewLoading[eff] : false
+                          const previewKey = `${agent.name}|${agentDialogStock?.market}|${eff}`
+                          const preview = eff ? schedulePreviewCache[previewKey] : null
+                          const isLoading = eff ? !!schedulePreviewLoading[previewKey] : false
                           if (!eff) return null
                           return (
                             <div className="ml-[22px] rounded-lg border border-border/40 bg-background/30 px-2.5 py-2">
@@ -2991,7 +2976,7 @@ export default function StocksPage() {
           </div>
 
           {/* 新闻列表 */}
-          <div className="flex-1 overflow-y-auto min-h-0 py-2">
+          <div className="flex-1 overflow-y-auto min-h-0 py-2 scrollbar">
             {newsLoading ? (
               <div className="flex items-center justify-center py-12">
                 <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />

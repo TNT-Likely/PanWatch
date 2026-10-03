@@ -468,28 +468,25 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     async def get_market_status(_request: RunRequest, _arguments: dict) -> ToolResult:
+        from src.platform.scheduling import trading_calendar
         markets = []
         for code, definition in MARKETS.items():
             try:
-                is_trading = definition.is_trading_time()
+                status = trading_calendar.market_status(code)
+                is_trading = status == "trading"
             except Exception:  # noqa: BLE001 - calendar failures stay in the result
+                status = "unknown"
                 is_trading = None
             sessions = [
                 f"{item.start.strftime('%H:%M')}-{item.end.strftime('%H:%M')}"
-                for item in definition.sessions
+                for item in trading_calendar.trading_sessions(code)
             ]
             markets.append(
                 {
                     "market": code.value,
                     "name": definition.name,
                     "timezone": definition.timezone,
-                    "status": (
-                        "trading"
-                        if is_trading is True
-                        else "closed"
-                        if is_trading is False
-                        else "unknown"
-                    ),
+                    "status": status,
                     "is_trading": is_trading,
                     "sessions": sessions,
                 }

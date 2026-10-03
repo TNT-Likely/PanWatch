@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.platform.marketdata.outcome_prices import completed_outcome_bar
+
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
@@ -973,7 +975,7 @@ def _merge_market_scan_seed(
     return added
 
 
-def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
+def _load_market_scan_inputs(limit_per_market: int = 60, *, markets: list[str] | None = None) -> dict[str, dict]:
     collector = EastMoneyDiscoveryCollector(
         proxy=_resolve_market_scan_proxy(),
     )
@@ -981,7 +983,7 @@ def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
     safe_limit = max(20, int(limit_per_market))
     min_required = min(max(12, int(safe_limit * 0.55)), safe_limit)
 
-    for market in ("CN", "HK", "US"):
+    for market in (("CN", "HK", "US") if markets is None else markets):
         try:
             turnover = _run_async(
                 collector.fetch_hot_stocks(
@@ -1102,7 +1104,7 @@ def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
                 )
 
     # Final per-market cap and stable ordering.
-    for market in ("CN", "HK", "US"):
+    for market in (("CN", "HK", "US") if markets is None else markets):
         keys = [k for k in result.keys() if k.startswith(f"{market}:")]
         if len(keys) <= safe_limit:
             continue
@@ -1115,13 +1117,14 @@ def _load_market_scan_inputs(limit_per_market: int = 60) -> dict[str, dict]:
     return result
 
 
-def _persist_market_scan_snapshot(snapshot: str, market_scan_map: dict[str, dict]) -> None:
+def _persist_market_scan_snapshot(snapshot: str, market_scan_map: dict[str, dict], *, markets: list[str] | None = None) -> None:
     if not snapshot:
         return
     db = SessionLocal()
     try:
         db.query(MarketScanSnapshot).filter(
-            MarketScanSnapshot.snapshot_date == snapshot
+            MarketScanSnapshot.snapshot_date == snapshot,
+            MarketScanSnapshot.stock_market.in_(markets) if markets is not None else True,
         ).delete(synchronize_session=False)
         rows = sorted(
             market_scan_map.values(),
@@ -1254,11 +1257,17 @@ def refresh_entry_candidates(
     snapshot_date: str | None = None,
     market_scan_limit: int = 60,
     max_kline_symbols: int = 72,
+    markets: list[str] | None = None,
 ) -> dict:
     snapshot = (snapshot_date or date.today().strftime("%Y-%m-%d")).strip()
+    if markets == []:
+        return {"snapshot_date": snapshot, "count": 0, "items": []}
     suggestions = _load_latest_suggestions(limit=max_inputs)
-    market_scan_map = _load_market_scan_inputs(limit_per_market=max(20, int(market_scan_limit)))
-    _persist_market_scan_snapshot(snapshot, market_scan_map)
+    if markets is not None:
+        suggestions = [s for s in suggestions if s.stock_market in markets]
+    scan_kwargs = {"markets": markets} if markets is not None else {}
+    market_scan_map = _load_market_scan_inputs(limit_per_market=max(20, int(market_scan_limit)), **scan_kwargs)
+    _persist_market_scan_snapshot(snapshot, market_scan_map, **scan_kwargs)
     holding_keys = _load_holding_keys()
 
     input_map: dict[str, dict] = dict(market_scan_map)
@@ -1376,7 +1385,8 @@ def refresh_entry_candidates(
     items: list[dict] = []
     try:
         db.query(EntryCandidate).filter(
-            EntryCandidate.snapshot_date == snapshot
+            EntryCandidate.snapshot_date == snapshot,
+            EntryCandidate.stock_market.in_(markets) if markets is not None else True,
         ).delete(synchronize_session=False)
 
         for key, inp in input_map.items():
@@ -1732,11 +1742,12 @@ def evaluate_entry_candidate_outcomes(
                     stats["skipped_not_due"] += 1
                     continue
 
-                stats["eligible"] += 1
-                outcome_price = _pick_close_on_or_before(klines, target_day)
-                if outcome_price is None:
-                    stats["skipped_no_price"] += 1
+                bar = completed_outcome_bar(klines, snap_day, horizon, c.stock_market)
+                if bar is None:
+                    stats["skipped_not_due"] += 1
                     continue
+                target_day, outcome_price = bar
+                stats["eligible"] += 1
 
                 base_price = None
                 if c.entry_low is not None and c.entry_high is not None:
@@ -1792,6 +1803,7 @@ def evaluate_entry_candidate_outcomes(
                     outcome_status=status,
                     meta=to_jsonable(
                         {
+                            "horizon_unit": "trading_days",
                             "candidate_score": float(c.score or 0),
                             "action": c.action or "",
                             "action_label": c.action_label or "",

@@ -31,15 +31,7 @@ class MarketDef:
 
     def is_trading_time(self, dt: datetime | None = None) -> bool:
         """判断给定时间是否在交易时段内"""
-        if dt is None:
-            dt = datetime.now(self.get_tz())
-        else:
-            dt = dt.astimezone(self.get_tz())
-
-        # 非交易日(周末 / A股法定节假日)一律不交易。
-        # 延迟导入:trading_calendar 依赖本模块的 MarketCode/MARKETS。
         from src.platform.scheduling.trading_calendar import market_status
-
         return market_status(self.code, dt) == "trading"
 
 

@@ -12,7 +12,8 @@ from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
-from src.platform.scheduling.schedule_parser import preview_schedule
+from src.modules.automation.scheduling_policy import schedule_plans, request_scheduler_reload
+from src.platform.scheduling.schedule_parser import parse_schedule, preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
 from src.platform.runtime.config import Settings
 from src.web.errors import ai_api_error, api_error
@@ -128,13 +129,15 @@ def agents_health(
 
     for a in agents:
         next_runs: list[str] = []
-        if a.enabled and (a.schedule or "").strip():
+        if a.enabled:
             try:
-                runs = preview_schedule(a.schedule, count=3, timezone=tz)
-                next_runs = [r.isoformat() for r in runs]
-                next_24h_count += count_runs_within(
-                    a.schedule, start=now, end=horizon, timezone=tz
-                )
+                runs = []
+                for plan in schedule_plans(db, a):
+                    runs.extend(preview_schedule(plan.schedule, count=3, timezone=tz, start=now,
+                        markets=plan.markets, trading_hours_only=a.name == "intraday_monitor"))
+                    next_24h_count += count_runs_within(plan.schedule, start=now, end=horizon,
+                        timezone=tz, markets=plan.markets, trading_hours_only=a.name == "intraday_monitor")
+                next_runs = [r.isoformat() for r in sorted(set(runs))[:3]]
             except Exception:
                 next_runs = []
 
@@ -283,6 +286,11 @@ def update_agent(
     if not agent:
         raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
 
+    if update.schedule:
+        try:
+            parse_schedule(update.schedule)
+        except ValueError as exc:
+            raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
     for key, value in update.model_dump(exclude_unset=True).items():
         if key == "config":
             value = _public_agent_config(value)
@@ -296,52 +304,52 @@ def update_agent(
 
     db.commit()
     db.refresh(agent)
+    request_scheduler_reload()
     return _agent_to_response(agent)
 
 
 @router.get("/schedule/preview")
-def preview_schedule_expr(schedule: str, count: int = 5):
-    """预览某个 schedule 表达式接下来几次触发时间（按调度时区）"""
+def preview_schedule_expr(schedule: str, count: int = Query(default=5, ge=1, le=50),
+                          agent_name: str = "", market: str = "", db: Session = Depends(get_db)):
+    """Preview actual eligible runs for an agent/market; keep raw Cron validation available."""
     tz = Settings().app_timezone or "UTC"
-    if not schedule:
-        return {"schedule": "", "timezone": tz, "next_runs": []}
-
+    markets = None
+    if market:
+        from src.platform.scheduling.trading_calendar import _to_market_code
+        code = _to_market_code(market)
+        if code is None:
+            raise api_error(400, "market_invalid", "市场代码无效")
+        markets = [code]
+    elif agent_name:
+        agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
+        if agent is None:
+            raise api_error(404, "agent_not_found", "Agent 不存在")
+        plans = schedule_plans(db, agent, global_schedule=schedule)
+        markets = sorted({market for plan in plans if plan.stock_agent_id is None for market in plan.markets})
     try:
-        runs = preview_schedule(schedule, count=count, timezone=tz)
-    except Exception as e:
-        logger.warning("调度表达式无法解析: %s", e)
-        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from e
-
-    return {
-        "schedule": schedule,
-        "timezone": tz,
-        "next_runs": [r.isoformat() for r in runs],
-    }
+        runs = preview_schedule(schedule, count=count, timezone=tz, markets=markets,
+                                trading_hours_only=agent_name == "intraday_monitor") if schedule else []
+    except ValueError as exc:
+        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
+    return {"schedule": schedule, "timezone": tz, "next_runs": [r.isoformat() for r in runs],
+            "calendar_filtered": markets is not None}
 
 
 @router.get("/{agent_name}/schedule/preview")
-def preview_agent_schedule(
-    agent_name: str, count: int = 5, db: Session = Depends(get_db)
-):
-    """预览某个 Agent 接下来几次的触发时间（按调度时区）"""
+def preview_agent_schedule(agent_name: str, count: int = Query(default=5, ge=1, le=50),
+                           db: Session = Depends(get_db)):
     tz = Settings().app_timezone or "UTC"
     agent = db.query(AgentConfig).filter(AgentConfig.name == agent_name).first()
     if not agent:
         raise api_error(404, "agent_not_found", f"Agent {agent_name} 不存在")
-    if not agent.schedule:
-        return {"schedule": "", "timezone": tz, "next_runs": []}
-
     try:
-        runs = preview_schedule(agent.schedule, count=count, timezone=tz)
-    except Exception as e:
-        logger.warning("Agent %s 调度表达式无法解析: %s", agent_name, e)
-        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from e
-
-    return {
-        "schedule": agent.schedule,
-        "timezone": tz,
-        "next_runs": [r.isoformat() for r in runs],
-    }
+        runs = [run for plan in schedule_plans(db, agent)
+                for run in preview_schedule(plan.schedule, count=count, timezone=tz,
+                    markets=plan.markets, trading_hours_only=agent_name == "intraday_monitor")]
+    except ValueError as exc:
+        raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
+    return {"schedule": agent.schedule, "timezone": tz,
+            "next_runs": [r.isoformat() for r in sorted(set(runs))[:count]], "calendar_filtered": True}
 
 
 @router.delete("/{agent_name}")
@@ -358,6 +366,7 @@ def delete_agent(agent_name: str, db: Session = Depends(get_db)):
 
     db.delete(agent)
     db.commit()
+    request_scheduler_reload()
     return {"ok": True, "message": f"Agent {agent_name} 已删除"}
 
 

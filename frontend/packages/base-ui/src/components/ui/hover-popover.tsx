@@ -77,7 +77,7 @@ export function HoverPopover({
             {title}
           </div>
         )}
-        <div className="text-[11px] leading-relaxed text-muted-foreground max-h-72 overflow-y-auto pr-1">
+        <div className="text-[11px] leading-relaxed text-muted-foreground max-h-72 overflow-y-auto pr-1 scrollbar">
           {content}
         </div>
       </PopoverContent>

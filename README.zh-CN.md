@@ -2,13 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**把自选与持仓变成全天候 AI 投研工作台。** PanWatch 将 A 股 / 港股 / 美股实时监控、持仓管理、智能分析和全渠道推送整合在你自己的基础设施中。
+管理 A 股、港股和美股持仓，监控行情与提醒，并通过 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 进行深度分析。自托管部署，可接入你选择的 OpenAI 兼容服务商或 Ollama 本地模型。
 
-集成 [TradingAgents](https://github.com/TauricResearch/TradingAgents) 多 Agent 投资决策：专业分析、看多看空辩论、风险审查，最终形成投资组合经理决策。
-
-> 🌐 支持简体中文与英文。首次访问会跟随浏览器语言，手动切换后会记住你的选择。
-
-[快速开始](#快速开始) · [功能一览](#-功能一览) · [核心功能](#核心功能) · [本地开发](#本地开发) · [捐赠支持](#捐赠支持) · [参与贡献](#贡献)
+[快速开始](#快速开始) · [核心功能](#核心功能) · [功能一览](#-功能一览) · [详细说明](#详细说明) · [参与贡献](#贡献)
 
 [![GitHub stars](https://img.shields.io/github/stars/TNT-Likely/PanWatch?style=flat&logo=github&color=yellow)](https://github.com/TNT-Likely/PanWatch/stargazers)
 [![Docker Pulls](https://img.shields.io/docker/pulls/sunxiao0721/panwatch?logo=docker&label=docker%20pulls&color=2496ED)](https://hub.docker.com/r/sunxiao0721/panwatch)
@@ -30,93 +26,18 @@
 
 > 🧠 **持仓页点一下 → TradingAgents 9-Agent 投研团队接力分析 → 看多看空辩论 → 风控审查 → PM 决策书,3-5 分钟一条完整推理链,结论直推到你的 IM。**
 
-## 为什么选择盯盘侠？
-
-- **数据私有** — 自托管部署，持仓数据始终由你掌控
-- **面向行动的 AI** — 将行情、新闻、技术信号和持仓上下文转化为明确关注事项，而不是继续堆砌指标
-- **全天候运行** — 自动执行盘前、盘中和收盘 Agent，并推送至 Telegram、企业微信、钉钉、飞书、Bark 或 Webhook
-- **多市场、模型无关** — 覆盖 A 股、港股和美股，兼容 OpenAI API，也可通过 Ollama 使用本地模型
-
-## 📸 功能一览
-
-| 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
-|:---:|:---:|
-| ![持仓管理](./docs/screenshots/zh-CN/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/zh-CN/opportunities.png) |
-| **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
-| ![模拟盘](./docs/screenshots/zh-CN/papertrading.png) | ![个股详情](./docs/screenshots/zh-CN/stock-detail.png) |
-| **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
-| ![技术指标](./docs/screenshots/zh-CN/technicals.png) | ![价格提醒](./docs/screenshots/zh-CN/alerts.png) |
-
-<details>
-<summary>移动端截图</summary>
-
-<img src="./docs/screenshots/zh-CN/mobile.png" width="300" /> <img src="./docs/screenshots/zh-CN/mobile-detail.png" width="300" />
-
-> 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
-
-</details>
-
-> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
-
-## 🧠 深度分析：TradingAgents 多 Agent 决策
-
-接入 [TradingAgents](https://github.com/TauricResearch/TradingAgents)（76k+ star）多 Agent 投资决策框架，在持仓页点 🧠 图标即可触发：
-
-- **4 类分析师**（技术 / 情绪 / 新闻 / 基本面） → **看多看空辩论** → **风控审查** → **PM 整合决策**
-- 3-5 分钟输出完整推理链，结论同步推送到 Telegram / 微信 / 钉钉
-- 默认 deepseek-chat，单次 ~$0.05，月度预算可控
-- [查看 TradingAgents 深度分析流程图](docs/tradingagents-flow.md)
-- [阅读后端架构设计](src/ARCHITECTURE.md)
-
 ## 核心功能
 
-<details>
-<summary><b>智能 Agent 系统</b></summary>
-
-| Agent | 触发时机 | 功能 |
-|-------|---------|------|
-| **盘前分析** | 每日开盘前 | 综合隔夜美股、新闻消息、技术形态，给出今日操作策略 |
-| **盘中监测** | 交易时段实时 | 监控异动信号，RSI/KDJ/MACD 共振时推送提醒 |
-| **盘后日报** | 每日收盘后 | 复盘当日走势，分析资金流向，规划次日操作 |
-
-</details>
-
-<details>
-<summary><b>专业技术分析</b></summary>
-
-- **趋势指标**：MA 多空排列、MACD 金叉死叉、布林带突破
-- **动量指标**：RSI 超买超卖、KDJ 钝化与背离
-- **量价分析**：量比异动、缩量回调、放量突破
-- **形态识别**：锤子线、吞没形态、十字星等 K 线形态
-- **支撑压力**：自动计算多级支撑位和压力位
-
-</details>
-
-<details>
-<summary><b>多市场 & 多账户</b></summary>
-
-- **覆盖市场**：A 股、港股、美股实时行情
-- **账户管理**：支持多券商账户独立管理，汇总展示总资产
-- **交易风格**：按短线/波段/长线分别设置，AI 建议更精准
-
-</details>
-
-<details>
-<summary><b>全渠道通知</b></summary>
-
-Telegram / 企业微信 / 钉钉 / 飞书 / Bark / 自定义 Webhook
-
-</details>
-
-<details>
-<summary><b>价格提醒</b></summary>
-
-- 支持价格、涨跌幅、成交额、量比等条件组合（AND / OR）
-- 支持交易时段/全天生效、冷却时间、日触发上限、重复触发模式
-- 到期时间使用弹窗内日期面板 + `HH:mm` 输入，留空表示永不过期
-- 可按规则选择通知渠道，不选则走系统默认渠道
-
-</details>
+| 能力 | 可以做什么 |
+|---|---|
+| **持仓管理** | 管理多个券商账户，查看持仓和盈亏，设置交易风格。 |
+| **AI 投研** | 由技术、情绪、新闻、基本面分析进入看多看空辩论、风控审查和投资组合经理决策。 |
+| **定时 Agent** | 按已配置的周期，在对应市场交易日执行盘前、盘中和盘后工作流。 |
+| **价格提醒** | 用 AND / OR 组合条件，设置冷却时间、日上限、到期时间和通知渠道。 |
+| **机会发现** | 查看排序后的候选及其入场位、目标价和风险信息。 |
+| **模拟盘** | 模拟按信号建仓和平仓，查看净值和绩效。 |
+| **消息推送** | 通过 Telegram、企业微信、钉钉、飞书、Bark 或 Webhook 接收报告和提醒。 |
+| **移动端** | 将 PWA 添加到主屏幕，在手机上使用同一套工作台。 |
 
 ## 快速开始
 
@@ -129,11 +50,17 @@ docker run -d \
   sunxiao0721/panwatch:latest
 ```
 
-访问 `http://localhost:8000`，设置账号密码并连接 OpenAI 兼容服务商即可开始使用。首次访问会根据浏览器语言进入中文或英文界面。
+访问 `http://localhost:8000`，创建登录账号。
 
-说明：镜像内已包含 Playwright 运行所需的系统依赖；用于截图的 Chromium 无头浏览器（headless shell）会在容器首次启动时自动下载并安装到挂载卷（默认 `/app/data/playwright`），首次启动可能需要几分钟且需要网络可达。
+<details>
+<summary>首次配置</summary>
 
-如果不需要截图等浏览器能力，可以在启动容器时设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过首次 Chromium 下载/安装。
+1. 访问 Web 界面，设置登录账号
+2. **设置 → AI 服务商**：配置 OpenAI 兼容 API（支持 OpenAI / 智谱 / DeepSeek / Ollama 等）
+3. **设置 → 通知渠道**：添加 Telegram 或其他推送渠道
+4. **持仓 → 添加股票**：添加自选股，启用对应 Agent
+
+</details>
 
 <details>
 <summary>Docker Compose</summary>
@@ -160,6 +87,87 @@ docker compose up -d
 </details>
 
 <details>
+<summary>首次启动与浏览器安装</summary>
+
+镜像已包含 Playwright 的系统依赖。用于截图的 Chromium 无头浏览器会在首次启动时下载到挂载卷（默认 `/app/data/playwright`），需要网络可达，可能耗时几分钟。
+
+不需要截图等浏览器能力时，可设置 `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` 跳过安装。
+
+</details>
+
+## 📸 功能一览
+
+| 持仓 · 多账户汇总 | 机会页 · AI 评分选股 |
+|:---:|:---:|
+| ![持仓管理](./docs/screenshots/zh-CN/portfolio.png) | ![机会页 AI 评分](./docs/screenshots/zh-CN/opportunities.png) |
+| **模拟盘 · 净值曲线 + 绩效** | **个股深度详情** |
+| ![模拟盘](./docs/screenshots/zh-CN/papertrading.png) | ![个股详情](./docs/screenshots/zh-CN/stock-detail.png) |
+| **技术指标共振 · 一眼 MACD/RSI/KDJ** | **价格提醒 · 条件组合触发** |
+| ![技术指标](./docs/screenshots/zh-CN/technicals.png) | ![价格提醒](./docs/screenshots/zh-CN/alerts.png) |
+
+<details>
+<summary>移动端截图</summary>
+
+<img src="./docs/screenshots/zh-CN/mobile.png" width="300" /> <img src="./docs/screenshots/zh-CN/mobile-detail.png" width="300" />
+
+> 📱 支持 PWA，移动端可「添加到主屏幕」当原生 App 用。
+
+</details>
+
+> 💡 如果盯盘侠对你有帮助，点右上角 ⭐ **Star** 支持一下 —— 这是对开源项目最好的鼓励，也能让更多人发现它。
+
+## 详细说明
+
+<details>
+<summary>定时 Agent 与深度分析</summary>
+
+| Agent | 用途 |
+|---|---|
+| **盘前分析** | 综合隔夜走势、新闻和技术形态，形成操作计划。 |
+| **盘中监测** | 在开市时监控行情异动与技术信号。 |
+| **盘后日报** | 复盘当日交易，为下个交易日准备计划。 |
+
+执行周期可配置。自动运行在采集和分析前过滤交易所休市日，盘中任务还需满足交易时段。
+
+点击持仓旁的脑图标，可启动 TradingAgents 深度分析。四类分析师进入看多看空辩论、风控审查和投资组合经理决策，推理过程可在应用内查看，也可通过配置的通知渠道推送。耗时和费用取决于选择的模型与配置。
+
+[深度分析流程图](docs/tradingagents-flow.md) · [后端架构](src/ARCHITECTURE.md)
+
+</details>
+
+<details>
+<summary>交易日历与执行规则</summary>
+
+- 点击市场状态栏，可对照三个市场未来 14 个日期是否交易。开盘和交易时段换算为浏览器所在时区；交易日期和当前状态按各市场当地日期判断。
+- 非交易日显示休市，当日交易结束后显示已收盘。北京时间周六上午，纽约可能仍是周五收盘后。
+- 应用内置 2026 年公布的休市日与半日市；启动只预热过去 30 天、未来 90 天，不请求全历史日历。未公布年份的工作日显示日历待更新，并暂停自动执行；跨年前需补充下一年度数据。
+- 保留已配置的 Agent Cron / 间隔，执行与时间预览共用交易日过滤。价格提醒的“全天”也只在交易日生效。
+- 模拟盘成交必须处于对应股票市场的交易时段；模拟盘通知按各交易所当地时间调度，兼容半日市与美股夏令时变化。
+
+</details>
+
+<details>
+<summary><b>专业技术分析</b></summary>
+
+- **趋势指标**：MA 多空排列、MACD 金叉死叉、布林带突破
+- **动量指标**：RSI 超买超卖、KDJ 钝化与背离
+- **量价分析**：量比异动、缩量回调、放量突破
+- **形态识别**：锤子线、吞没形态、十字星等 K 线形态
+- **支撑压力**：自动计算多级支撑位和压力位
+
+</details>
+
+<details>
+<summary><b>价格提醒</b></summary>
+
+- 支持价格、涨跌幅、成交额、量比等条件组合（AND / OR）
+- 支持仅交易时段 / 交易日全天生效、冷却时间、日触发上限、重复触发模式
+- 到期时间使用弹窗内日期面板 + `HH:mm` 输入，留空表示永不过期
+- 可按规则选择通知渠道，不选则走系统默认渠道
+
+</details>
+
+<details>
 <summary>环境变量</summary>
 
 | 变量名 | 说明 | 默认值 |
@@ -168,21 +176,11 @@ docker compose up -d
 | `AUTH_PASSWORD` | 预设登录密码 | 首次访问时设置 |
 | `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
 | `DATA_DIR` | 数据存储目录 | `./data` |
-| `TZ` | 应用时区（影响 Agent 调度触发时间与时间展示） | `Asia/Shanghai` |
+| `TZ` | Agent 调度的应用时区；交易日历时间按浏览器时区展示 | `Asia/Shanghai` |
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | 跳过首次 Chromium 安装（不需要截图时可用） | 未设置 |
 | `LOG_LEVEL` | 控制台日志级别。默认 `INFO`（只输出业务事件 + 错误）；排查问题时设 `DEBUG` 可看到调度心跳、采集过程等底层日志。UI 日志板始终保留完整记录，不受影响 | `INFO` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` | 出站 HTTP 代理。三种配置方式任选其一: ① 启动前 `export HTTP_PROXY=...`；② `.env` 里写 `http_proxy=http://host:port`；③ UI「设置 → 全局 HTTP 代理」。三者优先级:外部环境变量 > UI > `.env`。生效后所有 httpx 客户端走代理。`NO_PROXY` 默认包含 `localhost,127.0.0.1` | 未设置 |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry OTLP 导出端点(如 `http://jaeger:4318`)。**配置后**才启用 OTel trace 导出;留空则完全关闭(零副作用)。还需安装可选依赖 `requirements-otel.txt`。详见下方「OTel 导出」 | 未设置(关闭) |
-
-</details>
-
-<details>
-<summary>首次配置</summary>
-
-1. 访问 Web 界面，设置登录账号
-2. **设置 → AI 服务商**：配置 OpenAI 兼容 API（支持 OpenAI / 智谱 / DeepSeek / Ollama 等）
-3. **设置 → 通知渠道**：添加 Telegram 或其他推送渠道
-4. **持仓 → 添加股票**：添加自选股，启用对应 Agent
 
 </details>
 
@@ -205,7 +203,8 @@ cd frontend && pnpm install && pnpm dev       # 前端 :5183
 ```
 
 前端 dev server 跑在 `http://localhost:5183`，并把 `/api` 代理到 `127.0.0.1:8000`。
-前端用 `:5183` 而非默认 `:5173`，是为了和 BeeCount-Cloud 等本地常驻前端错开。
+
+[前端 UI 约定与检查](frontend/UI_GUIDELINES.zh-CN.md)
 
 </details>
 

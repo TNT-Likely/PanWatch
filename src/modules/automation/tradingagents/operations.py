@@ -166,12 +166,15 @@ def fire_and_forget_trigger(stock: Any, source_agent: str = "intraday_monitor") 
 
     async def _run():
         try:
+            from src.platform.scheduling.trading_calendar import market_status
+            if market_status(getattr(stock, "market", None)) != "trading":
+                return
             await trigger_agent_for_stock(
                 "tradingagents",
                 stock,
                 stock_agent_id=None,
                 bypass_throttle=True,
-                bypass_market_hours=True,
+                bypass_market_hours=False,
                 suppress_notify=False,
                 trace_id=trace_id,
                 force_refresh=False,
@@ -202,6 +205,9 @@ def try_auto_trigger(stock: Any, source_agent: str = "intraday_monitor") -> str 
 
     供 intraday_monitor.analyze 完成后调用。返回 trace_id 或 None。
     """
+    from src.platform.scheduling.trading_calendar import market_status
+    if market_status(getattr(stock, "market", None)) != "trading":
+        return None
     symbol = getattr(stock, "symbol", "") or ""
     change_pct = getattr(stock, "change_pct", None)
 

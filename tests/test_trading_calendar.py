@@ -11,41 +11,15 @@ import pytest
 from src.platform.scheduling import trading_calendar as tc
 from src.platform.marketdata.models import MARKETS, MarketCode
 
-# 2026 年真实日历切片:8/8 周六、8/9 周日休市;8/10 周一开市;
-# 10/1~10/7 国庆休市(其中 10/1 是周四 —— 工作日却休市,只靠周末判断抓不到)。
-_FAKE_CN_DATES = frozenset(
-    {
-        date(2026, 8, 3),
-        date(2026, 8, 4),
-        date(2026, 8, 5),
-        date(2026, 8, 6),
-        date(2026, 8, 7),
-        date(2026, 8, 10),
-        date(2026, 8, 11),
-        date(2026, 8, 12),
-        date(2026, 8, 13),
-        date(2026, 8, 14),
-        date(2026, 9, 28),
-        date(2026, 9, 29),
-        date(2026, 9, 30),
-        date(2026, 10, 8),
-        date(2026, 10, 9),
-    }
-)
-
-
 @pytest.fixture(autouse=True)
 def _reset_calendar():
-    """每个用例前后清空日历缓存,避免互相污染。"""
     tc.reset_cache()
     yield
     tc.reset_cache()
 
 
 @pytest.fixture
-def loaded_calendar(monkeypatch):
-    """注入固定 A 股交易日历(不走网络)。"""
-    monkeypatch.setattr(tc, "_fetch_cn_trading_dates", lambda: _FAKE_CN_DATES)
+def loaded_calendar():
     assert tc.refresh_blocking() is True
 
 
@@ -76,14 +50,15 @@ def test_法定节假日不是交易日(loaded_calendar):
 
 def test_日历缺失时使用内置年度日历():
     """在线日历尚未加载时仍能正确识别已公布的休市日。"""
-    assert tc._CN_TRADING_DATES is None
+    assert tc._RECENT_OPEN_DAYS == {}
     assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 1)) is False  # 离线兜底识别国庆
     assert tc.is_trading_day(MarketCode.CN, date(2026, 8, 8)) is False  # 但周末照样拦住
 
 
-def test_超出日历覆盖范围时降级为只判周末(loaded_calendar):
-    """查询日期超出日历区间(如跨年未刷新)时降级,不误判交易日为休市。"""
-    assert tc.is_trading_day(MarketCode.CN, date(2027, 3, 1)) is True  # 2027-03-01 是周一
+def test_未公布年度不能授权自动执行(loaded_calendar):
+    """未覆盖的工作日明确为未知,不会猜测开市。"""
+    assert tc.is_trading_day(MarketCode.CN, date(2027, 3, 1)) is False
+    assert tc.calendar_known("CN", date(2027, 3, 1)) is False  # 2027-03-01 是周一
 
 
 def test_各市场使用独立休市日历(loaded_calendar):
@@ -109,23 +84,14 @@ def test_any_market_trading_day(loaded_calendar):
     assert tc.any_market_trading_day(date(2026, 10, 1)) is True
 
 
-def test_刷新失败不抛异常且保持降级(monkeypatch):
-    """日历拉取抛异常时 refresh 返回 False,缓存保持空,行为降级而非崩溃。"""
-
-    def _boom():
-        raise RuntimeError("network down")
-
-    monkeypatch.setattr(tc, "_fetch_cn_trading_dates", _boom)
-    assert tc.refresh_blocking() is False
-    assert tc._CN_TRADING_DATES is None
-    assert tc.is_trading_day(MarketCode.CN, date(2026, 8, 10)) is True
-
-
-def test_异步刷新不阻塞(monkeypatch):
-    """refresh() 走 to_thread,结果与同步版一致。"""
-    monkeypatch.setattr(tc, "_fetch_cn_trading_dates", lambda: _FAKE_CN_DATES)
+def test_近期预热不请求网络且范围有限(monkeypatch):
+    from unittest.mock import Mock
+    import requests
+    network = Mock(side_effect=AssertionError("calendar warmup must not fetch history"))
+    monkeypatch.setattr(requests, "get", network)
     assert asyncio.run(tc.refresh()) is True
-    assert tc.is_trading_day(MarketCode.CN, date(2026, 10, 1)) is False
+    assert all(len(days) <= 121 for days in tc._RECENT_OPEN_DAYS.values())
+    network.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -163,10 +129,10 @@ def _patch_notifiers(monkeypatch) -> dict[str, int]:
     """把两个通知函数替换成计数器,用于断言是否被调用。"""
     calls = {"premarket": 0, "summary": 0}
 
-    async def _fake_premarket():
+    async def _fake_premarket(**kwargs):
         calls["premarket"] += 1
 
-    async def _fake_summary():
+    async def _fake_summary(**kwargs):
         calls["summary"] += 1
 
     monkeypatch.setattr(
@@ -183,8 +149,8 @@ def test_周末不发盘前计划和日终摘要(monkeypatch):
     from src.modules.paper_trading.paper_trading_scheduler import PaperTradingScheduler
 
     calls = _patch_notifiers(monkeypatch)
-    saturday = datetime(2026, 8, 8, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday)
+    saturday = datetime(2026, 8, 8, 22, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday.astimezone(tc._market_tz(code)))
 
     sched = PaperTradingScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched._premarket_job())
@@ -199,8 +165,8 @@ def test_法定节假日不发盘前计划和日终摘要(monkeypatch, loaded_ca
 
     calls = _patch_notifiers(monkeypatch)
     # 10/3 是周六:三市场全休 → 必须跳过
-    holiday = datetime(2026, 10, 3, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: holiday)
+    holiday = datetime(2026, 10, 3, 22, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: holiday.astimezone(tc._market_tz(code)))
 
     sched = PaperTradingScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched._premarket_job())
@@ -215,7 +181,7 @@ def test_交易日照常发盘前计划和日终摘要(monkeypatch, loaded_calen
 
     calls = _patch_notifiers(monkeypatch)
     monday = datetime(2026, 8, 10, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday)
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday.astimezone(tc._market_tz(code)))
 
     sched = PaperTradingScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched._premarket_job())
@@ -242,8 +208,8 @@ def test_周末跳过机会刷新(monkeypatch):
     monkeypatch.setattr(
         "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
-    saturday = datetime(2026, 8, 8, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday)
+    saturday = datetime(2026, 8, 8, 22, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday.astimezone(tc._market_tz(code)))
 
     sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched._refresh_opportunities_job())
@@ -265,7 +231,7 @@ def test_交易日照常刷新机会(monkeypatch, loaded_calendar):
         "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
     monday = datetime(2026, 8, 10, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday)
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday.astimezone(tc._market_tz(code)))
 
     sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched._refresh_opportunities_job())
@@ -286,8 +252,8 @@ def test_手动刷新机会不受非交易日守卫影响(monkeypatch):
     monkeypatch.setattr(
         "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
     )
-    saturday = datetime(2026, 8, 8, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday)
+    saturday = datetime(2026, 8, 8, 22, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday.astimezone(tc._market_tz(code)))
 
     sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
     asyncio.run(sched.refresh_opportunities_once())

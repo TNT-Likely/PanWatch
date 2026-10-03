@@ -608,7 +608,7 @@ export function ToolkitDiagnostics({
           {tr('toolkit.empty')}
         </div>
       ) : (
-        <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
+        <div className="mt-2 space-y-1 max-h-64 overflow-y-auto scrollbar">
           {recent.map((h, i) => {
             const action = (h.action || '').toUpperCase()
             const row = (
@@ -648,7 +648,7 @@ export function ToolkitDiagnostics({
                       </div>
                     )}
                     {h.snippet && (
-                      <pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] leading-snug bg-accent/30 rounded p-2 text-foreground/85 max-h-[60vh] overflow-y-auto">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] leading-snug bg-accent/30 rounded p-2 text-foreground/85 max-h-[60vh] overflow-y-auto scrollbar">
                         {h.snippet}
                         {h.chars != null && h.chars > h.snippet.length && (
                           <span className="text-muted-foreground/60">

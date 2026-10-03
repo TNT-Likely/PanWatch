@@ -1705,25 +1705,25 @@ export default function StockInsightModal(props: {
                         {activeReport.prompt_stats ? (
                           <div className="mt-2">
                             <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.promptStats')}</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto scrollbar">{JSON.stringify(activeReport.prompt_stats, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.news_debug ? (
                           <div className="mt-2">
                             <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.newsDetails')}</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto scrollbar">{JSON.stringify(activeReport.news_debug, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.context_payload ? (
                           <div className="mt-2">
                             <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.contextSnapshot')}</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto scrollbar">{JSON.stringify(activeReport.context_payload, null, 2)}</pre>
                           </div>
                         ) : null}
                         {activeReport.prompt_context ? (
                           <div className="mt-2">
                             <div className="text-[11px] text-muted-foreground mb-1">{tr('reports.promptOriginal')}</div>
-                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto">{activeReport.prompt_context}</pre>
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words overflow-x-auto max-h-[220px] overflow-y-auto scrollbar">{activeReport.prompt_context}</pre>
                           </div>
                         ) : null}
                       </details>
@@ -2033,7 +2033,7 @@ function DeepAnalysisSection({
             {showDebate ? '▼' : '▶'} {tr('deep.debate')}
           </button>
           {showDebate && (
-            <div className="mt-2 pl-3 border-l-2 border-border/40 text-[11px] text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
+            <div className="mt-2 pl-3 border-l-2 border-border/40 text-[11px] text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto scrollbar">
               {debate.history}
               {debate.judge_decision && (
                 <>
@@ -2105,7 +2105,7 @@ function DeepHistoryComparison({
           <div className={`font-semibold ${retCls(stats.avg_return_20d_pct)}`}>{fmtRet(stats.avg_return_20d_pct)}</div>
         </div>
       </div>
-      <div className="overflow-x-auto -mx-1 mt-2">
+      <div className="overflow-x-auto -mx-1 mt-2 scrollbar">
         <table className="w-full text-[11px]">
           <thead className="text-muted-foreground">
             <tr className="border-b border-border/40">

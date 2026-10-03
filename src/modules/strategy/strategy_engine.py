@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.platform.marketdata.outcome_prices import completed_outcome_bar
+
 import logging
 from datetime import date, datetime, timedelta
 from math import sqrt
@@ -932,6 +934,7 @@ def _sync_factor_and_risk_snapshots(
     db,
     snapshot: str,
     signals: list[StrategySignalRun],
+    markets: list[str] | None = None,
 ) -> None:
     run_ids = [int(s.id) for s in signals if s.id is not None]
     if not run_ids:
@@ -939,7 +942,8 @@ def _sync_factor_and_risk_snapshots(
 
     existing_factors = (
         db.query(StrategyFactorSnapshot)
-        .filter(StrategyFactorSnapshot.snapshot_date == snapshot)
+        .filter(StrategyFactorSnapshot.snapshot_date == snapshot,
+                StrategyFactorSnapshot.stock_market.in_(markets) if markets is not None else True)
         .all()
     )
     factor_map = {int(x.signal_run_id): x for x in existing_factors}
@@ -1201,7 +1205,10 @@ def refresh_strategy_signals(
     market_scan_limit: int = 80,
     max_kline_symbols: int = 72,
     limit_candidates: int = 2000,
+    markets: list[str] | None = None,
 ) -> dict:
+    if markets == []:
+        return {"snapshot_date": snapshot_date, "count": 0, "items": []}
     ensure_strategy_catalog()
     if rebuild_candidates:
         refresh_entry_candidates(
@@ -1209,6 +1216,7 @@ def refresh_strategy_signals(
             snapshot_date=snapshot_date or None,
             market_scan_limit=market_scan_limit,
             max_kline_symbols=max_kline_symbols,
+            **({"markets": markets} if markets is not None else {}),
         )
 
     db = SessionLocal()
@@ -1226,7 +1234,8 @@ def refresh_strategy_signals(
 
         candidates = (
             db.query(EntryCandidate)
-            .filter(EntryCandidate.snapshot_date == snapshot)
+            .filter(EntryCandidate.snapshot_date == snapshot,
+                    EntryCandidate.stock_market.in_(markets) if markets is not None else True)
             .order_by(EntryCandidate.score.desc(), EntryCandidate.updated_at.desc())
             .limit(max(20, int(limit_candidates)))
             .all()
@@ -1249,7 +1258,8 @@ def refresh_strategy_signals(
         )
         existing_rows = (
             db.query(StrategySignalRun)
-            .filter(StrategySignalRun.snapshot_date == snapshot)
+            .filter(StrategySignalRun.snapshot_date == snapshot,
+                    StrategySignalRun.stock_market.in_(markets) if markets is not None else True)
             .all()
         )
         existing: dict[tuple[int, str], StrategySignalRun] = {}
@@ -1405,7 +1415,8 @@ def refresh_strategy_signals(
 
         rows = (
             db.query(StrategySignalRun)
-            .filter(StrategySignalRun.snapshot_date == snapshot)
+            .filter(StrategySignalRun.snapshot_date == snapshot,
+                    StrategySignalRun.stock_market.in_(markets) if markets is not None else True)
             .order_by(StrategySignalRun.rank_score.desc(), StrategySignalRun.updated_at.desc())
             .all()
         )
@@ -1413,6 +1424,7 @@ def refresh_strategy_signals(
             db=db,
             snapshot=snapshot,
             signals=rows,
+            markets=markets,
         )
         db.commit()
         factor_map: dict[int, StrategyFactorSnapshot] = {}
@@ -1638,12 +1650,12 @@ def evaluate_strategy_outcomes(
             klines = kline_cache[key]
 
             for horizon in pending_horizons:
-                target_day = snap_day + timedelta(days=horizon)
-                stats["eligible"] += 1
-                outcome_price = _pick_close_on_or_before(klines, target_day)
-                if outcome_price is None:
-                    stats["skipped_no_price"] += 1
+                bar = completed_outcome_bar(klines, snap_day, horizon, s.stock_market)
+                if bar is None:
+                    stats["skipped_not_due"] += 1
                     continue
+                target_day, outcome_price = bar
+                stats["eligible"] += 1
                 base_price = None
                 if s.entry_low is not None and s.entry_high is not None:
                     base_price = (float(s.entry_low) + float(s.entry_high)) / 2
@@ -1698,7 +1710,8 @@ def evaluate_strategy_outcomes(
                         outcome_status=status,
                         meta=to_jsonable(
                             {
-                                "rank_score": float(s.rank_score or 0),
+                                "horizon_unit": "trading_days",
+                            "rank_score": float(s.rank_score or 0),
                                 "action": s.action or "",
                                 "action_label": s.action_label or "",
                             }
