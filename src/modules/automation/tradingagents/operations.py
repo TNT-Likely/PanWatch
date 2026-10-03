@@ -3,7 +3,7 @@
 设计:
 - intraday_monitor 完成单只股票分析后,调用 `try_auto_trigger`
 - 触发条件(MVP):|change_pct| >= threshold(默认 5%,从 tradingagents 配置读)
-- 护栏:冷却时间(默认 24h)+ 月度预算(复用 cost_tracker)
+- 护栏:冷却时间(默认 24h)与交易时段过滤
 - 默认关闭(enabled=false),需在 Agents 列表「深度配置」里显式打开
 
 同一文件下半部承载历史建议回填和历史决策比较；这些能力不参与 TradingAgents 主图执行。
@@ -85,29 +85,6 @@ def _within_cooldown(db: Session, stock_symbol: str, cooldown_hours: int) -> boo
     return recent is not None
 
 
-def _budget_allows(db: Session) -> bool:
-    """检查月度预算是否还有余量。预算从 tradingagents 的 raw_config.monthly_budget_usd 读。"""
-    try:
-        from src.modules.automation.tradingagents.observability import check_budget
-    except ImportError:
-        return True
-
-    agent = db.query(AgentConfig).filter(AgentConfig.name == "tradingagents").first()
-    if not agent:
-        return True
-    raw = agent.raw_config or {}
-    budget = float(raw.get("monthly_budget_usd") or 0.0)
-    if budget <= 0:
-        return True  # 没设上限 = 不限制
-
-    try:
-        status = check_budget(budget)
-        return not status.get("exceeded", False)
-    except Exception as e:
-        logger.warning(f"[auto_trigger] 预算检查失败,放行: {e}")
-        return True
-
-
 def should_auto_trigger(
     stock_symbol: str,
     change_pct: float | None,
@@ -131,9 +108,6 @@ def should_auto_trigger(
 
         if _within_cooldown(db, stock_symbol, cfg["cooldown_hours"]):
             return False, f"冷却中(最近 {cfg['cooldown_hours']}h 已触发过)"
-
-        if not _budget_allows(db):
-            return False, "月度预算已用完"
 
         return True, f"涨跌幅 {change_pct:+.2f}% 达阈值 {cfg['change_pct_threshold']}%"
     finally:

@@ -62,8 +62,7 @@ def test_below_threshold_skips():
 def test_above_threshold_within_cooldown_skips():
     """达阈值但 24h 内已触发 → 不触发"""
     with patch("src.modules.automation.tradingagents.operations.SessionLocal") as session_factory, \
-         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=True), \
-         patch("src.modules.automation.tradingagents.operations._budget_allows", return_value=True):
+         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=True):
         db = MagicMock()
         session_factory.return_value = db
         db.query.return_value.filter.return_value.first.return_value = _make_agent(
@@ -74,26 +73,24 @@ def test_above_threshold_within_cooldown_skips():
     assert "冷却" in reason
 
 
-def test_above_threshold_budget_exceeded_skips():
-    """达阈值但月度预算已用完 → 不触发"""
+def test_legacy_zero_budget_does_not_block_auto_trigger():
+    """旧预算字段不再拦截联动触发"""
     with patch("src.modules.automation.tradingagents.operations.SessionLocal") as session_factory, \
-         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False), \
-         patch("src.modules.automation.tradingagents.operations._budget_allows", return_value=False):
+         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False):
         db = MagicMock()
         session_factory.return_value = db
         db.query.return_value.filter.return_value.first.return_value = _make_agent(
-            {"auto_trigger": {"enabled": True, "change_pct_threshold": 5.0}}
+            {"monthly_budget_usd": 0, "over_budget_action": "reject", "auto_trigger": {"enabled": True, "change_pct_threshold": 5.0}}
         )
         ok, reason = auto_trigger.should_auto_trigger("601238", 8.0)
-    assert ok is False
-    assert "预算" in reason
+    assert ok is True
+    assert "达阈值" in reason
 
 
 def test_above_threshold_all_pass_triggers():
-    """达阈值 + 不在冷却 + 预算足 → 触发"""
+    """达阈值 + 不在冷却 → 触发"""
     with patch("src.modules.automation.tradingagents.operations.SessionLocal") as session_factory, \
-         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False), \
-         patch("src.modules.automation.tradingagents.operations._budget_allows", return_value=True):
+         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False):
         db = MagicMock()
         session_factory.return_value = db
         db.query.return_value.filter.return_value.first.return_value = _make_agent(
@@ -107,8 +104,7 @@ def test_above_threshold_all_pass_triggers():
 def test_negative_change_pct_uses_abs():
     """跌 8% 也应该触发(用 |change_pct|)"""
     with patch("src.modules.automation.tradingagents.operations.SessionLocal") as session_factory, \
-         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False), \
-         patch("src.modules.automation.tradingagents.operations._budget_allows", return_value=True):
+         patch("src.modules.automation.tradingagents.operations._within_cooldown", return_value=False):
         db = MagicMock()
         session_factory.return_value = db
         db.query.return_value.filter.return_value.first.return_value = _make_agent(

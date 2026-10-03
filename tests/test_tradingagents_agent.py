@@ -5,7 +5,7 @@
 - _check_availability 软依赖检测
 - llm_adapter 配置桥接
 - result_mapper 状态映射
-- cost_tracker 预算估算
+- 缓存键与进度观测
 - toolkit_adapter monkeypatch 上下文
 - progress 聚合
 """
@@ -18,8 +18,6 @@ from datetime import datetime
 
 from src.modules.automation.tradingagents.agent import TradingAgentsAgent, TradingAgentsUnavailable
 from src.modules.automation.tradingagents.observability import (
-    check_budget,
-    estimate_cost,
     get_today_cache_key,
 )
 from src.modules.automation.tradingagents.runtime_support import (
@@ -263,28 +261,11 @@ class TestResultMapper(unittest.TestCase):
 
 
 # ============================================================================
-# cost_tracker
+# cache keys
 # ============================================================================
 
 
-class TestCostTracker(unittest.TestCase):
-    def test_estimate_cost_deepseek_shallow(self):
-        """deepseek-chat shallow — 单次估算应在 $0.02-$0.06 范围"""
-        est = estimate_cost(
-            debate_rounds=1,
-            selected_analysts=["market", "social", "news", "fundamentals"],
-            model="deepseek-chat",
-        )
-        self.assertEqual(est["model"], "deepseek-chat")
-        self.assertGreater(est["cost_low_usd"], 0.005)
-        self.assertLess(est["cost_high_usd"], 0.20)
-        self.assertGreater(est["cost_high_usd"], est["cost_low_usd"])
-
-    def test_estimate_cost_unknown_model_falls_back(self):
-        """未知模型 — 不抛异常,fallback 到 deepseek 单价"""
-        est = estimate_cost(debate_rounds=1, selected_analysts=["market"], model="my-custom-llm")
-        self.assertGreater(est["cost_low_usd"], 0)
-
+class TestCacheKeys(unittest.TestCase):
     def test_get_today_cache_key_includes_today(self):
         """缓存键 — 含日期 + symbol + market + debate_rounds + model"""
         key = get_today_cache_key("600519", "CN", 1, "deepseek-chat")
@@ -379,7 +360,14 @@ class TestTradingAgentsAgent(unittest.TestCase):
         agent = TradingAgentsAgent()
         self.assertEqual(set(agent.analyst_types), VALID_ANALYSTS)
         self.assertEqual(agent.debate_rounds, 1)
-        self.assertEqual(agent.monthly_budget_usd, 10.0)
+
+    def test_legacy_budget_options_preserve_other_agent_configuration(self):
+        agent = TradingAgentsAgent(monthly_budget_usd=0, over_budget_action="reject",
+                                   debate_rounds=3, timeout_minutes=17, deep_model="custom-model")
+        self.assertEqual(agent.debate_rounds, 3)
+        self.assertEqual(agent.timeout_minutes, 17)
+        self.assertEqual(agent.deep_model, "custom-model")
+        self.assertFalse(hasattr(agent, "monthly_budget_usd"))
 
     def test_agent_init_rejects_invalid_analyst(self):
         """初始化时校验 analyst 类型 — 非法值抛 ValueError"""

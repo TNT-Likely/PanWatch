@@ -387,3 +387,37 @@ def test_idle_intraday_migration_archives_only_proven_noise_and_retains_history(
     assert receipt.read_at == receipt.archived_at == stamp.replace(tzinfo=None)
     other = db.query(NotificationReceipt).filter_by(recipient_key='installation:other').one()
     assert other.read_at is not None and other.archived_at is not None
+
+
+@pytest.mark.parametrize('status', ['success', 'failed'])
+def test_single_stock_notice_keeps_stock_identity_after_stock_deletion(db, status):
+    stock = Stock(symbol='601238', name='广汽集团', market='CN')
+    run = AgentRun(agent_name='tradingagents', status=status, trace_id='man-tradingagents-601238-1790800000000')
+    db.add_all([stock, run]); db.flush()
+    event = agent_result(db, run)
+    db.commit()
+    assert event.template_params == {'agent_name': 'tradingagents', 'stock_symbol': '601238', 'stock_name': '广汽集团'}
+    db.delete(stock); db.commit()
+    item = NotificationService(db).list()['items'][0]
+    assert item['template_params']['stock_name'] == '广汽集团'
+    assert NotificationService(db).target(event.id)['template_params']['stock_symbol'] == '601238'
+
+
+def test_legacy_agent_notice_recovers_hyphenated_symbol_without_rewriting_receipts(db):
+    run = AgentRun(agent_name='tradingagents', status='success', trace_id='auto-intraday_monitor-BRK-B-1790800000000')
+    db.add_all([run, Stock(symbol='BRK-B', name='Berkshire Hathaway', market='US')]); db.flush()
+    event = NotificationService(db).publish(source='agent', event_type='agent_completed', dedupe_key='legacy-deep',
+        subject_kind='agent_run', subject_id=str(run.id), title='tradingagents', action={'kind': 'agent_run', 'run_id': run.id})
+    db.commit()
+    item = NotificationService(db).list()['items'][0]
+    assert item['template_params']['stock_symbol'] == 'BRK-B'
+    assert item['template_params']['stock_name'] == 'Berkshire Hathaway'
+    assert event.template_params == {}
+    assert item['read_at'] is None
+
+
+def test_batch_notice_does_not_invent_a_single_stock(db):
+    run = AgentRun(agent_name='daily_report', status='success', trace_id='man-daily_report-1790800000000')
+    db.add(run); db.flush()
+    event = agent_result(db, run)
+    assert event.template_params == {'agent_name': 'daily_report'}

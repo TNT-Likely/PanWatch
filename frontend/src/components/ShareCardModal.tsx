@@ -111,7 +111,11 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
 
   const stockName = parseStockName(result.title || '', symbol)
   const confidence = sug?.confidence
-  const costUsd = result.raw_data?.cost_usd
+  const usage = result.raw_data?.token_usage
+  const usageLabel = usage?.recorded_calls
+    ? shareT('bizUi:deepAnalysis.usage.total', { value: usage.total_tokens.toLocaleString() })
+      + (usage.complete ? '' : ` · ${shareT('bizUi:deepAnalysis.usage.partial', { recorded: usage.recorded_calls, total: usage.completed_calls })}`)
+    : ''
   const conclusion = cleanConclusion(sug?.signal || sug?.reason || '')
   const confPct = Math.max(0, Math.min(100, (confidence ?? 0) * 10))
 
@@ -202,7 +206,7 @@ export default function ShareCardModal({ open, onClose, result, symbol, date }: 
             />
           </div>
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85 }}>
-            {tr('cost', { value: costUsd != null ? costUsd.toFixed(4) : '-' })}
+            {usageLabel}
           </div>
         </div>
       </div>

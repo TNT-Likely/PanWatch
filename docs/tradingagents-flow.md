@@ -12,7 +12,7 @@ TradingAgents 会单独保存决策日志；持有期结束且行情数据可用
 
 ## 相关实现
 
-- [TradingAgentsAgent：采集、缓存、预算检查与上游图调用](../src/modules/automation/tradingagents/agent.py)
+- [TradingAgentsAgent：采集、缓存与上游图调用](../src/modules/automation/tradingagents/agent.py)
 - [PanWatch 数据上下文与持仓转换](../src/modules/automation/tradingagents/data_context.py)
 - [PanWatch 行情工具适配](../src/modules/automation/tradingagents/toolkit_adapter.py)
 - [决策评级映射与模拟盘信号桥接](../src/modules/automation/tradingagents/decision.py)

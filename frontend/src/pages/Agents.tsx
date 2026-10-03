@@ -453,7 +453,7 @@ export default function AgentsPage() {
   // 当 taConfigAgent 切换时,把它的 config 拷到表单
   useEffect(() => {
     if (taConfigAgent) {
-      const { output_language: _legacyOutputLanguage, ...visibleConfig } = taConfigAgent.config || {}
+      const { output_language: _legacyOutputLanguage, monthly_budget_usd: _legacyBudget, over_budget_action: _legacyBudgetAction, ...visibleConfig } = taConfigAgent.config || {}
       setTaConfigForm(visibleConfig)
     }
   }, [taConfigAgent])
@@ -1032,30 +1032,10 @@ export default function AgentsPage() {
               )
             })()}
 
-            {/* 预算与策略 */}
+            {/* 执行参数 */}
             <section>
-              <div className="font-medium mb-2">{configT('advanced.budgetStrategy')}</div>
+              <div className="font-medium mb-2">{configT('advanced.executionSettings')}</div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-[12px]">{configT('advanced.monthlyBudget')}</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={String(taConfigForm.monthly_budget_usd ?? 10)}
-                    onChange={e => setTaConfigForm({ ...taConfigForm, monthly_budget_usd: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[12px]">{configT('advanced.overBudget')}</Label>
-                  <Select value={(taConfigForm.over_budget_action as string) || 'reject'} onValueChange={value => setTaConfigForm({ ...taConfigForm, over_budget_action: value })}>
-                    <SelectTrigger aria-label={configT('advanced.overBudget')} className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="reject">{configT('advanced.reject')}</SelectItem>
-                      <SelectItem value="warn">{configT('advanced.warn')}</SelectItem>
-                      <SelectItem value="continue">{configT('advanced.continue')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div>
                   <Label className="text-[12px]">{configT('advanced.debateRounds')}</Label>
                   <Input

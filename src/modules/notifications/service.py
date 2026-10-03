@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
+from .presentation import agent_notification_params
 
 from src.platform.persistence.models import (
     AgentRun, AssistantContextExport, AssistantTaskRun, ChatConversation, NotificationEvent, NotificationReceipt,
@@ -113,9 +114,14 @@ class NotificationService:
         available = self.available_ids(rows)
         conversation_ids = [action.get('conversation_id') for event, _ in rows if event.source == 'assistant' for action in event.actions]
         titles = dict(self.db.query(ChatConversation.id, ChatConversation.title).filter(ChatConversation.id.in_(conversation_ids)).all()) if conversation_ids else {}
+        legacy_ids = [int(event.subject_id) for event, _ in rows
+                      if event.subject_kind == 'agent_run' and not (event.template_params or {}).get('stock_symbol')]
+        runs = self.db.query(AgentRun).filter(AgentRun.id.in_(legacy_ids)).all() if legacy_ids else []
+        legacy_params = agent_notification_params(self.db, runs)
         stamp = now()
         return [dict(id=e.id, source=e.source, event_type=e.event_type, severity=e.severity, attention=e.attention,
-                     title=(titles.get(e.actions[0].get('conversation_id')) if e.source == 'assistant' and e.actions else None) or e.display_snapshot.get('title', ''), template_key=e.template_key, template_params=e.template_params,
+                     title=(titles.get(e.actions[0].get('conversation_id')) if e.source == 'assistant' and e.actions else None) or e.display_snapshot.get('title', ''), template_key=e.template_key,
+                     template_params={**(legacy_params.get(int(e.subject_id), {}) if e.subject_kind == 'agent_run' else {}), **(e.template_params or {})},
                      group_key=e.group_key, toast_eligible=e.toast_eligible, occurred_at=utc(e.occurred_at),
                      resolved_at=utc(e.resolved_at), expires_at=utc(e.expires_at), read_at=utc(r.read_at), archived_at=utc(r.archived_at),
                      action_required=e.attention == 'action_required' and e.resolved_at is None and (e.expires_at is None or utc(e.expires_at) > stamp),
@@ -186,6 +192,7 @@ class NotificationService:
         if event.subject_kind == 'agent_run':
             run = self.db.get(AgentRun, int(event.subject_id))
             return dict(kind='agent_run', id=run.id, agent_name=run.agent_name, status=run.status, result=run.result,
+                        template_params={**agent_notification_params(self.db, [run])[run.id], **(event.template_params or {})},
                         error=run.error, occurred_at=utc(run.created_at), notify_attempted=run.notify_attempted, notify_sent=run.notify_sent)
         hit = self.db.get(PriceAlertHit, int(event.subject_id))
         return dict(kind='price_alert_hit', id=hit.id, rule_id=hit.rule_id, name=hit.stock.name if hit.stock else '',

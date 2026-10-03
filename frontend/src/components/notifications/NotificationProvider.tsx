@@ -7,8 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@panwatch/base-ui/compo
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useAssistantActivity } from '@/hooks/useAssistantActivity'
-import { claimNotifications } from '@/lib/notifications'
-import { localizeAgentName } from '@/i18n/agent-labels'
+import { claimNotifications, notificationTitle } from '@/lib/notifications'
 import NotificationInbox from './NotificationInbox'
 
 const NotificationPanel = lazy(() => import('./NotificationPanel'))
@@ -108,7 +107,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const fresh = candidates.filter(item => claimed.includes(item.id))
     if (fresh.length === 1) {
       const item = fresh[0]
-      toast(tr(`toasts.${item.event_type}`, { title: item.source === 'agent' ? localizeAgentName(item.title, item.title, t as unknown as (key: string) => string) : item.title || tr(`sources.${item.source}`) }), item.event_type.endsWith('_failed') ? 'error' : item.event_type.endsWith('_completed') ? 'success' : 'info', { label: tr('view'), onClick: () => void openItem(item) })
+      toast(tr(`toasts.${item.event_type}`, { title: notificationTitle(item, t as unknown as (key: string) => string) }), item.event_type.endsWith('_failed') ? 'error' : item.event_type.endsWith('_completed') ? 'success' : 'info', { label: tr('view'), onClick: () => void openItem(item) })
     } else if (fresh.length > 1) toast(tr('multiple', { count: fresh.length }), 'info', { label: tr('view'), onClick: () => setOpen(true) })
   }, [unread, focused, currentConversation, changing, error, mutate, openItem, toast, tr])
   return <Context.Provider value={{ unread: monitor.summary.unread_count, pending: monitor.summary.pending_action_count, active: tasks.activity.active_tasks.length, tasks: tasks.activity.active_tasks, monitor, disconnected: monitor.disconnected, openItem, open: () => { setOpen(true); void monitor.refresh() }, openTasks: () => { setTasksOpen(true); void tasks.refresh() } }}>

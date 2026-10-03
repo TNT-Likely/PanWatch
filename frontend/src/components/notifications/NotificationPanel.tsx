@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { notificationsApi, type NotificationFilter, type NotificationItem, type NotificationPage, type NotificationSource, type NotificationView } from '@panwatch/api'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { formatDate } from '@/i18n/format'
-import { localizeAgentName } from '@/i18n/agent-labels'
+import { notificationTitle } from '@/lib/notifications'
 import type { useNotifications } from '@/hooks/useNotifications'
 
 const button = 'rounded-lg border border-border bg-background px-2.5 py-1.5 text-[12px] disabled:opacity-50 hover:bg-accent'
@@ -86,7 +86,7 @@ export default function NotificationPanel({ monitor, onClose, onOpen }: Props) {
             {item.action_required && <span className="text-primary">{tr('pending')}</span>}
             {item.resolved_at && <span>{tr('resolved')}</span>}
           </div>
-          <p className="break-words text-[13px] font-medium">{item.source === 'agent' ? localizeAgentName(item.title, item.title, translate) : item.title || tr(`sources.${item.source}`)}</p>
+          <p className="break-words text-[13px] font-medium">{notificationTitle(item, translate)}</p>
           <p className="mt-1 text-[12px] text-muted-foreground">{tr(`events.${item.template_key}`, item.template_params)}</p>
           {!item.available && <p className="mt-1 text-[12px] text-muted-foreground">{tr('sourceGone')}</p>}
           {group(item).length > 1 && <button className="mt-2 text-[11px] text-primary" onClick={() => setExpanded(previous => { const next = new Set(previous); if (next.has(item.group_key)) next.delete(item.group_key); else next.add(item.group_key); return next })}>{tr(expanded.has(item.group_key) ? 'collapseFailures' : 'repeatedFailures', { count: group(item).length })}</button>}

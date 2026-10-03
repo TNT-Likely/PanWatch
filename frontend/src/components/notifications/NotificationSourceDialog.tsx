@@ -3,7 +3,7 @@ import type { NotificationTarget } from '@panwatch/api'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { AssistantMarkdown } from '@/components/assistant/AssistantMarkdown'
 import { formatDate } from '@/i18n/format'
-import { localizeAgentName } from '@/i18n/agent-labels'
+import { notificationTitle } from '@/lib/notifications'
 
 export default function NotificationSourceDialog({ target, onClose }: { target: Extract<NotificationTarget, { kind: 'agent_run' | 'price_alert_hit' }>; onClose: () => void }) {
   const { t } = useTranslation('configuration')
@@ -12,7 +12,7 @@ export default function NotificationSourceDialog({ target, onClose }: { target: 
   return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="p-4 sm:p-6" data-testid="notification-source-detail">
     <DialogHeader><DialogTitle>{tr(target.kind === 'agent_run' ? 'report' : 'hit')}</DialogTitle><DialogDescription>{formatDate(target.occurred_at)}</DialogDescription></DialogHeader>
     {target.kind === 'agent_run' ? <>
-      <p className="text-[13px] font-semibold">{localizeAgentName(target.agent_name, target.agent_name, translate)}</p>
+      <p className="text-[13px] font-semibold">{notificationTitle({ source: 'agent', title: target.agent_name, template_params: target.template_params || {} }, translate)}</p>
       <p className="text-[12px]">{tr(target.status === 'success' ? 'runCompleted' : 'runFailed')}</p>
       {target.notify_attempted && <p className="text-[12px] text-muted-foreground">{tr(target.notify_sent ? 'deliverySent' : 'deliveryFailed')}</p>}
       {target.result && <AssistantMarkdown content={target.result} />}

@@ -12,7 +12,7 @@ TradingAgents stores its decision log separately. Once the holding period ends a
 
 ## Related implementation
 
-- [TradingAgentsAgent: collection, caching, budget checks, and upstream graph invocation](../src/modules/automation/tradingagents/agent.py)
+- [TradingAgentsAgent: collection, caching, and upstream graph invocation](../src/modules/automation/tradingagents/agent.py)
 - [PanWatch data context and portfolio conversion](../src/modules/automation/tradingagents/data_context.py)
 - [PanWatch market-data tool adapters](../src/modules/automation/tradingagents/toolkit_adapter.py)
 - [Decision-rating mapping and paper-trading signal bridge](../src/modules/automation/tradingagents/decision.py)

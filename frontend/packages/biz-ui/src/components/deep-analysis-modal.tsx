@@ -2,7 +2,7 @@
  * 深度分析弹窗(TradingAgents)。
  *
  * 三种状态:
- * 1. 触发中 — 显示「分析需 3-5 分钟,确认开始?」+ 成本预估
+ * 1. 触发中 — 显示「分析需 3-5 分钟,确认开始?」
  * 2. 运行中 — polling /agents/runs/{trace_id}/progress,显示阶段进度
  * 3. 完成 — 顶层摘要 + Markdown 推理 + 可展开 4 分析师报告 + 辩论
  */
@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
+import { AnalysisMetadata, AnalysisUsage, analysisDateForResult } from './analysis-metadata'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@panwatch/base-ui/components/ui/tabs'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -18,7 +19,6 @@ import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
 import {
   subscribeSSE,
   tradingAgentsApi,
-  type BudgetInfo,
   type DeepAnalysisResult,
   type ProgressResponse,
   type ProgressDataSource,
@@ -102,12 +102,11 @@ export function DeepAnalysisModal({
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
-  const [stage, setStage] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [stage, setStage] = useState<'idle' | 'running' | 'done' | 'error'>(initialResult ? 'done' : 'idle')
   const [traceId, setTraceId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ProgressResponse | null>(null)
   const [result, setResult] = useState<DeepAnalysisResult | null>(initialResult)
   const [error, setError] = useState<string>('')
-  const [budget, setBudget] = useState<BudgetInfo | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
   const sseCloseRef = useRef<(() => void) | null>(null)
@@ -146,21 +145,17 @@ export function DeepAnalysisModal({
     setProgress(null)
     setTraceId(null)
 
-    // 并发查 3 个数据:
+    // 并发查询运行状态与已保存报告:
     //   - findRunning:这只股票最近 30 分钟有没有运行中的任务
-    //   - getLatestForStock:有没有当日已完成的结果(过 30 分钟也算)
-    //   - getBudget:本月预算(idle 状态展示)
+    //   - getLatestForStock:有没有已保存的最近一次报告
     // 优先级:running > done(已有结果)> idle
     Promise.all([
       tradingAgentsApi.findRunning(stockSymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
       tradingAgentsApi.getLatestForStock(stockSymbol).catch(() => null),
-      tradingAgentsApi.getBudget().catch(() => null),
-    ]).then(([runningInfo, latestResult, budgetInfo]) => {
-      setBudget(budgetInfo)
-
-      // 优先级:running(真在跑) > done(当日缓存,允许重新分析) > idle
+    ]).then(([runningInfo, latestResult]) => {
+      // 优先级:running(真在跑) > done(已保存的报告,允许重新分析) > idle
       //   - stale / failed / success / none 都视为"不在跑"
-      //   - 任何状态下,只要有当日缓存就展示 DoneView(含「忽略缓存重新分析」按钮)
+      //   - 任何状态下,只要有已保存报告就展示 DoneView(含「忽略缓存重新分析」按钮)
       //   - 任何状态下,IdleView 的「开始分析」按钮永远可用,后端会做幂等去重
 
       // 1) 真正在跑(后端权威源)→ 进入 running
@@ -192,7 +187,7 @@ export function DeepAnalysisModal({
         }
       }
 
-      // 4) 有当日已完成结果 → done 视图(用户可点「忽略缓存重新分析」)
+      // 4) 有已保存报告 → done 视图(用户可点「忽略缓存重新分析」)
       if (latestResult) {
         latestResult.raw_data.from_cache = true
         setResult(latestResult)
@@ -345,7 +340,6 @@ export function DeepAnalysisModal({
         {stage === 'idle' && (
           <IdleView
             stockSymbol={stockSymbol}
-            budget={budget}
             onStart={() => handleStart(false)}
             onCancel={handleClose}
           />
@@ -380,20 +374,16 @@ export function DeepAnalysisModal({
 
 function IdleView({
   stockSymbol,
-  budget,
   onStart,
   onCancel,
 }: {
   stockSymbol: string
-  budget: BudgetInfo | null
   onStart: () => void
   onCancel: () => void
 }) {
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
-  const overBudget = budget?.exceeded && budget.over_budget_action === 'reject'
-  const est = budget?.estimate_next_run
   return (
     <div className="space-y-4 text-[13px]">
       <div className="rounded-lg bg-accent/30 p-3 space-y-1.5">
@@ -403,36 +393,13 @@ function IdleView({
         </div>
         <div className="text-[11px] text-muted-foreground mt-2 space-y-0.5">
           <div>{tr('idle.duration')}</div>
-          {est ? (
-            <div>{tr('idle.cost', { low: est.cost_low_usd.toFixed(2), high: est.cost_high_usd.toFixed(2), model: est.model })}</div>
-          ) : (
-            <div>{tr('idle.costLoading')}</div>
-          )}
           <div>{tr('idle.async')}</div>
         </div>
       </div>
 
-      {/* 本月预算 */}
-      {budget && (
-        <div className={`rounded-lg p-3 text-[12px] ${overBudget ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-accent/20'}`}>
-          <div className="flex items-center justify-between">
-            <span className="font-medium">{tr('idle.budget')}</span>
-            <span className={overBudget ? 'text-rose-600' : 'text-muted-foreground'}>
-              ${budget.used.toFixed(2)} / ${budget.limit.toFixed(2)}
-              {budget.runs_this_month > 0 && tr('idle.runs', { count: budget.runs_this_month })}
-            </span>
-          </div>
-          {overBudget && (
-            <div className="text-[11px] text-rose-600 mt-1">
-              {tr('idle.budgetExceeded')}
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>{tr('idle.cancel')}</Button>
-        <Button onClick={onStart} disabled={overBudget}>{tr('idle.start')}</Button>
+        <Button onClick={onStart}>{tr('idle.start')}</Button>
       </div>
     </div>
   )
@@ -451,7 +418,6 @@ function RunningView({
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
   const elapsed = progress?.elapsed_sec ?? 0
-  const cost = progress?.total_cost_usd ?? 0
   const stages = progress?.stages ?? []
 
   return (
@@ -461,9 +427,10 @@ function RunningView({
           <span className="inline-block w-3 h-3 rounded-full bg-primary animate-pulse" />
           <span className="font-medium">{tr('running.title')}</span>
           <span className="ml-auto text-[11px] text-muted-foreground">
-            {tr('running.elapsed', { time: formatElapsed(elapsed), cost: cost.toFixed(4) })}
+            {tr('running.elapsed', { time: formatElapsed(elapsed) })}
           </span>
         </div>
+        <AnalysisUsage usage={progress?.token_usage} />
         {progress?.active_operation && (
           <div className="text-[11px] text-muted-foreground">
             {progress.active_operation.agent && (
@@ -688,11 +655,6 @@ function StageRow({ stage }: { stage: ProgressStage }) {
     <div className={`flex items-center gap-2 text-[12px] ${cls}`}>
       <span className="w-4">{icon}</span>
       <span>{label}</span>
-      {stage.cost_usd ? (
-        <span className="ml-auto text-[10px] opacity-70 font-mono">
-          ${stage.cost_usd.toFixed(4)}
-        </span>
-      ) : null}
     </div>
   )
 }
@@ -723,14 +685,12 @@ function DoneView({
     confidence: 5.0,
   }
   const fromCache = rawData.from_cache
-  const costUsd = rawData.cost_usd
   const sections = buildAnalysisSections(rawData, { english })
-  const analysisDate = result.timestamp
-    ? String(result.timestamp).slice(0, 10)
-    : new Date().toISOString().slice(0, 10)
+  const analysisDate = analysisDateForResult(result)
 
   return (
     <div className="space-y-4 text-[13px]">
+      <AnalysisMetadata result={result} />
       {fromCache && (
         <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[12px] text-amber-700 dark:text-amber-400 flex items-center justify-between">
           <span>{tr('done.cached')}</span>
@@ -740,7 +700,7 @@ function DoneView({
         </div>
       )}
 
-      {/* 顶层摘要(精简成一行:决策 + 置信度 + 成本;完整理由在"最终决策" tab) */}
+      {/* 决策与置信度；报告日期和实际用量单独展示。 */}
       <div className="rounded-lg bg-accent/30 px-4 py-2.5 flex items-center gap-3 flex-wrap">
         <span className={`text-[18px] font-bold ${DECISION_COLOR[sug.action] || ''}`}>
           {english ? (t as unknown as (key: string) => string)(`kline.actions.${sug.action}`) : sug.action_label}
@@ -752,13 +712,11 @@ function DoneView({
           variant="outline"
           size="sm"
           className="h-7 text-[11px] ml-auto"
+          disabled={!analysisDate}
           onClick={() => window.open(`/analysis/${stockSymbol}/${analysisDate}`, '_blank')}
         >
           {tr('done.details')}
         </Button>
-        <span className="text-[10px] text-muted-foreground">
-          {tr('done.cost', { value: costUsd?.toFixed(4) ?? '-' })}
-        </span>
       </div>
 
       {/* 统一 tab:最终决策 + 四位分析师 + 看多看空辩论 + 风控辩论(完整 + GFM 表格) */}

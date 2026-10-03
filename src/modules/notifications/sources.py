@@ -3,6 +3,7 @@ from sqlalchemy import func
 from src.platform.scheduling.run_summary import is_idle_single_summary
 from src.platform.persistence.models import AssistantToolApproval, ChatConversation, NotificationEvent
 from .service import NotificationService
+from .presentation import agent_notification_params
 
 
 def assistant_event(db, task, sequence, kind, *, occurred_at=None, read_at=None, resolved_at=None, legacy_id=None):
@@ -36,6 +37,7 @@ def agent_result(db, run):
         dedupe_key=f'agent:{run.trace_id or run.id}:{run.status}', subject_kind='agent_run', subject_id=str(run.id),
         correlation_id=run.trace_id or str(run.id), title=run.agent_name, group_key=(previous.group_key if previous else f'{group}:{run.trace_id or run.id}') if run.status == 'failed' else f'agent:{run.agent_name}',
         severity='warning' if run.status == 'failed' else 'info', action=dict(kind='agent_run', run_id=run.id),
+        template_params=agent_notification_params(db, [run])[run.id],
         toast_eligible=run.status == 'failed' and previous is None)
 
 

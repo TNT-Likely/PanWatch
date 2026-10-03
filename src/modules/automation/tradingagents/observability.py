@@ -5,7 +5,7 @@
 2. `agent.py` 将同一个 handler 注入 `Propagator.get_graph_args(callbacks=...)`，不依赖 debug 文本解析
 
 进度写入 PanWatch 的 `log_context`,前端轮询 `/api/agents/runs/{trace_id}/progress`
-聚合返回阶段；同一文件下半部提供成本提取、预算检查和估算入口。
+聚合返回阶段与提供商实际返回的 Token 用量。
 """
 
 from __future__ import annotations
@@ -13,23 +13,21 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any
+
+from pan_agent_token_meter import normalize_provider_usage
 
 from src.platform.observability import otel
 from src.platform.observability.log_context import log_context
-from src.platform.persistence.database import SessionLocal
-from src.platform.persistence.models import AnalysisHistory
 
 logger = logging.getLogger(__name__)
 
-# 进度和预算共用同一套 TradingAgents 运行观测入口；数据库生命周期仍由 agent_runs 负责。
+# 数据库生命周期由 agent_runs 负责，回调仅记录运行进度与实际用量。
 __all__ = [
     "STAGES_ORDER",
     "PanWatchProgressHandler",
     "aggregate_progress",
-    "check_budget",
-    "estimate_cost",
     "get_today_cache_key",
 ]
 
@@ -88,7 +86,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
 
     覆盖核心 hook:
     - on_llm_start: 某个 LLM 调用开始(可推断当前在哪个 analyst)
-    - on_llm_end: LLM 调用结束,带成本
+    - on_llm_end: LLM 调用结束，记录提供商返回的 Token 用量
     - on_chain_start/end: LangGraph 节点切换
 
     P0 简单实现:把所有事件都 logger.info 出来,带 trace_id 标签。
@@ -112,6 +110,11 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self.cancel_event = cancel_event
         self._started_at = time.monotonic()
         self._total_cost = 0.0
+        self._usage_lock = threading.Lock()
+        self._usage_totals = dict(input_tokens=0, output_tokens=0, total_tokens=0)
+        self._usage_recorded_calls = 0
+        self._usage_completed_calls = 0
+        self._usage_run_ids: set[str] = set()
         self._completed_stages: set[str] = set()
         # LangChain 1.x 的 on_chain_end 不保证携带 name/metadata，因此必须保存
         # start 时的 run_id -> 节点信息，才能把结束事件关回正确阶段。
@@ -128,6 +131,17 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
     def elapsed_sec(self) -> float:
         return time.monotonic() - self._started_at
 
+    @property
+    def token_usage(self) -> dict:
+        with self._usage_lock:
+            return {
+                **self._usage_totals,
+                "recorded_calls": self._usage_recorded_calls,
+                "completed_calls": self._usage_completed_calls,
+                "complete": self._usage_recorded_calls > 0
+                and self._usage_recorded_calls == self._usage_completed_calls,
+            }
+
     def _emit(self, stage: str, action: str, **extra):
         """写一条进度日志。前端按 trace_id + event=ta_progress 拉。"""
         if self.cancel_event is not None and self.cancel_event.is_set():
@@ -141,6 +155,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
                 "action": action,
                 "elapsed_sec": round(self.elapsed_sec, 2),
                 "total_cost_usd": round(self._total_cost, 6),
+                "token_usage": self.token_usage,
                 **extra,
             },
         ):
@@ -153,10 +168,6 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._emit(stage, action, **extra)
 
     # ---- LangChain callbacks 接口 ----
-
-    # 关键:LLM 默认按 token 估算成本(deepseek-chat 单价),后续可由调用方注入更精确单价
-    _PRICE_PER_M_PROMPT = 0.14
-    _PRICE_PER_M_COMPLETION = 0.28
 
     def on_llm_start(self, serialized, prompts, **kwargs):
         self._llm_call_count = getattr(self, "_llm_call_count", 0) + 1
@@ -192,20 +203,22 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         )
 
     def on_llm_end(self, response, **kwargs):
-        # langchain LLMResult.llm_output 含 token_usage
-        usage = {}
-        try:
-            usage = (response.llm_output or {}).get("token_usage") or {}
-        except Exception:
-            pass
-        prompt_tokens = usage.get("prompt_tokens") or 0
-        completion_tokens = usage.get("completion_tokens") or 0
-        # 累加成本估算
-        cost = (
-            prompt_tokens / 1_000_000 * self._PRICE_PER_M_PROMPT
-            + completion_tokens / 1_000_000 * self._PRICE_PER_M_COMPLETION
-        )
-        self.record_cost(cost)
+        # Prefer aggregate provider usage; modern chat/stream responses expose
+        # usage_metadata on AIMessage instead. Never count both representations.
+        usage = _response_token_usage(response)
+        run_id = str(kwargs.get("run_id") or "")
+        with self._usage_lock:
+            if run_id and run_id in self._usage_run_ids:
+                return
+            if run_id:
+                self._usage_run_ids.add(run_id)
+            self._usage_completed_calls += 1
+            if usage is not None:
+                self._usage_recorded_calls += 1
+                for key in self._usage_totals:
+                    self._usage_totals[key] += usage[key]
+        prompt_tokens = (usage or {}).get("input_tokens", 0)
+        completion_tokens = (usage or {}).get("output_tokens", 0)
         operation_id = str(kwargs.get("run_id") or "")
         operation = self._llm_runs.pop(operation_id, {})
         agent = operation.get("agent") or _callback_agent(kwargs, self._chain_runs)
@@ -214,7 +227,6 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             "llm_end",
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            call_cost=round(cost, 6),
             operation_id=operation_id,
             **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
@@ -269,6 +281,12 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         self._finish_chain("stage_end", kwargs)
 
     def on_llm_error(self, error, **kwargs):
+        run_id = str(kwargs.get("run_id") or "")
+        with self._usage_lock:
+            if not run_id or run_id not in self._usage_run_ids:
+                self._usage_completed_calls += 1
+                if run_id:
+                    self._usage_run_ids.add(run_id)
         self._emit(
             "llm_call",
             "llm_error",
@@ -399,6 +417,38 @@ def _callback_agent(kwargs: dict[str, Any], chain_runs: dict[str, dict[str, str]
     return str((parent or {}).get("name") or "")
 
 
+def _response_token_usage(response) -> dict | None:
+    def normalize(value):
+        if not isinstance(value, dict):
+            return None
+        inputs = value.get("prompt_tokens", value.get("input_tokens"))
+        outputs = value.get("completion_tokens", value.get("output_tokens"))
+        if any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in (inputs, outputs)):
+            return None
+        usage = normalize_provider_usage(value)
+        return dict(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                    total_tokens=max(usage.total_tokens, usage.input_tokens + usage.output_tokens))
+
+    aggregate = normalize((getattr(response, "llm_output", None) or {}).get("token_usage"))
+    if aggregate is not None:
+        return aggregate
+    totals = dict(input_tokens=0, output_tokens=0, total_tokens=0)
+    generations = [item for group in (getattr(response, "generations", None) or []) for item in group]
+    if not generations:
+        return None
+    for generation in generations:
+        message = getattr(generation, "message", None)
+        usage = normalize(getattr(message, "usage_metadata", None))
+        if usage is None:
+            metadata = getattr(message, "response_metadata", None) or {}
+            usage = normalize(metadata.get("token_usage") or metadata.get("usage"))
+        if usage is None:
+            return None
+        for key in totals:
+            totals[key] += usage[key]
+    return totals
+
+
 def aggregate_progress(log_entries: list[dict]) -> dict:
     """读 log_entries 表里 event=ta_progress 的记录,聚合成阶段进度。
 
@@ -421,6 +471,7 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
     """
     stage_state: dict[str, dict] = {s: {"name": s, "status": "pending"} for s in STAGES_ORDER}
     total_cost = 0.0
+    token_usage = None
     current_stage = None
     active_operations: dict[str, dict] = {}
     started_at = None
@@ -428,6 +479,8 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
 
     for entry in log_entries:
         tags = entry.get("tags") or {}
+        if isinstance(tags.get("token_usage"), dict):
+            token_usage = tags["token_usage"]
         stage = tags.get("stage")
         action = tags.get("action") or ""
         source = tags.get("source")
@@ -503,125 +556,12 @@ def aggregate_progress(log_entries: list[dict]) -> dict:
         if log_entries
         else 0,
         "total_cost_usd": round(total_cost, 6),
+        "token_usage": token_usage,
         "active_operation": next(reversed(active_operations.values()), None)
         if active_operations
         else None,
         "stages": [stage_state[s] for s in STAGES_ORDER],
         "data_sources": list(collection_sources.values()),
-    }
-
-
-# ============================================================================
-# Cost and budget tracking
-# ============================================================================
-
-
-def check_budget(monthly_budget_usd: float, agent_name: str = "tradingagents") -> dict:
-    """统计本月已用美元 + 剩余,供触发前校验。
-
-    Returns:
-        {
-            "used": float,           # 本月已用(美元)
-            "remaining": float,      # 剩余(美元)
-            "limit": float,          # 配置上限
-            "exceeded": bool,        # 是否超限
-            "runs_this_month": int,  # 本月运行次数
-        }
-    """
-    now = datetime.now(timezone.utc)
-    # AnalysisHistory.analysis_date 是 "YYYY-MM-DD" 字符串
-    month_prefix = now.strftime("%Y-%m")
-
-    db = SessionLocal()
-    try:
-        records = (
-            db.query(AnalysisHistory)
-            .filter(
-                AnalysisHistory.agent_name == agent_name,
-                AnalysisHistory.analysis_date.like(f"{month_prefix}-%"),
-            )
-            .all()
-        )
-
-        total = 0.0
-        for r in records:
-            cost = _extract_cost(r.raw_data)
-            if cost:
-                total += cost
-
-        used = round(total, 4)
-        remaining = max(0.0, float(monthly_budget_usd) - used)
-        return {
-            "used": used,
-            "remaining": round(remaining, 4),
-            "limit": float(monthly_budget_usd),
-            "exceeded": used >= float(monthly_budget_usd),
-            "runs_this_month": len(records),
-        }
-    except Exception as e:
-        logger.warning(f"[TA成本] 预算查询失败,默认放行: {e}")
-        return {
-            "used": 0.0,
-            "remaining": float(monthly_budget_usd),
-            "limit": float(monthly_budget_usd),
-            "exceeded": False,
-            "runs_this_month": 0,
-        }
-    finally:
-        db.close()
-
-
-def _extract_cost(raw_data) -> float:
-    """从 AnalysisHistory.raw_data 提取 cost_usd。"""
-    if not isinstance(raw_data, dict):
-        return 0.0
-    cost = raw_data.get("cost_usd")
-    if cost is None:
-        return 0.0
-    try:
-        return float(cost)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def estimate_cost(
-    *,
-    debate_rounds: int,
-    selected_analysts: list[str],
-    model: str = "deepseek-chat",
-) -> dict:
-    """单次分析的成本估算(粗略,实际可能 ±50%)。
-
-    用于触发前给用户预估。公式假设:
-    - 每分析师 ~5k input + 2k output token
-    - 辩论每轮 ~12k input + 4k output token
-    - 风控 + PM ~15k input + 3k output token
-    - LangGraph 累积上下文实际比理论高 2-5 倍
-    """
-    n_analysts = len(selected_analysts or [])
-    prompt_tokens = n_analysts * 5000 + max(1, debate_rounds) * 12000 + 15000
-    completion_tokens = n_analysts * 2000 + max(1, debate_rounds) * 4000 + 3000
-
-    # 单价表(美元/百万 token)
-    PRICING = {
-        "deepseek-chat": (0.14, 0.28),
-        "deepseek-reasoner": (0.55, 2.19),
-        "gpt-4o-mini": (0.15, 0.60),
-        "gpt-4o": (2.50, 10.00),
-        "claude-sonnet-4": (3.00, 15.00),
-        "glm-4-flash": (0.05, 0.20),
-    }
-    input_rate, output_rate = PRICING.get(model.lower(), PRICING["deepseek-chat"])
-    cost = (prompt_tokens / 1_000_000 * input_rate) + (
-        completion_tokens / 1_000_000 * output_rate
-    )
-
-    return {
-        "model": model,
-        "prompt_tokens_est": prompt_tokens,
-        "completion_tokens_est": completion_tokens,
-        "cost_low_usd": round(cost * 2, 4),
-        "cost_high_usd": round(cost * 5, 4),
     }
 
 

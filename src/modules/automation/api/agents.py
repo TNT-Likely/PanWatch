@@ -632,47 +632,6 @@ def get_tradingagents_history_comparison(
     return build_history_comparison(stock_symbol=stock_symbol, market=market, days=days)
 
 
-@router.get("/tradingagents/budget")
-def get_tradingagents_budget(db: Session = Depends(get_db)):
-    """读取 TradingAgents 本月预算使用情况。
-
-    用于 UI 在「设置」+「DeepAnalysisModal」展示「已用 $X / 预算 $Y」。
-    """
-    agent = (
-        db.query(AgentConfig).filter(AgentConfig.name == "tradingagents").first()
-    )
-    if not agent:
-        raise api_error(404, "tradingagents_not_registered", "tradingagents agent 未注册")
-
-    cfg = agent.config or {}
-    monthly_budget = float(cfg.get("monthly_budget_usd", 10.0))
-
-    # 复用 cost_tracker 的 SQL 聚合
-    from src.modules.automation.tradingagents.observability import check_budget, estimate_cost
-
-    budget = check_budget(monthly_budget, "tradingagents")
-
-    # 单次估算(给前端确认弹窗显示)
-    est = estimate_cost(
-        debate_rounds=int(cfg.get("debate_rounds", 1)),
-        selected_analysts=list(
-            cfg.get("analyst_types", ["market", "social", "news", "fundamentals"])
-        ),
-        model=str(cfg.get("deep_model") or "deepseek-chat"),
-    )
-
-    return {
-        **budget,
-        "estimate_next_run": {
-            "cost_low_usd": est["cost_low_usd"],
-            "cost_high_usd": est["cost_high_usd"],
-            "model": est["model"],
-        },
-        "over_budget_action": cfg.get("over_budget_action", "reject"),
-        "enabled": bool(agent.enabled),
-    }
-
-
 @router.get("/runs/{trace_id}/progress")
 def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
     """读取一次 agent 运行的进度。
@@ -722,6 +681,18 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
 
     progress_logs = [d for d in log_dicts if d.get("event") == "ta_progress"]
     progress = aggregate_progress(progress_logs)
+    # Progress/tool history is bounded. Cumulative usage must still come from
+    # the newest snapshot, including runs with more than 500 log entries.
+    if len(logs) >= 500:
+        latest_usage = (
+            db.query(LogEntry.tags)
+            .filter(LogEntry.trace_id == trace_id, LogEntry.event == "ta_progress",
+                    LogEntry.tags["token_usage"]["completed_calls"].as_integer().isnot(None))
+            .order_by(LogEntry.id.desc())
+            .first()
+        )
+        if latest_usage:
+            progress["token_usage"] = latest_usage[0]["token_usage"]
 
     # 工具调用诊断:汇总 5 类 action 次数 + 最近 50 条详情
     # 港股转格式/兜底等场景归到对应基础类(HIT/PASSTHROUGH/ERROR),

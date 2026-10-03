@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1080" viewBox="0 0 1680 1080" role="img" aria-labelledby="chart-title chart-desc">
   <title id="chart-title">PanWatch TradingAgents deep-analysis flow</title>
-  <desc id="chart-desc">PanWatch starts a deep analysis with a trigger, data collection, and budget checks. TradingAgents then runs specialist analysis, bull and bear debate, research planning, trading, and risk review. PanWatch maps the decision into recommendations, optional paper-trading signals, and notifications.</desc>
+  <desc id="chart-desc">PanWatch starts a deep analysis with a trigger, data collection, and cache checks. TradingAgents then runs specialist analysis, bull and bear debate, research planning, trading, and risk review. PanWatch maps the decision into recommendations, optional paper-trading signals, and notifications.</desc>
   <rect width="1680" height="1080" fill="#ffffff" />
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
@@ -61,7 +61,7 @@
   <text x="731" y="229" class="step-text">3</text>
   <text x="756" y="239" class="node-title">Pre-run checks</text>
   <text x="728" y="274" class="node-body">Reuse same-day cached result</text>
-  <text x="728" y="301" class="node-body" font-size="14">Otherwise, check the monthly budget</text>
+  <text x="728" y="301" class="node-body" font-size="14">Otherwise, start a fresh analysis</text>
 
   <rect x="1045" y="205" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
   <rect x="1045" y="205" width="6" height="125" rx="3" fill="#806caf" />
@@ -161,7 +161,7 @@
 
   <rect x="1025" y="690" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
   <text x="1053" y="728" class="node-title">Runtime observability</text>
-  <text x="1053" y="764" class="node-body">Collection phase, LangGraph progress, and model cost</text>
+  <text x="1053" y="764" class="node-body">Collection, LangGraph progress, and token usage</text>
   <text x="1053" y="791" class="node-body">Stored as traces for run-progress status</text>
 
   <rect x="1025" y="850" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />

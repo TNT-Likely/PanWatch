@@ -1,3 +1,4 @@
+import { AnalysisMetadata } from './analysis-metadata'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
@@ -1954,7 +1955,6 @@ function DeepAnalysisSection({
   const sug = rawData.suggestion
   const reports = rawData.analyst_reports || { market: '', social: '', news: '', fundamentals: '' }
   const debate = rawData.debate_history
-  const costUsd = rawData.cost_usd
 
   return (
     <div className="space-y-3 text-[13px]">
@@ -1966,6 +1966,8 @@ function DeepAnalysisSection({
           <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
+
+      {result && <AnalysisMetadata result={result} />}
 
       {sug && (
         <div className="rounded-lg bg-accent/30 p-4 space-y-2">
@@ -1980,9 +1982,6 @@ function DeepAnalysisSection({
             )}
           </div>
           {sug.reason && <div className="text-[12px] text-foreground/80">{sug.reason.slice(0, 240)}</div>}
-          {typeof costUsd === 'number' && (
-            <div className="text-[10px] text-muted-foreground mt-2">{tr('deep.cost', { value: costUsd.toFixed(4) })}</div>
-          )}
         </div>
       )}
 

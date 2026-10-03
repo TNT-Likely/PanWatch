@@ -3,7 +3,7 @@ import { Bell, Bot, TrendingUp, MessageSquareText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { notificationsApi, type NotificationItem, type NotificationPage } from '@panwatch/api'
 import { formatDate } from '@/i18n/format'
-import { localizeAgentName } from '@/i18n/agent-labels'
+import { notificationTitle } from '@/lib/notifications'
 import type { useNotifications } from '@/hooks/useNotifications'
 
 interface Props {
@@ -49,7 +49,7 @@ export default function NotificationInbox({ monitor, onOpen, onHistory }: Props)
       <button type="button" disabled={!item.available || opening} onClick={async () => { setOpening(true); try { await onOpen(item) } finally { setOpening(false) } }} className="flex w-full gap-3 rounded-lg px-3 py-3 text-left hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-60">
         <Icon aria-hidden className={`mt-0.5 h-4 w-4 shrink-0 ${item.action_required ? 'text-primary' : 'text-muted-foreground'}`} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium">{item.source === 'agent' ? localizeAgentName(item.title, item.title, translate) : item.title || tr(`sources.${item.source}`)}</span>
+          <span className="block truncate text-[13px] font-medium">{notificationTitle(item, translate)}</span>
           <span className="mt-1 block text-[12px] leading-5 text-muted-foreground">{tr(`events.${item.template_key}`, item.template_params)}</span>
           <span className="mt-1 block text-[10px] text-muted-foreground">{tr(`sources.${item.source}`)} · {formatDate(item.occurred_at)}{!item.available && ` · ${tr('sourceGone')}`}</span>
         </span>

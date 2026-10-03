@@ -27,26 +27,42 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] md:top-1/2 z-50 w-[calc(100vw-1rem)] max-w-lg -translate-x-1/2 md:-translate-y-1/2 bg-card rounded-2xl shadow-[0_16px_70px_rgba(0,0,0,0.15)] p-6 pr-4 max-h-[calc(100vh-2rem-env(safe-area-inset-top))] md:max-h-[calc(100vh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain scrollbar duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
-        className="absolute right-4 top-4 w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+>(({ className, children, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+  const openerRef = React.useRef<HTMLElement | null>(null)
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          'fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] md:top-1/2 z-50 w-[calc(100vw-1rem)] max-w-lg -translate-x-1/2 md:-translate-y-1/2 bg-card rounded-2xl shadow-[0_16px_70px_rgba(0,0,0,0.15)] p-6 pr-4 max-h-[calc(100vh-2rem-env(safe-area-inset-top))] md:max-h-[calc(100vh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain scrollbar duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          className
+        )}
+        {...props}
+        onOpenAutoFocus={event => {
+          openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={event => {
+          onCloseAutoFocus?.(event)
+          // Controlled dialogs often open without a Radix DialogTrigger. Restore
+          // their actual opener while respecting explicit focus handoffs.
+          if (!event.defaultPrevented && openerRef.current?.isConnected) {
+            event.preventDefault()
+            openerRef.current.focus()
+          }
+        }}
       >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-))
+        {children}
+        <DialogPrimitive.Close
+          className="absolute right-4 top-4 w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

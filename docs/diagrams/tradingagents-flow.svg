@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1080" viewBox="0 0 1680 1080" role="img" aria-labelledby="chart-title chart-desc">
   <title id="chart-title">PanWatch TradingAgents 深度分析流程</title>
-  <desc id="chart-desc">从 PanWatch 分析触发、数据采集和预算检查开始，经过 TradingAgents 分析师、多空辩论、研究计划、交易方案和风控讨论，最后由投资组合经理给出评级，再由 PanWatch 保存建议、按需写入模拟盘信号并发送通知。</desc>
+  <desc id="chart-desc">从 PanWatch 分析触发、数据采集和缓存检查开始，经过 TradingAgents 分析师、多空辩论、研究计划、交易方案和风控讨论，最后由投资组合经理给出评级，再由 PanWatch 保存建议、按需写入模拟盘信号并发送通知。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
       <path d="M0,0 L10,5 L0,10 Z" fill="#63748b" />
@@ -60,7 +60,7 @@
   <text x="731" y="229" class="step-text">3</text>
   <text x="756" y="239" class="node-title">运行前检查</text>
   <text x="728" y="274" class="node-body">命中同日缓存则复用结果</text>
-  <text x="728" y="301" class="node-body">无缓存时检查月度预算</text>
+  <text x="728" y="301" class="node-body">无缓存时开始新分析</text>
 
   <rect x="1045" y="205" width="250" height="125" rx="16" class="card-ta" stroke-width="1.6" />
   <rect x="1045" y="205" width="6" height="125" rx="3" fill="#806caf" />
@@ -160,7 +160,7 @@
 
   <rect x="1025" y="690" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
   <text x="1053" y="728" class="node-title">运行观测</text>
-  <text x="1053" y="764" class="node-body">采集阶段、LangGraph 节点进度和模型成本</text>
+  <text x="1053" y="764" class="node-body">采集阶段、LangGraph 节点进度和 Token 用量</text>
   <text x="1053" y="791" class="node-body">写入 trace，供运行进度查询</text>
 
   <rect x="1025" y="850" width="615" height="140" rx="18" class="card-note" stroke-width="1.6" />
