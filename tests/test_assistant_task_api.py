@@ -81,6 +81,9 @@ def test_cancel_and_retry_task_controls_are_idempotent(monkeypatch):
     assert started == [task.id]
     assert cancelled["status"] == "cancelled"
     assert cancelled_again["status"] == "cancelled"
+    # HTTP control writes use independent worker sessions. Refresh this
+    # fixture's pre-existing identity map before reading the committed state.
+    session.expire_all()
     assert repository.get_task_snapshot(task.id)["retry_count"] == 1
 
     session.close()

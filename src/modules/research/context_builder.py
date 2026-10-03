@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 
@@ -424,6 +425,25 @@ class ContextBuilder:
         }
 
     async def build_symbol_contexts(
+        self,
+        *,
+        agent_name: str,
+        context,
+        packs: dict,
+        realtime_hours: int = 12,
+        extended_hours: int = 72,
+        history_days: int = 7,
+        kline_days: int = 120,
+        persist_snapshot: bool = True,
+    ) -> dict:
+        """Build using worker-owned database sessions and synchronous providers."""
+        return await asyncio.to_thread(
+            self._build_symbol_contexts, agent_name=agent_name, context=context, packs=packs,
+            realtime_hours=realtime_hours, extended_hours=extended_hours, history_days=history_days,
+            kline_days=kline_days, persist_snapshot=persist_snapshot,
+        )
+
+    def _build_symbol_contexts(
         self,
         *,
         agent_name: str,

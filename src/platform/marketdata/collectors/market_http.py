@@ -65,15 +65,19 @@ _THROTTLE_LOCK = threading.Lock()
 _last_call: dict[str, float] = {}
 
 
-def throttle(host_key: str, min_interval_s: float) -> None:
+def throttle(host_key: str, min_interval_s: float, *, deadline: float | None = None) -> None:
     """保证对同一 host 的请求间隔 ≥ min_interval_s,平滑顺序/并发突发。"""
     if min_interval_s <= 0:
         return
     with _THROTTLE_LOCK:
-        wait = min_interval_s - (time.time() - _last_call.get(host_key, 0.0))
-        if wait > 0:
-            time.sleep(wait)
-        _last_call[host_key] = time.time()
+        now = time.time()
+        scheduled = max(now, _last_call.get(host_key, 0.0) + min_interval_s)
+        if deadline is not None and scheduled - now >= deadline - time.monotonic():
+            raise TimeoutError("market-data throttle budget exhausted")
+        _last_call[host_key] = scheduled
+    wait = scheduled - now
+    if wait > 0:
+        time.sleep(wait)
 
 
 # ── 统一同步 GET ─────────────────────────────────────────────────────────
@@ -86,6 +90,7 @@ def market_get(
     min_interval_s: float = 0.0,
     timeout: float = 10.0,
     retries: int = 2,
+    total_timeout: float = 20.0,
     backoff: float = 0.4,
     jitter: float = 0.25,
     parse: str = "text",  # "text" | "json" | "content"
@@ -99,12 +104,24 @@ def market_get(
 ) -> Any | None:
     """按系统代理(env)+ host 节流 + 退避重试。成功返回解析结果,失败返回 None 并打带来源的日志。"""
     last_err: Any = None
+    deadline = time.monotonic() + max(0.0, total_timeout)
     for attempt in range(max(1, retries + 1)):
-        throttle(host_key, min_interval_s)
+        if time.monotonic() >= deadline:
+            last_err = TimeoutError("market-data retry budget exhausted")
+            break
+        try:
+            throttle(host_key, min_interval_s, deadline=deadline)
+        except TimeoutError as exc:
+            last_err = exc
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            last_err = TimeoutError("market-data retry budget exhausted")
+            break
         try:
             with httpx.Client(
                 follow_redirects=follow_redirects,
-                timeout=timeout + attempt * 4,
+                timeout=min(timeout, remaining),
                 headers=headers,
                 trust_env=trust_env,
                 verify=verify,
@@ -122,7 +139,10 @@ def market_get(
         except Exception as e:
             last_err = e
         if attempt < retries:
-            time.sleep(backoff * (attempt + 1) + random.uniform(0, jitter))
+            delay = min(backoff * (attempt + 1) + random.uniform(0, jitter),
+                        max(0.0, deadline - time.monotonic()))
+            if delay > 0:
+                time.sleep(delay)
 
     if last_err is not None:
         label = log_label or host_key

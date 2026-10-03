@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { KlineSummaryDialog } from '@panwatch/biz-ui/components/kline-summary-dialog'
 import { KlineIndicators } from '@panwatch/biz-ui/components/kline-indicators'
 import { buildKlineSuggestion } from '@/lib/kline-scorer'
-import { fetchAPI } from '@panwatch/api'
-import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { AiSuggestionBadge } from '@panwatch/biz-ui/components/ai-suggestion-badge'
 import { TechnicalBadge, technicalToneFromSuggestionAction } from '@panwatch/biz-ui/components/technical-badge'
 import { useTranslation } from 'react-i18next'
@@ -169,28 +167,6 @@ export function SuggestionBadge({
   }
   const [dialogOpen, setDialogOpen] = useState(false)
   const [klineDialogOpen, setKlineDialogOpen] = useState(false)
-  const [feedback, setFeedback] = useState<'useful' | 'useless' | null>(null)
-  const { toast } = useToast()
-
-  useEffect(() => {
-    setFeedback(null)
-  }, [suggestion?.id])
-
-  const canFeedback = !!suggestion?.id && !isTechnical
-  const submitFeedback = async (useful: boolean) => {
-    if (!suggestion?.id) return
-    try {
-      await fetchAPI('/feedback', {
-        method: 'POST',
-        body: JSON.stringify({ suggestion_id: suggestion.id, useful }),
-      })
-      setFeedback(useful ? 'useful' : 'useless')
-      toast(tr('feedbackSubmitted'), 'success')
-    } catch (e) {
-      toast(e instanceof Error ? e.message : tr('feedbackFailed'), 'error')
-    }
-  }
-
   const onDialogOpenChange = (open: boolean) => {
     setDialogOpen(open)
     if (!open) {
@@ -300,39 +276,6 @@ export function SuggestionBadge({
             </DialogHeader>
 
             <div className="space-y-4">
-              {/* Feedback */}
-              {canFeedback && (
-                <div>
-                  <div className="text-[11px] text-muted-foreground mb-1">{tr('feedbackQuestion')}</div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => submitFeedback(true)}
-                      disabled={feedback !== null}
-                      className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
-                        feedback === 'useful'
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
-                          : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {tr('useful')}
-                    </button>
-                    <button
-                      onClick={() => submitFeedback(false)}
-                      disabled={feedback !== null}
-                      className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
-                        feedback === 'useless'
-                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
-                          : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {tr('useless')}
-                    </button>
-                    {feedback && (
-                      <span className="text-[11px] text-muted-foreground">{tr('feedbackThanks')}</span>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* 信号 */}
               {suggestion.signal && (
@@ -508,39 +451,6 @@ export function SuggestionBadge({
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Feedback */}
-            {canFeedback && (
-              <div>
-                <div className="text-[11px] text-muted-foreground mb-1">{tr('feedbackQuestion')}</div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => submitFeedback(true)}
-                    disabled={feedback !== null}
-                    className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
-                      feedback === 'useful'
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
-                        : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {tr('useful')}
-                  </button>
-                  <button
-                    onClick={() => submitFeedback(false)}
-                    disabled={feedback !== null}
-                    className={`text-[12px] px-3 py-1.5 rounded-md border transition-colors ${
-                      feedback === 'useless'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
-                        : 'bg-background/40 border-border/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {tr('useless')}
-                  </button>
-                  {feedback && (
-                    <span className="text-[11px] text-muted-foreground">{tr('feedbackThanks')}</span>
-                  )}
-                </div>
-              </div>
-            )}
 
             {/* 信号 */}
             {suggestion.signal && (

@@ -25,6 +25,7 @@ def _run_eval(monkeypatch, req, reply="结论: 适合\n理由:\n- 摊薄明显\n
     async def _empty(*a, **k):
         return ""
 
+    monkeypatch.setattr(insights, "md_quote_rows", lambda *a, **k: [])
     monkeypatch.setattr(insights, "fetch_realtime_context", _empty)
     monkeypatch.setattr(insights, "_fetch_fundamental_context", _empty)
     monkeypatch.setattr(insights, "fetch_technical_context", _empty)

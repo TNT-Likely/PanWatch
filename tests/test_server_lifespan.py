@@ -29,7 +29,12 @@ def _isolate_startup(monkeypatch, server):
     from src.modules.automation.tradingagents import operations
     from src.platform.observability import otel
     from src.platform.scheduling import trading_calendar
-    monkeypatch.setattr(threading, "Thread", Mock())
+    original_thread = threading.Thread
+    def thread_for_test(*args, **kwargs):
+        if getattr(kwargs.get("target"), "__name__", "") == "refresh_stock_cache":
+            return Mock()
+        return original_thread(*args, **kwargs)
+    monkeypatch.setattr(threading, "Thread", thread_for_test)
     monkeypatch.setattr(auth, "init_auth_from_env", lambda db: False)
     monkeypatch.setattr(operations, "backfill_tradingagents_suggestions", Mock())
     monkeypatch.setattr(otel, "init_otel", Mock())

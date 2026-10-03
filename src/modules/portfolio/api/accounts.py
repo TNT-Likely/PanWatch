@@ -1,4 +1,5 @@
 """账户和持仓管理 API"""
+import asyncio
 import logging
 import time
 import httpx
@@ -829,94 +830,102 @@ def _gather_account_totals(db: Session, *, market_value: float) -> dict:
     }
 
 
+def _prepare_portfolio_review(model_id, bind):
+    """Own the session and all blocking market-data work in the worker."""
+    with Session(bind) as db:
+        from src.modules.portfolio.portfolio_benchmark import build_attribution, build_portfolio_benchmark
+        from src.modules.portfolio.portfolio_diagnostics import diagnose_positions
+        from src.platform.ai.ai_failover import get_configured_failover_client
+        from src.platform.language import resolve_report_language
+
+        holdings = _gather_holdings(db)
+        if not holdings:
+            return {"empty": True, "reason": "no_holdings"}
+
+        diag = diagnose_positions(holdings)
+        totals = _gather_account_totals(db, market_value=diag["total_market_value"])
+        bench = build_portfolio_benchmark(holdings, days=60) or {}
+        attr = build_attribution(holdings, days=60)
+        top = attr[:3]
+        worst = list(reversed(attr[-3:])) if len(attr) > 3 else []
+
+        english = resolve_report_language(db) == "en-US"
+        lines = (
+            [
+                f"{diag['position_count']} holdings; market value {diag['total_market_value']:.0f} CNY; unrealized P&L {diag['total_unrealized_pnl']:.0f} CNY",
+                f"Concentration within invested capital: HHI {diag['hhi']}; largest position {diag['max_weight'] * 100:.0f}%",
+                f"Total assets across enabled accounts: {totals['total_assets']:.0f} CNY (cash/available funds {totals['available_funds']:.0f} CNY)",
+                (f"Total-asset exposure: equities are {totals['equity_ratio'] * 100:.1f}% of total assets"
+                 if totals['equity_ratio'] is not None else "Total-asset exposure: unavailable because total assets are not positive"),
+            ]
+            if english
+            else [
+                f"持仓 {diag['position_count']} 只,总市值 {diag['total_market_value']:.0f},浮盈 {diag['total_unrealized_pnl']:.0f}",
+                f"持仓内部集中度 HHI {diag['hhi']},最大单仓占已投资金额 {diag['max_weight'] * 100:.0f}%",
+                f"启用账户总资产 {totals['total_assets']:.0f} CNY（现金/可用资金 {totals['available_funds']:.0f} CNY）",
+                (f"总资产敞口：权益类仓位占总资产 {totals['equity_ratio'] * 100:.1f}%"
+                 if totals['equity_ratio'] is not None else "总资产敞口：总资产非正，比例不可计算"),
+            ]
+        )
+        if bench.get("excess_return") is not None:
+            label = bench.get("benchmark_code") or bench.get("benchmark_label", "benchmark" if english else "基准")
+            lines.append(
+                (f"Last 60 days vs {label}: excess return {bench['excess_return']}% "
+                 f"(portfolio {bench.get('portfolio_return')}% / benchmark {bench.get('benchmark_return')}%); "
+                 f"relative drawdown {bench.get('relative_drawdown')}%")
+                if english
+                else f"近60日 vs {label}:超额 {bench['excess_return']}%"
+                     f"(组合 {bench.get('portfolio_return')}% / 基准 {bench.get('benchmark_return')}%),"
+                     f"相对回撤 {bench.get('relative_drawdown')}%"
+            )
+        if diag.get("by_market"):
+            prefix = "Market distribution within holdings (CNY): " if english else "持仓内部市场分布（市值 CNY）:"
+            lines.append(prefix + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
+        if diag.get("alerts"):
+            if english:
+                details = diag.get("alert_details") or []
+                localized_alerts = []
+                for detail in details:
+                    if detail.get("code") == "single_concentration":
+                        localized_alerts.append(f"largest position is {detail.get('weight')}%")
+                    elif detail.get("code") == "hhi_concentration":
+                        localized_alerts.append(f"high concentration (HHI={detail.get('hhi')})")
+                    elif detail.get("code") == "too_few_positions":
+                        localized_alerts.append(f"only {detail.get('count')} holdings")
+                    elif detail.get("code") == "market_concentration":
+                        localized_alerts.append(f"{detail.get('market')} exposure is {detail.get('weight')}%")
+                lines.append("Risk flags: " + "; ".join(localized_alerts))
+            else:
+                lines.append("风险提示:" + "; ".join(diag["alerts"]))
+        if top:
+            lines.append(("Top contributors: " if english else "贡献最大:") + ", ".join(f"{r['name']}({r['contribution_pct']:+.2f}%)" for r in top))
+        if worst:
+            lines.append(("Largest drags: " if english else "拖累最大:") + ", ".join(f"{r['name']}({r['contribution_pct']:+.2f}%)" for r in worst))
+
+        system_prompt = (
+            (
+                "You are a prudent portfolio adviser. Based on the supplied diagnostics, benchmark comparison, and attribution, write a concise health check and 2-3 actionable rebalancing suggestions in English. Distinguish concentration within invested capital from equity exposure relative to total assets. Never describe total-asset exposure using the within-holdings concentration percentage. Cash is the recorded available balance and is not broker-verified. If total assets are not positive, do not invent an exposure ratio. This is read-only analysis: do not place orders or promise returns. Use exactly this structure:\nHealth check: one-sentence summary\nSuggestions:\n- 2-3 concrete actions\nRisk: the largest risk in one sentence"
+                if english
+                else "你是稳健的组合顾问。基于给定的组合诊断/基准对比/个股归因,给一段简短体检 + 可执行调仓建议,"
+                     "务必区分持仓内部集中度（已投资金额中的分布）和相对总资产的实际权益敞口。"
+                     "不得用持仓内部的集中度百分比形容总资产敞口。现金按启用账户已录入的可用资金计算，未核验券商余额。"
+                     "总资产非正时不得编造敞口比例；输出必须包含‘持仓内部集中度’和‘总资产敞口’两项。"
+                     "只读分析、不下单、不承诺收益。严格格式:\n体检: 一句话总评\n建议:\n- (2~3 条具体可执行)\n风险: 一句话最大风险"
+            )
+        )
+        user_content = ("Portfolio overview:\n" if english else "组合概况:\n") + "\n".join(lines)
+        return {"client": get_configured_failover_client(db, model_id), "system_prompt": system_prompt,
+                "user_content": user_content, "result": {"top": top, "worst": worst, "diagnostics": diag, "benchmark": bench, "account_totals": totals}}
+
+
 @router.post("/portfolio/ai-review")
 async def portfolio_ai_review(model_id: int | None = None, db: Session = Depends(get_db)):
-    """组合 AI 体检:诊断+基准+归因 → 叙述结论 + 调仓建议(只读,不下单)。"""
-    from src.modules.portfolio.portfolio_benchmark import build_attribution, build_portfolio_benchmark
-    from src.modules.portfolio.portfolio_diagnostics import diagnose_positions
-    from src.platform.ai.ai_failover import get_configured_failover_client
-    from src.platform.language import resolve_report_language
-
-    holdings = _gather_holdings(db)
-    if not holdings:
-        return {"empty": True, "reason": "no_holdings"}
-
-    diag = diagnose_positions(holdings)
-    totals = _gather_account_totals(db, market_value=diag["total_market_value"])
-    bench = build_portfolio_benchmark(holdings, days=60) or {}
-    attr = build_attribution(holdings, days=60)
-    top = attr[:3]
-    worst = list(reversed(attr[-3:])) if len(attr) > 3 else []
-
-    english = resolve_report_language(db) == "en-US"
-    lines = (
-        [
-            f"{diag['position_count']} holdings; market value {diag['total_market_value']:.0f} CNY; unrealized P&L {diag['total_unrealized_pnl']:.0f} CNY",
-            f"Concentration within invested capital: HHI {diag['hhi']}; largest position {diag['max_weight'] * 100:.0f}%",
-            f"Total assets across enabled accounts: {totals['total_assets']:.0f} CNY (cash/available funds {totals['available_funds']:.0f} CNY)",
-            (f"Total-asset exposure: equities are {totals['equity_ratio'] * 100:.1f}% of total assets"
-             if totals['equity_ratio'] is not None else "Total-asset exposure: unavailable because total assets are not positive"),
-        ]
-        if english
-        else [
-            f"持仓 {diag['position_count']} 只,总市值 {diag['total_market_value']:.0f},浮盈 {diag['total_unrealized_pnl']:.0f}",
-            f"持仓内部集中度 HHI {diag['hhi']},最大单仓占已投资金额 {diag['max_weight'] * 100:.0f}%",
-            f"启用账户总资产 {totals['total_assets']:.0f} CNY（现金/可用资金 {totals['available_funds']:.0f} CNY）",
-            (f"总资产敞口：权益类仓位占总资产 {totals['equity_ratio'] * 100:.1f}%"
-             if totals['equity_ratio'] is not None else "总资产敞口：总资产非正，比例不可计算"),
-        ]
-    )
-    if bench.get("excess_return") is not None:
-        label = bench.get("benchmark_code") or bench.get("benchmark_label", "benchmark" if english else "基准")
-        lines.append(
-            (f"Last 60 days vs {label}: excess return {bench['excess_return']}% "
-             f"(portfolio {bench.get('portfolio_return')}% / benchmark {bench.get('benchmark_return')}%); "
-             f"relative drawdown {bench.get('relative_drawdown')}%")
-            if english
-            else f"近60日 vs {label}:超额 {bench['excess_return']}%"
-                 f"(组合 {bench.get('portfolio_return')}% / 基准 {bench.get('benchmark_return')}%),"
-                 f"相对回撤 {bench.get('relative_drawdown')}%"
-        )
-    if diag.get("by_market"):
-        prefix = "Market distribution within holdings (CNY): " if english else "持仓内部市场分布（市值 CNY）:"
-        lines.append(prefix + ", ".join(f"{k} {v:.0f}" for k, v in diag["by_market"].items()))
-    if diag.get("alerts"):
-        if english:
-            details = diag.get("alert_details") or []
-            localized_alerts = []
-            for detail in details:
-                if detail.get("code") == "single_concentration":
-                    localized_alerts.append(f"largest position is {detail.get('weight')}%")
-                elif detail.get("code") == "hhi_concentration":
-                    localized_alerts.append(f"high concentration (HHI={detail.get('hhi')})")
-                elif detail.get("code") == "too_few_positions":
-                    localized_alerts.append(f"only {detail.get('count')} holdings")
-                elif detail.get("code") == "market_concentration":
-                    localized_alerts.append(f"{detail.get('market')} exposure is {detail.get('weight')}%")
-            lines.append("Risk flags: " + "; ".join(localized_alerts))
-        else:
-            lines.append("风险提示:" + "; ".join(diag["alerts"]))
-    if top:
-        lines.append(("Top contributors: " if english else "贡献最大:") + ", ".join(f"{r['name']}({r['contribution_pct']:+.2f}%)" for r in top))
-    if worst:
-        lines.append(("Largest drags: " if english else "拖累最大:") + ", ".join(f"{r['name']}({r['contribution_pct']:+.2f}%)" for r in worst))
-
-    system_prompt = (
-        (
-            "You are a prudent portfolio adviser. Based on the supplied diagnostics, benchmark comparison, and attribution, write a concise health check and 2-3 actionable rebalancing suggestions in English. Distinguish concentration within invested capital from equity exposure relative to total assets. Never describe total-asset exposure using the within-holdings concentration percentage. Cash is the recorded available balance and is not broker-verified. If total assets are not positive, do not invent an exposure ratio. This is read-only analysis: do not place orders or promise returns. Use exactly this structure:\nHealth check: one-sentence summary\nSuggestions:\n- 2-3 concrete actions\nRisk: the largest risk in one sentence"
-            if english
-            else "你是稳健的组合顾问。基于给定的组合诊断/基准对比/个股归因,给一段简短体检 + 可执行调仓建议,"
-                 "务必区分持仓内部集中度（已投资金额中的分布）和相对总资产的实际权益敞口。"
-                 "不得用持仓内部的集中度百分比形容总资产敞口。现金按启用账户已录入的可用资金计算，未核验券商余额。"
-                 "总资产非正时不得编造敞口比例；输出必须包含‘持仓内部集中度’和‘总资产敞口’两项。"
-                 "只读分析、不下单、不承诺收益。严格格式:\n体检: 一句话总评\n建议:\n- (2~3 条具体可执行)\n风险: 一句话最大风险"
-        )
-    )
-    user_content = ("Portfolio overview:\n" if english else "组合概况:\n") + "\n".join(lines)
+    prepared = await asyncio.to_thread(_prepare_portfolio_review, model_id, db.get_bind())
+    if prepared.get("empty"):
+        return prepared
     try:
-        content = await get_configured_failover_client(db, model_id).chat(system_prompt, user_content, temperature=0.3)
+        content = await prepared["client"].chat(prepared["system_prompt"], prepared["user_content"], temperature=0.3)
     except Exception as e:
         logger.exception("AI 体检失败")
         raise ai_api_error(e) from e
-
-    return {"content": content, "top": top, "worst": worst, "diagnostics": diag, "benchmark": bench, "account_totals": totals}
+    return {"content": content, **prepared["result"]}

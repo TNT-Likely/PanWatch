@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -61,7 +62,7 @@ class DailyReportAgent(BaseAgent):
         """
         if market_code != MarketCode.CN:
             return []
-        items = get_market_data().index_quotes(_CN_INDEX_TENCENT_SYMBOLS)
+        items = await asyncio.to_thread(get_market_data().index_quotes, _CN_INDEX_TENCENT_SYMBOLS)
         return [
             IndexData(
                 symbol=item["symbol"],
@@ -629,7 +630,8 @@ class DailyReportAgent(BaseAgent):
                     .get("data_quality", {})
                     .get("score")
                 )
-                save_suggestion(
+                await asyncio.to_thread(
+                    save_suggestion,
                     stock_symbol=symbol,
                     stock_name=stock.name,
                     action=sug["action"],
@@ -663,7 +665,8 @@ class DailyReportAgent(BaseAgent):
                 )
                 prediction_group_id = str(uuid.uuid4())
                 for horizon in (1, 5):
-                    save_agent_prediction_outcome(
+                    await asyncio.to_thread(
+                        save_agent_prediction_outcome,
                         agent_name=self.name,
                         stock_symbol=symbol,
                         stock_market=stock.market.value,
@@ -700,6 +703,7 @@ class DailyReportAgent(BaseAgent):
                 "memory": ctx.get("memory") or {},
             }
             context_payload[sym] = {
+                "market": stock_map[sym].market.value if sym in stock_map else None,
                 "data_quality": ctx.get("data_quality") or {},
                 "kline_history": ctx.get("kline_history") or {},
                 "constraints": ctx.get("constraints") or {},
@@ -753,7 +757,8 @@ class DailyReportAgent(BaseAgent):
                 "extended_count": len(layered.get("extended") or []),
                 "history_count": len(layered.get("history") or []),
             }
-        save_agent_context_run(
+        await asyncio.to_thread(
+            save_agent_context_run,
             agent_name=self.name,
             stock_symbol="*",
             analysis_date=analysis_date,
@@ -763,7 +768,8 @@ class DailyReportAgent(BaseAgent):
             },
             quality={"score": quality_overview.get("avg_score", 0)},
         )
-        history_saved = save_analysis(
+        history_saved = await asyncio.to_thread(
+            save_analysis,
             agent_name=self.name,
             stock_symbol="*",
             content=result.content,

@@ -190,7 +190,7 @@ async def probe_notify_channel(
                      int((time.monotonic() - t0) * 1000), str(e))
 
 
-async def probe_db() -> dict:
+def _probe_db() -> dict:
     """对真实库执行 SELECT 1。"""
     from sqlalchemy import text
 
@@ -209,6 +209,9 @@ async def probe_db() -> dict:
         return _item("system", "sys:db", "数据库", "fail", int((time.monotonic() - t0) * 1000), str(e))
 
 
+async def probe_db() -> dict:
+    return await asyncio.to_thread(_probe_db)
+
 async def probe_disk() -> dict:
     """检查 data 目录所在盘的可用空间。"""
     import os
@@ -219,7 +222,7 @@ async def probe_disk() -> dict:
     t0 = time.monotonic()
     try:
         data_dir = os.path.dirname(os.path.abspath(DB_PATH))
-        usage = shutil.disk_usage(data_dir)
+        usage = await asyncio.to_thread(shutil.disk_usage, data_dir)
         free_gb = usage.free / (1024 ** 3)
         total_gb = usage.total / (1024 ** 3)
         note = f"可用 {free_gb:.1f}GB / 共 {total_gb:.1f}GB"

@@ -153,14 +153,17 @@ class ContextExportRunner:
                 logger.error('Context export worker failed: job_id=%s', job_id, exc_info=completed.exception())
         task.add_done_callback(done)
 
-    async def recover_pending(self):
+    def _recover_pending(self):
         with self.session_factory() as db:
             # Safe to resume: no tools or external business writes are executed.
             db.query(AssistantContextExport).filter_by(status='running').update(
                 {'status': 'queued', 'lease_token': ''}, synchronize_session=False)
             db.commit()
             jobs = [row[0] for row in db.query(AssistantContextExport.id).filter_by(status='queued')]
-        for job_id in jobs:
+        return jobs
+
+    async def recover_pending(self):
+        for job_id in await self._work(self._recover_pending):
             self.start(job_id)
 
     async def shutdown(self):
@@ -209,36 +212,53 @@ class ContextExportRunner:
                 {'status': 'queued', 'lease_token': ''}, synchronize_session=False)
             db.commit()
 
+    def _claim(self, job_id, token):
+        with self.session_factory() as db:
+            changed = db.query(AssistantContextExport).filter_by(id=job_id, status='queued').update({
+                'status': 'running', 'lease_token': token, 'started_at': utc_now(),
+                'attempt': AssistantContextExport.attempt + 1,
+            }, synchronize_session=False)
+            db.commit()
+            if not changed:
+                return None
+            job = ExportJobRepository(db).get(job_id)
+            source, language, budget = job.source, job.language, job.context_budget
+            detail = ConversationDetailDTO.model_validate(job.snapshot)
+            created = job.created_at.replace(tzinfo=timezone.utc)
+            offset, count = job.processed_chars, job.completed_parts
+            previous = HandoffSummary.model_validate(job.summary) if job.summary else None
+            client = AssistantService(AssistantRepository(db)).build_context_compression_client()
+        return source, language, budget, detail, created, offset, count, previous, client
+
+    async def _work(self, function, *args, **kwargs):
+        pending = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+        try:
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            await pending
+            raise
+
     async def _run(self, job_id):
         async with self.slots:
             token = uuid4().hex
             try:
-                with self.session_factory() as db:
-                    changed = db.query(AssistantContextExport).filter_by(id=job_id, status='queued').update({
-                        'status': 'running', 'lease_token': token, 'started_at': utc_now(),
-                        'attempt': AssistantContextExport.attempt + 1,
-                    }, synchronize_session=False)
-                    db.commit()
-                    if not changed:
-                        return
-                    job = ExportJobRepository(db).get(job_id)
-                    source, language, budget = job.source, job.language, job.context_budget
-                    detail = ConversationDetailDTO.model_validate(job.snapshot)
-                    created = job.created_at.replace(tzinfo=timezone.utc)
-                    offset, count = job.processed_chars, job.completed_parts
-                    previous = HandoffSummary.model_validate(job.summary) if job.summary else None
-                    client = AssistantService(AssistantRepository(db)).build_context_compression_client()
+                claimed = await self._work(self._claim, job_id, token)
+                if claimed is None:
+                    return
+                source, language, budget, detail, created, offset, count, previous, client = claimed
+                async def persist_progress(offset, count, summary):
+                    await self._work(self.progress, job_id, token, offset, count, summary)
                 logger.info('Context export started: job_id=%s chars=%s completed_parts=%s', job_id, len(source), count)
                 async with asyncio.timeout(EXPORT_JOB_TIMEOUT_SECONDS):
                     summary = await summarize_export(
                         client, source, language, budget, start=offset,
                         previous=previous, completed_parts=count,
-                        on_progress=lambda offset, count, summary: self.progress(job_id, token, offset, count, summary),
+                        on_progress=persist_progress,
                     )
-                self.finish(job_id, token, result=render_export(detail, summary, language, created))
+                await self._work(self.finish, job_id, token, result=render_export(detail, summary, language, created))
                 logger.info('Context export completed: job_id=%s', job_id)
             except asyncio.CancelledError:
-                self.requeue(job_id, token)
+                await self._work(self.requeue, job_id, token)
                 raise
             except (ExportLeaseLost, LookupError):
                 pass
@@ -246,7 +266,7 @@ class ContextExportRunner:
                 code = ('assistant_export_timeout' if isinstance(exc, TimeoutError) else
                         exc.code if isinstance(exc, ContextExportError) else classify_ai_service_error(exc).code)
                 logger.warning('Context export failed: job_id=%s code=%s', job_id, code)
-                self.finish(job_id, token, error_code=code)
+                await self._work(self.finish, job_id, token, error_code=code)
 
 
 context_export_runner = ContextExportRunner()

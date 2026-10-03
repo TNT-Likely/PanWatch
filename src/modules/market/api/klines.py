@@ -123,25 +123,19 @@ def get_klines_batch(payload: KlineBatchRequest):
     if not payload.items:
         return []
 
-    results = []
-    for item in payload.items:
-        market_code = _parse_market(item.market)
-        collector = KlineCollector(market_code)
-        days = item.days or 60
-        interval = item.interval or "1d"
-        klines = collector.get_klines(item.symbol, days=days)
-        klines = _aggregate_klines(klines, interval)
-        results.append(
-            {
-                "symbol": item.symbol,
-                "market": market_code.value,
-                "days": days,
-                "interval": interval,
-                "klines": _serialize_klines(klines),
-            }
-        )
-
-    return results
+    keys = [(item.symbol, _parse_market(item.market), item.days or 60, item.interval or "1d")
+            for item in payload.items]
+    def load_one(key):
+        symbol, market, days, interval = key
+        klines = KlineCollector(market).get_klines(symbol, days=days)
+        return {
+            "symbol": symbol, "market": market.value, "days": days, "interval": interval,
+            "klines": _serialize_klines(_aggregate_klines(klines, interval)),
+        }
+    unique = list(dict.fromkeys(keys))
+    with ThreadPoolExecutor(max_workers=min(5, len(unique))) as pool:
+        rows = dict(zip(unique, pool.map(load_one, unique)))
+    return [rows[key] for key in keys]
 
 
 @router.get("/{symbol}/summary")

@@ -39,6 +39,7 @@ from src.platform.persistence.models import (
     StockSuggestion,
 )
 from src.platform.runtime.config import Settings
+from src.platform.persistence.worker import run_db_operation
 
 from .context_schemas import (
     AssistantConfigDTO,
@@ -119,6 +120,12 @@ class AssistantService:
         self._repository = repository
         self._settings = settings or Settings()
 
+    async def in_worker(self, operation):
+        return await run_db_operation(
+            self._repository.session.get_bind(),
+            lambda db: operation(AssistantService(AssistantRepository(db), self._settings)),
+        )
+
     def create_conversation(
         self, command: CreateConversationCommand
     ) -> ConversationDTO:
@@ -135,7 +142,7 @@ class AssistantService:
         return self._conversation_dto(self._repository.rename_conversation(
             self._require_conversation(conversation_id), command.title))
 
-    async def generate_conversation_title(self, conversation_id: int) -> bool:
+    async def generate_conversation_title(self, conversation_id: int, *, persist=None) -> bool:
         from .titles import summarize_title
         conversation = self._require_conversation(conversation_id)
         if conversation.title_source not in ('provisional', 'legacy'):
@@ -148,11 +155,13 @@ class AssistantService:
         expected_title = conversation.title or ''
         client = self.build_context_compression_client()
         # Release the read transaction before waiting for the model.
-        self._repository.session.commit()
+        self._repository.session.rollback()
         title = await summarize_title(client, question, answer)
         if not title:
             return False
-        return self._repository.set_automatic_title(conversation_id, title, expected_title)
+        return await (persist or self.in_worker)(
+            lambda worker: worker._repository.set_automatic_title(conversation_id, title, expected_title)
+        )
 
     def get_suggested_questions(self, symbol: str, market: str = "CN") -> list[str]:
         """Build deterministic prompts from the current local stock context."""
@@ -326,6 +335,7 @@ class AssistantService:
         *,
         mode: ContextCompressionMode = ContextCompressionMode.BALANCED,
         force_compress: bool = False,
+        persist=None,
     ):
         conversation = self._require_conversation(conversation_id)
         rows = self._repository.list_messages(conversation_id)
@@ -353,15 +363,17 @@ class AssistantService:
             covered_until = (
                 non_system_rows[old_count - 1].id if old_count > 0 else None
             )
-            self._repository.save_context_snapshot(
-                conversation_id,
-                mode=mode,
-                summary=result.summary,
-                covered_until_message_id=covered_until,
-                source_message_count=old_count,
-                usage_before=result.usage_before,
-                usage_after=result.usage_after,
-            )
+            def save(worker):
+                return worker._repository.save_context_snapshot(
+                    conversation_id,
+                    mode=mode,
+                    summary=result.summary,
+                    covered_until_message_id=covered_until,
+                    source_message_count=old_count,
+                    usage_before=result.usage_before,
+                    usage_after=result.usage_after,
+                )
+            await (persist or self.in_worker)(save)
         return result
 
     def _context_model_name(self) -> str | None:

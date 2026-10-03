@@ -11,8 +11,8 @@ from src.modules.portfolio.api import accounts
 
 
 @pytest.fixture
-def db():
-    engine = create_engine('sqlite://')
+def db(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'review.db'}")
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as session:
         yield session

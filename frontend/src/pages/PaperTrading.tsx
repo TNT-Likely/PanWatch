@@ -146,30 +146,44 @@ export default function PaperTradingPage() {
   const [notifySaving, setNotifySaving] = useState(false)
   const [notifyTesting, setNotifyTesting] = useState(false)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const mkt = marketView === 'ALL' ? undefined : marketView
-      const [acc, pos, tradeData, metrics] = await Promise.all([
-        paperTradingApi.getAccount(mkt),
-        paperTradingApi.listPositions('open', mkt),
-        paperTradingApi.listTrades(tradesPageSize, tradesPage * tradesPageSize, mkt),
-        paperTradingApi.getMetrics(mkt),
-      ])
-      setAccount(acc)
-      setPositions(pos)
-      setTrades(tradeData.items)
-      setTradesTotal(tradeData.total)
-      setEquityCurve(metrics.equity_curve)
-      setStrategyPerf(metrics.strategy_performance || [])
-    } catch {
-      toast(message('loadFailed'), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }, [tradesPage, marketView])
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const loadData = useCallback(() => { setRefreshVersion(value => value + 1) }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    let cancelled = false
+    const mkt = marketView === 'ALL' ? undefined : marketView
+    setLoading(true)
+    setAccount(null)
+    setPositions([])
+    setEquityCurve([])
+    setStrategyPerf([])
+    const publish = <T,>(setter: (value: T) => void) => (value: T) => { if (!cancelled) setter(value) }
+    void Promise.allSettled([
+      paperTradingApi.getAccount(mkt).then(publish(setAccount)).finally(() => { if (!cancelled) setLoading(false) }),
+      paperTradingApi.listPositions('open', mkt).then(publish(setPositions)),
+      paperTradingApi.getMetrics(mkt).then(metrics => {
+        if (cancelled) return
+        setEquityCurve(metrics.equity_curve)
+        setStrategyPerf(metrics.strategy_performance || [])
+      }),
+    ]).then(results => {
+      if (!cancelled && results.some(result => result.status === 'rejected')) toast(message('loadFailed'), 'error')
+    })
+    return () => { cancelled = true }
+  }, [marketView, refreshVersion])
+
+  useEffect(() => {
+    let cancelled = false
+    const mkt = marketView === 'ALL' ? undefined : marketView
+    setTrades([])
+    setTradesTotal(0)
+    void paperTradingApi.listTrades(tradesPageSize, tradesPage * tradesPageSize, mkt).then(data => {
+      if (cancelled) return
+      setTrades(data.items)
+      setTradesTotal(data.total)
+    }).catch(() => { if (!cancelled) toast(message('loadFailed'), 'error') })
+    return () => { cancelled = true }
+  }, [marketView, tradesPage, refreshVersion])
 
   const handleToggle = async () => {
     if (!account) return

@@ -115,7 +115,7 @@ Agent 执行循环。`bootstrap` 中只保留确有启动期职责的文件；�
 | `automation` | `modules/automation/api/` | Agent、建议池、模板 |
 | `market` | `modules/market/api/` | 标的、行情、K 线、新闻、发现、价格告警 |
 | `portfolio` | `modules/portfolio/api/` | 账户、持仓历史、仪表盘 |
-| `research` | `modules/research/api/` | 上下文、洞察、评估、反馈、建议 |
+| `research` | `modules/research/api/` | 上下文、洞察、评估、建议 |
 | `strategy` | `modules/strategy/api/` | 因子接口 |
 | `paper_trading` | `modules/paper_trading/api/` | 模拟盘接口 |
 

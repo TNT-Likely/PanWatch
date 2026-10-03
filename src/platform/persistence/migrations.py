@@ -2142,6 +2142,13 @@ WHERE notification_id = :id
         logger.info("Archived %s idle intraday notification events", len(ids))
 
 
+def _m134_remove_manual_feedback(conn: Connection) -> None:
+    # SQLite removes the tables' indexes with DROP TABLE. Automated prediction
+    # and candidate outcomes remain the source of evaluation data.
+    conn.execute(text("DROP TABLE IF EXISTS suggestion_feedback"))
+    conn.execute(text("DROP TABLE IF EXISTS entry_candidate_feedback"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2176,6 +2183,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(131, "assistant_conversation_titles", _m131_assistant_conversation_titles),
     Migration(132, 'assistant_context_exports', _m132_assistant_context_exports),
     Migration(133, "archive_idle_intraday_notifications", _m133_archive_idle_intraday_notifications),
+    Migration(134, "remove_manual_feedback", _m134_remove_manual_feedback),
 )
 
 

@@ -247,12 +247,10 @@ class PriceAlertEngine:
                 return False, "non_trading"
 
         today = _day_key(now, rule.stock.market)
-        if (rule.trigger_date or "") != today:
-            rule.trigger_date = today
-            rule.trigger_count_today = 0
+        count_today = int(rule.trigger_count_today or 0) if (rule.trigger_date or "") == today else 0
 
         max_per_day = int(rule.max_triggers_per_day or 0)
-        if max_per_day > 0 and int(rule.trigger_count_today or 0) >= max_per_day:
+        if max_per_day > 0 and count_today >= max_per_day:
             return False, "daily_limit"
 
         if rule.repeat_mode == "once" and rule.last_trigger_at:
@@ -338,6 +336,47 @@ class PriceAlertEngine:
         except Exception as e:
             return False, str(e)
 
+    def _persist_hit(self, rule_id, now, snapshot, price):
+        from sqlalchemy.exc import IntegrityError
+        from src.modules.notifications.sources import price_hit
+        with SessionLocal() as db:
+            rule = db.get(PriceAlertRule, rule_id)
+            if rule is None or not rule.enabled:
+                return None
+            can, _reason = self._can_trigger(rule, now)
+            if not can:
+                return None
+            hit = PriceAlertHit(
+                rule_id=rule.id, stock_id=rule.stock.id, trigger_time=now,
+                trigger_bucket=_minute_bucket(now), trigger_snapshot=snapshot,
+            )
+            db.add(hit)
+            try:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                return None
+            rule.last_trigger_at = now
+            rule.last_trigger_price = _safe_float(price)
+            today = _day_key(now, rule.stock.market)
+            count_today = int(rule.trigger_count_today or 0) if rule.trigger_date == today else 0
+            rule.trigger_count_today = count_today + 1
+            rule.trigger_date = today
+            if rule.repeat_mode == "once":
+                rule.enabled = False
+            price_hit(db, hit, rule)
+            hit_id = hit.id
+            db.commit()
+            return hit_id
+
+    def _persist_delivery(self, hit_id, notify_ok, notify_err):
+        with SessionLocal() as db:
+            hit = db.get(PriceAlertHit, hit_id)
+            if hit is not None:
+                hit.notify_success = bool(notify_ok)
+                hit.notify_error = notify_err or ""
+                db.commit()
+
     async def scan_once(
         self,
         *,
@@ -414,39 +453,17 @@ class PriceAlertEngine:
                     )
                     continue
 
-                bucket = _minute_bucket(now)
-                hit = PriceAlertHit(
-                    rule_id=rule.id,
-                    stock_id=stock.id,
-                    trigger_time=now,
-                    trigger_bucket=bucket,
-                    trigger_snapshot=ev.snapshot,
+                hit_id = await asyncio.to_thread(
+                    self._persist_hit, rule.id, now, ev.snapshot, quote.get("current_price"),
                 )
-                db.add(hit)
-                try:
-                    db.flush()
-                except Exception:
-                    db.rollback()
+                if hit_id is None:
                     skipped += 1
                     items.append({"rule_id": rule.id, "status": "duplicated"})
                     continue
-
-                rule.last_trigger_at = now
-                rule.last_trigger_price = _safe_float(quote.get("current_price"))
-                rule.trigger_count_today = int(rule.trigger_count_today or 0) + 1
-                rule.trigger_date = _day_key(now, rule.stock.market)
-                if rule.repeat_mode == "once":
-                    rule.enabled = False
-
-                from src.modules.notifications.sources import price_hit
-                price_hit(db, hit, rule)
-                db.commit()
-                # External channel I/O starts only after the hit and inbox event
-                # are durable; delivery failure cannot undo the business result.
+                # External delivery starts after the worker commits the hit and
+                # inbox event; the read session is never shared with that worker.
                 notify_ok, notify_err = await self._send_notify(db, rule, ev.snapshot)
-                hit.notify_success = bool(notify_ok)
-                hit.notify_error = notify_err or ""
-                db.commit()
+                await asyncio.to_thread(self._persist_delivery, hit_id, notify_ok, notify_err)
                 triggered += 1
                 items.append(
                     {

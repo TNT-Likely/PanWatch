@@ -1,6 +1,7 @@
 """盘中监测 Agent - 实时监控持仓，AI 判断是否需要提醒"""
 
 import json
+import asyncio
 import logging
 import re
 import uuid
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
-from src.modules.research.analysis_history import get_latest_analysis, get_analysis
+from src.modules.research.analysis_history import get_scoped_analysis_context
 from src.modules.research.context_builder import ContextBuilder
 from src.modules.research.context_store import (
     save_agent_context_run,
@@ -163,15 +164,11 @@ class IntradayMonitorAgent(BaseAgent):
         kline_summary = pack.technical if pack else None
 
         # 获取历史分析（为 AI 提供更多上下文）
-        daily_analysis = get_latest_analysis(
-            agent_name="daily_report",
-            stock_symbol="*",
-            before_date=date.today(),
+        daily_analysis = await asyncio.to_thread(
+            get_scoped_analysis_context, "daily_report", [stock_config], before_date=date.today(),
         )
-        premarket_analysis = get_analysis(
-            agent_name="premarket_outlook",
-            stock_symbol="*",
-            analysis_date=date.today(),
+        premarket_analysis = await asyncio.to_thread(
+            get_scoped_analysis_context, "premarket_outlook", [stock_config], analysis_date=date.today(),
         )
 
         return {
@@ -810,7 +807,8 @@ class IntradayMonitorAgent(BaseAgent):
             )
 
         # 保存到建议池（包含 prompt 上下文）
-        save_suggestion(
+        await asyncio.to_thread(
+            save_suggestion,
             stock_symbol=stock.symbol,
             stock_name=stock.name,
             action=suggestion["action"],
@@ -850,7 +848,8 @@ class IntradayMonitorAgent(BaseAgent):
         )
         prediction_group_id = str(uuid.uuid4())
         for horizon in (1, 5):
-            save_agent_prediction_outcome(
+            await asyncio.to_thread(
+                save_agent_prediction_outcome,
                 agent_name=self.name,
                 stock_symbol=stock.symbol,
                 stock_market=stock.market.value,
@@ -872,7 +871,8 @@ class IntradayMonitorAgent(BaseAgent):
                 },
             )
 
-        save_agent_context_run(
+        await asyncio.to_thread(
+            save_agent_context_run,
             agent_name=self.name,
             stock_symbol=stock.symbol,
             analysis_date=analysis_date,
@@ -1086,7 +1086,7 @@ class IntradayMonitorAgent(BaseAgent):
                         f"Agent [{self.display_name}] 通知已发送: {stock_symbol}"
                     )
                     if not self.bypass_throttle:
-                        self._update_throttle(stock_symbol)
+                        await asyncio.to_thread(self._update_throttle, stock_symbol)
                 else:
                     notify_error = notify_result.get("error") or "未知错误"
                     result.raw_data["notify_error"] = notify_error

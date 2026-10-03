@@ -120,7 +120,7 @@ Database models and migrations live in `platform/persistence/`. Do not restore
 | `automation` | `modules/automation/api/` | agents, recommendation pool, templates |
 | `market` | `modules/market/api/` | symbols, quotes, candlesticks, news, discovery, price alerts |
 | `portfolio` | `modules/portfolio/api/` | accounts, position history, dashboard |
-| `research` | `modules/research/api/` | context, insights, evaluation, feedback, suggestions |
+| `research` | `modules/research/api/` | context, insights, evaluation, suggestions |
 | `strategy` | `modules/strategy/api/` | factor endpoints |
 | `paper_trading` | `modules/paper_trading/api/` | simulated-trading endpoints |
 

@@ -1,5 +1,6 @@
 """盘前分析 Agent - 开盘前展望今日走势"""
 
+import asyncio
 import logging
 import re
 import time
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.modules.research.signals import SignalPackBuilder
-from src.modules.research.analysis_history import save_analysis, get_latest_analysis
+from src.modules.research.analysis_history import save_analysis
 from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.context_builder import ContextBuilder
@@ -45,7 +46,7 @@ class PremarketOutlookAgent(BaseAgent):
 
     name = "premarket_outlook"
     display_name = "盘前分析"
-    description = "开盘前综合昨日分析和隔夜信息，展望今日走势"
+    description = "开盘前结合行情、技术状态和隔夜资讯，独立生成今日交易展望"
 
     async def collect(self, context: AgentContext) -> dict:
         """采集盘前数据"""
@@ -62,25 +63,12 @@ class PremarketOutlookAgent(BaseAgent):
             ",".join(symbols[:12]),
         )
 
-        # 1. 获取昨日盘后分析
-        yesterday_analysis = get_latest_analysis(
-            agent_name="daily_report",
-            stock_symbol="*",
-            before_date=date.today(),
-        )
-        logger.info(
-            "[%s] 昨日盘后回顾: exists=%s content_chars=%s",
-            trace_id,
-            bool(yesterday_analysis and yesterday_analysis.content),
-            len((yesterday_analysis.content if yesterday_analysis else "") or ""),
-        )
-
         # 2. 获取美股指数（隔夜表现）
         us_indices = []
         try:
             from src.platform.marketdata.marketdata_client import get_market_data
 
-            items = get_market_data().index_quotes(["usDJI", "usIXIC", "usINX"])
+            items = await asyncio.to_thread(get_market_data().index_quotes, ["usDJI", "usIXIC", "usINX"])
             for item in items:
                 us_indices.append(
                     {
@@ -201,9 +189,6 @@ class PremarketOutlookAgent(BaseAgent):
         )
 
         return {
-            "yesterday_analysis": yesterday_analysis.content
-            if yesterday_analysis
-            else None,
             "us_indices": us_indices,
             "signal_packs": packs,
             "symbol_contexts": symbol_contexts,
@@ -242,16 +227,6 @@ class PremarketOutlookAgent(BaseAgent):
             global_topic = (quality_overview.get("global_news_topic") or {})
             if global_topic.get("summary"):
                 lines.append(f"- 历史新闻主题：{global_topic.get('summary')}")
-            lines.append("")
-
-        # 昨日分析回顾
-        if data.get("yesterday_analysis"):
-            lines.append("## 昨日盘后分析回顾")
-            # 截取前 500 字，避免过长
-            content = data["yesterday_analysis"]
-            if len(content) > 500:
-                content = content[:500] + "..."
-            lines.append(content)
             lines.append("")
 
         # 隔夜美股表现
@@ -736,7 +711,8 @@ class PremarketOutlookAgent(BaseAgent):
                     .get("data_quality", {})
                     .get("score")
                 )
-                ok = save_suggestion(
+                ok = await asyncio.to_thread(
+                    save_suggestion,
                     stock_symbol=symbol,
                     stock_name=stock.name,
                     action=sug["action"],
@@ -774,7 +750,8 @@ class PremarketOutlookAgent(BaseAgent):
                     suggestion_failed += 1
                 prediction_group_id = str(uuid.uuid4())
                 for horizon in (1, 5):
-                    ok_outcome = save_agent_prediction_outcome(
+                    ok_outcome = await asyncio.to_thread(
+                        save_agent_prediction_outcome,
                         agent_name=self.name,
                         stock_symbol=symbol,
                         stock_market=stock.market.value,
@@ -820,6 +797,7 @@ class PremarketOutlookAgent(BaseAgent):
                 "memory": ctx.get("memory") or {},
             }
             context_payload[sym] = {
+                "market": stock_map[sym].market.value if sym in stock_map else None,
                 "data_quality": ctx.get("data_quality") or {},
                 "kline_history": ctx.get("kline_history") or {},
                 "constraints": ctx.get("constraints") or {},
@@ -874,7 +852,8 @@ class PremarketOutlookAgent(BaseAgent):
                 "extended_count": len(layered.get("extended") or []),
                 "history_count": len(layered.get("history") or []),
             }
-        context_run_saved = save_agent_context_run(
+        context_run_saved = await asyncio.to_thread(
+            save_agent_context_run,
             agent_name=self.name,
             stock_symbol="*",
             analysis_date=analysis_date,
@@ -892,7 +871,8 @@ class PremarketOutlookAgent(BaseAgent):
         )
 
         # 保存到历史记录
-        history_saved = save_analysis(
+        history_saved = await asyncio.to_thread(
+            save_analysis,
             agent_name=self.name,
             stock_symbol="*",
             content=result.content,

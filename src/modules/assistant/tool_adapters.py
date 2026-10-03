@@ -133,14 +133,14 @@ def build_portfolio_context(db: Session) -> str:
     return build_portfolio_service(db).build_assistant_summary()
 
 
-async def fetch_realtime_context(symbol: str, market: str) -> str:
+async def fetch_realtime_context(symbol: str, market: str, *, quotes=None) -> str:
     """Return a compact quote summary; failures degrade to an empty context."""
     try:
         from src.platform.marketdata.marketdata_client import md_quote_rows
         from src.platform.marketdata.models import MarketCode
 
         code = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
-        rows = await asyncio.to_thread(md_quote_rows, [symbol], code.value)
+        rows = quotes if quotes is not None else await asyncio.to_thread(md_quote_rows, [symbol], code.value)
         if not rows:
             return ""
         quote = rows[0]

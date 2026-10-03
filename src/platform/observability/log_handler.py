@@ -60,7 +60,8 @@ class DBLogHandler(logging.Handler):
         super().__init__(level)
         self._buffer: list[dict] = []
         self._lock = threading.Lock()
-        self._timer: threading.Timer | None = None
+        self._wake = threading.Event()
+        self._closed = False
         self._dropped_entries = 0
         self._flush_errors = 0
         self._last_flush_error = ""
@@ -68,7 +69,8 @@ class DBLogHandler(logging.Handler):
         self._flush_count = 0
         global _ACTIVE_HANDLER
         _ACTIVE_HANDLER = self
-        self._start_flush_timer()
+        self._worker = threading.Thread(target=self._write_loop, name="db-log-writer", daemon=True)
+        self._worker.start()
 
     def emit(self, record: logging.LogRecord):
         try:
@@ -90,6 +92,8 @@ class DBLogHandler(logging.Handler):
                 "notify_reason": str(getattr(record, "notify_reason", "") or "")[:255],
             }
             with self._lock:
+                if self._closed:
+                    return
                 if len(self._buffer) >= MAX_BUFFERED_ENTRIES:
                     overflow = len(self._buffer) - MAX_BUFFERED_ENTRIES + 1
                     if overflow > 0:
@@ -97,41 +101,48 @@ class DBLogHandler(logging.Handler):
                         self._dropped_entries += overflow
                 self._buffer.append(entry)
                 if record.levelno >= logging.ERROR or len(self._buffer) >= BUFFER_SIZE:
-                    self._flush_unlocked()
+                    self._wake.set()
         except Exception:
             # Avoid recursion if logging path fails
             pass
 
-    def _start_flush_timer(self):
-        self._timer = threading.Timer(FLUSH_INTERVAL, self._timed_flush)
-        self._timer.daemon = True
-        self._timer.start()
+    def _write_loop(self):
+        while True:
+            self._wake.wait(FLUSH_INTERVAL)
+            self._wake.clear()
+            # Never hold the producer lock during SQLite I/O or retention work.
+            with self._lock:
+                entries, self._buffer = self._buffer, []
+                closed = self._closed
+            if entries:
+                self._write_entries(entries)
+            if closed:
+                return
 
-    def _timed_flush(self):
-        with self._lock:
-            self._flush_unlocked()
-        self._start_flush_timer()
-
-    def _flush_unlocked(self):
-        if not self._buffer:
-            return
-        entries = self._buffer[:]
-        self._buffer.clear()
-
+    def _write_entries(self, entries):
+        persisted = False
         try:
             db = SessionLocal()
             try:
                 db.bulk_insert_mappings(LogEntry, entries)
                 db.commit()
-                self._last_flush_at = datetime.now(timezone.utc)
-                self._flush_count += 1
+                persisted = True
+                with self._lock:
+                    self._last_flush_at = datetime.now(timezone.utc)
+                    self._flush_count += 1
                 if self._flush_count % CLEANUP_EVERY_FLUSHES == 0:
                     self._cleanup(db)
             finally:
                 db.close()
         except Exception as e:
-            self._flush_errors += 1
-            self._last_flush_error = str(e)[:500]
+            with self._lock:
+                self._flush_errors += 1
+                self._last_flush_error = str(e)[:500]
+                # Retain a bounded retry buffer; failed writes must not silently
+                # discard a complete batch during temporary database contention.
+                pending = ([] if persisted else entries) + self._buffer
+                self._dropped_entries += max(0, len(pending) - MAX_BUFFERED_ENTRIES)
+                self._buffer = pending[-MAX_BUFFERED_ENTRIES:]
 
     def _cleanup(self, db):
         """Retention policy: prioritize preserving business logs."""
@@ -171,8 +182,9 @@ class DBLogHandler(logging.Handler):
                 db.commit()
 
     def close(self):
-        if self._timer:
-            self._timer.cancel()
         with self._lock:
-            self._flush_unlocked()
+            self._closed = True
+        self._wake.set()
+        if threading.current_thread() is not self._worker:
+            self._worker.join(timeout=6)
         super().close()

@@ -3,7 +3,7 @@ from copy import deepcopy
 import logging
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
@@ -909,7 +909,7 @@ async def scan_intraday(
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
     from src.platform.marketdata.models import MarketCode, MARKETS
     from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-    from src.modules.research.analysis_history import get_latest_analysis, get_analysis
+    from src.modules.research.analysis_history import get_scoped_analysis_context
     from src.modules.research.context_builder import ContextBuilder
     from src.modules.research.signals import SignalPackBuilder
     from src.modules.automation.suggestion_pool import save_suggestion
@@ -990,20 +990,6 @@ async def scan_intraday(
     quality_overview: dict = {}
     signal_packs: dict = {}
     if analyze:
-        # 获取历史分析（给 AI 作为上下文）
-        try:
-            daily_analysis = get_latest_analysis(
-                agent_name="daily_report",
-                stock_symbol="*",
-            )
-            premarket_analysis = get_analysis(
-                agent_name="premarket_outlook",
-                stock_symbol="*",
-            )
-        except Exception:
-            daily_analysis = None
-            premarket_analysis = None
-
         try:
             scan_context = build_context(agent_name)
             original_watchlist = scan_context.config.watchlist
@@ -1118,6 +1104,12 @@ async def scan_intraday(
                         if not stock_data:
                             return
 
+                        target = next(s for s in active_watchlist if s.symbol == item["symbol"])
+                        daily_analysis, premarket_analysis = await asyncio.gather(
+                            asyncio.to_thread(get_scoped_analysis_context, "daily_report", [target]),
+                            asyncio.to_thread(get_scoped_analysis_context, "premarket_outlook", [target], analysis_date=date.today()),
+                        )
+
                         data = {
                             "stock_data": stock_data,
                             "stocks": [stock_data],
@@ -1176,7 +1168,8 @@ async def scan_intraday(
                         item["suggestion"] = suggestion
                         # 写入建议池（用于持仓页展示），盘中建议固定 6 小时有效
                         expires_hours = 6
-                        save_suggestion(
+                        await asyncio.to_thread(
+                            save_suggestion,
                             stock_symbol=item["symbol"],
                             stock_name=item["name"] or "",
                             action=suggestion.get("action", "watch"),

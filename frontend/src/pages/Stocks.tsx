@@ -639,19 +639,13 @@ export default function StocksPage() {
     const run = (async () => {
       const coreData = await loadPortfolioPageCoreData({
         loadStocks: requestSignal => fetchAPI<Stock[]>('/stocks', { signal: requestSignal }),
-        loadPortfolio: requestSignal => fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal: requestSignal }),
+        loadPortfolio: requestSignal => fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false&refresh_exchange_rates=false', { signal: requestSignal }),
       }, signal)
 
       if (signal.aborted) return
 
-      const quoteData = await loadPortfolioPageQuoteData({
-        buildQuoteItems: buildQuoteItemsFrom,
-        loadQuotes: requestQuotes,
-      }, coreData.stocks, coreData.portfolio, signal)
-
-      if (signal.aborted) return
-
-      const quoteMap = toQuoteMap(quoteData.quotes)
+      // Publish local metadata immediately; market-data lanes update independently.
+      const quoteMap: Record<string, QuoteResponse> = {}
       setStocks(coreData.stocks)
       setPortfolioRaw(coreData.portfolio)
       setQuotes(quoteMap)
@@ -667,9 +661,26 @@ export default function StocksPage() {
       }))
       setAccounts(nextAccounts)
       setExpandedAccounts(new Set(nextAccounts.map(account => account.id)))
-      if (quoteData.quotes.length > 0) setLastRefreshTime(new Date())
       setLoading(false)
       setPortfolioLoading(false)
+
+      void loadPortfolioPageQuoteData({
+        buildQuoteItems: buildQuoteItemsFrom,
+        loadQuotes: requestQuotes,
+      }, coreData.stocks, coreData.portfolio, signal).then(data => {
+        if (signal.aborted) return
+        setQuotes(toQuoteMap(data.quotes))
+        if (data.quotes.length > 0) setLastRefreshTime(new Date())
+      }).catch(error => {
+        if (!signal.aborted) console.warn('Portfolio quotes unavailable:', error)
+      })
+
+      // FX refresh also runs independently of the metadata shell and quotes.
+      void fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal }).then(data => {
+        if (!signal.aborted) setPortfolioRaw(previous => previous ? { ...previous, exchange_rates: data.exchange_rates } : previous)
+      }).catch(error => {
+        if (!signal.aborted) console.warn('Portfolio exchange rates unavailable:', error)
+      })
 
       void loadPortfolioPageBackgroundData({
         loadMarketStatus: refreshMarketStatus,
@@ -677,17 +688,17 @@ export default function StocksPage() {
         loadSuggestions: requestSuggestions,
         loadPriceAlerts: requestPriceAlerts,
         loadKlines: requestKlineSummaries,
-      }, coreData.stocks, coreData.portfolio, signal).then(data => {
-        if (signal.aborted) return
-        setKlineSummaries(prev => ({ ...prev, ...data.klines }))
-        setPoolSuggestions(data.suggestions)
-        setPriceAlertSummaryMap(toPriceAlertSummaryMap(data.priceAlerts))
+      }, coreData.stocks, coreData.portfolio, signal, {
+        klines: data => setKlineSummaries(prev => ({ ...prev, ...data })),
+        suggestions: setPoolSuggestions,
+        priceAlerts: data => setPriceAlertSummaryMap(toPriceAlertSummaryMap(data)),
       }).catch(error => {
         if (!signal.aborted) console.warn('加载持仓页后台数据失败:', error)
       })
     })().catch(error => {
       if (!signal.aborted) console.error('加载持仓页面数据失败:', error)
     }).finally(() => {
+      if (!signal.aborted) { setLoading(false); setPortfolioLoading(false) }
       initialLoadPromiseRef.current = null
     })
 
@@ -1378,13 +1389,18 @@ export default function StocksPage() {
     return { suggestion: null, kline: null }
   }
 
+  const unpricedAccountIds = new Set(
+    (portfolio?.accounts || []).filter(account => account.positions.some(position => position.current_price == null)).map(account => account.id),
+  )
+  const portfolioTotalsReady = unpricedAccountIds.size === 0
+
   const positionRatio = useMemo(() => {
-    if (!portfolio) return null
+    if (!portfolio || !portfolioTotalsReady) return null
     const mv = portfolio.total.total_market_value || 0
     const assets = portfolio.total.total_assets || 0
     const pct = assets > 0 ? (mv / assets * 100) : 0
     return { mv, assets, pct }
-  }, [portfolio])
+  }, [portfolio, portfolioTotalsReady])
 
   const positionsCount = useMemo(() => {
     return (portfolio?.accounts || []).reduce((acc, a) => acc + (a.positions?.length || 0), 0)
@@ -1589,23 +1605,23 @@ export default function StocksPage() {
               <span className="text-[12px]">{stockT('stocksPage.messages.totalMarketValue')}</span>
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
-              {formatMoney(portfolio.total.total_market_value)}
+              {portfolioTotalsReady ? formatMoney(portfolio.total.total_market_value) : '--'}
             </div>
           </div>
           <div className="card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               {portfolio.total.total_pnl >= 0 ? (
-                <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(portfolio.total.total_pnl)}`} />
+                <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(portfolioTotalsReady ? portfolio.total.total_pnl : null)}`} />
               ) : (
-                <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(portfolio.total.total_pnl)}`} />
+                <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(portfolioTotalsReady ? portfolio.total.total_pnl : null)}`} />
               )}
               <span className="text-[12px]">{stockT('stocksPage.messages.totalPnl')}</span>
             </div>
-            <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(portfolio.total.total_pnl)}`}>
-              {portfolio.total.total_pnl >= 0 ? '+' : ''}{formatMoney(portfolio.total.total_pnl)}
-              <span className="text-[13px] ml-1.5">
+            <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(portfolioTotalsReady ? portfolio.total.total_pnl : null)}`}>
+              {portfolioTotalsReady ? `${portfolio.total.total_pnl >= 0 ? '+' : ''}${formatMoney(portfolio.total.total_pnl)}` : '--'}
+              {portfolioTotalsReady && <span className="text-[13px] ml-1.5">
                 ({portfolio.total.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total.total_pnl_pct.toFixed(2)}%)
-              </span>
+              </span>}
             </div>
           </div>
 
@@ -1619,15 +1635,15 @@ export default function StocksPage() {
               <div className="card p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   {isUp ? (
-                    <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(dayPnl)}`} />
+                    <ArrowUpRight className={`w-4 h-4 ${marketSignTextClass(portfolioTotalsReady ? dayPnl : null)}`} />
                   ) : (
-                    <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(dayPnl)}`} />
+                    <ArrowDownRight className={`w-4 h-4 ${marketSignTextClass(portfolioTotalsReady ? dayPnl : null)}`} />
                   )}
                   <span className="text-[12px]">{stockT('stocksPage.messages.todayPnl')}</span>
                 </div>
-                <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(dayPnl)}`}>
-                  {isUp ? '+' : ''}{formatMoney(dayPnl)}
-                  <span className="text-[13px] ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
+                <div className={`text-[20px] font-bold font-mono ${marketSignTextClass(portfolioTotalsReady ? dayPnl : null)}`}>
+                  {portfolioTotalsReady ? `${isUp ? '+' : ''}${formatMoney(dayPnl)}` : '--'}
+                  {portfolioTotalsReady && <span className="text-[13px] ml-1.5">({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>}
                 </div>
               </div>
             )
@@ -1648,7 +1664,7 @@ export default function StocksPage() {
               <span className="text-[12px]">{stockT('stocksPage.messages.totalAssets')}</span>
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
-              {formatMoney(portfolio.total.total_assets)}
+              {portfolioTotalsReady ? formatMoney(portfolio.total.total_assets) : '--'}
             </div>
           </div>
 
@@ -1821,19 +1837,19 @@ export default function StocksPage() {
                   <div className="flex items-center gap-2.5 md:gap-6 min-w-0">
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">{stockT('stocksPage.messages.marketValue')}</div>
-                      <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{formatMoney(account.total_market_value)}</div>
+                      <div className="text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap">{unpricedAccountIds.has(account.id) ? '--' : formatMoney(account.total_market_value)}</div>
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">{stockT('stocksPage.messages.pnl')}</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(account.total_pnl)}`}>
-                        {account.total_pnl >= 0 ? '+' : ''}{formatMoney(account.total_pnl)}
-                        <span className="text-[10px] md:text-[11px] ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(unpricedAccountIds.has(account.id) ? null : account.total_pnl)}`}>
+                        {unpricedAccountIds.has(account.id) ? '--' : `${account.total_pnl >= 0 ? '+' : ''}${formatMoney(account.total_pnl)}`}
+                        {!unpricedAccountIds.has(account.id) && <span className="text-[10px] md:text-[11px] ml-1 hidden md:inline">({account.total_pnl_pct >= 0 ? '+' : ''}{account.total_pnl_pct.toFixed(2)}%)</span>}
                       </div>
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-[10px] md:text-[11px] text-muted-foreground">{stockT('stocksPage.messages.today')}</div>
-                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(account.total_daily_pnl)}`}>
-                        {account.total_daily_pnl >= 0 ? '+' : ''}{formatMoney(account.total_daily_pnl)}
+                      <div className={`text-[12px] md:text-[13px] font-mono font-medium whitespace-nowrap ${marketSignTextClass(unpricedAccountIds.has(account.id) ? null : account.total_daily_pnl)}`}>
+                        {unpricedAccountIds.has(account.id) ? '--' : `${account.total_daily_pnl >= 0 ? '+' : ''}${formatMoney(account.total_daily_pnl)}`}
                       </div>
                     </div>
                     <div className="text-left md:text-right hidden sm:block">

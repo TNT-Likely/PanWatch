@@ -536,25 +536,6 @@ class MarketScanSnapshot(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class EntryCandidateFeedback(Base):
-    """入场候选反馈（用于策略迭代与质量评估）。"""
-
-    __tablename__ = "entry_candidate_feedback"
-    __table_args__ = (
-        Index("ix_entry_feedback_time", "created_at"),
-        Index("ix_entry_feedback_symbol_day", "stock_market", "stock_symbol", "snapshot_date"),
-        Index("ix_entry_feedback_source", "candidate_source"),
-    )
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    snapshot_date = Column(String, nullable=False, default="")  # YYYY-MM-DD
-    stock_symbol = Column(String, nullable=False)
-    stock_market = Column(String, nullable=False, default="CN")
-    candidate_source = Column(String, nullable=False, default="watchlist")
-    strategy_tags = Column(JSON, default=[])
-    useful = Column(Boolean, default=True)
-    reason = Column(String, default="")
-    created_at = Column(DateTime, server_default=func.now(), index=True)
 
 
 class EntryCandidateOutcome(Base):
@@ -921,20 +902,6 @@ class PortfolioRiskSnapshot(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class SuggestionFeedback(Base):
-    """建议反馈（匿名、轻量）"""
-
-    __tablename__ = "suggestion_feedback"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    suggestion_id = Column(
-        Integer,
-        ForeignKey("stock_suggestions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    useful = Column(Boolean, default=True)
-    created_at = Column(DateTime, server_default=func.now(), index=True)
 
 
 class PriceAlertRule(Base):

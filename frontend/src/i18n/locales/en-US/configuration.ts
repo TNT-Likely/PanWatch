@@ -303,7 +303,7 @@ export const configuration = {
       testFailed: 'Test failed', operationFailed: 'Operation failed', notificationSent: 'Test notification sent', channelSaved: 'Notification channel saved',
       configParseFailed: 'Failed to parse configuration package',
     },
-    nav: { appearance: 'Appearance', ai: 'AI', notifications: 'Notifications', system: 'System', feedback: 'Feedback', pat: 'MCP tokens' },
+    nav: { appearance: 'Appearance', ai: 'AI', notifications: 'Notifications', system: 'System', pat: 'MCP tokens' },
     hero: {
       uploadAvatar: 'Upload avatar', avatarAlt: 'Avatar', providers: 'providers', models: 'models', channelsEnabled: 'channels enabled',
       defaultModel: 'Default model', defaultNotification: 'Default notification', importing: 'Importing...', importPack: 'Import config pack',
@@ -329,7 +329,6 @@ export const configuration = {
       credentialsWarning: 'AI services include API keys; notification channels include tokens, webhooks, and other credentials. Store this package securely.', cancel: 'Cancel', exporting: 'Exporting...', exportCount: 'Export {{count}} modules',
       chooseImport: 'Choose import modules', versionDetected: 'Package v{{version}} found with {{count}} available modules.', replaceHint: 'Replace mode removes bindings not listed for accounts and symbols in the package.', replaceContained: 'Replace included items', importing: 'Importing...', importCount: 'Import {{count}} modules',
     },
-    feedback: { title: 'Feedback', description: 'Evaluate notification quality and guide strategy iteration', refresh: 'Refresh', days: 'Last {{days}} days', total: 'Feedback', useful: 'Useful', useless: 'Not useful', usefulRate: 'Useful rate', byAgent: 'By Agent', empty: 'No feedback yet' },
     dialogs: {
       providerEdit: 'Edit AI service', providerAdd: 'Add AI service', providerDescription: 'Configure the AI service API connection', name: 'Name', baseUrl: 'Base URL', apiKey: 'API key', providerPlaceholder: 'For example OpenAI, Zhipu, DeepSeek', cancel: 'Cancel', save: 'Save', create: 'Create',
       modelEdit: 'Edit model', modelAdd: 'Add model', modelDescription: 'Configure the AI model', provider: 'Service', providerSelect: 'Select a service', displayName: 'Display name', optionalDefault: '(optional; defaults to model ID)', modelNamePlaceholder: 'Leave empty to use the model ID', modelIdentifier: 'Model ID', discoverHint: '(can be batch-discovered from the service)', modelPlaceholder: 'Select a service first',
@@ -341,7 +340,7 @@ export const configuration = {
     pageTitle: 'Agents',
     runStatuses: { running: 'Running', success: 'Succeeded', failed: 'Failed' },
     catalog: {
-      premarket_outlook: { name: 'Pre-market outlook', description: 'Combines the prior session and overnight developments before the open to frame the day ahead' },
+      premarket_outlook: { name: 'Pre-market outlook', description: 'Independently assesses quotes, technical signals, and overnight news before the open' },
       intraday_monitor: { name: 'Intraday monitor', description: 'Monitors trading sessions in real time and uses AI to identify signals worth attention' },
       daily_report: { name: 'Closing review', description: 'Generates a daily closing report with a market review, stock-level analysis, and next-session watch items' },
       chart_analyst: { name: 'Technical analysis (capability)', description: 'Internal on-demand chart analysis used from stock details; it is not scheduled independently' },

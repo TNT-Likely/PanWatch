@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { CheckCircle2, ClipboardCheck, Clock3, RefreshCw, Target } from 'lucide-react'
 import {
@@ -119,31 +119,35 @@ export default function EvaluationsPage() {
   const oneDay = summary?.horizons['1']
   const fiveDay = summary?.horizons['5']
 
+  const loadGeneration = useRef(0)
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    const current = () => generation === loadGeneration.current
     setLoading(true)
-    try {
-      const [list, nextSummary] = await Promise.all([
-        evaluationsApi.listAgentPredictions(apiFilters), evaluationsApi.getAgentPredictionSummary(apiFilters),
-      ])
-      setData({
-        ...list,
-        items: list.items.map(item => ({
-          ...item,
-          agent_name: agentLabel(item.agent_name),
-          stock_market: marketLabel(item.stock_market),
-          action_label: actionLabel(item.action, item.action_label),
-        })),
-        policy: localizePolicy(list.policy),
-      })
-      setSummary({ ...nextSummary, policy: localizePolicy(nextSummary.policy) })
-    } catch (error) {
-      toast(error instanceof Error ? error.message : ev('messages.loadFailed'), 'error')
-    } finally {
-      setLoading(false)
+    setSummary(null)
+    const results = await Promise.allSettled([
+      evaluationsApi.listAgentPredictions(apiFilters).then(list => {
+        if (!current()) return
+        setData({
+          ...list,
+          items: list.items.map(item => ({
+            ...item, agent_name: agentLabel(item.agent_name),
+            stock_market: marketLabel(item.stock_market), action_label: actionLabel(item.action, item.action_label),
+          })),
+          policy: localizePolicy(list.policy),
+        })
+      }).finally(() => { if (current()) setLoading(false) }),
+      evaluationsApi.getAgentPredictionSummary(apiFilters).then(nextSummary => {
+        if (current()) setSummary({ ...nextSummary, policy: localizePolicy(nextSummary.policy) })
+      }),
+    ])
+    if (current()) {
+      const failure = results.find(result => result.status === 'rejected')
+      if (failure?.status === 'rejected') toast(failure.reason instanceof Error ? failure.reason.message : ev('messages.loadFailed'), 'error')
     }
   }, [apiFilters, toast, actionLabel, agentLabel, localizePolicy, marketLabel])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load(); return () => { loadGeneration.current++ } }, [load])
   useEffect(() => {
     if (!targetGroupId || !data) return
     const target = data.items.find(item => item.prediction_group_id === targetGroupId)

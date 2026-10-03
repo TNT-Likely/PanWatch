@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import inspect
 import re
 from datetime import datetime
 from typing import Literal
@@ -234,7 +235,9 @@ async def summarize_export(
         start = end
         index += 1
         if on_progress:
-            on_progress(start, index, previous)
+            progress_result = on_progress(start, index, previous)
+            if inspect.isawaitable(progress_result):
+                await progress_result
     if not has_summary_content(previous):
         raise ContextExportError('assistant_export_invalid', '未能生成有效的上下文总结，请重试。')
     return previous

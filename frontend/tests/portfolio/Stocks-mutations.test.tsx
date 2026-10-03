@@ -89,3 +89,24 @@ describe('portfolio mutations while K-line summaries are slow', () => {
     expect(vi.mocked(fetchAPI).mock.calls.filter(([path]) => path === '/quotes/batch')).toHaveLength(quotesBefore)
   })
 })
+
+it('reveals portfolio metadata and suggestions while quotes and K-lines are pending', async () => {
+  vi.mocked(klinesApi.summaryBatch).mockImplementation(() => new Promise(() => {}))
+  vi.mocked(fetchAPI).mockImplementation(async path => {
+    if (path === '/stocks') return [{ id: 1, symbol: '601238', name: '广汽集团', market: 'CN', agents: [] }]
+    if (path.startsWith('/portfolio/summary')) return {
+      accounts: [{ id: 1, name: 'Fast metadata account', available_funds: 0,
+        positions: [{ id: 1, stock_id: 1, symbol: '601238', name: '广汽集团', market: 'CN', cost_price: 10, quantity: 100, current_price: null, pnl: null }] }],
+      total: { total_market_value: 0, total_cost: 1000, total_pnl: -1000, total_pnl_pct: -100, total_daily_pnl: 0, available_funds: 0, total_assets: 0 },
+    }
+    if (path === '/quotes/batch') return new Promise(() => {})
+    if (path.startsWith('/suggestions')) return { '601238': { id: 1, action: 'watch', action_label: '观望', signal: '快建议', reason: '观察', agent_name: 'premarket_outlook' } }
+    return []
+  })
+  render(<MemoryRouter><MarketColorProvider><StocksPage /></MarketColorProvider></MemoryRouter>)
+  expect(await screen.findByText('Fast metadata account')).toBeTruthy()
+  expect(screen.getAllByRole('button', { name: '添加账户' })[0]).toBeTruthy()
+  expect(document.body.textContent).not.toContain('-100.00%')
+  await waitFor(() => expect(klinesApi.summaryBatch).toHaveBeenCalledTimes(1))
+  expect(vi.mocked(fetchAPI).mock.calls.some(([path]) => path === '/portfolio/summary?include_quotes=false&refresh_exchange_rates=false')).toBe(true)
+})

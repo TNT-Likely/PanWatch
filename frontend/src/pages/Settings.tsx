@@ -1,6 +1,6 @@
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef } from 'react'
-import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, BarChart3, Radar, AlertTriangle, Palette } from 'lucide-react'
+import { Check, Eye, EyeOff, Plus, Pencil, Trash2, Star, Send, Cpu, Play, Download, Upload, Radar, AlertTriangle, Palette } from 'lucide-react'
 import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@panwatch/api'
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
@@ -72,15 +72,6 @@ const detectTemplateModules = (payload: TemplatePayload): TemplateModule[] => {
   return detected
 }
 
-interface FeedbackStats {
-  range_days: number
-  total: number
-  useful: number
-  useless: number
-  useful_rate: number
-  by_day: Array<{ day: string; total: number; useful: number; useless: number; useful_rate: number }>
-  by_agent: Array<{ agent_name: string; total: number; useful: number; useless: number; useful_rate: number }>
-}
 
 interface AgentsHealth {
   timezone: string
@@ -249,33 +240,23 @@ export default function SettingsPage() {
   const [availableImportModules, setAvailableImportModules] = useState<TemplateModule[]>([])
   const [pendingImport, setPendingImport] = useState<TemplatePayload | null>(null)
 
-  // Feedback stats
-  const [fbStats, setFbStats] = useState<FeedbackStats | null>(null)
-  const [fbLoading, setFbLoading] = useState(false)
-
   const importFileRef = useRef<HTMLInputElement | null>(null)
 
   const { toast } = useToast()
 
+  const loadGeneration = useRef(0)
   const load = async () => {
-    try {
-      const [settingsData, servicesData, channelsData, versionData, healthData] = await Promise.all([
-        fetchAPI<Setting[]>('/settings'),
-        fetchAPI<AIService[]>('/providers/services'),
-        fetchAPI<NotifyChannel[]>('/channels'),
-        fetchAPI<{ version: string }>('/settings/version'),
-        fetchAPI<AgentsHealth>('/agents/health'),
-      ])
-      setSettings(settingsData)
-      setServices(servicesData)
-      setChannels(channelsData)
-      setVersion(versionData.version)
-      setHealth(healthData)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+    const generation = ++loadGeneration.current
+    const current = () => generation === loadGeneration.current
+    const publish = <T,>(setter: (value: T) => void) => (value: T) => { if (current()) setter(value) }
+    const results = await Promise.allSettled([
+      fetchAPI<Setting[]>('/settings').then(publish(setSettings)).finally(() => { if (current()) setLoading(false) }),
+      fetchAPI<AIService[]>('/providers/services').then(publish(setServices)),
+      fetchAPI<NotifyChannel[]>('/channels').then(publish(setChannels)),
+      fetchAPI<{ version: string }>('/settings/version').then(publish(data => setVersion(data.version))),
+      fetchAPI<AgentsHealth>('/agents/health').then(publish(setHealth)),
+    ])
+    if (current()) results.forEach(result => { if (result.status === 'rejected') console.error(result.reason) })
   }
 
   const downloadJson = (name: string, obj: any) => {
@@ -360,20 +341,7 @@ export default function SettingsPage() {
     setImportDialogOpen(true)
   }
 
-  const loadFeedbackStats = async () => {
-    setFbLoading(true)
-    try {
-      const stats = await fetchAPI<FeedbackStats>('/feedback/stats?days=14')
-      setFbStats(stats)
-    } catch (e) {
-      console.error(e)
-      setFbStats(null)
-    } finally {
-      setFbLoading(false)
-    }
-  }
-
-  useEffect(() => { load(); loadFeedbackStats() }, [])
+  useEffect(() => { void load(); return () => { loadGeneration.current++ } }, [])
 
   const onPickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -700,7 +668,6 @@ export default function SettingsPage() {
     { id: 'sec-ai', label: configT('configuration:settingsPage.nav.ai'), hint: `${services.length} ${configT('configuration:settingsPage.hero.providers')} / ${allModels.length} ${configT('configuration:settingsPage.hero.models')}` },
     { id: 'sec-notify', label: configT('configuration:settingsPage.nav.notifications'), hint: `${enabledChannels.length}/${channels.length} ${configT('configuration:settingsPage.hero.channelsEnabled')}` },
     { id: 'sec-system', label: configT('configuration:settingsPage.nav.system'), hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
-    { id: 'sec-feedback', label: configT('configuration:settingsPage.nav.feedback') },
     { id: 'sec-appearance', label: configT('configuration:settingsPage.nav.appearance') },
     { id: 'sec-pat', label: configT('configuration:settingsPage.nav.pat') },
   ]
@@ -1036,57 +1003,7 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* Feedback Stats */}
-        <section id="sec-feedback" className="card p-4 md:p-5 lg:col-span-7">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">{configT('configuration:settingsPage.feedback.title')}</h3>
-              <p className="text-[11px] text-muted-foreground mt-1">{configT('configuration:settingsPage.feedback.description')}</p>
-            </div>
-            <Button variant="secondary" size="sm" className="h-8" onClick={loadFeedbackStats} disabled={fbLoading}>
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{configT('configuration:settingsPage.feedback.refresh')}</span>
-            </Button>
-          </div>
-
-          {fbStats ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                <span>{configT('configuration:settingsPage.feedback.days', { days: fbStats.range_days })}</span>
-                <span className="opacity-50">|</span>
-                <span>{configT('configuration:settingsPage.feedback.total')}: <span className="font-mono text-foreground/90">{fbStats.total}</span></span>
-                <span className="opacity-50">|</span>
-                <span>{configT('configuration:settingsPage.feedback.useful')}: <span className="font-mono text-emerald-600">{fbStats.useful}</span></span>
-                <span className="opacity-50">|</span>
-                <span>{configT('configuration:settingsPage.feedback.useless')}: <span className="font-mono text-rose-600">{fbStats.useless}</span></span>
-                <span className="opacity-50">|</span>
-                <span>{configT('configuration:settingsPage.feedback.usefulRate')}: <span className="font-mono text-foreground/90">{Math.round(fbStats.useful_rate * 100)}%</span></span>
-              </div>
-
-              {fbStats.by_agent?.length ? (
-                <div className="rounded-xl border border-border/40 bg-accent/20 p-3">
-                  <div className="text-[12px] font-semibold text-foreground">{configT('configuration:settingsPage.feedback.byAgent')}</div>
-                  <div className="mt-2 space-y-1">
-                    {fbStats.by_agent.slice(0, 6).map(a => (
-                      <div key={a.agent_name} className="flex items-center justify-between text-[11px]">
-                        <span className="font-mono text-muted-foreground">{a.agent_name}</span>
-                        <span className="font-mono text-muted-foreground">
-                          {a.useful}/{a.total} ({Math.round(a.useful_rate * 100)}%)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-[12px] text-muted-foreground">{configT('configuration:settingsPage.feedback.empty')}</div>
-              )}
-            </div>
-          ) : (
-            <div className="text-[12px] text-muted-foreground">{configT('configuration:settingsPage.feedback.empty')}</div>
-          )}
-        </section>
-
-        {/* Compact display preferences, grouped with lower-frequency feedback analytics. */}
+        {/* Display preferences */}
         <section id="sec-appearance" className="card p-4 md:p-5 lg:col-span-5">
           <div className="flex items-start gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -1127,7 +1044,7 @@ export default function SettingsPage() {
         </section>
 
         {/* MCP 访问令牌 */}
-        <PatSection />
+        <PatSection className="lg:col-span-7" />
 
       </div>
 

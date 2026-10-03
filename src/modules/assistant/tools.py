@@ -39,6 +39,7 @@ from src.platform.marketdata.marketdata_client import (
 from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.marketdata.stock_list import search_stocks
 from src.platform.persistence.models import Stock
+from src.platform.persistence.worker import run_db_operation
 from src.platform.runtime.config import Settings
 from src.platform.language import resolve_report_language
 
@@ -188,7 +189,7 @@ def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
 def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
     """Register the host-owned market and portfolio tools for an assistant run."""
     registry = ToolRegistry()
-    portfolio_service = build_portfolio_service(session)
+    db_bind = session.get_bind()
     language = resolve_report_language(session)
 
     def tool_spec(
@@ -212,7 +213,9 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     async def get_portfolio(_request: RunRequest, _arguments: dict) -> ToolResult:
-        summary = portfolio_service.build_assistant_summary() or "用户暂无持仓。"
+        summary = await run_db_operation(
+            db_bind, lambda db: build_portfolio_service(db).build_assistant_summary()
+        ) or "用户暂无持仓。"
         return ToolResult.success(
             summary=summary,
             data={"has_positions": summary != "用户暂无持仓。"},
@@ -705,50 +708,27 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             observed_at=datetime.now(UTC),
         )
 
-    async def _find_or_register_stock(
-        symbol: str, market: MarketCode
-    ) -> tuple[Stock | None, bool]:
-        """Resolve a stock id for write tools without requiring watchlist setup.
-
-        Price-alert rules reference the local ``stocks`` table, while research
-        tools can operate on any symbol returned by the market-data providers.
-        A verified quote is enough to create the lightweight stock directory
-        record; an unverified symbol remains a controlled ``stock_not_found``
-        result and never produces a dangling alert rule.
-        """
-        stock = (
-            session.query(Stock)
-            .filter(Stock.symbol == symbol, Stock.market == market.value)
-            .first()
-        )
-        if stock is not None:
-            return stock, False
-
+    def _verified_stock_quote(symbol: str, market: MarketCode) -> dict | None:
+        # Resolve metadata in a worker before the write transaction. Slow
+        # quote providers must not hold a SQLite write lock.
+        with Session(bind=db_bind) as db:
+            stock = db.query(Stock).filter(
+                Stock.symbol == symbol, Stock.market == market.value
+            ).first()
+            if stock is not None:
+                return {"name": stock.name}
         try:
-            rows = await asyncio.to_thread(md_quote_rows, [symbol], market.value)
-        except Exception:  # noqa: BLE001 - quote failures become a controlled write failure
-            return None, False
+            rows = md_quote_rows([symbol], market.value)
+        except Exception:  # noqa: BLE001 - return a controlled write failure
+            return None
 
-        def matches(row: dict[str, Any]) -> bool:
+        def matches(row):
             row_symbol = str(row.get("symbol") or "").strip().upper()
             if market is MarketCode.HK and row_symbol.isdigit():
                 row_symbol = row_symbol.zfill(5)
             return row_symbol == symbol
 
-        quote = next((row for row in rows if matches(row)), None)
-        if quote is None:
-            return None, False
-
-        stock = Stock(
-            symbol=symbol,
-            name=str(quote.get("name") or symbol).strip() or symbol,
-            market=market.value,
-        )
-        session.add(stock)
-        # 规则通过外键引用新登记的股票；先 flush 获取主键，仍由下方
-        # 的单次 commit 保证股票目录和提醒规则一起成功或一起回滚。
-        session.flush()
-        return stock, True
+        return next((row for row in rows if matches(row)), None)
 
     async def create_price_alert(_request: RunRequest, arguments: dict) -> ToolResult:
         parsed = _symbol_and_market(arguments)
@@ -779,55 +759,71 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 summary="冷却时间必须是非负整数。", error_code="cooldown_invalid"
             )
 
-        stock, stock_registered = await _find_or_register_stock(symbol, market)
-        if stock is None:
+        quote = await asyncio.to_thread(_verified_stock_quote, symbol, market)
+        if quote is None:
             return ToolResult.failure(
                 summary=f"PanWatch 股票库中未找到 {market.value}:{symbol}，未创建提醒。",
                 error_code="stock_not_found",
             )
-        direction_label = "≥" if direction == "above" else "≤"
-        display_price = f"{target_price:g}"
-        name = (
-            str(arguments.get("name") or "").strip()
-            or f"{stock.name} 价格 {direction_label} {display_price}"
-        )
-        rule = create_alert_rule(
-            session,
-            stock_id=stock.id,
-            name=name,
-            enabled=True,
-            condition_group={
-                "op": "and",
-                "items": [
-                    {
-                        "type": "price",
-                        "op": ">=" if direction == "above" else "<=",
-                        "value": target_price,
-                    }
-                ],
-            },
-            market_hours_mode="trading_only",
-            cooldown_minutes=cooldown_minutes,
-            max_triggers_per_day=3,
-            repeat_mode="repeat",
-            notify_channel_ids=[],
-        )
-        return ToolResult.success(
-            summary=(
-                f"已为 {stock.name}（{market.value}:{symbol}）创建价格 {direction_label} {display_price} "
-                f"的盘中提醒，冷却 {cooldown_minutes} 分钟。"
-            ),
-            data={
-                "rule_id": rule.id,
-                "symbol": symbol,
-                "market": market.value,
-                "direction": direction,
-                "target_price": target_price,
-                "stock_registered": stock_registered,
-            },
-            sources=[{"name": "PanWatch 价格提醒"}],
-            observed_at=datetime.now(UTC),
-        )
+        def persist(db):
+            stock = db.query(Stock).filter(
+                Stock.symbol == symbol, Stock.market == market.value
+            ).first()
+            stock_registered = stock is None
+            if stock is None:
+                stock = Stock(
+                    symbol=symbol,
+                    name=str(quote.get("name") or symbol).strip() or symbol,
+                    market=market.value,
+                )
+                db.add(stock)
+                # Registration and the rule share a single commit.
+                db.flush()
+            direction_label = "≥" if direction == "above" else "≤"
+            display_price = f"{target_price:g}"
+            name = (
+                str(arguments.get("name") or "").strip()
+                or f"{stock.name} 价格 {direction_label} {display_price}"
+            )
+            rule = create_alert_rule(
+                db,
+                stock_id=stock.id,
+                name=name,
+                enabled=True,
+                condition_group={
+                    "op": "and",
+                    "items": [
+                        {
+                            "type": "price",
+                            "op": ">=" if direction == "above" else "<=",
+                            "value": target_price,
+                        }
+                    ],
+                },
+                market_hours_mode="trading_only",
+                cooldown_minutes=cooldown_minutes,
+                max_triggers_per_day=3,
+                repeat_mode="repeat",
+                notify_channel_ids=[],
+            )
+            return ToolResult.success(
+                summary=(
+                    f"已为 {stock.name}（{market.value}:{symbol}）创建价格 {direction_label} {display_price} "
+                    f"的盘中提醒，冷却 {cooldown_minutes} 分钟。"
+                ),
+                data={
+                    "rule_id": rule.id,
+                    "symbol": symbol,
+                    "market": market.value,
+                    "direction": direction,
+                    "target_price": target_price,
+                    "stock_registered": stock_registered,
+                },
+                sources=[{"name": "PanWatch 价格提醒"}],
+                observed_at=datetime.now(UTC),
+            )
+
+        return await run_db_operation(db_bind, persist)
 
     async def get_price_alerts(_request: RunRequest, arguments: dict) -> ToolResult:
         """Return compact alert facts so the model can reference a rule ID."""
@@ -851,14 +847,13 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 summary="enabled 必须是布尔值。", error_code="enabled_invalid"
             )
 
-        rows = list_alert_rules(
-            session,
-            symbol=symbol,
-            market=market.value if market else None,
-            enabled=enabled,
-            limit=limit,
-        )
-        items = [compact_alert_rule(row) for row in rows]
+        def load(db):
+            return [compact_alert_rule(row) for row in list_alert_rules(
+                db, symbol=symbol, market=market.value if market else None,
+                enabled=enabled, limit=limit,
+            )]
+
+        items = await run_db_operation(db_bind, load)
         if not items:
             return ToolResult.success(
                 summary="没有找到符合条件的价格提醒。",
@@ -904,7 +899,9 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             if key in arguments
         }
         try:
-            rule = update_alert_rule(session, rule_id, updates)
+            item = await run_db_operation(
+                db_bind, lambda db: compact_alert_rule(update_alert_rule(db, rule_id, updates))
+            )
         except LookupError:
             return ToolResult.failure(
                 summary=f"未找到价格提醒 #{rule_id}。",
@@ -914,7 +911,6 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             return ToolResult.failure(
                 summary=str(exc), error_code="price_alert_invalid"
             )
-        item = compact_alert_rule(rule)
         return ToolResult.success(
             summary=(
                 f"已更新价格提醒 #{rule_id}：{item['stock_name'] or item['symbol']}，"
@@ -933,15 +929,16 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             return ToolResult.failure(
                 summary="请提供有效的提醒 ID。", error_code="rule_id_invalid"
             )
-        rule = get_alert_rule(session, rule_id)
-        if rule is None:
-            return ToolResult.failure(
-                summary=f"未找到价格提醒 #{rule_id}。",
-                error_code="price_alert_not_found",
-            )
-        item = compact_alert_rule(rule)
+        def remove(db):
+            rule = get_alert_rule(db, rule_id)
+            if rule is None:
+                raise LookupError(rule_id)
+            item = compact_alert_rule(rule)
+            delete_alert_rule(db, rule_id)
+            return item
+
         try:
-            delete_alert_rule(session, rule_id)
+            item = await run_db_operation(db_bind, remove)
         except LookupError:
             return ToolResult.failure(
                 summary=f"未找到价格提醒 #{rule_id}。",

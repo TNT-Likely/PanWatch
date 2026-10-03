@@ -158,7 +158,7 @@ def init_auth_from_env(db: Session) -> bool:
     return True
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ):
@@ -190,7 +190,7 @@ async def get_current_user(
 
 
 @router.get("/status")
-async def auth_status(db: Session = Depends(get_db)):
+def auth_status(db: Session = Depends(get_db)):
     """获取认证状态"""
     password_hash = get_password_hash(db)
     return {
@@ -199,7 +199,7 @@ async def auth_status(db: Session = Depends(get_db)):
 
 
 @router.post("/setup", response_model=TokenResponse)
-async def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
+def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
     """首次设置用户名和密码"""
     if get_password_hash(db):
         raise api_error(400, "auth_already_configured", "已设置过账号，请使用登录接口")
@@ -219,7 +219,7 @@ async def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, db: Session = Depends(get_db)):
     """登录"""
     stored_hash = get_password_hash(db)
     stored_username = get_stored_username(db)
@@ -237,7 +237,7 @@ async def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     data: SetupRequest,
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
@@ -253,6 +253,6 @@ async def change_password(
 
 
 @router.get("/me")
-async def get_me(user: str = Depends(get_current_user)):
+def get_me(user: str = Depends(get_current_user)):
     """获取当前用户信息"""
     return {"user": user or "guest"}

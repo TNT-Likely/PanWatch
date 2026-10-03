@@ -19,7 +19,6 @@ from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     EntryCandidate,
-    EntryCandidateFeedback,
     EntryCandidateOutcome,
     MarketScanSnapshot,
     Position,
@@ -1634,42 +1633,6 @@ def list_entry_candidates(
     return {"snapshot_date": snapshot, "count": len(items), "items": items}
 
 
-def save_entry_candidate_feedback(
-    *,
-    snapshot_date: str,
-    stock_symbol: str,
-    stock_market: str,
-    useful: bool,
-    candidate_source: str = "watchlist",
-    strategy_tags: list[str] | None = None,
-    reason: str = "",
-) -> bool:
-    symbol = (stock_symbol or "").strip().upper()
-    market = (stock_market or "CN").strip().upper() or "CN"
-    if not symbol:
-        return False
-    snap = (snapshot_date or "").strip() or date.today().strftime("%Y-%m-%d")
-
-    db = SessionLocal()
-    try:
-        row = EntryCandidateFeedback(
-            snapshot_date=snap,
-            stock_symbol=symbol,
-            stock_market=market,
-            candidate_source=(candidate_source or "watchlist").strip(),
-            strategy_tags=to_jsonable(strategy_tags or []),
-            useful=bool(useful),
-            reason=(reason or "").strip()[:200],
-        )
-        db.add(row)
-        db.commit()
-        return True
-    except Exception as e:
-        db.rollback()
-        logger.warning(f"保存候选反馈失败: {e}")
-        return False
-    finally:
-        db.close()
 
 
 def evaluate_entry_candidate_outcomes(
@@ -1836,53 +1799,6 @@ def get_entry_candidate_stats(*, days: int = 30) -> dict:
     since = utc_now() - timedelta(days=days)
     db = SessionLocal()
     try:
-        total, useful = (
-            db.query(
-                func.count(EntryCandidateFeedback.id),
-                func.sum(case((EntryCandidateFeedback.useful.is_(True), 1), else_=0)),
-            )
-            .filter(EntryCandidateFeedback.created_at >= since)
-            .first()
-        )
-        total = int(total or 0)
-        useful = int(useful or 0)
-        useless = max(0, total - useful)
-        useful_rate = round((useful / total * 100.0), 2) if total > 0 else 0.0
-
-        by_source_rows = (
-            db.query(
-                EntryCandidateFeedback.candidate_source,
-                func.count(EntryCandidateFeedback.id).label("total"),
-                func.sum(case((EntryCandidateFeedback.useful.is_(True), 1), else_=0)).label("useful"),
-            )
-            .filter(EntryCandidateFeedback.created_at >= since)
-            .group_by(EntryCandidateFeedback.candidate_source)
-            .all()
-        )
-        by_market_rows = (
-            db.query(
-                EntryCandidateFeedback.stock_market,
-                func.count(EntryCandidateFeedback.id).label("total"),
-                func.sum(case((EntryCandidateFeedback.useful.is_(True), 1), else_=0)).label("useful"),
-            )
-            .filter(EntryCandidateFeedback.created_at >= since)
-            .group_by(EntryCandidateFeedback.stock_market)
-            .all()
-        )
-
-        by_strategy_map: dict[str, dict] = {}
-        strat_rows = (
-            db.query(EntryCandidateFeedback.strategy_tags, EntryCandidateFeedback.useful)
-            .filter(EntryCandidateFeedback.created_at >= since)
-            .all()
-        )
-        for tags, is_useful in strat_rows:
-            for t in (tags or []):
-                item = by_strategy_map.setdefault(t, {"strategy": t, "strategy_label": STRATEGY_LABELS.get(t, t), "total": 0, "useful": 0})
-                item["total"] += 1
-                if is_useful:
-                    item["useful"] += 1
-
         latest_snapshot_row = (
             db.query(EntryCandidate.snapshot_date)
             .order_by(EntryCandidate.snapshot_date.desc())
@@ -1996,47 +1912,6 @@ def get_entry_candidate_stats(*, days: int = 30) -> dict:
                 else 0.0,
             }
 
-        by_source = []
-        for source_name, cnt, u in by_source_rows:
-            cnt = int(cnt or 0)
-            u = int(u or 0)
-            by_source.append(
-                {
-                    "source": source_name or "watchlist",
-                    "source_label": _candidate_source_label(source_name or "watchlist"),
-                    "total": cnt,
-                    "useful": u,
-                    "useful_rate": round((u / cnt * 100.0), 2) if cnt > 0 else 0.0,
-                }
-            )
-        by_market = []
-        for m, cnt, u in by_market_rows:
-            cnt = int(cnt or 0)
-            u = int(u or 0)
-            by_market.append(
-                {
-                    "market": (m or "CN").strip().upper(),
-                    "total": cnt,
-                    "useful": u,
-                    "useful_rate": round((u / cnt * 100.0), 2) if cnt > 0 else 0.0,
-                }
-            )
-
-        by_strategy = sorted(
-            [
-                {
-                    **v,
-                    "useless": max(0, v["total"] - v["useful"]),
-                    "useful_rate": round((v["useful"] / v["total"] * 100.0), 2)
-                    if v["total"] > 0
-                    else 0.0,
-                }
-                for v in by_strategy_map.values()
-            ],
-            key=lambda x: (x["total"], x["useful"]),
-            reverse=True,
-        )
-
         outcome_rows = (
             db.query(
                 EntryCandidateOutcome.horizon_days,
@@ -2071,15 +1946,6 @@ def get_entry_candidate_stats(*, days: int = 30) -> dict:
 
         return {
             "window_days": days,
-            "feedback": {
-                "total": total,
-                "useful": useful,
-                "useless": useless,
-                "useful_rate": useful_rate,
-            },
-            "by_source": by_source,
-            "by_market": by_market,
-            "by_strategy": by_strategy[:20],
             "coverage": coverage,
             "outcomes": outcome_summary,
         }

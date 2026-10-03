@@ -1,6 +1,7 @@
 """分析历史记录管理"""
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from src.modules.automation.agent_catalog import infer_agent_kind
@@ -12,6 +13,67 @@ logger = logging.getLogger(__name__)
 
 # TradingAgents 深度分析在 AnalysisHistory 里的 agent_name(见 agent.py: name = "tradingagents")
 TA_AGENT_NAME = "tradingagents"
+
+
+@dataclass(frozen=True)
+class ScopedAnalysisContext:
+    content: str
+
+
+def get_scoped_analysis_context(agent_name: str, stocks: list, *, before_date: date | None = None,
+                                analysis_date: date | None = None) -> ScopedAnalysisContext | None:
+    """Reuse only history belonging to the current symbols and markets.
+
+    Legacy global prose cannot be reliably split into stock sections. Include
+    it only when its recorded scope exactly matches this run; otherwise reuse
+    the matched structured suggestion, or omit the history entirely.
+    """
+    targets = {s.symbol: (getattr(s.market, "value", s.market), s.name or s.symbol) for s in stocks}
+    if not targets:
+        return None
+    end = analysis_date or before_date or date.today()
+    with SessionLocal() as db:
+        query = db.query(AnalysisHistory).filter(
+            AnalysisHistory.agent_name == agent_name,
+            AnalysisHistory.analysis_date >= (end - timedelta(days=30)).isoformat(),
+            AnalysisHistory.stock_symbol.in_(["*", *targets]),
+        )
+        query = query.filter(AnalysisHistory.analysis_date == end.isoformat()) if analysis_date else query.filter(
+            AnalysisHistory.analysis_date < end.isoformat())
+        rows = query.order_by(AnalysisHistory.analysis_date.desc(), AnalysisHistory.updated_at.desc()).limit(60).all()
+        found: dict[str, str] = {}
+        for row in rows:
+            raw = row.raw_data if isinstance(row.raw_data, dict) else {}
+            contexts = raw.get("context_payload") or raw.get("context_summary") or {}
+            suggestions = raw.get("suggestions") or {}
+            contexts = contexts if isinstance(contexts, dict) else {}
+            suggestions = suggestions if isinstance(suggestions, dict) else {}
+            symbols = raw.get("symbols")
+            scope = set(symbols if isinstance(symbols, list) else contexts.keys() or suggestions.keys())
+            def matches(symbol):
+                item = contexts.get(symbol) or {}
+                item = item if isinstance(item, dict) else {}
+                recorded_market = item.get("market") or raw.get("market") or raw.get("stock_market")
+                return recorded_market == targets[symbol][0] if recorded_market else targets[symbol][0] == "CN"
+            if row.stock_symbol == "*" and scope == set(targets) and all(matches(s) for s in targets) and row.content:
+                # A global report is safe only as a complete, identical scope.
+                if not found:
+                    return ScopedAnalysisContext(f"报告日期：{row.analysis_date}\n{row.content}")
+            for symbol, (_market, name) in targets.items():
+                if symbol in found or not matches(symbol):
+                    continue
+                if row.stock_symbol == symbol and row.content:
+                    text = row.content
+                elif row.stock_symbol == "*" and isinstance(suggestions.get(symbol), dict):
+                    suggestion = suggestions[symbol]
+                    text = "\n".join(f"{key}: {suggestion[key]}" for key in
+                                     ("action_label", "signal", "reason", "triggers", "invalidations", "risks")
+                                     if suggestion.get(key))
+                else:
+                    continue
+                if text:
+                    found[symbol] = f"### {name}（{symbol}）· 报告日期：{row.analysis_date}\n{text[:1200]}"
+        return ScopedAnalysisContext("\n\n".join(found.values())) if found else None
 
 
 def save_analysis(

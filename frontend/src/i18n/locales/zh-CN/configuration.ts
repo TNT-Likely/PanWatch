@@ -300,7 +300,7 @@ export const configuration = {
       testFailed: '测试失败', operationFailed: '操作失败', notificationSent: '测试通知已发送', channelSaved: '通知渠道已保存',
       configParseFailed: '配置包解析失败',
     },
-    nav: { appearance: '显示', ai: 'AI', notifications: '通知', system: '系统', feedback: '反馈', pat: 'MCP 令牌' },
+    nav: { appearance: '显示', ai: 'AI', notifications: '通知', system: '系统', pat: 'MCP 令牌' },
     hero: {
       uploadAvatar: '点击上传头像', avatarAlt: '头像', providers: '服务商', models: '模型', channelsEnabled: '渠道启用',
       defaultModel: '默认模型', defaultNotification: '默认通知', importing: '导入中...', importPack: '导入配置包',
@@ -326,7 +326,6 @@ export const configuration = {
       credentialsWarning: 'AI 服务会包含 API Key，通知渠道会包含 Token、Webhook 等完整凭据。请安全保存配置包。', cancel: '取消', exporting: '导出中...', exportCount: '导出 {{count}} 个模块',
       chooseImport: '选择导入模块', versionDetected: '配置包版本 v{{version}}，检测到 {{count}} 个可用模块。', replaceHint: '替换模式会清理配置包所含账户/标的中未列出的绑定。', replaceContained: '替换包含项', importing: '导入中...', importCount: '导入 {{count}} 个模块',
     },
-    feedback: { title: '建议反馈', description: '用于评估推送质量与策略迭代', refresh: '刷新', days: '近 {{days}} 天', total: '反馈', useful: '有用', useless: '没用', usefulRate: '有用率', byAgent: '按 Agent', empty: '暂无反馈数据' },
     dialogs: {
       providerEdit: '编辑 AI 服务商', providerAdd: '添加 AI 服务商', providerDescription: '配置 AI 服务商的 API 连接信息', name: '名称', baseUrl: '服务地址', apiKey: 'API Key', providerPlaceholder: '如 OpenAI、智谱、DeepSeek', cancel: '取消', save: '保存', create: '创建',
       modelEdit: '编辑模型', modelAdd: '添加模型', modelDescription: '配置 AI 模型', provider: '所属服务商', providerSelect: '选择服务商', displayName: '显示名称', optionalDefault: '（选填，默认同模型标识）', modelNamePlaceholder: '不填则使用模型标识', modelIdentifier: '模型标识', discoverHint: '（可用服务商上的“嗅探”批量发现）', modelPlaceholder: '请先选择服务商',
@@ -338,7 +337,7 @@ export const configuration = {
     pageTitle: 'Agent',
     runStatuses: { running: '运行中', success: '成功', failed: '失败' },
     catalog: {
-      premarket_outlook: { name: '盘前分析', description: '开盘前综合昨日分析和隔夜信息，展望今日走势' },
+      premarket_outlook: { name: '盘前分析', description: '开盘前结合行情、技术状态和隔夜资讯，独立生成今日交易展望' },
       intraday_monitor: { name: '盘中监测', description: '交易时段实时监控，AI 智能判断是否有值得关注的信号' },
       daily_report: { name: '收盘复盘', description: '每日收盘后生成复盘报告，包含市场回顾、个股复盘和次日关注' },
       chart_analyst: { name: '技术分析（能力）', description: '内部能力：详情页按需触发图像技术分析，不独立调度' },

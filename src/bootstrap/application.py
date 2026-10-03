@@ -40,7 +40,6 @@ from src.modules.portfolio.api import accounts, dashboard, history
 from src.modules.research.api import (
     context,
     evaluations,
-    feedback,
     insights,
     recommendations,
 )
@@ -133,12 +132,6 @@ app.include_router(
     templates.router,
     prefix="/api/templates",
     tags=["templates"],
-    dependencies=protected,
-)
-app.include_router(
-    feedback.router,
-    prefix="/api/feedback",
-    tags=["feedback"],
     dependencies=protected,
 )
 

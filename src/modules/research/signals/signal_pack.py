@@ -230,7 +230,7 @@ class SignalPackBuilder:
                                         f"SignalPack kline 未支持 provider={provider}，跳过"
                                     )
                                     continue
-                                self._tech_cache[key] = collector.get_kline_summary(sym)
+                                self._tech_cache[key] = await asyncio.to_thread(collector.get_kline_summary, sym)
                                 self._tech_source_cache[key] = provider
                                 last_err = None
                                 break
@@ -316,7 +316,7 @@ class SignalPackBuilder:
                                         )
                                         continue
                                     self._flow_cache[key] = (
-                                        collector.get_capital_flow_summary(sym)
+                                        await asyncio.to_thread(collector.get_capital_flow_summary, sym)
                                     )
                                     self._flow_source_cache[key] = provider
                                     last_err = None

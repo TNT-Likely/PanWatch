@@ -187,7 +187,7 @@ def test_runner_executes_from_queued_snapshot_and_persists_terminal_event(monkey
         def __init__(self, repo):
             self._repository = repo
 
-        async def prepare_context(self, _conversation_id):
+        async def prepare_context(self, _conversation_id, **_kwargs):
             return None
 
         def build_failover_client(self):

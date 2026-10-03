@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Play, Power, Clock, Cpu, Bot, Bell, Settings2 } from 'lucide-react'
 import { fetchAPI, type AIService, type NotifyChannel } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -207,36 +207,30 @@ export default function AgentsPage() {
     }
   }
 
+  const loadGeneration = useRef(0)
   const load = async () => {
-    try {
-      const [agentData, stockData, servicesData, channelData] = await Promise.all([
-        fetchAPI<AgentConfig[]>('/agents'),
-        fetchAPI<StockConfig[]>('/stocks'),
-        fetchAPI<AIService[]>('/providers/services'),
-        fetchAPI<NotifyChannel[]>('/channels'),
-      ])
-      setAgents(agentData)
-      setStocks(stockData)
-      setServices(servicesData)
-      setChannels(channelData)
-
-      // 预加载未来触发时间（避免“工作日/周末”语义误解）
-      const previewPairs = await Promise.all(agentData.map(async a => {
-        if (!a.schedule) return [a.name, { schedule: '', timezone: '', next_runs: [] }] as const
-        try {
-          const p = await fetchAPI<SchedulePreview>(`/agents/${a.name}/schedule/preview?count=3`)
-          return [a.name, p] as const
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : configT('messages.previewFailed')
-          return [a.name, { error: msg }] as const
+    const generation = ++loadGeneration.current
+    const current = () => generation === loadGeneration.current
+    const results = await Promise.allSettled([
+      fetchAPI<AgentConfig[]>('/agents').then(agentData => {
+        if (!current()) return
+        setAgents(agentData)
+        setPreviews({})
+        // Each preview appears when ready; it never gates the agent list.
+        for (const agent of agentData) {
+          if (!agent.schedule) continue
+          void fetchAPI<SchedulePreview>(`/agents/${agent.name}/schedule/preview?count=3`).then(preview => {
+            if (current()) setPreviews(previous => ({ ...previous, [agent.name]: preview }))
+          }).catch(error => {
+            if (current()) setPreviews(previous => ({ ...previous, [agent.name]: { error: error instanceof Error ? error.message : configT('messages.previewFailed') } }))
+          })
         }
-      }))
-      setPreviews(Object.fromEntries(previewPairs))
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+      }).finally(() => { if (current()) setLoading(false) }),
+      fetchAPI<StockConfig[]>('/stocks').then(data => { if (current()) setStocks(data) }),
+      fetchAPI<AIService[]>('/providers/services').then(data => { if (current()) setServices(data) }),
+      fetchAPI<NotifyChannel[]>('/channels').then(data => { if (current()) setChannels(data) }),
+    ])
+    if (current()) results.forEach(result => { if (result.status === 'rejected') console.error(result.reason) })
   }
 
   const loadHealth = async () => {
@@ -252,7 +246,7 @@ export default function AgentsPage() {
     }
   }
 
-  useEffect(() => { load(); loadHealth() }, [])
+  useEffect(() => { void load(); void loadHealth(); return () => { loadGeneration.current++ } }, [])
 
   // 调度编辑弹窗：实时预览未来触发时间（防止工作日/周末语义误解）
   useEffect(() => {

@@ -9,6 +9,7 @@ import os
 import time
 import logging
 import concurrent.futures
+import threading
 from pathlib import Path
 
 import httpx
@@ -65,6 +66,31 @@ EASTMONEY_BJ_PARAMS = {
     "fields": "f12,f14",
 }
 PAGE_SIZE = 100
+
+
+_AKSHARE_LOCK = threading.Lock()
+_AKSHARE_FUTURE = None
+
+
+def _akshare_fallback():
+    """Bound caller latency without executor shutdown joining a stuck provider.
+
+    A single daemon worker also prevents repeated refreshes from accumulating
+    blocked akshare calls. No database sessions are passed to this worker.
+    """
+    global _AKSHARE_FUTURE
+    with _AKSHARE_LOCK:
+        if _AKSHARE_FUTURE is not None and not _AKSHARE_FUTURE.done():
+            return _AKSHARE_FUTURE
+        future = concurrent.futures.Future()
+        _AKSHARE_FUTURE = future
+        def run():
+            try:
+                future.set_result(_fetch_from_akshare())
+            except Exception as exc:
+                future.set_exception(exc)
+        threading.Thread(target=run, name="stock-list-akshare", daemon=True).start()
+        return future
 
 
 def _load_cache() -> list[dict] | None:
@@ -272,10 +298,8 @@ def refresh_stock_list() -> list[dict]:
     except Exception as e:
         logger.warning(f"东方财富获取 A 股失败: {e}")
         try:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                future = pool.submit(_fetch_from_akshare)
-                cn_stocks = future.result(timeout=15)
-                stocks.extend(cn_stocks)
+            cn_stocks = _akshare_fallback().result(timeout=15)
+            stocks.extend(cn_stocks)
             logger.info(f"akshare 获取 A 股列表成功: {len(cn_stocks)} 只")
         except concurrent.futures.TimeoutError:
             logger.error("akshare 获取超时（15s）")

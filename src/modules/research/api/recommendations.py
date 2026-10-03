@@ -5,14 +5,12 @@ import logging
 import threading
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
 
 from src.modules.strategy.entry_candidates import (
     evaluate_entry_candidate_outcomes,
     get_entry_candidate_stats,
     list_entry_candidates,
     refresh_entry_candidates,
-    save_entry_candidate_feedback,
 )
 from src.modules.strategy.strategy_catalog import list_strategy_catalog
 from src.modules.strategy.strategy_engine import (
@@ -130,14 +128,6 @@ def _start_refresh_job(**kwargs) -> tuple[bool, dict]:
     return True, _get_refresh_state()
 
 
-class CandidateFeedbackIn(BaseModel):
-    snapshot_date: str = ""
-    stock_symbol: str
-    stock_market: str = "CN"
-    useful: bool = True
-    candidate_source: str = "watchlist"
-    strategy_tags: list[str] = Field(default_factory=list)
-    reason: str = ""
 
 
 @router.get("/entry-candidates")
@@ -183,18 +173,6 @@ def refresh_candidates(
     return cand
 
 
-@router.post("/entry-candidates/feedback")
-def submit_candidate_feedback(payload: CandidateFeedbackIn):
-    ok = save_entry_candidate_feedback(
-        snapshot_date=payload.snapshot_date,
-        stock_symbol=payload.stock_symbol,
-        stock_market=payload.stock_market,
-        useful=payload.useful,
-        candidate_source=payload.candidate_source,
-        strategy_tags=payload.strategy_tags,
-        reason=payload.reason,
-    )
-    return {"ok": ok}
 
 
 @router.get("/entry-candidates/stats")

@@ -13,7 +13,7 @@ import { formatDate } from '@/i18n/format'
  * 令牌用于 Claude 等 MCP client 连接 PanWatch 的 MCP 端点(/mcp)。
  * 明文仅创建时返回一次;列表只显示前缀。
  */
-export default function PatSection() {
+export default function PatSection({ className = 'lg:col-span-12' }: { className?: string }) {
   const { t } = useTranslation(['configuration', 'common'])
   const { toast } = useToast()
   const [items, setItems] = useState<PatItem[]>([])
@@ -71,7 +71,7 @@ export default function PatSection() {
   }
 
   return (
-    <section id="sec-pat" className="card p-4 md:p-6 lg:col-span-12">
+    <section id="sec-pat" className={`card p-4 md:p-6 ${className}`}>
       <div className="flex items-start justify-between mb-4 gap-3">
         <div>
           <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground flex items-center gap-1.5">

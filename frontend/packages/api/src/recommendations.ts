@@ -40,45 +40,8 @@ export interface EntryCandidatesResponse {
   items: EntryCandidateItem[]
 }
 
-export interface EntryCandidateFeedbackPayload {
-  snapshot_date?: string
-  stock_symbol: string
-  stock_market?: string
-  useful: boolean
-  candidate_source?: string
-  strategy_tags?: string[]
-  reason?: string
-}
-
 export interface EntryCandidateStatsResponse {
   window_days: number
-  feedback: {
-    total: number
-    useful: number
-    useless: number
-    useful_rate: number
-  }
-  by_source: Array<{
-    source: string
-    source_label: string
-    total: number
-    useful: number
-    useful_rate: number
-  }>
-  by_market: Array<{
-    market: string
-    total: number
-    useful: number
-    useful_rate: number
-  }>
-  by_strategy: Array<{
-    strategy: string
-    strategy_label: string
-    total: number
-    useful: number
-    useless: number
-    useful_rate: number
-  }>
   coverage: {
     snapshot_date: string
     total_snapshot_candidates?: number
@@ -415,12 +378,6 @@ export const recommendationsApi = {
         method: 'POST',
       }
     ),
-
-  feedbackEntryCandidate: (payload: EntryCandidateFeedbackPayload) =>
-    fetchAPI<{ ok: boolean }>('/recommendations/entry-candidates/feedback', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
 
   getEntryCandidateStats: (days = 30) =>
     fetchAPI<EntryCandidateStatsResponse>(`/recommendations/entry-candidates/stats?days=${encodeURIComponent(String(days))}`),

@@ -372,16 +372,20 @@ async def create_assistant_task(
 ) -> dict:
     """Persist a task and return immediately; execution happens in the worker."""
     try:
-        user_message = service.record_user_message(conversation_id, body.content)
-        task = service.create_task(conversation_id, user_message.id)
-        assistant_task_runner.start_message(task.id, conversation_id)
-        return {
-            "task_id": task.id,
-            "status": task.status,
-            "event_url": f"/api/assistant/tasks/{task.id}/events",
-            "snapshot_url": f"/api/assistant/tasks/{task.id}",
-            "created_at": task.created_at,
-        }
+        def persist(worker):
+            user_message = worker.record_user_message(conversation_id, body.content)
+            task = worker.create_task(conversation_id, user_message.id)
+            return {
+                "task_id": task.id,
+                "status": task.status,
+                "event_url": f"/api/assistant/tasks/{task.id}/events",
+                "snapshot_url": f"/api/assistant/tasks/{task.id}",
+                "created_at": task.created_at,
+            }
+
+        snapshot = await service.in_worker(persist)
+        assistant_task_runner.start_message(snapshot["task_id"], conversation_id)
+        return snapshot
     except AssistantNotFoundError as exc:
         raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
 
@@ -394,7 +398,7 @@ async def stream_assistant_task_events(
     service: AssistantService = Depends(get_assistant_service),
 ) -> StreamingResponse:
     try:
-        service.get_task_snapshot(task_id)
+        await service.in_worker(lambda worker: worker.get_task_snapshot(task_id))
     except AssistantNotFoundError as exc:
         raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     return _task_stream_response(
@@ -440,7 +444,7 @@ async def cancel_assistant_task(
     service: AssistantService = Depends(get_assistant_service),
 ) -> dict:
     try:
-        snapshot = service.cancel_task(task_id)
+        snapshot = await service.in_worker(lambda worker: worker.cancel_task(task_id))
         assistant_task_runner.cancel(task_id)
         return snapshot
     except AssistantNotFoundError as exc:
@@ -454,9 +458,9 @@ async def retry_assistant_task(
 ) -> dict:
     try:
         if assistant_task_runner.is_running(task_id):
-            snapshot = service.get_task_snapshot(task_id)
+            snapshot = await service.in_worker(lambda worker: worker.get_task_snapshot(task_id))
             return {**snapshot, "can_retry": False, "retry_blocked_reason": "worker_stopping"}
-        snapshot = service.retry_task(task_id)
+        snapshot = await service.in_worker(lambda worker: worker.retry_task(task_id))
         if snapshot["status"] == TaskStatus.QUEUED.value:
             assistant_task_runner.start_message(task_id, snapshot["conversation_id"])
         return snapshot
@@ -472,16 +476,8 @@ async def stream_assistant_message(
 ):
     """Run the navigation assistant through PanAgent and stream its portable events."""
     if isinstance(service, AssistantService):
-        try:
-            user_message = service.record_user_message(conversation_id, body.content)
-            task = service.create_task(conversation_id, user_message.id)
-            assistant_task_runner.start_message(task.id, conversation_id)
-            return _task_stream_response(
-                task.id,
-                after_sequence=0,
-            )
-        except AssistantNotFoundError as exc:
-            raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
+        snapshot = await create_assistant_task(conversation_id, body, service)
+        return _task_stream_response(snapshot["task_id"], after_sequence=0)
 
     task = None
     context_result = None
@@ -548,7 +544,12 @@ async def stream_assistant_approval_decision(
 ):
     """Consume one approval card and resume its tool call immediately."""
     try:
-        outcome = service.resolve_approval_decision(approval_id, body.decision)
+        if isinstance(service, AssistantService):
+            outcome = await service.in_worker(
+                lambda worker: worker.resolve_approval_decision(approval_id, body.decision)
+            )
+        else:
+            outcome = service.resolve_approval_decision(approval_id, body.decision)
     except AssistantNotFoundError as exc:
         raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
     except (AssistantApprovalConflictError, AssistantApprovalExpiredError) as exc:
@@ -635,9 +636,8 @@ async def compress_context(
 ) -> ContextDetailDTO:
     try:
         result = await service.compress_context(conversation_id, mode=body.mode)
-        return service.get_context_detail(
-            conversation_id,
-            compression_result=result,
+        return await service.in_worker(
+            lambda worker: worker.get_context_detail(conversation_id, compression_result=result)
         )
     except AssistantNotFoundError as exc:
         raise api_error(404, "assistant_resource_not_found", "助手资源不存在") from exc
@@ -739,11 +739,13 @@ async def export_conversation_context(
     service: AssistantService = Depends(get_assistant_service),
 ) -> ContextExportJobDTO:
     try:
-        repository = ExportJobRepository(service._repository.session)
-        job = repository.create(conversation_id, body.language)
-        snapshot = repository.dto(job)
-        if job.status == 'queued':
-            context_export_runner.start(job.id)
+        def create(worker):
+            repository = ExportJobRepository(worker._repository.session)
+            return repository.dto(repository.create(conversation_id, body.language))
+
+        snapshot = await service.in_worker(create)
+        if snapshot.status == 'queued':
+            context_export_runner.start(snapshot.id)
         return snapshot
     except AssistantNotFoundError as exc:
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
@@ -772,11 +774,13 @@ def list_context_exports(
 @router.get('/exports/{export_id}', response_model=ContextExportJobDTO)
 async def get_context_export(export_id: int, service: AssistantService = Depends(get_assistant_service)):
     try:
-        repository = ExportJobRepository(service._repository.session)
-        job = repository.get(export_id)
-        snapshot = repository.dto(job)
-        if job.status == 'queued':
-            context_export_runner.start(job.id)
+        def get(worker):
+            repository = ExportJobRepository(worker._repository.session)
+            return repository.dto(repository.get(export_id))
+
+        snapshot = await service.in_worker(get)
+        if snapshot.status == 'queued':
+            context_export_runner.start(snapshot.id)
         return snapshot
     except LookupError as exc:
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
@@ -785,11 +789,13 @@ async def get_context_export(export_id: int, service: AssistantService = Depends
 @router.post('/exports/{export_id}/retry', response_model=ContextExportJobDTO, status_code=202)
 async def retry_context_export(export_id: int, service: AssistantService = Depends(get_assistant_service)):
     try:
-        repository = ExportJobRepository(service._repository.session)
-        job = repository.retry(export_id)
-        snapshot = repository.dto(job)
-        if job.status == 'queued':
-            context_export_runner.start(job.id)
+        def retry(worker):
+            repository = ExportJobRepository(worker._repository.session)
+            return repository.dto(repository.retry(export_id))
+
+        snapshot = await service.in_worker(retry)
+        if snapshot.status == 'queued':
+            context_export_runner.start(snapshot.id)
         return snapshot
     except LookupError as exc:
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
