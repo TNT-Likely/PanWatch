@@ -213,11 +213,10 @@ def test_runner_executes_from_queued_snapshot_and_persists_terminal_event(monkey
 
     async def run():
         runner.start_message(task_id, conversation_id)
-        for _ in range(20):
-            if repository.get_task_snapshot(task_id)["status"] == "completed":
-                return
-            await asyncio.sleep(0.01)
-        raise AssertionError("runner did not finish")
+        # Wait for the worker before reading the shared in-memory SQLite connection.
+        async with asyncio.timeout(5):
+            while runner.is_running(task_id):
+                await asyncio.sleep(0.01)
 
     asyncio.run(run())
     events = repository.list_task_events(task_id, after_sequence=2)
