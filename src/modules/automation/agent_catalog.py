@@ -118,7 +118,6 @@ AGENT_SEED_SPECS: tuple[AgentSeedSpec, ...] = (
             "llm_timeout_seconds": 300,  # 单次 LLM 请求超时，给慢响应留出时间
             "collection_timeout_seconds": 45,  # 单个数据源采集超时，失败时降级
             "llm_max_retries": 0,         # 深度分析失败快速落终态，不在图内重复重试
-            "llm_max_tokens": 4096,       # 限制模型输出，避免网关空闲超时
             "emit_paper_trading_signal": False,  # 是否把 BUY 决策写入 StrategySignalRun
                                                   # 驱动模拟盘自动开仓 (默认关,需用户主动启用)
             "enable_sec_edgar": False,  # 仅美股：优先使用有 filing-date 语义的 SEC EDGAR 财报

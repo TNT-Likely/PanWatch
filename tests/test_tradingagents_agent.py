@@ -71,7 +71,7 @@ class TestLLMAdapter(unittest.TestCase):
         self.assertFalse(config["checkpoint_enabled"])
 
     def test_build_ta_llm_config_bounds_provider_calls(self):
-        """LLM 请求必须有明确超时、重试和输出上限，避免图永远卡在单次调用。"""
+        """LLM 请求必须有明确超时和重试，输出上限交给供应商。"""
         ai_client = MagicMock()
         ai_client.base_url = "https://api.example.com"
         ai_client.model = "test-model"
@@ -81,7 +81,7 @@ class TestLLMAdapter(unittest.TestCase):
 
         self.assertEqual(config["llm_timeout_seconds"], 300)
         self.assertEqual(config["llm_max_retries"], 0)
-        self.assertEqual(config["max_tokens"], 4096)
+        self.assertNotIn("max_tokens", config)
 
     def test_build_ta_llm_config_rejects_invalid_analyst(self):
         """非法分析师名 — 抛 ValueError"""
@@ -460,7 +460,13 @@ class TestPhaseBFeatures(unittest.TestCase):
         agent = TradingAgentsAgent()
         self.assertEqual(agent.llm_timeout_seconds, 300)
         self.assertEqual(agent.llm_max_retries, 0)
-        self.assertEqual(agent.llm_max_tokens, 4096)
+        self.assertFalse(hasattr(agent, "llm_max_tokens"))
+
+    def test_legacy_output_cap_is_ignored_without_resetting_timeout(self):
+        """旧数据库配置中的输出上限不能触发回退到默认 Agent。"""
+        agent = TradingAgentsAgent(llm_timeout_seconds=600, llm_max_tokens=4096)
+        self.assertEqual(agent.llm_timeout_seconds, 600)
+        self.assertFalse(hasattr(agent, "llm_max_tokens"))
 
     def test_graph_class_forwards_request_timeout_to_langchain(self):
         """上游未读取 timeout 配置时，适配类仍需把它传给 ChatOpenAI。"""

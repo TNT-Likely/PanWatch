@@ -38,7 +38,7 @@ it('shows and saves all timeout defaults for older configurations', async () => 
   expect((dialog.getByLabelText('单次模型请求超时（秒）') as HTMLInputElement).value).toBe('300')
   expect((dialog.getByLabelText('单个数据源采集超时（秒）') as HTMLInputElement).value).toBe('45')
   await userEvent.click(dialog.getByRole('button', { name: '保存' }))
-  await waitFor(() => expect(savedConfig()).toEqual({ debate_rounds: 1, llm_max_tokens: 4096,
+  await waitFor(() => expect(savedConfig()).toEqual({ debate_rounds: 1,
     timeout_minutes: 30, llm_timeout_seconds: 300, collection_timeout_seconds: 45 }))
 })
 

@@ -46,7 +46,6 @@ def build_ta_llm_config(
     holding_period_days: int = 5,
     llm_timeout_seconds: int = 300,
     llm_max_retries: int = 0,
-    llm_max_tokens: int = 4096,
 ) -> dict[str, Any]:
     """生成 TradingAgents 期望的 config dict。
 
@@ -79,6 +78,10 @@ def build_ta_llm_config(
         config = dict(_UPSTREAM_DEFAULT)
     except ImportError:
         config = {}
+
+    # The upstream default currently contains ``max_tokens=None``. Remove the
+    # key entirely so TradingAgents does not forward an output cap at all.
+    config.pop("max_tokens", None)
 
     # 上游 config 含嵌套 vendor 配置；先复制，避免单次运行污染 DEFAULT_CONFIG。
     config["data_vendors"] = dict(config.get("data_vendors") or {})
@@ -139,7 +142,6 @@ def build_ta_llm_config(
         # 连接断开或模型持续输出会让整个 LangGraph 永久停在当前 analyst。
         "llm_timeout_seconds": max(1, int(llm_timeout_seconds)),
         "llm_max_retries": max(0, int(llm_max_retries)),
-        "max_tokens": max(256, int(llm_max_tokens)),
     })
     return config
 

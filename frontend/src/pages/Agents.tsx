@@ -460,8 +460,12 @@ export default function AgentsPage() {
   const saveTaConfig = async () => {
     if (!taConfigAgent) return
     try {
+      // llm_max_tokens is a legacy setting. Keep accepting it in imported/old
+      // configs, but stop persisting or forwarding the output cap.
+      const configWithoutOutputCap = { ...taConfigForm }
+      delete configWithoutOutputCap.llm_max_tokens
       const config = {
-        ...taConfigForm,
+        ...configWithoutOutputCap,
         timeout_minutes: timeoutValue(taConfigForm.timeout_minutes, 30, 1, 60),
         llm_timeout_seconds: timeoutValue(taConfigForm.llm_timeout_seconds, 300, 1, 900),
         collection_timeout_seconds: timeoutValue(taConfigForm.collection_timeout_seconds, 45, 5, 300),

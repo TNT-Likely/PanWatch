@@ -58,7 +58,7 @@ class TradingAgentsUnavailable(RuntimeError):
 def _bounded_graph_class(graph_cls):
     """让 TradingAgentsGraph 把请求边界传给 LangChain LLM 客户端。
 
-    TradingAgents 0.5.0 已支持 ``llm_max_retries``/``max_tokens``，但当前
+    TradingAgents 0.5.0 已支持 ``llm_max_retries``，但当前
     版本的 ``_get_provider_kwargs`` 尚未读取自定义 timeout。通过一个很小的
     子类适配该差异，避免直接修改 site-packages，也兼容后续上游自行支持
     timeout 的版本。
@@ -100,7 +100,8 @@ class TradingAgentsAgent(BaseAgent):
         holding_period_days: int = 5,     # 上游决策质量回测/持仓期限语义
         llm_timeout_seconds: int = 300,   # 单次 LLM 请求超时,给慢响应留出时间
         llm_max_retries: int = 0,         # 深度分析不在图内重复重试供应商请求
-        llm_max_tokens: int = 4096,       # 限制推理/报告输出,避免网关空闲超时
+        # 保留旧配置字段的兼容入口，但不再向模型传递输出上限。
+        llm_max_tokens: int | None = None,
     ):
         # 校验分析师配置
         analysts = list(analyst_types or sorted(VALID_ANALYSTS))
@@ -126,7 +127,6 @@ class TradingAgentsAgent(BaseAgent):
         self.holding_period_days = max(1, int(holding_period_days))
         self.llm_timeout_seconds = max(1, int(llm_timeout_seconds))
         self.llm_max_retries = max(0, int(llm_max_retries))
-        self.llm_max_tokens = max(256, int(llm_max_tokens))
 
         # 软依赖检测
         self._available, self._import_error = self._check_availability()
@@ -307,7 +307,6 @@ class TradingAgentsAgent(BaseAgent):
             holding_period_days=self.holding_period_days,
             llm_timeout_seconds=self.llm_timeout_seconds,
             llm_max_retries=self.llm_max_retries,
-            llm_max_tokens=self.llm_max_tokens,
         )
 
         # 3) 进度回调
