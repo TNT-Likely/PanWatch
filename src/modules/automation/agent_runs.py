@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 # 采集阶段可能在外部数据源限流/重试时暂时没有进度日志，不能沿用
 # “5 分钟无日志即 stale”的规则；但服务重启后也不能无限恢复旧任务。
-ACTIVE_RUN_TTL_SEC = 45 * 60
+# Cover the UI's 60-minute analysis limit plus up to three 5-minute collection
+# batches and startup slack, so a configured long run is not restored as stale.
+ACTIVE_RUN_TTL_SEC = 90 * 60
 
 
 def _as_utc(value: datetime | None) -> datetime | None:

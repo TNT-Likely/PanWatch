@@ -44,7 +44,7 @@ def build_ta_llm_config(
     enable_sec_edgar: bool = False,
     runtime_dir: str | Path | None = None,
     holding_period_days: int = 5,
-    llm_timeout_seconds: int = 120,
+    llm_timeout_seconds: int = 300,
     llm_max_retries: int = 0,
     llm_max_tokens: int = 4096,
 ) -> dict[str, Any]:

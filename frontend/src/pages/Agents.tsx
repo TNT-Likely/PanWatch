@@ -25,6 +25,11 @@ interface AgentConfig {
   config: Record<string, unknown>
 }
 
+function timeoutValue(value: unknown, fallback: number, min: number, max: number): number {
+  const number = value === '' || value == null ? fallback : Number(value)
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.trunc(number))) : fallback
+}
+
 interface StockAgentInfo {
   agent_name: string
   schedule: string
@@ -455,9 +460,15 @@ export default function AgentsPage() {
   const saveTaConfig = async () => {
     if (!taConfigAgent) return
     try {
+      const config = {
+        ...taConfigForm,
+        timeout_minutes: timeoutValue(taConfigForm.timeout_minutes, 30, 1, 60),
+        llm_timeout_seconds: timeoutValue(taConfigForm.llm_timeout_seconds, 300, 1, 900),
+        collection_timeout_seconds: timeoutValue(taConfigForm.collection_timeout_seconds, 45, 5, 300),
+      }
       await fetchAPI(`/agents/${taConfigAgent.name}`, {
         method: 'PUT',
-        body: JSON.stringify({ config: taConfigForm }),
+        body: JSON.stringify({ config }),
       })
       toast(configT('messages.configSaved'), 'success')
       setTaConfigAgent(null)
@@ -1029,10 +1040,11 @@ export default function AgentsPage() {
             {/* 执行参数 */}
             <section>
               <div className="font-medium mb-2">{configT('advanced.executionSettings')}</div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-[12px]">{configT('advanced.debateRounds')}</Label>
+                  <Label htmlFor="ta-debate-rounds" className="text-[12px]">{configT('advanced.debateRounds')}</Label>
                   <Input
+                    id="ta-debate-rounds"
                     type="number"
                     min={1}
                     max={5}
@@ -1041,14 +1053,43 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-[12px]">{configT('advanced.timeout')}</Label>
+                  <Label htmlFor="ta-run-timeout" className="text-[12px]">{configT('advanced.timeout')}</Label>
                   <Input
+                    id="ta-run-timeout"
                     type="number"
                     min={1}
                     max={60}
-                    value={String(taConfigForm.timeout_minutes ?? 15)}
-                    onChange={e => setTaConfigForm({ ...taConfigForm, timeout_minutes: parseInt(e.target.value) || 15 })}
+                    aria-describedby="ta-run-timeout-hint"
+                    value={String(taConfigForm.timeout_minutes ?? 30)}
+                    onChange={e => setTaConfigForm({ ...taConfigForm, timeout_minutes: e.target.value === '' ? '' : Number(e.target.value) })}
                   />
+                  <p id="ta-run-timeout-hint" className="mt-1 text-[11px] text-muted-foreground">{configT('advanced.timeoutHint')}</p>
+                </div>
+                <div>
+                  <Label htmlFor="ta-llm-timeout" className="text-[12px]">{configT('advanced.llmTimeout')}</Label>
+                  <Input
+                    id="ta-llm-timeout"
+                    type="number"
+                    min={1}
+                    max={900}
+                    aria-describedby="ta-llm-timeout-hint"
+                    value={String(taConfigForm.llm_timeout_seconds ?? 300)}
+                    onChange={e => setTaConfigForm({ ...taConfigForm, llm_timeout_seconds: e.target.value === '' ? '' : Number(e.target.value) })}
+                  />
+                  <p id="ta-llm-timeout-hint" className="mt-1 text-[11px] text-muted-foreground">{configT('advanced.llmTimeoutHint')}</p>
+                </div>
+                <div>
+                  <Label htmlFor="ta-collection-timeout" className="text-[12px]">{configT('advanced.collectionTimeout')}</Label>
+                  <Input
+                    id="ta-collection-timeout"
+                    type="number"
+                    min={5}
+                    max={300}
+                    aria-describedby="ta-collection-timeout-hint"
+                    value={String(taConfigForm.collection_timeout_seconds ?? 45)}
+                    onChange={e => setTaConfigForm({ ...taConfigForm, collection_timeout_seconds: e.target.value === '' ? '' : Number(e.target.value) })}
+                  />
+                  <p id="ta-collection-timeout-hint" className="mt-1 text-[11px] text-muted-foreground">{configT('advanced.collectionTimeoutHint')}</p>
                 </div>
               </div>
             </section>

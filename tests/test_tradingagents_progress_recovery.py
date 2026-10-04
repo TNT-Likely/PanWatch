@@ -72,6 +72,13 @@ def test_running_agent_run_is_stale_after_lifecycle_timeout():
     assert find_active_tradingagents_trace(_db(old_run), "AAPL") is None
 
 
+def test_configured_hour_long_analysis_is_not_treated_as_stale_after_45_minutes():
+    from src.modules.automation.agent_runs import find_active_tradingagents_trace
+
+    run = _run(created_at=datetime.now(timezone.utc) - timedelta(minutes=55))
+    assert find_active_tradingagents_trace(_db(run), "AAPL") == run.trace_id
+
+
 def test_progress_marks_expired_running_agent_run_stale():
     from src.modules.automation.api.agents import get_run_progress
 

@@ -93,6 +93,68 @@ def test_nested_contexts_restore_outer():
     contextvars.copy_context().run(_run)
 
 
+def test_stock_data_respects_positional_date_range_and_retains_cached_history():
+    data = {**GAC, "klines": [
+        _kline("2026-05-01", 1), _kline("2026-05-02", 2),
+        _kline("2026-05-03", 3), _kline("2026-05-04", 4),
+    ]}
+    with ta.panwatch_data_context(data):
+        result = ta._serve_from_panwatch(
+            "get_stock_data", "601238", {}, args=("601238", "2026-05-02", "2026-05-03")
+        )
+        assert len(ta._cache()["klines"]) == 4
+    assert "2026-05-01," not in result
+    assert "2026-05-02," in result and "2026-05-03," in result
+    assert "2026-05-04," not in result
+
+
+def test_stock_data_accepts_keyword_dates_and_object_rows():
+    from datetime import date, datetime
+    data = {**GAC, "klines": [
+        SimpleNamespace(**{**_kline("2026-05-03", 3), "date": date(2026, 5, 3)}),
+        SimpleNamespace(**{**_kline("2026-05-02", 2), "date": datetime(2026, 5, 2)}),
+        _kline("2026-05-01", 1),
+    ]}
+    with ta.panwatch_data_context(data):
+        result = ta._serve_from_panwatch(
+            "get_stock_data", "601238", {"start_date": "2026-05-02", "end_date": "2026-05-03"}
+        )
+    assert "2026-05-01," not in result
+    assert result.index("2026-05-02") < result.index("2026-05-03")
+
+
+def test_stock_data_without_start_date_caps_payload_without_truncating_cache():
+    from datetime import date, timedelta
+    rows = [_kline(str(date(2025, 1, 1) + timedelta(days=i)), i) for i in range(750)]
+    with ta.panwatch_data_context({**GAC, "klines": list(reversed(rows))}):
+        result = ta._serve_from_panwatch("get_stock_data", "601238", {})
+        assert len(ta._cache()["klines"]) == 750
+    assert "latest 120 trading days" in result
+    assert rows[-120]["date"] in result and rows[-1]["date"] in result
+    assert rows[-121]["date"] not in result
+    assert len(result.split("date,open,high,low,close,volume\n")[1].splitlines()) == 120
+
+
+def test_explicit_long_date_range_is_not_silently_capped():
+    from datetime import date, timedelta
+    rows = [_kline(str(date(2025, 1, 1) + timedelta(days=i)), i) for i in range(250)]
+    with ta.panwatch_data_context({**GAC, "klines": rows}):
+        result = ta._serve_from_panwatch(
+            "get_stock_data", "601238", {}, args=("601238", rows[0]["date"], rows[-1]["date"])
+        )
+    assert "latest 120" not in result
+    assert len(result.split("date,open,high,low,close,volume\n")[1].splitlines()) == 250
+
+
+def test_stock_data_empty_date_range_does_not_return_unrelated_cached_rows():
+    with ta.panwatch_data_context(GAC):
+        result = ta._serve_from_panwatch(
+            "get_stock_data", "601238", {}, args=("601238", "2025-01-01", "2025-02-01")
+        )
+    assert "No cached K-line data in the requested date range" in result
+    assert "2026-05-01," not in result
+
+
 # ---------------------------------------------------------------------------
 # 行业/主题新闻关键词搜索(B 功能:get_news 非 ticker 词 → 实时搜中文新闻)
 # ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ import logging
 import re
 import threading
 from contextlib import contextmanager
+from datetime import date, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -781,6 +782,40 @@ def _stock_meta_header(symbol: str) -> str:
     return "\n".join(lines)
 
 
+def _render_requested_klines(klines: list, kwargs: dict, args: tuple) -> str:
+    """Keep full history for indicator calculation; send only requested rows to LLM."""
+    def parse(value):
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        return datetime.strptime(str(value).split("T")[0].split(" ")[0].replace("/", "-"), "%Y-%m-%d").date()
+
+    start = kwargs.get("start_date") or (args[1] if len(args) > 1 else None)
+    end = kwargs.get("end_date") or (args[2] if len(args) > 2 else None)
+    start_day = parse(start) if start else None
+    end_day = parse(end) if end else None
+    if start_day and end_day and start_day > end_day:
+        return "[Invalid date range: start_date must not be after end_date]"
+    rows = []
+    for kline in klines:
+        value = kline.get("date") if isinstance(kline, dict) else getattr(kline, "date", None)
+        try:
+            day = parse(value)
+        except (ValueError, TypeError):
+            continue
+        if (start_day is None or day >= start_day) and (end_day is None or day <= end_day):
+            rows.append((day, kline))
+    rows.sort(key=lambda row: row[0])
+    note = ""
+    if start_day is None and len(rows) > 120:
+        rows = rows[-120:]
+        note = "[Showing the latest 120 trading days; request start_date/end_date for another range. Full history is retained for indicator calculation.]\n"
+    if not rows:
+        return "[No cached K-line data in the requested date range; do not infer prices for missing dates.]"
+    return note + _klines_to_csv([kline for _, kline in rows])
+
+
 def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tuple = ()) -> str:
     """从 _cache()(当前 context 的数据)构造 TradingAgents 期望的数据格式(CSV / JSON 字符串)。
 
@@ -802,7 +837,7 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         # 没传 indicator 参数:降级到 K 线 CSV
         klines = _cache().get("klines") or []
         if klines:
-            return f"{header}\n\n{_klines_to_csv(klines)}"
+            return f"{header}\n\n{_render_requested_klines(klines, {}, ())}"
         return f"{header}\n\n[No data available for indicators on {symbol}]"
 
     # 1b) K 线 / 股价完整 CSV:get_stockstats / get_yfin_data / get_stock_data
@@ -811,7 +846,7 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
     )):
         klines = _cache().get("klines") or []
         if klines:
-            return f"{header}\n\n{_klines_to_csv(klines)}"
+            return f"{header}\n\n{_render_requested_klines(klines, kwargs, args)}"
         return f"{header}\n\n[No kline data available from PanWatch for {symbol}]"
 
     # 2) 公告/事件/新闻:get_finnhub_news / get_news / get_events / get_global_news / get_insider_*

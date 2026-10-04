@@ -98,7 +98,7 @@ class TradingAgentsAgent(BaseAgent):
         emit_paper_trading_signal: bool = False,  # 是否把 BUY 决策写入 StrategySignalRun 驱动模拟盘
         enable_sec_edgar: bool = False,   # 美股财报可显式优先使用 SEC EDGAR
         holding_period_days: int = 5,     # 上游决策质量回测/持仓期限语义
-        llm_timeout_seconds: int = 120,   # 单次 LLM 请求硬超时,避免图卡死
+        llm_timeout_seconds: int = 300,   # 单次 LLM 请求超时,给慢响应留出时间
         llm_max_retries: int = 0,         # 深度分析不在图内重复重试供应商请求
         llm_max_tokens: int = 4096,       # 限制推理/报告输出,避免网关空闲超时
     ):
