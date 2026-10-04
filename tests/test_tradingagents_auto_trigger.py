@@ -9,10 +9,9 @@ import pytest
 from src.modules.automation.tradingagents import operations as auto_trigger
 
 
-def _make_agent(raw_config: dict):
-    agent = MagicMock()
-    agent.raw_config = raw_config
-    return agent
+def _make_agent(config: dict):
+    from src.platform.persistence.models import AgentConfig
+    return AgentConfig(name="tradingagents", display_name="TradingAgents", config=config)
 
 
 def test_no_change_pct_skips():

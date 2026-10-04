@@ -102,6 +102,7 @@ class TradingAgentsAgent(BaseAgent):
         llm_max_retries: int = 0,         # 深度分析不在图内重复重试供应商请求
         # 保留旧配置字段的兼容入口，但不再向模型传递输出上限。
         llm_max_tokens: int | None = None,
+        auto_trigger: dict | None = None,  # 联动条件由 operations 读取；不影响本次图执行
     ):
         # 校验分析师配置
         analysts = list(analyst_types or sorted(VALID_ANALYSTS))
@@ -307,6 +308,13 @@ class TradingAgentsAgent(BaseAgent):
             holding_period_days=self.holding_period_days,
             llm_timeout_seconds=self.llm_timeout_seconds,
             llm_max_retries=self.llm_max_retries,
+        )
+        logger.info(
+            "[TA] 执行参数 timeout_minutes=%s llm_timeout_seconds=%s "
+            "collection_timeout_seconds=%s llm_max_retries=%s deep_model=%s quick_model=%s",
+            self.timeout_minutes, self.llm_timeout_seconds,
+            self.collection_timeout_seconds, self.llm_max_retries,
+            ta_config["deep_think_llm"], ta_config["quick_think_llm"],
         )
 
         # 3) 进度回调

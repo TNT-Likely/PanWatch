@@ -468,6 +468,17 @@ class TestPhaseBFeatures(unittest.TestCase):
         self.assertEqual(agent.llm_timeout_seconds, 600)
         self.assertFalse(hasattr(agent, "llm_max_tokens"))
 
+    def test_auto_trigger_config_does_not_reset_execution_settings(self):
+        agent = TradingAgentsAgent(
+            timeout_minutes=60, llm_timeout_seconds=600,
+            collection_timeout_seconds=90, deep_model="glm-5.3-flash",
+            auto_trigger={"enabled": True, "change_pct_threshold": 5, "cooldown_hours": 24},
+        )
+        self.assertEqual(agent.timeout_minutes, 60)
+        self.assertEqual(agent.llm_timeout_seconds, 600)
+        self.assertEqual(agent.collection_timeout_seconds, 90)
+        self.assertEqual(agent.deep_model, "glm-5.3-flash")
+
     def test_graph_class_forwards_request_timeout_to_langchain(self):
         """上游未读取 timeout 配置时，适配类仍需把它传给 ChatOpenAI。"""
         from src.modules.automation.tradingagents.agent import _bounded_graph_class
