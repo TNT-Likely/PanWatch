@@ -3,12 +3,14 @@
 .gitignore
 
 # Python
-__pycache__
-*.pyc
-*.pyo
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
 venv/
 .venv/
-*.egg-info/
+**/*.egg-info/
+packages/*/build/
 
 # Node
 node_modules/
@@ -31,6 +33,7 @@ static/
 
 # Docs
 .claude/
+.docs/
 docs/
 *.md
 !README.md
