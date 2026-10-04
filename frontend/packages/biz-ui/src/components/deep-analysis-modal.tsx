@@ -145,19 +145,19 @@ export function DeepAnalysisModal({
     setError('')
     setProgress(null)
     setTraceId(null)
+    let cancelled = false
 
     // 并发查询运行状态与已保存报告:
     //   - findRunning:这只股票最近 30 分钟有没有运行中的任务
     //   - getLatestForStock:有没有已保存的最近一次报告
-    // 优先级:running > done(已有结果)> idle
+    // 优先级:running > failed > done(已有结果)> idle
     Promise.all([
       tradingAgentsApi.findRunning(stockSymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
       tradingAgentsApi.getLatestForStock(stockSymbol).catch(() => null),
-    ]).then(([runningInfo, latestResult]) => {
-      // 优先级:running(真在跑) > done(已保存的报告,允许重新分析) > idle
-      //   - stale / failed / success / none 都视为"不在跑"
-      //   - 任何状态下,只要有已保存报告就展示 DoneView(含「忽略缓存重新分析」按钮)
-      //   - 任何状态下,IdleView 的「开始分析」按钮永远可用,后端会做幂等去重
+    ]).then(async ([runningInfo, latestResult]) => {
+      if (cancelled) return
+      // 优先级:running > failed(保留最新错误) > done(已保存的报告) > idle
+      //   - 失败视图可重试,后端会做幂等去重
 
       // 1) 真正在跑(后端权威源)→ 进入 running
       if (runningInfo.status === 'running' && runningInfo.trace_id) {
@@ -165,13 +165,26 @@ export function DeepAnalysisModal({
         setTraceId(tid)
         setStage('running')
         // 后端确认在跑；即使采集阶段暂时没有日志，也继续由 SSE/polling 接力
-        tradingAgentsApi.getProgress(tid).then(resp => setProgress(resp))
+        tradingAgentsApi.getProgress(tid).then(resp => { if (!cancelled) setProgress(resp) })
         startWatching(tid)
         return
       }
 
-      // 2) 后端 stale/failed → 老任务死掉/失败,清掉本地痕迹,继续走缓存判断
-      //    不再回到 running,允许用户重新触发
+      // Keep a failed run's diagnostic visible when the dialog is reopened.
+      if (runningInfo.status === 'failed' && runningInfo.trace_id) {
+        const failedProgress = await tradingAgentsApi.getProgress(runningInfo.trace_id).catch(() => null)
+        if (cancelled) return
+        if (failedProgress?.status === 'failed') {
+          setTraceId(runningInfo.trace_id)
+          setProgress(failedProgress)
+          setError(failedProgress.run?.error || tr('errors.analysisFailed'))
+          setStage('error')
+          clearRunningTrace(stockSymbol)
+          return
+        }
+      }
+
+      // 2) 后端 stale/failed → 清掉本地运行痕迹,继续走缓存判断
       if (runningInfo.status === 'stale' || runningInfo.status === 'failed') {
         clearRunningTrace(stockSymbol)
       }
@@ -182,7 +195,7 @@ export function DeepAnalysisModal({
         if (localTrace) {
           setTraceId(localTrace)
           setStage('running')
-          tradingAgentsApi.getProgress(localTrace).then(resp => setProgress(resp))
+          tradingAgentsApi.getProgress(localTrace).then(resp => { if (!cancelled) setProgress(resp) })
           startWatching(localTrace)
           return
         }
@@ -200,6 +213,7 @@ export function DeepAnalysisModal({
       // 5) 都没有 → idle(开始分析按钮可用,后端幂等保护)
       clearRunningTrace(stockSymbol)
     })
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialResult, stockSymbol])
 
@@ -360,7 +374,7 @@ export function DeepAnalysisModal({
           <div className="space-y-3 text-[13px]">
             <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-rose-600">
               <div className="font-semibold mb-1">{tr('failedTitle')}</div>
-              <div className="text-[12px]">{error}</div>
+              <div className="text-[12px] whitespace-pre-wrap break-words">{error}</div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={handleClose}>{tr('close')}</Button>

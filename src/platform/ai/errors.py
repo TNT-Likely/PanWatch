@@ -2,12 +2,13 @@
 
 Provider exceptions often contain useful diagnostics, but their raw text can also
 include request fragments, endpoints, or account details.  This module keeps the
-raw exception available to server logs while exposing only a small set of stable
-codes and reviewed messages to HTTP/SSE clients.
+raw exception available to server logs. HTTP errors use stable reviewed messages;
+AgentRun diagnostics add bounded, redacted provider codes and messages.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -211,10 +212,12 @@ def classify_ai_service_error(error: BaseException) -> AIErrorDescriptor:
     if _matches(
         text,
         "content_policy",
+        "contentfilter",
         "content filter",
         "content_filter",
         "safety policy",
         "moderation",
+        "sensitive content",
     ):
         return _ERRORS["ai_content_rejected"]
     if isinstance(error, NotFoundError) or status == 404 or _matches(
@@ -243,3 +246,61 @@ def as_ai_service_error(error: BaseException) -> AIServiceError:
 
 def safe_ai_error_message(error: BaseException) -> str:
     return classify_ai_service_error(error).message
+
+
+_SECRET_DETAIL_RE = re.compile(
+    r"(?i)\b(api[_ -]?key|authorization|access[_ -]?token|password|secret|cookie)"
+    r"[\"']?\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|(?:bearer\s+)?[^\s,;]+)"
+)
+
+
+def _diagnostic_text(value: Any, limit: int) -> str:
+    if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+        return ""
+    text = _SECRET_DETAIL_RE.sub(r"\1=[redacted]", str(value))
+    text = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]+", "Bearer [redacted]", text)
+    text = re.sub(r"\bsk-[A-Za-z0-9_-]+", "[redacted]", text)
+    return " ".join(text.split())[:limit]
+
+
+def diagnostic_ai_error_message(error: BaseException) -> str:
+    """Return a bounded provider diagnostic suitable for an AgentRun/UI.
+
+    The normal error message remains stable and translated. Agent progress needs
+    enough provider detail to distinguish content filters, invalid requests and
+    gateway failures, but must not expose headers, keys, prompts or a full
+    exception traceback.
+    """
+    descriptor = classify_ai_service_error(error)
+    body = getattr(error, "body", None)
+    nested = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(nested, dict):
+        nested = {}
+
+    provider_code = (
+        nested.get("code")
+        or (body.get("code") if isinstance(body, dict) else None)
+        or getattr(error, "code", None)
+    )
+    provider_message = nested.get("message") or (
+        body.get("message") if isinstance(body, dict) else None
+    )
+    if not provider_message and isinstance(body, dict) and isinstance(body.get("error"), str):
+        provider_message = body["error"]
+    if not provider_message and not isinstance(body, dict):
+        provider_message = getattr(error, "message", None) or str(error)
+
+    status = getattr(error, "status_code", None)
+    parts: list[str] = []
+    if isinstance(status, int):
+        parts.append(f"HTTP {status}")
+    code = _diagnostic_text(provider_code, 64)
+    if code:
+        parts.append(f"code={code}")
+    detail = _diagnostic_text(provider_message, 800)
+    if detail and detail != descriptor.message:
+        parts.append(detail)
+
+    if not parts:
+        return descriptor.message
+    return f"{descriptor.message}（{' · '.join(parts)}）"

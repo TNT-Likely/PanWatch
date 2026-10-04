@@ -724,7 +724,7 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
             "agent_name": run.agent_name,
             "status": run.status,
             "result": (run.result or "")[:1000],
-            "error": (run.error or "")[:500],
+            "error": (run.error or "")[:2000],
             "duration_ms": run.duration_ms,
             "model_label": run.model_label,
             "notify_sent": run.notify_sent,

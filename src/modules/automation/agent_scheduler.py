@@ -5,7 +5,7 @@ from typing import Callable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.modules.automation.base import BaseAgent, AgentContext
-from src.platform.ai.errors import safe_ai_error_message
+from src.platform.ai.errors import diagnostic_ai_error_message
 from src.platform.marketdata.collectors.kline_collector import kline_source
 from src.modules.automation.agent_runs import record_agent_run
 from src.platform.observability.log_context import log_context
@@ -138,7 +138,7 @@ class AgentScheduler:
                                 exc_info=True,
                             )
                             errors.append(
-                                f"{stock.symbol}: {safe_ai_error_message(e)}"
+                                f"{stock.symbol}: {diagnostic_ai_error_message(e)}"
                             )
                     logger.info(
                         f"[调度] Agent 单只模式执行完成: {agent.display_name}（执行{processed}，跳过{skipped}，共{len(targets)}）"
@@ -194,7 +194,7 @@ class AgentScheduler:
             record_agent_run(
                 agent_name=agent_name,
                 status="failed",
-                error=safe_ai_error_message(e),
+                error=diagnostic_ai_error_message(e),
                 duration_ms=duration_ms,
                 trace_id=trace_id,
                 trigger_source="schedule",
