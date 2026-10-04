@@ -121,8 +121,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.vars.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # 固定 registry 引用，让不同发布 tag 复用包含中间 builder 的缓存。
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
       - name: Generate release notes (tag push only)
         if: ${{ github.event_name == 'push' }}

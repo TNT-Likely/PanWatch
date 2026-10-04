@@ -2,7 +2,8 @@
 # 多阶段构建，减小最终镜像大小
 
 # ===== Stage 1: 前端构建 =====
-FROM node:24.14.0-alpine AS frontend-builder
+# 静态资源与目标架构无关，使用构建机原生平台，避免 ARM 镜像构建时通过 QEMU 跑 pnpm。
+FROM --platform=$BUILDPLATFORM node:24.14.0-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -41,9 +42,6 @@ RUN sed 's/^-e //' requirements-runtime.txt > /tmp/requirements-runtime.txt \
 
 # ===== Stage 3: Python 运行环境 =====
 FROM python:3.11-slim-bookworm
-
-# 版本号（构建时传入）
-ARG VERSION=dev
 
 WORKDIR /app
 
@@ -98,7 +96,8 @@ COPY src/ ./src/
 COPY server.py ./
 COPY prompts/ ./prompts/
 
-# 写入版本号
+# 写入版本号；延后声明，避免换版本号时让系统依赖安装缓存失效。
+ARG VERSION=dev
 RUN echo "${VERSION}" > VERSION
 
 # 从前端构建阶段复制静态文件
