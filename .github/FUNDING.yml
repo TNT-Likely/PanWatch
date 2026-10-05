@@ -1,4 +1,5 @@
 # Shown behind the "Sponsor this project" sidebar button.
 # "paypal" is not a supported FUNDING.yml key, so PayPal goes through "custom".
 # GitHub Sponsors is not used: it does not support mainland-China payouts.
+ko_fi: sunxiao
 custom: ["https://paypal.me/sunxiaoyes"]
