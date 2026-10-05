@@ -295,6 +295,7 @@ For sponsorship or partnership inquiries, contact [sunxiaoyes@outlook.com](mailt
 PanWatch is free and open source. If it saves you time or improves your workflow, you can support continued development:
 
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white&style=for-the-badge)](https://paypal.me/sunxiaoyes)
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/sunxiao)
 
 <details>
 <summary>Alipay / WeChat Pay</summary>
