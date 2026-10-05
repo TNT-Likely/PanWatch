@@ -296,9 +296,14 @@ PanWatch is free and open source. If it saves you time or improves your workflow
 
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white&style=for-the-badge)](https://paypal.me/sunxiaoyes)
 
+<details>
+<summary>Alipay / WeChat Pay</summary>
+
 | Alipay | WeChat Pay |
 |:---:|:---:|
 | <img src="./docs/donate/alipay.png" width="160" alt="Alipay QR code" /> | <img src="./docs/donate/wechat.png" width="160" alt="WeChat Pay QR code" /> |
+
+</details>
 
 <details>
 <summary>USDT</summary>
