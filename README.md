@@ -296,21 +296,22 @@ PanWatch is free and open source. If it saves you time or improves your workflow
 
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white&style=for-the-badge)](https://paypal.me/sunxiaoyes)
 
-<details>
-<summary>USDT (TRC20)</summary>
-
-Address: `TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
-
-<img src="./docs/donate/binance.png" width="220" alt="Binance USDT TRC20 QR code" />
-
-</details>
-
-<details>
-<summary>Alipay / WeChat Pay</summary>
-
 | Alipay | WeChat Pay |
 |:---:|:---:|
 | <img src="./docs/donate/alipay.png" width="160" alt="Alipay QR code" /> | <img src="./docs/donate/wechat.png" width="160" alt="WeChat Pay QR code" /> |
+
+<details>
+<summary>USDT</summary>
+
+**Binance Pay** — scan with the Binance app:
+
+<img src="./docs/donate/binance.png" width="220" alt="Binance Pay QR code" />
+
+**On-chain USDT (TRC20)** — scan with any TRON wallet:
+
+Address: `TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
+
+<img src="./docs/donate/trc20.png" width="220" alt="USDT TRC20 address QR code" />
 
 </details>
 

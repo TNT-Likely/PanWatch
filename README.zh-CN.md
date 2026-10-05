@@ -293,21 +293,22 @@ PanWatch 完全免费开源。如果它节省了你的时间或改善了工作�
 
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?logo=paypal&logoColor=white&style=for-the-badge)](https://paypal.me/sunxiaoyes)
 
-<details>
-<summary>USDT（TRC20）</summary>
-
-地址：`TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
-
-<img src="./docs/donate/binance.png" width="220" alt="币安 USDT TRC20 二维码" />
-
-</details>
-
-<details>
-<summary>支付宝 / 微信支付</summary>
-
 | 支付宝 | 微信支付 |
 |:---:|:---:|
 | <img src="./docs/donate/alipay.png" width="160" alt="支付宝二维码" /> | <img src="./docs/donate/wechat.png" width="160" alt="微信支付二维码" /> |
+
+<details>
+<summary>USDT</summary>
+
+**币安 Pay**（币安 App 内扫码转账）：
+
+<img src="./docs/donate/binance.png" width="220" alt="币安 Pay 收款码" />
+
+**链上 USDT（TRC20）**——任意 TRON 钱包扫码：
+
+地址：`TKBV69B2AoU67p3vDhnJUbMJtZ1DxuUF5C`
+
+<img src="./docs/donate/trc20.png" width="220" alt="USDT TRC20 地址二维码" />
 
 </details>
 
