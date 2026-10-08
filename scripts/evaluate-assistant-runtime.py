@@ -34,7 +34,7 @@ class RuntimeEvaluation:
         credentials = json.loads((self.run / "private/credentials.json").read_text())
         response = self.client.post("/api/auth/login", json={"username": credentials["username"], "password": credentials["password"]})
         response.raise_for_status()
-        self.client.headers["Authorization"] = "Bearer " + response.json()["token"]
+        self.client.headers["Authorization"] = "Bearer " + response.json()["data"]["token"]
         self.mode = mode
         self.results = []
         self.task_ids = []
@@ -47,7 +47,9 @@ class RuntimeEvaluation:
     def api(self, method, path, **kwargs):
         response = self.client.request(method, path, **kwargs)
         assert response.status_code < 400, f"{method} {path}: HTTP {response.status_code}"
-        return response.json()
+        envelope = response.json()
+        assert envelope.get("success") is True, f"{method} {path}: API envelope failed"
+        return envelope["data"]
 
     def task(self, prompt):
         conversation = self.api("POST", "/api/assistant/conversations", json={})
