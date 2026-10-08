@@ -6,12 +6,13 @@ HTTP API 和 PanAgent 工具都通过这里读写提醒规则，避免两条入�
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+import math
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.platform.persistence.models import PriceAlertHit, PriceAlertRule, Stock
+from src.platform.persistence.models import NotifyChannel, PriceAlertHit, PriceAlertRule, Stock
 
 
 ALERT_CONDITION_TYPES = {"price", "change_pct", "turnover", "volume", "volume_ratio"}
@@ -22,6 +23,8 @@ def validate_condition_group(group: dict[str, Any]) -> dict[str, Any]:
     """Validate and copy a condition group into a JSON-safe plain mapping."""
     if not isinstance(group, dict):
         raise ValueError("condition_group 必须是对象")
+    if set(group) - {"op", "items"}:
+        raise ValueError("不支持的组合条件字段")
     op = str(group.get("op") or "and").lower()
     if op not in {"and", "or"}:
         raise ValueError("condition_group.op 仅支持 and/or")
@@ -29,10 +32,14 @@ def validate_condition_group(group: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(items, list) or not items:
         raise ValueError("condition_group.items 不能为空")
 
+    if len(items) > 20:
+        raise ValueError("组合条件最多 20 项")
     normalized_items: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
             raise ValueError("condition_group.items 必须是对象列表")
+        if set(item) - {"type", "op", "value"}:
+            raise ValueError("不支持的条件字段；不能忽略周期或确认条件")
         condition_type = str(item.get("type") or "").strip()
         operator = str(item.get("op") or "").strip()
         if condition_type not in ALERT_CONDITION_TYPES:
@@ -44,6 +51,13 @@ def validate_condition_group(group: dict[str, Any]) -> dict[str, Any]:
             not isinstance(value, list) or len(value) != 2
         ):
             raise ValueError(f"{condition_type} 的 {operator} 需要两个值")
+        values = value if isinstance(value, list) else [value]
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+            raise ValueError(f"{condition_type} 的条件值必须是有限数字")
+        if condition_type != "change_pct" and any(v < 0 for v in values):
+            raise ValueError(f"{condition_type} 的条件值必须非负")
+        if operator in {"between", "in"} and value[0] > value[1]:
+            raise ValueError("区间下界不能大于上界")
         normalized_items.append(
             {"type": condition_type, "op": operator, "value": value}
         )
@@ -54,12 +68,31 @@ def parse_expire_at(value: str | datetime | None) -> datetime | None:
     """Parse the ISO-8601 expiry accepted by both API and agent callers."""
     if value in (None, ""):
         return None
-    if isinstance(value, datetime):
-        return value
     try:
-        return datetime.fromisoformat(str(value))
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        # SQLite stores naive UTC; expiry must use the same instant as the engine.
+        return parsed.astimezone(UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
     except (TypeError, ValueError) as exc:
         raise ValueError("expire_at 格式错误") from exc
+
+
+def validate_channel_ids(db: Session, ids: list[int] | None) -> list[int]:
+    ids = [] if ids is None else ids
+    if not isinstance(ids, list) or any(isinstance(i, bool) or not isinstance(i, int) or i <= 0 for i in ids):
+        raise ValueError("notify_channel_ids 必须是正整数数组")
+    if len(set(ids)) != len(ids):
+        raise ValueError("通知渠道不能重复")
+    if ids:
+        enabled = {c.id for c in db.query(NotifyChannel).filter(NotifyChannel.id.in_(ids), NotifyChannel.enabled == True).all()}
+        if enabled != set(ids):
+            raise ValueError("指定的通知渠道不存在或已停用")
+    return list(ids)
+
+
+def nonnegative_integer(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("冷却时间和每日最大触发次数必须是非负整数")
+    return value
 
 
 def list_alert_rules(
@@ -103,15 +136,8 @@ def create_alert_rule(
     if stock is None:
         raise LookupError("股票不存在")
     group = validate_condition_group(condition_group)
-    try:
-        cooldown = int(cooldown_minutes)
-        max_triggers = int(max_triggers_per_day)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("冷却时间和每日最大触发次数必须是整数") from exc
-    if cooldown < 0:
-        raise ValueError("冷却时间必须是非负整数")
-    if max_triggers < 0:
-        raise ValueError("每日最大触发次数必须是非负整数")
+    cooldown = nonnegative_integer(cooldown_minutes)
+    max_triggers = nonnegative_integer(max_triggers_per_day)
     market_hours = str(market_hours_mode or "trading_only").strip().lower()
     if market_hours not in {"always", "trading_only"}:
         raise ValueError("market_hours_mode 只能是 always 或 trading_only")
@@ -129,7 +155,7 @@ def create_alert_rule(
         max_triggers_per_day=max_triggers,
         repeat_mode=repeat,
         expire_at=parse_expire_at(expire_at),
-        notify_channel_ids=list(notify_channel_ids or []),
+        notify_channel_ids=validate_channel_ids(db, notify_channel_ids),
     )
     db.add(row)
     db.commit()
@@ -169,6 +195,10 @@ def compact_alert_rule(rule: PriceAlertRule) -> dict[str, Any]:
         "cooldown_minutes": int(rule.cooldown_minutes or 0),
         "max_triggers_per_day": int(rule.max_triggers_per_day or 0),
         "repeat_mode": rule.repeat_mode or "repeat",
+        "condition_group": rule.condition_group,
+        "market_hours_mode": rule.market_hours_mode,
+        "expire_at": rule.expire_at.replace(tzinfo=UTC).isoformat() if rule.expire_at else None,
+        "notify_channel_ids": list(rule.notify_channel_ids or []),
     }
 
 
@@ -201,6 +231,13 @@ def update_alert_rule(
     if unknown:
         raise ValueError(f"不支持修改字段: {sorted(unknown)[0]}")
 
+    if "condition_group" in updates and ({"direction", "target_price"} & set(updates)):
+        raise ValueError("组合条件与旧式价格参数不能同时提供")
+    for key in ("cooldown_minutes", "max_triggers_per_day"):
+        if key in updates:
+            nonnegative_integer(updates[key])
+    if "enabled" in updates and not isinstance(updates["enabled"], bool):
+        raise ValueError("enabled 必须是布尔值")
     if "name" in updates:
         name = str(updates["name"] or "").strip()
         if not name:
@@ -211,10 +248,7 @@ def update_alert_rule(
     if "condition_group" in updates:
         rule.condition_group = validate_condition_group(updates["condition_group"])
     if "notify_channel_ids" in updates:
-        channel_ids = updates["notify_channel_ids"]
-        if not isinstance(channel_ids, list):
-            raise ValueError("notify_channel_ids 必须是数组")
-        rule.notify_channel_ids = list(channel_ids)
+        rule.notify_channel_ids = validate_channel_ids(db, updates["notify_channel_ids"])
     if "cooldown_minutes" in updates:
         try:
             cooldown = int(updates["cooldown_minutes"])
@@ -272,7 +306,7 @@ def update_alert_rule(
                 target_price = float(current["value"]) if current else 0
             except (TypeError, ValueError, KeyError) as exc:
                 raise ValueError("修改方向时必须有现有价格条件") from exc
-        if target_price <= 0:
+        if not math.isfinite(target_price) or target_price <= 0:
             raise ValueError("提醒价格必须大于零")
 
         condition_group = dict(rule.condition_group or {})

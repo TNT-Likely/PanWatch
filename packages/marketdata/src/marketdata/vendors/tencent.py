@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from marketdata.http import market_get
 from marketdata.symbol import Symbol
@@ -55,12 +56,23 @@ def _parse_line(line: str, market: str) -> Quote | None:
         volume_ratio = _to_float(parts[49]) if len(parts) > 49 else None
 
         quote_date = None
+        source_timestamp = None
         # CN/HK source field 30 contains the exchange-local quote date/time.
         # US vendor timestamps use different conventions; do not guess their timezone.
         if market in ("CN", "HK"):
             for fmt, length in (("%Y%m%d", 8), ("%Y/%m/%d", 10), ("%Y-%m-%d", 10)):
                 try:
                     quote_date = datetime.strptime(parts[30][:length], fmt).date()
+                    break
+                except ValueError:
+                    continue
+
+        if market in ("CN", "HK"):
+            for fmt in ("%Y%m%d%H%M%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    source_timestamp = datetime.strptime(parts[30], fmt).replace(
+                        tzinfo=ZoneInfo("Asia/Shanghai" if market == "CN" else "Asia/Hong_Kong")
+                    )
                     break
                 except ValueError:
                     continue
@@ -84,6 +96,8 @@ def _parse_line(line: str, market: str) -> Quote | None:
             circulating_market_value=circulating,
             total_market_value=total,
             quote_date=quote_date,
+            source_timestamp=source_timestamp,
+            source="tencent",
         )
     except (ValueError, IndexError) as e:
         logger.debug(f"解析腾讯行情失败: {e}")

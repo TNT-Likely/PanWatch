@@ -481,6 +481,7 @@ export const configuration = {
     tools: { tool_search: '正在查找可用工具…', get_portfolio: '正在查询持仓…', get_stock_quote: '正在查询行情…', get_kline_summary: '正在分析 K 线…', get_stock_news: '正在检索相关新闻…', create_price_alert: '正在创建价格提醒…', get_technical_analysis: '正在分析技术面…', get_stock_suggestions: '正在查询 AI 建议…', get_watchlist: '正在查询自选股…' },
     result: {
       facts: '事实依据', inferences: '分析判断', risks: '风险与不足', evidence: '{{count}} 条数据依据', nextActions: '下一步', observedAt: '获取于 {{time}}', dataAt: '数据截至 {{time}}', coverage: '覆盖 {{start}} 至 {{end}}', configureAlert: '设置提醒条件', targetPrice: '目标价格', above: '达到或高于', below: '跌至或低于', requestApproval: '提交审批', alertPrompt: '为 {{target}} 创建价格{{direction}} {{price}} 时的盘中提醒',
+      diagnosisJudgments: '诊断判断与依据', diagnosisFailed: '步骤失败', diagnosisNoEvidence: '此判断缺少可核对依据', marketStatus: '市场状态 {{status}}', quoteDate: '报价交易日 {{date}}',
       freshness: { fresh: '较新', delayed: '有延迟', stale: '可能过期', unknown: '时间未知' },
     },
     errors: {

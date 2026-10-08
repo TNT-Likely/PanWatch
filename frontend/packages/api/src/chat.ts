@@ -32,7 +32,9 @@ export interface AssistantEvidence {
   period_start?: string | null
   period_end?: string | null
   freshness: 'fresh' | 'delayed' | 'stale' | 'unknown'
-  freshness_basis: 'published_at' | 'as_of' | 'observed_at' | 'unknown'
+  freshness_basis: 'published_at' | 'as_of' | 'observed_at' | 'source_timestamp' | 'quote_date' | 'unknown'
+  market_status?: string | null
+  quote_date?: string | null
   symbol?: string | null
   market?: string | null
 }
@@ -64,6 +66,7 @@ export interface AssistantResult {
   summary: string
   facts: AssistantFact[]
   inferences: string[]
+  judgments?: Array<{ step_id: string; title: string; text: string; status: string; evidence_ids: string[] }>
   risks: string[]
   missing_data: string[]
   evidence: AssistantEvidence[]

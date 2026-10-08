@@ -91,7 +91,7 @@ def _parse_item(item: dict, stock_codes: list[str]) -> EventItem | None:
         try:
             publish_time = datetime.strptime(str(notice_date)[:10], "%Y-%m-%d")
         except (ValueError, TypeError):
-            publish_time = datetime.now()
+            return None  # Missing source publication time must not become fetch time.
 
     columns = item.get("columns", []) or []
     column_names = [str(c.get("column_name") or "") for c in columns]

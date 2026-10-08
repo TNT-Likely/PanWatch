@@ -14,7 +14,7 @@
 通过率低于阈值（EVAL_PASS_THRESHOLD，默认 0.9）时退出码非 0，阻断提交。
 
 示例：
-    make eval                                   # 只跑规则用例（未配模型时）
+    make eval                                   # 未配模型：规则检查，退出 2 (INCOMPLETE)
     EVAL_AI_BASE_URL=... EVAL_AI_API_KEY=... EVAL_AI_MODEL=... make eval
     ... make eval EVAL_ARGS="--judge --only quote-1"
 """
@@ -149,6 +149,7 @@ def main() -> int:
     load_local_eval_env()
     parser = argparse.ArgumentParser(description="Agent 过程评测")
     parser.add_argument("--judge", action="store_true", help="对 chat 用例追加 LLM-as-judge 评分")
+    parser.add_argument("--allow-incomplete", action="store_true", help="明确允许仅执行部分评估；不代表完整验收通过")
     parser.add_argument("--only", default="", help="只跑指定 id 的用例")
     args = parser.parse_args()
     only = args.only or None
@@ -168,7 +169,11 @@ def main() -> int:
     if rate < threshold:
         print("  ✗ 低于阈值，评测不通过")
         return 1
-    print("  ✓ 评测通过")
+    if c_total == 0:
+        print("  INCOMPLETE: 真实模型未执行；规则检查通过不能代表 AI 功能整体通过")
+        return 0 if args.allow_incomplete else 2
+    print("  Legacy model/structure checks passed; production runtime is NOT covered here.")
+    print("  Run scripts/evaluate-assistant-runtime.py against an isolated service for runtime acceptance.")
     return 0
 
 

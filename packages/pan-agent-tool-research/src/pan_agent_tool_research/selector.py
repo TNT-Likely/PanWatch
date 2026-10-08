@@ -19,7 +19,9 @@ def select_tools(
         descriptor = descriptors.get(name)
         if descriptor is None or name in selected:
             return
-        if not descriptor.enabled or descriptor.risk.value != "read":
+        if not descriptor.enabled or descriptor.risk.value not in {"read", "write"}:
+            return
+        if descriptor.risk.value == "write" and sum(descriptors[n].risk.value == "write" for n in selected) >= policy.max_write_tools:
             return
         if domains[descriptor.domain] >= policy.max_per_domain:
             return

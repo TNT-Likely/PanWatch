@@ -33,7 +33,9 @@ class ToolResearchPlugin:
         *,
         mode: ToolResearchMode = "shadow",
         max_trace_candidates: int = 8,
+        include_write_tools: bool = False,
     ) -> None:
+        self._include_write_tools = include_write_tools
         self._service = service
         self._mode = mode
         self._max_trace_candidates = max(1, max_trace_candidates)
@@ -138,6 +140,7 @@ class ToolResearchPlugin:
                     query=query,
                     context=dict(context.request.context),
                     max_candidates=int(context.call.arguments.get("limit") or 8),
+                    include_write_tools=self._include_write_tools,
                 ),
                 policy=context.policy,
                 runtime_request=context.request,

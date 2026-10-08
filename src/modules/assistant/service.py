@@ -23,7 +23,7 @@ from pan_agent import (
     ToolRisk,
     ToolSpec,
 )
-from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService
+from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService, ToolSelectionPolicy
 from pan_agent_token_meter import HeuristicTokenMeter
 
 from src.platform.ai.ai_failover import (
@@ -52,6 +52,7 @@ from .context_schemas import (
 from .context_summarizer import FailoverContextSummarizer
 from .llm_adapter import FailoverModelAdapter
 from .prompt import build_assistant_messages
+from .watch_request import alert_capability_error, condition_summary, inspect_watch_request
 from .portfolio_diagnosis import PortfolioDiagnosisExtension
 from .repository import AssistantRepository
 from .result_builder import build_deterministic_assistant_result
@@ -98,6 +99,9 @@ class PanWatchToolPolicy:
         self._permissions = permissions
 
     def is_tool_visible(self, request: RunRequest, tool: ToolSpec) -> bool:
+        allowed_writes = request.context.get("allowed_write_tool_names")
+        if tool.risk is not ToolRisk.READ and allowed_writes is not None and tool.name not in allowed_writes:
+            return False
         allowed_tool_names = request.context.get("allowed_tool_names")
         if allowed_tool_names is not None and tool.name not in set(allowed_tool_names):
             return False
@@ -109,6 +113,17 @@ class PanWatchToolPolicy:
         tool: ToolSpec,
         _call: ToolCall,
     ) -> ToolPermissionDecision:
+        error = alert_capability_error(_request, tool.name, _call.arguments)
+        if error:
+            return ToolPermissionDecision.deny(error)
+        plan = _request.context.get("watch_request") or {}
+        if tool.name == "create_price_alert" and plan.get("requested_channels"):
+            from src.platform.persistence.models import NotifyChannel
+            ids = _call.arguments.get("notify_channel_ids") or []
+            channels = self._repository.session.query(NotifyChannel).filter(NotifyChannel.id.in_(ids), NotifyChannel.enabled == True).all()
+            types = {c.type.lower() for c in channels}
+            if any(kind not in types for kind in plan["requested_channels"]):
+                return ToolPermissionDecision.deny("The selected channels do not match the requested delivery types.")
         return self._decision(tool)
 
     def _decision(self, tool: ToolSpec) -> ToolPermissionDecision:
@@ -506,11 +521,12 @@ class AssistantService:
                     PortfolioDiagnosisExtension(
                         self._repository.session,
                         failover_client,
-                        execute_tool,
+                        registry=tools,
                     ),
                     ToolResearchPlugin(
                         ToolResearchService(
                             tools,
+                            selection_policy=ToolSelectionPolicy(max_write_tools=3),
                             descriptors=list(
                                 localized_tool_descriptors(
                                     self._report_language()
@@ -518,6 +534,7 @@ class AssistantService:
                             ),
                         ),
                         mode="active",
+                        include_write_tools=True,
                     )
                 ]
                 if self._settings.tool_research_enabled
@@ -739,12 +756,14 @@ class AssistantService:
         )
 
     def create_task(self, conversation_id: int, user_message_id: int):
-        self._require_conversation(conversation_id)
+        conversation = self._require_conversation(conversation_id)
         message = self._repository.get_message(user_message_id)
+        content = message.content if message else ""
+        plan = inspect_watch_request(content, context={"stock_symbol": conversation.stock_symbol, "stock_market": conversation.stock_market})
         return self._repository.create_task(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
-            context=self._write_action_context(message.content if message else ""),
+            context={**self._write_action_context(content), "watch_request": plan},
         )
 
     @staticmethod
@@ -775,7 +794,8 @@ class AssistantService:
             return {}
         return {
             "tool_choice": "required",
-            "allowed_tool_names": ["create_price_alert"],
+            "allowed_tool_names": ["check_watch_request", "get_notification_channels", "get_price_alerts", "search_stocks", "get_stock_quote", "create_price_alert", "tool_search"],
+            "allowed_write_tool_names": ["create_price_alert"],
             "action_source": "explicit_user_request",
         }
 
@@ -886,37 +906,46 @@ class AssistantService:
         english = resolve_report_language(self._repository.session) == "en-US"
         arguments = pending.arguments
 
-        if pending.tool_name == "update_price_alert":
-            rule_id = arguments.get("rule_id", "?")
-            changes: list[str] = []
-            if "target_price" in arguments:
-                try:
-                    display_price = f"{float(arguments['target_price']):g}"
-                except (TypeError, ValueError):
-                    display_price = str(arguments["target_price"])
-                if "direction" in arguments:
-                    direction = "≥" if arguments.get("direction") == "above" else "≤"
-                    changes.append((f"Target price {direction} {display_price}" if english else f"目标价 {direction} {display_price}"))
-                else:
-                    changes.append((f"Target price to {display_price} (direction unchanged)" if english else f"目标价改为 {display_price}（方向保持不变）"))
-            elif "direction" in arguments:
-                direction = "≥" if arguments.get("direction") == "above" else "≤"
-                changes.append((f"Direction to {direction}" if english else f"方向改为 {direction}"))
-            if "enabled" in arguments:
-                changes.append(("Enable" if arguments["enabled"] else "Disable") if english else ("启用" if arguments["enabled"] else "停用"))
-            if "name" in arguments:
-                changes.append((f"Rename to {arguments['name']}" if english else f"名称改为 {arguments['name']}"))
-            if "cooldown_minutes" in arguments:
-                changes.append((f"Cooldown {arguments['cooldown_minutes']} minutes" if english else f"冷却 {arguments['cooldown_minutes']} 分钟"))
-            if "max_triggers_per_day" in arguments:
-                changes.append((f"At most {arguments['max_triggers_per_day']} triggers per day" if english else f"每日最多触发 {arguments['max_triggers_per_day']} 次"))
-            if "repeat_mode" in arguments:
-                changes.append((f"Repeat mode to {arguments['repeat_mode']}" if english else f"重复模式改为 {arguments['repeat_mode']}"))
-            summary = ("; " if english else "；").join(changes) or ("Update the rule" if english else "更新规则")
-            return {
-                "tool_title": "Update price alert" if english else "修改价格提醒",
-                "summary": f"Update price alert #{rule_id}: {summary}." if english else f"修改价格提醒 #{rule_id}：{summary}。",
-            }
+        if pending.tool_name in {"create_price_alert", "update_price_alert"}:
+            from src.platform.persistence.models import NotifyChannel
+            create = pending.tool_name == "create_price_alert"
+            values = ({"cooldown_minutes": 30, "max_triggers_per_day": 3, "repeat_mode": "repeat", "market_hours_mode": "trading_only", "expire_at": None, "notify_channel_ids": [], **arguments} if create else arguments)
+            parts = []
+            if values.get("condition_group"):
+                parts.append(condition_summary(values["condition_group"], english))
+            elif "direction" in values or "target_price" in values:
+                direction = {"above": "≥", "below": "≤"}.get(values.get("direction"), "unchanged" if english else "方向不变")
+                price = values.get("target_price", "unchanged" if english else "目标不变")
+                parts.append(f"{'Price' if english or create else '目标价'} {direction} {price}" if english or not create else f"价格 {direction} {price}")
+            if "name" in values:
+                parts.append(f"{'Name' if english else '名称'}: {values['name']}")
+            if "enabled" in values:
+                parts.append(("Enable" if values["enabled"] else "Disable") if english else ("启用" if values["enabled"] else "停用"))
+            if "cooldown_minutes" in values:
+                parts.append(f"Cooldown {values['cooldown_minutes']} minutes" if english else f"冷却 {values['cooldown_minutes']} 分钟")
+            if "max_triggers_per_day" in values:
+                maximum = values["max_triggers_per_day"]
+                parts.append((f"At most {maximum} triggers per day" if english else f"每日最多触发 {maximum} 次") if maximum else ("Unlimited daily triggers" if english else "每日不限次数"))
+            if "repeat_mode" in values:
+                once = values["repeat_mode"] == "once"
+                parts.append(("Trigger once" if once else "Repeat triggers") if english else ("仅触发一次" if once else "重复提醒"))
+            if "market_hours_mode" in values:
+                trading = values["market_hours_mode"] == "trading_only"
+                parts.append(("Trading hours only" if trading else "All hours") if english else ("仅交易时段" if trading else "全天检测"))
+            if "expire_at" in values:
+                expiry = values["expire_at"] or ("Unlimited" if english else "无限期")
+                parts.append(f"{'Expiry' if english else '到期'}: {expiry}")
+            if "notify_channel_ids" in values:
+                ids = values["notify_channel_ids"] or []
+                query = self._repository.session.query(NotifyChannel)
+                channels = query.filter(NotifyChannel.id.in_(ids)).all() if ids else query.filter(NotifyChannel.enabled == True, NotifyChannel.is_default == True).all()
+                channel_text = ", ".join(f"{c.name} ({c.type}, #{c.id})" for c in channels)
+                if not channel_text:
+                    channel_text = "No enabled default channels; delivery unavailable" if english else "无启用的默认渠道，无法投递"
+                parts.append(f"{'Channels' if english else '通知渠道'}: {channel_text}")
+            target = f"{arguments.get('market') or 'CN'}:{arguments.get('symbol', '')}" if create else f"#{arguments.get('rule_id', '?')}"
+            title = ("Create price alert" if create else "Update price alert") if english else ("创建价格提醒" if create else "修改价格提醒")
+            return {"tool_title": title, "summary": f"{title} {target}" + (": " if english else "：") + ("; " if english else "；").join(parts) + ("." if english else "。")}
 
         if pending.tool_name == "delete_price_alert":
             rule_id = arguments.get("rule_id", "?")
@@ -925,34 +954,9 @@ class AssistantService:
                 "summary": f"Delete price alert #{rule_id} and its trigger history." if english else f"删除价格提醒 #{rule_id} 及其历史命中记录。",
             }
 
-        if pending.tool_name != "create_price_alert":
-            return {
-                "tool_title": "Action requiring approval" if english else "需要授权的操作",
-                "summary": f"Run {pending.tool_name}." if english else f"将调用 {pending.tool_name}。",
-            }
-
-        market = str(arguments.get("market") or "CN").upper()
-        symbol = str(arguments.get("symbol") or "").upper()
-        direction = "≥" if arguments.get("direction") == "above" else "≤"
-        target_price = arguments.get("target_price")
-        cooldown_minutes = arguments.get("cooldown_minutes", 30)
-        try:
-            display_price = f"{float(target_price):g}"
-        except (TypeError, ValueError):
-            display_price = str(target_price or ("unknown price" if english else "未知价格"))
-        try:
-            display_cooldown = f"{int(cooldown_minutes)}"
-        except (TypeError, ValueError):
-            display_cooldown = "30"
         return {
-            "tool_title": "Create price alert" if english else "创建价格提醒",
-            "summary": (
-                f"Create an intraday alert for {market}:{symbol} at price {direction} {display_price}, "
-                f"with a {display_cooldown}-minute cooldown."
-                if english else
-                f"为 {market}:{symbol} 创建价格 {direction} {display_price} 的盘中提醒，"
-                f"冷却 {display_cooldown} 分钟。"
-            ),
+            "tool_title": "Action requiring approval" if english else "需要授权的操作",
+            "summary": f"Run {pending.tool_name}." if english else f"将调用 {pending.tool_name}。",
         }
 
     @staticmethod

@@ -411,7 +411,7 @@ class AgentRuntime:
                         continue
                     if decision.mode is PermissionMode.DENY:
                         result = ToolResult.failure(
-                            summary="工具权限不足", error_code="permission_denied"
+                            summary=decision.reason or "工具权限不足", error_code="permission_denied"
                         )
                         await self._publish_tool_completed(sink, request, call, result)
                         self._append_tool_result(messages, call, result)

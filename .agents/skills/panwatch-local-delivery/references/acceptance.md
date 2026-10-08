@@ -28,7 +28,7 @@
 pnpm --dir frontend check:ui
 pnpm --dir frontend check:i18n
 pnpm --dir frontend check:market-colors
-pnpm --dir frontend test --run <受影响测试文件>
+pnpm --dir frontend run test --run <受影响测试文件>
 pnpm --dir frontend build
 git diff --check
 ```

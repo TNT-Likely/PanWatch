@@ -7,6 +7,12 @@ from typing import Any
 
 
 TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
+    "check_watch_request": ("Check watch request", "Identify the original request's instruments, scope, horizon, channels and unsupported alert conditions."),
+    "get_notification_channels": ("Get notification channels", "Read channel IDs, names, types and enabled/default flags; never return secrets."),
+    "get_watchlist": ("Get watchlist", "Read the saved watchlist with market-qualified symbols."),
+    "get_research_history": ("Get research history", "Read market-scoped historical suggestions, reports and snapshots with dates and expiry."),
+    "get_stock_events": ("Get stock events", "Read CN announcements with source links, publication dates and IDs; HK/US regulatory filings are not covered."),
+    "get_event_details": ("Read announcement", "Verify an event ID against its instrument, then read original text; disclose unavailable content."),
     "get_portfolio": ("Get portfolio", "Read live and paper-trading positions, allocation, and a portfolio summary."),
     "get_stock_quote": ("Get live quote", "Read the latest price, change, and intraday quote data for a stock."),
     "find_research_candidates": ("Find research candidates", "Find stocks and opportunity signals worth further research from the market and portfolio."),
@@ -23,7 +29,7 @@ TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
     "get_price_alerts": ("Get price alerts", "List existing price alerts, their conditions, and enabled status."),
     "update_price_alert": ("Update price alert", "Update a price alert's name, target price, direction, or enabled status after approval."),
     "delete_price_alert": ("Delete price alert", "Delete a price alert and its hit history after approval."),
-    "create_price_alert": ("Create price alert", "Create an intraday price alert for an existing stock after approval."),
+    "create_price_alert": ("Create price alert", "Create an alert with full AND/OR conditions, expiry, channels and frequency after approval; no bar-close or moving-average triggers."),
     "portfolio_diagnosis": ("Diagnose portfolio", "Analyze portfolio risk and holdings, then provide evidence-based rebalancing guidance."),
 }
 

@@ -58,3 +58,15 @@ def test_main_loads_local_eval_env_before_running_chat_cases(tmp_path, monkeypat
 
     assert run_eval.main() == 0
     assert seen["config"] == ("https://eval.example/v1", "eval-secret", "eval-model")
+
+
+def test_missing_real_model_cannot_produce_overall_green(monkeypatch):
+    import sys
+    from tests.eval import run_eval
+    monkeypatch.setattr(sys, "argv", ["run_eval.py"])
+    monkeypatch.setattr(run_eval, "load_local_eval_env", lambda: None)
+    monkeypatch.setattr(run_eval, "run_structured", lambda *_: (10, 10))
+    async def missing(*_):
+        return 0, 0
+    monkeypatch.setattr(run_eval, "run_chat", missing)
+    assert run_eval.main() == 2

@@ -577,6 +577,8 @@ def test_get_price_alerts_returns_compact_rules_and_supports_symbol_filter():
             "cooldown_minutes": 30,
             "max_triggers_per_day": 3,
             "repeat_mode": "repeat",
+            "condition_group": {"op": "and", "items": [{"type": "price", "op": ">=", "value": 1800}]},
+            "market_hours_mode": "trading_only", "expire_at": None, "notify_channel_ids": [],
         }
     ]
     session.close()

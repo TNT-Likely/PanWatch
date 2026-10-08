@@ -24,6 +24,10 @@ from src.modules.market.price_alert_service import (
     get_alert_rule,
     list_alert_rules,
     update_alert_rule,
+    validate_condition_group,
+    validate_channel_ids,
+    nonnegative_integer,
+    parse_expire_at,
 )
 from src.modules.portfolio import build_portfolio_service
 from src.modules.strategy.strategy_engine import list_strategy_signals
@@ -37,13 +41,16 @@ from src.platform.marketdata.marketdata_client import (
     md_quote_rows,
 )
 from src.platform.marketdata.models import MARKETS, MarketCode
+from src.platform.marketdata.quote_display import assistant_quote_fields
 from src.platform.marketdata.stock_list import search_stocks
-from src.platform.persistence.models import Stock
+from src.platform.persistence.models import Stock, NotifyChannel
 from src.platform.persistence.worker import run_db_operation
 from src.platform.runtime.config import Settings
 from src.platform.language import resolve_report_language
 
 from .tool_metadata import localized_input_schema, localized_tool_presentation
+from .context_tools import register_context_tools
+from .watch_request import inspect_watch_request, original_user_text, alert_capability_error, condition_summary
 
 
 def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | None:
@@ -76,6 +83,8 @@ def _optional_market(arguments: dict[str, Any]) -> MarketCode | None:
 
 
 def _alert_condition_summary(item: dict[str, Any]) -> str:
+    if item.get("condition_group"):
+        return condition_summary(item["condition_group"])
     direction = "≥" if item.get("direction") == "above" else "≤"
     target = item.get("target_price")
     if target is None:
@@ -318,6 +327,10 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "volume",
                 "turnover",
                 "turnover_rate",
+                "volume_ratio",
+                "quote_date",
+                "source_timestamp",
+                "source",
                 "pe_ratio",
                 "total_market_value",
                 "circulating_market_value",
@@ -325,13 +338,16 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         }
         name = data.get("name") or symbol
         observed_at = datetime.now(UTC)
+        data.update(assistant_quote_fields(market.value, quote, observed_at))
+        time_label = data.get("source_timestamp") or data.get("quote_date") or "时间未知"
         return ToolResult.success(
             summary=(
-                f"{name}（{market.value}:{symbol}）最新价 {data.get('current_price')}，"
-                f"涨跌幅 {data.get('change_pct')}%。"
+                f"{name}（{market.value}:{symbol}）来源报价 {data.get('current_price')}，"
+                f"数据时点 {time_label}；市场 {data['market_status']}，时效 {data['freshness']}。"
+                + (f"涨跌幅 {data.get('change_pct')}%。" if data['is_realtime'] else "不能视为当前实时行情。")
             ),
             data=data,
-            sources=[{"name": "PanWatch 行情数据", "as_of": observed_at.isoformat()}],
+            sources=[{"name": data.get("source") or "PanWatch 行情数据", "as_of": data.get("source_timestamp") or data.get("quote_date")}],
             observed_at=observed_at,
         )
 
@@ -735,29 +751,33 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         if parsed is None:
             return _failure_for_symbol(arguments)
         symbol, market = parsed
-        direction = str(arguments.get("direction") or "").strip().lower()
-        if direction not in {"above", "below"}:
-            return ToolResult.failure(
-                summary="提醒方向只能是 above 或 below。",
-                error_code="direction_invalid",
-            )
+        capability_error = alert_capability_error(_request, "create_price_alert", arguments)
+        if capability_error:
+            return ToolResult.failure(summary=capability_error, error_code="unsupported_watch_request")
         try:
-            target_price = float(arguments.get("target_price"))
-        except (TypeError, ValueError):
-            return ToolResult.failure(
-                summary="提醒价格必须是大于零的数字。",
-                error_code="target_price_invalid",
-            )
-        if target_price <= 0:
-            return ToolResult.failure(
-                summary="提醒价格必须大于零。", error_code="target_price_invalid"
-            )
-        try:
-            cooldown_minutes = max(0, int(arguments.get("cooldown_minutes") or 30))
-        except (TypeError, ValueError):
-            return ToolResult.failure(
-                summary="冷却时间必须是非负整数。", error_code="cooldown_invalid"
-            )
+            if arguments.get("condition_group") is not None:
+                if "direction" in arguments or "target_price" in arguments:
+                    raise ValueError("组合条件与旧式价格参数不能同时提供")
+                group = validate_condition_group(arguments["condition_group"])
+            else:
+                direction = str(arguments.get("direction") or "").strip().lower()
+                if direction not in {"above", "below"}:
+                    raise ValueError("提醒方向只能是 above 或 below")
+                group = validate_condition_group({"op": "and", "items": [{"type": "price", "op": ">=" if direction == "above" else "<=", "value": arguments.get("target_price")}]})
+                if group["items"][0]["value"] <= 0:
+                    raise ValueError("提醒价格必须大于零")
+            cooldown_minutes = nonnegative_integer(arguments.get("cooldown_minutes", 30))
+            max_triggers = nonnegative_integer(arguments.get("max_triggers_per_day", 3))
+            expiry = parse_expire_at(arguments.get("expire_at"))
+            if expiry and expiry <= datetime.now(UTC).replace(tzinfo=None):
+                raise ValueError("到期时间必须在未来")
+            channels = await run_db_operation(db_bind, lambda db: validate_channel_ids(db, arguments.get("notify_channel_ids")))
+            hours = arguments.get("market_hours_mode", "trading_only")
+            repeat = arguments.get("repeat_mode", "repeat")
+            if hours not in {"always", "trading_only"} or repeat not in {"once", "repeat"}:
+                raise ValueError("交易时段或重复模式不受支持")
+        except (ValueError, TypeError) as exc:
+            return ToolResult.failure(summary=str(exc), error_code="price_alert_invalid")
 
         quote = await asyncio.to_thread(_verified_stock_quote, symbol, market)
         if quote is None:
@@ -779,47 +799,19 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 db.add(stock)
                 # Registration and the rule share a single commit.
                 db.flush()
-            direction_label = "≥" if direction == "above" else "≤"
-            display_price = f"{target_price:g}"
-            name = (
-                str(arguments.get("name") or "").strip()
-                or f"{stock.name} 价格 {direction_label} {display_price}"
-            )
+            label = condition_summary(group)
             rule = create_alert_rule(
-                db,
-                stock_id=stock.id,
-                name=name,
-                enabled=True,
-                condition_group={
-                    "op": "and",
-                    "items": [
-                        {
-                            "type": "price",
-                            "op": ">=" if direction == "above" else "<=",
-                            "value": target_price,
-                        }
-                    ],
-                },
-                market_hours_mode="trading_only",
-                cooldown_minutes=cooldown_minutes,
-                max_triggers_per_day=3,
-                repeat_mode="repeat",
-                notify_channel_ids=[],
+                db, stock_id=stock.id,
+                name=str(arguments.get("name") or "").strip() or f"{stock.name} {label}",
+                enabled=True, condition_group=group, market_hours_mode=hours,
+                cooldown_minutes=cooldown_minutes, max_triggers_per_day=max_triggers,
+                repeat_mode=repeat, expire_at=expiry, notify_channel_ids=channels,
             )
+            item = compact_alert_rule(rule)
+            item["stock_registered"] = stock_registered
             return ToolResult.success(
-                summary=(
-                    f"已为 {stock.name}（{market.value}:{symbol}）创建价格 {direction_label} {display_price} "
-                    f"的盘中提醒，冷却 {cooldown_minutes} 分钟。"
-                ),
-                data={
-                    "rule_id": rule.id,
-                    "symbol": symbol,
-                    "market": market.value,
-                    "direction": direction,
-                    "target_price": target_price,
-                    "stock_registered": stock_registered,
-                },
-                sources=[{"name": "PanWatch 价格提醒"}],
+                summary=f"已创建提醒 #{rule.id}：{market.value}:{symbol}，{label}；完整规则已回读确认。",
+                data=item, sources=[{"name": "PanWatch 价格提醒", "as_of": datetime.now(UTC).isoformat()}],
                 observed_at=datetime.now(UTC),
             )
 
@@ -876,6 +868,9 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     async def update_price_alert(_request: RunRequest, arguments: dict) -> ToolResult:
+        capability_error = alert_capability_error(_request, "update_price_alert", arguments)
+        if capability_error:
+            return ToolResult.failure(summary=capability_error, error_code="unsupported_watch_request")
         """Update one rule after the runtime's human approval gate."""
         try:
             rule_id = int(arguments.get("rule_id"))
@@ -895,6 +890,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "repeat_mode",
                 "market_hours_mode",
                 "expire_at",
+                "condition_group",
+                "notify_channel_ids",
             )
             if key in arguments
         }
@@ -1295,17 +1292,41 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         ),
         get_price_alerts,
     )
+    condition_schema = {
+        "type": "object", "required": ["op", "items"], "additionalProperties": False,
+        "properties": {
+            "op": {"type": "string", "enum": ["and", "or"]},
+            "items": {"type": "array", "minItems": 1, "maxItems": 20, "items": {
+                "type": "object", "required": ["type", "op", "value"], "additionalProperties": False,
+                "properties": {
+                    "type": {"type": "string", "enum": ["price", "change_pct", "turnover", "volume", "volume_ratio"]},
+                    "op": {"type": "string", "enum": [">=", "<=", ">", "<", "==", "=", "!=", "<>", "between", "in"]},
+                    "value": {"oneOf": [{"type": "number"}, {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}]},
+                },
+            }},
+        },
+    }
+    scheduling_properties = {
+        "condition_group": condition_schema,
+        "cooldown_minutes": {"type": "integer", "minimum": 0, "default": 30},
+        "max_triggers_per_day": {"type": "integer", "minimum": 0, "default": 3},
+        "repeat_mode": {"type": "string", "enum": ["once", "repeat"], "default": "repeat"},
+        "market_hours_mode": {"type": "string", "enum": ["trading_only", "always"], "default": "trading_only"},
+        "expire_at": {"type": ["string", "null"], "description": "ISO-8601 instant with timezone; use the checked request horizon."},
+        "notify_channel_ids": {"type": "array", "uniqueItems": True, "items": {"type": "integer", "minimum": 1}, "description": "Enabled channel IDs from get_notification_channels; empty uses enabled default channels."},
+    }
     registry.register(
         tool_spec(
             name="update_price_alert",
             title="修改价格提醒",
-            description="修改一条价格提醒的名称、目标价、方向或启用状态，需要用户批准。",
+            description="修改提醒完整组合条件、到期、渠道、时段、频率或启用状态，需批准。组合条件不能与旧式 direction/target_price 同时传入。",
             risk=ToolRisk.WRITE,
             confirmation_required=True,
             input_schema={
                 "type": "object",
                 "required": ["rule_id"],
                 "properties": {
+                    **scheduling_properties,
                     "rule_id": {
                         "type": "integer",
                         "description": "查询价格提醒得到的提醒 ID",
@@ -1373,13 +1394,15 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         tool_spec(
             name="create_price_alert",
             title="创建价格提醒",
-            description="为已收录的股票创建盘中价格提醒，需要用户批准。",
+            description="创建完整组合提醒，需要批准。先 check_watch_request 和查询渠道；支持组合条件或旧式 direction/target_price 二选一；不支持收盘/均线/连续确认。",
             risk=ToolRisk.WRITE,
             confirmation_required=True,
             input_schema={
                 "type": "object",
-                "required": ["symbol", "direction", "target_price"],
+                "required": ["symbol"],
+                "anyOf": [{"required": ["condition_group"]}, {"required": ["direction", "target_price"]}],
                 "properties": {
+                    **scheduling_properties,
                     "symbol": {
                         "type": "string",
                         "description": "股票代码，例如 600519",
@@ -1420,4 +1443,5 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         "create_price_alert",
     ):
         registry.set_exposure(name, ToolExposure.DEFERRED)
+    register_context_tools(registry, db_bind, tool_spec)
     return registry

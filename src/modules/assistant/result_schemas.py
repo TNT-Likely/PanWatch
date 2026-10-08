@@ -19,13 +19,23 @@ class AssistantEvidence(BaseModel):
     period_start: str | None = None
     period_end: str | None = None
     freshness: Literal["fresh", "delayed", "stale", "unknown"] = "unknown"
-    freshness_basis: Literal["published_at", "as_of", "observed_at", "unknown"] = "unknown"
+    freshness_basis: Literal["published_at", "as_of", "observed_at", "source_timestamp", "quote_date", "unknown"] = "unknown"
+    market_status: str | None = None
+    quote_date: str | None = None
     symbol: str | None = None
     market: str | None = None
 
 
 class AssistantFact(BaseModel):
     text: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class AssistantJudgment(BaseModel):
+    step_id: str
+    title: str
+    text: str
+    status: str = "completed"
     evidence_ids: list[str] = Field(default_factory=list)
 
 
@@ -42,6 +52,7 @@ class AssistantResult(BaseModel):
     summary: str = ""
     facts: list[AssistantFact] = Field(default_factory=list)
     inferences: list[str] = Field(default_factory=list)
+    judgments: list[AssistantJudgment] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     missing_data: list[str] = Field(default_factory=list)
     evidence: list[AssistantEvidence] = Field(default_factory=list)

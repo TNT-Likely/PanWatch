@@ -62,7 +62,7 @@ def test_deterministic_result_uses_fields_and_flags_timepoint_discrepancies():
         ],
     )
 
-    assert any("最新价为 105" in fact.text for fact in result.facts)
+    assert any("来源报价为 105" in fact.text for fact in result.facts)
     assert any("收盘价 100" in fact.text and "多头排列" in fact.text for fact in result.facts)
     assert any("时点不同" in risk for risk in result.risks)
     assert any(

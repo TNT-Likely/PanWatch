@@ -34,6 +34,8 @@ def test_tencent_parses_quote(monkeypatch):
     assert q.current_price == 1700.0 and q.change_pct == 1.19
     assert q.turnover == 6789.0 and q.volume_ratio == 1.2 and q.pe_ratio == 35.0
     assert q.quote_date.isoformat() == "2026-09-30"
+    assert q.source_timestamp.isoformat() == "2026-09-30T15:00:00+08:00"
+    assert q.source == "tencent"
 
 
 def test_tencent_empty_content_returns_empty(monkeypatch):

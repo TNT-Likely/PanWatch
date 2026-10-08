@@ -48,6 +48,8 @@ class Quote:
     timestamp: datetime = field(default_factory=datetime.now)
     # Source trading date, distinct from the time at which a quote was fetched.
     quote_date: date | None = None
+    source_timestamp: datetime | None = None
+    source: str = ""
 
 
 @dataclass

@@ -377,10 +377,10 @@ def test_service_presents_price_alert_approval_in_plain_language():
         ),
     )
 
-    assert approvals[0].presentation == {
-        "tool_title": "创建价格提醒",
-        "summary": "为 CN:600519 创建价格 ≥ 1800 的盘中提醒，冷却 30 分钟。",
-    }
+    assert approvals[0].presentation["tool_title"] == "创建价格提醒"
+    summary = approvals[0].presentation["summary"]
+    for field in ("CN:600519", "价格 ≥ 1800", "冷却 30 分钟", "每日最多触发 3 次", "重复提醒", "仅交易时段", "无限期", "无启用的默认渠道"):
+        assert field in summary
     session.close()
     engine.dispose()
 
@@ -408,10 +408,9 @@ def test_service_presents_price_alert_approval_in_interface_language():
         )
     )
 
-    assert presentation == {
-        "tool_title": "Create price alert",
-        "summary": "Create an intraday alert for US:AAPL at price ≤ 180, with a 15-minute cooldown.",
-    }
+    assert presentation["tool_title"] == "Create price alert"
+    for field in ("US:AAPL", "Price ≤ 180", "Cooldown 15 minutes", "Trading hours only", "Expiry: Unlimited", "Channels:"):
+        assert field in presentation["summary"]
     session.close()
     engine.dispose()
 

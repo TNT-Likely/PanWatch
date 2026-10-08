@@ -20,6 +20,8 @@ from pan_agent import (
     ToolExposureDecision,
     ToolResult,
     ToolSpec,
+    ToolCall,
+    PermissionMode,
 )
 
 from src.platform.ai.errors import (
@@ -43,6 +45,8 @@ _PLANNING_TRIGGERS = (
     "全面体检",
     "持仓体检",
     "全面分析我的持仓",
+    "diagnosemyportfolio",
+    "portfoliodiagnosis",
 )
 
 
@@ -50,7 +54,7 @@ def should_use_planning(content: str) -> bool:
     """判断用户输入是否命中"全面诊断持仓"场景。"""
     if not content:
         return False
-    text = content.replace(" ", "")
+    text = content.lower().replace(" ", "")
     return any(t in text for t in _PLANNING_TRIGGERS)
 
 
@@ -206,7 +210,7 @@ def _summary_messages(results: list[tuple[str, str]]) -> list[dict]:
     ]
 
 
-async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
+async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool, *, trace: dict | None = None) -> str:
     """计划驱动的"全面诊断持仓"编排,返回最终汇总文本(已通过 SSE 流式推送)。
 
     Args:
@@ -217,6 +221,8 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
     """
     await stream.publish("plan", {"status": "planning", "steps": []})
 
+    if trace is not None:
+        trace.update({"current_step": "portfolio", "steps": [], "tools": []})
     portfolio_text = await execute_tool(db, "get_portfolio", {})
 
     # 1) 生成计划(失败/解析不了则回退默认计划)
@@ -241,11 +247,17 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
     while i < len(steps):
         step = steps[i]
         step["status"] = "running"
+        if trace is not None:
+            trace["current_step"] = str(step["id"])
+            start_index = len(trace["tools"])
         await _publish_plan(stream, steps, status="running", current=step["id"])
         try:
             res = await _execute_step(db, ai_client, execute_tool, step, portfolio_text)
             step["status"] = "done"
             results.append((step["title"], res))
+            if trace is not None:
+                calls = trace["tools"][start_index:] if step["action"] == "analyze_stock" else trace["tools"][:1]
+                trace["steps"].append({"id": str(step["id"]), "title": step["title"], "text": res, "status": "completed", "call_ids": [c["call_id"] for c in calls if c["ok"]]})
         except Exception as e:  # noqa: BLE001
             if not replanned:
                 replanned = True
@@ -263,6 +275,8 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool) -> str:
                     steps = steps[:i] + normalize_steps(new_steps, start_id=step["id"])
                     await _publish_plan(stream, steps, status="running")
                     continue  # 从当前位置用新计划重试
+            if trace is not None:
+                trace["steps"].append({"id": str(step["id"]), "title": step["title"], "text": safe_ai_error_message(e), "status": "failed", "call_ids": []})
             # 已重规划过或重规划失败:标记失败,带失败信息继续汇总
             step["status"] = "failed"
             results.append((step["title"], f"(该步执行失败:{safe_ai_error_message(e)})"))
@@ -301,10 +315,11 @@ class PortfolioDiagnosisExtension:
 
     name = "portfolio_diagnosis"
 
-    def __init__(self, db, ai_client, execute_tool) -> None:
+    def __init__(self, db, ai_client, execute_tool=None, *, registry=None) -> None:
         self._db = db
         self._ai_client = ai_client
         self._execute_tool = execute_tool
+        self._registry = registry
 
     def _tool_spec(self) -> ToolSpec:
         title, description = localized_tool_presentation(
@@ -351,12 +366,44 @@ class PortfolioDiagnosisExtension:
                 if event == "plan":
                     await context.emit_event(event, data)
 
+        trace = {}
+
+        async def execute_with_evidence(db, name, arguments):
+            if self._registry is None:
+                return await self._execute_tool(db, name, arguments)
+            names = {
+                "get_portfolio": ["get_portfolio"],
+                "get_technical_analysis": ["get_stock_quote", "get_kline_summary"],
+                "get_stock_suggestions": ["get_research_history"],
+            }.get(name, [])
+            texts = []
+            for canonical_name in names:
+                if len(trace["tools"]) >= min(context.request.limits.max_tool_calls, 16):
+                    raise ValueError("诊断内部数据调用达到上限；未分析的标的不能生成判断")
+                entry = self._registry.get(canonical_name)
+                call = ToolCall(id=f"{context.call.id}_nested_{len(trace['tools']) + 1}", name=canonical_name, arguments=arguments)
+                if not context.policy.is_tool_visible(context.request, entry.spec):
+                    raise ValueError(f"诊断无法读取被禁用工具 {canonical_name}")
+                decision = await context.policy.decide(context.request, entry.spec, call)
+                if decision.mode is not PermissionMode.ALLOW:
+                    raise ValueError(f"诊断内部读取未获授权: {canonical_name}")
+                result = await self._registry.execute(canonical_name, context.request, arguments)
+                record = {"call_id": call.id, "tool_name": canonical_name, "arguments": arguments,
+                          "step_id": trace["current_step"], **result.model_dump(mode="json")}
+                trace["tools"].append(record)
+                await context.emit_event("diagnosis_tool", {"call_id": call.id, "tool_name": canonical_name, "step_id": trace["current_step"], "ok": result.ok, "summary": result.summary})
+                if not result.ok:
+                    raise ValueError(result.summary)
+                texts.append(json.dumps(result.model_dump(mode="json"), ensure_ascii=False))
+            return "\n".join(texts)
+
         try:
             summary = await run_portfolio_diagnosis(
                 self._db,
                 EventBridge(),
                 self._ai_client,
-                self._execute_tool,
+                execute_with_evidence,
+                trace=trace,
             )
         except AIServiceError:
             raise
@@ -365,7 +412,7 @@ class PortfolioDiagnosisExtension:
             return ToolResult.failure(summary=f"持仓诊断失败：{exc}", error_code="diagnosis_failed")
         return ToolResult.success(
             summary=summary or "持仓诊断已完成。",
-            data={"summary": summary},
+            data={"summary": summary, "nested_tools": trace.get("tools", []), "diagnosis_steps": trace.get("steps", []), "evidence_available": self._registry is not None},
             sources=[{"name": "PanWatch 持仓诊断"}],
             observed_at=datetime.now(UTC),
         )

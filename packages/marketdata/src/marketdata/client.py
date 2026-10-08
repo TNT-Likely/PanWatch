@@ -161,6 +161,9 @@ class MarketData:
             req = Request(symbols=tuple(s.code for s in syms), market=mkt)
             resp = self._quote_engine.fetch(req)
             if resp.ok and resp.data:
+                for quote in resp.data:
+                    if not quote.source:
+                        quote.source = resp.vendor
                 out.extend(resp.data)
         return out
 

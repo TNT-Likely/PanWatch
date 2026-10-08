@@ -76,4 +76,18 @@ describe('AssistantResultCard', () => {
     await user.click(screen.getByRole('button', { name: '打开 K 线' }))
     expect(onNavigate).not.toHaveBeenCalled()
   })
+  it('shows source trading date, market status and evidence for a diagnosis judgment', async () => {
+    const user = userEvent.setup()
+    render(<AssistantResultCard result={{ ...result,
+      judgments: [{ step_id: '1', title: '茅台趋势', text: '历史报价无法证明当前趋势', status: 'completed', evidence_ids: ['ev-1'] }],
+      evidence: [{ ...result.evidence[0], data_at: '2026-09-29', quote_date: '2026-09-29', market_status: 'closed', freshness: 'stale', freshness_basis: 'quote_date' }],
+    }} onPrefill={vi.fn()} onNavigate={vi.fn()} onSubmitPrompt={vi.fn()} />)
+    expect(screen.getByText('茅台趋势')).toBeTruthy()
+    expect(screen.getByText('历史报价无法证明当前趋势')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /依据/ }))
+    expect(screen.getByText('报价交易日 2026-09-29')).toBeTruthy()
+    expect(screen.getByText('市场状态 closed')).toBeTruthy()
+    expect(screen.getByText('数据截至 2026-09-29')).toBeTruthy()
+  })
+
 })
