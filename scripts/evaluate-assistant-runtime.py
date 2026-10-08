@@ -103,6 +103,18 @@ class RuntimeEvaluation:
         assert ids and ids == sorted(set(ids)) and min(ids) > cursor, "Replay duplicates or loses sequence ordering"
         return {"task_id": task_id, "model": task["model"], "quote_evidence": quote, "disconnect_cursor": cursor, "replayed_event_ids": ids, "invocations": calls}
 
+    def discovery_watchlist(self):
+        task_id = self.task("通过可用工具读取真实自选库，列出自选股票代码和市场，不要用持仓列表代替自选；缺少工具请先搜索加载。")
+        task = self.wait(task_id)
+        self.require_completed(task)
+        calls = self.invocations(task_id)
+        assert any(c["tool_name"] == "tool_search" and c["status"] == "completed" for c in calls), "Deferred discovery was not exercised"
+        result = json.loads(next(c["result_data"] for c in calls if c["tool_name"] == "get_watchlist" and c["status"] == "completed"))
+        stocks = self.sql("select symbol,market from stocks")
+        assert result["total"] == len(stocks)
+        assert {(s["symbol"],s["market"]) for s in result["items"]} <= {(s["symbol"],s["market"]) for s in stocks}
+        return {"task_id":task_id,"model":task["model"],"watchlist":result,"invocations":calls}
+
     def combo_approval(self):
         channels = self.sql("select id,name,type from notify_channels where enabled=1 and type='feishu'")
         assert channels, "Create an enabled synthetic QA Feishu channel before evaluating"
@@ -110,7 +122,7 @@ class RuntimeEvaluation:
         before = self.sql("select id from price_alert_rules")
         task_id = self.task(f"为 CN:600519 创建提醒，名字为 {label}。价格大于999999且量比大于2，两周有效，发飞书，冷却0分钟，每日最多2次，仅交易时段，重复提醒。先检查能力和通知渠道，再提交审批。")
         paused = self.wait(task_id)
-        assert paused["status"] == "waiting_approval", f"Expected approval, received {paused['status']}"
+        assert paused["status"] == "awaiting_approval", f"Expected approval, received {paused['status']}"
         assert self.sql("select id from price_alert_rules") == before, "A rule was written before approval"
         approval = next(a for a in paused["pending_approvals"] if a["tool_name"] == "create_price_alert")
         self.decide(approval, "approved")
@@ -131,7 +143,6 @@ class RuntimeEvaluation:
         assert duplicate.status_code == 409
         assert len(self.sql("select * from price_alert_rules where name=?", (label,))) == 1
         calls = self.invocations(task_id)
-        assert any(c["tool_name"] == "tool_search" for c in calls), "Deferred tool discovery was not exercised"
         readback = json.loads(next(c["result_data"] for c in calls if c["tool_name"] == "create_price_alert"))
         assert readback["condition_group"] == group and readback["notify_channel_ids"] == json.loads(row["notify_channel_ids"])
         return {"task_id":task_id,"model":completed["model"],"approval":approval,"rule":row,"duplicate_http":duplicate.status_code,"invocations":calls}
@@ -140,7 +151,7 @@ class RuntimeEvaluation:
         before = self.sql("select id from price_alert_rules")
         task_id = self.task("为 CN:600519 创建价格高于999998的盘中提醒，需要我确认后再执行。")
         paused = self.wait(task_id)
-        assert paused["status"] == "waiting_approval"
+        assert paused["status"] == "awaiting_approval"
         self.decide(paused["pending_approvals"][0], "rejected")
         task = self.wait(task_id)
         self.require_completed(task)
@@ -173,7 +184,7 @@ class RuntimeEvaluation:
                 # Never echo credentials, provider payloads or unredacted logs.
                 self.results.append({"id":name,"status":"FAIL","reason":str(exc)[:500],"exception_type":type(exc).__name__})
             print(f"{name}: {self.results[-1]['status']}", flush=True)
-        overall = "FAIL" if any(c["status"] == "FAIL" for c in self.results) else "PASS" if self.mode == "live-model" and set(cases) == {"quote_disconnect","combo_approval","rejection","unsupported"} else "INCOMPLETE"
+        overall = "FAIL" if any(c["status"] == "FAIL" for c in self.results) else "PASS" if self.mode == "live-model" and set(cases) == {"quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"} else "INCOMPLETE"
         return {"overall":overall,"mode":self.mode,"run_id":self.manifest["run_id"],"source_sha":self.manifest["base_sha"],"source_hash":self.manifest["source_hash"],"frontend_hash":self.manifest.get("frontend_hash"),"evaluated_at":datetime.now(UTC).isoformat(),"production_path":"HTTP → task worker → AssistantService.build_runtime → registry/policy → approval → DB","cases":self.results,"task_ids":self.task_ids,"boundaries":["C01 stale replay is a separate contract test", "Notification delivery is not exercised", "This suite does not cover every model or arbitrary natural-language request", "Client SSE disconnection does not simulate a server network outage"]}
 
 
@@ -181,11 +192,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--mode", choices=["live-model","replay"], default="live-model")
-    parser.add_argument("--case", action="append", choices=["quote_disconnect","combo_approval","rejection","unsupported"])
+    parser.add_argument("--case", action="append", choices=["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"])
     args = parser.parse_args()
     evaluator = RuntimeEvaluation(args.run, args.mode)
     try:
-        report = evaluator.evaluate(args.case or ["quote_disconnect","combo_approval","rejection","unsupported"])
+        report = evaluator.evaluate(args.case or ["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"])
     finally:
         evaluator.client.close()
     output = evaluator.run / "evidence" / f"runtime-eval-{uuid4().hex[:8]}.json"
