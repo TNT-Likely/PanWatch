@@ -95,3 +95,12 @@ def test_production_policy_blocks_semantic_downgrade_before_approval():
     events=service._repository.list_task_events(task.id)
     assert any(e.data.get('error_code') == 'permission_denied' for e in events)
     db.close();engine.dispose()
+
+
+def test_diagnosis_virtual_tool_survives_later_active_research_exposure():
+    engine,db,service,task=setup()
+    client=ScriptedProvider([(None,{})])
+    req=RunRequest(run_id=str(task.id),messages=[ModelMessage(role='user',content='全面诊断我的持仓')])
+    asyncio.run(service.build_runtime(client).run(req,DurableRuntimeEventSink(service,task.id)))
+    assert 'portfolio_diagnosis' in client.exposures[0]
+    db.close();engine.dispose()

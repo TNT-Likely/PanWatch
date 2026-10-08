@@ -324,6 +324,10 @@ def _evidence_and_facts(
             )
             if not snapshot_date:
                 missing_data.append(_localized(language, "机会筛选结果缺少快照日期。", "The opportunity screening result lacks a snapshot date."))
+        elif tool_name == "get_portfolio":
+            fact_text = summary
+            if data.get("valuation_time") == "unknown":
+                missing_data.append(_localized(language, "持仓快照时间已记录；估值行情来源时间未知，应逐个标的核对。", "The portfolio snapshot time is recorded; valuation quote times are unknown and need instrument-level verification."))
         elif summary:
             fact_text = summary
 

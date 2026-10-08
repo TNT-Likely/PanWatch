@@ -43,7 +43,7 @@ from src.platform.marketdata.marketdata_client import (
 from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.marketdata.quote_display import assistant_quote_fields
 from src.platform.marketdata.stock_list import search_stocks
-from src.platform.persistence.models import Stock, NotifyChannel
+from src.platform.persistence.models import Stock, NotifyChannel, Position
 from src.platform.persistence.worker import run_db_operation
 from src.platform.runtime.config import Settings
 from src.platform.language import resolve_report_language
@@ -222,14 +222,23 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     async def get_portfolio(_request: RunRequest, _arguments: dict) -> ToolResult:
-        summary = await run_db_operation(
-            db_bind, lambda db: build_portfolio_service(db).build_assistant_summary()
-        ) or "用户暂无持仓。"
+        def load(db):
+            summary = build_portfolio_service(db).build_assistant_summary() or "用户暂无持仓。"
+            positions = [{
+                "position_id": row.id, "account_id": row.account_id,
+                "symbol": row.stock.symbol, "market": row.stock.market,
+                "quantity": row.quantity, "cost_price": row.cost_price,
+                "updated_at": row.updated_at.replace(tzinfo=UTC).isoformat() if row.updated_at else None,
+            } for row in db.query(Position).all() if row.stock is not None]
+            return summary, positions
+        summary, positions = await run_db_operation(db_bind, load)
+        observed_at = datetime.now(UTC)
         return ToolResult.success(
             summary=summary,
-            data={"has_positions": summary != "用户暂无持仓。"},
-            sources=[{"name": "PanWatch 持仓"}],
-            observed_at=datetime.now(UTC),
+            data={"has_positions": summary != "用户暂无持仓。", "positions": positions,
+                  "positions_scope": "real_accounts", "summary_scope": "real_and_paper", "valuation_time": "unknown"},
+            sources=[{"name": "PanWatch 持仓", "as_of": observed_at.isoformat()}],
+            observed_at=observed_at,
         )
 
     async def find_research_candidates(_request: RunRequest, arguments: dict) -> ToolResult:

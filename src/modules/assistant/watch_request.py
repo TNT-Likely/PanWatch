@@ -37,7 +37,9 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
     instruments = [{"market": m.upper(), "symbol": s.upper().zfill(5) if m.upper() == "HK" and s.isdigit() else s.upper()} for m, s in re.findall(r"\b(CN|HK|US)\s*:\s*([A-Za-z0-9.]+)", text, re.I)]
     if not instruments and context.get("stock_symbol"):
         instruments = [{"symbol": context["stock_symbol"], "market": context.get("stock_market") or "CN"}]
-    duration = re.search(r"(?:未来|持续|有效|关注|盯|接下来)?\s*(\d+|两|二|一|三|四)\s*(周|星期|天|日)|(?:for|next|valid for)\s+(\d+|two|one|three)\s*(weeks?|days?)", text, re.I)
+    duration = next((match for match in re.finditer(
+        r"(?:未来|持续|有效|关注|盯|接下来)?\s*(\d+|两|二|一|三|四)\s*(周|星期|天|日)(?!均线|移动平均)|(?:for|next|valid for)\s+(\d+|two|one|three)\s*(weeks?|days?)", text, re.I
+    ) if not re.search(r"连续\s*$", text[:match.start()])), None)
     horizon = None
     if duration:
         raw = duration.group(1) or duration.group(3)

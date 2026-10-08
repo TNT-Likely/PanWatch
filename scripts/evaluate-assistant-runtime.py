@@ -109,11 +109,22 @@ class RuntimeEvaluation:
         self.require_completed(task)
         calls = self.invocations(task_id)
         assert any(c["tool_name"] == "tool_search" and c["status"] == "completed" for c in calls), "Deferred discovery was not exercised"
-        result = json.loads(next(c["result_data"] for c in calls if c["tool_name"] == "get_watchlist" and c["status"] == "completed"))
+        reads = [c for c in calls if c["tool_name"] == "get_watchlist" and c["status"] == "completed"]
+        assert reads, "Actual watchlist read did not complete"
         stocks = self.sql("select symbol,market from stocks")
-        assert result["total"] == len(stocks)
-        assert {(s["symbol"],s["market"]) for s in result["items"]} <= {(s["symbol"],s["market"]) for s in stocks}
-        return {"task_id":task_id,"model":task["model"],"watchlist":result,"invocations":calls}
+        collected = set()
+        results = []
+        for call in reads:
+            result = json.loads(call["result_data"])
+            arguments = json.loads(call["arguments"])
+            scope = [s for s in stocks if not arguments.get("market") or s["market"] == arguments["market"]]
+            assert result["total"] == len(scope)
+            identities = {(s["symbol"],s["market"]) for s in result["items"]}
+            assert identities <= {(s["symbol"],s["market"]) for s in scope}
+            collected.update(identities)
+            results.append(result)
+        assert collected == {(s["symbol"],s["market"]) for s in stocks}, "The complete requested watchlist was not returned"
+        return {"task_id":task_id,"model":task["model"],"watchlist_reads":results,"invocations":calls}
 
     def combo_approval(self):
         channels = self.sql("select id,name,type from notify_channels where enabled=1 and type='feishu'")
@@ -149,9 +160,9 @@ class RuntimeEvaluation:
 
     def rejection(self):
         before = self.sql("select id from price_alert_rules")
-        task_id = self.task("为 CN:600519 创建价格高于999998的盘中提醒，需要我确认后再执行。")
+        task_id = self.task("为 CN:600519 创建价格高于999998的盘中提醒，发飞书。读取已配置渠道后提交审批，需要我确认后再执行。")
         paused = self.wait(task_id)
-        assert paused["status"] == "awaiting_approval"
+        assert paused["status"] == "awaiting_approval", f"Expected approval, received {paused['status']}"
         self.decide(paused["pending_approvals"][0], "rejected")
         task = self.wait(task_id)
         self.require_completed(task)

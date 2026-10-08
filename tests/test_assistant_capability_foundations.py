@@ -58,6 +58,11 @@ def test_recent_closed_quote_is_not_live(monkeypatch, status):
     assert not data["is_realtime"]
 
 
+def test_indicator_periods_and_consecutive_sessions_are_not_request_horizons():
+    assert inspect_watch_request("CN:600519 收盘站上20日均线且连续3天满足时提醒")["horizon"] is None
+    assert inspect_watch_request("CN:600519 连续3天满足，未来两周有效")["horizon"]["days"] == 14
+
+
 def test_structured_request_and_write_guard_preserve_horizon_and_combination():
     now = datetime.now(UTC)
     text = "CN:600519 价格突破200且量比>2，两周有效，发飞书"

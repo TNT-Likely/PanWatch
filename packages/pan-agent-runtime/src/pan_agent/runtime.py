@@ -586,6 +586,12 @@ class AgentRuntime:
                     names=selected_names,
                     include_deferred=True,
                 )
+                # Virtual tools belong to earlier extensions rather than the registry.
+                model_tools.extend(
+                    tool
+                    for name, (tool, _) in extension_tools.items()
+                    if name in selected_names and self._policy.is_tool_visible(request, tool)
+                )
             if decision is not None and decision.additional_tools:
                 for tool in decision.additional_tools:
                     if tools_are_restricted and tool.name not in allowed_tool_name_set:
