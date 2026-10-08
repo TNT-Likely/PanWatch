@@ -33,7 +33,7 @@ Portfolio diagnosis uses canonical read tools and the host permission policy.
 Nested calls retain arguments, source time, original fields, failures and step IDs.
 Each completed diagnostic judgment links to its underlying evidence in the result
 card. Internal reads are bounded to 16 calls and the task tool-call limit; the host
-tool deadline is 90 seconds and the total task deadline remains 180 seconds.
+tool deadline is 120 seconds and the total task deadline remains 180 seconds.
 
 ## Evaluating the production path
 

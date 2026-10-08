@@ -160,7 +160,7 @@ class RuntimeEvaluation:
 
     def rejection(self):
         before = self.sql("select id from price_alert_rules")
-        task_id = self.task("为 CN:600519 创建价格高于999998的盘中提醒，发飞书。读取已配置渠道后提交审批，需要我确认后再执行。")
+        task_id = self.task("为 CN:600519 创建价格高于999998的盘中提醒，发飞书，冷却0分钟，每日最多2次，重复提醒，两周有效。999998是验收阈值，刻意避免触发，无需纠正。读取已配置渠道后直接调用创建工具提交系统审批，我会在审批面板确认，无需另行聊天确认。")
         paused = self.wait(task_id)
         assert paused["status"] == "awaiting_approval", f"Expected approval, received {paused['status']}"
         self.decide(paused["pending_approvals"][0], "rejected")

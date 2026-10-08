@@ -216,7 +216,7 @@ def _summary_messages(results: list[tuple[str, str]]) -> list[dict]:
     ]
 
 
-async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool, *, trace: dict | None = None) -> str:
+async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool, *, trace: dict | None = None, summarize_with_model: bool = True) -> str:
     """计划驱动的"全面诊断持仓"编排,返回最终汇总文本(已通过 SSE 流式推送)。
 
     Args:
@@ -288,6 +288,11 @@ async def run_portfolio_diagnosis(db, stream, ai_client, execute_tool, *, trace:
             results.append((step["title"], f"(该步执行失败:{safe_ai_error_message(e)})"))
         await _publish_plan(stream, steps, status="running")
         i += 1
+
+    # The canonical runtime synthesizes the final answer from this tool result.
+    if not summarize_with_model:
+        await _publish_plan(stream, steps, status="done")
+        return "\n\n".join(f"【{title}】\n{text}" for title, text in results)
 
     # 3) 汇总(流式推 token)
     summary = ""
@@ -397,7 +402,7 @@ class PortfolioDiagnosisExtension:
                 record = {"call_id": call.id, "tool_name": canonical_name, "arguments": arguments,
                           "step_id": trace["current_step"], **result.model_dump(mode="json")}
                 trace["tools"].append(record)
-                await context.emit_event("diagnosis_tool", {"call_id": call.id, "tool_name": canonical_name, "step_id": trace["current_step"], "ok": result.ok, "summary": result.summary})
+                await context.emit_event("diagnosis_tool", record)
                 if not result.ok:
                     raise ValueError(result.summary)
                 texts.append(json.dumps(result.model_dump(mode="json"), ensure_ascii=False))
@@ -410,6 +415,7 @@ class PortfolioDiagnosisExtension:
                 self._ai_client,
                 execute_with_evidence,
                 trace=trace,
+                summarize_with_model=False,
             )
         except AIServiceError:
             raise

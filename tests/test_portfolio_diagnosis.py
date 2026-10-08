@@ -232,3 +232,16 @@ def test_portfolio_diagnosis_is_exposed_as_a_runtime_extension_tool():
 
     assert decision is not None
     assert [tool.name for tool in decision.additional_tools] == ["portfolio_diagnosis"]
+
+
+def test_runtime_diagnosis_returns_step_results_without_a_duplicate_model_summary():
+    class NoSummaryAI(FakeAI):
+        async def chat_stream(self, *args, **kwargs):
+            raise AssertionError("The outer runtime owns final synthesis")
+            yield
+    ai = NoSummaryAI(['{"steps":[{"title":"组合风险","action":"portfolio_risk"}]}', '仅基于已读持仓的判断'])
+    stream = FakeStream()
+    result = asyncio.run(run_portfolio_diagnosis(None, stream, ai, _exec_ok, summarize_with_model=False))
+    assert result == '【组合风险】\n仅基于已读持仓的判断'
+    assert stream.plan_events()[-1]['status'] == 'done'
+    assert ai.multi_calls == 2

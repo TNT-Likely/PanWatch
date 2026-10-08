@@ -36,7 +36,7 @@ from .service import AssistantService
 logger = logging.getLogger(__name__)
 
 ASSISTANT_RUN_TIMEOUT_SECONDS = 180
-ASSISTANT_TOOL_TIMEOUT_SECONDS = 90  # Diagnosis includes bounded nested reads and model analysis.
+ASSISTANT_TOOL_TIMEOUT_SECONDS = 120  # Diagnosis includes bounded nested reads and model analysis.
 ASSISTANT_MAX_STEPS = 12
 ASSISTANT_MAX_TOOL_CALLS = 24
 ANSWER_TOKEN_BATCH_CHARS = 128
