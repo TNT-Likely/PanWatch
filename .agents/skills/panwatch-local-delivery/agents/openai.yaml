@@ -1,0 +1,4 @@
+interface:
+  display_name: "PanWatch 本地验收与交付"
+  short_description: "PanWatch 通用开发、隔离验收、独立报告与 PR 交付流程"
+  default_prompt: "使用 $panwatch-local-delivery 完成这次需求的实现、本地隔离验收、报告与 PR 交付。"
