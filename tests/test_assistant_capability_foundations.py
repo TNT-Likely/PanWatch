@@ -49,9 +49,10 @@ def test_quote_freshness_requires_actual_source_time(monkeypatch, quote, expecte
     assert data["source_change_pct"] == 9
 
 
-def test_recent_closed_quote_is_not_live(monkeypatch):
+@pytest.mark.parametrize("status", ["closed", "pre_market", "after_hours", "break"])
+def test_recent_closed_quote_is_not_live(monkeypatch, status):
     from src.platform.marketdata import quote_display
-    monkeypatch.setattr(quote_display.calendar, "market_status", lambda *_: "closed")
+    monkeypatch.setattr(quote_display.calendar, "market_status", lambda *_: status)
     data = assistant_quote_fields("HK", {"source_timestamp": "2026-10-08T16:00:00+08:00"}, datetime.fromisoformat("2026-10-08T16:01:00+08:00"))
     assert data["freshness"] == "delayed"
     assert not data["is_realtime"]

@@ -74,7 +74,7 @@ def assistant_quote_fields(market: str, quote: dict, now: datetime | None = None
             freshness = "stale"
         elif status == "unknown":
             freshness = "unknown"
-        elif status in ("closed", "pre_market"):
+        elif status in ("closed", "pre_market", "after_hours", "break"):
             freshness = "delayed"
         else:
             freshness = "fresh" if age <= 600 else "delayed" if age <= 3600 else "stale"
