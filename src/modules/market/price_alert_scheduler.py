@@ -8,6 +8,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.modules.market.price_alert_engine import ENGINE
+from src.modules.market.alert_delivery import AlertDeliveryWorker
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,19 @@ class PriceAlertScheduler:
         self.scheduler = AsyncIOScheduler(timezone=timezone)
         self.interval_seconds = max(15, int(interval_seconds))
         self._running = False
+        self._delivering = False
+        self.delivery_worker = AlertDeliveryWorker()
+
+    async def _delivery_job(self):
+        if self._delivering:
+            return
+        self._delivering = True
+        try:
+            await self.delivery_worker.drain()
+        except Exception:
+            logger.exception("[价格提醒] 投递队列处理失败")
+        finally:
+            self._delivering = False
 
     async def _scan_job(self):
         if self._running:
@@ -46,6 +60,11 @@ class PriceAlertScheduler:
         )
 
     def start(self):
+        self.scheduler.add_job(
+            self._delivery_job, "interval", seconds=10,
+            id="price_alert_delivery", replace_existing=True,
+            coalesce=True, max_instances=1,
+        )
         self.scheduler.add_job(
             self._scan_job,
             "interval",

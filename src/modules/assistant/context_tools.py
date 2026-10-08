@@ -24,6 +24,17 @@ def _time(value) -> str | None:
 
 
 def register_context_tools(registry, bind, tool_spec) -> None:
+    async def get_monitoring_health(request, arguments):
+        from src.modules.market.monitoring_health import monitoring_health
+        limit = arguments.get("limit", 100)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            return ToolResult.failure(summary="limit 必须为 1–200 整数", error_code="limit_invalid")
+        data = await run_db_operation(bind, lambda db: monitoring_health(db, limit=limit))
+        return ToolResult.success(
+            summary=f"价格提醒共 {data['total_rules']} 条；扫描状态 {data['scan']['status']}；投递状态 {data['delivery_counts']}。每日额度是触发次数，不是 AI 金额预算；渠道接受不代表接收人已读。",
+            data=data, sources=[{"name": "PanWatch 持久监控与投递记录", "as_of": data["observed_at"]}], observed_at=datetime.now(UTC),
+        )
+
     async def check_watch_request(request, arguments):
         # Ignore model-supplied paraphrases: they may drop a user condition.
         data = request.context.setdefault("watch_request", inspect_watch_request(original_user_text(request), context=request.context))
@@ -156,6 +167,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
 
     stock_schema = {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "HK", "US"], "default": "CN"}}
     specs = [
+        ("get_monitoring_health", "查询监控健康与通知投递", "读取价格提醒最近检查/成功时间、下次扫描、数据缺失、停用/到期/每日触发额度耗尽、分渠道待发/重试/失败记录。只读，不补发、不改额度；不覆盖 AI 金额预算或其他自动化。", {"limit": {"type": "integer", "minimum": 1, "maximum": 200}}, [], get_monitoring_health, True),
         ("check_watch_request", "检查关注请求与能力", "从本轮原始用户请求识别标的/范围/期限/通知渠道及不支持条件；不接受改写后的请求。相对到期以任务开始时为准。", {}, [], check_watch_request, False),
         ("get_notification_channels", "查询通知渠道", "列出渠道 ID/名称/类型/启用/默认状态，不返回密钥；创建指定渠道提醒前查询。", {}, [], get_notification_channels, True),
         ("get_watchlist", "查询自选股票", "读取真实自选库，包含市场代码；与持仓范围不同。", {"market": stock_schema["market"], "limit": {"type": "integer", "minimum": 1, "maximum": 200}}, [], get_watchlist, True),

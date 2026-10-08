@@ -193,16 +193,13 @@ def test_price_hit_survives_delivery_failure_and_repeated_scan_deduplicates(db, 
     engine = price_alert_engine.PriceAlertEngine()
     monkeypatch.setattr('src.platform.scheduling.trading_calendar.is_trading_day', lambda *args: True)
     monkeypatch.setattr(engine, '_fetch_quotes_map', AsyncMock(return_value={('CN','601238'):{'current_price':6}}))
-    async def delivery(session, *args):
-        # The same transaction already committed both records before I/O.
-        with sessionmaker(bind=db.bind)() as fresh:
-            assert fresh.query(PriceAlertHit).count() == fresh.query(NotificationEvent).count() == 1
-        return False, 'channel failure'
-    monkeypatch.setattr(engine, '_send_notify', delivery)
     assert asyncio.run(engine.scan_once())['triggered'] == 1
     assert asyncio.run(engine.scan_once())['triggered'] == 0
     db.expire_all()
     assert db.query(PriceAlertHit).count() == db.query(NotificationEvent).count() == 1
+    from src.platform.persistence.models import PriceAlertDelivery
+    delivery = db.query(PriceAlertDelivery).one()
+    assert delivery.status == 'blocked' and delivery.error_code == 'channel_missing'
     notice = NotificationService(db).list()['items'][0]
     assert notice['source'] == 'market' and notice['available']
     assert NotificationService(db).target(notice['id'])['notify_success'] is False

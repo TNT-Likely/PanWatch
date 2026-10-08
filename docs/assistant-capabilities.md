@@ -61,3 +61,14 @@ Exit codes: `0` = all required live-model cases pass, `1` = executed assertion f
 model is absent; `--allow-incomplete` explicitly permits a partial local check.
 Unit tests with a scripted provider remain contract tests and cannot establish
 live-model quality. Preserve failed attempts and report each layer independently.
+
+
+## Monitoring health and durable delivery
+
+The price-alert page shows scan heartbeat, last attempted/successful check, consecutive data/check failures, disabled/expired rules, daily trigger quotas and delivery states per channel. The assistant reads the same durable records through `get_monitoring_health`. Closed sessions and cooldowns are waiting states, not successful checks or data failures. Daily quotas count triggers (0 is unlimited), not AI spending.
+
+New hits, inbox events and destination outbox records commit together. An independent worker polls every 10 seconds with 90-second leases and a 45-second send timeout. Failures back off exponentially from 30 seconds, up to five attempts; the hit-history UI allows a confirmed manual retry. Successful destinations are not resent when another fails. Once-only rules still deliver their committed events after becoming disabled. Removed/disabled channels remain visible and can be retried after restoring the original channel. Missing enabled default channels retain the inbox notice and ask users to configure future alerts.
+
+The event ID remains stable across retries. Without provider idempotency, a crash after acceptance but before acknowledgement can cause a duplicate: delivery is at least once. Provider acceptance does not prove recipient read. Legacy hits without channel receipts show an unknown outcome and are not automatically resent on upgrade. The outbox stores no channel credentials; public errors are fixed safe codes.
+
+Health currently covers price alerts, not other automation, ongoing research tasks or AI spend budgets. The expected scan interval is 60 seconds plus up to 20 seconds of scheduler jitter; prolonged delays prompt a service check.

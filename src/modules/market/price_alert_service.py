@@ -332,6 +332,10 @@ def delete_alert_rule(db: Session, rule_id: int) -> None:
     rule = get_alert_rule(db, rule_id)
     if rule is None:
         raise LookupError("价格提醒不存在")
+    from src.platform.persistence.models import PriceAlertDelivery, PriceAlertHealth
+    hit_ids = db.query(PriceAlertHit.id).filter(PriceAlertHit.rule_id == rule_id)
+    db.query(PriceAlertDelivery).filter(PriceAlertDelivery.hit_id.in_(hit_ids)).delete(synchronize_session=False)
+    db.query(PriceAlertHealth).filter_by(rule_id=rule_id).delete(synchronize_session=False)
     db.query(PriceAlertHit).filter(PriceAlertHit.rule_id == rule_id).delete(
         synchronize_session=False
     )

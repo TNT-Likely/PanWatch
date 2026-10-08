@@ -195,6 +195,9 @@ class NotificationService:
                         template_params={**agent_notification_params(self.db, [run])[run.id], **(event.template_params or {})},
                         error=run.error, occurred_at=utc(run.created_at), notify_attempted=run.notify_attempted, notify_sent=run.notify_sent)
         hit = self.db.get(PriceAlertHit, int(event.subject_id))
+        from src.modules.market.alert_delivery import serialize
+        from src.platform.persistence.models import PriceAlertDelivery
         return dict(kind='price_alert_hit', id=hit.id, rule_id=hit.rule_id, name=hit.stock.name if hit.stock else '',
                     symbol=hit.stock.symbol if hit.stock else '', snapshot=hit.trigger_snapshot, occurred_at=utc(hit.trigger_time),
-                    notify_success=hit.notify_success)
+                    notify_success=hit.notify_success,
+                    deliveries=[serialize(row) for row in self.db.query(PriceAlertDelivery).filter_by(hit_id=hit.id).order_by(PriceAlertDelivery.id).all()])

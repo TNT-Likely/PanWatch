@@ -8,6 +8,7 @@ from typing import Any
 
 TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
     "check_watch_request": ("Check watch request", "Identify the original request's instruments, scope, horizon, channels and unsupported alert conditions."),
+    "get_monitoring_health": ("Get monitoring health", "Read price-alert check health, daily trigger quota and durable delivery states; no credentials or writes."),
     "get_notification_channels": ("Get notification channels", "Read channel IDs, names, types and enabled/default flags; never return secrets."),
     "get_watchlist": ("Get watchlist", "Read the saved watchlist with market-qualified symbols."),
     "get_research_history": ("Get research history", "Read market-scoped historical suggestions, reports and snapshots with dates and expiry."),

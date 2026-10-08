@@ -353,6 +353,12 @@ export const configuration = {
     title: '价格提醒', description: '到价/量能触发，支持冷却、每日上限与交易时段门禁', ruleCount: '规则数：{{count}}', scan: '立即扫描', create: '新建规则', emptyTitle: '暂无价格提醒规则', emptyDescription: '创建规则后，系统会每分钟自动扫描并触发通知',
     enabled: '启用', paused: '暂停', cooldown: '冷却 {{minutes}} 分钟', dailyLimit: '日上限 {{count}} 次', lastTrigger: '最近触发 {{time}}', test: '测试', edit: '编辑', disable: '停用', enable: '启用',
     editor: { editTitle: '编辑提醒规则', createTitle: '新建提醒规则', description: '支持价格、涨跌幅、成交额、量比条件，支持 AND / OR 组合', submit: '保存规则' },
+    health: {
+      title: '监控健康', refresh: '刷新状态', deliveryTitle: '分渠道投递', lastScan: '最近扫描 {{time}}', nextScan: '预计下次扫描 {{time}}', lastCheck: '最近检查 {{time}}', lastSuccess: '最近成功检查 {{time}}', failures: '连续失败 {{count}} 次', quota: '今日触发额度 {{used}} / {{limit}}', unlimited: '不限', unavailable: '健康记录暂不可用', truncated: '仅展示前 200 条规则的检查记录，投递总数覆盖全部规则。', boundary: '当前覆盖价格提醒。每日额度为触发次数，不是 AI 金额预算；渠道接受不代表接收人已读。发送后崩溃可能导致重复投递，事件编号保持一致。', legacyUnknown: '旧记录无分渠道回执，投递结果未知', channel: '渠道 #{{id}}', attempts: '尝试 {{count}} / {{max}}', nextRetry: '下次重试 {{time}}', acceptedAt: '渠道接受 {{time}}', retry: '重试投递', retryConfirm: '确认将这条投递重新排队？接收端可能已收到，补发有重复风险。', retryQueued: '已加入投递队列', retryFailed: '无法重试，请检查渠道和投递状态',
+      statuses: { never_checked: '尚未检查', running: '扫描中', completed: '扫描完成', failed: '扫描失败', monitoring_delayed: '扫描延迟，请检查服务', disabled: '手动停用', expired: '已到期', once_triggered: '单次提醒已命中', daily_limit: '今日触发额度已用尽', cooldown: '冷却中', non_trading: '等待交易时段', non_trading_day: '等待交易日', no_stock: '股票缺失', no_quote: '行情缺失', stale_quote: '行情日期过期或未知', source_failed: '行情源失败', check_failed: '规则检查失败', incomplete_data: '条件数据不完整', not_matched: '检查成功，条件未命中', triggered: '检查成功，已命中', duplicated: '检查成功，重复命中已抑制' },
+      deliveryStates: { pending: '待发送', sending: '发送中', retry: '等待重试', failed: '重试耗尽', blocked: '渠道不可用', delivered: '渠道已接受' },
+      errors: { channel_missing: '未配置启用的默认渠道，站内通知已保留；为后续提醒配置渠道', channel_unavailable: '渠道已删除或停用，请恢复渠道后重试', channel_send_failed: '渠道发送失败，将按计划重试；检查渠道配置和网络', delivery_timeout: '渠道发送超时，接收结果未知', attempts_exhausted: '重试次数已耗尽，请检查渠道后手动重试' },
+    },
     hits: { title: '命中历史', empty: '暂无命中记录', notifySuccess: '通知成功', notifyFailed: '通知失败 {{error}}' },
     conditions: { price: '价格', change_pct: '涨跌幅%', turnover: '成交额', volume: '成交量', volume_ratio: '量比', and: '且', or: '或' },
     testStatuses: { no_stock: '股票不可用', no_quote: '行情不可用', gated: '不在生效时段', not_matched: '条件未命中', would_trigger: '将触发', duplicated: '重复触发已抑制', triggered: '已触发', unknown: '日历待更新' },

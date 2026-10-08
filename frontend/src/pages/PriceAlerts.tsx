@@ -10,6 +10,25 @@ import { useTranslation } from 'react-i18next'
 import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
 import { getCurrentLocale } from '@/i18n'
 
+interface Delivery {
+  id: number
+  event_id: string
+  channel_id: number | null
+  status: string
+  attempts: number
+  max_attempts: number
+  next_attempt_at: string | null
+  delivered_at: string | null
+  error_code: string
+}
+interface MonitoringHealth {
+  total_rules: number
+  truncated: boolean
+  scan: { status: string; last_completed_at: string | null; next_scan_at: string | null }
+  delivery_counts: Record<string, number>
+  items: { rule_id: number; status: string; last_checked_at: string | null; last_success_at: string | null; next_scan_at: string | null; consecutive_failures: number; quota: { used: number; limit: number; unlimited: boolean }; deliveries: Record<string, number> }[]
+}
+
 type RuleOp = 'and' | 'or'
 
 interface StockItem {
@@ -48,6 +67,7 @@ interface AlertHit {
   trigger_snapshot: Record<string, any>
   notify_success: boolean
   notify_error: string
+  deliveries: Delivery[]
 }
 
 const DEFAULT_FORM: PriceAlertFormState = {
@@ -101,6 +121,8 @@ export default function PriceAlertsPage() {
   const [hitsOpen, setHitsOpen] = useState(false)
   const [hitRule, setHitRule] = useState<AlertRule | null>(null)
   const [hits, setHits] = useState<AlertHit[]>([])
+  const [health, setHealth] = useState<MonitoringHealth | null>(null)
+  const [retryingId, setRetryingId] = useState<number | null>(null)
   const [scanRunning, setScanRunning] = useState(false)
   const [prefillDone, setPrefillDone] = useState(false)
 
@@ -109,11 +131,13 @@ export default function PriceAlertsPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const [ruleData, stockData, channelData] = await Promise.all([
+      const [ruleData, stockData, channelData, healthData] = await Promise.all([
         fetchAPI<AlertRule[]>('/price-alerts'),
         stocksApi.list(),
         fetchAPI<NotifyChannel[]>('/channels'),
+        fetchAPI<MonitoringHealth>('/price-alerts/health'),
       ])
+      setHealth(healthData)
       setRules(ruleData || [])
       setStocks(stockData || [])
       setChannels(channelData || [])
@@ -162,6 +186,26 @@ export default function PriceAlertsPage() {
     }
     openWithStock()
   }, [loading, location.search, prefillDone, stockOptions, stocks])
+
+  const retryDelivery = async (delivery: Delivery) => {
+    // Keep one modal active while asking. Sibling modal layers can otherwise
+    // send Escape to the history dialog instead of the confirmation.
+    setHitsOpen(false)
+    const confirmed = await confirmAction(alertT('health.retryConfirm'))
+    setHitsOpen(true)
+    if (!confirmed) return
+    setRetryingId(delivery.id)
+    try {
+      await fetchAPI(`/price-alerts/deliveries/${delivery.id}/retry`, { method: 'POST' })
+      if (hitRule) await openHits(hitRule)
+      await load()
+      toast(alertT('health.retryQueued'), 'success')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : alertT('health.retryFailed'), 'error')
+    } finally {
+      setRetryingId(null)
+    }
+  }
 
   const openCreate = () => {
     setEditingId(null)
@@ -304,6 +348,21 @@ export default function PriceAlertsPage() {
         </div>
       </div>
 
+      <section className="card p-4 mb-4 space-y-2" aria-label={alertT('health.title')}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">{alertT('health.title')}</h2>
+          <Button variant="secondary" size="sm" onClick={load} disabled={loading}>{alertT('health.refresh')}</Button>
+        </div>
+        {health ? <>
+          <p className="text-xs text-muted-foreground">{alertT(`health.statuses.${health.scan.status}`)} · {alertT('health.lastScan', { time: fmt(health.scan.last_completed_at) })} · {alertT('health.nextScan', { time: fmt(health.scan.next_scan_at) })}</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label={alertT('health.deliveryTitle')}>
+            {['pending', 'sending', 'retry', 'failed', 'blocked', 'delivered'].map(status => <span key={status}>{alertT(`health.deliveryStates.${status}`)}: {health.delivery_counts[status] || 0}</span>)}
+          </div>
+          {health.truncated && <p className="text-xs text-muted-foreground">{alertT('health.truncated')}</p>}
+        </> : <p className="text-xs text-muted-foreground">{alertT('health.unavailable')}</p>}
+        <p className="text-xs text-muted-foreground">{alertT('health.boundary')}</p>
+      </section>
+
       {loading ? (
         <div className="flex items-center justify-center py-20"><span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /></div>
       ) : rules.length === 0 ? (
@@ -329,11 +388,17 @@ export default function PriceAlertsPage() {
                   <div className="mt-1 text-[11px] text-muted-foreground/80">
                     {alertT('cooldown', { minutes: r.cooldown_minutes })} · {alertT('dailyLimit', { count: r.max_triggers_per_day })} · {alertT('lastTrigger', { time: fmt(r.last_trigger_at) })}
                   </div>
+                  {health?.items.filter(item => item.rule_id === r.id).map(item => <div key={item.rule_id} className="mt-2 text-xs space-y-1 break-words">
+                    <p className={item.consecutive_failures > 0 || item.status === 'daily_limit' || item.status === 'monitoring_delayed' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}>{alertT(`health.statuses.${item.status}`)} · {alertT('health.failures', { count: item.consecutive_failures })}</p>
+                    <p className="text-muted-foreground">{alertT('health.lastCheck', { time: fmt(item.last_checked_at) })} · {alertT('health.lastSuccess', { time: fmt(item.last_success_at) })}</p>
+                    <p className="text-muted-foreground">{alertT('health.quota', { used: item.quota.used, limit: item.quota.unlimited ? alertT('health.unlimited') : item.quota.limit })}</p>
+                    <p className="text-muted-foreground">{['pending', 'retry', 'failed', 'blocked'].map(status => `${alertT(`health.deliveryStates.${status}`)}: ${item.deliveries[status] || 0}`).join(' · ')}</p>
+                  </div>)}
                 </div>
                 {/* Desktop: buttons on the right */}
                 <div className="hidden md:flex items-center gap-1.5 shrink-0">
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => testRule(r)}>{alertT('test')}</Button>
-                  <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => openHits(r)}><BarChart3 className="w-3.5 h-3.5" /></Button>
+                  <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => openHits(r)} aria-label={alertT('hits.title')}><BarChart3 className="w-3.5 h-3.5" /></Button>
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => openEdit(r)}>{alertT('edit')}</Button>
                   <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-8 px-2.5" onClick={() => toggleRule(r)}>{r.enabled ? alertT('disable') : alertT('enable')}</Button>
                   <Button variant="secondary" size="sm" className="h-8 px-2.5" onClick={() => removeRule(r)}><Trash2 className="w-3.5 h-3.5" /></Button>
@@ -342,7 +407,7 @@ export default function PriceAlertsPage() {
               {/* Mobile: buttons at bottom */}
               <div className="flex md:hidden items-center gap-1.5 mt-3 pt-3 border-t border-border/30">
                 <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => testRule(r)}>{alertT('test')}</Button>
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openHits(r)}><BarChart3 className="w-3 h-3" /></Button>
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openHits(r)} aria-label={alertT('hits.title')}><BarChart3 className="w-3 h-3" /></Button>
                 <Button variant="secondary" size="sm" className="h-7 px-2 text-[11px]" onClick={() => openEdit(r)}>{alertT('edit')}</Button>
                 <div className="flex-1" />
                 <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-7 px-2 text-[11px]" onClick={() => toggleRule(r)}>{r.enabled ? alertT('disable') : alertT('enable')}</Button>
@@ -379,10 +444,18 @@ export default function PriceAlertsPage() {
               <div key={h.id} className="rounded border border-border/40 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[12px] text-muted-foreground">{fmt(h.trigger_time)}</div>
-                  <div className={`text-[11px] ${h.notify_success ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {h.notify_success ? alertT('hits.notifySuccess') : alertT('hits.notifyFailed', { error: h.notify_error || '' })}
+                  <div className="text-[11px] text-muted-foreground">
+                    {h.deliveries?.length ? alertT('health.deliveryTitle') : (h.notify_success ? alertT('hits.notifySuccess') : alertT('health.legacyUnknown'))}
                   </div>
                 </div>
+                {(h.deliveries || []).map(delivery => <div key={delivery.id} className="mt-2 rounded bg-accent/20 p-2 text-xs space-y-1 break-words">
+                  <p>{alertT('health.channel', { id: delivery.channel_id ?? '--' })} · {alertT(`health.deliveryStates.${delivery.status}`)} · {alertT('health.attempts', { count: delivery.attempts, max: delivery.max_attempts })}</p>
+                  <p className="font-mono">{delivery.event_id}</p>
+                  {delivery.error_code && <p className="text-amber-600 dark:text-amber-400">{alertT(`health.errors.${delivery.error_code}`)}</p>}
+                  {delivery.next_attempt_at && <p>{alertT('health.nextRetry', { time: fmt(delivery.next_attempt_at) })}</p>}
+                  {delivery.delivered_at && <p>{alertT('health.acceptedAt', { time: fmt(delivery.delivered_at) })}</p>}
+                  {['retry', 'failed', 'blocked'].includes(delivery.status) && delivery.channel_id !== null && <Button variant="secondary" size="sm" disabled={retryingId !== null} onClick={() => retryDelivery(delivery)}>{alertT('health.retry')}</Button>}
+                </div>)}
                 <div className="mt-2 text-[11px] bg-accent/20 rounded p-2 font-mono overflow-x-auto scrollbar">
                   {JSON.stringify(h.trigger_snapshot || {}, null, 2)}
                 </div>

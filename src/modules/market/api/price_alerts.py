@@ -10,7 +10,9 @@ from src.platform.runtime.config import Settings
 from src.modules.market import price_alert_service
 from src.modules.market.price_alert_engine import ENGINE
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import PriceAlertHit, PriceAlertRule, Stock
+from src.platform.persistence.models import PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock
+from src.modules.market.monitoring_health import monitoring_health
+from src.modules.market.alert_delivery import retry_delivery, serialize
 from src.web.errors import api_error
 
 logger = logging.getLogger(__name__)
@@ -100,7 +102,23 @@ def _to_response(rule: PriceAlertRule) -> dict:
 @router.get("")
 def list_alert_rules(db: Session = Depends(get_db)):
     rows = price_alert_service.list_alert_rules(db, limit=None)
+    # Preserve the existing list contract; health has a bounded separate view.
     return [_to_response(r) for r in rows]
+
+
+@router.get("/health")
+def get_monitoring_health(limit: int = 200, db: Session = Depends(get_db)):
+    return monitoring_health(db, limit=max(1, min(limit, 200)))
+
+
+@router.post("/deliveries/{delivery_id}/retry")
+def retry_alert_delivery(delivery_id: int, db: Session = Depends(get_db)):
+    try:
+        return retry_delivery(db, delivery_id)
+    except LookupError as exc:
+        raise api_error(404, "delivery_not_found", "投递记录不存在") from exc
+    except ValueError as exc:
+        raise api_error(409, str(exc), "投递正在进行、已经成功或渠道不可用") from exc
 
 
 @router.post("")
@@ -220,6 +238,7 @@ def list_alert_hits(rule_id: int, limit: int = 50, db: Session = Depends(get_db)
             "trigger_snapshot": r.trigger_snapshot or {},
             "notify_success": bool(r.notify_success),
             "notify_error": r.notify_error or "",
+            "deliveries": [serialize(d) for d in db.query(PriceAlertDelivery).filter_by(hit_id=r.id).order_by(PriceAlertDelivery.id).all()],
         }
         for r in rows
     ]
@@ -237,14 +256,12 @@ async def test_alert_rule(rule_id: int):
 async def scan_alert_rules(dry_run: bool = False, bypass_market_hours: bool = True):
     try:
         from server import price_alert_scheduler
-
-        if price_alert_scheduler:
-            # 手动扫描默认绕过交易时段门禁，便于即时验证规则
-            if bypass_market_hours:
-                return await price_alert_scheduler.trigger_once(dry_run=dry_run)
-            return await ENGINE.scan_once(dry_run=dry_run, bypass_market_hours=False)
-    except Exception:
-        pass
+    except ImportError:
+        price_alert_scheduler = None
+    if price_alert_scheduler:
+        if bypass_market_hours:
+            return await price_alert_scheduler.trigger_once(dry_run=dry_run)
+        return await ENGINE.scan_once(dry_run=dry_run, bypass_market_hours=False)
     return await ENGINE.scan_once(
         dry_run=dry_run, bypass_market_hours=bypass_market_hours
     )

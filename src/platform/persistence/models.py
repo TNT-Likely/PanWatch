@@ -967,6 +967,51 @@ class PriceAlertHit(Base):
     stock = relationship("Stock")
 
 
+class PriceAlertHealth(Base):
+    """Latest durable check per rule; gated scans are not successful checks."""
+    __tablename__ = "price_alert_health"
+    rule_id = Column(Integer, ForeignKey("price_alert_rules.id", ondelete="CASCADE"), primary_key=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+    next_scan_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False, default="never_checked")
+    consecutive_failures = Column(Integer, nullable=False, default=0)
+
+
+class PriceAlertScanHealth(Base):
+    __tablename__ = "price_alert_scan_health"
+    id = Column(Integer, primary_key=True)  # singleton
+    last_started_at = Column(DateTime, nullable=True)
+    last_completed_at = Column(DateTime, nullable=True)
+    next_scan_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False, default="never_checked")
+
+
+class PriceAlertDelivery(Base):
+    """Transactional outbox, one immutable destination identity per hit."""
+    __tablename__ = "price_alert_deliveries"
+    __table_args__ = (
+        UniqueConstraint("hit_id", "channel_key", name="uq_price_alert_delivery_channel"),
+        Index("ix_price_alert_delivery_due", "status", "next_attempt_at", "lease_until"),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hit_id = Column(Integer, ForeignKey("price_alert_hits.id", ondelete="CASCADE"), nullable=False)
+    channel_key = Column(String, nullable=False)
+    channel_id = Column(Integer, nullable=True)  # logical reference; deleted channels remain visible
+    event_id = Column(String, nullable=False, unique=True)
+    title = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="pending")
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+    next_attempt_at = Column(DateTime, nullable=True)
+    lease_until = Column(DateTime, nullable=True)
+    lease_token = Column(String, nullable=False, default="")
+    error_code = Column(String, nullable=False, default="")
+    delivered_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
 class PaperTradingAccount(Base):
     """模拟盘账户（单例）"""
 

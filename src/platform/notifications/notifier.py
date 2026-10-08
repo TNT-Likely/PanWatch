@@ -359,7 +359,7 @@ class NotifierManager:
         elif ch_type == "pushplus":
             await self._send_pushplus(config, title, content)
         else:
-            logger.warning(f"未知的自定义渠道类型: {ch_type}")
+            raise ValueError(f"Unsupported notification channel: {ch_type}")
 
     async def _send_telegram(self, config: dict, title: str, content: str):
         """Telegram Bot API（支持代理）

@@ -253,6 +253,7 @@ PANWATCH_TOOL_DESCRIPTORS += tuple(
                    data_freshness=ToolDataFreshness.STATIC)
     for name, title, summary, keywords, domain in (
         ("check_watch_request", "检查关注请求", "识别期限、标的、范围与不支持的提醒条件", ["能力", "期限", "关注", "条件"], "price_alerts"),
+        ("get_monitoring_health", "查询监控健康与通知投递", "读取最近检查、每日触发额度、缺失数据和分渠道重试/失败", ["监控", "健康", "盯盘", "失败", "补发", "投递", "额度", "monitoring", "delivery"], "price_alerts"),
         ("get_notification_channels", "查询通知渠道", "读取可用通知渠道 ID，不暴露配置密钥", ["飞书", "渠道", "通知", "邮件", "telegram"], "price_alerts"),
         ("get_watchlist", "查询自选", "读取完整自选库与市场", ["自选", "watchlist"], "portfolio"),
         ("get_research_history", "查询历史研究", "读取上次研究观点、报告、快照和数据时间", ["上次", "历史", "之前", "研究", "建议"], "investment_research"),

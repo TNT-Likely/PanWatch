@@ -180,6 +180,26 @@ class RuntimeEvaluation:
         assert checks and set(json.loads(checks[0]["result_data"])["unsupported_conditions"]) >= {"bar_close_confirmation", "moving_average_trigger", "consecutive_sessions"}
         return {"task_id":task_id,"model":task["model"],"rules_unchanged":True,"check":checks[0]}
 
+    def monitoring_health(self):
+        before = self.sql("select id,status,attempts from price_alert_deliveries order by id")
+        task_id = self.task("查询我的价格提醒监控健康：最近成功检查、检查失败、每日触发额度和通知渠道投递状态。读取实际持久记录，不要改规则或补发；缺少 AI 金额预算时明确说明。")
+        task = self.wait(task_id)
+        self.require_completed(task)
+        calls = self.invocations(task_id)
+        reads = [c for c in calls if c["tool_name"] == "get_monitoring_health" and c["status"] == "completed"]
+        assert reads, "Actual monitoring health tool did not complete"
+        data = json.loads(reads[-1]["result_data"])
+        assert data["scope"] == "price_alerts" and data["delivery_semantics"] == "at_least_once"
+        assert data["ai_spend_budget"] == "not_enforced_by_price_alerts"
+        assert data["total_rules"] == self.sql("select count(*) as n from price_alert_rules")[0]["n"]
+        assert not any(c["tool_name"] in {"create_price_alert", "update_price_alert", "delete_price_alert"} for c in calls), "Read-only health query proposed a write"
+        # The worker can naturally progress while reading. This query must not
+        # create deliveries or approvals; it never uses a retry/write tool.
+        after = self.sql("select id from price_alert_deliveries order by id")
+        assert {r["id"] for r in before} <= {r["id"] for r in after}
+        assert not task.get("approvals"), "Read-only health query requested approval"
+        return {"task_id": task_id, "model": task["model"], "health": data, "invocations": calls}
+
     def evaluate(self, cases):
         providers = self.sql("select base_url from ai_services")
         model_ready = bool(self.sql("select id from ai_models"))
@@ -195,7 +215,7 @@ class RuntimeEvaluation:
                 # Never echo credentials, provider payloads or unredacted logs.
                 self.results.append({"id":name,"status":"FAIL","reason":str(exc)[:500],"exception_type":type(exc).__name__})
             print(f"{name}: {self.results[-1]['status']}", flush=True)
-        overall = "FAIL" if any(c["status"] == "FAIL" for c in self.results) else "PASS" if self.mode == "live-model" and set(cases) == {"quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"} else "INCOMPLETE"
+        overall = "FAIL" if any(c["status"] == "FAIL" for c in self.results) else "PASS" if self.mode == "live-model" and set(cases) == {"quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported","monitoring_health"} else "INCOMPLETE"
         return {"overall":overall,"mode":self.mode,"run_id":self.manifest["run_id"],"source_sha":self.manifest["base_sha"],"source_hash":self.manifest["source_hash"],"frontend_hash":self.manifest.get("frontend_hash"),"evaluated_at":datetime.now(UTC).isoformat(),"production_path":"HTTP → task worker → AssistantService.build_runtime → registry/policy → approval → DB","cases":self.results,"task_ids":self.task_ids,"boundaries":["C01 stale replay is a separate contract test", "Notification delivery is not exercised", "This suite does not cover every model or arbitrary natural-language request", "Client SSE disconnection does not simulate a server network outage"]}
 
 
@@ -203,11 +223,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--mode", choices=["live-model","replay"], default="live-model")
-    parser.add_argument("--case", action="append", choices=["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"])
+    parser.add_argument("--case", action="append", choices=["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported","monitoring_health"])
     args = parser.parse_args()
     evaluator = RuntimeEvaluation(args.run, args.mode)
     try:
-        report = evaluator.evaluate(args.case or ["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported"])
+        report = evaluator.evaluate(args.case or ["quote_disconnect","discovery_watchlist","combo_approval","rejection","unsupported","monitoring_health"])
     finally:
         evaluator.client.close()
     output = evaluator.run / "evidence" / f"runtime-eval-{uuid4().hex[:8]}.json"
