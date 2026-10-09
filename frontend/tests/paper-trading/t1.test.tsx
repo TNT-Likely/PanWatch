@@ -18,9 +18,11 @@ const locked: PaperTradingPositionItem = {
   status: 'open', sellable_quantity: 0, sell_block_reason: 'paper_trading_t1_locked',
   signal_snapshot_date: '', signal_action: 'buy', strategy_code: 'trend_follow', holding_days: 0,
   opened_at: '2026-10-09T10:00:00+08:00', closed_at: '', updated_at: '',
+  settlement_date: '2026-10-12', settlement_status: 'pending',
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage('zh-CN')
   vi.resetAllMocks()
   vi.mocked(paperTradingApi.getAccount).mockResolvedValue({ initial_capital: 100000, current_capital: 99000,
     total_equity: 100000, total_pnl: 0, unrealized_pnl: 0, total_trades: 0, winning_trades: 0,

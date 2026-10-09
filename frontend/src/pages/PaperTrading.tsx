@@ -458,10 +458,48 @@ export default function PaperTradingPage() {
           <div className="card p-3">
             <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1">
               <Wallet className="w-3.5 h-3.5" />
-              {tr('availableCapital')}
+              {tr('buyingPower')}
             </div>
-            <div className="text-lg font-bold">{formatAmount(account.current_capital)}</div>
+            <div className="text-lg font-bold">{formatAmount(account.buying_power ?? account.current_capital)}</div>
           </div>
+        </div>
+      )}
+
+      {account && (
+        <div className="card p-4 space-y-3">
+          <h2 className="text-sm font-semibold">{tr('cashSettlement')}</h2>
+          <p className="text-xs text-muted-foreground">
+            {tr(marketView === 'CN' ? 'fundingCN' : marketView === 'ALL' ? 'fundingAll' : 'fundingCash')}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div><span className="text-muted-foreground text-xs">{tr('cashBalance')}</span>
+              <div className="font-semibold">{formatAmount(account.cash_balance ?? account.current_capital)}</div></div>
+            <div><span className="text-muted-foreground text-xs">{tr('settledCash')}</span>
+              <div className="font-semibold">{formatAmount(account.settled_cash ?? account.current_capital)}</div></div>
+            <div><span className="text-muted-foreground text-xs">{tr('unsettledCash')}</span>
+              <div className="font-semibold">{formatAmount(account.unsettled_cash ?? 0)}</div></div>
+          </div>
+          <p className="text-xs text-muted-foreground">{tr('settlementRules')}</p>
+          {(account.pending_settlements?.length ?? 0) > 0 ? (
+            <div className="overflow-x-auto scrollbar">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border text-xs text-muted-foreground">
+                  <th className="text-left py-2 pr-3">{tr('market')}</th>
+                  <th className="text-right py-2 px-2">{tr('remainingProceeds')}</th>
+                  <th className="text-right py-2 pl-2">{tr('expectedSettlement')}</th>
+                </tr></thead>
+                <tbody>{account.pending_settlements.map(item => (
+                  <tr key={item.trade_id} className="border-b border-border/50">
+                    <td className="py-2 pr-3">{item.market} · #{item.trade_id}</td>
+                    <td className="text-right py-2 px-2">{formatAmount(item.remaining_amount)}</td>
+                    <td className="text-right py-2 pl-2 text-xs whitespace-nowrap">
+                      {item.settlement_date ?? tr('settlementStatuses.unknown')}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          ) : <p className="text-xs text-muted-foreground">{tr('noPendingSettlement')}</p>}
         </div>
       )}
 
@@ -534,6 +572,7 @@ export default function PaperTradingPage() {
                   <th className="text-right py-2 px-2">{tr('takeProfit')}</th>
                   <th className="text-left py-2 px-2">{tr('strategy')}</th>
                   <th className="text-right py-2 px-2">{tr('holdingDays')}</th>
+                  <th className="text-right py-2 px-2">{tr('securitiesSettlement')}</th>
                   <th className="text-right py-2 pl-2">{tr('actions')}</th>
                 </tr>
               </thead>
@@ -554,6 +593,10 @@ export default function PaperTradingPage() {
                     <td className="text-right py-2 px-2">{p.target_price?.toFixed(2) ?? '-'}</td>
                     <td className="py-2 px-2 text-xs text-muted-foreground">{p.strategy_code || '-'}</td>
                     <td className="text-right py-2 px-2">{tr('days', { count: p.holding_days })}</td>
+                    <td className="text-right py-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                      <div>{tr(`settlementStatuses.${p.settlement_status ?? 'legacy'}`)}</div>
+                      <div>{p.settlement_date ?? '-'}</div>
+                    </td>
                     <td className="text-right py-2 pl-2">
                       <Button
                         variant="ghost"
@@ -602,6 +645,7 @@ export default function PaperTradingPage() {
                       <th className="text-left py-2 px-2">{tr('exitReason')}</th>
                       <th className="text-left py-2 px-2">{tr('strategy')}</th>
                       <th className="text-right py-2 px-2">{tr('holdingDays')}</th>
+                      <th className="text-right py-2 px-2">{tr('cashSettlement')}</th>
                       <th className="text-right py-2 pl-2">{tr('closedAt')}</th>
                     </tr>
                   </thead>
@@ -619,6 +663,10 @@ export default function PaperTradingPage() {
                         <td className="py-2 px-2 text-xs">{tr(`exitReasons.${t.exit_reason}`, { defaultValue: t.exit_reason })}</td>
                         <td className="py-2 px-2 text-xs text-muted-foreground">{t.strategy_code || '-'}</td>
                         <td className="text-right py-2 px-2">{tr('days', { count: t.holding_days })}</td>
+                        <td className="text-right py-2 px-2 text-xs text-muted-foreground whitespace-nowrap">
+                          <div>{tr(`settlementStatuses.${t.settlement_status ?? 'legacy'}`)}</div>
+                          <div>{t.settlement_date ?? '-'}</div>
+                        </td>
                         <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{t.closed_at?.slice(0, 10) || '-'}</td>
                       </tr>
                     ))}

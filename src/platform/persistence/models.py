@@ -2,6 +2,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -1059,6 +1060,7 @@ class PaperTradingPosition(Base):
     signal_action = Column(String, default="")
     strategy_code = Column(String, default="")
     opened_at = Column(DateTime, server_default=func.now())
+    settlement_date = Column(Date, nullable=True)
     closed_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -1089,6 +1091,23 @@ class PaperTradingTrade(Base):
     opened_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, server_default=func.now())
     meta = Column(JSON, default={})
+
+
+class PaperTradingSettlement(Base):
+    """Outstanding net sale proceeds; cash is already recognized at execution."""
+
+    __tablename__ = "paper_trading_settlements"
+    __table_args__ = (Index("ix_paper_settlement_status_market", "status", "stock_market"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_id = Column(Integer, ForeignKey("paper_trading_trades.id"), nullable=False, unique=True)
+    stock_market = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    remaining_amount = Column(Float, nullable=False)
+    traded_at = Column(DateTime, nullable=False)
+    settlement_date = Column(Date, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    settled_at = Column(DateTime, nullable=True)
 
 
 class ChatConversation(Base):

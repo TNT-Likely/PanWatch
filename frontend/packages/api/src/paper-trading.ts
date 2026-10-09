@@ -4,6 +4,20 @@ export interface PaperTradingAccountResponse {
   id: number
   initial_capital: number
   current_capital: number
+  cash_balance: number
+  buying_power: number
+  settled_cash: number
+  unsettled_cash: number
+  funding_policy: 'sale_proceeds' | 'settled_cash' | 'mixed'
+  settlement_cycles: Record<string, number>
+  pending_settlements: Array<{
+    trade_id: number
+    market: string
+    amount: number
+    remaining_amount: number
+    settlement_date: string | null
+    status: 'pending' | 'unknown'
+  }>
   total_equity: number
   total_pnl: number
   unrealized_pnl: number
@@ -24,6 +38,7 @@ export interface PaperTradingAccountResponse {
 }
 
 export type MarketView = 'ALL' | 'CN' | 'HK' | 'US'
+export type SettlementStatus = 'pending' | 'settled' | 'unknown' | 'legacy'
 
 export interface PaperTradingPositionItem {
   id: number
@@ -31,9 +46,11 @@ export interface PaperTradingPositionItem {
   stock_market: string
   stock_name: string
   quantity: number
-  /** Settlement availability; execution still requires an open market and valid quote. */
+  /** Sell eligibility; execution still requires an open market and valid quote. */
   sellable_quantity: number
   sell_block_reason: 'paper_trading_t1_locked' | 'paper_trading_open_time_missing' | null
+  settlement_date: string | null
+  settlement_status: SettlementStatus
   entry_price: number
   stop_loss?: number | null
   target_price?: number | null
@@ -68,6 +85,9 @@ export interface PaperTradingTradeItem {
   holding_days: number
   opened_at: string
   closed_at: string
+  settlement_date: string | null
+  settlement_status: SettlementStatus
+  settlement_amount: number | null
 }
 
 export interface PaperTradingTradesResponse {

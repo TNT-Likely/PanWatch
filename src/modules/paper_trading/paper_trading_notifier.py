@@ -244,7 +244,24 @@ def _dedup_signals(signals: list[StrategySignalRun]) -> list[tuple[StrategySigna
     return list(seen.values())
 
 
-def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradingAccount, english: bool = False) -> tuple[str, str]:
+def _funding_lines(account: PaperTradingAccount, funds: dict | None, english: bool) -> list[str]:
+    lines = [f"Cash balance: {account.current_capital:,.2f}" if english else f"现金余额: {account.current_capital:,.2f}"]
+    if funds is not None:
+        lines.append(f"Buying power: {funds['buying_power']:,.2f}" if english else f"购买力: {funds['buying_power']:,.2f}")
+        lines.append(f"Unsettled sale proceeds: {funds['unsettled_cash']:,.2f}" if english else f"待交收卖出款: {funds['unsettled_cash']:,.2f}")
+    return lines
+
+
+def _account_funds(db, account: PaperTradingAccount) -> dict:
+    from src.modules.paper_trading.paper_settlement import cash_summary
+    from src.modules.paper_trading.paper_trading_engine import account_buying_power
+
+    funds = cash_summary(db, account.current_capital)
+    funds["buying_power"] = round(account_buying_power(db, account), 2)
+    return funds
+
+
+def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradingAccount, english: bool = False, funds: dict | None = None) -> tuple[str, str]:
     """格式化盘前计划，返回 (title, body)。信号会自动去重。"""
     title = "[Paper trading pre-market plan]" if english else "【模拟盘盘前计划】"
     if not signals:
@@ -252,7 +269,7 @@ def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradi
 
     deduped = _dedup_signals(signals)
 
-    lines = [f"Available capital: {account.current_capital:,.2f}\n" if english else f"可用资金: {account.current_capital:,.2f}\n"]
+    lines = _funding_lines(account, funds, english)
     lines.append("Today's candidates:" if english else "今日候选:")
     for i, (sig, strat_count) in enumerate(deduped, 1):
         name = sig.stock_name or sig.stock_symbol
@@ -276,6 +293,7 @@ def _format_daily_summary(
     account: PaperTradingAccount,
     english: bool = False,
     total_equity: float | None = None,
+    funds: dict | None = None,
 ) -> tuple[str, str]:
     """格式化日终摘要，返回 (title, body)。"""
     # 总资产
@@ -310,7 +328,7 @@ def _format_daily_summary(
     else:
         lines.append("\nNo open positions" if english else "\n当前无持仓")
 
-    lines.append(f"\nAvailable capital: {account.current_capital:,.2f}" if english else f"\n可用资金: {account.current_capital:,.2f}")
+    lines.extend(_funding_lines(account, funds, english))
     return title, "\n".join(lines)
 
 
@@ -373,7 +391,8 @@ async def send_premarket_plan(*, markets: list[str] | None = None) -> None:
                     StrategySignalRun.entry_low.isnot(None),
                     StrategySignalRun.entry_high.isnot(None),
                 ).order_by(StrategySignalRun.rank_score.desc()).all())
-                title, body = _format_premarket_plan(signals, account, english=_report_is_english())
+                title, body = _format_premarket_plan(signals, account, english=_report_is_english(),
+                    funds=_account_funds(db, account))
                 day = calendar._resolve_date(calendar._to_market_code(market), None)
                 await mgr.notify(f"{title} {market} · {day}", body)
         finally:
@@ -412,7 +431,8 @@ async def send_daily_summary(*, markets: list[str] | None = None) -> None:
                 if alloc.get(market, 0.0) <= 0 and not positions and not trades:
                     continue
                 title, body = _format_daily_summary(trades, positions, account,
-                    english=_report_is_english(), total_equity=total_equity)
+                    english=_report_is_english(), total_equity=total_equity,
+                    funds=_account_funds(db, account))
                 day = calendar._resolve_date(calendar._to_market_code(market), None)
                 await mgr.notify(f"{title} {market} · {day}", body)
         finally:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import wraps
+from threading import RLock
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -18,12 +20,28 @@ from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import (
     PaperTradingAccount,
     PaperTradingPosition,
+    PaperTradingSettlement,
     PaperTradingTrade,
     StrategySignalRun,
 )
 from src.modules.strategy.backtest.cost_model import CostModel
+from src.modules.paper_trading.paper_settlement import (
+    buying_power, consume_cn_proceeds, record_sale, settle_due, settlement_date,
+)
 
 logger = logging.getLogger(__name__)
+
+# The scheduler and manual requests share one cash account in the server process.
+# Serialize reads and writes together so concurrent scans cannot spend one balance twice.
+ACCOUNT_LOCK = RLock()
+
+
+def _account_mutation(method):
+    @wraps(method)
+    def guarded(*args, **kwargs):
+        with ACCOUNT_LOCK:
+            return method(*args, **kwargs)
+    return guarded
 
 # 模拟盘交易成本(A股口径,Phase 1)。与回测共用同一成本模型。
 COST_MODEL = CostModel()
@@ -173,8 +191,12 @@ def allocations_from_excluded(excluded: list[str] | None) -> dict[str, float]:
 def compute_market_cash(
     initial_capital: float, ratio: float, realized_pnl: float, open_cost: float
 ) -> float:
-    """某市场可用现金 = 总资金×比例 + 该市场已实现盈亏 − 该市场持仓成本（纯函数，可单测）。"""
+    """某市场账面现金 = 总资金×比例 + 已实现盈亏 − 持仓含费投入。"""
     return initial_capital * ratio + realized_pnl - open_cost
+
+
+def position_buy_cost(pos: PaperTradingPosition) -> float:
+    return -COST_MODEL.fill("buy", pos.entry_price, pos.quantity).cash_delta
 
 
 def market_realized_open(db: Session, market: str) -> tuple[float, float]:
@@ -184,19 +206,15 @@ def market_realized_open(db: Session, market: str) -> tuple[float, float]:
         .filter(PaperTradingTrade.stock_market == market)
         .scalar()
     ) or 0.0
-    open_cost = (
-        db.query(
-            func.coalesce(
-                func.sum(PaperTradingPosition.entry_price * PaperTradingPosition.quantity),
-                0.0,
-            )
-        )
+    positions = (
+        db.query(PaperTradingPosition)
         .filter(
             PaperTradingPosition.status == "open",
             PaperTradingPosition.stock_market == market,
         )
-        .scalar()
-    ) or 0.0
+        .all()
+    )
+    open_cost = sum(position_buy_cost(p) for p in positions)
     return float(realized), float(open_cost)
 
 
@@ -207,7 +225,16 @@ def market_available_cash(
     alloc = alloc or market_allocations_or_default(account)
     ratio = alloc.get(market, 0.0)
     realized, open_cost = market_realized_open(db, market)
-    return compute_market_cash(account.initial_capital, ratio, realized, open_cost)
+    cash = compute_market_cash(account.initial_capital, ratio, realized, open_cost)
+    now = _utc_now()
+    return min(buying_power(db, cash, market, now=now),
+               buying_power(db, account.current_capital, market, now=now, all_markets=True))
+
+
+def account_buying_power(db: Session, account: PaperTradingAccount) -> float:
+    """Aggregate allocated limits, capped by the shared cash balance."""
+    return min(buying_power(db, account.current_capital, "CN", now=_utc_now(), all_markets=True),
+               sum(market_available_cash(db, account, m) for m in ALL_MARKETS))
 
 
 def _serialize_position(pos: PaperTradingPosition) -> dict:
@@ -431,10 +458,18 @@ class PaperTradingEngine:
                 signal_action=sig.action or "",
                 strategy_code=sig.strategy_code or "",
                 opened_at=_utc_now(),
+                settlement_date=settlement_date(sig.stock_market, _utc_now()),
             )
             db.add(pos)
             account.current_capital -= buy_outlay
+            if mkt == "CN":
+                consume_cn_proceeds(db, buy_outlay, now=_utc_now())
             market_cash[mkt] = avail - buy_outlay
+            # A different market's cached limit must also reflect this outlay.
+            for other in ALL_MARKETS:
+                if other != mkt:
+                    market_cash[other] = min(market_cash[other], buying_power(
+                        db, account.current_capital, other, now=_utc_now(), all_markets=True))
             open_keys.add((sig.stock_symbol, sig.stock_market))
             new_keys.add((sig.stock_symbol, sig.stock_market))
             entry_events.append((pos, sig))
@@ -508,6 +543,7 @@ class PaperTradingEngine:
 
         # 回收资金(卖出净回收,已扣卖出费)
         account.current_capital += sell_proceeds
+        record_sale(db, trade, sell_proceeds)
         account.total_pnl += pnl
         account.total_trades += 1
         if pnl > 0:
@@ -665,13 +701,16 @@ class PaperTradingEngine:
             if drawdown > account.max_drawdown_pct:
                 account.max_drawdown_pct = round(drawdown, 2)
 
+    @_account_mutation
     def _scan_sync(self) -> dict:
         """同步扫描（在线程中执行）。"""
         db = SessionLocal()
         try:
             account = self._get_or_create_account(db)
+            settled = settle_due(db, now=_utc_now())
+            db.commit()
             if not account.enabled:
-                return {"status": "disabled"}
+                return {"status": "disabled", "settled": settled}
 
             opened, new_keys, entry_events = self._check_entries(db, account)
             closed, exit_events = self._check_exits(db, account, skip_keys=new_keys)
@@ -690,6 +729,7 @@ class PaperTradingEngine:
                 "status": "ok",
                 "opened": opened,
                 "closed": closed,
+                "settled": settled,
                 "entry_events": serialized_entries,
                 "exit_events": serialized_exits,
             }
@@ -706,6 +746,7 @@ class PaperTradingEngine:
         await self._send_notifications(result)
         return result
 
+    @_account_mutation
     def close_position_manual(self, position_id: int) -> dict:
         """手动平仓。"""
         db = SessionLocal()
@@ -740,6 +781,7 @@ class PaperTradingEngine:
                 return {"ok": False, "error": "该市场当前非交易时段，无法成交"}
 
             trade = self._close_position(db, account, pos, exit_price, "manual")
+            settle_due(db, now=_utc_now())
             self._update_account_metrics(db, account)
             db.commit()
             # 序列化后返回，避免 db.close() 后 ORM 对象 detached
@@ -777,10 +819,12 @@ class PaperTradingEngine:
         except Exception:
             logger.exception("[模拟盘] 通知发送失败")
 
+    @_account_mutation
     def reset_account(self) -> dict:
         """重置模拟盘（清空所有数据）。"""
         db = SessionLocal()
         try:
+            db.query(PaperTradingSettlement).delete()
             db.query(PaperTradingPosition).delete()
             db.query(PaperTradingTrade).delete()
             account = db.query(PaperTradingAccount).first()
