@@ -56,6 +56,13 @@ def test_recent_closed_quote_is_not_live(monkeypatch, status):
     data = assistant_quote_fields("HK", {"source_timestamp": "2026-10-08T16:00:00+08:00"}, datetime.fromisoformat("2026-10-08T16:01:00+08:00"))
     assert data["freshness"] == "delayed"
     assert not data["is_realtime"]
+    assert data["quote_semantics"] == "provider_snapshot" and data["bar_close_confirmed"] is False
+
+
+def test_session_status_cannot_confirm_a_closing_price():
+    invocation = SimpleNamespace(tool_name="get_stock_quote", call_id="quote", status="completed", summary="供应商快照", arguments={"symbol":"600519","market":"CN"}, observed_at=datetime.now(UTC), source_data=[], result_data={"symbol":"600519","market":"CN","current_price":100,"market_status":"break","freshness":"delayed","bar_close_confirmed":False})
+    result = build_deterministic_assistant_result(task_id=1, answer="午休报价", invocations=[invocation], language="zh-CN")
+    assert any("本次未验证收盘已确认" in item for item in result.missing_data)
 
 
 def test_indicator_periods_and_consecutive_sessions_are_not_request_horizons():
@@ -99,6 +106,21 @@ def test_ordinary_unsupported_wording_cannot_reach_alert_approval(text, gaps):
 @pytest.mark.parametrize("symbol,market", [("AAPL", "US"), ("600519", "HK"), ("000001", "CN")])
 def test_explicit_alert_instrument_cannot_be_replaced(symbol, market):
     assert "instrument differs" in alert_capability_error(request("CN:600519 价格高于999999时提醒"), "create_price_alert", {"symbol": symbol, "market": market, "target_price": 999999})
+
+
+def test_named_target_can_be_resolved_even_on_a_different_stock_page():
+    req = request("给腾讯设置股价高于999999的提醒", {"stock_symbol":"600519", "stock_market":"CN"})
+    assert alert_capability_error(req, "create_price_alert", {"symbol":"00700", "market":"HK", "target_price":999999}) is None
+
+
+def test_older_checkpoint_cannot_bypass_newly_recognized_capability_gap():
+    text = "CN:600519 收盘高于999999才提醒，两周有效"
+    plan = inspect_watch_request(text, now=datetime(2026,10,8,tzinfo=UTC))
+    plan["unsupported_conditions"] = []  # A persisted plan from the old parser.
+    expiry = plan["horizon"]["expire_at"]
+    req = request(text, {"watch_request":plan})
+    assert "bar_close_confirmation" in alert_capability_error(req, "create_price_alert", {"symbol":"600519", "market":"CN", "target_price":999999, "expire_at":expiry})
+    assert req.context["watch_request"]["horizon"]["expire_at"] == expiry
 
 
 def test_channel_choice_does_not_change_condition_logic():

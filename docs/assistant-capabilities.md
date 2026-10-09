@@ -14,6 +14,9 @@ The assistant preserves source time separately from retrieval time. Quotes inclu
 provider, source timestamp when verified, trading date, market status and freshness.
 Unknown timestamps and closed or stale quotes cannot establish a live price; daily
 changes remain available as source fields instead of being presented as today's move.
+Quotes explicitly describe provider snapshots with no verified bar-close confirmation.
+Break, closed or delayed status does not establish an official closing price, last
+trade or guaranteed update time. Stateful bar-close triggers remain unsupported.
 
 `check_watch_request` reads the original user turn once and returns explicit
 instruments, portfolio/watchlist scope, a supported relative horizon, requested

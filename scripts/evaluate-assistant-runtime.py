@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import time
 from datetime import UTC, datetime
@@ -35,6 +36,15 @@ def report_status(cases, results, mode):
     if mode != "live-model" or set(cases) != set(REQUIRED_CASES) or {c["id"] for c in results if c["status"] == "PASS"} != set(REQUIRED_CASES):
         return "INCOMPLETE"
     return "PASS"
+
+
+def unsupported_closing_claim(answer):
+    return bool(re.search(r"(?:可视为|相当于|就是)[^。；\n]{0,15}(?:收盘价|最后成交价)|该报价是[^。；\n]{0,25}(?:最后[^。；\n]*(?:盘面价格|成交)|收盘价)", answer))
+
+
+def utc_instant(value):
+    parsed = datetime.fromisoformat(value)
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 class RuntimeEvaluation:
@@ -120,6 +130,10 @@ class RuntimeEvaluation:
         assert quote_data.get("current_price", 0) > 0, "The positive quote scenario has no price"
         assert quote_data.get("source_timestamp") or quote_data.get("quote_date"), "The positive quote scenario has no actual source time"
         assert quote_data["is_realtime"] == (quote_data["freshness"] == "fresh")
+        assert quote_data["quote_semantics"] == "provider_snapshot" and quote_data["bar_close_confirmed"] is False
+        conversation = self.api("GET", f"/api/assistant/conversations/{task['conversation_id']}")
+        answer = next(m["content"] for m in reversed(conversation["messages"]) if m["role"] == "assistant")
+        assert not unsupported_closing_claim(answer), "The answer infers a closing price from an unverified quote snapshot"
         assert quote["freshness"] == quote_data["freshness"] and quote["market_status"] == quote_data["market_status"]
         assert all(e["evidence_kind"] == "local_snapshot" for e in evidence if e["tool_name"] == "get_market_status"), "Market calendar is incorrectly treated as external source data"
         if not any(e["evidence_kind"] == "source_data" and e["freshness"] in {"unknown", "stale"} for e in evidence):
@@ -130,7 +144,7 @@ class RuntimeEvaluation:
                 if line.startswith("id:"):
                     ids.append(int(line.split(":", 1)[1]))
         assert ids and ids == sorted(set(ids)) and min(ids) > cursor, "Replay duplicates or loses sequence ordering"
-        return {"task_id": task_id, "model": task["model"], "quote_evidence": quote, "disconnect_cursor": cursor, "replayed_event_ids": ids, "invocations": calls}
+        return {"task_id": task_id, "model": task["model"], "quote_evidence": quote, "answer": answer, "disconnect_cursor": cursor, "replayed_event_ids": ids, "invocations": calls}
 
     def discovery_watchlist(self):
         task_id = self.task("通过可用工具读取真实自选库，列出自选股票代码和市场，不要用持仓列表代替自选；缺少工具请先搜索加载。")
@@ -271,7 +285,7 @@ class RuntimeEvaluation:
         assert set(json.loads(rule["notify_channel_ids"])) <= {c["id"] for c in channels} and json.loads(rule["notify_channel_ids"])
         calls = self.invocations(task_id)
         readback = json.loads(next(c["result_data"] for c in calls if c["tool_name"] == "create_price_alert" and c["status"] == "completed"))
-        assert readback["condition_group"] == group and datetime.fromisoformat(readback["expire_at"]) == datetime.fromisoformat(rule["expire_at"])
+        assert readback["condition_group"] == group and utc_instant(readback["expire_at"]) == utc_instant(rule["expire_at"]), "Rule readback expiry differs from the stored UTC instant"
         return {"task_id":task_id,"model":task["model"],"rule":rule,"invocations":calls}
 
     def research_history(self):

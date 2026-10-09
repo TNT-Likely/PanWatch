@@ -255,6 +255,8 @@ def _evidence_and_facts(
             change_pct = _number(data.get("change_pct")) if data.get("is_realtime") else None
             if data.get("freshness") != "fresh":
                 missing_data.append(_localized(language, f"{target} 报价时效为 {data.get('freshness', 'unknown')}，数据时点 {data.get('source_timestamp') or data.get('quote_date') or '未知'}，不能视为当前实时行情。", f"{target} quote freshness is {data.get('freshness', 'unknown')}; source time {data.get('source_timestamp') or data.get('quote_date') or 'unknown'}. It does not establish a current live price."))
+            if data.get("market_status") in {"closed", "pre_market", "after_hours", "break"}:
+                missing_data.append(_localized(language, f"{target} 的交易时段状态不证明该供应商快照是官方收盘价或最后成交价；本次未验证收盘已确认。", f"{target} session status does not establish that the provider snapshot is an official closing price or last trade; bar-close confirmation was not verified."))
             if price is None:
                 missing_data.append(
                     _localized(language, f"{target or '该标的'} 缺少最新价。", f"The latest price is missing for {target or 'the symbol'}."),

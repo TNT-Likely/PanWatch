@@ -10,6 +10,16 @@ spec.loader.exec_module(evaluation)
 
 
 class RuntimeEvaluationTests(unittest.TestCase):
+    def test_expiry_readback_compares_the_same_instant_across_timezones(self):
+        stored = evaluation.utc_instant("2026-10-16 03:41:30.215177")
+        self.assertEqual(stored, evaluation.utc_instant("2026-10-16T03:41:30.215177+00:00"))
+        self.assertEqual(stored, evaluation.utc_instant("2026-10-16T11:41:30.215177+08:00"))
+        self.assertNotEqual(stored, evaluation.utc_instant("2026-10-16T03:41:30.215177+08:00"))
+
+    def test_closing_claim_check_distinguishes_positive_and_negative_claims(self):
+        self.assertTrue(evaluation.unsupported_closing_claim("该报价是 11:30 收盘前最后一次盘面价格；可视为上午收盘价。"))
+        self.assertFalse(evaluation.unsupported_closing_claim("这是供应商快照，不能视为上午收盘价，也不证明最后成交价。"))
+
     def test_rule_identity_comes_from_its_related_stock(self):
         with sqlite3.connect(":memory:") as db:
             db.row_factory = sqlite3.Row

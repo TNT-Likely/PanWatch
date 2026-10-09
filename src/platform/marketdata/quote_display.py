@@ -86,6 +86,8 @@ def assistant_quote_fields(market: str, quote: dict, now: datetime | None = None
         "freshness": freshness,
         "freshness_basis": basis,
         "is_realtime": current,
+        "quote_semantics": "provider_snapshot",
+        "bar_close_confirmed": False,
         "change_pct": quote.get("change_pct") if current else None,
         "change_amount": quote.get("change_amount") if current else None,
         "source_change_pct": quote.get("change_pct"),

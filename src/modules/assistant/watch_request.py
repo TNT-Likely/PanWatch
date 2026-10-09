@@ -116,9 +116,13 @@ def alert_capability_error(request, tool_name: str, arguments: dict) -> str | No
     # Use the trusted snapshot on resume so relative horizons do not move.
     plan = request.context.setdefault("watch_request", inspect_watch_request(original_user_text(request), context=request.context))
     changes_conditions = tool_name == "create_price_alert" or any(k in arguments for k in ("condition_group", "direction", "target_price"))
-    if changes_conditions and plan["unsupported_conditions"]:
-        return "Unsupported alert conditions: " + ", ".join(plan["unsupported_conditions"]) + ". Explain the limitation; do not silently substitute intraday thresholds."
-    if tool_name == "create_price_alert" and plan["instruments"]:
+    original = plan.get("original_text") or original_user_text(request)
+    # An older pending checkpoint may predate a newly recognized limitation.
+    # Recheck capability gaps without moving the saved relative expiry.
+    gaps = list(dict.fromkeys([*plan["unsupported_conditions"], *inspect_watch_request(original, context=request.context)["unsupported_conditions"]]))
+    if changes_conditions and gaps:
+        return "Unsupported alert conditions: " + ", ".join(gaps) + ". Explain the limitation; do not silently substitute intraday thresholds."
+    if tool_name == "create_price_alert" and plan["instruments"] and re.search(r"\b(?:CN|HK|US)\s*:\s*[A-Za-z0-9.]+", original, re.I):
         market = str(arguments.get("market") or "CN").upper()
         symbol = str(arguments.get("symbol") or "").upper()
         if market == "HK" and symbol.isdigit():
