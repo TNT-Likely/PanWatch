@@ -185,6 +185,10 @@ export function AssistantResultCard({
             <ul className="mt-2 space-y-1.5">
               {result.evidence.map((item) => {
                 const sourceUrl = safeExternalUrl(item.source_url)
+                const kind = item.evidence_kind || 'source_data'
+                const isSnapshot = kind === 'local_snapshot'
+                const isDiscovery = kind === 'tool_discovery'
+                const snapshotTime = formatObservedAt(item.data_at || item.observed_at, i18n.language)
                 return (
                   <li key={item.id} className="rounded-lg border border-border/40 px-2 py-1.5">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -193,13 +197,14 @@ export function AssistantResultCard({
                           {item.source_name}<ExternalLink className="h-3 w-3" />
                         </a>
                       ) : <span className="font-medium">{item.source_name}</span>}
-                      <span className={`rounded px-1.5 py-0.5 text-[9px] ${item.freshness === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : item.freshness === 'stale' ? 'bg-rose-500/10 text-rose-600' : 'bg-amber-500/10 text-amber-600'}`}>
-                        {tr(`freshness.${item.freshness}`)}
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] ${isSnapshot || isDiscovery ? 'bg-primary/5 text-muted-foreground' : item.freshness === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : item.freshness === 'stale' ? 'bg-rose-500/10 text-rose-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                        {tr(isDiscovery ? 'toolDiscovery' : isSnapshot ? 'localSnapshot' : `freshness.${item.freshness}`)}
                       </span>
-                      {item.observed_at && <span className="text-[10px] text-muted-foreground">{tr('observedAt', { time: formatObservedAt(item.observed_at, i18n.language) })}</span>}
+                      {isSnapshot && snapshotTime && <span className="text-[10px] text-muted-foreground">{tr('snapshotAt', { time: snapshotTime })}</span>}
+                      {!isSnapshot && item.observed_at && <span className="text-[10px] text-muted-foreground">{tr(isDiscovery ? 'executedAt' : 'observedAt', { time: formatObservedAt(item.observed_at, i18n.language) })}</span>}
                       {item.market_status && <span className="text-[10px] text-muted-foreground">{tr('marketStatus', { status: item.market_status })}</span>}
                       {item.quote_date && <span className="text-[10px] text-muted-foreground">{tr('quoteDate', { date: item.quote_date })}</span>}
-                      {item.data_at && <span className="text-[10px] text-muted-foreground">{tr('dataAt', { time: formatObservedAt(item.data_at, i18n.language) || item.data_at })}</span>}
+                      {kind === 'source_data' && item.data_at && <span className="text-[10px] text-muted-foreground">{tr('dataAt', { time: formatObservedAt(item.data_at, i18n.language) || item.data_at })}</span>}
                       {(item.period_start || item.period_end) && (
                         <span className="text-[10px] text-muted-foreground">
                           {tr('coverage', { start: item.period_start || '—', end: item.period_end || '—' })}

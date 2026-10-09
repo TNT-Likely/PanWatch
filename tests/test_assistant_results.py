@@ -2,6 +2,9 @@
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from copy import deepcopy
+
+import pytest
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -168,4 +171,78 @@ def test_conversation_restores_legacy_result_and_trace_without_answer_payload():
     invocation = repository.list_task_tool_invocations(task.id)[0]
     assert invocation.result_data == {}
     session.close()
+    engine.dispose()
+
+
+def test_discovery_and_rule_snapshots_do_not_report_missing_source_time():
+    from src.modules.assistant.result_builder import build_deterministic_assistant_result
+
+    queried_at = datetime(2026, 10, 9, 1, 24, tzinfo=UTC)
+    result = build_deterministic_assistant_result(
+        task_id=9, answer="只读查询完成。", language="zh-CN",
+        invocations=[
+            _invocation("tool_search", call_id="search", data={}, observed_at=queried_at),
+            _invocation("get_price_alerts", call_id="rules", data={"items": []}, observed_at=queried_at),
+            _invocation("get_monitoring_health", call_id="health", data={},
+                        sources=[{"name": "Health", "as_of": queried_at.isoformat()}], observed_at=queried_at),
+        ],
+    )
+    assert [item.evidence_kind for item in result.evidence] == ["tool_discovery", "local_snapshot", "local_snapshot"]
+    assert result.evidence[0].data_at is None
+    assert result.evidence[1].data_at == queried_at.isoformat()
+    assert result.evidence[1].freshness_basis == "observed_at"
+    assert not result.risks
+
+
+@pytest.mark.parametrize("language", ["zh-CN", "en-US"])
+@pytest.mark.parametrize("external", [False, True])
+def test_restored_results_remove_only_unsupported_time_warnings(language, external):
+    from src.modules.assistant.result_schemas import SOURCE_TIME_WARNINGS, AssistantResult
+
+    historical_at = "2026-10-08T22:24:48+00:00"
+    evidence = [{"id": "rules", "tool_name": "get_price_alerts", "source_name": "Rules", "summary": "6 rules",
+                 "observed_at": historical_at, "data_at": None, "freshness": "unknown"}]
+    if external:
+        evidence.append({"id": "news", "tool_name": "get_stock_news", "source_name": "News", "summary": "News", "observed_at": historical_at, "freshness": "unknown"})
+    payload = {"evidence": evidence, "risks": [SOURCE_TIME_WARNINGS[language], "Keep this independent risk"]}
+    before = deepcopy(payload)
+    result = AssistantResult.model_validate(payload)
+    assert result.evidence[0].data_at == historical_at
+    assert result.evidence[0].evidence_kind == "local_snapshot"
+    assert (SOURCE_TIME_WARNINGS[language] in result.risks) is external
+    assert "Keep this independent risk" in result.risks
+    if external:
+        assert result.evidence[1].data_at is None
+        assert result.evidence[1].evidence_kind == "source_data"
+        assert result.evidence[1].needs_source_time_warning
+    assert payload == before
+
+
+def test_history_and_task_snapshots_normalize_without_rewriting_stored_result():
+    from src.modules.assistant.repository import AssistantRepository
+    from src.modules.assistant.service import AssistantService
+    from src.modules.assistant.result_schemas import SOURCE_TIME_WARNINGS
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with sessionmaker(bind=engine)() as session:
+        repository = AssistantRepository(session)
+        conversation = repository.create_conversation(stock_symbol=None, stock_market=None, initial_context=None)
+        task = repository.create_task(conversation_id=conversation.id, user_message_id=None, context={})
+        repository.claim_task(task.id)
+        legacy = {"evidence": [{"id": "rules", "tool_name": "get_price_alerts", "source_name": "Rules", "summary": "6 rules",
+                                "observed_at": "2026-10-08T22:24:48Z", "freshness": "unknown"}],
+                  "risks": [SOURCE_TIME_WARNINGS["zh-CN"]]}
+        repository.complete_task_with_message(task.id, conversation.id, "历史查询。", result_data=legacy)
+        service = AssistantService(repository)
+        service._report_language = lambda: "zh-CN"
+        detail = service.get_conversation(conversation.id)
+        message = next(item for item in detail.messages if item.role == "assistant")
+        assert message.result.evidence[0].evidence_kind == "local_snapshot"
+        assert not message.result.risks
+        snapshot = service.get_task_snapshot(task.id)
+        assert snapshot["result"]["evidence"][0]["data_at"] == "2026-10-08T22:24:48+00:00"
+        assert not snapshot["result"]["risks"]
+        session.refresh(task)
+        assert task.result_data == legacy
     engine.dispose()

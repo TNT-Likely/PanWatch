@@ -43,6 +43,7 @@ from src.platform.persistence.models import (
 from src.platform.tasking.contracts import TaskEvent, TaskEventType, TaskStatus
 
 from .trace import historical_trace_event
+from .result_schemas import restored_result_payload
 
 
 class AssistantRepository:
@@ -1144,7 +1145,7 @@ class AssistantRepository:
             "started_at": self._utc_timestamp(task.started_at),
             "finished_at": self._utc_timestamp(task.finished_at),
             "user_message_id": task.user_message_id,
-            "result": task.result_data,
+            "result": restored_result_payload(task.result_data),
             "model": task.model,
             "duration_ms": self._task_duration_ms(task),
             "usage": {

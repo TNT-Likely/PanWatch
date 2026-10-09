@@ -19,6 +19,7 @@ from .result_schemas import (
     AssistantJudgment,
     AssistantNextAction,
     AssistantResult,
+    SOURCE_TIME_WARNINGS,
 )
 from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
 
@@ -633,11 +634,11 @@ def build_deterministic_assistant_result(
             if step["status"] == "completed" and not ids:
                 missing_data.append(_localized(language, f"诊断步骤 {step['title']} 未保留可核对依据。", f"Diagnosis step {step['title']} lacks verifiable evidence."))
     risks = list(deterministic_risks)
-    if any(item.freshness in {"stale", "unknown"} for item in evidence):
+    if any(item.needs_source_time_warning for item in evidence):
         warning = _localized(
             language,
-            "部分依据缺少可验证的数据时点或已经过期，请结合最新数据复核。",
-            "Some evidence has an unknown or stale data time; verify it against current data.",
+            SOURCE_TIME_WARNINGS["zh-CN"],
+            SOURCE_TIME_WARNINGS["en-US"],
         )
         if warning not in risks:
             risks.append(warning)

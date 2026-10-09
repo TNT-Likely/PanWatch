@@ -5,7 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+SOURCE_TIME_WARNINGS = {
+    "zh-CN": "部分依据缺少可验证的数据时点或已经过期，请结合最新数据复核。",
+    "en-US": "Some evidence has an unknown or stale data time; verify it against current data.",
+}
+
+
+def evidence_kind(tool_name: str) -> Literal["source_data", "tool_discovery", "local_snapshot"]:
+    # Only these contracts establish execution metadata or a local DB snapshot.
+    # Never infer a market/news source timestamp from its retrieval time.
+    if tool_name == "tool_search":
+        return "tool_discovery"
+    if tool_name in {"get_price_alerts", "get_monitoring_health"}:
+        return "local_snapshot"
+    return "source_data"
 
 
 class AssistantEvidence(BaseModel):
@@ -14,6 +30,7 @@ class AssistantEvidence(BaseModel):
     source_name: str
     source_url: str | None = None
     summary: str
+    evidence_kind: Literal["source_data", "tool_discovery", "local_snapshot"] = "source_data"
     observed_at: datetime | None = None
     data_at: str | None = None
     period_start: str | None = None
@@ -24,6 +41,20 @@ class AssistantEvidence(BaseModel):
     quote_date: str | None = None
     symbol: str | None = None
     market: str | None = None
+
+    @model_validator(mode="after")
+    def classify_time_semantics(self):
+        self.evidence_kind = evidence_kind(self.tool_name)
+        # Legacy rule reads retained observed_at, but had no separate as_of.
+        # This is the historical query snapshot, never the time of this read.
+        if self.evidence_kind == "local_snapshot" and not self.data_at and self.observed_at:
+            self.data_at = self.observed_at.isoformat()
+            self.freshness_basis = "observed_at"
+        return self
+
+    @property
+    def needs_source_time_warning(self) -> bool:
+        return self.evidence_kind == "source_data" and self.freshness in {"stale", "unknown"}
 
 
 class AssistantFact(BaseModel):
@@ -57,3 +88,18 @@ class AssistantResult(BaseModel):
     missing_data: list[str] = Field(default_factory=list)
     evidence: list[AssistantEvidence] = Field(default_factory=list)
     next_actions: list[AssistantNextAction] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def restore_time_warnings(self):
+        # Correct only our exact generated warning in stored results. Preserve
+        # user/model risks and any warning supported by market/news evidence.
+        if self.evidence and not any(item.needs_source_time_warning for item in self.evidence):
+            self.risks = [item for item in self.risks if item not in SOURCE_TIME_WARNINGS.values()]
+        return self
+
+
+def restored_result_payload(value: dict | None) -> dict | None:
+    """Normalize a persisted response without rewriting its historical record."""
+    if not isinstance(value, dict) or "evidence" not in value:
+        return value
+    return AssistantResult.model_validate(value).model_dump(mode="json")

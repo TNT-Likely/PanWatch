@@ -855,12 +855,13 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             )]
 
         items = await run_db_operation(db_bind, load)
+        snapshot_at = datetime.now(UTC)
         if not items:
             return ToolResult.success(
                 summary="没有找到符合条件的价格提醒。",
                 data={"count": 0, "items": []},
-                sources=[{"name": "PanWatch 价格提醒"}],
-                observed_at=datetime.now(UTC),
+                sources=[{"name": "PanWatch 价格提醒", "as_of": snapshot_at.isoformat()}],
+                observed_at=snapshot_at,
             )
         summary = "；".join(
             f"#{item['rule_id']} {item['stock_name'] or item['symbol']}（{item['market']}:{item['symbol']}，"
@@ -872,8 +873,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         return ToolResult.success(
             summary=f"找到 {len(items)} 条价格提醒：{summary}",
             data={"count": len(items), "items": items},
-            sources=[{"name": "PanWatch 价格提醒"}],
-            observed_at=datetime.now(UTC),
+            sources=[{"name": "PanWatch 价格提醒", "as_of": snapshot_at.isoformat()}],
+            observed_at=snapshot_at,
         )
 
     async def update_price_alert(_request: RunRequest, arguments: dict) -> ToolResult:

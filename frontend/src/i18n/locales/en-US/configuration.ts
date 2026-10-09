@@ -492,6 +492,7 @@ export const configuration = {
       facts: 'Evidence-backed facts', inferences: 'Analysis', risks: 'Risks and gaps', evidence: '{{count}} evidence items', nextActions: 'Next steps', observedAt: 'Retrieved {{time}}', dataAt: 'Data as of {{time}}', coverage: 'Covers {{start}} to {{end}}', configureAlert: 'Configure alert', targetPrice: 'Target price', above: 'at or above', below: 'at or below', requestApproval: 'Request approval', alertPrompt: 'Create an intraday alert for {{target}} when the price is {{direction}} {{price}}',
       diagnosisJudgments: 'Diagnosis and supporting evidence', diagnosisFailed: 'Step failed', diagnosisNoEvidence: 'No verifiable evidence for this judgment', marketStatus: 'Market status {{status}}', quoteDate: 'Quote trading date {{date}}',
       freshness: { fresh: 'Fresh', delayed: 'Delayed', stale: 'May be stale', unknown: 'Time unknown' },
+      toolDiscovery: 'Tool discovery', localSnapshot: 'Query snapshot', snapshotAt: 'Queried {{time}}', executedAt: 'Executed {{time}}',
     },
     errors: {
       permission_denied: 'This operation is blocked by the Assistant tool permissions. Review them before trying again.',

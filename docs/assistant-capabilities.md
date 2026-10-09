@@ -2,6 +2,12 @@
 
 [简体中文](assistant-capabilities.zh-CN.md)
 
+Evidence distinguishes external data, tool discovery and local query snapshots.
+Tool discovery shows execution time; price-alert rules and monitoring health show
+the original query snapshot time instead of market-data freshness. Historical
+responses retain their captured timestamps without refreshing stored facts.
+Unknown or stale external source times still produce warnings.
+
 The assistant preserves source time separately from retrieval time. Quotes include
 provider, source timestamp when verified, trading date, market status and freshness.
 Unknown timestamps and closed or stale quotes cannot establish a live price; daily

@@ -489,6 +489,7 @@ export const configuration = {
       facts: '事实依据', inferences: '分析判断', risks: '风险与不足', evidence: '{{count}} 条数据依据', nextActions: '下一步', observedAt: '获取于 {{time}}', dataAt: '数据截至 {{time}}', coverage: '覆盖 {{start}} 至 {{end}}', configureAlert: '设置提醒条件', targetPrice: '目标价格', above: '达到或高于', below: '跌至或低于', requestApproval: '提交审批', alertPrompt: '为 {{target}} 创建价格{{direction}} {{price}} 时的盘中提醒',
       diagnosisJudgments: '诊断判断与依据', diagnosisFailed: '步骤失败', diagnosisNoEvidence: '此判断缺少可核对依据', marketStatus: '市场状态 {{status}}', quoteDate: '报价交易日 {{date}}',
       freshness: { fresh: '较新', delayed: '有延迟', stale: '可能过期', unknown: '时间未知' },
+      toolDiscovery: '工具发现', localSnapshot: '查询快照', snapshotAt: '查询于 {{time}}', executedAt: '执行于 {{time}}',
     },
     errors: {
       permission_denied: '当前助手权限不允许执行该操作，请检查工具权限后重试。',

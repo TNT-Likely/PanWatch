@@ -27,6 +27,7 @@ export interface AssistantEvidence {
   source_name: string
   source_url?: string | null
   summary: string
+  evidence_kind?: 'source_data' | 'tool_discovery' | 'local_snapshot'
   observed_at?: string | null
   data_at?: string | null
   period_start?: string | null

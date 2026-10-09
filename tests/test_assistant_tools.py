@@ -564,6 +564,7 @@ def test_get_price_alerts_returns_compact_rules_and_supports_symbol_filter():
 
     assert result.ok is True
     assert result.data["count"] == 1
+    assert result.sources[0].as_of == result.observed_at.isoformat()
     assert result.data["items"] == [
         {
             "rule_id": 1,
@@ -581,6 +582,11 @@ def test_get_price_alerts_returns_compact_rules_and_supports_symbol_filter():
             "market_hours_mode": "trading_only", "expire_at": None, "notify_channel_ids": [],
         }
     ]
+    empty = asyncio.run(assistant_tools.build_panwatch_tool_registry(session).execute(
+        "get_price_alerts", _request(), {"symbol": "NOT_FOUND", "market": "CN"},
+    ))
+    assert empty.ok and empty.data["count"] == 0
+    assert empty.sources[0].as_of == empty.observed_at.isoformat()
     session.close()
     engine.dispose()
 
