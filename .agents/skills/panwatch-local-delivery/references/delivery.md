@@ -20,7 +20,9 @@ ZIP 仅包含 report/ 公开内容。打包前检查隐私、清单与引用，�
 
 ## PR
 
-沿用已有创建/更新 PR 授权；没有授权时先完成可审查源码和验证，再询问外部发布步骤。检查提交范围及 git diff --check，不提交 .docs/、AGENTS.md 或他人改动。
+完整功能交付默认自动提交本次源码、测试和可复用工具，推送本次用途分支，创建或更新 PR 并上传脱敏测试报告；用户已明确约定，无需重复询问。用户明确限制为仅本地、不推送、不建 PR 或不上传时遵循限制。先查询当前分支是否已有目标 PR，已有则更新，避免重复创建。检查提交范围及 git diff --check，不提交 .docs/、AGENTS.md 或他人改动，不直接推送 main。
+
+PR 关联本次实际验证的源码 SHA／内容 hash 和构建 hash。提交前后核对内容一致，提交产生的新 SHA 与原验收快照的关系写入交付回执；不能只修改报告里的 SHA 来声称新版已验收。失败或未完成项必须显式说明，必要时用 draft PR 保留可审查结果。
 
 英文 Conventional Commits 标题，正文使用当前 .github/PULL_REQUEST_TEMPLATE.md：
 
@@ -28,7 +30,7 @@ ZIP 仅包含 report/ 公开内容。打包前检查隐私、清单与引用，�
 |---|---|
 | Background | 用户问题、触发方式及影响 |
 | Changes | 模块对应的最终行为 |
-| Validation | 已执行命令/结果、实服 UI/API/runtime 覆盖、版本及报告入口 |
+| Validation | 已执行命令/结果、实服 UI/API/runtime 覆盖、版本、报告 ZIP 下载链接及 SHA256 |
 | Boundaries and risks | 失败、未执行、模拟边界、兼容性与依赖 |
 | Follow-up | 确实延期的事项；没有则 None |
 
@@ -38,11 +40,11 @@ PR 创建后，若工具提供 attach_artifact，将新 PR 附到当前对话；
 
 ## 独立附件
 
-仅本地交付时给 HTML/ZIP 绝对文件链接、hash 和打开说明；PR 可写包已本地交付、附件待挂载。没有外部链接时不制造下载入口。
+测试报告是 PR 的标准附件，采用包含离线 HTML、脱敏截图、逐项结果、版本身份和校验表的独立 ZIP，不以正文摘要替代完整报告，也不将报告加入源码提交。
 
-已授权上传本次包到目标 PR 时，固定包、核对身份/隐私/hash，通过当前可用的 GitHub 网页文件选择器上传，先读取浏览器工具说明并核对[官方附件能力](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files)。不要硬编码文件大小上限或使用内部上传接口。
+执行 [GitHub PR 附件交付](github-pr-attachments.md)：固定包，核对身份、隐私和 hash，通过网页文件选择器自动上传，将真实下载链接、打开说明及 SHA256 写入最新 PR 正文并回下载校验。CLI/API 没有 ZIP 上传接口不代表只能由用户手动上传。
 
-将附件链接写入最新 PR 正文，保留用户编辑；避免重复评论。发布后回下载核对大小、ZIP 可读性和 SHA256，回执留包外。上传与下载核验分开记录。登录/工具/权限受阻时保留本地完整包和具体原因，不为报告新建 Release、仓库或托管。
+仅本地交付或实际上传受阻时给 HTML/ZIP 绝对文件链接、hash 和打开说明。受阻不影响其他已获授权的 PR 步骤；正文注明 `Report attachment pending` 及具体原因。已上传但下载校验未完成时注明该阶段，不能写成全部交付完成。没有外部链接时不制造下载入口，不为报告新建 Release、仓库或托管。
 
 ## 人工交接
 
