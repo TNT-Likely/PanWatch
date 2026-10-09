@@ -143,6 +143,18 @@ def test_capability_check_keeps_unmet_requirements_in_result():
     assert any("收盘确认" in item and "均线触发" in item and "连续交易日满足" in item and "不代表提醒已创建" in item for item in result.missing_data)
 
 
+def test_unresolved_retry_cannot_report_empty_conditions_as_supported(database):
+    from src.modules.assistant.watch_request import resolve_watch_request
+    plan = resolve_watch_request("再试一下", [])
+    req = request("再试一下", {"watch_request":plan})
+    checked = asyncio.run(tools.build_panwatch_tool_registry(database).execute("check_watch_request", req, {}))
+    assert "尚不能判断" in checked.summary and "未发现" not in checked.summary
+    assert "no resolved" in alert_capability_error(req, "create_price_alert", {"symbol":"600519", "target_price":999999})
+    invocation = SimpleNamespace(tool_name="check_watch_request", call_id="check", status="completed", summary=checked.summary, arguments={}, observed_at=datetime.now(UTC), source_data=[], result_data=checked.data)
+    result = build_deterministic_assistant_result(task_id=1, answer="需澄清", invocations=[invocation], language="zh-CN")
+    assert any("不能判断原条件是否支持" in item for item in result.missing_data)
+
+
 @pytest.mark.parametrize("value", [None, "2", True, float("nan"), float("inf"), -1])
 def test_condition_values_fail_closed(value):
     with pytest.raises(ValueError):

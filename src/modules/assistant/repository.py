@@ -81,12 +81,21 @@ class AssistantRepository:
         return (
             self._session.query(ChatMessage)
             .filter(ChatMessage.conversation_id == conversation_id)
-            .order_by(ChatMessage.created_at.asc())
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
             .all()
         )
 
     def get_message(self, message_id: int) -> ChatMessage | None:
         return self._session.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+
+    def watch_request_for_message(self, conversation_id: int, message_id: int) -> dict | None:
+        task = (
+            self._session.query(AssistantTaskRun)
+            .filter(AssistantTaskRun.conversation_id == conversation_id, AssistantTaskRun.user_message_id == message_id)
+            .order_by(AssistantTaskRun.id.desc())
+            .first()
+        )
+        return (task.context or {}).get("watch_request") if task else None
 
     def latest_task_snapshot(self, conversation_id: int) -> dict | None:
         task = (

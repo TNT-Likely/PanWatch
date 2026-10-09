@@ -321,6 +321,7 @@ class AssistantTaskRunner:
             )
             original = next((m.content for m in reversed(messages) if m.role == "user" and m.content.strip()), "")
             watch_request = (task_run.context or {}).get("watch_request") or inspect_watch_request(original, context=dict(task_run.context or {}))
+            watch_request = service.refresh_legacy_watch_retry(task_run, watch_request)
             request = RunRequest(
                 run_id=str(task_id),
                 messages=messages,
@@ -390,10 +391,14 @@ class AssistantTaskRunner:
                 return
             client = service.build_failover_client()
             runtime = service.build_runtime(client)
+            task_run = service._repository.get_task_run(task_id)
+            resume_context = {k: v for k, v in dict(task_run.context or {}).items() if k not in {"tool_choice", "allowed_tool_names"}}
+            if resume_context.get("watch_request"):
+                resume_context["watch_request"] = service.refresh_legacy_watch_retry(task_run, resume_context["watch_request"])
             request = RunRequest(
                 run_id=str(task_id),
                 messages=checkpoint.messages,
-                context={k: v for k, v in dict(service._repository.get_task_run(task_id).context or {}).items() if k not in {"tool_choice", "allowed_tool_names"}},
+                context=resume_context,
                 limits=RunLimits(
                     max_steps=ASSISTANT_MAX_STEPS,
                     max_tool_calls=ASSISTANT_MAX_TOOL_CALLS,

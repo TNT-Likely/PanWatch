@@ -222,6 +222,17 @@ class RuntimeEvaluation:
         assert not task["pending_approvals"] and self.sql("select id from price_alert_rules") == before
         checks = [c for c in self.invocations(task_id) if c["tool_name"] == "check_watch_request" and c["status"] == "completed"]
         assert checks and set(json.loads(checks[0]["result_data"])["unsupported_conditions"]) >= {"bar_close_confirmation", "moving_average_trigger", "consecutive_sessions"}
+        retried = self.api("POST", f"/api/assistant/conversations/{task['conversation_id']}/tasks", json={"content":"再试一下"})
+        retry_id = retried["task_id"]
+        self.task_ids.append(retry_id)
+        retry = self.wait(retry_id)
+        self.require_completed(retry)
+        assert not retry["pending_approvals"] and self.sql("select id from price_alert_rules") == before
+        retry_checks = [c for c in self.invocations(retry_id) if c["tool_name"] == "check_watch_request" and c["status"] == "completed"]
+        assert retry_checks, "Explicit retry did not check the original watch request"
+        retry_plan = json.loads(retry_checks[0]["result_data"])
+        assert retry_plan["original_text"] == json.loads(checks[0]["result_data"])["original_text"]
+        assert set(retry_plan["unsupported_conditions"]) >= {"bar_close_confirmation", "moving_average_trigger", "consecutive_sessions"}
         variant_id = self.task("帮我给 CN:600519 设置提醒，只有连续三个交易日收盘高于999999才通知，不要改成盘中提醒。")
         variant = self.wait(variant_id)
         self.require_completed(variant)
@@ -229,7 +240,7 @@ class RuntimeEvaluation:
         variant_checks = [c for c in self.invocations(variant_id) if c["tool_name"] == "check_watch_request" and c["status"] == "completed"]
         assert variant_checks and set(json.loads(variant_checks[0]["result_data"])["unsupported_conditions"]) >= {"bar_close_confirmation", "consecutive_sessions"}
         assert any("尚未实现" in item for item in variant["result"]["missing_data"]), "Unmet conditions are absent from the structured result"
-        return {"task_id":task_id,"model":task["model"],"rules_unchanged":True,"check":checks[0],"ordinary_wording_task_id":variant_id,"ordinary_wording_check":variant_checks[0]}
+        return {"task_id":task_id,"model":task["model"],"rules_unchanged":True,"check":checks[0],"retry_task_id":retry_id,"retry_check":retry_checks[0],"ordinary_wording_task_id":variant_id,"ordinary_wording_check":variant_checks[0]}
 
     def monitoring_health(self):
         before = self.sql("select id,status,attempts from price_alert_deliveries order by id")

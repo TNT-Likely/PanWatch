@@ -232,6 +232,9 @@ def test_runner_executes_from_queued_snapshot_and_persists_terminal_event(monkey
         def get_conversation(self, conversation_id):
             return SimpleNamespace(messages=[])
 
+        def refresh_legacy_watch_retry(self, _task, plan):
+            return plan
+
         def complete_task_with_message(self, task_id, conversation_id, content):
             return self._repository.complete_task_with_message(
                 task_id,

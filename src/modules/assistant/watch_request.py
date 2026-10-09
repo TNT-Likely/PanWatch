@@ -37,6 +37,40 @@ def original_user_text(request) -> str:
     return next((m.content for m in reversed(request.messages) if m.role == "user" and m.content.strip()), "")
 
 
+def is_watch_retry(text: str) -> bool:
+    """Recognize only a whole-turn retry, never a request with new conditions."""
+    return bool(re.fullmatch(
+        r"(?:请|帮我)?\s*(?:再试(?:一下|一次)?|再检查(?:一下|一次)?|重新(?:试(?:一下|一次)?|检查(?:一下|一次)?)|重试|try\s+again|retry)[。.!！?？\s]*",
+        text.strip(), re.I,
+    ))
+
+
+def resolve_watch_request(text: str, previous_messages, *, context: dict | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """Resolve explicit retries from user history before model compression.
+
+    Stop at the nearest substantive user turn. Assistant text, tool content and
+    earlier topics cannot supply a rule or authorize a substitute.
+    """
+    now = now or datetime.now(UTC)
+    if not is_watch_retry(text):
+        return inspect_watch_request(text, now=now, context=context)
+    source = next((m for m in reversed(previous_messages) if m.role == "user" and m.content.strip() and not is_watch_retry(m.content)), None)
+    if source and re.search(r"提醒|预警|关注|筛选|盯|\balert\b|\bwatch\b", source.content, re.I):
+        anchor = getattr(source, "created_at", None) or now
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=UTC)
+        plan = inspect_watch_request(source.content, now=anchor, context=context)
+        plan.update({
+            "evaluated_at": now.isoformat(), "current_turn_text": text,
+            "request_source": "previous_user_turn",
+            "referenced_user_message_id": getattr(source, "id", None),
+        })
+        return plan
+    plan = inspect_watch_request(text, now=now, context=context)
+    plan["requires_clarification"] = ["referenced_request_missing"]
+    return plan
+
+
 def inspect_watch_request(text: str, *, now: datetime | None = None, context: dict | None = None) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     context = context or {}
@@ -115,6 +149,8 @@ def alert_capability_error(request, tool_name: str, arguments: dict) -> str | No
         return None
     # Use the trusted snapshot on resume so relative horizons do not move.
     plan = request.context.setdefault("watch_request", inspect_watch_request(original_user_text(request), context=request.context))
+    if "referenced_request_missing" in plan.get("requires_clarification", []):
+        return "The retry has no resolved user request. Ask which conditions to retry before proposing an alert."
     changes_conditions = tool_name == "create_price_alert" or any(k in arguments for k in ("condition_group", "direction", "target_price"))
     original = plan.get("original_text") or original_user_text(request)
     # An older pending checkpoint may predate a newly recognized limitation.

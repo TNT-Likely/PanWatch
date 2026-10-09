@@ -52,7 +52,7 @@ from .context_schemas import (
 from .context_summarizer import FailoverContextSummarizer
 from .llm_adapter import FailoverModelAdapter
 from .prompt import build_assistant_messages
-from .watch_request import alert_capability_error, condition_summary, inspect_watch_request
+from .watch_request import alert_capability_error, condition_summary, is_watch_retry, resolve_watch_request
 from .portfolio_diagnosis import PortfolioDiagnosisExtension
 from .repository import AssistantRepository
 from .result_builder import build_deterministic_assistant_result
@@ -756,15 +756,33 @@ class AssistantService:
         )
 
     def create_task(self, conversation_id: int, user_message_id: int):
-        conversation = self._require_conversation(conversation_id)
+        plan = self.watch_request_for_message(conversation_id, user_message_id)
         message = self._repository.get_message(user_message_id)
         content = message.content if message else ""
-        plan = inspect_watch_request(content, context={"stock_symbol": conversation.stock_symbol, "stock_market": conversation.stock_market})
         return self._repository.create_task(
             conversation_id=conversation_id,
             user_message_id=user_message_id,
             context={**self._write_action_context(content), "watch_request": plan},
         )
+
+    def watch_request_for_message(self, conversation_id: int, user_message_id: int) -> dict:
+        conversation = self._require_conversation(conversation_id)
+        message = self._repository.get_message(user_message_id)
+        content = message.content if message else ""
+        history = [row for row in self._repository.list_messages(conversation_id) if row.id < user_message_id]
+        plan = resolve_watch_request(content, history, context={"stock_symbol": conversation.stock_symbol, "stock_market": conversation.stock_market})
+        source_id = plan.get("referenced_user_message_id")
+        if source_id:
+            saved = self._repository.watch_request_for_message(conversation_id, source_id)
+            if saved and saved.get("original_text") == plan["original_text"] and saved.get("horizon"):
+                # Recheck current capabilities but never extend a saved expiry.
+                plan["horizon"] = saved.get("horizon")
+        return plan
+
+    def refresh_legacy_watch_retry(self, task_run, plan: dict) -> dict:
+        if task_run.user_message_id and is_watch_retry(plan.get("original_text", "")) and not plan.get("request_source"):
+            return self.watch_request_for_message(task_run.conversation_id, task_run.user_message_id)
+        return plan
 
     @staticmethod
     def _write_action_context(content: str) -> dict:

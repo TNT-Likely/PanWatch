@@ -18,7 +18,7 @@ Quotes explicitly describe provider snapshots with no verified bar-close confirm
 Break, closed or delayed status does not establish an official closing price, last
 trade or guaranteed update time. Stateful bar-close triggers remain unsupported.
 
-`check_watch_request` reads the original user turn once and returns explicit
+`check_watch_request` reads the original user request once and returns explicit
 instruments, portfolio/watchlist scope, a supported relative horizon, requested
 condition types/channels, and capability gaps. Relative expiry is anchored to task
 creation and retained through approval. This is a bounded parser, not a complete
@@ -28,6 +28,10 @@ consecutive-session, crossing and news-release triggers are not implemented.
 Explicit instrument writes preserve both symbol and market. Mixed AND/OR rules
 require nested logic and are rejected rather than flattened. A completed capability
 check does not mean that the requested alert exists; result details retain these gaps.
+Explicit whole-turn retries such as "try again" retain the preceding user request,
+its conditions and original expiry. Resolution happens before model context
+compression, uses user messages only, and stops at a newer topic. Unresolved
+retries require clarification; empty parsing does not establish capability support.
 
 Alerts support flat AND/OR combinations of price, percent change, turnover, volume
 and volume ratio, plus expiry, enabled channel IDs, market hours, cooldown, daily

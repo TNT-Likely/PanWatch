@@ -250,6 +250,8 @@ def _evidence_and_facts(
             gaps = [UNSUPPORTED_LABELS.get(key, (key, key))[language == "en-US"] for key in data.get("unsupported_conditions", [])]
             if gaps:
                 missing_data.append(_localized(language, "该请求包含尚未实现的条件：" + "、".join(gaps) + "；能力检查通过不代表提醒已创建。", "This request needs unsupported conditions: " + ", ".join(gaps) + ". A completed capability check does not mean an alert was created."))
+            if "referenced_request_missing" in data.get("requires_clarification", []):
+                missing_data.append(_localized(language, "尚未定位重试所指的用户请求，不能判断原条件是否支持；需明确标的和条件。", "The retry's original user request could not be resolved; its conditions cannot be assessed until clarified."))
         elif tool_name == "get_stock_quote":
             price = _number(data.get("current_price"))
             change_pct = _number(data.get("change_pct")) if data.get("is_realtime") else None

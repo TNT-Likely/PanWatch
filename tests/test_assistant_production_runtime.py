@@ -97,6 +97,57 @@ def test_production_policy_blocks_semantic_downgrade_before_approval():
     db.close();engine.dispose()
 
 
+def test_retry_policy_blocks_model_substitution_using_host_resolved_history():
+    engine, db, service, _ = setup()
+    original = "帮我设置 CN:600519 收盘站上20日均线且连续3天满足时提醒，不接受盘中替代。"
+    message = service.record_user_message(1, original)
+    service.create_task(1, message.id)
+    retry = service.record_user_message(1, "再试一下")
+    task = service.create_task(1, retry.id)
+    client = ScriptedProvider([('check_watch_request', {}), ('tool_search', {"query":"create_price_alert"}), ('create_price_alert', {"symbol":"600519", "direction":"above", "target_price":200}), (None, {})])
+    # Compressed model context may contain only the retry; host plan is intact.
+    req = RunRequest(run_id=str(task.id), messages=[ModelMessage(role='user', content='再试一下')], context=task.context)
+    result = asyncio.run(service.build_runtime(client).run(req, DurableRuntimeEventSink(service, task.id)))
+    assert result.status is RunStatus.COMPLETED and not result.pending_approvals
+    assert db.query(PriceAlertRule).count() == 0
+    calls = service._repository.list_task_tool_invocations(task.id)
+    checked = next(c for c in calls if c.tool_name == 'check_watch_request')
+    assert checked.result_data['original_text'] == original
+    assert set(checked.result_data['unsupported_conditions']) == {'bar_close_confirmation','moving_average_trigger','consecutive_sessions'}
+    assert any(e.data.get('error_code') == 'permission_denied' for e in service._repository.list_task_events(task.id))
+    db.close(); engine.dispose()
+
+
+def test_older_retry_approval_is_rechecked_before_execution():
+    from pan_agent import ApprovalDecision
+    engine, db, service, _ = setup()
+    message = service.record_user_message(1, "CN:600519 收盘站上20日均线且连续3天满足时提醒")
+    service.create_task(1, message.id)
+    retry = service.record_user_message(1, "再试一下")
+    old_plan = inspect_watch_request("再试一下")
+    task = service._repository.create_task(conversation_id=1, user_message_id=retry.id, context={"watch_request":old_plan})
+    client = ScriptedProvider([('tool_search', {"query":"create_price_alert"}), ('create_price_alert', {"symbol":"600519", "direction":"above", "target_price":999999}), (None, {})])
+    runtime = service.build_runtime(client)
+    req = RunRequest(run_id=str(task.id), messages=[ModelMessage(role='user', content='再试一下')], context=task.context)
+    sink = DurableRuntimeEventSink(service, task.id)
+
+    async def execute():
+        paused = await runtime.run(req, sink)
+        assert paused.status is RunStatus.WAITING_FOR_APPROVAL
+        approvals = service.pause_task(task.id, paused)
+        resolution = service.resolve_approval_decision(approvals[0].id, ApprovalDecision.APPROVED)
+        req.context['watch_request'] = service.refresh_legacy_watch_retry(task, old_plan)
+        finished = await runtime.resume(req, resolution.checkpoint, resolution.decisions, sink)
+        await sink.flush()
+        assert finished.status is RunStatus.PARTIAL
+        assert finished.error_code == 'unsupported_watch_request'
+
+    asyncio.run(execute())
+    assert db.query(PriceAlertRule).count() == 0
+    assert any(e.data.get('error_code') == 'unsupported_watch_request' for e in service._repository.list_task_events(task.id))
+    db.close(); engine.dispose()
+
+
 def test_diagnosis_virtual_tool_survives_later_active_research_exposure():
     engine,db,service,task=setup()
     client=ScriptedProvider([(None,{})])

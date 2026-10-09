@@ -39,8 +39,12 @@ def register_context_tools(registry, bind, tool_spec) -> None:
         # Ignore model-supplied paraphrases: they may drop a user condition.
         data = request.context.setdefault("watch_request", inspect_watch_request(original_user_text(request), context=request.context))
         unsupported = data["unsupported_conditions"]
+        if "referenced_request_missing" in data.get("requires_clarification", []):
+            summary = "无法定位本次重试所指的关注请求；请明确标的和条件。尚不能判断该请求是否支持。"
+        else:
+            summary = "请求已结构化；不支持条件：" + ("、".join(UNSUPPORTED_LABELS.get(key, (key, key))[0] for key in unsupported) if unsupported else "未发现已知不支持条件；仍需核对完整参数")
         return ToolResult.success(
-            summary="请求已结构化；不支持条件：" + ("、".join(UNSUPPORTED_LABELS.get(key, (key, key))[0] for key in unsupported) if unsupported else "未发现已知不支持条件；仍需核对完整参数"),
+            summary=summary,
             data=data, sources=[{"name": "PanWatch 提醒能力契约", "as_of": data["evaluated_at"]}],
             observed_at=datetime.now(UTC),
         )
@@ -168,7 +172,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
     stock_schema = {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "HK", "US"], "default": "CN"}}
     specs = [
         ("get_monitoring_health", "查询监控健康与通知投递", "读取价格提醒最近检查/成功时间、下次扫描、数据缺失、停用/到期/每日触发额度耗尽、分渠道待发/重试/失败记录。只读，不补发、不改额度；不覆盖 AI 金额预算或其他自动化。", {"limit": {"type": "integer", "minimum": 1, "maximum": 200}}, [], get_monitoring_health, True),
-        ("check_watch_request", "检查关注请求与能力", "从本轮原始用户请求识别标的/范围/期限/通知渠道及不支持条件；不接受改写后的请求。相对到期以任务开始时为准。", {}, [], check_watch_request, False),
+        ("check_watch_request", "检查关注请求与能力", "从用户原始请求识别标的/范围/期限/通知渠道及不支持条件；明确重试沿用前一用户请求，不接受模型改写。相对到期保留原锚点。", {}, [], check_watch_request, False),
         ("get_notification_channels", "查询通知渠道", "列出渠道 ID/名称/类型/启用/默认状态，不返回密钥；创建指定渠道提醒前查询。", {}, [], get_notification_channels, True),
         ("get_watchlist", "查询自选股票", "读取真实自选库，包含市场代码；与持仓范围不同。", {"market": stock_schema["market"], "limit": {"type": "integer", "minimum": 1, "maximum": 200}}, [], get_watchlist, True),
         ("get_research_history", "查询历史研究", "读取按市场和标的保存的历史建议、快照、报告及时间。包括过期建议并标注，不能冒充当前研究。", {**stock_schema, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, ["symbol"], get_research_history, True),
