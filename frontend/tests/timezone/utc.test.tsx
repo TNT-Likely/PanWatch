@@ -1,11 +1,12 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { browserTimezone, expiryToISO, toLocalDateTimeInput } from '@panwatch/base-ui'
 import PriceAlertFormDialog from '@panwatch/biz-ui/components/price-alert-form-dialog'
 import { homeApi } from '@panwatch/api'
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals() })
+beforeEach(() => { vi.stubEnv('TZ', 'UTC') })
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
 it('uses UTC browser time and preserves an unchanged offset-bearing expiry', () => {
   expect(browserTimezone()).toBe('UTC')

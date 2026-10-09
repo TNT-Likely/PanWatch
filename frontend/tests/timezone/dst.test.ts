@@ -1,5 +1,8 @@
-import { expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { browserTimezone, expiryToISO, toLocalDateTimeInput } from '@panwatch/base-ui'
+
+beforeEach(() => { vi.stubEnv('TZ', 'America/New_York') })
+afterEach(() => { vi.unstubAllEnvs() })
 
 it('retains the second occurrence of a repeated hour when editing without changes', () => {
   expect(browserTimezone()).toBe('America/New_York')
