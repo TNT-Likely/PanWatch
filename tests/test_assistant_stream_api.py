@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 from pan_agent import ContextBuildResult, ContextUsage, EventType, ModelMessage, RunResult, RunStatus, RuntimeEvent
@@ -604,3 +605,14 @@ def test_assistant_stream_closes_the_task_when_runtime_setup_fails():
         )
     ]
     assert service.finished == [("failed", "transport_setup_failed")]
+
+
+def test_assistant_done_event_qualifies_persisted_utc_timestamp():
+    service = _FakeService(_CompletedRuntime())
+    service.record_assistant_message = lambda _id, content: SimpleNamespace(id=13, content=content, created_at=datetime(2026, 10, 9, 8))
+    async def run():
+        response = await assistant_api.stream_assistant_message(1, assistant_api.SendAssistantMessageCommand(content="Timestamp check"), service)
+        return await _read_events(response)
+    events = asyncio.run(run())
+    assert events[-1][0] == "done"
+    assert events[-1][1]["created_at"] == "2026-10-09T08:00:00+00:00"

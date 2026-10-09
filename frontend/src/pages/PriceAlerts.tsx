@@ -227,7 +227,7 @@ export default function PriceAlertsPage() {
       cooldown_minutes: r.cooldown_minutes ?? 30,
       max_triggers_per_day: r.max_triggers_per_day ?? 3,
       repeat_mode: (r.repeat_mode || 'repeat') as any,
-      expire_at: r.expire_at ? r.expire_at.slice(0, 16) : '',
+      expire_at: r.expire_at || '',
       notify_channel_ids: r.notify_channel_ids || [],
     })
     setFormOpen(true)

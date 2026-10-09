@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from src.platform.ai.errors import descriptor_for_code
 from src.platform.persistence.database import get_db
 from src.platform.tasking.contracts import TaskStatus
+from src.web.datetime import as_utc
 from src.web.errors import api_error
 
 from .context_schemas import (
@@ -312,7 +313,7 @@ async def _stream_runtime(
                     {
                         "message_id": final.id,
                         "content": final.content,
-                        "created_at": final.created_at.isoformat()
+                        "created_at": as_utc(final.created_at).isoformat()
                         if final.created_at
                         else "",
                     },

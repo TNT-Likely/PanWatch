@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Literal
+
+from src.web.datetime import UTCDateTime
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -36,7 +37,7 @@ class AssistantEvidence(BaseModel):
     source_url: str | None = None
     summary: str
     evidence_kind: Literal["source_data", "tool_discovery", "local_snapshot"] = "source_data"
-    observed_at: datetime | None = None
+    observed_at: UTCDateTime | None = None
     data_at: str | None = None
     period_start: str | None = None
     period_end: str | None = None

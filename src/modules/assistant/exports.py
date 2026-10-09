@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Literal
 from collections.abc import Callable
 
+from src.web.datetime import UTCDateTime
+
 from pydantic import BaseModel, Field
 
 from .schemas import ConversationDetailDTO
@@ -24,7 +26,7 @@ class ContextExportDTO(BaseModel):
     filename: str
     message_count: int
     last_message_id: int | None
-    exported_at: datetime
+    exported_at: UTCDateTime
     incomplete: bool
 
 
@@ -33,9 +35,9 @@ class ContextExportJobInfoDTO(BaseModel):
     conversation_id: int
     title: str
     language: Literal['zh-CN', 'en-US']
-    created_at: datetime
-    started_at: datetime | None
-    finished_at: datetime | None
+    created_at: UTCDateTime
+    started_at: UTCDateTime | None
+    finished_at: UTCDateTime | None
     message_count: int
     status: Literal['queued', 'running', 'completed', 'failed']
     processed_chars: int

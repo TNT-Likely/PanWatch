@@ -24,8 +24,8 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def beijing_now() -> datetime:
-    """获取当前默认时区时间（历史命名保留；带时区信息）"""
+def app_now() -> datetime:
+    """获取当前默认时区时间（带时区信息）"""
     return datetime.now(_get_app_tz())
 
 
@@ -37,17 +37,17 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def to_beijing(dt: datetime) -> datetime:
-    """将时间转换为默认时区（历史命名保留）"""
+def to_app_timezone(dt: datetime) -> datetime:
+    """将时间转换为默认时区"""
     if dt.tzinfo is None:
         # 假设无时区的时间是 UTC
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(_get_app_tz())
 
 
-def format_beijing(dt: datetime, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """格式化为默认时区字符串（历史命名保留）"""
-    return to_beijing(dt).strftime(fmt)
+def format_app_time(dt: datetime, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """格式化为默认时区字符串"""
+    return to_app_timezone(dt).strftime(fmt)
 
 
 def to_iso_utc(dt: datetime) -> str:
@@ -61,3 +61,9 @@ def to_iso_with_tz(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+# Historical imports remain compatible; this clock follows deployment TZ.
+beijing_now = app_now
+to_beijing = to_app_timezone
+format_beijing = format_app_time

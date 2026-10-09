@@ -22,6 +22,8 @@ from pan_agent import (
 from pan_agent import (
     __version__ as PAN_AGENT_RUNTIME_VERSION,
 )
+from src.web.datetime import as_utc
+
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
@@ -618,7 +620,7 @@ class AssistantRepository:
                 "error_code": error_code,
                 "sources": invocation.source_data,
                 "observed_at": (
-                    invocation.observed_at.isoformat() if invocation.observed_at else None
+                    as_utc(invocation.observed_at).isoformat() if invocation.observed_at else None
                 ),
             },
             commit=False,

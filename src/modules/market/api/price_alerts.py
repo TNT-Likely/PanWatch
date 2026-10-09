@@ -1,10 +1,10 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone as utc_timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.platform.runtime.config import Settings
 from src.modules.market import price_alert_service
@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _viewer_day_bounds(now: datetime, tzinfo: ZoneInfo) -> tuple[datetime, datetime]:
+    day = now.astimezone(tzinfo).date()
+    # Build each midnight separately: a DST day can contain 23 or 25 hours.
+    start = datetime.combine(day, time.min, tzinfo)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo)
+    return (start.astimezone(utc_timezone.utc).replace(tzinfo=None),
+            end.astimezone(utc_timezone.utc).replace(tzinfo=None))
+
+
 def _format_datetime(dt) -> str:
     """格式化时间为当前时区的 ISO 格式（naive datetime 视为 UTC）。"""
     if not dt:
@@ -27,10 +36,10 @@ def _format_datetime(dt) -> str:
     try:
         tzinfo = ZoneInfo(tz_name)
     except Exception:
-        tzinfo = timezone.utc
+        tzinfo = utc_timezone.utc
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(tzinfo).isoformat(timespec="seconds")
+        dt = dt.replace(tzinfo=utc_timezone.utc)
+    return dt.astimezone(tzinfo).isoformat()
 
 
 class AlertConditionItem(BaseModel):
@@ -179,19 +188,18 @@ def delete_alert_rule(rule_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/hits/today")
-def list_today_hits(limit: int = 50, db: Session = Depends(get_db)):
-    """今日(本地时区)全部命中,跨规则聚合 —— 供首页"今日要紧事"。"""
-    tz_name = Settings().app_timezone or "UTC"
+def list_today_hits(limit: int = 50, timezone: str | None = None, db: Session = Depends(get_db)):
+    """Hits in the viewer's calendar day; omitted timezone preserves legacy clients."""
+    tz_name = timezone if timezone is not None else Settings().app_timezone or "UTC"
     try:
         tzinfo = ZoneInfo(tz_name)
-    except Exception:
-        tzinfo = timezone.utc
-    local_midnight = datetime.now(tzinfo).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_utc = local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise api_error(400, "timezone_invalid", "时区无效") from exc
+    start_utc, end_utc = _viewer_day_bounds(datetime.now(utc_timezone.utc), tzinfo)
 
     hits = (
         db.query(PriceAlertHit)
-        .filter(PriceAlertHit.trigger_time >= start_utc)
+        .filter(PriceAlertHit.trigger_time >= start_utc, PriceAlertHit.trigger_time < end_utc)
         .order_by(PriceAlertHit.trigger_time.desc(), PriceAlertHit.id.desc())
         .limit(max(1, min(int(limit), 200)))
         .all()

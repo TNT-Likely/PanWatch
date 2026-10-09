@@ -16,6 +16,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { useMarketColors } from '@/hooks/use-market-colors'
 import type { MarketColorPreference } from '@/lib/market-colors'
+import { browserTimezone } from '@panwatch/base-ui'
 
 interface Setting {
   key: string
@@ -189,6 +190,7 @@ export default function SettingsPage() {
   const [channels, setChannels] = useState<NotifyChannel[]>([])
   const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [executionTimezone, setExecutionTimezone] = useState<string | null>(null)
   const [health, setHealth] = useState<AgentsHealth | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -255,6 +257,7 @@ export default function SettingsPage() {
       fetchAPI<NotifyChannel[]>('/channels').then(publish(setChannels)),
       fetchAPI<{ version: string }>('/settings/version').then(publish(data => setVersion(data.version))),
       fetchAPI<AgentsHealth>('/agents/health').then(publish(setHealth)),
+      fetchAPI<{ execution_timezone: string }>('/settings/timezone').then(publish(data => setExecutionTimezone(data.execution_timezone))),
     ])
     if (current()) results.forEach(result => { if (result.status === 'rejected') console.error(result.reason) })
   }
@@ -955,6 +958,9 @@ export default function SettingsPage() {
                 return (
                   <div key={setting.key}>
                     <Label>{label}</Label>
+                    {setting.key === 'notify_quiet_hours' && executionTimezone ? (
+                      <p className="mb-1 text-[11px] text-muted-foreground">{configT('configuration:settingsPage.timezone.quietHours', { timezone: executionTimezone })}</p>
+                    ) : null}
                     <div className="flex items-center gap-2.5">
                       {setting.key === 'stock_link_platform' ? (
                         <Select
@@ -1013,6 +1019,11 @@ export default function SettingsPage() {
               <h3 className="text-[12px] md:text-[13px] font-semibold text-foreground">{configT('configuration:settingsPage.appearance.title')}</h3>
               <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{configT('configuration:settingsPage.appearance.description')}</p>
             </div>
+          </div>
+          <div className="mt-3 space-y-1 text-[11px] text-muted-foreground" data-testid="timezone-policy">
+            <p>{configT('configuration:settingsPage.timezone.display', { timezone: browserTimezone() })}</p>
+            {executionTimezone ? <p>{configT('configuration:settingsPage.timezone.execution', { timezone: executionTimezone })}</p> : null}
+            <p>{configT('configuration:settingsPage.timezone.market')}</p>
           </div>
           <div className="mt-3 space-y-1.5" role="radiogroup" aria-label={configT('configuration:settingsPage.appearance.marketColors')}>
             {(['auto', 'red-up', 'green-up'] as MarketColorPreference[]).map(option => {

@@ -19,6 +19,7 @@ from __future__ import annotations
 import json as json_module
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from marketdata.http import market_get, record_error
 from marketdata.symbol import Symbol
@@ -48,17 +49,17 @@ def _parse_epoch_millis(ms) -> datetime:
 
 
 def _parse_datetime_str(s, fmt: str = "%Y-%m-%d %H:%M:%S") -> datetime:
-    """"%Y-%m-%d %H:%M:%S" 格式时间字符串 → UTC datetime;解析失败依次回退到纯日期、
+    """"%Y-%m-%d %H:%M:%S" 中国来源的当地时间字符串 → UTC datetime;解析失败依次回退到纯日期、
     再回退 EPOCH(照搬 news_collector.py 两级 try/except 的容错顺序)。"""
     text = str(s or "").strip()
     if not text:
         return _EPOCH
     try:
-        return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        return datetime.strptime(text, fmt).replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
     except (ValueError, TypeError):
         pass
     try:
-        return datetime.strptime(text[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return datetime.strptime(text[:10], "%Y-%m-%d").replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
     except (ValueError, TypeError):
         return _EPOCH
 

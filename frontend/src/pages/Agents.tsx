@@ -11,6 +11,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
+import { browserTimezone } from '@panwatch/base-ui'
 
 interface AgentConfig {
   id: number
@@ -195,12 +196,12 @@ export default function AgentsPage() {
 
   const { toast } = useToast()
 
-  const formatPreviewTime = (iso: string, tz?: string): string => {
+  const formatPreviewTime = (iso: string): string => {
     try {
       const d = new Date(iso)
       if (isNaN(d.getTime())) return iso
       return d.toLocaleString(getCurrentLocale(), {
-        timeZone: tz || undefined,
+        timeZone: browserTimezone(),
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -586,7 +587,7 @@ export default function AgentsPage() {
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/50 hover:bg-accent transition-colors"
                       >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-[12px] text-foreground">{formatSchedule(agent.schedule, configT)}</span>
+                        <span className="text-[12px] text-foreground">{formatSchedule(agent.schedule, configT)} {health?.timezone ? `(${health.timezone})` : ''}</span>
                         <Settings2 className="w-3 h-3 text-muted-foreground/50" />
                       </button>
                       {agent.name === 'tradingagents' && (
@@ -615,11 +616,11 @@ export default function AgentsPage() {
                             className="px-1.5 py-0.5 rounded border border-border/60 bg-accent/30 font-mono"
                             title={t}
                           >
-                            {formatPreviewTime(t, (preview as SchedulePreview).timezone)}
+                            {formatPreviewTime(t)}
                           </span>
                         ))}
                         {(preview as SchedulePreview).timezone ? (
-                          <span className="opacity-60">({(preview as SchedulePreview).timezone})</span>
+                          <span className="opacity-60">({browserTimezone()})</span>
                         ) : null}
                       </div>
                     ) : null}
@@ -770,6 +771,7 @@ export default function AgentsPage() {
             <DialogDescription>{agentName(scheduleDialogAgent)}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-2">
+            {(schedulePreview as SchedulePreview | null)?.timezone || health?.timezone ? <p className="text-[12px] text-muted-foreground">{configT('schedule.timezoneHint', { timezone: (schedulePreview as SchedulePreview | null)?.timezone || health?.timezone })}</p> : null}
             <div>
               <Label>{configT('schedule.type')}</Label>
               <Select
@@ -858,11 +860,11 @@ export default function AgentsPage() {
                       className="px-1.5 py-0.5 rounded border border-border/60 bg-background/40 font-mono"
                       title={t}
                     >
-                      {formatPreviewTime(t, (schedulePreview as SchedulePreview).timezone)}
+                      {formatPreviewTime(t)}
                     </span>
                   ))}
                   {(schedulePreview as SchedulePreview | null)?.timezone ? (
-                    <span className="opacity-60">({(schedulePreview as SchedulePreview).timezone})</span>
+                    <span className="opacity-60">({browserTimezone()})</span>
                   ) : null}
                 </div>
               ) : (

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, Pencil, Search, X, TrendingUp, Bot, Play, RefreshCw, Wallet, PiggyBank, ArrowUpRight, ArrowDownRight, Building2, ChevronDown, ChevronRight, Cpu, Bell, Clock, Newspaper, ExternalLink, BarChart3, Brain } from 'lucide-react'
 import { fetchAPI, stocksApi, type AIService, type NotifyChannel } from '@panwatch/api'
 import { klinesApi } from '@panwatch/api/klines'
-import { useLocalStorage } from '@/lib/utils'
+import { useLocalStorage, formatDateTime } from '@/lib/utils'
 import {
   buildPortfolioStockKeys,
   loadPortfolioPageBackgroundData,
@@ -28,6 +28,7 @@ import StockPriceAlertPanel from '@panwatch/biz-ui/components/stock-price-alert-
 import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
+import { browserTimezone } from '@panwatch/base-ui'
 import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
@@ -746,12 +747,12 @@ export default function StocksPage() {
     setInsightOpen(true)
   }, [])
 
-  const formatPreviewTime = (iso: string, tz?: string): string => {
+  const formatPreviewTime = (iso: string): string => {
     try {
       const d = new Date(iso)
       if (isNaN(d.getTime())) return iso
       return d.toLocaleString(getCurrentLocale(), {
-        timeZone: tz || undefined,
+        timeZone: browserTimezone(),
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -2750,17 +2751,17 @@ export default function StocksPage() {
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                                   {(preview as SchedulePreview).next_runs.map((t, i) => (
                                     <span key={i} className="px-1.5 py-0.5 rounded border border-border/60 bg-accent/20 font-mono" title={t}>
-                                      {formatPreviewTime(t, (preview as SchedulePreview).timezone)}
+                                      {formatPreviewTime(t)}
                                     </span>
                                   ))}
                                   {(preview as SchedulePreview).timezone ? (
-                                    <span className="opacity-60">({(preview as SchedulePreview).timezone})</span>
+                                    <span className="opacity-60">({browserTimezone()})</span>
                                   ) : null}
                                 </div>
                               ) : (
                                 <div className="mt-1 text-[11px] text-muted-foreground">—</div>
                               )}
-                              <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">schedule: {eff}</div>
+                              <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">schedule: {eff}<br />{stockT('configuration:agentsPage.schedule.timezoneHint', { timezone: (preview as SchedulePreview | null)?.timezone || '…' })}</div>
                             </div>
                           )
                         })()}
@@ -2950,7 +2951,7 @@ export default function StocksPage() {
                             </span>
                           )}
                           <span className="text-[10px] text-muted-foreground">
-                            {item.publish_time}
+                            {formatDateTime(item.publish_time)}
                           </span>
                         </div>
                         <a

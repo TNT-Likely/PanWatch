@@ -143,7 +143,7 @@ def test_sina_parses_ext_stocks_and_time(monkeypatch):
     assert first.source == "sina"
     assert first.external_id == "2001"
     assert first.content == "沪指高开0.5%,两市成交额破万亿"
-    assert first.publish_time == datetime(2026, 7, 16, 9, 31, 0, tzinfo=timezone.utc)
+    assert first.publish_time == datetime(2026, 7, 16, 1, 31, 0, tzinfo=timezone.utc)
     assert first.symbols == ["sh600519", "000001"]
 
     second = out[1]
@@ -211,7 +211,7 @@ def test_eastmoney_parses_title_summary_time(monkeypatch):
     assert first.source == "eastmoney"
     assert first.title == "机构:三季度A股有望震荡上行"
     assert first.content == "多家机构发布三季度策略展望"
-    assert first.publish_time == datetime(2026, 7, 16, 11, 20, 0, tzinfo=timezone.utc)
+    assert first.publish_time == datetime(2026, 7, 16, 3, 20, 0, tzinfo=timezone.utc)
     assert first.symbols == []
     assert first.importance == 0
 

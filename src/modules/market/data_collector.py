@@ -4,7 +4,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from marketdata import PACKAGE_VENDORS_BY_TYPE, capture_errors
@@ -114,7 +114,7 @@ class DataCollectorManager:
     ):
         """记录日志"""
         log = CollectorLog(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
             source_name=source_name,
             source_type=source_type,
             action=action,

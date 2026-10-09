@@ -1,3 +1,4 @@
+from src.web.datetime import as_utc
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import List
@@ -306,7 +307,7 @@ async def _fetch_recent_announcements(symbol: str, name: str, limit: int = 5) ->
         return [
             {
                 "title": a.title,
-                "time": a.publish_time.strftime("%Y-%m-%d %H:%M"),
+                "time": as_utc(a.publish_time).isoformat(),
                 "content": (a.content or "")[:200],
             }
             for a in anns

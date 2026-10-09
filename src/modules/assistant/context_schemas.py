@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal
 
 from pan_agent import (
@@ -10,6 +9,8 @@ from pan_agent import (
     ContextSummary,
     ContextUsage,
 )
+from src.web.datetime import UTCDateTime
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -54,7 +55,7 @@ class ContextSnapshotDTO(BaseModel):
     source_message_count: int
     usage_before: ContextUsage
     usage_after: ContextUsage
-    created_at: datetime | None = None
+    created_at: UTCDateTime | None = None
 
 
 class ContextCompressionDTO(BaseModel):

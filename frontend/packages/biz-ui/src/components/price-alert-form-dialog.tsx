@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { browserTimezone, toLocalDateTimeInput, expiryToISO } from '@panwatch/base-ui'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -96,6 +97,8 @@ export default function PriceAlertFormDialog(props: {
   }
   const stockOptions = useMemo(() => props.stocks, [props.stocks])
   const [form, setForm] = useState<PriceAlertFormState>(buildDefaultForm())
+  const [originalExpiry, setOriginalExpiry] = useState<string>()
+  const [expiryError, setExpiryError] = useState(false)
 
   useEffect(() => {
     if (!props.open) return
@@ -108,6 +111,13 @@ export default function PriceAlertFormDialog(props: {
       stock_id: hasPreferred ? preferredStockId : (props.initial?.stock_id || fallbackStockId),
       items: props.initial?.items?.length ? props.initial.items : [{ type: 'price', op: '>=', value: 0 }],
       notify_channel_ids: props.initial?.notify_channel_ids || [],
+    }
+    // Offset-bearing initial values are instants; local form values are wall clocks.
+    setExpiryError(false)
+    setOriginalExpiry(undefined)
+    if (merged.expire_at && /(?:Z|[+-]\d{2}:\d{2})$/.test(merged.expire_at)) {
+      setOriginalExpiry(merged.expire_at)
+      merged.expire_at = toLocalDateTimeInput(merged.expire_at)
     }
     setForm(merged)
     setCalendarOpen(false)
@@ -135,6 +145,14 @@ export default function PriceAlertFormDialog(props: {
   const submit = async () => {
     if (!form.stock_id) return
     if (!form.items.length) return
+    let expiry: string | null
+    try {
+      expiry = expiryToISO(form.expire_at, originalExpiry)
+      setExpiryError(false)
+    } catch {
+      setExpiryError(true)
+      return
+    }
     await props.onSubmit({
       stock_id: form.stock_id,
       name: form.name.trim(),
@@ -143,7 +161,7 @@ export default function PriceAlertFormDialog(props: {
       cooldown_minutes: Number(form.cooldown_minutes || 0),
       max_triggers_per_day: Number(form.max_triggers_per_day || 0),
       repeat_mode: form.repeat_mode,
-      expire_at: form.expire_at ? new Date(form.expire_at).toISOString() : null,
+      expire_at: expiry,
       notify_channel_ids: form.notify_channel_ids || [],
     })
   }
@@ -281,7 +299,8 @@ export default function PriceAlertFormDialog(props: {
               </Select>
             </div>
             <div>
-              <div className="text-[12px] text-muted-foreground mb-1">{alertT('form.expireAt')}</div>
+              <div className="text-[12px] text-muted-foreground mb-1">{alertT('form.expireAt')} <span className="font-mono">({browserTimezone()})</span></div>
+              {expiryError ? <p role="alert" className="text-[12px] text-destructive">{alertT('form.invalidExpiry')}</p> : null}
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                   <Button

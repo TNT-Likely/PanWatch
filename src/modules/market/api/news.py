@@ -1,5 +1,5 @@
 """新闻 API - 基于数据源配置"""
-from datetime import datetime, timedelta
+from src.web.datetime import as_utc
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -122,7 +122,7 @@ async def get_news(
             external_id=item.external_id,
             title=item.title,
             content=item.content,
-            publish_time=item.publish_time.strftime("%Y-%m-%d %H:%M"),
+            publish_time=as_utc(item.publish_time).isoformat(),
             symbols=matched_symbols or item.symbols,
             importance=item.importance,
             url=item.url,

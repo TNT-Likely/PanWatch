@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Literal
 
 from pan_agent import ApprovalDecision, PermissionMode, ToolRisk
+from src.web.datetime import UTCDateTime
+
 from pydantic import BaseModel, Field, PositiveInt, field_validator
 
 from .result_schemas import AssistantResult
@@ -46,14 +47,14 @@ class ConversationDTO(BaseModel):
     title_source: str = "provisional"
     stock_symbol: str | None = None
     stock_market: str | None = None
-    created_at: datetime | None = None
+    created_at: UTCDateTime | None = None
 
 
 class MessageDTO(BaseModel):
     id: int
     role: str
     content: str
-    created_at: datetime | None = None
+    created_at: UTCDateTime | None = None
     result: AssistantResult | None = None
     trace: list[dict[str, Any]] | None = None
 
@@ -70,8 +71,8 @@ class AssistantActivityTaskDTO(BaseModel):
     title: str
     status: str
     current_step: int
-    started_at: datetime | None = None
-    created_at: datetime | None = None
+    started_at: UTCDateTime | None = None
+    created_at: UTCDateTime | None = None
 
 
 class AssistantNotificationDTO(BaseModel):
@@ -80,8 +81,8 @@ class AssistantNotificationDTO(BaseModel):
     conversation_id: int
     title: str
     kind: Literal["completed", "failed", "awaiting_approval"]
-    created_at: datetime | None = None
-    read_at: datetime | None = None
+    created_at: UTCDateTime | None = None
+    read_at: UTCDateTime | None = None
 
 
 class AssistantActivityDTO(BaseModel):

@@ -140,7 +140,7 @@ def test_eastmoney_news_parses_and_uses_names(monkeypatch):
     assert a.external_id == "202607170001"
     assert a.title == "赛力斯发布新车型亮点"  # 高亮标签被清理
     assert a.content == "详细内容"
-    assert a.publish_time == datetime(2026, 7, 17, 9, 30, 0, tzinfo=timezone.utc)
+    assert a.publish_time == datetime(2026, 7, 17, 1, 30, 0, tzinfo=timezone.utc)
     assert a.symbols == ["601127"]
     assert a.url == "https://finance.eastmoney.com/a/202607170001.html"
 
@@ -239,7 +239,7 @@ def test_eastmoney_ann_parses(monkeypatch):
     assert a.external_id == "AN202607170001"
     assert a.title == "贵州茅台关于分红派息的公告"
     assert a.content == ""  # 公告只有标题
-    assert a.publish_time == datetime(2026, 7, 17, 8, 0, 0, tzinfo=timezone.utc)
+    assert a.publish_time == datetime(2026, 7, 17, 0, 0, 0, tzinfo=timezone.utc)
     assert a.symbols == ["600519"]
     assert a.importance == 2  # 命中"分红"
     assert a.url == "https://data.eastmoney.com/notices/detail/600519/AN202607170001.html"
@@ -343,7 +343,7 @@ def test_news_since_filter_with_now_uses_wider_announcement_window(monkeypatch):
     """
     monkeypatch.setattr(news_mod, "market_get", _fake_agg_market_get)
 
-    now = datetime(2026, 7, 17, 12, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 17, 4, 30, tzinfo=timezone.utc)
     out = _agg_md().news(["600519"], since_hours=2, now=now)
 
     assert [a.external_id for a in out] == ["AN1", "AN2"]

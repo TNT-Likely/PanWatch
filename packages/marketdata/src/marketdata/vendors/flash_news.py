@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from marketdata.http import market_get
 from marketdata.symbol import Symbol
@@ -37,7 +38,7 @@ def _parse_epoch_seconds(ts) -> datetime:
 
 
 def _parse_datetime_str(s, fmt: str = "%Y-%m-%d %H:%M:%S") -> datetime:
-    """字符串时间(可能是数字戳或格式化串)→ UTC datetime;解析失败回退 EPOCH。"""
+    """中国来源字符串时间(数字戳或 Asia/Shanghai 格式化串)→ UTC datetime;解析失败回退 EPOCH。"""
     if s is None:
         return _EPOCH
     text = str(s).strip()
@@ -46,11 +47,11 @@ def _parse_datetime_str(s, fmt: str = "%Y-%m-%d %H:%M:%S") -> datetime:
     if text.isdigit():
         return _parse_epoch_seconds(text)
     try:
-        return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        return datetime.strptime(text, fmt).replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
     except (ValueError, TypeError):
         pass
     try:
-        return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
     except (ValueError, TypeError):
         return _EPOCH
 

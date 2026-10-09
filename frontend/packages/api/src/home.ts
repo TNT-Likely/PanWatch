@@ -20,7 +20,10 @@ export interface PortfolioTodo {
 
 export const homeApi = {
   /** 今日(本地时区)全部提醒命中,跨规则聚合。 */
-  alertHitsToday: () => fetchAPI<AlertHitToday[]>('/price-alerts/hits/today'),
+  alertHitsToday: () => {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    return fetchAPI<AlertHitToday[]>(`/price-alerts/hits/today?timezone=${encodeURIComponent(timezone)}`)
+  },
 
   /** 首页空态待办:持仓未设提醒 / 提醒即将到期。 */
   todos: () => fetchAPI<{ todos: PortfolioTodo[]; count: number }>('/portfolio/todos'),

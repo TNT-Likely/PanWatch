@@ -102,6 +102,12 @@ def list_settings(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/timezone")
+def get_timezone():
+    """Wall-clock configuration is shared by background schedules and quiet hours."""
+    return {"execution_timezone": Settings().app_timezone}
+
+
 AVATAR_KEY = "ui_avatar"  # DB 仅存文件名;图片本体落在 data/avatars/
 
 
