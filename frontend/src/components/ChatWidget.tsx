@@ -885,7 +885,7 @@ export default function ChatWidget({
                 <div
                   className="bg-accent/60 rounded-xl px-3 py-2 text-[13px] text-muted-foreground flex items-center gap-2"
                   role="status"
-                  aria-label={streamTool || assistantT('assistantPage.requestFailed')}
+                  aria-label={streamTool || assistantT('assistantPage.execution')}
                 >
                   <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
                   {streamTool && <span>{streamTool}</span>}
