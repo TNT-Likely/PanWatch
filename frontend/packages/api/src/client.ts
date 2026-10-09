@@ -80,6 +80,8 @@ const API_ERROR_TEXT_EN: Record<string, string> = {
   paper_trading_account_not_found: 'The paper-trading account could not be found.',
   paper_trading_allocation_invalid: 'Market allocations cannot exceed 100%.',
   paper_trading_close_failed: 'The paper-trading position could not be closed.',
+  paper_trading_t1_locked: 'A shares use T+1: positions bought today can be sold from the next trading day.',
+  paper_trading_open_time_missing: 'The purchase time is missing; the sellable quantity cannot be verified.',
   paper_trading_notify_failed: 'The paper-trading test notification could not be sent.',
   paper_trading_reset_failed: 'The paper-trading account could not be reset.',
   password_too_short: 'The password must contain at least 6 characters.',

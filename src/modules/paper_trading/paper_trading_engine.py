@@ -6,6 +6,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -78,6 +79,34 @@ def _compute_quantity(
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+SELL_BLOCK_MESSAGES = {
+    "paper_trading_t1_locked": "A 股实行 T+1：当日买入的持仓须到下一交易日才能卖出",
+    "paper_trading_open_time_missing": "持仓买入时间缺失，无法确认可卖数量",
+}
+
+
+def sell_block_reason(pos: PaperTradingPosition, *, now: datetime | None = None) -> str | None:
+    """Settlement eligibility only; fills still require an open market and valid quote.
+
+    SQLite stores naive UTC timestamps. T+1 uses the Shanghai purchase date,
+    not elapsed 24-hour periods. The existing calendar guards enforce sessions.
+    """
+    if pos.stock_market != "CN":
+        return None
+    if pos.opened_at is None:
+        return "paper_trading_open_time_missing"
+    opened = pos.opened_at
+    if opened.tzinfo is None:
+        opened = opened.replace(tzinfo=timezone.utc)
+    current = now if now is not None else _utc_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    shanghai = ZoneInfo("Asia/Shanghai")
+    if opened.astimezone(shanghai).date() >= current.astimezone(shanghai).date():
+        return "paper_trading_t1_locked"
+    return None
 
 
 def _to_market(market: str) -> MarketCode:
@@ -401,6 +430,7 @@ class PaperTradingEngine:
                 signal_snapshot_date=sig.snapshot_date or "",
                 signal_action=sig.action or "",
                 strategy_code=sig.strategy_code or "",
+                opened_at=_utc_now(),
             )
             db.add(pos)
             account.current_capital -= buy_outlay
@@ -435,6 +465,9 @@ class PaperTradingEngine:
     ) -> PaperTradingTrade:
         """平仓单个持仓，返回交易记录。"""
         now = _utc_now()
+        block = sell_block_reason(pos, now=now)
+        if block:
+            raise ValueError(block)
         # 含交易成本的净盈亏:卖出净回收 − 建仓含费投入(与建仓口径一致,资金守恒)
         buy_cost = -COST_MODEL.fill("buy", pos.entry_price, pos.quantity).cash_delta
         sell_fill = COST_MODEL.fill("sell", exit_price, pos.quantity)
@@ -534,6 +567,11 @@ class PaperTradingEngine:
             pos.unrealized_pnl = round(_sell_u - _buy_cost_u, 4)
             if pos.highest_price is None or current_price > pos.highest_price:
                 pos.highest_price = current_price
+
+            # Mark-to-market continues while today's A-share purchase is locked.
+            # Every automatic exit shares this guard, including reversal/time exits.
+            if sell_block_reason(pos):
+                continue
 
             # 检查止损
             if pos.stop_loss and current_price <= pos.stop_loss:
@@ -683,6 +721,10 @@ class PaperTradingEngine:
             )
             if not pos:
                 return {"ok": False, "error": "持仓不存在或已平仓"}
+
+            block = sell_block_reason(pos)
+            if block:
+                return {"ok": False, "error_code": block, "error": SELL_BLOCK_MESSAGES[block]}
 
             if not _is_trading_time(pos.stock_market):
                 return {"ok": False, "error": "该市场当前非交易时段，无法成交"}

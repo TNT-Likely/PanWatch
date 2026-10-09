@@ -225,8 +225,8 @@ export default function PaperTradingPage() {
       await paperTradingApi.closePosition(id)
       toast(message('closeDone'), 'success')
       loadData()
-    } catch {
-      toast(message('closeFailed'), 'error')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : message('closeFailed'), 'error')
     }
   }
 
@@ -559,11 +559,17 @@ export default function PaperTradingPage() {
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2 text-destructive hover:text-destructive"
+                        disabled={p.sellable_quantity === 0}
                         onClick={() => handleClosePosition(p.id)}
                       >
                         <X className="w-3.5 h-3.5 mr-0.5" />
                         {tr('closePosition')}
                       </Button>
+                      {p.sell_block_reason && (
+                        <div className="text-xs text-muted-foreground mt-1 min-w-28 max-w-44 ml-auto">
+                          {tr(`sellBlocks.${p.sell_block_reason}`)}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

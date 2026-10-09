@@ -153,6 +153,7 @@ Select the brain icon beside a holding to start TradingAgents deep analysis. Fou
 - Published 2026 closures and half-days are bundled locally. Startup warms only the previous 30 and next 90 days, without downloading full history. Unpublished weekdays show a pending calendar and block automatic execution; the bundled annual data must be updated for the next year.
 - Agent Cron/interval settings remain unchanged; execution and schedule previews share calendar filters. Price alerts in “all day” mode still require a trading day.
 - Paper fills require an open session for that stock's market. Paper notifications follow each exchange's local clock, including half-days and U.S. daylight-saving changes.
+- Mainland China paper positions follow T+1 using the Shanghai purchase date: automatic and manual sells are blocked on the purchase date and allowed from the next trading day, without waiting 24 hours. Prices and unrealized P&L continue updating while locked; stop-loss, take-profit and other exit conditions are checked again when selling becomes available, using the then-current quote.
 
 </details>
 

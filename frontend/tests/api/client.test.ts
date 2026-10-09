@@ -38,6 +38,17 @@ describe('fetchAPI error localization', () => {
     await expect(fetchAPI('/stocks/1')).rejects.toThrow('股票不存在')
   })
 
+  it('explains the A-share settlement error for the English interface', async () => {
+    localStorage.setItem('panwatch-locale', 'en-US')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status: 400,
+      json: async () => ({ code: 400, error_code: 'paper_trading_t1_locked', message: 'A 股实行 T+1' }),
+    }))
+    await expect(fetchAPI('/paper-trading/positions/1/close')).rejects.toThrow(
+      'A shares use T+1: positions bought today can be sold from the next trading day.',
+    )
+  })
+
   it('maps an unauthenticated error instead of treating sign-in failure as an expired session', async () => {
     localStorage.setItem('panwatch-locale', 'en-US')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

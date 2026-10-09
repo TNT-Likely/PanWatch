@@ -15,6 +15,7 @@ from src.modules.paper_trading.paper_trading_engine import (
     compute_market_cash,
     market_allocations_or_default,
     normalize_allocations,
+    sell_block_reason,
 )
 from src.modules.portfolio.portfolio_diagnostics import diagnose_paper_portfolio
 from src.modules.strategy.quant_adapters import available_backends
@@ -302,12 +303,15 @@ def _position_response(p: PaperTradingPosition) -> dict:
         if opened.tzinfo is None:
             opened = opened.replace(tzinfo=tz.utc)
         holding_days = max(0, (now - opened).days)
+    block = sell_block_reason(p) if p.status == "open" else None
     return {
         "id": p.id,
         "stock_symbol": p.stock_symbol,
         "stock_market": p.stock_market,
         "stock_name": p.stock_name or "",
         "quantity": p.quantity,
+        "sellable_quantity": p.quantity if p.status == "open" and block is None else 0,
+        "sell_block_reason": block,
         "entry_price": p.entry_price,
         "stop_loss": p.stop_loss,
         "target_price": p.target_price,
@@ -453,7 +457,8 @@ async def close_position(position_id: int):
     result = await ENGINE.close_position_manual_async(position_id)
     if not result.get("ok"):
         logger.warning("模拟盘手动平仓失败: %s", result.get("error"))
-        raise api_error(400, "paper_trading_close_failed", "模拟盘平仓失败")
+        raise api_error(400, result.get("error_code") or "paper_trading_close_failed",
+                        result.get("error") or "模拟盘平仓失败")
     return {"ok": True}
 
 

@@ -31,6 +31,9 @@ export interface PaperTradingPositionItem {
   stock_market: string
   stock_name: string
   quantity: number
+  /** Settlement availability; execution still requires an open market and valid quote. */
+  sellable_quantity: number
+  sell_block_reason: 'paper_trading_t1_locked' | 'paper_trading_open_time_missing' | null
   entry_price: number
   stop_loss?: number | null
   target_price?: number | null
