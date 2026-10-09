@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.platform.persistence.database import Base
-from src.platform.persistence.models import AppSettings, NotifyChannel, PriceAlertRule, Stock
+from src.platform.persistence.models import (
+    AppSettings, NotifyChannel, PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock,
+)
 
 
 def _session():
@@ -51,8 +54,27 @@ def test_assistant_tool_specs_and_descriptors_follow_interface_language():
         engine.dispose()
 
 
-def test_price_alert_notification_follows_interface_language(monkeypatch):
-    from src.modules.market import price_alert_engine
+@pytest.mark.parametrize(
+    ("language", "expected_title", "expected_content"),
+    [
+        (
+            "en-US",
+            "[Price alert] Apple (AAPL)",
+            "Rule: Breakout\nCurrent price: 200.00\nChange: +2.50%\n"
+            "Matched conditions:\n- price >= 200 (current: 200)",
+        ),
+        (
+            "zh-CN",
+            "【价格提醒】Apple (AAPL)",
+            "规则: Breakout\n现价: 200.00\n涨跌幅: +2.50%\n"
+            "命中条件:\n- price >= 200 (当前: 200)",
+        ),
+    ],
+)
+def test_price_alert_notification_follows_interface_language(
+    monkeypatch, language, expected_title, expected_content
+):
+    from src.modules.market import alert_delivery, price_alert_engine
 
     sent: list[tuple[str, str]] = []
 
@@ -64,36 +86,55 @@ def test_price_alert_notification_follows_interface_language(monkeypatch):
             sent.append((title, content))
             return {"success": True}
 
-    monkeypatch.setattr(price_alert_engine, "NotifierManager", FakeNotifier)
+    monkeypatch.setattr(alert_delivery, "NotifierManager", FakeNotifier)
+    monkeypatch.setattr(
+        "src.platform.scheduling.trading_calendar.is_trading_day", lambda *_args: True
+    )
     engine, session = _session()
+    sessions = sessionmaker(bind=engine)
+    monkeypatch.setattr(price_alert_engine, "SessionLocal", sessions)
     try:
-        session.add(AppSettings(key="ui_language", value="en-US"))
+        language_setting = AppSettings(key="ui_language", value=language)
+        session.add(language_setting)
         stock = Stock(symbol="AAPL", name="Apple", market="US")
         channel = NotifyChannel(name="test", type="json", config={}, enabled=True, is_default=True)
         session.add_all([stock, channel])
         session.flush()
-        rule = PriceAlertRule(stock_id=stock.id, name="Breakout", notify_channel_ids=[channel.id])
+        rule = PriceAlertRule(
+            stock_id=stock.id, name="Breakout", notify_channel_ids=[channel.id],
+            market_hours_mode="always",
+        )
         session.add(rule)
         session.commit()
 
-        ok, error = asyncio.run(
-            price_alert_engine.PriceAlertEngine()._send_notify(
-                session,
-                rule,
-                {
-                    "quote": {"current_price": 200, "change_pct": 2.5},
-                    "conditions": [{"matched": True, "type": "price", "op": ">=", "target": 200, "actual": 200}],
-                },
-            )
+        hit_id = price_alert_engine.PriceAlertEngine()._persist_hit(
+            rule.id,
+            price_alert_engine._utc_now(),
+            {
+                "quote": {"current_price": 200, "change_pct": 2.5},
+                "conditions": [{"matched": True, "type": "price", "op": ">=", "target": 200, "actual": 200}],
+            },
+            200,
         )
+        assert hit_id is not None
+        delivery = session.query(PriceAlertDelivery).filter_by(hit_id=hit_id).one()
+        expected_payload = (
+            expected_title, f"{expected_content}\n\nEvent ID: {delivery.event_id}"
+        )
+        assert (delivery.title, delivery.content) == expected_payload
+        assert delivery.status == "pending"
+        assert sent == []
 
-        assert (ok, error) == (True, "")
-        assert sent == [
-            (
-                "[Price alert] Apple (AAPL)",
-                "Rule: Breakout\nCurrent price: 200.00\nChange: +2.50%\nMatched conditions:\n- price >= 200 (current: 200)",
-            )
-        ]
+        # Delivery must preserve the queued locale even if the UI language changes.
+        language_setting.value = "zh-CN" if language == "en-US" else "en-US"
+        session.commit()
+        assert asyncio.run(alert_delivery.AlertDeliveryWorker(sessions).drain()) == {
+            "processed": 1
+        }
+        assert sent == [expected_payload]
+        session.expire_all()
+        assert session.query(PriceAlertDelivery).filter_by(hit_id=hit_id).one().status == "delivered"
+        assert session.get(PriceAlertHit, hit_id).notify_success
     finally:
         session.close()
         engine.dispose()
