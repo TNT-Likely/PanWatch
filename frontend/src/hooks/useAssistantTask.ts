@@ -378,7 +378,7 @@ export function useAssistantTask(callbacks: TaskCallbacks) {
         resolvedApprovalId: info.resolvedApprovalId || approval.id,
         resolvedStatus: info.resolvedStatus || decision,
       }),
-    }, task.id, signal))
+    }, task.id, signal, Number(task.last_event_id) || 0))
     if (conversationRef.current !== task.conversation_id || epochRef.current !== epoch + 1) return
     setDecidingApprovalId(null)
     decidingApprovalRef.current = null

@@ -95,6 +95,32 @@ describe('assistant task stream', () => {
     })
   })
 
+  it.each(['empty', 'disconnected'])('resumes past the prior approval pause after an %s decision response', async (mode) => {
+    const onDone = vi.fn()
+    const onPaused = vi.fn()
+    const calls: Array<{ path: string; lastEventId?: number }> = []
+    readSSE.mockImplementation(async (path: string, options: { lastEventId?: number; onEvent: (event: any) => void }) => {
+      calls.push({ path, lastEventId: options.lastEventId })
+      if (path.includes('/decision/stream')) {
+        if (mode === 'disconnected') throw new Error('decision accepted; response lost before first event')
+        return { lastEventId: 0 }
+      }
+      if ((options.lastEventId || 0) < 20) {
+        options.onEvent({ id: 20, event: 'paused', data: { task_id: 42, reason: 'approval_required' } })
+      } else {
+        options.onEvent({ id: 21, event: 'done', data: { message_id: 10, content: 'created once', created_at: '' } })
+      }
+      return { lastEventId: 21 }
+    })
+    await chatApi.decideAssistantApprovalStream('approval-1', 'approved', { onDone, onPaused }, 42, undefined, 20)
+    expect(calls).toEqual([
+      { path: '/assistant/approvals/approval-1/decision/stream', lastEventId: undefined },
+      { path: '/assistant/tasks/42/events', lastEventId: 20 },
+    ])
+    expect(onPaused).not.toHaveBeenCalled()
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
   it('preserves a structured result on the terminal event', async () => {
     const result = {
       schema_version: 1,

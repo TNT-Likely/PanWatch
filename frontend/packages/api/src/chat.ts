@@ -706,9 +706,12 @@ async function decideAssistantApprovalStream(
   callbacks: ChatStreamCallbacks,
   taskId?: number,
   signal?: AbortSignal,
+  afterEventId = 0,
 ): Promise<void> {
   const state: AssistantStreamState = {
-    lastEventId: 0,
+    // A decision response can close before the resume worker has started.
+    // Reconnect past the old approval pause instead of replaying it as new.
+    lastEventId: Math.max(0, afterEventId),
     finished: false,
     paused: false,
     terminalError: null,
