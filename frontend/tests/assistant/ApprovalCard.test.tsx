@@ -45,7 +45,7 @@ describe('ApprovalCard', () => {
       />,
     )
 
-    expect(screen.getByText('已允许，已执行')).toBeTruthy()
+    expect(screen.getByText('已允许')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '本次允许' })).toBeNull()
   })
 
