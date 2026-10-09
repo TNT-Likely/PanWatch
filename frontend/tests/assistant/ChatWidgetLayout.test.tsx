@@ -428,6 +428,7 @@ describe('ChatWidget layout', () => {
       expect.any(Object),
       42,
       expect.any(AbortSignal),
+      0,
     )
   })
 })
