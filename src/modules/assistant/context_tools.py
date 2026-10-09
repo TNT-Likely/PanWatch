@@ -14,7 +14,7 @@ from src.platform.persistence.models import AnalysisHistory, NotifyChannel, Stoc
 from src.platform.persistence.worker import run_db_operation
 from src.platform.runtime.config import Settings
 
-from .watch_request import inspect_watch_request, original_user_text
+from .watch_request import UNSUPPORTED_LABELS, inspect_watch_request, original_user_text
 
 
 def _time(value) -> str | None:
@@ -40,7 +40,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
         data = request.context.setdefault("watch_request", inspect_watch_request(original_user_text(request), context=request.context))
         unsupported = data["unsupported_conditions"]
         return ToolResult.success(
-            summary="请求已结构化；不支持条件：" + (", ".join(unsupported) if unsupported else "未发现已知不支持条件；仍需核对完整参数"),
+            summary="请求已结构化；不支持条件：" + ("、".join(UNSUPPORTED_LABELS.get(key, (key, key))[0] for key in unsupported) if unsupported else "未发现已知不支持条件；仍需核对完整参数"),
             data=data, sources=[{"name": "PanWatch 提醒能力契约", "as_of": data["evaluated_at"]}],
             observed_at=datetime.now(UTC),
         )

@@ -22,6 +22,7 @@ from .result_schemas import (
     SOURCE_TIME_WARNINGS,
 )
 from .tool_descriptors import PANWATCH_TOOL_DESCRIPTORS
+from .watch_request import UNSUPPORTED_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,11 @@ def _evidence_and_facts(
                         "This historical record did not preserve field-level tool data; only the original tool summary can be restored.",
                     )
                 )
+        elif tool_name == "check_watch_request":
+            fact_text = summary
+            gaps = [UNSUPPORTED_LABELS.get(key, (key, key))[language == "en-US"] for key in data.get("unsupported_conditions", [])]
+            if gaps:
+                missing_data.append(_localized(language, "该请求包含尚未实现的条件：" + "、".join(gaps) + "；能力检查通过不代表提醒已创建。", "This request needs unsupported conditions: " + ", ".join(gaps) + ". A completed capability check does not mean an alert was created."))
         elif tool_name == "get_stock_quote":
             price = _number(data.get("current_price"))
             change_pct = _number(data.get("change_pct")) if data.get("is_realtime") else None

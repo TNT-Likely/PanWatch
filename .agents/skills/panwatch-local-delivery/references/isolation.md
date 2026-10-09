@@ -52,7 +52,7 @@ python3 .agents/skills/panwatch-local-delivery/scripts/isolated_qa.py serve --ru
 
 seal-frontend 将本次 dist 拷贝为 source/static 并记录文件 hash。serve 再检查隔离及前端身份，拒绝占用端口，以正常入口绑定 127.0.0.1，禁用 reload。仅 API 场景显式 `serve --api-only`，不能宣称 UI 已测。
 
-serve 为前台进程，使用可保留的终端会话，不用自动回收服务的临时容器。启动后核对 `private/runtime.json` 中 PID、启动身份、模块来源、实际 DB/config、origin，再核对实际监听与页面。该记录不等于 readiness 或业务 PASS。
+serve 为前台进程。人工交接须确认服务生命周期独立于会结束的工具会话；可用本次 run 私有描述文件交给本机服务管理器托管，记录完整 job 身份、PID、启动命令、日志和停止方法。例如 macOS 使用当前用户 launchd job，不安装到系统登录启动目录。不能仅凭临时 exec 会话就承诺聊天结束后仍可访问。启动后核对 `private/runtime.json` 中 PID、启动身份、模块来源、实际 DB/config、origin，再核对实际监听、鉴权 readiness 与页面。重启等待 TIME_WAIT 不算服务仍在运行；端口检查必须拒绝活跃监听者。该记录不等于业务 PASS。
 
 启动不继承现用 AI/通知密钥、代理、OTel 或 PYTHONPATH；只带系统必需变量、新凭证与 QA 路径。HOME 保留系统身份，新增缓存单独指定。依赖解释器只读复用，本地源码 package 必须来自副本。
 

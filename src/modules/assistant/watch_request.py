@@ -11,11 +11,19 @@ from typing import Any
 
 SUPPORTED_CONDITIONS = ["price", "change_pct", "turnover", "volume", "volume_ratio"]
 UNSUPPORTED_CONDITIONS = {
-    "bar_close_confirmation": r"收盘(?:后|时|价|确认|站|突破|跌)|(?:daily|weekly|bar|candle)\s*close|at\s+(?:the\s+)?close",
+    "bar_close_confirmation": r"收盘(?:后|时|价|确认|站|突破|跌|高于|低于|大于|小于|超过|达到|[><≥≤=])|(?:daily|weekly|bar|candle)\s*close|closing\s+price|at\s+(?:the\s+)?close",
     "moving_average_trigger": r"均线|\b(?:MA|EMA|SMA)\s*\d+|moving\s+average",
-    "consecutive_sessions": r"连续\s*[一二两三四五六七八九十\d]+\s*(?:天|日|周|次)|consecutive|连续满足",
+    "consecutive_sessions": r"连续\s*[一二两三四五六七八九十\d]+\s*个?\s*(?:交易日|交易周|天|日|周|次)|consecutive|连续满足",
     "stateful_crossing": r"上穿|下穿|首次突破|cross(?:es|ing)?\s*(?:above|below)",
     "event_trigger": r"(?:公告|新闻|财报|业绩)(?:发布|出来|出现|变化|时|后)|when.*(?:news|filing|earnings).*?(?:released|published)",
+}
+UNSUPPORTED_LABELS = {
+    "bar_close_confirmation": ("收盘确认", "bar-close confirmation"),
+    "moving_average_trigger": ("均线触发", "moving-average triggers"),
+    "consecutive_sessions": ("连续交易日满足", "consecutive sessions"),
+    "stateful_crossing": ("有状态穿越", "stateful crossing"),
+    "event_trigger": ("事件发布触发", "event-release triggers"),
+    "nested_condition_logic": ("混合 AND/OR 条件", "mixed AND/OR conditions"),
 }
 CONDITION_LABELS = {
     "price": ("价格", "Price"), "change_pct": ("涨跌幅(%)", "Change (%)"),
@@ -33,7 +41,7 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
     now = now or datetime.now(UTC)
     context = context or {}
     unsupported = [key for key, pattern in UNSUPPORTED_CONDITIONS.items() if re.search(pattern, text, re.I)]
-    scope = "portfolio" if re.search(r"持仓|组合|portfolio|holdings", text, re.I) else "watchlist" if re.search(r"自选|watchlist", text, re.I) else "instruments"
+    scope = "portfolio" if re.search(r"持仓|组合(?!\s*(?:条件|提醒|规则))|portfolio|holdings", text, re.I) else "watchlist" if re.search(r"自选|watchlist", text, re.I) else "instruments"
     instruments = [{"market": m.upper(), "symbol": s.upper().zfill(5) if m.upper() == "HK" and s.isdigit() else s.upper()} for m, s in re.findall(r"\b(CN|HK|US)\s*:\s*([A-Za-z0-9.]+)", text, re.I)]
     if not instruments and context.get("stock_symbol"):
         instruments = [{"symbol": context["stock_symbol"], "market": context.get("stock_market") or "CN"}]
@@ -54,6 +62,24 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
             requested_types.append(kind)
     if "volume_ratio" in requested_types and not re.search(r"成交量|\bvolume\s*(?:>=|>|<=|<|=|is)" , text, re.I):
         requested_types = [kind for kind in requested_types if kind != "volume"]
+    # Connectors between condition mentions describe rule logic. Connectors in
+    # channel choices or explanatory prose must not silently flatten the rule.
+    mentions = list(re.finditer(r"价格|股价|量比|涨跌幅|涨幅|跌幅|成交额|成交量|\bprice\b|volume\s+ratio|change\s*%|\bturnover\b|\bvolume\b", text, re.I))
+    connectors = set()
+    for left, right in zip(mentions, mentions[1:]):
+        between = text[left.end():right.start()]
+        if re.search(r"且|同时|\band\b", between, re.I):
+            connectors.add("and")
+        if re.search(r"或|\bor\b", between, re.I):
+            connectors.add("or")
+    if len(mentions) < 2:
+        clause = re.split(r"[，,;；。]|发(?:送|到)?|\bsend\b|\bnotify\b", text, maxsplit=1, flags=re.I)[0]
+        if re.search(r"且|同时|\band\b", clause, re.I):
+            connectors.add("and")
+        if re.search(r"或|\bor\b", clause, re.I):
+            connectors.add("or")
+    if connectors == {"and", "or"}:
+        unsupported.append("nested_condition_logic")
     channels = [name for name, pattern in {"feishu": r"飞书|feishu|lark", "telegram": r"telegram|电报", "email": r"邮件|email"}.items() if re.search(pattern, text, re.I)]
     clarification = []
     if scope == "instruments" and not instruments:
@@ -61,7 +87,7 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
     return {
         "original_text": text, "evaluated_at": now.isoformat(), "instruments": instruments,
         "scope": scope, "horizon": horizon, "requested_condition_types": requested_types,
-        "condition_logic": "or" if re.search(r"或者|或|\bor\b", text, re.I) else "and",
+        "condition_logic": "or" if connectors == {"or"} else "and",
         "requested_channels": channels, "unsupported_conditions": unsupported,
         "requires_clarification": clarification,
         "capabilities": {
@@ -69,7 +95,7 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
             "expiry": True, "notification_channel_selection": True,
             "market_hours": ["trading_only", "always"], "repeat_modes": ["once", "repeat"],
             "semantics": "Stateless quote polling; thresholds are not bar-close or crossing confirmation.",
-            "unsupported_conditions": list(UNSUPPORTED_CONDITIONS),
+            "unsupported_conditions": list(UNSUPPORTED_LABELS),
             "continuous_research_task": False,
         },
     }
@@ -92,6 +118,13 @@ def alert_capability_error(request, tool_name: str, arguments: dict) -> str | No
     changes_conditions = tool_name == "create_price_alert" or any(k in arguments for k in ("condition_group", "direction", "target_price"))
     if changes_conditions and plan["unsupported_conditions"]:
         return "Unsupported alert conditions: " + ", ".join(plan["unsupported_conditions"]) + ". Explain the limitation; do not silently substitute intraday thresholds."
+    if tool_name == "create_price_alert" and plan["instruments"]:
+        market = str(arguments.get("market") or "CN").upper()
+        symbol = str(arguments.get("symbol") or "").upper()
+        if market == "HK" and symbol.isdigit():
+            symbol = symbol.zfill(5)
+        if {"market": market, "symbol": symbol} not in plan["instruments"]:
+            return "The proposed alert instrument differs from the checked request. Preserve both symbol and market."
     group = arguments.get("condition_group") or {"op": "and", "items": [{"type": "price"}]}
     supplied = {i.get("type") for i in group.get("items", []) if isinstance(i, dict)}
     missing = set(plan["requested_condition_types"]) - supplied

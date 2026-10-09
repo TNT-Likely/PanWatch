@@ -305,14 +305,22 @@ uvicorn.run("server:app", host="127.0.0.1", port=manifest["port"], reload=False)
 '''
 
 
+def assert_port_available(port: int) -> None:
+    with socket.socket() as sock:
+        # Match the server's restart behavior: TIME_WAIT is not a live service.
+        # listen() still rejects another active listener, including on macOS.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+            sock.listen(1)
+        except OSError as exc:
+            raise IsolationError("QA port is occupied; never reuse the service already listening") from exc
+
+
 def serve(run: Path, *, api_only: bool, allow_source_drift: bool) -> None:
     manifest = preflight(run, check_source=not allow_source_drift, require_frontend=not api_only)
     run = run.resolve()
-    with socket.socket() as sock:
-        try:
-            sock.bind(("127.0.0.1", manifest["port"]))
-        except OSError as exc:
-            raise IsolationError("QA port is occupied; never reuse the service already listening") from exc
+    assert_port_available(manifest["port"])
     python = Path(manifest["python"])
     if not python.is_file() or not os.access(python, os.X_OK):
         raise IsolationError("Recorded Python executable is unavailable")

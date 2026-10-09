@@ -84,6 +84,43 @@ def test_unsupported_close_and_moving_average_are_blocked():
     assert "Unsupported" in alert_capability_error(req, "create_price_alert", {"direction": "above", "target_price": 200})
 
 
+@pytest.mark.parametrize("text,gaps", [
+    ("CN:600519 收盘高于999999才提醒", {"bar_close_confirmation"}),
+    ("CN:600519 连续三个交易日收盘高于20日均线才提醒", {"bar_close_confirmation", "moving_average_trigger", "consecutive_sessions"}),
+    ("CN:600519 价格>999999且量比>2，或者涨跌幅>5时提醒", {"nested_condition_logic"}),
+])
+def test_ordinary_unsupported_wording_cannot_reach_alert_approval(text, gaps):
+    plan = inspect_watch_request(text)
+    assert set(plan["unsupported_conditions"]) >= gaps
+    req = request(text, {"watch_request": plan})
+    assert "Unsupported" in alert_capability_error(req, "create_price_alert", {"symbol": "600519", "market": "CN", "target_price": 999999})
+
+
+@pytest.mark.parametrize("symbol,market", [("AAPL", "US"), ("600519", "HK"), ("000001", "CN")])
+def test_explicit_alert_instrument_cannot_be_replaced(symbol, market):
+    assert "instrument differs" in alert_capability_error(request("CN:600519 价格高于999999时提醒"), "create_price_alert", {"symbol": symbol, "market": market, "target_price": 999999})
+
+
+def test_channel_choice_does_not_change_condition_logic():
+    assert inspect_watch_request("价格>999999且量比>2，发飞书或者邮件")["condition_logic"] == "and"
+    assert inspect_watch_request("价格>999999或低于1，发飞书")["condition_logic"] == "or"
+    assert inspect_watch_request("HK:700 价格高于999999时提醒")["instruments"] == [{"market": "HK", "symbol": "00700"}]
+    assert alert_capability_error(request("HK:700 价格高于999999时提醒"), "create_price_alert", {"symbol": "700", "market": "HK", "target_price": 999999}) is None
+
+
+def test_combination_rule_does_not_change_instrument_scope_to_portfolio():
+    assert inspect_watch_request("为 CN:600519 设置组合提醒，价格>999999且量比>2")["scope"] == "instruments"
+    assert inspect_watch_request("检查 CN:600519 的组合条件")["scope"] == "instruments"
+    assert inspect_watch_request("看看我的组合")["scope"] == "portfolio"
+    assert inspect_watch_request("读取我的自选")["scope"] == "watchlist"
+
+
+def test_capability_check_keeps_unmet_requirements_in_result():
+    invocation = SimpleNamespace(tool_name="check_watch_request", call_id="check", status="completed", summary="已完成能力检查", arguments={}, observed_at=datetime.now(UTC), source_data=[], result_data=inspect_watch_request("CN:600519 收盘高于20日均线连续三个交易日才提醒"))
+    result = build_deterministic_assistant_result(task_id=1, answer="检查完成", invocations=[invocation], language="zh-CN")
+    assert any("收盘确认" in item and "均线触发" in item and "连续交易日满足" in item and "不代表提醒已创建" in item for item in result.missing_data)
+
+
 @pytest.mark.parametrize("value", [None, "2", True, float("nan"), float("inf"), -1])
 def test_condition_values_fail_closed(value):
     with pytest.raises(ValueError):

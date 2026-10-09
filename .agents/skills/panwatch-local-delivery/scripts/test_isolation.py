@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +17,19 @@ spec.loader.exec_module(qa)
 
 
 class IsolationTests(unittest.TestCase):
+    def test_active_listener_is_rejected_but_closed_connection_can_restart(self):
+        with socket.socket() as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(("127.0.0.1", 0))
+            port = server.getsockname()[1]
+            server.listen(1)
+            with self.assertRaises(qa.IsolationError):
+                qa.assert_port_available(port)
+            with socket.create_connection(("127.0.0.1", port)) as client:
+                accepted, _ = server.accept()
+                accepted.close()  # Server side enters TIME_WAIT after peer closes.
+        qa.assert_port_available(port)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

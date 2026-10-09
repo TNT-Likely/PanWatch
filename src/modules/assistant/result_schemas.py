@@ -12,6 +12,11 @@ SOURCE_TIME_WARNINGS = {
     "zh-CN": "部分依据缺少可验证的数据时点或已经过期，请结合最新数据复核。",
     "en-US": "Some evidence has an unknown or stale data time; verify it against current data.",
 }
+LOCAL_SNAPSHOT_TOOLS = {
+    "check_watch_request", "search_stocks", "get_market_status", "get_watchlist",
+    "get_notification_channels", "get_price_alerts", "get_monitoring_health",
+    "create_price_alert", "update_price_alert", "delete_price_alert",
+}
 
 
 def evidence_kind(tool_name: str) -> Literal["source_data", "tool_discovery", "local_snapshot"]:
@@ -19,7 +24,7 @@ def evidence_kind(tool_name: str) -> Literal["source_data", "tool_discovery", "l
     # Never infer a market/news source timestamp from its retrieval time.
     if tool_name == "tool_search":
         return "tool_discovery"
-    if tool_name in {"get_price_alerts", "get_monitoring_health"}:
+    if tool_name in LOCAL_SNAPSHOT_TOOLS:
         return "local_snapshot"
     return "source_data"
 

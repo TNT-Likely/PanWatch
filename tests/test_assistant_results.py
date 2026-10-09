@@ -194,6 +194,27 @@ def test_discovery_and_rule_snapshots_do_not_report_missing_source_time():
     assert not result.risks
 
 
+@pytest.mark.parametrize("tool", ["check_watch_request", "search_stocks", "get_market_status", "get_watchlist", "get_notification_channels", "create_price_alert", "update_price_alert", "delete_price_alert"])
+def test_local_metadata_time_is_not_a_missing_market_timestamp(tool):
+    from src.modules.assistant.result_schemas import AssistantResult, SOURCE_TIME_WARNINGS
+
+    historical = "2026-10-08T22:24:48Z"
+    result = AssistantResult.model_validate({"evidence": [{"id": "local", "tool_name": tool, "source_name": "local", "summary": "snapshot", "observed_at": historical, "freshness": "unknown"}], "risks": [SOURCE_TIME_WARNINGS["zh-CN"]]})
+    assert result.evidence[0].evidence_kind == "local_snapshot"
+    assert result.evidence[0].data_at == "2026-10-08T22:24:48+00:00"
+    assert not result.risks
+
+
+@pytest.mark.parametrize("tool", ["get_stock_quote", "get_stock_news", "get_stock_events", "get_research_history", "get_portfolio"])
+def test_external_or_mixed_valuation_sources_still_require_source_time(tool):
+    from src.modules.assistant.result_schemas import AssistantResult, SOURCE_TIME_WARNINGS
+
+    result = AssistantResult.model_validate({"evidence": [{"id": "external", "tool_name": tool, "source_name": "source", "summary": "source", "observed_at": "2026-10-08T22:24:48Z", "freshness": "unknown"}], "risks": [SOURCE_TIME_WARNINGS["zh-CN"]]})
+    assert result.evidence[0].data_at is None
+    assert result.evidence[0].needs_source_time_warning
+    assert result.risks == [SOURCE_TIME_WARNINGS["zh-CN"]]
+
+
 @pytest.mark.parametrize("language", ["zh-CN", "en-US"])
 @pytest.mark.parametrize("external", [False, True])
 def test_restored_results_remove_only_unsupported_time_warnings(language, external):
