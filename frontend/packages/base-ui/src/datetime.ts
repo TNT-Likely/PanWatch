@@ -15,7 +15,8 @@ export function expiryToISO(wallClock: string, originalInstant?: string): string
   if (!wallClock) return null
   // Preserve the exact instant during a repeated DST hour when nothing changed.
   if (originalInstant && wallClock === toLocalDateTimeInput(originalInstant)) {
-    return new Date(originalInstant).toISOString()
+    // Keep sub-millisecond precision that JavaScript Date cannot represent.
+    return originalInstant
   }
   const date = new Date(wallClock)
   if (Number.isNaN(date.getTime()) || toLocalDateTimeInput(date.toISOString()).slice(0, 16) !== wallClock.slice(0, 16)) {

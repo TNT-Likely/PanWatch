@@ -5,7 +5,7 @@ it('retains the second occurrence of a repeated hour when editing without change
   expect(browserTimezone()).toBe('America/New_York')
   const instant = '2026-11-01T01:30:12.123-05:00'
   expect(toLocalDateTimeInput(instant)).toBe('2026-11-01T01:30:12.123')
-  expect(expiryToISO(toLocalDateTimeInput(instant), instant)).toBe('2026-11-01T06:30:12.123Z')
+  expect(expiryToISO(toLocalDateTimeInput(instant), instant)).toBe(instant)
 })
 
 it('rejects the skipped spring hour and correctly converts dates across midnight', () => {
