@@ -26,6 +26,13 @@ from src.modules.assistant.service import (
 )
 
 
+def test_legacy_approval_stream_marks_sqlite_naive_expiry_as_utc():
+    approval = SimpleNamespace(id="approval", presentation={"summary": "review"}, call_id="call", tool_name="create_price_alert", risk="write", arguments={}, expires_at=datetime(2026, 10, 9, 4, 30))
+    payload = assistant_api._approval_event_payload(approval)
+    assert payload["expires_at"] == "2026-10-09T04:30:00+00:00"
+    assert payload["presentation"] == approval.presentation
+
+
 class _WaitingRuntime:
     async def run(self, _request, sink):
         await sink.publish(RuntimeEvent(type=EventType.RUN_CREATED, run_id="12"))

@@ -199,7 +199,7 @@ class _SSEEventSink:
 
 
 def _approval_event_payload(approval) -> dict:
-    expires_at = approval.expires_at
+    expires_at = AssistantRepository._utc_timestamp(approval.expires_at)
     return {
         "approval_id": approval.id,
         "presentation": approval.presentation or {},

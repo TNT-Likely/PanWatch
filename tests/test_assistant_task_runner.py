@@ -9,6 +9,39 @@ from sqlalchemy.orm import sessionmaker
 from src.platform.tasking.contracts import TaskEventType
 
 
+def test_durable_approval_stream_preserves_review_summary_and_utc_expiry():
+    from datetime import UTC, datetime
+    from pan_agent import PendingApproval, ToolRisk
+    from src.modules.assistant.task_runner import AssistantTaskRunner
+    from src.modules.assistant.service import AssistantService
+    from tests.test_assistant_approval_repository import _repository, _checkpoint
+
+    engine, session, repository, task = _repository()
+    pending = PendingApproval(call_id="review-rule", tool_name="create_price_alert", risk=ToolRisk.WRITE,
+                           arguments={"symbol": "600519", "market": "CN", "direction": "above", "target_price": 999999, "cooldown_minutes": 0})
+    checkpoint = _checkpoint().model_copy(update={"pending_approvals": [pending]})
+    result = RunResult(run_id=str(task.id), status=RunStatus.WAITING_FOR_APPROVAL,
+                       checkpoint=checkpoint, pending_approvals=[pending])
+    service = AssistantService(repository)
+    runner = AssistantTaskRunner()
+
+    async def write(operation):
+        return operation(service)
+
+    runner._write = write
+    asyncio.run(runner._finish_result(service, task.id, task.conversation_id, result))
+    event = next(e for e in repository.list_task_events(task.id) if e.event_type == TaskEventType.APPROVAL_REQUIRED.value)
+    assert event.data["presentation"]["tool_title"] == "创建价格提醒"
+    assert "价格 ≥ 999999" in event.data["presentation"]["summary"]
+    assert "冷却 0 分钟" in event.data["presentation"]["summary"]
+    expiry = datetime.fromisoformat(event.data["expires_at"])
+    assert expiry.tzinfo is not None and expiry > datetime.now(UTC)
+    snapshot_expiry = repository.get_task_snapshot(task.id)["pending_approvals"][0]["expires_at"]
+    assert snapshot_expiry == expiry and snapshot_expiry.tzinfo is not None
+    session.close()
+    engine.dispose()
+
+
 def test_durable_runtime_sink_batches_answer_and_preserves_event_order():
     from src.modules.assistant.task_runner import DurableRuntimeEventSink
     from tests.test_assistant_task_events import _repository

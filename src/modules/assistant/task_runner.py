@@ -460,7 +460,8 @@ class AssistantTaskRunner:
                             "name": approval.tool_name,
                             "risk": approval.risk,
                             "arguments": approval.arguments or {},
-                            "expires_at": approval.expires_at.isoformat()
+                            "presentation": approval.presentation or {},
+                            "expires_at": AssistantRepository._utc_timestamp(approval.expires_at).isoformat()
                             if approval.expires_at
                             else "",
                         },

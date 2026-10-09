@@ -1165,7 +1165,7 @@ class AssistantRepository:
                     "risk": approval.risk,
                     "arguments": approval.arguments or {},
                     "presentation": approval.presentation or {},
-                    "expires_at": approval.expires_at,
+                    "expires_at": self._utc_timestamp(approval.expires_at),
                 }
                 for approval in (
                     approval
