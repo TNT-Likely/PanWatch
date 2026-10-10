@@ -13,7 +13,7 @@ its dependencies: rebuild the image to select another source.
 Run from the PanWatch repository root in your activated virtual environment:
 
 ```sh
-python scripts/prepare-tradingagents-requirements.py --source "git+https://github.com/idkwhodatis/TradingAgents.git@c12865ae3d4be7790853a1e047d067a0a9931821"
+python scripts/prepare-tradingagents-requirements.py --source "git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da"
 python -m pip install -r .requirements-custom.txt
 ```
 
@@ -36,7 +36,7 @@ run `python -m pip install -r requirements.txt`.
 ## Docker
 
 ```sh
-docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@c12865ae3d4be7790853a1e047d067a0a9931821" -t panwatch-custom .
+docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da" -t panwatch-custom .
 ```
 
 Omit the build argument (or leave it empty) for the official default. The
@@ -60,7 +60,19 @@ APIs are reported as unavailable before analysis starts. Module layout detection
 supports official 0.5 and modern 0.6 without an arbitrary version allowlist;
 this does not promise compatibility with every custom fork or future release.
 The original request-local cache, cancellation, CN interception, HK formatting,
-US fallback and nested router restoration behavior is retained.
+US fallback and nested router restoration behavior is retained. Exact numeric
+`.SS`, `.SZ` and `.BJ` graph aliases compare against the bare CN cache identity
+only when its recorded market is CN; outbound upstream requests retain their
+provider symbol. Cache entries without an explicit matching market are not used.
+
+The configured `llm_timeout_seconds` must reach both actual LLM clients. The
+legacy `_get_provider_kwargs` hook and the modern Python
+`create_tier_client` → `build_llm_kwargs` constructor boundary are supported.
+Modern adaptation uses graph-local function bindings, never a shared mutable
+request configuration. Other constructor boundaries fail availability validation
+with an explicit timeout-boundary error instead of silently dropping the timeout.
+Modern news cancellation is checked outside enrichment's primary-error handler
+and before/after additional source boundaries; cancellation is never news evidence.
 
 Run `python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py` after
 installing your source. Check `python -m pip show tradingagents` and the installed

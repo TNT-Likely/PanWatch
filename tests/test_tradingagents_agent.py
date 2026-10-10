@@ -698,6 +698,9 @@ class TestPortfolioContext(unittest.TestCase):
         captured = {}
 
         class FakeGraph:
+            def _get_provider_kwargs(self):
+                return {}
+
             def __init__(self, **kwargs):
                 self.propagator = None
                 self.total_cost = 0.01

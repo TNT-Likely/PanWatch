@@ -16,7 +16,7 @@ jobs:
           - layout: official
             source: ''
           - layout: custom
-            source: git+https://github.com/idkwhodatis/TradingAgents.git@c12865ae3d4be7790853a1e047d067a0a9931821
+            source: git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

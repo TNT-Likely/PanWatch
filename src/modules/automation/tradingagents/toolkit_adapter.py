@@ -120,8 +120,8 @@ def _emit_toolkit_log(level: str, action: str, method_name: str, symbol: str, **
 
 
 def is_a_share(symbol: str) -> bool:
-    """A 股代码判定:6 位纯数字。"""
-    return bool(symbol) and len(symbol) == 6 and symbol.isdigit()
+    """A 股代码及现代 graph 的大陆交易所 canonical alias。"""
+    return bool(re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", str(symbol or "").upper()))
 
 
 def is_hk_share(symbol: str) -> bool:
@@ -232,6 +232,20 @@ def _cached_symbol() -> str:
     return str(getattr(stock, "symbol", "") or "").strip()
 
 
+def _cancellation_boundary(function):
+    from functools import wraps
+
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        _raise_if_cancelled()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _raise_if_cancelled()
+    return guarded
+
+
+@_cancellation_boundary
 def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     """模块级无状态 patch:A 股走 PanWatch(读 _cache()),港股先试上游再兜底,其余放行。
 
@@ -262,8 +276,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     snapshot_symbol_mismatch = bool(
         symbol
         and is_panwatch_routable(symbol)
-        and cached_symbol
-        and symbol != cached_symbol
+        and not _snapshot_matches(symbol)
         and _cache()
     )
     if snapshot_symbol_mismatch and is_a_share(symbol):
@@ -454,6 +467,13 @@ def patch_route_to_vendor():
                     _patch_saved_sites.append((mod, "route_to_vendor", mod.route_to_vendor))
                     mod.route_to_vendor = _patched_route_to_vendor
                     logger.debug(f"[TA toolkit] patched route_to_vendor in {module_path}")
+            try:
+                _install_news_cancellation_guards()
+            except BaseException:
+                for mod, attr, orig in reversed(_patch_saved_sites):
+                    setattr(mod, attr, orig)
+                _patch_saved_sites.clear()
+                raise
         _patch_refcount += 1
 
     try:
@@ -466,6 +486,66 @@ def patch_route_to_vendor():
                 for mod, attr, orig in _patch_saved_sites:
                     setattr(mod, attr, orig)
                 _patch_saved_sites.clear()
+
+
+class _CancelledNewsPrimary(BaseException):
+    """Escape upstream's broad Exception handler, then restore public cancellation."""
+
+
+def _install_news_cancellation_guards() -> None:
+    from functools import wraps
+    from importlib import import_module
+
+    def guard_request(original):
+        @wraps(original)
+        def guarded(*args, **kwargs):
+            _raise_if_cancelled()
+            result = original(*args, **kwargs)
+            _raise_if_cancelled()
+            return result
+        return guarded
+
+    def guard_news(original):
+        @wraps(original)
+        def guarded(primary, *args, **kwargs):
+            _raise_if_cancelled()
+            def checked_primary():
+                try:
+                    _raise_if_cancelled()
+                    result = primary()
+                    _raise_if_cancelled()
+                    return result
+                except TradingAgentsCancelled as exc:
+                    raise _CancelledNewsPrimary() from exc
+                finally:
+                    event = _CANCEL_EVENT.get()
+                    if event is not None and event.is_set():
+                        raise _CancelledNewsPrimary()
+            try:
+                result = original(checked_primary, *args, **kwargs)
+            except _CancelledNewsPrimary:
+                raise TradingAgentsCancelled("TradingAgents task cancelled") from None
+            _raise_if_cancelled()
+            return result
+        return guarded
+
+    for path, name, wrapper in (
+        ("tradingagents.agents.tools", "retrieve_news", guard_news),
+        ("tradingagents.extensions.news_evidence", "retrieve_news", guard_news),
+        ("tradingagents.extensions.duckduckgo_news", "fetch_news", guard_request),
+        ("tradingagents.extensions.company_website", "resolve_company_website", guard_request),
+        ("tradingagents.extensions.ashare_announcements", "fetch_announcements", guard_request),
+    ):
+        try:
+            module = import_module(path)
+        except ModuleNotFoundError as exc:
+            if exc.name and (path == exc.name or path.startswith(exc.name + ".")):
+                continue
+            raise
+        original = getattr(module, name, None)
+        if callable(original):
+            _patch_saved_sites.append((module, name, original))
+            setattr(module, name, wrapper(original))
 
 
 # ---------------------------------------------------------------------------
@@ -504,23 +584,48 @@ def _market_for_symbol(symbol: str):
     return MarketCode.US
 
 
+def _panwatch_identity(symbol: str, market=None):
+    """Compare provider aliases only within their explicit market identity.
+
+    Only exact numeric mainland suffixes are aliases; US dotted symbols and
+    HK tickers must never be reduced to mainland codes.
+    """
+    from src.platform.marketdata.models import MarketCode
+
+    value = str(symbol or "").strip().upper()
+    market = MarketCode(getattr(market, "value", market)) if market is not None else _market_for_symbol(value)
+    if market == MarketCode.CN and re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", value):
+        value = value.split(".")[0]
+    if market.value in {"TSX", "TSXV"}:
+        from marketdata.symbol import Symbol
+        value = Symbol.parse(value, market.value).code
+    return market, value
+
+
+def _snapshot_matches(symbol: str, market=None) -> bool:
+    stock = _cache().get("stock")
+    cached_symbol = getattr(stock, "symbol", "")
+    cached_market = getattr(stock, "market", None)
+    if not cached_symbol or cached_market is None:
+        return False
+    return _panwatch_identity(symbol, market) == _panwatch_identity(cached_symbol, cached_market)
+
+
 def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     """用 PanWatch K线构建与原生 load_ohlcv 同结构的 DataFrame(Date/Open/High/Low/Close/Volume)。"""
     _raise_if_cancelled()
     import pandas as pd
 
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
-    market = _market_for_symbol(symbol)
+    market, provider_symbol = _panwatch_identity(symbol)
     # collect() 已经为本次分析准备了 K 线；验证快照只需要同一份数据，
     # 不应因为上游默认 lookback=750 再向东财发起一轮可能阻塞的请求。
     cached_klines = _cache().get("klines")
-    cached_stock = _cache().get("stock")
-    cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock is not None else ""
-    cache_matches_symbol = bool(cached_symbol) and str(cached_symbol) == str(symbol)
+    cache_matches_symbol = _snapshot_matches(symbol, market)
     if cache_matches_symbol and isinstance(cached_klines, (list, tuple)):
         klines = list(cached_klines)
     else:
-        klines = KlineCollector(market).get_klines(symbol, days=750)
+        klines = KlineCollector(market).get_klines(provider_symbol, days=750)
     if not klines:
         return None
     df = pd.DataFrame(
