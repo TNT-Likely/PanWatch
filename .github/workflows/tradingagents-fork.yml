@@ -16,17 +16,17 @@ jobs:
           - layout: official
             source: ''
           - layout: custom
-            source: git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da
+            source: git+https://github.com/idkwhodatis/TradingAgents.git@6d77a6dc58e19a3d29c63f06a042a1990111139f
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Prepare selected runtime manifest
+      - name: Install selected runtime source
         env:
           TRADINGAGENTS_SOURCE: ${{ matrix.source }}
-        run: python scripts/prepare-tradingagents-requirements.py
-      - run: python -m pip install -r .requirements-custom.txt pytest
+        run: python scripts/prepare-tradingagents-requirements.py --install
+      - run: python -m pip install pytest
       - name: Installed wrapper contracts
         run: python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py
       - name: Build selected Python dependency stage

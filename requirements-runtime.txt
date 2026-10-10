@@ -22,7 +22,8 @@ weasyprint>=60
 xhtml2pdf>=0.2.17
 
 # 深度分析 — TradingAgents (多 Agent 投资决策框架, 76k star)。
-# 不在 PyPI,用 git+ URL 安装。会拉 langchain/langgraph/yfinance 等较重依赖
+# 此 TauricResearch 项目使用 git+ URL 安装；PyPI 同名项目不是同一来源。
+# 会拉 langchain/langgraph/yfinance 等较重依赖
 # (~115 个包,首次安装 2-5 分钟)。
 # 用户启用「TradingAgents 深度分析」Agent 时才会真正调用它;不启用零开销。
 # 默认锁定官方 v0.5.0 release commit，避免同名分支歧义；

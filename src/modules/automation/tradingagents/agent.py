@@ -557,7 +557,9 @@ class TradingAgentsAgent(BaseAgent):
             final_state, decision = graph.propagate(
                 symbol,
                 date_str,
-                portfolio=to_tradingagents_portfolio(portfolio),
+                portfolio=to_tradingagents_portfolio(
+                    portfolio, preserve_markets=getattr(graph, "_panwatch_preserve_portfolio_markets", False),
+                ),
             )
 
         # Keep upstream cost metadata for legacy consumers, without fabricating

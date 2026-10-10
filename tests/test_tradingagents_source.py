@@ -98,3 +98,28 @@ def test_missing_graph_api_has_clear_error(monkeypatch):
     monkeypatch.delattr(Propagator, "get_graph_args")
     with pytest.raises(ValueError, match="Unsupported TradingAgents API: get_graph_args"):
         validate_upstream_contract()
+
+
+def test_install_replaces_only_selected_distribution_before_normal_resolution(monkeypatch, tmp_path):
+    manifest = tmp_path / '.requirements-custom.txt'
+    manifest.write_text('other==2\ntradingagents==0.6.0\n-e ./packages/example\n')
+    calls = []
+    monkeypatch.setattr(module.subprocess, 'run', lambda args, **kwargs: calls.append((args, kwargs)))
+    module.install_manifest(manifest)
+    assert calls == [
+        ([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', 'tradingagents==0.6.0'], {'check': True}),
+        ([sys.executable, '-m', 'pip', 'install', '-r', str(manifest)], {'check': True}),
+    ]
+
+
+def test_failed_source_replacement_does_not_continue_with_old_source(monkeypatch, tmp_path):
+    manifest = tmp_path / '.requirements-custom.txt'
+    manifest.write_text('tradingagents==0.6.0\n')
+    calls = []
+    def fail(args, **kwargs):
+        calls.append(args)
+        raise subprocess.CalledProcessError(1, args)
+    monkeypatch.setattr(module.subprocess, 'run', fail)
+    with pytest.raises(subprocess.CalledProcessError):
+        module.install_manifest(manifest)
+    assert len(calls) == 1

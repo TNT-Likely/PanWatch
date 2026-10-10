@@ -13,35 +13,52 @@ its dependencies: rebuild the image to select another source.
 Run from the PanWatch repository root in your activated virtual environment:
 
 ```sh
-python scripts/prepare-tradingagents-requirements.py --source "git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da"
-python -m pip install -r .requirements-custom.txt
+python scripts/prepare-tradingagents-requirements.py --install --source "git+https://github.com/idkwhodatis/TradingAgents.git@6d77a6dc58e19a3d29c63f06a042a1990111139f"
 ```
 
 The public URL above is a tested example, not a product dependency. Substitute
 your own reviewed repository and full 40-character commit SHA. An exact package
-version such as `--source "0.6.0"` selects `tradingagents==0.6.0` from your
-configured pip index, if that release exists there; package-index availability
-is not guaranteed. Branches, floating version constraints, arbitrary requirement
+version such as `--source "1.2.3"` selects `tradingagents==1.2.3` from your
+configured pip index, if you have independently verified that artifact is a
+compatible build of the intended project. A matching package name/version does
+not establish source identity or API compatibility. In particular, the public
+PyPI `tradingagents` project (including its `0.6.0` release) points to
+[Mai0313/TradingAgents](https://pypi.org/project/tradingagents/), a different
+project from the default TauricResearch source; it is not a supported substitute
+just because the names or versions match. Branches, floating version constraints, arbitrary requirement
 lines, local paths, SSH URLs, URL credentials, query strings and fragments are
 not accepted. Git must be installed for Git sources.
 
-The generated manifest preserves every other runtime requirement, include and
+The `--install` option first force-reinstalls only the selected TradingAgents
+distribution with `--no-deps`, then runs normal dependency resolution for the
+generated manifest. This handles same-version Git → index (or index → Git)
+switches in a reused virtual environment without force-reinstalling unrelated
+dependencies. Plain `pip install -r .requirements-custom.txt` can leave an old
+Git source installed when an index selection has the same version; use
+`--install` whenever selecting or switching sources. A failed install is not
+a successful switch; resolve the reported error and rerun the command.
+
+Without `--install`, the script only prepares the manifest. The generated
+manifest preserves every other runtime requirement, include and
 editable local package. Keep it in the repository root and run pip from that
 root. It is ignored by Git. The commands above also work in PowerShell; there
 is no shell-specific environment-assignment syntax. To run tests, install
 `pytest` separately. Do not subsequently install `requirements.txt`, which
 would explicitly select the official source again. To return to the default,
-run `python -m pip install -r requirements.txt`.
+run `python scripts/prepare-tradingagents-requirements.py --install --source ""`.
+The explicit empty source ignores any previous `TRADINGAGENTS_SOURCE` value.
 
 ## Docker
 
 ```sh
-docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@1832924cffe4f5c2cdad0644fdb0059d088406da" -t panwatch-custom .
+docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@6d77a6dc58e19a3d29c63f06a042a1990111139f" -t panwatch-custom .
 ```
 
 Omit the build argument (or leave it empty) for the official default. The
 Python dependency stage uses the same manifest generator and converts local
 editable packages to regular installed packages, just as the default image did.
+The Docker stage starts fresh, so it uses manifest preparation plus a normal
+pip install into its empty `/install` prefix; no source switch is needed.
 For a dependency-stage-only check, add `--target python-builder`.
 
 Build arguments can be recorded in image history, build logs and provenance.
@@ -64,6 +81,13 @@ US fallback and nested router restoration behavior is retained. Exact numeric
 `.SS`, `.SZ` and `.BJ` graph aliases compare against the bare CN cache identity
 only when its recorded market is CN; outbound upstream requests retain their
 provider symbol. Cache entries without an explicit matching market are not used.
+Modern portfolio adaptation likewise retains each lot’s explicit market. After
+the graph verifies a mainland A-share identity, its canonical symbol is applied
+only to that CN holding, including same-market lot aggregation. Other markets,
+explicitly different exchange suffixes and the caller’s portfolio are untouched.
+Unverified identities never cause bare-code holdings to be guessed. The adapted
+context reaches the real graph-state/Portfolio Manager boundary; market identity
+is also retained in checkpoint fingerprints.
 
 The configured `llm_timeout_seconds` must reach both actual LLM clients. The
 legacy `_get_provider_kwargs` hook and the modern Python

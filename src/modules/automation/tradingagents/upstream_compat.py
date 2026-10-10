@@ -33,6 +33,7 @@ def validate_upstream_contract() -> None:
 
     if not callable(getattr(TradingAgentsGraph, "_get_provider_kwargs", None)):
         _modern_timeout_boundary(TradingAgentsGraph)
+        _modern_portfolio_boundary(TradingAgentsGraph)
 
     checks = (
         (vendor_router(), "route_to_vendor", ("get_stock_data", "SYMBOL"), {"vendor": "yfinance"}),
@@ -86,6 +87,45 @@ def _modern_timeout_boundary(graph_cls):
         raise ValueError("Unsupported TradingAgents API: LLM timeout boundary; install a compatible source (see docs/tradingagents-source.md)") from exc
 
 
+def _modern_portfolio_boundary(graph_cls):
+    from inspect import signature
+
+    try:
+        signature(graph_cls.create_run_state).bind(None, "SYMBOL", "2026-01-01", "stock", None)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError("Unsupported TradingAgents API: portfolio state boundary; install a compatible source (see docs/tradingagents-source.md)") from exc
+
+
+def _modern_portfolio(portfolio, ticker, config):
+    """Use this run's verified CN identity, never exchange-prefix guesses.
+
+    Market-tagged lots are a PanWatch-only opt-in. Adapt a new book after
+    upstream identity resolution; the input book, graph globals and other
+    concurrently running graphs remain untouched.
+    """
+    import re
+    from .data_context import _aggregate_portfolio_positions
+
+    if portfolio is None or not all(hasattr(p, "market") for p in portfolio.positions):
+        return portfolio
+    identity = config.get("_ashare_identity")
+    resolved_cn = (isinstance(identity, dict)
+                   and identity.get("status") == "resolved"
+                   and identity.get("security_type") == "A-share"
+                   and identity.get("confidence") == "verified"
+                   and identity.get("canonical_symbol") == ticker
+                   and re.fullmatch(r"[0-9]{6}\.(?:SS|SZ|BJ)", ticker))
+    bare = ticker.split(".", 1)[0]
+    lots = [(ticker if resolved_cn and p.market == "CN" and p.ticker == bare else p.ticker,
+             p.market, p.quantity, p.average_price) for p in portfolio.positions]
+    return portfolio.model_copy(update={
+        "positions": _aggregate_portfolio_positions(
+            lots, preserve_markets=True,
+            position_type=type(portfolio.positions[0]) if portfolio.positions else None,
+        ),
+    })
+
+
 def bounded_graph_class(graph_cls):
     """Forward timeout through legacy or modern factories, isolated per graph.
 
@@ -103,8 +143,20 @@ def bounded_graph_class(graph_cls):
                 return kwargs
     else:
         _modern_timeout_boundary(graph_cls)
+        _modern_portfolio_boundary(graph_cls)
 
         class BoundedTradingAgentsGraph(graph_cls):
+            _panwatch_preserve_portfolio_markets = True
+
+            def create_run_state(self, company_name, trade_date, asset_type="stock", portfolio=None):
+                state = super().create_run_state(company_name, trade_date, asset_type, portfolio)
+                if asset_type == "stock":
+                    ticker = state["company_of_interest"]
+                    adapted = _modern_portfolio(portfolio, ticker, self.config)
+                    if adapted is not portfolio:
+                        state["portfolio_context"] = adapted.render(ticker)
+                return state
+
             def __init__(self, *args, **kwargs):
                 constructor, tier, builder = _modern_timeout_boundary(graph_cls)
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Prepare an install manifest; never execute pip or interpolate shell commands."""
+"""Prepare a source manifest; optionally install it with a targeted source switch."""
 from __future__ import annotations
 
 import argparse
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 from urllib.parse import urlsplit
 
 # Deliberately bounded input, not arbitrary pip requirement/option syntax.
@@ -42,6 +44,21 @@ def prepare_manifest(text: str, source: str = "", *, non_editable: bool = False)
     return "".join(lines)
 
 
+def install_manifest(path: Path) -> None:
+    """Replace only the selected distribution, then resolve normal requirements.
+
+    pip treats an installed Git distribution as satisfying an index requirement
+    with the same version. A targeted --no-deps reinstall changes its origin
+    deterministically, without force-reinstalling all runtime dependencies.
+    """
+    selected = [line for line in path.read_text(encoding="utf-8").splitlines()
+                if _DEPENDENCY.match(line)]
+    if len(selected) != 1:
+        raise ValueError("Runtime manifest must contain exactly one TradingAgents dependency")
+    subprocess.run([sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", selected[0]], check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(path)], check=True)
+
+
 class SafeArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         # argparse may otherwise echo unknown arguments containing credentials.
@@ -53,6 +70,7 @@ def main() -> None:
     parser.add_argument("--source", default=os.environ.get("TRADINGAGENTS_SOURCE", ""))
     parser.add_argument("--output", default=".requirements-custom.txt")
     parser.add_argument("--non-editable", action="store_true", help="Install local packages normally (Docker)")
+    parser.add_argument("--install", action="store_true", help="Replace only TradingAgents, then install the generated runtime manifest (for fresh or reused virtual environments)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     if Path.cwd().resolve() != root:
@@ -66,6 +84,8 @@ def main() -> None:
     except ValueError as exc:
         parser.error(str(exc))
     output.write_text(rendered, encoding="utf-8")
+    if args.install:
+        install_manifest(output)
 
 
 if __name__ == "__main__":
