@@ -12,6 +12,15 @@ export interface ApiResponse<T> {
 }
 
 const API_ERROR_TEXT_EN: Record<string, string> = {
+  onboarding_analysis_interrupted: 'A service restart interrupted the analysis. Your setup is saved; generate it again.',
+  onboarding_analysis_empty: 'The model returned an empty result. Retry or choose another model.',
+  onboarding_analysis_running: 'An analysis is running. Wait for it to finish before changing the symbol.',
+  onboarding_stock_required: 'Choose a symbol first.',
+  onboarding_quote_unavailable: 'A quote is temporarily unavailable. Check the data sources and retry.',
+  onboarding_stock_changed: 'The selected symbol changed. Fetch its quote again.',
+  onboarding_quote_required: 'Choose a symbol and view its quote first.',
+  onboarding_model_test_required: 'Set a default model and pass its connection test first.',
+  onboarding_progress_readonly: 'Setup progress is recorded from verified actions.',
   assistant_export_empty: 'There is no saved conversation content to summarize.',
   assistant_export_budget: 'The context budget is too small. Increase it in assistant settings and retry.',
   assistant_export_too_large: 'This conversation exceeds the current summary export limit.',

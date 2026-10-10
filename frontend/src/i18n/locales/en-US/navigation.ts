@@ -3,6 +3,7 @@ import { navigation as zhNavigation } from '../zh-CN/navigation'
 
 export const navigation = {
   items: {
+    gettingStarted: 'Getting started',
     home: 'Home',
     portfolio: 'Portfolio',
     opportunities: 'Opportunities',
