@@ -1,0 +1,26 @@
+name: TradingAgents fork contracts
+on:
+  pull_request:
+    paths: ['.github/workflows/tradingagents-fork.yml', 'src/modules/automation/tradingagents/**', 'tests/test_tradingagents*.py', 'tests/test_ta*.py', 'requirements*.txt']
+permissions:
+  contents: read
+concurrency:
+  group: tradingagents-fork-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  wrappers:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        layout: [fork, official]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - name: Install official compatibility baseline
+        if: matrix.layout == 'official'
+        run: python -m pip install --force-reinstall --no-deps 'tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.5.0'
+      - name: Installed wrapper contracts
+        run: python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py

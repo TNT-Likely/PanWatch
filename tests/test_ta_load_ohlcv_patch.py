@@ -215,7 +215,10 @@ def test_verified_snapshot_preserves_indicators_argument_when_degraded(monkeypat
 
 def test_install_load_ohlcv_patch_updates_yfinance_indicator_import(monkeypatch):
     """技术指标工具持有的 load_ohlcv 引用也必须接入同一个 US fallback。"""
-    from tradingagents.dataflows import market_data_validator, stockstats_utils, y_finance
+    from src.modules.automation.tradingagents.upstream_compat import snapshot_module, ohlcv_module, upstream_module
+    market_data_validator = snapshot_module()
+    stockstats_utils = ohlcv_module()
+    y_finance = upstream_module("tradingagents.dataflows.y_finance", "tradingagents.dataflows.vendors.yahoo.market")
 
     def upstream_load_ohlcv(*args, **kwargs):
         return pd.DataFrame()

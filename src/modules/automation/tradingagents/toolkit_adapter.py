@@ -189,6 +189,7 @@ def _yfinance_response_has_data(text: str) -> bool:
 # 只 patch 源头模块属性不够 —— 必须把每个 import site 的 module-level
 # 名字都替换掉,所有调用才会走我们的拦截。
 _ROUTE_TO_VENDOR_IMPORT_SITES = (
+    "tradingagents.agents.tools",
     "tradingagents.agents.utils.fundamental_data_tools",
     "tradingagents.agents.utils.news_data_tools",
     "tradingagents.agents.utils.core_stock_tools",
@@ -415,7 +416,8 @@ def patch_route_to_vendor():
     global _patch_refcount, _real_route_to_vendor
 
     try:
-        from tradingagents.dataflows import interface as ta_interface
+        from .upstream_compat import vendor_router
+        ta_interface = vendor_router()
     except ImportError:
         logger.warning("[TA toolkit] tradingagents 未安装,跳过 monkeypatch")
         yield
@@ -476,6 +478,8 @@ def patch_route_to_vendor():
 _LOAD_OHLCV_PATCHED = False
 _real_load_ohlcv: Any = None
 _LOAD_OHLCV_IMPORT_SITES = (
+    "tradingagents.dataflows.vendors.yahoo.market",
+    "tradingagents.dataflows.vendors.yahoo.snapshot",
     "tradingagents.dataflows.market_data_validator",
     "tradingagents.dataflows.interface",
     "tradingagents.dataflows.y_finance",
@@ -484,6 +488,7 @@ _LOAD_OHLCV_IMPORT_SITES = (
 _MARKET_SNAPSHOT_PATCHED = False
 _real_build_verified_market_snapshot: Any = None
 _MARKET_SNAPSHOT_IMPORT_SITES = (
+    "tradingagents.agents.tools",
     "tradingagents.agents.utils.market_data_validation_tools",
 )
 
@@ -665,7 +670,8 @@ def _ensure_load_ohlcv_patched() -> None:
     if _LOAD_OHLCV_PATCHED:
         return
     try:
-        from tradingagents.dataflows import stockstats_utils
+        from .upstream_compat import ohlcv_module
+        stockstats_utils = ohlcv_module()
     except ImportError:
         return
     if not hasattr(stockstats_utils, "load_ohlcv"):
@@ -695,7 +701,8 @@ def _ensure_market_snapshot_patched() -> None:
     if _MARKET_SNAPSHOT_PATCHED:
         return
     try:
-        from tradingagents.dataflows import market_data_validator
+        from .upstream_compat import snapshot_module
+        market_data_validator = snapshot_module()
     except ImportError:
         return
     if not hasattr(market_data_validator, "build_verified_market_snapshot"):
