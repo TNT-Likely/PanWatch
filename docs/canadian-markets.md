@@ -100,3 +100,12 @@ public-data evidence and explicitly disclose unexecuted live-model/UI checks.
 - TMX calendar: https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar
 - TMX hours: https://www.tsx.com/en/trading/calendars-and-trading-hours/trading-hours
 - FX API: https://frankfurter.dev/v1/
+
+### Native preferred-share notation
+
+With an explicit TSX market, `ENB.PR.V` and `ENB.PR.V.TO` normalize to
+`ENB-PV` (Yahoo `ENB-PV.TO`); the final V is a preferred series, not TSXV.
+An unqualified native preferred code requires an explicit TSX market.
+Unsupported `.PF.<series>` notation must use an exact Yahoo symbol rather
+than a guessed conversion. Assistant market tools use the same canonical
+listing identity as stock creation and the quote provider.

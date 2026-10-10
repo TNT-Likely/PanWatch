@@ -515,7 +515,14 @@ def _panwatch_identity(symbol: str, market=None):
     value = str(symbol or "").strip().upper()
     market = MarketCode(getattr(market, "value", market)) if market is not None else _market_for_symbol(value)
     if market == MarketCode.CN and re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", value):
-        value = value.split(".")[0]
+        from src.platform.marketdata.cn_symbol import get_cn_exchange
+
+        code, _, suffix = value.partition(".")
+        expected = {"SH": "SS", "SZ": "SZ", "BJ": "BJ"}[get_cn_exchange(code)]
+        # A bare CN code uses PanWatch's stock namespace. The same digits on
+        # another exchange can identify an index or a different security.
+        if not suffix or suffix == expected:
+            value = code
     if market.value in {"TSX", "TSXV"}:
         from marketdata.symbol import Symbol
         value = Symbol.parse(value, market.value).code
@@ -545,6 +552,8 @@ def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     if cache_matches_symbol and isinstance(cached_klines, (list, tuple)):
         klines = list(cached_klines)
     else:
+        if market.value == "CN" and "." in provider_symbol:
+            raise ValueError(f"No verified PanWatch listing for {symbol}")
         klines = KlineCollector(market).get_klines(provider_symbol, days=750)
     if not klines:
         return None

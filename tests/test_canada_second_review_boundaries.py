@@ -150,3 +150,19 @@ def test_missing_quote_metadata_remains_unknown(monkeypatch):
     }]))
     for value in ["币种未知", "证券类型未知", "来源未知", "时间未知", "供应商延迟 未知", "时效 unknown", "不能视为当前实时行情"]:
         assert value in text
+@pytest.mark.parametrize('requested,market,expected', [('DLR-U.TO','TSX','DLR-U'),('REI.UN','TSX','REI-UN'),('RCK.V','TSXV','RCK'),(' rei.un ','TSX','REI-UN'),('ENB.PR.V','TSX','ENB-PV')])
+def test_assistant_normalizes_supported_provider_aliases(boundary,requested,market,expected):
+    client,sessions,requests=boundary
+    with sessions() as db:
+        request=RunRequest(run_id='personal-alias',messages=[ModelMessage(role='user',content='Quote')])
+        result=asyncio.run(tools.build_panwatch_tool_registry(db).execute('get_stock_quote',request,{'symbol':requested,'market':market}))
+        assert result.ok, 'Provider returned valid canonical quote but assistant rejected it'
+        assert result.data['symbol']==expected
+        assert requests == [expected + ('.TO' if market == 'TSX' else '.V')]
+
+
+def test_native_tsx_preferred_series_v():
+    from src.modules.market.api.stocks import StockCreate
+
+    stock = StockCreate(symbol='ENB.PR.V', name='Enbridge Series 1 Preferred', market='TSX')
+    assert stock.symbol == 'ENB-PV'

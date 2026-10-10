@@ -55,12 +55,24 @@ class Symbol:
         code = raw.strip()
         selected = Market(str(getattr(market, "value", market)).upper()) if market else _detect_market(code)
         upper = code.upper()
-        suffix_market = Market.TSX if upper.endswith(".TO") else Market.TSXV if upper.endswith(".V") else None
+        native_preferred = re.fullmatch(r"[A-Z0-9][A-Z0-9-]*\.P[RF]\.[A-Z]+", upper)
+        if native_preferred and (not market or selected != Market.TSX):
+            raise ValueError("Native preferred-share notation requires an explicit TSX market")
+        suffix_market = None if native_preferred else (
+            Market.TSX if upper.endswith(".TO") else Market.TSXV if upper.endswith(".V") else None
+        )
         if suffix_market and suffix_market != selected:
             raise ValueError("Canadian suffix conflicts with exchange")
         if selected in {Market.TSX, Market.TSXV}:
             if suffix_market:
                 upper = upper[:-3] if suffix_market == Market.TSX else upper[:-2]
+            preferred = re.fullmatch(r"([A-Z0-9][A-Z0-9-]*)\.PR\.([A-Z]+)", upper)
+            if preferred:
+                if selected != Market.TSX:
+                    raise ValueError("Native preferred-share notation requires TSX")
+                upper = f"{preferred[1]}-P{preferred[2]}"
+            elif re.search(r"\.(?:PR|PF)(?:\.|$)", upper):
+                raise ValueError("Unsupported preferred-share notation; use the exact Yahoo symbol")
             upper = upper.replace(".", "-")
             if not re.fullmatch(r"[A-Z0-9]+(?:-[A-Z0-9]+)*", upper) or len(upper) > 20:
                 raise ValueError("Invalid Canadian listed symbol")

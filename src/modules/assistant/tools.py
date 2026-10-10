@@ -58,6 +58,10 @@ def _symbol_and_market(arguments: dict[str, Any]) -> tuple[str, MarketCode] | No
     symbol = str(arguments.get("symbol") or "").strip().upper()
     try:
         market = MarketCode(str(arguments.get("market") or "CN").strip().upper())
+        if symbol and market in {MarketCode.TSX, MarketCode.TSXV}:
+            from marketdata.symbol import Symbol
+
+            symbol = Symbol.parse(symbol, market.value).code
     except ValueError:
         return None
     return (symbol, market) if symbol else None

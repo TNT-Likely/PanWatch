@@ -43,3 +43,18 @@ def test_bad_symbol_does_not_drop_good_batch_quotes(monkeypatch):
     monkeypatch.setattr(canada,'market_get',fetch)
     rows=canada.CanadaQuoteVendor().fetch([Symbol.parse(s,'TSX') for s in ['RY','BAD','ZSP']],{})
     assert [q.symbol for q in rows]==['RY','ZSP']
+
+@pytest.mark.parametrize('raw', ['ENB.PR.V', 'ENB.PR.V.TO', 'ENB-PV.TO'])
+def test_preferred_series_v_preserves_tsx_identity(raw):
+    symbol = Symbol.parse(raw, 'TSX')
+    assert symbol.code == 'ENB-PV'
+    assert symbol.to_yfinance() == 'ENB-PV.TO'
+
+@pytest.mark.parametrize('raw,market', [('ENB.PR.V', None), ('ENB.PR.V', 'TSXV'), ('ENB.PR.A.V', 'TSXV'), ('ENB.PF.V', 'TSX'), ('ENB.PF.A.TO', 'TSX')])
+def test_preferred_ambiguity_and_unsupported_notation_fail_closed(raw, market):
+    with pytest.raises(ValueError):
+        Symbol.parse(raw, market)
+
+
+def test_preferred_series_a_provider_notation():
+    assert Symbol.parse('ENB.PR.A', 'TSX').to_yfinance() == 'ENB-PA.TO'
