@@ -14,6 +14,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from src.platform.marketdata.instrument_identity import analysis_key, market_value
+from src.platform.marketdata.quote_display import assistant_quote_fields, assistant_quote_summary
 from src.modules.portfolio import build_portfolio_service
 from src.platform.persistence.models import AnalysisHistory, Stock, StockSuggestion
 
@@ -33,7 +34,7 @@ ASSISTANT_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_stock_quote",
-            "description": "获取某只股票的实时行情（价格、涨跌幅、成交量等）。",
+            "description": "获取某只股票的来源报价及币种、数据时点和时效；延迟或未知时效不能视为实时行情。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -140,6 +141,7 @@ def build_portfolio_context(db: Session) -> str:
 async def fetch_realtime_context(symbol: str, market: str, *, quotes=None) -> str:
     """Return a compact quote summary; failures degrade to an empty context."""
     try:
+        from marketdata import Symbol
         from src.platform.marketdata.marketdata_client import md_quote_rows
         from src.platform.marketdata.models import MarketCode
 
@@ -147,12 +149,11 @@ async def fetch_realtime_context(symbol: str, market: str, *, quotes=None) -> st
         rows = quotes if quotes is not None else await asyncio.to_thread(md_quote_rows, [symbol], code.value)
         if not rows:
             return ""
-        quote = rows[0]
-        return (
-            f"实时行情：{quote.get('name', symbol)}（{market}:{symbol}）价格 "
-            f"{quote.get('current_price', '--')}，涨跌幅 {quote.get('change_pct', '--')}%，"
-            f"成交量 {quote.get('volume', '--')}"
-        )
+        canonical = Symbol.parse(symbol, code.value).code
+        quote = next((row for row in rows if row.get("symbol") == canonical and row.get("market", code.value) == code.value), None)
+        if quote is None:
+            return ""
+        return assistant_quote_summary(code.value, {**quote, **assistant_quote_fields(code.value, quote)})
     except Exception as exc:  # noqa: BLE001 - a missing quote must not fail chat
         logger.debug("获取实时行情失败: %s", exc)
         return ""

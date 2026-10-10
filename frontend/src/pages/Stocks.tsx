@@ -259,6 +259,8 @@ export default function StocksPage() {
   const initialLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadedRef = useRef(false)
+  const exchangeRatesControllerRef = useRef<AbortController | null>(null)
+  const portfolioLoadGenerationRef = useRef(0)
 
   // Stock form
   const [showStockForm, setShowStockForm] = useState(false)
@@ -586,11 +588,42 @@ export default function StocksPage() {
     }
   }, [])
 
+  // A separate, event-driven FX lane keeps metadata/quotes responsive. Newer
+  // refreshes abort and supersede old snapshots without depending on render state.
+  const refreshExchangeRates = useCallback(async (signal?: AbortSignal) => {
+    exchangeRatesControllerRef.current?.abort()
+    const controller = new AbortController()
+    exchangeRatesControllerRef.current = controller
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) controller.abort()
+    try {
+      const data = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal: controller.signal })
+      if (!controller.signal.aborted) {
+        setPortfolioRaw(previous => previous ? { ...previous, exchange_rates: data.exchange_rates } : previous)
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        // Do not keep valuing Canadian holdings with an unverified old rate.
+        setPortfolioRaw(previous => previous?.exchange_rates ? { ...previous, exchange_rates: {
+          ...previous.exchange_rates, CAD_CNY: null, CANADA_USD_CNY: null,
+        } } : previous)
+        console.warn('Portfolio exchange rates unavailable:', error)
+      }
+    } finally {
+      signal?.removeEventListener('abort', abort)
+    }
+  }, [])
+
   const loadPortfolio = useCallback(async () => {
+    const generation = ++portfolioLoadGenerationRef.current
+    exchangeRatesControllerRef.current?.abort()
     try {
       // Mutation refresh is local metadata only; render using the quotes already on screen.
       const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false&refresh_exchange_rates=false')
+      if (generation !== portfolioLoadGenerationRef.current) return
       setPortfolioRaw(portfolioData)
+      void refreshExchangeRates()
       setAccounts(portfolioData.accounts.map(account => ({
         id: account.id,
         name: account.name,
@@ -610,7 +643,7 @@ export default function StocksPage() {
     } catch (e) {
       console.error(e)
     }
-  }, [requestQuotes, quotes, stocks])
+  }, [refreshExchangeRates, requestQuotes, quotes, stocks])
 
   const loadInitialData = useCallback((signal: AbortSignal): Promise<void> => {
     if (initialLoadPromiseRef.current) return initialLoadPromiseRef.current
@@ -656,12 +689,7 @@ export default function StocksPage() {
         if (!signal.aborted) console.warn('Portfolio quotes unavailable:', error)
       })
 
-      // FX refresh also runs independently of the metadata shell and quotes.
-      void fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal }).then(data => {
-        if (!signal.aborted) setPortfolioRaw(previous => previous ? { ...previous, exchange_rates: data.exchange_rates } : previous)
-      }).catch(error => {
-        if (!signal.aborted) console.warn('Portfolio exchange rates unavailable:', error)
-      })
+      void refreshExchangeRates(signal)
 
       void loadPortfolioPageBackgroundData({
         loadMarketStatus: refreshMarketStatus,
@@ -685,7 +713,7 @@ export default function StocksPage() {
 
     initialLoadPromiseRef.current = run
     return run
-  }, [refreshMarketStatus, requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
+  }, [refreshExchangeRates, refreshMarketStatus, requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
 
   // Load news for specific stock or all watchlist
   const loadNews = useCallback(async (stockName?: string) => {
@@ -771,22 +799,25 @@ export default function StocksPage() {
     return (agent.schedule || '').trim()
   }
 
-  // Refresh quotes only (decoupled from portfolio and scans)
+  // Refresh market-data lanes without blocking local portfolio metadata.
   const handleRefresh = useCallback(async () => {
     void refreshKlines()
     await Promise.all([
+      refreshExchangeRates(),
       refreshMarketStatus(),
       refreshQuotes(),
       loadPoolSuggestions(),
       loadPriceAlertSummaries(),
     ])
-  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshMarketStatus, refreshQuotes])
+  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshExchangeRates, refreshKlines, refreshMarketStatus, refreshQuotes])
 
   useEffect(() => {
     const controller = new AbortController()
     void loadInitialData(controller.signal)
     return () => {
       controller.abort()
+      exchangeRatesControllerRef.current?.abort()
+      portfolioLoadGenerationRef.current++
       initialLoadPromiseRef.current = null
     }
   }, [loadInitialData])

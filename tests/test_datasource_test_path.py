@@ -98,12 +98,14 @@ class TestKlineSourceTestPath(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(DEFAULT_TEST_SYMBOLS, ("600519", "601127", "00700", "00386", "AAPL", "NVDA"))
 
     def test_all_symbol_based_seed_tests_use_balanced_defaults(self):
-        """所有带股票代码的内置数据源测试都应使用三市场各两条默认样本。"""
+        """内置数据源使用适合其市场的字符串测试样本。"""
         from server import DATA_SOURCE_SEEDS
         from src.modules.market.data_collector import DEFAULT_TEST_SYMBOLS
 
         for seed in DATA_SOURCE_SEEDS:
-            if seed["test_symbols"]:
+            if seed["provider"] == "yahoo_canada":
+                self.assertEqual(seed["test_symbols"], ["ZSP.TO", "REI-UN.TO", "RCK.V"])
+            elif seed["test_symbols"]:
                 self.assertEqual(seed["test_symbols"], list(DEFAULT_TEST_SYMBOLS), seed["name"])
 
     async def test_empty_symbols_report_effective_defaults(self):

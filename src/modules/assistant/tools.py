@@ -41,7 +41,7 @@ from src.platform.marketdata.marketdata_client import (
     md_quote_rows,
 )
 from src.platform.marketdata.models import MARKETS, MarketCode
-from src.platform.marketdata.quote_display import assistant_quote_fields
+from src.platform.marketdata.quote_display import assistant_quote_fields, assistant_quote_summary
 from src.platform.marketdata.stock_list import search_stocks
 from src.platform.persistence.models import Stock, NotifyChannel, Position
 from src.platform.persistence.worker import run_db_operation
@@ -340,21 +340,19 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "quote_date",
                 "source_timestamp",
                 "source",
+                "currency",
+                "security_type",
+                "delayed",
+                "observed_at",
                 "pe_ratio",
                 "total_market_value",
                 "circulating_market_value",
             )
         }
-        name = data.get("name") or symbol
         observed_at = datetime.now(UTC)
         data.update(assistant_quote_fields(market.value, quote, observed_at))
-        time_label = data.get("source_timestamp") or data.get("quote_date") or "时间未知"
         return ToolResult.success(
-            summary=(
-                f"{name}（{market.value}:{symbol}）来源报价 {data.get('current_price')}，"
-                f"数据时点 {time_label}；市场 {data['market_status']}，时效 {data['freshness']}。"
-                + (f"涨跌幅 {data.get('change_pct')}%。" if data['is_realtime'] else "不能视为当前实时行情。")
-            ),
+            summary=assistant_quote_summary(market.value, data),
             data=data,
             sources=[{"name": data.get("source") or "PanWatch 行情数据", "as_of": data.get("source_timestamp") or data.get("quote_date")}],
             observed_at=observed_at,
@@ -971,8 +969,8 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
     registry.register(
         tool_spec(
             name="get_stock_quote",
-            title="查询实时行情",
-            description="查询一只股票的最新价、涨跌幅和日内交易数据。",
+            title="查询来源行情",
+            description="查询一只股票的来源报价、币种、证券类型和数据时点；延迟或未知时效不能视为实时行情。",
             risk=ToolRisk.READ,
             input_schema={
                 "type": "object",

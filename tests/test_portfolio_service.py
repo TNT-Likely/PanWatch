@@ -24,5 +24,5 @@ def test_portfolio_service_builds_position_summary_from_repository():
 
     result = PortfolioService(PortfolioRepository(session)).build_assistant_summary()
 
-    assert "贵州茅台(CN:600519) 100股 成本1500.0 风格swing" in result
+    assert "贵州茅台(CN:600519) 100.0股 成本1500.0 风格swing" in result
     session.close()

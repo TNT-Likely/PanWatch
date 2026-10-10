@@ -378,7 +378,7 @@ DATA_SOURCE_SEEDS: list[dict] = [
         *[{"name": f"Yahoo Canada {kind}", "type": kind, "provider": "yahoo_canada",
            "config": {"description": "Delayed public TSX/TSXV listed securities (CAD/USD)."},
            "enabled": True, "priority": 0, "supports_batch": kind == "quote",
-           "test_symbols": [{"symbol": "ZSP", "market": "TSX"}, {"symbol": "REI-UN", "market": "TSX"}, {"symbol": "RCK", "market": "TSXV"}]}
+           "test_symbols": ["ZSP.TO", "REI-UN.TO", "RCK.V"]}
           for kind in ("quote", "kline")],
         # K线数据源
         {
@@ -657,6 +657,8 @@ def seed_data_sources(db=None, *, reset_test_symbols: bool = False) -> list[dict
     if owns_session:
         db = SessionLocal()
 
+    from src.platform.marketdata.datasource_symbols import normalize_test_symbols
+
     seeded_missing: list[dict] = []
     for source_data in DATA_SOURCE_SEEDS:
         existing = (
@@ -675,6 +677,8 @@ def seed_data_sources(db=None, *, reset_test_symbols: bool = False) -> list[dict
                 existing.test_symbols = list(source_data.get("test_symbols", []))
             elif not existing.test_symbols:  # 启动对账只补空值,不覆盖用户配置
                 existing.test_symbols = source_data.get("test_symbols", [])
+            else:
+                existing.test_symbols = normalize_test_symbols(existing.test_symbols)
         else:
             db.add(DataSource(**source_data))
             seeded_missing.append(
