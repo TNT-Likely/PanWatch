@@ -110,7 +110,10 @@ export default function AnalysisDetailPage() {
   const { t, i18n } = useTranslation('configuration')
   const { toast } = useToast()
   const analysisT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const { symbol = '', date = '' } = useParams()
+  const { symbol: reportSymbol = '', date = '' } = useParams()
+  const qualifiedMarket = /^(TSX|TSXV):/.exec(reportSymbol)?.[1]
+  const symbol = qualifiedMarket ? reportSymbol.slice(qualifiedMarket.length + 1) : reportSymbol
+  const market = qualifiedMarket || inferMarket(symbol)
   const navigate = useNavigate()
   const [result, setResult] = useState<DeepAnalysisResult | null>(null)
   const [history, setHistory] = useState<HistoryComparisonResponse | null>(null)
@@ -131,7 +134,7 @@ export default function AnalysisDetailPage() {
     if (pdfBusy) return
     setPdfBusy(true)
     try {
-      await tradingAgentsApi.downloadAnalysisPdf(symbol, date)
+      await tradingAgentsApi.downloadAnalysisPdf(reportSymbol, date)
     } catch (e) {
       toast(e instanceof Error ? e.message : analysisT('assistantPage.analysis.exportFailed'), 'error')
     } finally {
@@ -142,15 +145,15 @@ export default function AnalysisDetailPage() {
   useEffect(() => {
     setLoading(true)
     tradingAgentsApi
-      .getAnalysisByDate(symbol, date)
+      .getAnalysisByDate(reportSymbol, date)
       .then(setResult)
       .catch(() => setResult(null))
       .finally(() => setLoading(false))
     tradingAgentsApi
-      .getHistoryComparison(symbol, inferMarket(symbol), 90)
+      .getHistoryComparison(symbol, market, 90)
       .then(setHistory)
       .catch(() => setHistory(null))
-  }, [symbol, date])
+  }, [reportSymbol, symbol, market, date])
 
   // 记住二级目录开关
   useEffect(() => {

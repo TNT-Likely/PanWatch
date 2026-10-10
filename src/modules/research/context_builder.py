@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.platform.marketdata.instrument_identity import instrument_get, scoped_keys
+
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
@@ -31,6 +33,8 @@ _INDEX_BY_MARKET: dict[str, tuple[str, str]] = {
     "CN": ("000300", "沪深300"),
     "HK": ("HSI", "恒生指数"),
     "US": (".INX", "标普500"),
+    "TSX": ("^GSPTSE", "S&P/TSX Composite"),
+    "TSXV": ("^SPCDNX", "S&P/TSX Venture Composite"),
 }
 # A股若 000300 取数失败时的兜底指数(上证指数)。
 _CN_INDEX_FALLBACK: tuple[str, str] = ("000001", "上证指数")
@@ -149,10 +153,10 @@ class ContextBuilder:
             db.close()
 
     @staticmethod
-    def _build_portfolio_constraints(portfolio, symbol: str) -> dict:
+    def _build_portfolio_constraints(portfolio, symbol: str, market=None) -> dict:
         agg = None
         try:
-            agg = portfolio.get_aggregated_position(symbol)
+            agg = portfolio.get_aggregated_position(symbol, market) if market is not None else portfolio.get_aggregated_position(symbol)
         except Exception:
             agg = None
 
@@ -251,6 +255,8 @@ class ContextBuilder:
         if mkt in self._index_cache:
             return self._index_cache[mkt]
 
+        if mkt in {"TSX", "TSXV"}:
+            return {"available": False, "reason": "Canadian benchmark feed not configured"}
         sym, _label = self._index_for_market(market)
         ctx = self._fetch_index_context(sym, market)
         # A股 000300 取不到时兜底上证指数
@@ -456,6 +462,7 @@ class ContextBuilder:
         persist_snapshot: bool = True,
     ) -> dict:
         symbol_contexts: dict[str, dict] = {}
+        identity_keys = scoped_keys((s.symbol, s.market) for s in context.watchlist)
         all_news_for_topic: list[dict] = []
         snapshot_date = _iso_today()
 
@@ -463,12 +470,12 @@ class ContextBuilder:
             symbol = stock.symbol
             market = stock.market
             stock_name = stock.name or symbol
-            pack = packs.get(symbol)
+            pack = instrument_get(packs, symbol, market)
 
             pack_news = list((pack.news.items if (pack and pack.news) else []) or [])
             realtime_news = _cut_by_hours(pack_news, realtime_hours)
             extended_news = _cut_by_hours(pack_news, extended_hours)
-            hist_news = self._load_history_news(symbol, stock_name, days=history_days)
+            hist_news = [] if market.value in {"TSX", "TSXV"} else self._load_history_news(symbol, stock_name, days=history_days)
 
             realtime_ranked = rank_news_items(dedupe_news_items(realtime_news), symbol=symbol)
             extended_ranked = rank_news_items(dedupe_news_items(extended_news), symbol=symbol)
@@ -476,7 +483,7 @@ class ContextBuilder:
 
             hist_topic = summarize_news_topics(hist_ranked)
             kline_history = self._get_kline_history(symbol, market, kline_days)
-            constraints = self._build_portfolio_constraints(context.portfolio, symbol)
+            constraints = self._build_portfolio_constraints(context.portfolio, symbol, market)
             snapshot_memory = self._build_snapshot_memory(
                 symbol=symbol,
                 market=market,
@@ -522,7 +529,7 @@ class ContextBuilder:
 
             # ④ 最近一次 TradingAgents 深度结论(高权重先验,仅紧凑版本)
             try:
-                ta_verdict = get_latest_ta_verdict(symbol, within_days=14)
+                ta_verdict = None if market.value in {"TSX", "TSXV"} else get_latest_ta_verdict(symbol, within_days=14)
             except Exception as e:
                 logger.debug(f"注入 TA 深度结论失败 {symbol}: {e}")
                 ta_verdict = None
@@ -546,7 +553,7 @@ class ContextBuilder:
                 "memory": snapshot_memory,
                 "data_quality": quality,
             }
-            symbol_contexts[symbol] = payload
+            symbol_contexts[identity_keys[(market.value, symbol)]] = payload
             all_news_for_topic.extend(realtime_ranked[:5] + hist_ranked[:5])
 
             if persist_snapshot:

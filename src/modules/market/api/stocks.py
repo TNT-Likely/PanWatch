@@ -1,3 +1,4 @@
+from src.platform.marketdata.instrument_identity import analysis_key
 import asyncio
 import logging
 import threading
@@ -6,7 +7,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import (
@@ -35,6 +36,13 @@ class StockCreate(BaseModel):
     symbol: str
     name: str
     market: str = "CN"
+
+    @model_validator(mode="after")
+    def normalize_identity(self):
+        from marketdata.symbol import Symbol
+        symbol = Symbol.parse(self.symbol, self.market)
+        self.symbol, self.market = symbol.code, symbol.market.value
+        return self
 
 
 class StockUpdate(BaseModel):
@@ -224,6 +232,8 @@ def get_quotes(db: Session = Depends(get_db)):
         market_stocks.setdefault(s.market, []).append(s)
 
     quotes = {}
+    from collections import Counter
+    counts = Counter(stock.symbol for stock in stocks)
     for market, stock_list in market_stocks.items():
         try:
             MarketCode(market)  # 校验市场合法
@@ -234,13 +244,19 @@ def get_quotes(db: Session = Depends(get_db)):
         try:
             items = md_quote_rows(symbols, market)
             for item in items:
-                quotes[item["symbol"]] = {
+                key = f"{market}:{item['symbol']}"
+                quotes[key] = {
+                    "market": market,
+                    "is_delayed": item.get("delayed"),
+                    **{k: item.get(k) for k in ("currency", "security_type", "source_timestamp", "source", "delayed")},
                     "current_price": item["current_price"],
                     "change_pct": item["change_pct"],
                     "change_amount": item["change_amount"],
                     "prev_close": item["prev_close"],
                     **daily_quote_fields(market, item),
                 }
+                if counts[item["symbol"]] == 1:
+                    quotes[item["symbol"]] = quotes[key]
         except Exception as e:
             logger.error(f"获取 {market} 行情失败: {e}")
 
@@ -452,7 +468,7 @@ async def trigger_stock_agent(
     # force_refresh=true 时跳过去重,允许用户主动强制重跑(老任务自然终止,新 trace_id)。
     if agent_name == "tradingagents" and not force_refresh:
         from src.modules.automation import find_active_tradingagents_trace
-        existing_trace = find_active_tradingagents_trace(db, trigger_stock.symbol)
+        existing_trace = find_active_tradingagents_trace(db, analysis_key(trigger_stock.symbol, trigger_stock.market))
         if existing_trace:
             logger.info(
                 f"[trigger 幂等] {trigger_stock.symbol} 已有在跑任务 trace={existing_trace},"
@@ -466,7 +482,7 @@ async def trigger_stock_agent(
             }
 
     # 预生成 trace_id,返回给前端用于轮询进度
-    trace_id = f"man-{agent_name}-{trigger_stock.symbol}-{int(_time.time() * 1000)}"
+    trace_id = f"man-{agent_name}-{analysis_key(trigger_stock.symbol, trigger_stock.market)}-{int(_time.time() * 1000)}"
 
     # 生命周期先落库，确保后台线程尚未写出第一条进度日志时，刷新页面仍能恢复任务。
     if agent_name == "tradingagents":

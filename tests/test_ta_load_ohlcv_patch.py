@@ -319,3 +319,22 @@ def test_route_to_vendor_does_not_misclassify_generic_not_set_error(monkeypatch)
     import pytest
     with pytest.raises(RuntimeError, match="internal state not set"):
         ta._patched_route_to_vendor("get_macro_indicators", "fed_funds_rate", "2026-06-18", 30)
+
+
+def test_canadian_yahoo_failure_keeps_exchange_in_fallback(monkeypatch):
+    from src.platform.marketdata.collectors.kline_collector import KlineCollector
+    from src.platform.marketdata.models import MarketCode
+    seen = []
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("Yahoo connection timeout")
+    def collect(self, symbol, days):
+        seen.append((self.market, symbol))
+        return []
+    monkeypatch.setattr(ta, "_real_load_ohlcv", unavailable)
+    monkeypatch.setattr(KlineCollector, "get_klines", collect)
+    import pytest
+    for symbol, market in [("RY.TO", MarketCode.TSX), ("ZSP.TO", MarketCode.TSX), ("RCK.V", MarketCode.TSXV)]:
+        with ta.panwatch_data_context({}):
+            with pytest.raises(Exception, match="MarketData"):
+                ta._panwatch_load_ohlcv(symbol, "2026-10-09")
+        assert seen[-1] == (market, symbol)

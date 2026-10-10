@@ -427,8 +427,15 @@ def search_stocks(query: str, market: str = "", limit: int = 20) -> list[dict]:
     if not q:
         return []
 
-    # 尝试实时搜索
+    from marketdata.vendors.canada import search_canadian
+    if market in {"TSX", "TSXV"}:
+        return search_canadian(q, market, limit)
     results = _realtime_search(q, market, limit)
+    if not market:
+        try:
+            results = search_canadian(q, "", limit) + results
+        except Exception as exc:
+            logger.warning("Canadian search unavailable; preserving other markets: %s", exc)
     if len(results) >= limit:
         return results[:limit]
 

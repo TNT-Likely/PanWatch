@@ -147,7 +147,7 @@ def _parse_verdict(text: str) -> str:
 async def _fetch_fundamental_context(symbol: str, market: str, *, quotes=None) -> str:
     """基本面摘要:PE / 换手率 / 市值 / 今日振幅(取自实时行情,失败返回空)。"""
     try:
-        mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
+        mc = MarketCode(market) if market in ("CN", "HK", "US", "TSX", "TSXV") else MarketCode.CN
         rows = quotes if quotes is not None else await asyncio.to_thread(md_quote_rows, [symbol], mc.value)
         if not rows:
             return ""

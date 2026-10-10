@@ -69,6 +69,9 @@ def _pick_num(mapping: dict, keys: list[str]) -> float | None:
 
 def _normalize_market(market: str) -> str:
     m = (market or "CN").strip().upper()
+    if m in {"TSX", "TSXV"}:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Canadian discovery coverage unavailable")
     return m if m in ("CN", "HK", "US") else "CN"
 
 

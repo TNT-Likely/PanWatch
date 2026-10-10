@@ -37,7 +37,7 @@ TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
 
 INPUT_DESCRIPTIONS_EN: dict[str, str] = {
     "symbol": "Stock symbol, for example 600519.",
-    "market": "Market code: CN, HK, or US.",
+    "market": "Market code: CN, HK, US, TSX, or TSXV.",
     "query": "Stock symbol or name.",
     "limit": "Maximum number of results.",
     "date": "Trading date in YYYY-MM-DD format.",

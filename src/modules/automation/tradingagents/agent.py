@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from src.platform.marketdata.instrument_identity import analysis_key, analysis_trade_date
+
 import asyncio
 import logging
 import threading
@@ -145,7 +147,7 @@ class TradingAgentsAgent(BaseAgent):
 
         trace_id = getattr(context, "_trace_id", "")
         if not isinstance(trace_id, str) or not trace_id:
-            trace_id = self._make_trace_id(stock.symbol)
+            trace_id = self._make_trace_id(analysis_key(stock.symbol, stock.market))
         progress_handler = PanWatchProgressHandler(trace_id, self.name)
         setattr(context, "_progress_handler", progress_handler)
         progress_handler.emit("data_collection", "stage_start", symbol=stock.symbol)
@@ -278,7 +280,7 @@ class TradingAgentsAgent(BaseAgent):
             raise TradingAgentsUnavailable(self._import_error)
 
         stock = data["stock"]
-        trace_id = getattr(context, "_trace_id", "") or self._make_trace_id(stock.symbol)
+        trace_id = getattr(context, "_trace_id", "") or self._make_trace_id(analysis_key(stock.symbol, stock.market))
         force_refresh = bool(getattr(context, "_force_refresh", False))
 
         # 0) 同日缓存命中(force_refresh=True 时跳过)
@@ -335,6 +337,8 @@ class TradingAgentsAgent(BaseAgent):
             market=stock.market.value,
             current_price=cur_price_num,
             industry=quote_data.get("industry", "") if isinstance(quote_data, dict) else "",
+            **({key: quote_data.get(key) for key in ("currency", "security_type", "source_timestamp")}
+               if stock.market.value in {"TSX", "TSXV"} else {}),
         )
         # 5) 同步阻塞,丢到线程池;加硬超时防卡死
         try:
@@ -386,6 +390,7 @@ class TradingAgentsAgent(BaseAgent):
 
         # 存分析时实时价 → 历史决策表"分析价"立即显示(不必等当日 K线收盘回填)
         _quote = data.get("quote") or {}
+        result.raw_data.update(market=stock.market.value, currency=_quote.get("currency"), security_type=_quote.get("security_type"))
         _cp = _quote.get("current_price")
         if isinstance(_cp, (int, float)):
             result.raw_data["price_at_analysis"] = float(_cp)
@@ -404,10 +409,11 @@ class TradingAgentsAgent(BaseAgent):
         try:
             save_analysis(
                 agent_name=self.name,
-                stock_symbol=stock.symbol,
+                stock_symbol=analysis_key(stock.symbol, stock.market),
                 content=result.content,
                 title=result.title,
                 raw_data=result.raw_data,
+                analysis_date=date.fromisoformat(analysis_trade_date(stock.market)),
             )
         except Exception as e:
             logger.warning(f"[TA] save_analysis 失败,不影响主流程: {e}")
@@ -499,12 +505,15 @@ class TradingAgentsAgent(BaseAgent):
         try:
             history = get_analysis(
                 agent_name=self.name,
-                stock_symbol=stock.symbol,
-                analysis_date=date.today(),
+                stock_symbol=analysis_key(stock.symbol, stock.market),
+                analysis_date=date.fromisoformat(analysis_trade_date(stock.market)),
             )
         except Exception:
             return None
         if not history or not history.raw_data:
+            return None
+        recorded_market = history.raw_data.get("market")
+        if recorded_market and recorded_market != stock.market.value:
             return None
         return AnalysisResult(
             agent_name=self.name,
@@ -570,9 +579,13 @@ class TradingAgentsAgent(BaseAgent):
             if stock_metadata_context:
                 patch_instrument_context(graph, stock_metadata_context)
 
-            date_str = datetime.now().strftime("%Y-%m-%d")
+            date_str = analysis_trade_date(market)
+            provider_symbol = symbol
+            if market in {"TSX", "TSXV"}:
+                from marketdata.symbol import Symbol
+                provider_symbol = Symbol.parse(symbol, market).to_yfinance()
             final_state, decision = graph.propagate(
-                symbol,
+                provider_symbol,
                 date_str,
                 portfolio=to_tradingagents_portfolio(portfolio),
             )

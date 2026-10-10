@@ -44,7 +44,7 @@ def _format_datetime(dt) -> str:
 
 def _to_market(market: str) -> str:
     m = (market or "ALL").strip().upper()
-    return m if m in ("ALL", "CN", "HK", "US") else "ALL"
+    return m if m in ("ALL", "CN", "HK", "US", "TSX", "TSXV") else "ALL"
 
 
 def _action_priority(item: dict) -> int:
@@ -143,7 +143,7 @@ def _load_latest_insights(db: Session) -> list[dict]:
 
 @router.get("/overview")
 def get_dashboard_overview(
-    market: str = Query("ALL", description="市场过滤: ALL/CN/HK/US"),
+    market: str = Query("ALL", description="市场过滤: ALL/CN/HK/US/TSX/TSXV"),
     action_limit: int = Query(6, ge=3, le=20),
     risk_limit: int = Query(6, ge=3, le=20),
     days: int = Query(45, ge=7, le=365),
@@ -232,6 +232,7 @@ def get_dashboard_overview(
     )
     by_market: dict[str, dict] = {}
     invested_cost = 0.0
+    valuation_incomplete = False
     for pos, stock in positions:
         market_code = (stock.market or "CN").strip().upper() or "CN"
         fx = 1.0
@@ -239,11 +240,14 @@ def get_dashboard_overview(
             fx = 0.92
         elif market_code == "US":
             fx = 7.25
-        cost = float(pos.cost_price or 0.0) * float(pos.quantity or 0) * fx
+        # DB-only overview has no verified listing currency (CAD or USD).
+        incomplete = market_code in ("TSX", "TSXV")
+        valuation_incomplete |= incomplete
+        cost = 0.0 if incomplete else float(pos.cost_price or 0.0) * float(pos.quantity or 0) * fx
         invested_cost += cost
         bucket = by_market.setdefault(
             market_code,
-            {"market": market_code, "positions": 0, "invested_cost": 0.0},
+            {"market": market_code, "positions": 0, "invested_cost": 0.0, "valuation_incomplete": incomplete},
         )
         bucket["positions"] += 1
         bucket["invested_cost"] += cost
@@ -356,6 +360,7 @@ def get_dashboard_overview(
             "positions_count": len(positions),
             "available_funds": round(total_available, 2),
             "invested_cost": round(float(invested_cost), 2),
+            "valuation_incomplete": valuation_incomplete,
             "total_assets_estimate": round(float(total_available + invested_cost), 2),
             "executable_opportunities": len(action_items),
             "risk_positions": len(risk_items),
@@ -368,6 +373,7 @@ def get_dashboard_overview(
             "watchlist_count": watchlist_count,
             "available_funds": round(total_available, 2),
             "invested_cost": round(float(invested_cost), 2),
+            "valuation_incomplete": valuation_incomplete,
             "by_market": sorted(list(by_market.values()), key=lambda x: x["market"]),
         },
         "action_center": {

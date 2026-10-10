@@ -25,7 +25,7 @@ class PositionInfo:
     name: str
     market: MarketCode
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None = None
     trading_style: str = "swing"  # short: 短线, swing: 波段, long: 长线
 
@@ -74,16 +74,19 @@ class PortfolioInfo:
             result.extend(acc.positions)
         return result
 
-    def get_positions_for_stock(self, symbol: str) -> list[PositionInfo]:
+    def get_positions_for_stock(self, symbol: str, market: MarketCode | None = None) -> list[PositionInfo]:
         """获取某只股票在各账户的持仓"""
-        return [p for p in self.all_positions if p.symbol == symbol]
+        matches = [p for p in self.all_positions if p.symbol == symbol and (market is None or p.market == market)]
+        if market is None and len({p.market for p in matches}) > 1:
+            return []  # An unscoped legacy caller must not combine dual listings.
+        return matches
 
-    def get_aggregated_position(self, symbol: str) -> dict | None:
+    def get_aggregated_position(self, symbol: str, market: MarketCode | None = None) -> dict | None:
         """
         获取某只股票的汇总持仓（合并所有账户）
         返回: {"symbol", "name", "total_quantity", "avg_cost", "total_cost", "trading_style", "positions"}
         """
-        positions = self.get_positions_for_stock(symbol)
+        positions = self.get_positions_for_stock(symbol, market)
         if not positions:
             return None
 

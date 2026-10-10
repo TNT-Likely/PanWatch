@@ -37,7 +37,7 @@ ASSISTANT_TOOLS = [
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "description": "股票代码，如 600519"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US/TSX/TSXV", "default": "CN"},
                 },
                 "required": ["symbol"],
             },
@@ -52,7 +52,7 @@ ASSISTANT_TOOLS = [
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "description": "股票代码"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US/TSX/TSXV", "default": "CN"},
                 },
                 "required": ["symbol"],
             },
@@ -67,7 +67,7 @@ ASSISTANT_TOOLS = [
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "description": "股票代码"},
-                    "market": {"type": "string", "description": "市场代码：CN/HK/US", "default": "CN"},
+                    "market": {"type": "string", "description": "市场代码：CN/HK/US/TSX/TSXV", "default": "CN"},
                 },
                 "required": ["symbol"],
             },
@@ -139,7 +139,7 @@ async def fetch_realtime_context(symbol: str, market: str, *, quotes=None) -> st
         from src.platform.marketdata.marketdata_client import md_quote_rows
         from src.platform.marketdata.models import MarketCode
 
-        code = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
+        code = MarketCode(market) if market in ("CN", "HK", "US", "TSX", "TSXV") else MarketCode.CN
         rows = quotes if quotes is not None else await asyncio.to_thread(md_quote_rows, [symbol], code.value)
         if not rows:
             return ""

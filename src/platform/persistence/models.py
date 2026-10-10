@@ -119,7 +119,8 @@ class Position(Base):
         Integer, ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
     )
     cost_price = Column(Float, nullable=False)  # 成本价
-    quantity = Column(Integer, nullable=False)  # 持仓数量
+    # Existing SQLite INTEGER affinity preserves fractional REAL values; no rebuild required.
+    quantity = Column(Float, nullable=False)  # 加拿大市场支持碎股
     invested_amount = Column(Float, nullable=True)  # 投入资金（用于盘中监控）
     sort_order = Column(Integer, default=0)
     trading_style = Column(

@@ -66,6 +66,7 @@ const DEFAULT_VERDICT_STYLE = 'bg-muted text-muted-foreground border-border'
 interface Props {
   symbol: string
   market: string
+  currency?: string | null
   currentQuantity: number
   currentCost: number
   currentPrice?: number | null
@@ -74,6 +75,7 @@ interface Props {
 export default function AddPositionCalculator({
   symbol,
   market,
+  currency,
   currentQuantity,
   currentCost,
   currentPrice,
@@ -91,6 +93,8 @@ export default function AddPositionCalculator({
   const [aiResult, setAiResult] = useState<AddPositionEvalResult | null>(null)
 
   const isCN = market === 'CN'
+  const isCanadian = market === 'TSX' || market === 'TSXV'
+  const formatShares = (value: number) => isCanadian ? value.toLocaleString(undefined, { maximumFractionDigits: 8 }) : fmtInt(value)
 
   const addPrice = useMemo(() => {
     const p = parseFloat(priceRaw)
@@ -130,7 +134,7 @@ export default function AddPositionCalculator({
         market,
         current_quantity: currentQuantity,
         current_cost: currentCost,
-        add_quantity: Math.round(addQty),
+        add_quantity: isCanadian ? addQty : Math.round(addQty),
         add_price: addPrice,
       })
       setAiResult(res)
@@ -178,7 +182,7 @@ export default function AddPositionCalculator({
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1">
               <div className="text-[10px] text-muted-foreground">
-                {mode === 'shares' ? tr('shares') : tr('amount')}
+                {mode === 'shares' ? tr('shares') : tr(isCanadian ? 'amountCurrency' : 'amount', { currency: currency || '—' })}
               </div>
               <Input
                 value={addRaw}
@@ -200,7 +204,7 @@ export default function AddPositionCalculator({
 
           {mode === 'amount' && addQty > 0 && (
             <div className="text-[10px] text-muted-foreground">
-              {tr('estimatedShares', { shares: fmtInt(addQty), lots: isCN ? tr('estimatedLots', { lots: fmtInt(addQty / 100) }) : '' })}
+              {tr('estimatedShares', { shares: formatShares(addQty), lots: isCN ? tr('estimatedLots', { lots: fmtInt(addQty / 100) }) : '' })}
             </div>
           )}
 
@@ -222,7 +226,7 @@ export default function AddPositionCalculator({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{tr('total')}</span>
                 <span className="font-mono">
-                  {fmtInt(calc.newQty)} / {fmtInt(calc.totalInvested)}
+                  {formatShares(calc.newQty)} / {fmtInt(calc.totalInvested)}
                 </span>
               </div>
               {lotWarn && (
@@ -249,8 +253,8 @@ export default function AddPositionCalculator({
                   <span className="text-muted-foreground">{tr('targetHint')}</span>
                 ) : reverseShares != null ? (
                   <span>
-                    {tr('required', { shares: fmtInt(reverseShares), lots: isCN ? tr('estimatedLots', { lots: fmtInt(Math.ceil(reverseShares / 100)) }) : '' })}
-                    <br />{tr('approximately', { amount: fmtInt(reverseShares * addPrice) })}
+                    {tr('required', { shares: formatShares(reverseShares), lots: isCN ? tr('estimatedLots', { lots: fmtInt(Math.ceil(reverseShares / 100)) }) : '' })}
+                    <br />{tr(isCanadian ? 'approximatelyCurrency' : 'approximately', { currency: currency || '—', amount: fmtInt(reverseShares * addPrice) })}
                   </span>
                 ) : (
                   <span className="text-amber-600">{tr('targetInvalid')}</span>

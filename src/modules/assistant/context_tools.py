@@ -58,7 +58,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
 
     async def get_watchlist(request, arguments):
         market = arguments.get("market")
-        if market is not None and market not in {"CN", "HK", "US"}:
+        if market is not None and market not in {"CN", "HK", "US", "TSX", "TSXV"}:
             return ToolResult.failure(summary="不支持的市场", error_code="market_invalid")
         limit = arguments.get("limit", 100)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
@@ -77,7 +77,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
     def instrument(arguments):
         market = str(arguments.get("market") or "CN").upper()
         symbol = str(arguments.get("symbol") or "").strip().upper()
-        if market not in {"CN", "HK", "US"} or not symbol:
+        if market not in {"CN", "HK", "US", "TSX", "TSXV"} or not symbol:
             raise ValueError("请提供股票代码与有效市场")
         return (symbol.zfill(5) if market == "HK" and symbol.isdigit() else symbol), market
 
@@ -100,7 +100,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
                 items.append({"id": s.id, "kind": "context_snapshot", "symbol": symbol, "market": market, "snapshot_date": s.snapshot_date, "title": s.context_type, "payload": s.payload, "quality": s.quality, "created_at": _time(s.created_at)})
             # Legacy reports lack a market column. Include only explicitly scoped
             # records; the same numeric symbol can exist in multiple markets.
-            reports = db.query(AnalysisHistory).filter(AnalysisHistory.stock_symbol == symbol).order_by(AnalysisHistory.analysis_date.desc(), AnalysisHistory.id.desc()).limit(100).all()
+            reports = db.query(AnalysisHistory).filter(AnalysisHistory.stock_symbol == (f"{market}:{symbol}" if market in {"TSX", "TSXV"} else symbol)).order_by(AnalysisHistory.analysis_date.desc(), AnalysisHistory.id.desc()).limit(100).all()
             unscoped = 0
             for s in reports:
                 raw = s.raw_data if isinstance(s.raw_data, dict) else {}
@@ -169,7 +169,7 @@ def register_context_tools(registry, bind, tool_spec) -> None:
         data = {**event_payload(event), "symbol": symbol, "market": market, "content": content[:16000], "content_available": bool(content), "content_truncated": len(content) > 16000, "external_data": True}
         return ToolResult.success(summary=(f"已读取公告《{event.title}》全文。" if content else f"公告《{event.title}》全文不可用，仅返回标题；无法据此解读细节。"), data=data, sources=[{"name": event.source, "url": event.url, "published_at": data["published_at"]}], observed_at=datetime.now(UTC))
 
-    stock_schema = {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "HK", "US"], "default": "CN"}}
+    stock_schema = {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "HK", "US", "TSX", "TSXV"], "default": "CN"}}
     specs = [
         ("get_monitoring_health", "查询监控健康与通知投递", "读取价格提醒最近检查/成功时间、下次扫描、数据缺失、停用/到期/每日触发额度耗尽、分渠道待发/重试/失败记录。只读，不补发、不改额度；不覆盖 AI 金额预算或其他自动化。", {"limit": {"type": "integer", "minimum": 1, "maximum": 200}}, [], get_monitoring_health, True),
         ("check_watch_request", "检查关注请求与能力", "从用户原始请求识别标的/范围/期限/通知渠道及不支持条件；明确重试沿用前一用户请求，不接受模型改写。相对到期保留原锚点。", {}, [], check_watch_request, False),

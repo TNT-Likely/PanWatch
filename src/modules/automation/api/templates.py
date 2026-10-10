@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -95,16 +95,32 @@ class TemplateStock(BaseModel):
     sort_order: int = 0
     agents: list[TemplateStockAgent] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def normalize_identity(self):
+        from marketdata.symbol import Symbol
+        identity = Symbol.parse(self.symbol, self.market)
+        self.symbol, self.market = identity.code, identity.market.value
+        return self
+
 
 class TemplatePosition(BaseModel):
     symbol: str
     name: str
     market: str
     cost_price: float
-    quantity: int
+    quantity: float = Field(gt=0, allow_inf_nan=False)
     invested_amount: float | None = None
     sort_order: int = 0
     trading_style: str = "swing"
+
+    @model_validator(mode="after")
+    def validate_market_quantity(self):
+        from marketdata.symbol import Symbol
+        identity = Symbol.parse(self.symbol, self.market)
+        self.symbol, self.market = identity.code, identity.market.value
+        if self.market not in ("TSX", "TSXV") and not self.quantity.is_integer():
+            raise ValueError("Non-Canadian holdings require an integer quantity")
+        return self
 
 
 class TemplateAccount(BaseModel):
@@ -344,7 +360,7 @@ def export_template(
                         "name": position.stock.name,
                         "market": position.stock.market,
                         "cost_price": float(position.cost_price),
-                        "quantity": int(position.quantity),
+                        "quantity": float(position.quantity),
                         "invested_amount": position.invested_amount,
                         "sort_order": int(position.sort_order or 0),
                         "trading_style": position.trading_style or "swing",
@@ -816,7 +832,7 @@ def import_template(
             else:
                 updated_positions += 1
             position.cost_price = float(position_data.cost_price)
-            position.quantity = int(position_data.quantity)
+            position.quantity = float(position_data.quantity)
             position.invested_amount = position_data.invested_amount
             position.sort_order = int(position_data.sort_order or 0)
             position.trading_style = position_data.trading_style or "swing"

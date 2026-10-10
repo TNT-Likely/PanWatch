@@ -10,7 +10,7 @@ import {
   type HistoryComparisonResponse,
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
-import { useLocalStorage } from '@/lib/utils'
+import { useLocalStorage, formatDateTime } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
@@ -29,6 +29,10 @@ import { useMarketColors } from '@/hooks/use-market-colors'
 import { marketSignTextClass } from '@/lib/market-colors'
 
 interface QuoteResponse {
+  is_delayed?: boolean | null
+  delayed?: boolean | null
+  source_timestamp?: string | null
+  currency?: string | null
   symbol: string
   market: string
   name: string | null
@@ -150,13 +154,13 @@ function formatCompactNumber(value: number | null | undefined, english = false):
   return n.toFixed(0)
 }
 
-function formatMarketCap(value: number | null | undefined, market?: string, english = false): string {
+function formatMarketCap(value: number | null | undefined, market?: string, english = false, quoteCurrency?: string | null): string {
   if (value == null) return '--'
   const n = Number(value)
   if (!isFinite(n)) return '--'
   const m = String(market || '').toUpperCase()
   const abs = Math.abs(n)
-  const currency = m === 'US' ? 'USD' : m === 'HK' ? 'HKD' : 'CNY'
+  const currency = m === 'TSX' || m === 'TSXV' ? quoteCurrency || '—' : m === 'US' ? 'USD' : m === 'HK' ? 'HKD' : 'CNY'
 
   // Quote providers normalize market capitalization in local-currency 100M units.
   // Convert that unit before adding an English currency suffix for every market.
@@ -166,6 +170,7 @@ function formatMarketCap(value: number | null | undefined, market?: string, engl
     return `${(n * 100).toFixed(2)}M ${currency}`
   }
 
+  if (m === 'TSX' || m === 'TSXV') return `${n.toFixed(2)}亿 ${currency}`
   if (m === 'US') return `${n.toFixed(2)}亿美元`
   if (m === 'HK') return `${n.toFixed(2)}亿港元`
   return `${n.toFixed(2)}亿元`
@@ -686,7 +691,7 @@ export default function StockInsightModal(props: {
     setDeepHistoryLoading(true)
     try {
       const [latest, history] = await Promise.allSettled([
-        tradingAgentsApi.getLatestForStock(symbol),
+        tradingAgentsApi.getLatestForStock(market === 'TSX' || market === 'TSXV' ? `${market}:${symbol}` : symbol),
         tradingAgentsApi.getHistoryComparison(symbol, market, 90),
       ])
       setDeepResult(latest.status === 'fulfilled' ? latest.value : null)
@@ -1416,6 +1421,11 @@ export default function StockInsightModal(props: {
                         {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
                       </div>
                     </div>
+                    {(quote?.is_delayed ?? quote?.delayed) && (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {tr('delayedQuote')}{quote?.source_timestamp ? ` · ${tr('sourceTime', { time: formatDateTime(quote.source_timestamp) })}` : ''}
+                      </div>
+                    )}
                     <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.open')}</div><div className={`font-mono ${levelColor(quote?.open_price)}`}>{formatNumber(quote?.open_price)}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.high')}</div><div className={`font-mono ${levelColor(quote?.high_price)}`}>{formatNumber(quote?.high_price)}</div></div>
@@ -1425,7 +1435,7 @@ export default function StockInsightModal(props: {
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.amplitude')}</div><div className="font-mono">{amplitudePct != null ? `${amplitudePct.toFixed(2)}%` : '--'}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.turnoverRate')}</div><div className="font-mono">{quote?.turnover_rate != null ? `${Number(quote.turnover_rate).toFixed(2)}%` : '--'}</div></div>
                       <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.pe')}</div><div className="font-mono">{quote?.pe_ratio != null ? Number(quote.pe_ratio).toFixed(2) : '--'}</div></div>
-                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.marketCap')}</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market, english)}</div></div>
+                      <div className="rounded bg-accent/15 px-2 py-1.5"><div className="text-[10px] text-muted-foreground">{tr('metrics.marketCap')}</div><div className="font-mono">{formatMarketCap(quote?.total_market_value, market, english, quote?.currency)}</div></div>
                     </div>
                     <div className="mt-3 border-t border-border/50 pt-3">
                       <div className="text-[11px] text-muted-foreground mb-2">{tr('holding.title')}</div>
@@ -1466,6 +1476,7 @@ export default function StockInsightModal(props: {
                         <div className="text-[11px] text-muted-foreground">{tr('holding.empty')}</div>
                       )}
                       <AddPositionCalculator
+                        currency={quote?.currency}
                         symbol={symbol}
                         market={market}
                         currentQuantity={holdingAgg?.quantity ?? 0}
@@ -1728,7 +1739,7 @@ export default function StockInsightModal(props: {
                       className="h-8 px-2.5"
                       onClick={() =>
                         window.open(
-                          `/analysis/${symbol}/${deepResult.timestamp ? String(deepResult.timestamp).slice(0, 10) : new Date().toISOString().slice(0, 10)}`,
+                          `/analysis/${encodeURIComponent(market === 'TSX' || market === 'TSXV' ? `${market}:${symbol}` : symbol)}/${deepResult.timestamp ? String(deepResult.timestamp).slice(0, 10) : new Date().toISOString().slice(0, 10)}`,
                           '_blank',
                         )
                       }

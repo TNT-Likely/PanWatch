@@ -91,6 +91,9 @@ def _quote_to_row(q: Quote) -> dict:
         "source_timestamp": q.source_timestamp.isoformat() if q.source_timestamp else None,
         "observed_at": q.timestamp.isoformat(),
         "source": q.source,
+        "currency": q.currency,
+        "security_type": q.security_type,
+        "delayed": q.delayed,
     }
 
 
@@ -167,4 +170,5 @@ def md_stock_data(symbols: list[str], market: str) -> list:
         change_amount=q.change_amount or 0.0, volume=q.volume or 0.0,
         turnover=q.turnover or 0.0, open_price=q.open_price or 0.0,
         high_price=q.high_price or 0.0, low_price=q.low_price or 0.0,
-        prev_close=q.prev_close or 0.0) for q in quotes]
+        prev_close=q.prev_close or 0.0, currency=q.currency, security_type=q.security_type,
+        source_timestamp=q.source_timestamp, source=q.source, delayed=q.delayed) for q in quotes]

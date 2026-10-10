@@ -362,14 +362,15 @@ export default function DashboardPage() {
       : null
 
   // 今日盈亏(组合速览条 hero):来自 portfolioSummary.total.total_daily_pnl(与 Stocks 页同源字段)
-  const dailyPnl = portfolioSummary?.total?.total_daily_pnl ?? null
+  const valuationIncomplete = portfolioSummary?.total.valuation_incomplete === true
+  const dailyPnl = valuationIncomplete ? null : portfolioSummary?.total?.total_daily_pnl ?? null
   const dailyPnlPct = useMemo(() => {
     if (!portfolioSummary || dailyPnl == null) return null
     const basis = portfolioSummary.total.total_market_value - dailyPnl
     return basis > 0 ? (dailyPnl / basis) * 100 : null
   }, [portfolioSummary, dailyPnl])
   const positionRatioPct = useMemo(() => {
-    if (!portfolioSummary) return null
+    if (!portfolioSummary || portfolioSummary.total.valuation_incomplete) return null
     const { total_market_value, total_assets } = portfolioSummary.total
     return total_assets > 0 ? (total_market_value / total_assets) * 100 : null
   }, [portfolioSummary])
@@ -398,6 +399,11 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container pb-10">
+      {valuationIncomplete && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+          {dashboardT('stocksPage.messages.valuationIncomplete')}
+        </p>
+      )}
       {/* 顶部:标题 + 刷新 + 日期/市场状态 pills */}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">

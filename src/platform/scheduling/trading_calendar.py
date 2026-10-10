@@ -12,7 +12,10 @@ import time as clock
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from src.platform.scheduling.exchange_calendar_data import HOLIDAYS, EARLY_CLOSES
+from src.platform.scheduling.exchange_calendar_data import HOLIDAYS as BASE_HOLIDAYS, EARLY_CLOSES as BASE_EARLY_CLOSES
+from src.platform.scheduling.canada_calendar import HOLIDAYS as CA_HOLIDAYS, EARLY_CLOSES as CA_EARLY_CLOSES
+HOLIDAYS = {**BASE_HOLIDAYS, **CA_HOLIDAYS}
+EARLY_CLOSES = {**BASE_EARLY_CLOSES, **CA_EARLY_CLOSES}
 
 logger = logging.getLogger(__name__)
 _RECENT_OPEN_DAYS: dict[str, frozenset[date]] = {}
@@ -78,7 +81,7 @@ def refresh_blocking() -> bool:
     started = clock.monotonic()
     start, end = today - timedelta(days=30), today + timedelta(days=90)
     window = [start + timedelta(days=n) for n in range((end - start).days + 1)]
-    for code in ("CN", "HK", "US"):
+    for code in ("CN", "HK", "US", "TSX", "TSXV"):
         _RECENT_OPEN_DAYS[code] = frozenset(day for day in window if is_trading_day(code, day))
     _WARMED_ON = today
     logger.info("[交易日历] 本地近期日历已加载: %s ~ %s, %.1f ms (无需网络)",

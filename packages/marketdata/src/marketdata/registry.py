@@ -11,6 +11,7 @@ discovery/index 是市场级、非 symbol 模型,不进 Engine/不进 DataSource
 
 from __future__ import annotations
 
+from marketdata.vendors.canada import CanadaQuoteVendor, CanadaKlineVendor
 from marketdata.vendors.capital_flow import EastmoneyCapitalFlowVendor, SinaCapitalFlowVendor
 from marketdata.vendors.eastmoney import EastmoneyQuoteVendor
 from marketdata.vendors.events import EventsVendor
@@ -46,12 +47,14 @@ from marketdata.vendors.yfinance import YFinanceQuoteVendor
 # (可选三方依赖如 yfinance 均在 fetch() 内部惰性 import),模块级导入不会引入重依赖。
 VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
     "quote": {
+        "yahoo_canada": CanadaQuoteVendor,
         "tencent": TencentQuoteVendor,
         "sina": SinaQuoteVendor,
         "eastmoney": EastmoneyQuoteVendor,
         "yfinance": YFinanceQuoteVendor,
     },
     "kline": {
+        "yahoo_canada": CanadaKlineVendor,
         "tencent": TencentKlineVendor,
         "stooq": StooqKlineVendor,
         "eastmoney": EastmoneyKlineVendor,

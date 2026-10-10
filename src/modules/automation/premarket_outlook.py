@@ -1,3 +1,4 @@
+from src.platform.marketdata.instrument_identity import instrument_get, unambiguous_stock_map
 """盘前分析 Agent - 开盘前展望今日走势"""
 
 import asyncio
@@ -276,8 +277,8 @@ class PremarketOutlookAgent(BaseAgent):
         news_items = data.get("news", []) or []
 
         for stock in context.watchlist:
-            pack = packs.get(stock.symbol)
-            stock_ctx = symbol_contexts.get(stock.symbol, {}) or {}
+            pack = instrument_get(packs, stock.symbol, stock.market)
+            stock_ctx = instrument_get(symbol_contexts, stock.symbol, stock.market, {}) or {}
             stock_quality = (stock_ctx.get("data_quality") or {})
             stock_coverage = stock_quality.get("coverage") or {}
             tech = (pack.technical if pack else None) or {}
@@ -438,7 +439,7 @@ class PremarketOutlookAgent(BaseAgent):
                     lines.append(f"- 突破状态：{kline_history.get('breakout_state')}")
 
             # 持仓信息
-            position = context.portfolio.get_aggregated_position(stock.symbol)
+            position = context.portfolio.get_aggregated_position(stock.symbol, stock.market)
             if position:
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
@@ -694,7 +695,7 @@ class PremarketOutlookAgent(BaseAgent):
         )
 
         # 保存各股票建议到建议池
-        stock_map = {s.symbol: s for s in context.watchlist}
+        stock_map = unambiguous_stock_map(context.watchlist)
         packs = data.get("signal_packs", {}) or {}
         symbol_contexts = data.get("symbol_contexts", {}) or {}
         analysis_date = (data.get("timestamp") or "")[:10] or date.today().strftime(

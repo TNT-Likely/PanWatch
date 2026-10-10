@@ -18,7 +18,7 @@ interface AssistantStockPickerProps {
 export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: AssistantStockPickerProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const markets = ['CN', 'HK', 'US'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
+  const markets = ['CN', 'HK', 'US', 'TSX', 'TSXV'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
   const [market, setMarket] = useState('CN')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AssistantStockSearchResult[]>([])
@@ -79,7 +79,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
+      <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
         {markets.map((item) => (
           <button
             key={item.value}

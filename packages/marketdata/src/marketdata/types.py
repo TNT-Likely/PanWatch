@@ -50,6 +50,9 @@ class Quote:
     quote_date: date | None = None
     source_timestamp: datetime | None = None
     source: str = ""
+    currency: str | None = None
+    security_type: str | None = None
+    delayed: bool = False
 
 
 @dataclass

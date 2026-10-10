@@ -492,6 +492,11 @@ def _market_for_symbol(symbol: str):
     """将 TradingAgents 的 ticker 映射到 PanWatch 市场。"""
     from src.platform.marketdata.models import MarketCode
 
+    ticker = str(symbol).strip().upper()
+    if ticker.endswith(".TO"):
+        return MarketCode.TSX
+    if ticker.endswith(".V"):
+        return MarketCode.TSXV
     if is_a_share(symbol):
         return MarketCode.CN
     if is_hk_share(symbol):

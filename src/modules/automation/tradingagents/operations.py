@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from src.platform.marketdata.instrument_identity import analysis_key
+
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
@@ -138,7 +140,7 @@ def fire_and_forget_trigger(stock: Any, source_agent: str = "intraday_monitor") 
     if not symbol:
         return None
 
-    trace_id = f"auto-{source_agent}-{symbol}-{int(_time.time() * 1000)}"
+    trace_id = f"auto-{source_agent}-{analysis_key(symbol, getattr(stock, 'market', ''))}-{int(_time.time() * 1000)}"
 
     async def _run():
         try:
@@ -187,7 +189,7 @@ def try_auto_trigger(stock: Any, source_agent: str = "intraday_monitor") -> str 
     symbol = getattr(stock, "symbol", "") or ""
     change_pct = getattr(stock, "change_pct", None)
 
-    ok, reason = should_auto_trigger(symbol, change_pct)
+    ok, reason = should_auto_trigger(analysis_key(symbol, getattr(stock, "market", "")), change_pct)
     if not ok:
         logger.debug(f"[auto_trigger] 不触发 {symbol}: {reason}")
         return None
@@ -224,6 +226,10 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 
         for r in records:
             checked += 1
+            # Canadian reports already persist suggestions via the scoped execution path.
+            if r.stock_symbol.startswith(("TSX:", "TSXV:")):
+                skipped += 1
+                continue
             raw = r.raw_data or {}
             sug = normalize_suggestion(raw.get("suggestion") or {}, agent_name="tradingagents")
             action = (sug.get("action") or "hold").lower()
@@ -379,7 +385,7 @@ def build_history_comparison(
             db.query(AnalysisHistory)
             .filter(
                 AnalysisHistory.agent_name == "tradingagents",
-                AnalysisHistory.stock_symbol == symbol,
+                AnalysisHistory.stock_symbol == analysis_key(symbol, market),
                 AnalysisHistory.analysis_date >= cutoff_date,
             )
             .order_by(AnalysisHistory.analysis_date.desc())

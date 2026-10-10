@@ -87,6 +87,7 @@ export interface DeepAnalysisModalProps {
   stockId: number
   stockName: string
   stockSymbol: string
+  stockMarket?: string
   /** 历史分析(若有,直接展示) */
   initialResult?: DeepAnalysisResult | null
 }
@@ -97,8 +98,10 @@ export function DeepAnalysisModal({
   stockId,
   stockName,
   stockSymbol,
+  stockMarket,
   initialResult = null,
 }: DeepAnalysisModalProps) {
+  const historySymbol = stockMarket === 'TSX' || stockMarket === 'TSXV' ? `${stockMarket}:${stockSymbol}` : stockSymbol
   const { toast } = useToast()
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
@@ -152,8 +155,8 @@ export function DeepAnalysisModal({
     //   - getLatestForStock:有没有已保存的最近一次报告
     // 优先级:running > failed > done(已有结果)> idle
     Promise.all([
-      tradingAgentsApi.findRunning(stockSymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
-      tradingAgentsApi.getLatestForStock(stockSymbol).catch(() => null),
+      tradingAgentsApi.findRunning(historySymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
+      tradingAgentsApi.getLatestForStock(historySymbol).catch(() => null),
     ]).then(async ([runningInfo, latestResult]) => {
       if (cancelled) return
       // 优先级:running > failed(保留最新错误) > done(已保存的报告) > idle
@@ -179,19 +182,19 @@ export function DeepAnalysisModal({
           setProgress(failedProgress)
           setError(failedProgress.run?.error || tr('errors.analysisFailed'))
           setStage('error')
-          clearRunningTrace(stockSymbol)
+          clearRunningTrace(historySymbol)
           return
         }
       }
 
       // 2) 后端 stale/failed → 清掉本地运行痕迹,继续走缓存判断
       if (runningInfo.status === 'stale' || runningInfo.status === 'failed') {
-        clearRunningTrace(stockSymbol)
+        clearRunningTrace(historySymbol)
       }
 
       // 3) localStorage 兜底(刚触发后端还没写 log)— 仅在后端 'none' 时尝试
       if (runningInfo.status === 'none') {
-        const localTrace = loadRunningTrace(stockSymbol)
+        const localTrace = loadRunningTrace(historySymbol)
         if (localTrace) {
           setTraceId(localTrace)
           setStage('running')
@@ -206,16 +209,16 @@ export function DeepAnalysisModal({
         latestResult.raw_data.from_cache = true
         setResult(latestResult)
         setStage('done')
-        clearRunningTrace(stockSymbol)
+        clearRunningTrace(historySymbol)
         return
       }
 
       // 5) 都没有 → idle(开始分析按钮可用,后端幂等保护)
-      clearRunningTrace(stockSymbol)
+      clearRunningTrace(historySymbol)
     })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialResult, stockSymbol])
+  }, [open, initialResult, historySymbol])
 
   /** 处理一次进度快照(SSE 推送与轮询共用同一套状态机) */
   const handleProgressResponse = useCallback(
@@ -224,8 +227,8 @@ export function DeepAnalysisModal({
       if (resp.status === 'success') {
         // 完成,拉历史结果
         stopWatching()
-        clearRunningTrace(stockSymbol)
-        const latest = await tradingAgentsApi.getLatestForStock(stockSymbol)
+        clearRunningTrace(historySymbol)
+        const latest = await tradingAgentsApi.getLatestForStock(historySymbol)
         if (latest) {
           setResult(latest)
           setStage('done')
@@ -235,14 +238,14 @@ export function DeepAnalysisModal({
         }
       } else if (resp.status === 'failed') {
         stopWatching()
-        clearRunningTrace(stockSymbol)
+        clearRunningTrace(historySymbol)
         setError(resp.run?.error || tr('errors.analysisFailed'))
         setStage('error')
       } else if (resp.status === 'stale') {
         // 后端检测到僵尸 running（超过整个任务生命周期窗口）
         // → 自动重置到 idle,用户可以重新触发
         stopWatching()
-        clearRunningTrace(stockSymbol)
+        clearRunningTrace(historySymbol)
         setTraceId('')
         setProgress(null)
         setStage('idle')
@@ -252,7 +255,7 @@ export function DeepAnalysisModal({
         return
       }
     },
-    [stockSymbol, stopWatching],
+    [historySymbol, stopWatching],
   )
 
   const pollProgress = useCallback(
@@ -324,7 +327,7 @@ export function DeepAnalysisModal({
         return
       }
       // 持久化 trace_id 让关闭重开能恢复进度
-      saveRunningTrace(stockSymbol, tid)
+      saveRunningTrace(historySymbol, tid)
       // 启动进度监听(SSE 优先,失败降级轮询)
       startWatching(tid)
       // 立即拉一次,尽快渲染初始进度
@@ -333,7 +336,7 @@ export function DeepAnalysisModal({
       setStage('error')
       setError(e instanceof Error ? e.message : tr('errors.triggerFailed'))
     }
-  }, [stockId, stockSymbol, startWatching, pollProgress, toast])
+  }, [stockId, historySymbol, startWatching, pollProgress, toast])
 
   const handleClose = useCallback(() => {
     stopWatching()
@@ -366,7 +369,7 @@ export function DeepAnalysisModal({
 
         {stage === 'done' && result && <DoneView
           result={result}
-          stockSymbol={stockSymbol}
+          stockSymbol={historySymbol}
           onRerun={() => handleStart(true)}
         />}
 
@@ -729,7 +732,7 @@ function DoneView({
           size="sm"
           className="h-7 text-[11px] ml-auto"
           disabled={!analysisDate}
-          onClick={() => window.open(`/analysis/${stockSymbol}/${analysisDate}`, '_blank')}
+          onClick={() => window.open(`/analysis/${encodeURIComponent(stockSymbol)}/${analysisDate}`, '_blank')}
         >
           {tr('done.details')}
         </Button>

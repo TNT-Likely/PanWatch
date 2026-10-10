@@ -923,7 +923,7 @@ async def intraday_snapshot(db: Session = Depends(get_db)):
     rows = []
     for batch in batches:
         for market, quote in batch:
-            positions = portfolio.get_positions_for_stock(quote.symbol)
+            positions = portfolio.get_positions_for_stock(quote.symbol, market)
             cost = positions[0].cost_price if positions else None
             change = quote.change_pct or 0
             rows.append({

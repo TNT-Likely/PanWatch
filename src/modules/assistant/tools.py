@@ -254,7 +254,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 error_code="candidate_filter_invalid",
             )
         if (
-            (market and market not in {"CN", "HK", "US"})
+            (market and market not in {"CN", "HK", "US", "TSX", "TSXV"})
             or holding not in {"all", "held", "unheld"}
             or (risk_level and risk_level not in {"all", "low", "medium", "high"})
             or not 0 <= min_score <= 100
@@ -1003,7 +1003,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
+                        "enum": ["CN", "HK", "US", "TSX", "TSXV"],
                         "description": "可选市场代码；不填表示全部市场",
                     },
                     "holding": {
@@ -1104,7 +1104,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     "query": {"type": "string", "description": "股票代码或名称"},
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
+                        "enum": ["CN", "HK", "US", "TSX", "TSXV"],
                         "description": "可选市场代码；不填表示全部市场",
                     },
                     "limit": {
@@ -1139,7 +1139,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
+                        "enum": ["CN", "HK", "US", "TSX", "TSXV"],
                         "default": "CN",
                     },
                     "mode": {
@@ -1169,7 +1169,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                 "properties": {
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
+                        "enum": ["CN", "HK", "US", "TSX", "TSXV"],
                         "default": "CN",
                     },
                     "mode": {
@@ -1284,7 +1284,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "market": {
                         "type": "string",
-                        "enum": ["CN", "HK", "US"],
+                        "enum": ["CN", "HK", "US", "TSX", "TSXV"],
                         "description": "可选市场代码",
                     },
                     "enabled": {

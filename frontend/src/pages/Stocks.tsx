@@ -29,7 +29,7 @@ import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
 import { browserTimezone } from '@panwatch/base-ui'
-import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
+import { applyMarketStatuses, findDisplayQuote, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
@@ -296,9 +296,10 @@ export default function StocksPage() {
     stockId: number
     symbol: string
     name: string
+    market: string
   } | null>(null)
-  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string) => {
-    setDeepAnalysisTarget({ stockId, symbol, name })
+  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string, market: string) => {
+    setDeepAnalysisTarget({ stockId, symbol, name, market })
   }, [])
   const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
   const [schedulePreviewCache, setSchedulePreviewCache] = useState<Record<string, SchedulePreview | { error: string }>>({})
@@ -1090,6 +1091,11 @@ export default function StocksPage() {
   }
 
   const handlePositionSubmit = async () => {
+    const quantity = Number(positionForm.quantity)
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast(stockT('stocksPage.messages.invalidQuantity'), 'error')
+      return
+    }
     try {
       let stockId = positionForm.stock_id
       let createdStock: QuoteRequestItem | undefined
@@ -1130,7 +1136,7 @@ export default function StocksPage() {
         account_id: positionForm.account_id,
         stock_id: stockId,
         cost_price: parseFloat(positionForm.cost_price),
-        quantity: parseInt(positionForm.quantity),
+        quantity: positionForm.stock_market === 'TSX' || positionForm.stock_market === 'TSXV' ? Number(positionForm.quantity) : parseInt(positionForm.quantity),
         invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
       }
@@ -1265,7 +1271,7 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m === 'TSX' ? stockT('stocksPage.markets.tsx') : m === 'TSXV' ? stockT('stocksPage.markets.tsxv') : m
   const quoteHint = (quote: { daily_move_status?: string; quote_date?: string | null }) => {
     const status = quote.daily_move_status
     const label = status && status !== 'current' ? stockT(`stocksPage.quoteStatus.${status}`) : ''
@@ -1273,10 +1279,17 @@ export default function StocksPage() {
     return [label, date].filter(Boolean).join(' · ')
   }
 
+  const delayedQuoteNotice = (quote?: { is_delayed?: boolean | null; delayed?: boolean | null; source_timestamp?: string | null } | null) => (quote?.is_delayed ?? quote?.delayed) ? (
+    <span className="block text-[10px] font-normal text-muted-foreground whitespace-normal">
+      {stockT('stocksPage.quoteStatus.delayed')}{quote?.source_timestamp ? ` · ${stockT('stocksPage.quoteStatus.sourceTime', { time: formatDateTime(quote.source_timestamp) })}` : ''}
+    </span>
+  ) : null
+
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: stockT('stocksPage.markets.hkShort') }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: stockT('stocksPage.markets.usShort') }
+    if (m === 'TSX' || m === 'TSXV') return { style: 'bg-violet-500/10 text-violet-600', label: m }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1289,7 +1302,9 @@ export default function StocksPage() {
 
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
-    return quotes[quoteKey] || null
+    const [market, symbol] = quoteKey.split(':')
+    const uniqueSymbol = stocks.filter(stock => stock.symbol === symbol).length === 1
+    return findDisplayQuote(quotes, market, symbol, uniqueSymbol)
   }
 
   const getPriceAlertSummary = (symbol: string, market: string) => {
@@ -1340,7 +1355,7 @@ export default function StocksPage() {
   }
 
   const unpricedAccountIds = new Set(
-    (portfolio?.accounts || []).filter(account => account.positions.some(position => position.current_price == null)).map(account => account.id),
+    (portfolio?.accounts || []).filter(account => account.valuation_incomplete || account.positions.some(position => position.current_price == null || position.valuation_status === 'fx_unavailable' || position.valuation_status === 'currency_unavailable')).map(account => account.id),
   )
   const portfolioTotalsReady = unpricedAccountIds.size === 0
 
@@ -1509,6 +1524,11 @@ export default function StocksPage() {
         </div>
       </div>
 
+      {portfolio?.total.valuation_incomplete && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+          {stockT('stocksPage.messages.valuationIncomplete')}
+        </p>
+      )}
       {/* Portfolio Total Summary */}
       {portfolioLoading && !portfolio ? (
         // 首次加载时显示骨架屏
@@ -1644,14 +1664,16 @@ export default function StocksPage() {
           </DialogHeader>
           <form onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   {[
                     { value: '', label: stockT('stocksPage.markets.all') },
                     { value: 'CN', label: stockT('stocksPage.markets.cn') },
                     { value: 'HK', label: stockT('stocksPage.markets.hk') },
                     { value: 'US', label: stockT('stocksPage.markets.us') },
+                    { value: 'TSX', label: stockT('stocksPage.markets.tsx') },
+                    { value: 'TSXV', label: stockT('stocksPage.markets.tsxv') },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -1691,7 +1713,7 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'HK' ? '00700 or Tencent' : searchMarket === 'US' ? 'AAPL or Apple' : '600519 or Kweichow Moutai' })}
+                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : searchMarket === 'TSXV' ? 'V / TBRD' : searchMarket === 'HK' ? '00700 or Tencent' : searchMarket === 'US' ? 'AAPL or Apple' : '600519 or Kweichow Moutai' })}
                   className="pl-10"
                   autoComplete="off"
                 />
@@ -1826,7 +1848,7 @@ export default function StocksPage() {
                             {account.positions.map((pos, i) => {
                               const stock = stocks.find(s => s.id === pos.stock_id)
                               const badge = marketBadge(pos.market)
-                              const isForeign = pos.market === 'HK' || pos.market === 'US'
+                              const isForeign = ['HK', 'US', 'TSX', 'TSXV'].includes(pos.market)
                               const changeColor = marketSignTextClass(pos.change_pct)
                               const pnlColor = marketSignTextClass(pos.pnl)
                               return (
@@ -1890,7 +1912,8 @@ export default function StocksPage() {
                                     })()}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
+                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : pos.market === 'US' ? ' USD' : pos.currency ? ` ${pos.currency}` : '') : ''}</span> : '—'}
+                                    {delayedQuoteNotice(pos)}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
@@ -1902,7 +1925,7 @@ export default function StocksPage() {
                                       <div className="flex flex-col items-end">
                                         {isForeign ? (
                                           <>
-                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
+                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : pos.market === 'US' ? 'USD' : pos.currency || '—'}</span>
                                             {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">≈{formatMoney(pos.market_value_cny)}</span>}
                                           </>
                                         ) : <span>{formatMoney(pos.market_value)}</span>}
@@ -1977,7 +2000,7 @@ export default function StocksPage() {
                                         onChanged={loadPriceAlertSummaries}
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title={stockT('stocksPage.messages.relatedNews')}><Newspaper className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name, pos.market)}><Brain className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2049,8 +2072,9 @@ export default function StocksPage() {
                                   )}
                                 </div>
                                 <div title={quoteHint(pos)} className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
-                                  {pos.current_price?.toFixed(2) || '—'}
+                                  {pos.current_price?.toFixed(2) || '—'}{(pos.market === 'TSX' || pos.market === 'TSXV') && pos.currency ? ` ${pos.currency}` : ''}
                                   <span className="text-[11px] ml-1">{pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}</span>
+                                  {delayedQuoteNotice(pos)}
                                 </div>
                               </div>
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
@@ -2139,7 +2163,7 @@ export default function StocksPage() {
                                     onChanged={loadPriceAlertSummaries}
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name, pos.market)}><Brain className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
@@ -2161,14 +2185,16 @@ export default function StocksPage() {
       {/* Watchlist */}
       {viewTab === 'watchlist' && (
         <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="text-[13px] font-semibold text-foreground">{stockT('stocksPage.messages.watchlist')}</h3>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {[
                 { value: '', label: stockT('stocksPage.markets.all'), count: stocks.length },
                 { value: 'CN', label: stockT('stocksPage.markets.cn'), count: stocks.filter(s => s.market === 'CN').length },
                 { value: 'HK', label: stockT('stocksPage.markets.hk'), count: stocks.filter(s => s.market === 'HK').length },
                 { value: 'US', label: stockT('stocksPage.markets.us'), count: stocks.filter(s => s.market === 'US').length },
+                { value: 'TSX', label: stockT('stocksPage.markets.tsx'), count: stocks.filter(s => s.market === 'TSX').length },
+                { value: 'TSXV', label: stockT('stocksPage.markets.tsxv'), count: stocks.filter(s => s.market === 'TSXV').length },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -2278,6 +2304,7 @@ export default function StocksPage() {
                       <div className="text-right">
                         <div title={quoteHint(quote || {})} className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
                           {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
+                          {delayedQuoteNotice(quote)}
                         </div>
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
@@ -2351,7 +2378,7 @@ export default function StocksPage() {
                           size="icon"
                           className="h-7 w-7 hover:text-primary"
                           title={stockT('stocksPage.messages.deepAnalysis')}
-                          onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name)}
+                          onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name, stock.market)}
                         >
                           <Brain className="w-3.5 h-3.5" />
                         </Button>
@@ -2410,6 +2437,7 @@ export default function StocksPage() {
           onOpenChange={(open) => { if (!open) setDeepAnalysisTarget(null) }}
           stockId={deepAnalysisTarget.stockId}
           stockSymbol={deepAnalysisTarget.symbol}
+          stockMarket={deepAnalysisTarget.market}
           stockName={deepAnalysisTarget.name}
         />
       )}
@@ -2517,14 +2545,16 @@ export default function StocksPage() {
               </div>
             ) : (
               <div>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {[
                       { value: '', label: stockT('stocksPage.markets.all') },
                       { value: 'CN', label: stockT('stocksPage.markets.cn') },
                       { value: 'HK', label: stockT('stocksPage.markets.hk') },
                       { value: 'US', label: stockT('stocksPage.markets.us') },
+                      { value: 'TSX', label: stockT('stocksPage.markets.tsx') },
+                      { value: 'TSXV', label: stockT('stocksPage.markets.tsxv') },
                     ].map(opt => (
                       <button
                         key={opt.value}
@@ -2547,7 +2577,7 @@ export default function StocksPage() {
                     value={positionSearchQuery}
                     onChange={e => handlePositionSearchInput(e.target.value)}
                     onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
+                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : positionSearchMarket === 'TSXV' ? 'V / TBRD' : positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
                     className="pl-9"
                     autoComplete="off"
                   />
@@ -2610,7 +2640,7 @@ export default function StocksPage() {
                   onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
                   placeholder="0"
                   className="font-mono"
-                  inputMode="numeric"
+                  inputMode={positionForm.stock_market === 'TSX' || positionForm.stock_market === 'TSXV' ? 'decimal' : 'numeric'}
                 />
               </div>
             </div>

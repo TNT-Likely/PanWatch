@@ -794,3 +794,32 @@ class TestAgentCollect(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_canadian_graph_boundary_preserves_provider_ticker_and_toronto_date(monkeypatch):
+    from contextlib import nullcontext
+    from datetime import datetime, timezone
+    from tradingagents.graph import trading_graph
+    from src.modules.automation.tradingagents import agent as module
+    from src.platform.marketdata.instrument_identity import analysis_trade_date
+    captured = []
+    class FakeGraph:
+        def __init__(self, **kwargs):
+            self.propagator = None
+            self.total_cost = 0
+        def propagate(self, company_name, trade_date, asset_type="stock", portfolio=None):
+            captured.append((company_name, trade_date))
+            return {"final_trade_decision": "Hold"}, "HOLD"
+    monkeypatch.setattr(trading_graph, 'TradingAgentsGraph', FakeGraph)
+    monkeypatch.setattr(module, 'apply_compat_patches', lambda: None)
+    monkeypatch.setattr(module, 'inject_api_key_env', lambda *a, **kw: None)
+    monkeypatch.setattr(module, 'patch_route_to_vendor', nullcontext)
+    monkeypatch.setattr(module, 'panwatch_data_context', lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(module, 'analysis_trade_date', lambda market: analysis_trade_date(market, datetime(2026,10,10,2,tzinfo=timezone.utc)))
+    for symbol, market, expected in [('RY','TSX','RY.TO'), ('ZSP','TSX','ZSP.TO'), ('REI-UN','TSX','REI-UN.TO'), ('RCK','TSXV','RCK.V')]:
+        TradingAgentsAgent()._run_tradingagents_sync(
+            ai_client=MagicMock(api_key='test'), symbol=symbol, market=market,
+            ta_config={'selected_analysts':['market'],'max_debate_rounds':1,'deep_think_llm':'test'},
+            progress_handler=None, panwatch_data={}, stock_metadata_context='', portfolio=None,
+        )
+        assert captured[-1] == (expected, '2026-10-09')

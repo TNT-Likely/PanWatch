@@ -375,6 +375,11 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": True,  # 支持批量查询
             "test_symbols": list(DEFAULT_TEST_SYMBOLS),
         },
+        *[{"name": f"Yahoo Canada {kind}", "type": kind, "provider": "yahoo_canada",
+           "config": {"description": "Delayed public TSX/TSXV listed securities (CAD/USD)."},
+           "enabled": True, "priority": 0, "supports_batch": kind == "quote",
+           "test_symbols": [{"symbol": "ZSP", "market": "TSX"}, {"symbol": "REI-UN", "market": "TSX"}, {"symbol": "RCK", "market": "TSXV"}]}
+          for kind in ("quote", "kline")],
         # K线数据源
         {
             "name": "腾讯K线",
@@ -1331,7 +1336,8 @@ async def trigger_agent_for_stock(
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
-    trace_id = trace_id or f"man-{agent_name}-{stock.symbol}-{int(time.time() * 1000)}"
+    from src.platform.marketdata.instrument_identity import analysis_key
+    trace_id = trace_id or f"man-{agent_name}-{analysis_key(stock.symbol, stock.market)}-{int(time.time() * 1000)}"
     agent_cls = AGENT_REGISTRY.get(agent_name)
     if not agent_cls:
         raise ValueError(f"Agent {agent_name} 未注册实际实现")

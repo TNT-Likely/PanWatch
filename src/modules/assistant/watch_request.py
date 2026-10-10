@@ -76,7 +76,7 @@ def inspect_watch_request(text: str, *, now: datetime | None = None, context: di
     context = context or {}
     unsupported = [key for key, pattern in UNSUPPORTED_CONDITIONS.items() if re.search(pattern, text, re.I)]
     scope = "portfolio" if re.search(r"持仓|组合(?!\s*(?:条件|提醒|规则))|portfolio|holdings", text, re.I) else "watchlist" if re.search(r"自选|watchlist", text, re.I) else "instruments"
-    instruments = [{"market": m.upper(), "symbol": s.upper().zfill(5) if m.upper() == "HK" and s.isdigit() else s.upper()} for m, s in re.findall(r"\b(CN|HK|US)\s*:\s*([A-Za-z0-9.]+)", text, re.I)]
+    instruments = [{"market": m.upper(), "symbol": s.upper().zfill(5) if m.upper() == "HK" and s.isdigit() else s.upper()} for m, s in re.findall(r"\b(CN|HK|US|TSX|TSXV)\s*:\s*([A-Za-z0-9.-]+)", text, re.I)]
     if not instruments and context.get("stock_symbol"):
         instruments = [{"symbol": context["stock_symbol"], "market": context.get("stock_market") or "CN"}]
     duration = next((match for match in re.finditer(
@@ -158,7 +158,7 @@ def alert_capability_error(request, tool_name: str, arguments: dict) -> str | No
     gaps = list(dict.fromkeys([*plan["unsupported_conditions"], *inspect_watch_request(original, context=request.context)["unsupported_conditions"]]))
     if changes_conditions and gaps:
         return "Unsupported alert conditions: " + ", ".join(gaps) + ". Explain the limitation; do not silently substitute intraday thresholds."
-    if tool_name == "create_price_alert" and plan["instruments"] and re.search(r"\b(?:CN|HK|US)\s*:\s*[A-Za-z0-9.]+", original, re.I):
+    if tool_name == "create_price_alert" and plan["instruments"] and re.search(r"\b(?:CN|HK|US|TSX|TSXV)\s*:\s*[A-Za-z0-9.-]+", original, re.I):
         market = str(arguments.get("market") or "CN").upper()
         symbol = str(arguments.get("symbol") or "").upper()
         if market == "HK" and symbol.isdigit():

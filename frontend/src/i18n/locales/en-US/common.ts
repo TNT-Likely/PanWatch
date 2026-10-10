@@ -63,5 +63,7 @@ export const common = {
     CN: 'China A-shares',
     HK: 'Hong Kong',
     US: 'United States',
+    TSX: 'TSX',
+    TSXV: 'TSX Venture',
   },
 } as const satisfies TranslationShape<typeof zhCommon>

@@ -1,3 +1,4 @@
+from src.platform.marketdata.instrument_identity import instrument_get, unambiguous_stock_map
 import asyncio
 import logging
 import re
@@ -174,8 +175,8 @@ class DailyReportAgent(BaseAgent):
         packs = data.get("signal_packs", {}) or {}
 
         for w in context.watchlist:
-            pack = packs.get(w.symbol)
-            stock_ctx = symbol_contexts.get(w.symbol, {}) or {}
+            pack = instrument_get(packs, w.symbol, w.market)
+            stock_ctx = instrument_get(symbol_contexts, w.symbol, w.market, {}) or {}
             stock_quality = (stock_ctx.get("data_quality") or {})
             quote = pack.quote if pack else None
             stock_name = (w.name or (quote.name if quote else "") or w.symbol).strip()
@@ -341,7 +342,7 @@ class DailyReportAgent(BaseAgent):
                 position = pack.position.aggregated
             else:
                 try:
-                    position = context.portfolio.get_aggregated_position(w.symbol)
+                    position = context.portfolio.get_aggregated_position(w.symbol, w.market)
                 except Exception:
                     position = None
 
@@ -617,7 +618,7 @@ class DailyReportAgent(BaseAgent):
         result.raw_data["suggestions"] = suggestions
 
         # 保存各股票建议到建议池
-        stock_map = {s.symbol: s for s in context.watchlist}
+        stock_map = unambiguous_stock_map(context.watchlist)
         packs = data.get("signal_packs", {}) or {}
         symbol_contexts = data.get("symbol_contexts", {}) or {}
         analysis_date = (data.get("timestamp") or "")[:10] or datetime.now().strftime(

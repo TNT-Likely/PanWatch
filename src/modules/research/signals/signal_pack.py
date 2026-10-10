@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.platform.marketdata.instrument_identity import scoped_keys
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -173,7 +175,7 @@ class SignalPackBuilder:
                         if not remaining:
                             break
                         try:
-                            if provider != "tencent":
+                            if provider != "tencent" and not (market.value in {"TSX", "TSXV"} and provider in {"yahoo_canada", "yfinance"}):
                                 logger.info(
                                     f"SignalPack quote 未支持 provider={provider}，跳过"
                                 )
@@ -188,7 +190,7 @@ class SignalPackBuilder:
                                 if not sd:
                                     continue
                                 self._quote_cache[(market, sym)] = sd
-                                self._quote_source_cache[(market, sym)] = provider
+                                self._quote_source_cache[(market, sym)] = "yahoo_canada" if market.value in {"TSX", "TSXV"} else provider
                                 remaining.discard(sym)
                         except Exception as e:
                             logger.warning(
@@ -203,9 +205,9 @@ class SignalPackBuilder:
                         )
 
             for sym, _ in items:
-                quote_map[sym] = self._quote_cache.get((market, sym))
+                quote_map[(market, sym)] = self._quote_cache.get((market, sym))
                 if (
-                    quote_map[sym] is not None
+                    quote_map[(market, sym)] is not None
                     and (market, sym) not in self._quote_source_cache
                 ):
                     self._quote_source_cache[(market, sym)] = "cache"
@@ -223,7 +225,7 @@ class SignalPackBuilder:
                         last_err = None
                         for provider, cfg in kline_providers:
                             try:
-                                if provider == "tencent":
+                                if provider == "tencent" or (market.value in {"TSX", "TSXV"} and provider == "yahoo_canada"):
                                     collector = KlineCollector(market)
                                 else:
                                     logger.info(
@@ -231,7 +233,7 @@ class SignalPackBuilder:
                                     )
                                     continue
                                 self._tech_cache[key] = await asyncio.to_thread(collector.get_kline_summary, sym)
-                                self._tech_source_cache[key] = provider
+                                self._tech_source_cache[key] = "yahoo_canada" if market.value in {"TSX", "TSXV"} else provider
                                 last_err = None
                                 break
                             except Exception as e:
@@ -242,7 +244,7 @@ class SignalPackBuilder:
                                 "error": str(last_err) if last_err else "获取K线失败"
                             }
                             self._tech_source_cache.setdefault(key, "unavailable")
-                tech_map[sym] = self._tech_cache[key]
+                tech_map[(market, sym)] = self._tech_cache[key]
                 if key in self._tech_cache and key not in self._tech_source_cache:
                     self._tech_source_cache[key] = "cache"
 
@@ -401,10 +403,11 @@ class SignalPackBuilder:
 
         # 6) Position
         packs: dict[str, SignalPack] = {}
+        keys = scoped_keys((sym, market) for sym, market, _ in symbols)
         for sym, market, name in symbols:
             pos_list = []
             try:
-                pos_list = portfolio.get_positions_for_stock(sym)
+                pos_list = portfolio.get_positions_for_stock(sym, market)
             except Exception:
                 pos_list = []
 
@@ -424,15 +427,15 @@ class SignalPackBuilder:
 
             aggregated = None
             try:
-                aggregated = portfolio.get_aggregated_position(sym)
+                aggregated = portfolio.get_aggregated_position(sym, market)
             except Exception:
                 aggregated = None
 
             missing: list[str] = []
-            if quote_map.get(sym) is None:
+            if quote_map.get((market, sym)) is None:
                 missing.append("quote")
             if include_technical:
-                tech = tech_map.get(sym) or {}
+                tech = tech_map.get((market, sym)) or {}
                 if not tech or tech.get("error"):
                     missing.append("kline")
             if include_news:
@@ -446,20 +449,20 @@ class SignalPackBuilder:
                 if not flow or flow.get("error"):
                     missing.append("capital_flow")
 
-            packs[sym] = SignalPack(
+            packs[keys[(market.value, sym)]] = SignalPack(
                 symbol=sym,
                 name=name,
                 market=market,
                 computed_at=computed_at,
-                quote=quote_map.get(sym),
-                technical=tech_map.get(sym) if include_technical else None,
+                quote=quote_map.get((market, sym)),
+                technical=tech_map.get((market, sym)) if include_technical else None,
                 position=PositionSnapshot(
                     has_position=bool(pos_list),
                     accounts=accounts,
                     aggregated=aggregated,
                 ),
                 news=NewsSnapshot(
-                    hours=news_hours, items=news_by_symbol.get(sym, [])[:5]
+                    hours=news_hours, items=[] if market.value in {"TSX", "TSXV"} else news_by_symbol.get(sym, [])[:5]
                 )
                 if include_news
                 else None,
@@ -467,7 +470,7 @@ class SignalPackBuilder:
                 if (include_capital_flow and market == MarketCode.CN)
                 else None,
                 events=EventsSnapshot(
-                    days=int(events_days), items=events_by_symbol.get(sym, [])[:5]
+                    days=int(events_days), items=[] if market.value in {"TSX", "TSXV"} else events_by_symbol.get(sym, [])[:5]
                 )
                 if include_events
                 else None,

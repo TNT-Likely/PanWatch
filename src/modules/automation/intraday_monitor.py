@@ -1,3 +1,4 @@
+from src.platform.marketdata.instrument_identity import instrument_get
 """盘中监测 Agent - 实时监控持仓，AI 判断是否需要提醒"""
 
 import json
@@ -145,7 +146,7 @@ class IntradayMonitorAgent(BaseAgent):
             include_events=True,
             events_days=3,
         )
-        pack = packs.get(symbol)
+        pack = instrument_get(packs, symbol, market)
 
         context_builder = ContextBuilder()
         context_pack = await context_builder.build_symbol_contexts(
@@ -158,7 +159,7 @@ class IntradayMonitorAgent(BaseAgent):
             kline_days=60,
             persist_snapshot=True,
         )
-        symbol_context = (context_pack.get("symbols", {}) or {}).get(symbol, {})
+        symbol_context = instrument_get(context_pack.get("symbols", {}) or {}, symbol, market, {})
         quality_overview = context_pack.get("quality_overview", {}) or {}
 
         stock_data = pack.quote if pack and pack.quote else None
@@ -205,7 +206,7 @@ class IntradayMonitorAgent(BaseAgent):
             return system_prompt, "无股票数据"
 
         # 获取所有账户的持仓信息
-        positions = context.portfolio.get_positions_for_stock(stock.symbol)
+        positions = context.portfolio.get_positions_for_stock(stock.symbol, stock.market)
         style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
 
         lines = []
