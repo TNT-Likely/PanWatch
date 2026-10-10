@@ -346,3 +346,7 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 ## License
 
 [MIT](LICENSE)
+
+### Global market overview
+
+The homepage supports nine configurable market groups and 29 indicative index, futures, crypto and government-yield observations. See [coverage, freshness, licensing and fork-sync notes](docs/features/global-overview.md). Public feeds are delayed/daily reference data; redistribution permissions must be reviewed before public or commercial use.

@@ -132,3 +132,11 @@ async def get_market_indices():
 
     _INDICES_CACHE["indices"] = (now, result)
     return result
+
+
+@router.get("/overview")
+async def get_market_overview():
+    """Grouped, indicative global observations; legacy /indices is unchanged."""
+    from src.platform.marketdata.collectors.global_overview import get_global_overview
+
+    return await get_global_overview()
