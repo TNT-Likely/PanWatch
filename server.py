@@ -1463,6 +1463,9 @@ async def trigger_agent_for_stock(
 async def lifespan(app):
     """应用生命周期: 初始化 + 启动调度器"""
     init_db()
+    from src.modules.administration.onboarding import recover_interrupted_analysis
+    with SessionLocal() as setup_db:
+        recover_interrupted_analysis(setup_db)
     setup_logging()
     # OTel 导出(可选,默认关闭):仅当配置了 OTEL_EXPORTER_OTLP_ENDPOINT 且装了
     # opentelemetry SDK 时启用,否则静默 no-op,不影响现有部署。

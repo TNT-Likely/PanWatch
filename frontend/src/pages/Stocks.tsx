@@ -33,6 +33,7 @@ import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, t
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import SetupReturnLink from '@/components/SetupReturnLink'
 
 interface AgentResult {
   success?: boolean
@@ -1419,6 +1420,7 @@ export default function StocksPage() {
 
   return (
     <div>
+      <SetupReturnLink />
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
         <div className="flex items-center justify-between gap-2">

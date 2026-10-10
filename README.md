@@ -93,9 +93,10 @@ browser timezone. [Timezone policy](docs/timezones.md)
 <summary>Initial setup</summary>
 
 1. Open the web interface and create your login credentials.
-2. Go to **Settings → AI Services** and configure an OpenAI-compatible API, such as OpenAI, Zhipu AI, DeepSeek, or Ollama.
-3. Go to **Settings → Notification Channels** and add Telegram or another delivery channel.
-4. Go to **Portfolio → Add Stock**, add a symbol to your watchlist, and enable the relevant agents.
+2. Open **Getting started** from the dashboard or navigation. Choose quotes only or a first AI analysis, select a symbol, and fetch its quote with source and data time.
+3. For AI analysis, configure a service in **Settings → AI Services**, set the default model, and test the connection before explicitly generating your first analysis. This action uses your model quota; its result stays on the page.
+4. Optionally create a price alert and test a notification channel. You can defer or resume the guide; progress survives browser changes and service restarts. A changed model or channel configuration needs a new successful test.
+5. Enable scheduled agents or explore TradingAgents after the basics work. These are configured separately from the first analysis.
 
 </details>
 

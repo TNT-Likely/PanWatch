@@ -189,6 +189,7 @@ def delete_model(model_id: int, db: Session = Depends(get_db)):
 
 @router.post("/models/{model_id}/test")
 async def test_model(model_id: int, db: Session = Depends(get_db)):
+    from src.modules.administration.onboarding import model_fingerprint, record_check
     model = db.query(AIModel).filter(AIModel.id == model_id).first()
     if not model:
         raise api_error(404, "ai_model_not_found", "AI 模型不存在")
@@ -196,6 +197,8 @@ async def test_model(model_id: int, db: Session = Depends(get_db)):
     service = db.query(AIService).filter(AIService.id == model.service_id).first()
     if not service:
         raise api_error(400, "ai_model_service_not_found", "关联的服务商不存在")
+
+    identity = model_fingerprint(model, service)
 
     try:
         client = AIClient(
@@ -210,8 +213,12 @@ async def test_model(model_id: int, db: Session = Depends(get_db)):
             user_content="Say 'OK' in one word.",
             temperature=None,
         )
+        if not reply.strip():
+            raise ValueError("Empty model test response")
+        record_check(db, "model", model.id, identity, True)
         return {"ok": True, "reply": reply.strip()}
     except Exception as exc:
+        record_check(db, "model", model.id, identity, False)
         raise ai_api_error(exc, status_code=400) from exc
 
 

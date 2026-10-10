@@ -5,6 +5,7 @@ import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@pan
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
 import PatSection from '@/components/PatSection'
+import SetupReturnLink from '@/components/SetupReturnLink'
 import { UserAvatar } from '@/components/UserAvatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -190,6 +191,11 @@ export default function SettingsPage() {
   const [channels, setChannels] = useState<NotifyChannel[]>([])
   const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    if (!loading && window.location.hash) {
+      document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'start' })
+    }
+  }, [loading])
   const [executionTimezone, setExecutionTimezone] = useState<string | null>(null)
   const [health, setHealth] = useState<AgentsHealth | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
@@ -683,6 +689,7 @@ export default function SettingsPage() {
 
   return (
     <div>
+      <SetupReturnLink />
       <input
         ref={importFileRef}
         type="file"

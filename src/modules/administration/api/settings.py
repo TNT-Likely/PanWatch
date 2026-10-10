@@ -188,6 +188,8 @@ def set_avatar(update: SettingUpdate, db: Session = Depends(get_db)):
 
 @router.put("/{key}", response_model=SettingResponse)
 def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db)):
+    if key.startswith("onboarding."):
+        raise api_error(400, "onboarding_progress_readonly", "引导进度由实际操作记录")
     if key == "ui_language" and update.value not in {"zh-CN", "en-US"}:
         raise api_error(400, "ui_language_invalid", "界面语言仅支持 zh-CN 或 en-US")
     setting = db.query(AppSettings).filter(AppSettings.key == key).first()

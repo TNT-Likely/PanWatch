@@ -3,6 +3,7 @@ import { lazy } from 'react'
 export const pageLoaders = {
   login: () => import('@/pages/Login'),
   dashboard: () => import('@/pages/Dashboard'),
+  gettingStarted: () => import('@/pages/GettingStarted'),
   stocks: () => import('@/pages/Stocks'),
   opportunities: () => import('@/pages/Opportunities'),
   paperTrading: () => import('@/pages/PaperTrading'),
@@ -21,6 +22,7 @@ export type RouteKey = keyof typeof pageLoaders
 export const routePages = {
   LoginPage: lazy(pageLoaders.login),
   DashboardPage: lazy(pageLoaders.dashboard),
+  GettingStartedPage: lazy(pageLoaders.gettingStarted),
   StocksPage: lazy(pageLoaders.stocks),
   OpportunitiesPage: lazy(pageLoaders.opportunities),
   PaperTradingPage: lazy(pageLoaders.paperTrading),
@@ -37,6 +39,7 @@ export const routePages = {
 const routeMatchers: Array<{ key: RouteKey; matches: (pathname: string) => boolean }> = [
   { key: 'login', matches: pathname => pathname === '/login' },
   { key: 'dashboard', matches: pathname => pathname === '/' },
+  { key: 'gettingStarted', matches: pathname => pathname === '/getting-started' },
   { key: 'stocks', matches: pathname => pathname === '/portfolio' },
   { key: 'opportunities', matches: pathname => pathname === '/opportunities' },
   { key: 'paperTrading', matches: pathname => pathname === '/paper-trading' },
