@@ -399,3 +399,29 @@ def test_import_only_applies_selected_modules(monkeypatch):
     assert db.query(AIService).count() == 0
     assert db.query(Account).filter_by(name="Only account").count() == 1
     assert result["modules"] == ["portfolio"]
+
+
+def test_nats_template_rejects_raw_secrets_before_mutating_any_rows():
+    db = _session()
+    db.add(NotifyChannel(name="Keep", type="wecom", config={"webhook_key": "existing"}))
+    db.commit()
+    payload = TemplatePayload(version=2, notify_channels=[{
+        "name": "Bus", "type": "nats_jetstream",
+        "config": {"server_url": "tls://raw-secret@broker:4222", "token": "raw-secret"},
+    }])
+    with pytest.raises(HTTPException) as exc:
+        import_template(payload, mode="replace", modules="notifications", db=db)
+    assert exc.value.status_code == 400
+    assert "raw-secret" not in str(exc.value)
+    assert db.query(NotifyChannel).count() == 1
+    assert db.query(NotifyChannel).one().name == "Keep"
+    db.close()
+
+
+def test_nats_template_preserves_only_environment_references():
+    db = _session()
+    config = {"server_url": "tls://broker:4222", "subject": "panwatch.notifications.v1", "stream": "PANWATCH", "token_env": "PANWATCH_NATS_TOKEN"}
+    payload = TemplatePayload(version=2, notify_channels=[{"name": "Bus", "type": "nats_jetstream", "config": config}])
+    import_template(payload, mode="merge", modules="notifications", db=db)
+    assert db.query(NotifyChannel).one().config == config
+    db.close()

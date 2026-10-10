@@ -116,6 +116,7 @@ class AlertDeliveryWorker:
             channel = db.get(NotifyChannel, row.channel_id) if row.channel_id is not None else None
             return {"id": row.id, "hit_id": row.hit_id, "token": token,
                     "title": row.title, "content": row.content,
+                    "event_id": row.event_id, "created_at": row.created_at,
                     "channel_type": channel.type if channel else None,
                     "config": dict(channel.config or {}) if channel else {},
                     "available": bool(channel and channel.enabled and db.get(PriceAlertHit, row.hit_id))}
@@ -148,9 +149,12 @@ class AlertDeliveryWorker:
                 self.finish(claim, error="channel_unavailable")
             else:
                 manager = NotifierManager()
-                manager.add_channel(claim["channel_type"], claim["config"])
                 try:
-                    result = await asyncio.wait_for(manager.notify_with_result(claim["title"], claim["content"]), timeout=45)
+                    manager.add_channel(claim["channel_type"], claim["config"])
+                    metadata = {}
+                    if claim["channel_type"] == "nats_jetstream":
+                        metadata = {"message_id": claim["event_id"], "occurred_at": claim["created_at"]}
+                    result = await asyncio.wait_for(manager.notify_with_result(claim["title"], claim["content"], **metadata), timeout=45)
                     self.finish(claim, ok=bool(result.get("success")), error="" if result.get("success") else "channel_send_failed")
                 except TimeoutError:
                     self.finish(claim, error="delivery_timeout")

@@ -194,3 +194,38 @@ def test_unknown_channel_is_not_a_success():
     from src.platform.notifications.notifier import NotifierManager
     with pytest.raises(ValueError, match='Unsupported'):
         asyncio.run(NotifierManager()._send_custom('unknown-provider', {}, 'QA', 'QA'))
+
+
+def test_nats_delivery_reuses_persisted_metadata_across_worker_retries(factory, monkeypatch):
+    hit(factory, seed(factory))
+    with factory() as db:
+        channel = db.query(NotifyChannel).one()
+        channel.type = 'nats_jetstream'
+        channel.config = {'server_url': 'tls://broker:4222', 'subject': 'panwatch.test', 'stream': 'PANWATCH'}
+        db.commit()
+    send = AsyncMock(side_effect=[{'success': False}, {'success': True}])
+    monkeypatch.setattr(alert_delivery.NotifierManager, 'notify_with_result', send)
+    asyncio.run(AlertDeliveryWorker(factory).drain(limit=1))
+    with factory() as db:
+        delivery = db.query(PriceAlertDelivery).one()
+        assert delivery.status == 'retry'
+        expected = {'message_id': delivery.event_id, 'occurred_at': delivery.created_at}
+        retry_delivery(db, delivery.id)
+    asyncio.run(AlertDeliveryWorker(factory).drain(limit=1))
+    assert send.call_args_list[0].kwargs == send.call_args_list[1].kwargs == expected
+    with factory() as db:
+        assert db.query(PriceAlertDelivery).one().status == 'delivered'
+
+
+def test_invalid_nats_registration_does_not_abort_delivery_batch(factory):
+    hit(factory, seed(factory, channels=2))
+    with factory() as db:
+        channel = db.query(NotifyChannel).order_by(NotifyChannel.id).first()
+        channel.type = 'nats_jetstream'
+        channel.config = {'token': 'never-log-this'}
+        db.commit()
+    assert asyncio.run(AlertDeliveryWorker(factory).drain(limit=2)) == {'processed': 2}
+    with factory() as db:
+        rows = db.query(PriceAlertDelivery).order_by(PriceAlertDelivery.id).all()
+        assert rows[0].status == 'retry' and rows[0].error_code == 'channel_send_failed'
+        assert rows[1].status == 'delivered'

@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from datetime import datetime
 
 import apprise
 import asyncio
@@ -67,6 +68,10 @@ def sanitize_for_telegram(content: str) -> str:
 
 # 渠道类型定义 (label + 表单字段)
 CHANNEL_TYPES = {
+    "nats_jetstream": {
+        "label": "NATS JetStream",
+        "fields": ["server_url", "subject", "stream", "token_env", "username", "password_env", "tls_ca_env", "timeout_seconds"],
+    },
     "telegram": {
         "label": "Telegram",
         "fields": ["bot_token", "chat_id", "proxy"],
@@ -114,7 +119,7 @@ CHANNEL_TYPES = {
 _APPRISE_TYPES = {"telegram", "bark", "dingtalk", "lark", "discord", "pushover"}
 
 # 自定义实现的渠道类型（带代理或特殊需求）
-_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus"}
+_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus", "nats_jetstream"}
 
 # 支持 Markdown 的渠道（不需要 sanitize）
 _MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "discord"}
@@ -210,6 +215,9 @@ class NotifierManager:
 
     def add_channel(self, channel_type: str, config: dict):
         """添加通知渠道"""
+        if channel_type == "nats_jetstream":
+            from src.platform.notifications.nats_jetstream import validate_config
+            validate_config(config)
         try:
             if channel_type in _APPRISE_TYPES:
                 url = build_apprise_url(channel_type, config)
@@ -245,6 +253,8 @@ class NotifierManager:
         images: list[str] | None = None,
         *,
         bypass_quiet_hours: bool = False,
+        message_id: str | None = None,
+        occurred_at: datetime | None = None,
     ) -> dict:
         """向所有已注册渠道发送通知，返回结果"""
         if self._channel_count == 0:
@@ -323,24 +333,37 @@ class NotifierManager:
             if not apprise_ok:
                 errors.append(last_err or "Apprise 通知发送失败")
 
+        # One immutable envelope per logical send, reused for all policy retries.
+        envelope = None
+
         # 自定义渠道（根据渠道类型自动选择格式）
         for ch_type, config in self._custom_channels:
             ch_ok = False
             last_err = ""
-            for attempt in range(0, retry_attempts + 1):
+            channel_retries = min(retry_attempts, 2) if ch_type == "nats_jetstream" else retry_attempts
+            for attempt in range(0, channel_retries + 1):
                 try:
                     # 支持 Markdown 的渠道使用原始内容，否则使用纯文本
                     ch_content = (
                         content if ch_type in _MARKDOWN_CHANNELS else plain_content
                     )
-                    await self._send_custom(ch_type, config, title, ch_content)
+                    if ch_type == "nats_jetstream":
+                        from src.platform.notifications.nats_jetstream import notification_envelope, publish_notification
+                        if envelope is None:
+                            envelope = notification_envelope(title, content, message_id=message_id, occurred_at=occurred_at)
+                        await publish_notification(config, envelope)
+                    else:
+                        await self._send_custom(ch_type, config, title, ch_content)
                     ch_ok = True
                     break
                 except Exception as e:
                     last_err = f"{ch_type} 发送失败: {e}"
                     logger.error(last_err)
-                if attempt < retry_attempts:
-                    await _sleep_retry(attempt + 1)
+                if attempt < channel_retries:
+                    if ch_type == "nats_jetstream":
+                        await asyncio.sleep(min(max(backoff, 0), 2) * (2 ** attempt))
+                    else:
+                        await _sleep_retry(attempt + 1)
             if not ch_ok:
                 errors.append(last_err or f"{ch_type} 发送失败")
 

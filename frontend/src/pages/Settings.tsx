@@ -111,6 +111,20 @@ interface ChannelFieldDef {
 interface ChannelTypeDef { labelKey: string; fields: ChannelFieldDef[] }
 
 const CHANNEL_TYPE_FIELDS: Record<string, ChannelTypeDef> = {
+  nats_jetstream: {
+    labelKey: 'natsJetstream',
+    fields: [
+      { key: 'server_url', labelKey: 'natsServer', placeholderKey: 'natsServer', required: true },
+      { key: 'subject', labelKey: 'natsSubject', placeholderKey: 'natsSubject', required: true },
+      { key: 'stream', labelKey: 'natsStream', placeholderKey: 'natsStream', required: true },
+      { key: 'token_env', labelKey: 'natsTokenEnv', placeholderKey: 'natsTokenEnv' },
+      { key: 'username', labelKey: 'natsUsername', placeholderKey: 'natsUsername' },
+      { key: 'password_env', labelKey: 'natsPasswordEnv', placeholderKey: 'natsPasswordEnv' },
+      { key: 'tls_ca_env', labelKey: 'natsCaEnv', placeholderKey: 'natsCaEnv' },
+      { key: 'timeout_seconds', labelKey: 'natsTimeout', placeholderKey: 'natsTimeout' },
+    ],
+  },
+
   telegram: {
     labelKey: 'telegram',
     fields: [
@@ -1384,6 +1398,9 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {channelForm.type === 'nats_jetstream' && (
+              <p className="text-sm text-muted-foreground">{configT('configuration:settingsPage.channels.natsHint')}</p>
+            )}
             {CHANNEL_TYPE_FIELDS[channelForm.type]?.fields.map(field => (
               <div key={field.key}>
                 <Label>{configT(`configuration:settingsPage.channels.fields.${field.labelKey}`)}{!field.required && <span className="text-muted-foreground font-normal"> ({configT('configuration:settingsPage.dialogs.optional')})</span>}</Label>
