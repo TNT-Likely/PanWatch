@@ -136,7 +136,7 @@ check those seams and run:
 ```sh
 python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_monitoring_delivery.py tests/test_template_import.py
 cd frontend
-pnpm test --run tests/settings/custom-rest-channel.test.tsx
+pnpm run test --run tests/settings/custom-rest-channel.test.tsx
 ```
 
 The REST tests deliberately use the real notifier rather than the suite's global

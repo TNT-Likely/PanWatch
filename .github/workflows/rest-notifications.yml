@@ -47,4 +47,4 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm test --run tests/settings/custom-rest-channel.test.tsx
+      - run: pnpm run test --run tests/settings/custom-rest-channel.test.tsx
