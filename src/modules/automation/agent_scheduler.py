@@ -122,7 +122,11 @@ class AgentScheduler:
                             continue
                         try:
                             with kline_source(f"agent:{agent_name}"):
-                                res = await agent.run_single(context, stock.symbol)  # type: ignore[attr-defined]
+                                # Legacy run_single APIs take only a symbol. Scope
+                                # both watchlist and positions to this listing so
+                                # same-symbol exchanges cannot select each other.
+                                single_context = scoped_context(context, [stock])
+                                res = await agent.run_single(single_context, stock.symbol)  # type: ignore[attr-defined]
                             raw = (res.raw_data or {}) if res else {}
                             if res is None or raw.get("skipped"):
                                 skipped += 1

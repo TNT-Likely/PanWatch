@@ -38,6 +38,21 @@ describe('fetchAPI error localization', () => {
     await expect(fetchAPI('/stocks/1')).rejects.toThrow('股票不存在')
   })
 
+  it('explains a quote symbol and market conflict for the English interface', async () => {
+    localStorage.setItem('panwatch-locale', 'en-US')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status: 400,
+      json: async () => ({
+        code: 400,
+        error_code: 'stock_symbol_invalid',
+        message: '股票代码格式无效或与市场不匹配',
+      }),
+    }))
+    await expect(fetchAPI('/quotes/RY.TO?market=US')).rejects.toThrow(
+      'The stock symbol is invalid or does not match the selected market.',
+    )
+  })
+
   it('explains the A-share settlement error for the English interface', async () => {
     localStorage.setItem('panwatch-locale', 'en-US')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

@@ -100,6 +100,7 @@ const API_ERROR_TEXT_EN: Record<string, string> = {
   stock_already_exists: 'This stock is already in the watchlist.',
   stock_has_position: 'Remove the positions before removing this stock.',
   stock_not_found: 'The stock could not be found.',
+  stock_symbol_invalid: 'The stock symbol is invalid or does not match the selected market.',
   stock_symbol_required: 'Enter a stock symbol before running an unbound Agent.',
   template_mode_invalid: 'Choose either merge or replace as the import mode.',
   template_module_invalid: 'The configuration package contains an unsupported module.',

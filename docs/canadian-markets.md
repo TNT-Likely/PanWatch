@@ -12,6 +12,9 @@ Persist the exchange separately from the symbol: `TSX:ZSP`, `TSX:REI-UN`,
 `TSXV:RCK`. Provider `.TO` / `.V` suffixes are normalized at entry. Unit/class
 punctuation (`REI.UN`, `BBD.B`) maps to Yahoo hyphens. Explicit incompatible
 market/suffix pairs are rejected, including `US:RY.TO`.
+The single/batch quote HTTP APIs resolve these aliases to canonical provider
+identities while echoing each requested symbol in the response. Batches retain
+input order and duplicates; invalid/conflicting identities return HTTP 400.
 
 `yahoo_canada` is a dedicated, enabled-by-default public Yahoo chart/search
 adapter, registered only for TSX/TSXV. It accepts exact matching Canadian

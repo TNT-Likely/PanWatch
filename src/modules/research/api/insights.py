@@ -176,7 +176,7 @@ async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
     try:
         from src.platform.marketdata.collectors.news_collector import NewsCollector
 
-        stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+        stock = db.query(Stock).filter(Stock.symbol == symbol, Stock.market == market).first()
         name = stock.name if stock else symbol
         collector = NewsCollector.from_database()
         items = await collector.fetch_all(

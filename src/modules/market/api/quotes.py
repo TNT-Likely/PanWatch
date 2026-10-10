@@ -1,6 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter
+from marketdata.symbol import Symbol
 from pydantic import BaseModel, Field
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
@@ -13,7 +14,7 @@ router = APIRouter()
 
 class QuoteItem(BaseModel):
     symbol: str = Field(..., description="股票代码")
-    market: str = Field(..., description="市场: CN/HK/US")
+    market: str = Field(..., description="市场: CN/HK/US/TSX/TSXV")
 
 
 class QuoteBatchRequest(BaseModel):
@@ -25,6 +26,15 @@ def _parse_market(market: str) -> MarketCode:
         return MarketCode(market)
     except ValueError:
         raise api_error(400, "market_unsupported", f"不支持的市场: {market}")
+
+
+def _parse_identity(symbol: str, market: str) -> tuple[MarketCode, str]:
+    market_code = _parse_market(market)
+    try:
+        canonical = Symbol.parse(symbol, market_code.value).code
+    except ValueError as exc:
+        raise api_error(400, "stock_symbol_invalid", "股票代码格式无效或与市场不匹配") from exc
+    return market_code, canonical
 
 
 def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> dict:
@@ -76,12 +86,12 @@ def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> d
 @router.get("/{symbol}")
 async def get_quote(symbol: str, market: str = "CN"):
     """获取单只股票实时行情"""
-    market_code = _parse_market(market)
-    rows = await asyncio.to_thread(md_quote_rows, [symbol], market_code.value)
+    market_code, canonical = _parse_identity(symbol, market)
+    rows = await asyncio.to_thread(md_quote_rows, [canonical], market_code.value)
     if not rows:
         raise api_error(404, "quote_not_found", "行情不存在")
     quote_map = {item.get("symbol"): item for item in rows}
-    quote = quote_map.get(symbol)
+    quote = quote_map.get(canonical)
     if not quote:
         raise api_error(404, "quote_not_found", "行情不存在")
     return _quote_to_response(symbol, market_code, quote)
@@ -93,20 +103,21 @@ async def get_quotes_batch(payload: QuoteBatchRequest):
     if not payload.items:
         return []
 
+    # Validate the whole batch before fetching. Keep original item order and
+    # response symbols while looking up provider results by canonical identity.
+    identities = [_parse_identity(item.symbol, item.market) for item in payload.items]
     market_items: dict[MarketCode, list[str]] = {}
-    for item in payload.items:
-        market_code = _parse_market(item.market)
-        market_items.setdefault(market_code, []).append(item.symbol)
+    for market_code, canonical in identities:
+        market_items.setdefault(market_code, []).append(canonical)
 
     quotes_by_market: dict[MarketCode, dict[str, dict]] = {}
     for market_code, symbols in market_items.items():
-        rows = await asyncio.to_thread(md_quote_rows, symbols, market_code.value)
+        rows = await asyncio.to_thread(md_quote_rows, list(dict.fromkeys(symbols)), market_code.value)
         quotes_by_market[market_code] = {item.get("symbol"): item for item in rows}
 
     results = []
-    for item in payload.items:
-        market_code = _parse_market(item.market)
-        quote = quotes_by_market.get(market_code, {}).get(item.symbol)
+    for item, (market_code, canonical) in zip(payload.items, identities):
+        quote = quotes_by_market.get(market_code, {}).get(canonical)
         results.append(_quote_to_response(item.symbol, market_code, quote))
 
     return results
