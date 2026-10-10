@@ -13,7 +13,7 @@ class TestGlobalOverview(unittest.TestCase):
 
     def chart(self, **meta):
         return {"chart": {"result": [{"meta": {"symbol": "^GSPC", "instrumentType": "INDEX", "regularMarketPrice": 110,
-            "regularMarketTime": 1791576000, "chartPreviousClose": 50, **meta},
+            "regularMarketTime": 1791576000, "chartPreviousClose": 50, "exchangeTimezoneName": "America/New_York", **meta},
             "timestamp": [1791489600, 1791576000],
             "indicators": {"quote": [{"close": [100, 110]}]}}]}}
 

@@ -31,7 +31,7 @@ Government observations are daily yield levels in percent. The change is `(lates
 - Quotes include source `as_of`, exchange timezone, currency, type, status, provider and provider symbol. Source times are shown in the specified exchange timezone; daily yields show a date without pretending to have an intraday timestamp.
 - `delayed` means indicative/delayed, never a promise of live prices. Old observations are retained with `stale` after four calendar days for exchange instruments, 36 hours for crypto, or seven days for daily yields. These conservative thresholds are not exchange-calendar/session checks, so long holidays may be marked stale.
 - Charts contain at most 20 actual non-null daily observations. A series with fewer than two points is explicitly unavailable. Verified on 2026-10-10, the three China indices, HSTECH and VN Index returned only one daily point; those feeds have a quote but no chart.
-- Changes prefer explicitly provided same-session quote changes; otherwise they use the immediately prior dated daily close. An invalid prior bar does not silently substitute an older session. Crypto provider changes may use a rolling 24-hour basis. Yahoo's `chartPreviousClose` is **not used**: for a multi-day range it can mean the beginning of that range, not yesterday.
+- Changes prefer explicitly provided same-session quote changes; otherwise they use the immediately prior dated daily close. Yahoo daily bars are dated in the response's `exchangeTimezoneName`, independently of the display timezone (for example, corn bars use New York while the card displays Chicago). The quote's own provider-local date excludes its partial daily bar, including for stale/weekend quotes; the named timezone handles historical DST offsets. Missing or invalid provider timezone metadata leaves the derived change unavailable while retaining the quote and history. An invalid prior bar does not silently substitute an older session. Crypto provider changes may use a rolling 24-hour basis. Yahoo's `chartPreviousClose` is **not used**: for a multi-day range it can mean the beginning of that range, not yesterday.
 - US data requests current and previous month, Canada the latest 30 observations, China the last 60 calendar days. Missing dates/holidays are not filled. China uses server-rendered public table cells, ignores HTML comments, and never executes page scripts.
 - Provider rate limits, undocumented schema changes, authentication changes or licensing limitations can make a feed unavailable. No fallback substitutes an ETF, another index, a spot instrument or stale cached value labeled live.
 
@@ -60,7 +60,7 @@ Feature implementation lives in new `global_overview.py`, `GlobalMarketOverview.
 When syncing upstream, preserve those hooks or adapt them to upstream's equivalent API and dashboard boundaries. Do not cherry-pick the independent Canada holdings or other feature branches as prerequisites. Re-run:
 
 ```
-PYTHONPATH=packages/marketdata/src python -m unittest discover -s tests -p test_global_overview.py -v
+PYTHONPATH=packages/marketdata/src python -m unittest discover -s tests -p 'test_global_overview*.py' -v
 python -m pytest tests/test_market_indices_spark.py tests/test_index_routing.py -q
 pnpm --dir frontend exec vitest run tests/dashboard tests/api/global-overview.test.ts
 pnpm --dir frontend check:i18n

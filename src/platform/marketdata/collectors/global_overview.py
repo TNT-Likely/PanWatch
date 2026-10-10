@@ -13,6 +13,7 @@ import math
 import time
 from urllib.parse import quote
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from marketdata.http import market_get
 
@@ -87,6 +88,25 @@ def _yahoo_base(spec):
     return row
 
 
+def _yahoo_previous_close(meta, bars, timestamp):
+    # Yahoo's daily candle timezone can differ from the display/exchange zone
+    # (e.g. corn is stamped at midnight New York, displayed in Chicago).
+    # A quote's fixed gmtoffset/abbreviation cannot date bars across DST.
+    zone = meta.get("exchangeTimezoneName")
+    if not isinstance(zone, str) or not zone:
+        return None
+    try:
+        provider_zone = ZoneInfo(zone)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+    quote_day = datetime.fromtimestamp(timestamp, provider_zone).date()
+    for ts, value in reversed(bars):
+        if datetime.fromtimestamp(ts, provider_zone).date() < quote_day:
+            # Preserve an invalid immediate prior bar instead of skipping it.
+            return value
+    return None
+
+
 def _yahoo(spec):
     row = _yahoo_base(spec)
     id, group, symbol, zone, currency = spec
@@ -118,19 +138,15 @@ def _yahoo(spec):
         except (KeyError, TypeError, IndexError, ValueError):
             bars = []
         history = [(ts, value) for ts, value in bars if value is not None]
-        # chartPreviousClose is the *range* baseline, not yesterday's close.
-        # Use the previous dated daily bar, excluding today's partial bar.
-        from zoneinfo import ZoneInfo
-        local_day = datetime.fromtimestamp(timestamp, ZoneInfo(zone)).date()
-        prior = [v for ts, v in bars if datetime.fromtimestamp(ts, ZoneInfo(zone)).date() < local_day]
-        prev = prior[-1] if prior else None
         # Prefer explicit same-session changes, even when history has a gap.
-        # Never promote an older valid close over a missing prior-session bar.
         change = _number(meta.get("regularMarketChange"))
         if change is None and _number(meta.get("fulldayPrice")) == price:
             change = _number(meta.get("fulldayChange"))
-        if change is not None:
-            prev = price - change
+        # chartPreviousClose is the *range* baseline, not yesterday's close.
+        # Without a usable change, date bars in the provider's timezone using
+        # the quote's own day, even when it is stale or the market is closed.
+        # Missing/invalid timezone metadata leaves only the change unavailable.
+        prev = _number(price - change) if change is not None else _yahoo_previous_close(meta, bars, timestamp)
         if prev is not None and kind != "futures" and prev <= 0:
             prev = None
         as_of = _iso(timestamp)
