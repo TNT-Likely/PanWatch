@@ -47,6 +47,11 @@ _CURRENT_TRACE_ID: contextvars.ContextVar[str] = contextvars.ContextVar(
 _CANCEL_EVENT: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
     "_TA_CANCEL_EVENT", default=None
 )
+# Only modern news enrichment understands an explicit primary availability signal.
+# Keep the legacy router text unchanged, including when both layouts coexist.
+_MODERN_NEWS_PRIMARY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_TA_MODERN_NEWS_PRIMARY", default=False
+)
 
 # 所有上游 monkeypatch 和 PanWatch 数据注入都集中在本文件；其它模块只依赖这些入口。
 __all__ = [
@@ -510,6 +515,7 @@ def _install_news_cancellation_guards() -> None:
         def guarded(primary, *args, **kwargs):
             _raise_if_cancelled()
             def checked_primary():
+                token = _MODERN_NEWS_PRIMARY.set(True)
                 try:
                     _raise_if_cancelled()
                     result = primary()
@@ -518,6 +524,7 @@ def _install_news_cancellation_guards() -> None:
                 except TradingAgentsCancelled as exc:
                     raise _CancelledNewsPrimary() from exc
                 finally:
+                    _MODERN_NEWS_PRIMARY.reset(token)
                     event = _CANCEL_EVENT.get()
                     if event is not None and event.is_set():
                         raise _CancelledNewsPrimary()
@@ -975,8 +982,17 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         events = _cache().get("events") or []
         if events:
             return f"{header}\n\n{_events_to_text(events, limit=20)}"
+        # collect() also uses [] after an events-provider failure. This is no
+        # cached evidence, never proof that the company has no news. Signal only
+        # this known empty result, not arbitrary upstream prose or cached events.
+        # Global news stays company-scoped here; do not enable unrelated global
+        # fallback searches by marking get_global_news as an empty primary.
+        status = (
+            "DATA_UNAVAILABLE: PanWatch has no cached company news/events.\n\n"
+            if method == "get_news" and _MODERN_NEWS_PRIMARY.get() else ""
+        )
         return (
-            f"{header}\n\n[No company-specific news/events available for {symbol}. "
+            f"{status}{header}\n\n[No company-specific news/events available for {symbol}. "
             "DO NOT pull unrelated global news as a substitute — focus the analysis "
             "on the metadata above and other tool outputs.]"
         )
