@@ -52,6 +52,47 @@ describe('global market overview', () => {
     expect(screen.getByText('+0.05 %').classList.contains('text-market-up')).toBe(true)
   })
 
+  it.each([
+    [-37.63, 10.01, 47.64, null, '--', 'up'],
+    [-37.63, -10.01, 27.62, null, '--', 'up'],
+    [-10.01, -37.63, -27.62, null, '--', 'down'],
+    [-37.63, -37.63, 0, null, '--', 'flat'],
+    [0, 10.01, 10.01, null, '--', 'up'],
+    [0, -10.01, -10.01, null, '--', 'down'],
+    [0, 0, 0, null, '--', 'flat'],
+    [100, 110, 10, 10, '+10.00 %', 'up'],
+    [100, 90, -10, -10, '-10.00 %', 'down'],
+    [18, 0, -18, -100, '-100.00 %', 'down'],
+    [18, -36, -54, -300, '-300.00 %', 'down'],
+    [100, 100, 0, 0, '0.00 %', 'flat'],
+    [null, 10.01, null, null, '--', 'flat'],
+    [null, null, null, null, '--', 'flat'],
+  ] as const)('uses the explicit futures direction for baseline %s and quote %s', (prior, price, amount, pct, label, direction) => {
+    // Controlled API rows, including the historical WTI negative-price boundary;
+    // this exercises the real overview and Sparkline components, not a mock.
+    const oil: DashboardOverviewInstrument = {
+      ...row('oil', 'commodities'), instrument_type: 'futures', provider_symbol: 'CL=F',
+      current_price: price, prev_close: prior, change_amount: amount, change_pct: pct,
+      spark: price == null ? [] : [prior ?? -37.63, price], unit: 'USD/barrel',
+      status: price == null ? 'unavailable' : 'delayed',
+    }
+    render(<GlobalMarketOverview instruments={[oil]} />)
+    const card = screen.getByRole('article')
+    const change = within(card).getAllByText(label).at(-1)!
+    expect(change.classList.contains(`text-market-${direction}`)).toBe(true)
+    if (price == null) {
+      expect(within(card).getAllByText('--')).toHaveLength(2)
+      expect(card.querySelector('svg')).toBeNull()
+    } else {
+      expect(within(card).getByText(price.toFixed(2))).toBeTruthy()
+      expect(card.querySelector('svg')?.classList.contains(`text-market-${direction}`)).toBe(true)
+      const points = card.querySelector('polyline')!.getAttribute('points')!.split(' ').map(point => point.split(',').map(Number))
+      expect(points.every(point => point.every(Number.isFinite))).toBe(true)
+      expect(Math.sign(points[0][1] - points[1][1])).toBe(Math.sign(price - (prior ?? -37.63)))
+    }
+    if (pct == null) expect(card.textContent).not.toContain('%')
+  })
+
   it('persists hiding and ordering across remounts and resets safely', async () => {
     const user = userEvent.setup()
     const view = render(<GlobalMarketOverview instruments={rows} />)

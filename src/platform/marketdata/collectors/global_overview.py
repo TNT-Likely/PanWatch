@@ -157,10 +157,14 @@ def _yahoo(spec):
         prev = _number(price - change) if change is not None else _yahoo_previous_close(meta, bars, timestamp)
         if prev is not None and kind != "futures" and prev <= 0:
             prev = None
+        # Preserve the provider's amount instead of subtracting it twice. Zero
+        # and negative futures baselines are valid prices, but relative returns
+        # are undefined or convention-dependent; do not invent a percentage.
+        amount = (change if change is not None else price - prev) if prev is not None else None
         as_of = _iso(timestamp)
         row.update(current_price=price, prev_close=prev, as_of=as_of,
-                   change_amount=price-prev if prev is not None else None,
-                   change_pct=(price/prev-1)*100 if prev else None,
+                   change_amount=amount,
+                   change_pct=(price/prev-1)*100 if prev is not None and prev > 0 else None,
                    spark=[v for _, v in history][-20:],
                    history_as_of=_iso(history[-1][0]) if history else None,
                    status="stale" if _stale(as_of, crypto=kind == "crypto") else "delayed")

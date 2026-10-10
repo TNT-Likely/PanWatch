@@ -35,6 +35,24 @@ PROVIDER_ZONES = {
     'corn': 'America/New_York', 'btc': 'UTC', 'eth': 'UTC',
 }
 
+# Controlled quote metadata, not a captured current feed. The first pair uses
+# historical WTI prices (-37.63 -> 10.01); all other pairs probe the boundaries.
+FUTURES_CHANGES = [
+    (-37.63, 10.01, 47.64),
+    (-37.63, -10.01, 27.62),
+    (-10.01, -37.63, -27.62),
+    (-37.63, -37.63, 0),
+    (0, 10.01, 10.01),
+    (0, -10.01, -10.01),
+    (0, 0, 0),
+    (10.01, 37.63, 27.62),
+    (37.63, 10.01, -27.62),
+    (18, 0, -18),
+    (18.27, -37.63, -55.9),
+    (18.27, 18.27, 0),
+    (0.9, 1, 0.1),  # Preserve the explicit amount without subtracting twice.
+]
+
 
 def epoch(date, zone, hour=0):
     return int(datetime.fromisoformat(date).replace(hour=hour, tzinfo=ZoneInfo(zone)).timestamp())
@@ -64,6 +82,14 @@ def transport_client(handler):
         kwargs['trust_env'] = False
         return REAL_CLIENT(**kwargs)
     return client
+
+
+def futures_chart(spec, prior, price, amount, source):
+    changes = ({'regularMarketChange': amount} if source == 'regularMarketChange'
+               else {'fulldayPrice': price, 'fulldayChange': amount})
+    payload = chart(spec, regularMarketPrice=price, **changes)
+    payload['chart']['result'][0]['indicators']['quote'][0]['close'] = [prior, price]
+    return payload
 
 
 class TestYahooHttpBoundary(unittest.TestCase):
@@ -221,6 +247,84 @@ class TestYahooHttpBoundary(unittest.TestCase):
                     else:
                         self.assertIsNone(row['change_pct'])
                     self.assertEqual(row['spark'], [])
+
+    def assert_futures_change(self, row, prior, price, amount):
+        self.assertEqual(row['current_price'], price)
+        self.assertAlmostEqual(row['prev_close'], prior)
+        self.assertEqual(row['change_amount'], amount)
+        if prior > 0:
+            self.assertAlmostEqual(row['change_pct'], (price / prior - 1) * 100)
+        else:
+            # Do not invent a convention for returns on a nonpositive baseline.
+            self.assertIsNone(row['change_pct'])
+        self.assertEqual(row['spark'], [prior, price])
+        self.assertIsNotNone(row['as_of'])
+        self.assertIsNotNone(row['history_as_of'])
+        self.assertNotEqual(row['status'], 'unavailable')
+
+    def test_futures_nonpositive_baselines_keep_quote_and_explicit_direction(self):
+        for spec in (spec for spec in g._SPECS if spec[1] == 'commodities'):
+            for source in ('regularMarketChange', 'fulldayChange'):
+                for prior, price, amount in FUTURES_CHANGES:
+                    with self.subTest(symbol=spec[2], source=source, prior=prior, price=price):
+                        row = self.replay(futures_chart(spec, prior, price, amount, source), spec)
+                        self.assert_futures_change(row, prior, price, amount)
+
+    def test_nonpositive_futures_history_never_supplies_missing_session_change(self):
+        spec = next(spec for spec in g._SPECS if spec[0] == 'oil')
+        for prior in (-37.63, 0, 18.27):
+            for source in ('regularMarketChange', 'fulldayChange'):
+                payload = futures_chart(spec, prior, 10.01, None, source)
+                with self.subTest(prior=prior, source=source):
+                    row = self.replay(payload, spec)
+                    self.assertEqual(row['current_price'], 10.01)
+                    self.assertEqual(row['spark'], [prior, 10.01])
+                    for field in ('prev_close', 'change_amount', 'change_pct'):
+                        self.assertIsNone(row[field])
+
+    def test_real_api_keeps_futures_amounts_without_nonpositive_baseline_percentages(self):
+        app = FastAPI()
+        app.include_router(router, prefix='/api/market')
+        spec = next(spec for spec in g._SPECS if spec[0] == 'oil')
+        payload = None
+
+        def handle(request):
+            if (request.url.host == 'query1.finance.yahoo.com'
+                    and unquote(request.url.path.rsplit('/', 1)[1]) == spec[2]):
+                return httpx.Response(200, json=payload)
+            # Other instruments are deliberately unavailable; no real requests.
+            if request.url.host == 'home.treasury.gov':
+                return httpx.Response(200, text='<feed xmlns="http://www.w3.org/2005/Atom"/>')
+            if request.url.host == 'yield.chinabond.com.cn':
+                return httpx.Response(200, text='<table/>')
+            return httpx.Response(200, json={})
+
+        with TestClient(app) as client:
+            with patch('marketdata.http.httpx.Client', side_effect=transport_client(handle)):
+                for source in ('regularMarketChange', 'fulldayChange'):
+                    for prior, price, amount in FUTURES_CHANGES:
+                        with self.subTest(source=source, prior=prior, price=price):
+                            g.clear_overview_cache()
+                            payload = futures_chart(spec, prior, price, amount, source)
+                            response = client.get('/api/market/overview')
+                            self.assertEqual(response.status_code, 200)
+                            rows = response.json()
+                            self.assertEqual(len(rows), 29)
+                            row = next(row for row in rows if row['id'] == 'oil')
+                            self.assert_futures_change(row, prior, price, amount)
+                            self.assertTrue(all(row['current_price'] is None for row in rows if row['id'] != 'oil'))
+
+                for changes in ({'regularMarketChange': None}, {'regularMarketPrice': 'NaN'}):
+                    with self.subTest(unavailable=changes):
+                        g.clear_overview_cache()
+                        payload = futures_chart(spec, -37.63, 10.01, 47.64, 'regularMarketChange')
+                        payload['chart']['result'][0]['meta'].update(changes)
+                        response = client.get('/api/market/overview')
+                        self.assertEqual(response.status_code, 200)
+                        row = next(row for row in response.json() if row['id'] == 'oil')
+                        for field in ('prev_close', 'change_amount', 'change_pct'):
+                            self.assertIsNone(row[field])
+                        self.assertEqual(row['current_price'], None if 'regularMarketPrice' in changes else 10.01)
 
     def test_bad_immediate_prior_bar_is_not_replaced_by_older_valid_close(self):
         for spec in (g._SPECS[5], CORN_SPEC):

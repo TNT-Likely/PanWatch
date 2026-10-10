@@ -85,15 +85,18 @@ export default function GlobalMarketOverview({ instruments, loading = false }: {
             {items.map(ix => {
               const yieldQuote = ix.instrument_type === 'yield'
               const delta = yieldQuote ? ix.change_bps : ix.change_pct
+              // A nonpositive futures baseline has no displayed percentage;
+              // its explicit price change still gives a reliable direction.
+              const direction = ix.instrument_type === 'futures' ? ix.change_amount : delta
               const value = ix.current_price
               return <article key={ix.id} className="card-subtle min-w-0 p-2.5" aria-label={tr(`names.${ix.name_key}`)}>
                 <div className="text-xs font-medium" title={`${ix.provider_symbol} · ${ix.provider_name || ix.provider_symbol}`}>{tr(`names.${ix.name_key}`)}</div>
                 <div className="flex flex-wrap items-baseline justify-between gap-1">
                   <span className="font-mono text-base">{value != null && Number.isFinite(value) ? `${value.toFixed(yieldQuote ? 3 : 2)}${yieldQuote ? '%' : ''}` : '--'}</span>
-                  <span className={`font-mono text-xs ${marketSignTextClass(delta)}`}>{delta != null && Number.isFinite(delta) ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ${yieldQuote ? tr('bps') : '%'}` : '--'}</span>
+                  <span className={`font-mono text-xs ${marketSignTextClass(direction)}`}>{delta != null && Number.isFinite(delta) ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ${yieldQuote ? tr('bps') : '%'}` : '--'}</span>
                 </div>
                 <div className="text-[10px] text-muted-foreground">{tr(`kinds.${ix.instrument_type}`)}{!yieldQuote && ix.instrument_type !== 'index' ? ` · ${tr(`units.${ix.id}`)}` : ''}{ix.currency ? ` · ${ix.currency}` : ''}</div>
-                {ix.spark && ix.spark.length >= 2 ? <div className="my-1.5"><Sparkline data={ix.spark} height={26} className={marketSignTextClass(delta)} /></div> : <div className="my-1.5 text-[10px] text-muted-foreground">{tr('chartUnavailable')}</div>}
+                {ix.spark && ix.spark.length >= 2 ? <div className="my-1.5"><Sparkline data={ix.spark} height={26} className={marketSignTextClass(direction)} /></div> : <div className="my-1.5 text-[10px] text-muted-foreground">{tr('chartUnavailable')}</div>}
                 <div className="text-[10px] text-muted-foreground">{tr(`statuses.${ix.status}`)} · {ix.provider}</div>
                 <div className="break-words text-[10px] text-muted-foreground">{asOf(ix)} · {ix.timezone}</div>
               </article>
