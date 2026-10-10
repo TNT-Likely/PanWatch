@@ -28,3 +28,24 @@ describe('parseAssistantPortfolioTarget', () => {
     expect(parseAssistantPortfolioTarget(new URLSearchParams('view=kline&symbol=../bad&market=CN'))).toBeNull()
   })
 })
+
+it.each([
+  ['ENB.PR.V', 'TSX', 'ENB-PV'],
+  ['BCE.PR.A', 'TSX', 'BCE-PA'],
+  ['ENB.PR.V.TO', 'TSX', 'ENB-PV'],
+  ['ZSP.U.TO', 'TSX', 'ZSP-U'],
+  ['REI.UN', 'TSX', 'REI-UN'],
+  ['TBRD.A.V', 'TSXV', 'TBRD-A'],
+])('opens the assistant chart action for Canadian alias %s', (symbol, market, canonical) => {
+  // Result-builder actions preserve provider/tool spelling in their public URL.
+  const path = `/portfolio?view=kline&symbol=${symbol}&market=${market}`
+  expect(parseAssistantPortfolioTarget(new URL(path, 'http://localhost').searchParams))
+    .toEqual({ view: 'kline', symbol: canonical, market })
+})
+
+it.each([
+  ['ENB.PR.V', 'TSXV'], ['ENB.PR.V', 'US'], ['TBRD.V', 'TSX'],
+  ['ZSP.U.TO', 'TSXV'], ['ENB.PF.V', 'TSX'], ['.TO', 'TSX'],
+])('rejects contradictory or unsupported Canadian alias %s/%s', (symbol, market) => {
+  expect(parseAssistantPortfolioTarget(new URLSearchParams({ view: 'kline', symbol, market }))).toBeNull()
+})

@@ -1,0 +1,78 @@
+{
+  "accounts": [
+    {
+      "id": 1,
+      "name": "Canadian fixture",
+      "available_funds": 0.0,
+      "total_market_value": 0,
+      "total_cost": 0,
+      "total_pnl": 0,
+      "total_pnl_pct": 0,
+      "total_daily_pnl": 0,
+      "total_assets": 0.0,
+      "positions": [
+        {
+          "id": 1,
+          "stock_id": 1,
+          "symbol": "T",
+          "name": "TELUS",
+          "market": "TSX",
+          "cost_price": 10.0,
+          "quantity": 1.5,
+          "invested_amount": null,
+          "sort_order": 0,
+          "trading_style": "swing",
+          "current_price": 20,
+          "current_price_cny": null,
+          "change_pct": null,
+          "market_value": 30.0,
+          "market_value_cny": null,
+          "pnl": null,
+          "pnl_pct": null,
+          "daily_pnl": null,
+          "daily_pnl_pct": null,
+          "exchange_rate": null,
+          "currency": "CAD",
+          "valuation_status": "fx_unavailable",
+          "source_timestamp": "2026-10-09T20:00:00+00:00",
+          "is_delayed": null,
+          "source": null,
+          "security_type": null,
+          "daily_move_status": "closed",
+          "quote_date": null
+        }
+      ],
+      "valuation_incomplete": true
+    }
+  ],
+  "total": {
+    "total_market_value": 0,
+    "total_cost": 0,
+    "total_pnl": 0,
+    "total_pnl_pct": 0,
+    "total_daily_pnl": 0,
+    "available_funds": 0.0,
+    "total_assets": 0.0,
+    "valuation_incomplete": true
+  },
+  "exchange_rates": {
+    "HKD_CNY": 0.92,
+    "USD_CNY": 7.25,
+    "CAD_CNY": null,
+    "CANADA_USD_CNY": null
+  },
+  "quotes": {
+    "TSX:T": {
+      "current_price": 20,
+      "currency": "CAD",
+      "source_timestamp": "2026-10-09T20:00:00+00:00",
+      "is_delayed": null,
+      "source": null,
+      "security_type": null,
+      "change_pct": null,
+      "change_amount": null,
+      "daily_move_status": "closed",
+      "quote_date": null
+    }
+  }
+}

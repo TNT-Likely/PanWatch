@@ -1,5 +1,6 @@
+import { useRequestScope } from './use-request-scope'
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, Plus, Pencil, Trash2 } from 'lucide-react'
 import { fetchAPI, stocksApi, type NotifyChannel } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -62,7 +63,7 @@ function conditionText(item: AlertConditionItem, tr: (key: string) => string): s
   return `${label[item.type] || item.type} ${item.op} ${Array.isArray(item.value) ? item.value.join('~') : item.value}`
 }
 
-export default function StockPriceAlertPanel(props: {
+interface StockPriceAlertPanelProps {
   symbol: string
   market: string
   stockName?: string
@@ -71,7 +72,14 @@ export default function StockPriceAlertPanel(props: {
   initialTotal?: number
   initialEnabled?: number
   onChanged?: () => void
-}) {
+}
+
+export default function StockPriceAlertPanel(props: StockPriceAlertPanelProps) {
+  return <StockPriceAlertSession key={JSON.stringify([props.market, props.symbol, props.stockId])} {...props} />
+}
+
+function StockPriceAlertSession(props: StockPriceAlertPanelProps) {
+  const beginRequest = useRequestScope()
   const { toast } = useToast()
   const { t } = useTranslation('bizUi')
   const confirmAction = useConfirm()
@@ -91,6 +99,33 @@ export default function StockPriceAlertPanel(props: {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState<PriceAlertFormState>(DEFAULT_FORM)
 
+  const dialogEpoch = useRef(0)
+  const formEpoch = useRef(0)
+  const beginDialogRequest = useCallback((lane: string, forForm = false) => {
+    const isCurrent = beginRequest(lane)
+    const dialog = dialogEpoch.current
+    const form = formEpoch.current
+    return () => isCurrent() && dialogEpoch.current === dialog && (!forForm || formEpoch.current === form)
+  }, [beginRequest])
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      dialogEpoch.current += 1
+      formEpoch.current += 1
+      setFormOpen(false)
+      setLoading(false)
+      setSaving(false)
+    }
+    setOpen(nextOpen)
+  }
+  const handleFormOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      formEpoch.current += 1
+      setSaving(false)
+    }
+    setFormOpen(nextOpen)
+  }
+
   const summary = useMemo(() => {
     const total = rules.length
     const enabled = rules.filter(r => r.enabled).length
@@ -107,16 +142,18 @@ export default function StockPriceAlertPanel(props: {
     return stocks
   }, [stocks])
 
-  const ensureStockId = useCallback(async (): Promise<number | null> => {
+  const ensureStockId = useCallback(async (isCurrent: () => boolean): Promise<number | null> => {
     if (props.stockId) return props.stockId
     let target = stocks.find(s => s.symbol === symbol && s.market === market)
     if (!target) {
       const all = await stocksApi.list()
+      if (!isCurrent()) return null
       setStocks(all || [])
       target = (all || []).find(s => s.symbol === symbol && s.market === market)
     }
     if (!target) {
       const created = await stocksApi.create({ symbol, market, name: props.stockName || symbol })
+      if (!isCurrent()) return null
       setStocks(prev => prev.some(s => s.id === created.id) ? prev : [created, ...prev])
       return created.id
     }
@@ -125,6 +162,8 @@ export default function StockPriceAlertPanel(props: {
 
   const load = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginDialogRequest('rules')
+    if (!isCurrent()) return
     setLoading(true)
     try {
       const [ruleData, stockData, channelData] = await Promise.all([
@@ -132,6 +171,7 @@ export default function StockPriceAlertPanel(props: {
         stocksApi.list(),
         fetchAPI<NotifyChannel[]>('/channels'),
       ])
+      if (!isCurrent()) return
       setStocks(stockData || [])
       setChannels(channelData || [])
       const filtered = (ruleData || []).filter(r =>
@@ -140,16 +180,19 @@ export default function StockPriceAlertPanel(props: {
       )
       setRules(filtered)
     } catch (e) {
-      toast(tr('messages.loadFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.loadFailed'), 'error')
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [market, symbol, toast])
+  }, [market, symbol, toast, beginDialogRequest])
 
   const loadSummaryOnly = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('rules')
+    if (!isCurrent()) return
     try {
       const ruleData = await fetchAPI<AlertRule[]>('/price-alerts')
+      if (!isCurrent()) return
       const filtered = (ruleData || []).filter(r =>
         String(r.stock_symbol || '').toUpperCase() === symbol.toUpperCase() &&
         String(r.market || '').toUpperCase() === market
@@ -158,7 +201,7 @@ export default function StockPriceAlertPanel(props: {
     } catch {
       // summary preload failure should not block interaction
     }
-  }, [market, symbol])
+  }, [market, symbol, beginRequest])
 
   useEffect(() => {
     if (!open) return
@@ -173,12 +216,17 @@ export default function StockPriceAlertPanel(props: {
   }, [loadSummaryOnly, mode, open, props.initialTotal])
 
   const openCreate = async () => {
+    const isCurrent = beginDialogRequest('create')
+    if (!isCurrent()) return
     try {
-      const stockId = await ensureStockId()
+      const stockId = await ensureStockId(isCurrent)
+      if (!isCurrent()) return
       if (!stockId) {
         toast(tr('messages.stockNotFound'), 'error')
         return
       }
+      formEpoch.current += 1
+      setSaving(false)
       setEditingId(null)
       setForm({
         ...DEFAULT_FORM,
@@ -187,11 +235,14 @@ export default function StockPriceAlertPanel(props: {
       })
       setFormOpen(true)
     } catch (e) {
-      toast(tr('messages.createFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.createFailed'), 'error')
     }
   }
 
   const openEdit = (r: AlertRule) => {
+    beginRequest('create')
+    formEpoch.current += 1
+    setSaving(false)
     setEditingId(r.id)
     setForm({
       stock_id: r.stock_id,
@@ -209,6 +260,8 @@ export default function StockPriceAlertPanel(props: {
   }
 
   const submitForm = async (payload: PriceAlertSubmitPayload) => {
+    const isCurrent = beginDialogRequest('save', true)
+    if (!isCurrent()) return
     setSaving(true)
     try {
       if (editingId) {
@@ -216,36 +269,49 @@ export default function StockPriceAlertPanel(props: {
       } else {
         await fetchAPI('/price-alerts', { method: 'POST', body: JSON.stringify(payload) })
       }
+      // The mutation succeeded even if its view closed; invalidate the parent
+      // summary independently of this dialog's local state and feedback.
+      props.onChanged?.()
+      if (!isCurrent()) return
       setFormOpen(false)
       await load()
-      props.onChanged?.()
+      if (!isCurrent()) return
       toast(tr('messages.saved'), 'success')
     } catch (e) {
-      toast(tr('messages.saveFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.saveFailed'), 'error')
     } finally {
-      setSaving(false)
+      if (isCurrent()) setSaving(false)
     }
   }
 
   const toggleRule = async (r: AlertRule) => {
+    const isCurrent = beginDialogRequest(`rule:${r.id}`)
+    if (!isCurrent()) return
     try {
       await fetchAPI(`/price-alerts/${r.id}/toggle`, { method: 'POST', body: JSON.stringify({ enabled: !r.enabled }) })
-      await load()
       props.onChanged?.()
+      if (!isCurrent()) return
+      await load()
+      if (!isCurrent()) return
     } catch (e) {
-      toast(tr('messages.toggleFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.toggleFailed'), 'error')
     }
   }
 
   const removeRule = async (r: AlertRule) => {
+    const isCurrent = beginDialogRequest(`rule:${r.id}`)
+    if (!isCurrent()) return
     if (!(await confirmAction(tr('messages.deleteConfirm', { name: r.name || tr('alert') }), { destructive: true }))) return
+    if (!isCurrent()) return
     try {
       await fetchAPI(`/price-alerts/${r.id}`, { method: 'DELETE' })
-      await load()
       props.onChanged?.()
+      if (!isCurrent()) return
+      await load()
+      if (!isCurrent()) return
       toast(tr('messages.deleted'), 'success')
     } catch (e) {
-      toast(tr('messages.deleteFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.deleteFailed'), 'error')
     }
   }
 
@@ -254,7 +320,7 @@ export default function StockPriceAlertPanel(props: {
       variant="secondary"
       size="sm"
       className="h-8 px-2.5"
-      onClick={() => setOpen(true)}
+      onClick={() => handleOpenChange(true)}
       type="button"
       title={shownSummary.total > 0 ? `${tr('alert')} ${shownSummary.enabled}/${shownSummary.total}` : tr('priceAlert')}
     >
@@ -264,7 +330,7 @@ export default function StockPriceAlertPanel(props: {
   ) : (
     <button
       className="relative inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent/40 transition-colors"
-      onClick={() => setOpen(true)}
+      onClick={() => handleOpenChange(true)}
       title={shownSummary.total > 0 ? `${tr('alert')} ${shownSummary.enabled}/${shownSummary.total}` : tr('priceAlert')}
       type="button"
     >
@@ -280,7 +346,7 @@ export default function StockPriceAlertPanel(props: {
   return (
     <>
       {trigger}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{tr('title', { name: props.stockName || symbol })}</DialogTitle>
@@ -329,7 +395,7 @@ export default function StockPriceAlertPanel(props: {
 
       <PriceAlertFormDialog
         open={formOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={handleFormOpenChange}
         title={editingId ? tr('editTitle') : tr('createTitle')}
         description={tr('formDescription')}
         stocks={formStocks}

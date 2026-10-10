@@ -1,3 +1,5 @@
+import { instrumentIdentity } from '@panwatch/biz-ui/instrument-identity'
+
 export interface AssistantPortfolioTarget {
   view: 'kline'
   symbol: string
@@ -16,8 +18,7 @@ export function parseAssistantPortfolioTarget(
   if (!SYMBOL_PATTERN.test(symbol) || !MARKETS.has(market as AssistantPortfolioTarget['market'])) {
     return null
   }
-  if ((market === 'TSX' && symbol.endsWith('.V')) || (market === 'TSXV' && symbol.endsWith('.TO'))) return null
-  const canonicalSymbol = market === 'TSX' ? symbol.replace(/\.TO$/, '') : market === 'TSXV' ? symbol.replace(/\.V$/, '') : symbol
-  if (!SYMBOL_PATTERN.test(canonicalSymbol)) return null
-  return { view: 'kline', symbol: canonicalSymbol, market: market as AssistantPortfolioTarget['market'] }
+  const identity = instrumentIdentity(symbol, market)
+  if (!identity || !SYMBOL_PATTERN.test(identity.symbol)) return null
+  return { view: 'kline', symbol: identity.symbol, market: market as AssistantPortfolioTarget['market'] }
 }

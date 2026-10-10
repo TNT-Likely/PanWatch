@@ -130,7 +130,8 @@ def _article_to_newsitem(a):
 
 
 def md_news(
-    symbols: list[str], since_hours: int = 2, names: dict[str, str] | None = None
+    symbols: list[str], since_hours: int = 2, names: dict[str, str] | None = None,
+    *, market: str = "CN",
 ) -> list:
     """聚合新闻(个股新闻 + 公告),返回 list[NewsItem](与旧 NewsCollector.fetch_all 同形)。
 
@@ -144,7 +145,7 @@ def md_news(
     # 包内 news vendor 的 publish_time 是 aware(UTC);这里的 now 也必须 aware,
     # 否则 since 过滤会 "can't compare offset-naive and offset-aware datetimes"。
     arts = get_market_data().news(
-        list(symbols or []), since_hours=since_hours, names=names,
+        list(symbols or []), market=market, since_hours=since_hours, names=names,
         now=datetime.now(timezone.utc),
     )
     return [_article_to_newsitem(a) for a in arts]

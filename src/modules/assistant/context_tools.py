@@ -6,6 +6,7 @@ import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from marketdata import Symbol
 from pan_agent import ToolExposure, ToolResult
 
 from src.platform.marketdata.collectors.events_collector import fetch_announcement_fulltext
@@ -75,10 +76,11 @@ def register_context_tools(registry, bind, tool_spec) -> None:
         return ToolResult.success(summary=f"自选库 {data['total']} 只股票，返回 {data['count']} 只。", data=data, sources=[{"name": "PanWatch 自选库", "as_of": now.isoformat()}], observed_at=now)
 
     def instrument(arguments):
-        market = str(arguments.get("market") or "CN").upper()
+        market = str(arguments.get("market") or "CN").strip().upper()
         symbol = str(arguments.get("symbol") or "").strip().upper()
         if market not in {"CN", "HK", "US", "TSX", "TSXV"} or not symbol:
             raise ValueError("请提供股票代码与有效市场")
+        symbol = Symbol.parse(symbol, market).code
         return (symbol.zfill(5) if market == "HK" and symbol.isdigit() else symbol), market
 
     async def get_research_history(request, arguments):

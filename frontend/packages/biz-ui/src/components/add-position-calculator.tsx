@@ -1,3 +1,4 @@
+import { useRequestScope } from './use-request-scope'
 import { useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { insightApi, type AddPositionEvalResult } from '@panwatch/api'
@@ -72,7 +73,11 @@ interface Props {
   currentPrice?: number | null
 }
 
-export default function AddPositionCalculator({
+export default function AddPositionCalculator(props: Props) {
+  return <AddPositionSession key={JSON.stringify([props.market, props.symbol])} {...props} />
+}
+
+function AddPositionSession({
   symbol,
   market,
   currency,
@@ -80,6 +85,7 @@ export default function AddPositionCalculator({
   currentCost,
   currentPrice,
 }: Props) {
+  const beginRequest = useRequestScope()
   const { toast } = useToast()
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
@@ -126,6 +132,8 @@ export default function AddPositionCalculator({
       toast(tr('invalidInput'), 'error')
       return
     }
+    const isCurrent = beginRequest('evaluation')
+    if (!isCurrent()) return
     setAiLoading(true)
     setAiResult(null)
     try {
@@ -137,11 +145,11 @@ export default function AddPositionCalculator({
         add_quantity: isCanadian ? addQty : Math.round(addQty),
         add_price: addPrice,
       })
-      setAiResult(res)
+      if (isCurrent()) setAiResult(res)
     } catch (e: any) {
-      toast(e?.message || tr('evalFailed'), 'error')
+      if (isCurrent()) toast(e?.message || tr('evalFailed'), 'error')
     } finally {
-      setAiLoading(false)
+      if (isCurrent()) setAiLoading(false)
     }
   }
 

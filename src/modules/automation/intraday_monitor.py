@@ -9,11 +9,16 @@ import uuid
 from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 
+from marketdata import Symbol
+
 from src.modules.research.signals.actions import ACTION_LABELS, ACTION_LABELS_EN, normalize_suggestion
 from src.modules.automation.base import BaseAgent, AgentContext, AnalysisResult
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.modules.research.analysis_history import get_scoped_analysis_context
 from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.portfolio_currency import (
+    CANADIAN_MARKETS, amount_text, canadian_quote_note, constraints_text, quote_currency,
+)
 from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
@@ -225,6 +230,8 @@ class IntradayMonitorAgent(BaseAgent):
 
         lines.append("## 股票行情")
         lines.append(f"- 股票：{stock.name}（{stock.symbol}）")
+        if stock.market.value in CANADIAN_MARKETS:
+            lines.append(canadian_quote_note(stock.market, stock.symbol, stock))
         lines.append(f"- 现价：{current_price:.2f}")
         lines.append(f"- 涨跌幅：{change_pct:+.2f}%")
         lines.append(f"- 涨跌额：{change_amount:+.2f}")
@@ -233,7 +240,8 @@ class IntradayMonitorAgent(BaseAgent):
         lines.append(f"- 最低：{low_price:.2f}")
         lines.append(f"- 昨收：{prev_close:.2f}")
         if volume > 0:
-            lines.append(f"- 成交量：{volume:.0f} 手")
+            volume_unit = "股" if stock.market.value in CANADIAN_MARKETS else "手"
+            lines.append(f"- 成交量：{volume:.0f} {volume_unit}")
         if turnover > 0:
             lines.append(f"- 成交额：{turnover / 10000:.0f} 万")
 
@@ -454,9 +462,7 @@ class IntradayMonitorAgent(BaseAgent):
             lines.append(f"  - {acc.name}：{acc.available_funds:.0f} 元")
         constraints = symbol_ctx.get("constraints") or {}
         if constraints:
-            lines.append(
-                f"- 单票仓位占比：{safe_num(constraints.get('single_position_ratio'), 0) * 100:.1f}%（{constraints.get('risk_budget_hint', 'normal')}）"
-            )
+            lines.append(constraints_text(constraints))
         memory = symbol_ctx.get("memory") or {}
         if memory:
             lines.append(
@@ -488,7 +494,10 @@ class IntradayMonitorAgent(BaseAgent):
                 lines.append(f"- 交易风格：{style_label}")
                 lines.append(f"- 成本价：{cost_price:.2f}")
                 lines.append(f"- 持仓量：{pos.quantity} 股")
-                lines.append(f"- 持仓市值：{market_value:.0f} 元")
+                if stock.market.value in CANADIAN_MARKETS:
+                    lines.append(f"- 持仓市值：{amount_text(market_value, quote_currency(stock.market, stock))}")
+                else:
+                    lines.append(f"- 持仓市值：{market_value:.0f} 元")
                 pnl_note = ""
                 if pnl_pct <= self.stop_loss_warning:
                     pnl_note = "（触发止损预警）"
@@ -498,7 +507,10 @@ class IntradayMonitorAgent(BaseAgent):
                 lines.append(f"- 账户可用：{acc_funds:.0f} 元")
         else:
             lines.append("\n## 未持仓（仅关注）")
-            lines.append(f"- 可用资金充足，可考虑建仓")
+            if stock.market.value in CANADIAN_MARKETS:
+                lines.append("- 未核实 CNY 现金对应原币种的购买力，不推断资金充足。")
+            else:
+                lines.append(f"- 可用资金充足，可考虑建仓")
 
         # 历史分析上下文（帮助 AI 做出更好的判断）
         daily_analysis = data.get("daily_analysis")
@@ -923,6 +935,7 @@ class IntradayMonitorAgent(BaseAgent):
             raw_data={
                 "stock": {
                     "symbol": stock.symbol,
+                    "market": stock.market.value,
                     "name": stock.name,
                     "current_price": stock.current_price,
                     "change_pct": stock.change_pct,
@@ -954,12 +967,13 @@ class IntradayMonitorAgent(BaseAgent):
             return False
 
         symbol = stock_data.get("symbol")
-        if not symbol:
+        market = stock_data.get("market")
+        if not symbol or not market:
             return False
 
         # 检查节流（测试模式可跳过）
         if not self.bypass_throttle:
-            if not self._check_throttle(symbol):
+            if not self._check_throttle(symbol, market):
                 logger.info(
                     f"通知节流: {symbol} 在 {self.throttle_minutes} 分钟内已通知"
                 )
@@ -969,18 +983,28 @@ class IntradayMonitorAgent(BaseAgent):
 
         return True
 
-    def _check_throttle(self, symbol: str) -> bool:
+    @staticmethod
+    def _throttle_key(symbol: str, market: str | MarketCode) -> str:
+        listing = Symbol.parse(symbol.strip().upper(), market)
+        code = listing.code.zfill(5) if listing.market.value == "HK" and listing.code.isdigit() else listing.code
+        return f"{listing.market.value}:{code}"
+
+    def _check_throttle(self, symbol: str, market: str | MarketCode) -> bool:
         """检查是否可以发送通知（未被节流）"""
         from src.platform.persistence.database import SessionLocal
         from src.platform.persistence.models import NotifyThrottle
 
+        # Old bare-symbol rows cannot prove which listing sent a notification.
+        # Leave them intact; initialize a scoped row after the next successful
+        # delivery rather than suppressing an unrelated exchange on upgrade.
+        key = self._throttle_key(symbol, market)
         db = SessionLocal()
         try:
             record = (
                 db.query(NotifyThrottle)
                 .filter(
                     NotifyThrottle.agent_name == self.name,
-                    NotifyThrottle.stock_symbol == symbol,
+                    NotifyThrottle.stock_symbol == key,
                 )
                 .first()
             )
@@ -998,18 +1022,19 @@ class IntradayMonitorAgent(BaseAgent):
         finally:
             db.close()
 
-    def _update_throttle(self, symbol: str):
+    def _update_throttle(self, symbol: str, market: str | MarketCode):
         """更新节流记录"""
         from src.platform.persistence.database import SessionLocal
         from src.platform.persistence.models import NotifyThrottle
 
+        key = self._throttle_key(symbol, market)
         db = SessionLocal()
         try:
             record = (
                 db.query(NotifyThrottle)
                 .filter(
                     NotifyThrottle.agent_name == self.name,
-                    NotifyThrottle.stock_symbol == symbol,
+                    NotifyThrottle.stock_symbol == key,
                 )
                 .first()
             )
@@ -1026,7 +1051,7 @@ class IntradayMonitorAgent(BaseAgent):
                 db.add(
                     NotifyThrottle(
                         agent_name=self.name,
-                        stock_symbol=symbol,
+                        stock_symbol=key,
                         last_notify_at=now,
                         notify_count=1,
                     )
@@ -1101,7 +1126,9 @@ class IntradayMonitorAgent(BaseAgent):
                         f"Agent [{self.display_name}] 通知已发送: {stock_symbol}"
                     )
                     if not self.bypass_throttle:
-                        await asyncio.to_thread(self._update_throttle, stock_symbol)
+                        await asyncio.to_thread(
+                            self._update_throttle, data["stock_data"].symbol, data["stock_data"].market,
+                        )
                 else:
                     notify_error = notify_result.get("error") or "未知错误"
                     result.raw_data["notify_error"] = notify_error

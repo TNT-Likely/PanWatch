@@ -203,7 +203,7 @@ class DataCollectorManager:
             db.close()
 
     async def collect_news(
-        self, symbols: list[str], hours: int = 12
+        self, symbols: list[str], hours: int = 12, *, market: str = "CN"
     ) -> CollectorResult:
         """采集新闻（使用所有已启用的新闻数据源）"""
         from src.platform.marketdata.collectors.news_collector import NewsCollector
@@ -213,7 +213,7 @@ class DataCollectorManager:
 
         try:
             collector = NewsCollector.from_database()
-            news_list = await collector.fetch_all(symbols=symbols, since_hours=hours)
+            news_list = await collector.fetch_all(symbols=symbols, since_hours=hours, market=market)
 
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
             self._log(

@@ -17,6 +17,9 @@ from src.platform.persistence.models import Account, PriceAlertRule, Position, S
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.reference_fx import (
+    CAD_RATE_CACHE, USD_RATE_CACHE, reference_cny_rate as _reference_cny_rate,
+)
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import ai_api_error, api_error
 
@@ -27,8 +30,8 @@ router = APIRouter()
 _hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港币默认汇率 0.92
 _usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元默认汇率 7.25
 CANADIAN_MARKETS = {"TSX", "TSXV"}
-_cad_rate_cache = {"rate": None, "ts": 0}
-_canada_usd_rate_cache = {"rate": None, "ts": 0}
+_cad_rate_cache = CAD_RATE_CACHE
+_canada_usd_rate_cache = USD_RATE_CACHE
 EXCHANGE_RATE_TTL = 3600  # 1 小时缓存
 
 
@@ -98,32 +101,6 @@ def get_usd_cny_rate() -> float:
         logger.warning(f"获取美元汇率失败，使用缓存: {e}")
 
     return _usd_rate_cache["rate"]
-
-
-def _reference_cny_rate(currency: str, cache: dict, *, refresh: bool = True) -> float | None:
-    """Bounded Frankfurter/ECB reference FX. Never substitute an invented rate.
-
-    https://frankfurter.dev/v1/ documents base/symbols and source publication dates.
-    """
-    if time.time() - cache["ts"] < EXCHANGE_RATE_TTL:
-        return cache["rate"]
-    if not refresh:
-        return None
-    try:
-        response = httpx.get("https://api.frankfurter.dev/v1/latest",
-                             params={"base": currency, "symbols": "CNY"}, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        date = datetime.fromisoformat(data["date"]).date()
-        age = (datetime.now(timezone.utc).date() - date).days
-        rate = float(data["rates"]["CNY"])
-        if data.get("base") != currency or not 0 <= age <= 7 or not math.isfinite(rate) or rate <= 0:
-            raise ValueError("Invalid or stale reference rate")
-        cache.update(rate=rate, ts=time.time(), source_date=date.isoformat())
-        return rate
-    except Exception as exc:
-        logger.warning("%s/CNY reference rate unavailable: %s", currency, exc)
-        return None
 
 
 def get_cad_cny_rate(*, refresh: bool = True) -> float | None:

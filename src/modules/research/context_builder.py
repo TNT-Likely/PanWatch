@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.platform.marketdata.instrument_identity import instrument_get, scoped_keys
+from src.modules.research.portfolio_currency import CANADIAN_MARKETS, build_portfolio_valuation, has_canadian_positions
 
 import asyncio
 import logging
@@ -153,7 +154,7 @@ class ContextBuilder:
             db.close()
 
     @staticmethod
-    def _build_portfolio_constraints(portfolio, symbol: str, market=None) -> dict:
+    def _build_portfolio_constraints(portfolio, symbol: str, market=None, *, valuation=None) -> dict:
         agg = None
         try:
             agg = portfolio.get_aggregated_position(symbol, market) if market is not None else portfolio.get_aggregated_position(symbol)
@@ -164,9 +165,16 @@ class ContextBuilder:
         total_funds = float(getattr(portfolio, "total_available_funds", 0) or 0)
         total_cost = float(getattr(portfolio, "total_cost", 0) or 0)
 
-        single_position_ratio = 0.0
-        if agg and total_cost > 0:
-            single_position_ratio = float(agg.get("total_cost") or 0) / total_cost
+        currency_safe = valuation is not None or has_canadian_positions(portfolio) or str(getattr(market, "value", market)) in CANADIAN_MARKETS
+        if currency_safe and valuation is None:
+            valuation = build_portfolio_valuation(portfolio)
+        if currency_safe:
+            total_cost = valuation["total_cost_cny"]
+        single_position_ratio = None if currency_safe else 0.0
+        valued_position = (valuation or {}).get("positions", {}).get(f"{getattr(market, 'value', market)}:{symbol}", {})
+        if agg and total_cost is not None and total_cost > 0:
+            cost = valued_position.get("cost_cny") if currency_safe else float(agg.get("total_cost") or 0)
+            single_position_ratio = cost / total_cost if cost is not None else None
 
         safe_position = {}
         if isinstance(agg, dict):
@@ -198,14 +206,20 @@ class ContextBuilder:
                 "positions": pos_rows,
             }
 
+        if currency_safe:
+            safe_position.update(currency=valued_position.get("currency"),
+                total_cost_cny=valued_position.get("cost_cny"),
+                exchange_rate=valued_position.get("exchange_rate"))
         return {
+            **({"valuation_incomplete": valuation["valuation_incomplete"], "cash_currency": "CNY",
+                "total_cost_currency": "CNY", "fx": valuation["fx"]} if currency_safe else {}),
             "has_position": bool(agg),
             "position": safe_position,
             "total_available_funds": total_funds,
             "total_cost": total_cost,
             "account_count": len(accounts),
-            "single_position_ratio": round(single_position_ratio, 4),
-            "risk_budget_hint": "strict"
+            "single_position_ratio": round(single_position_ratio, 4) if single_position_ratio is not None else None,
+            "risk_budget_hint": "unavailable" if single_position_ratio is None else "strict"
             if single_position_ratio >= 0.35
             else "normal"
             if single_position_ratio >= 0.2
@@ -465,6 +479,8 @@ class ContextBuilder:
         identity_keys = scoped_keys((s.symbol, s.market) for s in context.watchlist)
         all_news_for_topic: list[dict] = []
         snapshot_date = _iso_today()
+        currency_safe = has_canadian_positions(context.portfolio) or any(s.market.value in CANADIAN_MARKETS for s in context.watchlist)
+        valuation = build_portfolio_valuation(context.portfolio, packs, refresh=True) if currency_safe else None
 
         for stock in context.watchlist:
             symbol = stock.symbol
@@ -483,7 +499,7 @@ class ContextBuilder:
 
             hist_topic = summarize_news_topics(hist_ranked)
             kline_history = self._get_kline_history(symbol, market, kline_days)
-            constraints = self._build_portfolio_constraints(context.portfolio, symbol, market)
+            constraints = self._build_portfolio_constraints(context.portfolio, symbol, market, valuation=valuation)
             snapshot_memory = self._build_snapshot_memory(
                 symbol=symbol,
                 market=market,
@@ -600,4 +616,5 @@ class ContextBuilder:
         return {
             "symbols": symbol_contexts,
             "quality_overview": quality_overview,
+            "portfolio_valuation": valuation,
         }

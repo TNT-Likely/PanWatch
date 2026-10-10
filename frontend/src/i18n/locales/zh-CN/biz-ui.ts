@@ -42,7 +42,7 @@ export const bizUi = {
     tabs: { overview: '概览', suggestions: '建议 ({{count}})', reports: '报告 ({{count}})', deep: '深度', deepCount: '深度 (1)', kline: 'K线', announcements: '公告 ({{count}})', news: '新闻 ({{count}})' },
     autoRefresh: '自动刷新', seconds: '{{count}}秒',
     metrics: { open: '今开', high: '最高', low: '最低', volume: '成交量', turnover: '成交额', amplitude: '振幅', turnoverRate: '换手率', pe: '市盈率', marketCap: '总市值' },
-    holding: { title: '持仓信息', quantity: '持仓数量', cost: '持仓成本(单价)', marketValue: '持仓市值', pnl: '总盈亏', empty: '未在持仓中' },
+    holding: { currencyValue: '{{value}} {{currency}}', nativeValue: '原币市值：{{value}} {{currency}}', unavailable: '暂不可用', valuationIncomplete: '折算估值暂不可用或不完整，缺少行情、币种或汇率数据。', context: '持仓：{{quantity}}股，成本{{cost}} {{currency}}，原币市值{{nativeValue}} {{currency}}，折算市值{{marketValue}} CNY，盈亏{{pnl}} CNY', title: '持仓信息', quantity: '持仓数量', cost: '持仓成本(单价)', marketValue: '持仓市值', pnl: '总盈亏', empty: '未在持仓中' },
     miniKline: { title: '迷你K线', noSummary: '暂无K线摘要', empty: '暂无迷你K线', open: '点击进入交互式K线' },
     cards: { aiSuggestions: 'AI建议', updating: '更新中...', core: '核心判断', noDescription: '暂无说明', action: '动作：', rationale: '依据：', noRationale: '暂无补充依据', source: '来源：', recentSuggestions: '近期补充建议', generatingSuggestion: '正在自动生成 AI 建议...', generatingSuggestionWait: '正在自动生成 AI 建议（通常 5-15 秒）...', noSuggestion: '暂无 AI 建议', news: '新闻', noNews: '暂无相关新闻', aiReports: 'AI报告', noReport: '暂无报告', reportSummary: '报告摘要', noReportContent: '暂无报告内容' },
     reports: { premarket: '盘前', afterMarket: '盘后', premarketAgent: '盘前分析', afterMarketAgent: '盘后日报', context: '查看分析上下文', promptStats: 'Prompt统计', newsDetails: '新闻注入明细', contextSnapshot: '上下文快照', promptOriginal: 'Prompt原文' },

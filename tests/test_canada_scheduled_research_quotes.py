@@ -216,10 +216,12 @@ def test_add_position_news_uses_requested_issuer_and_keeps_fractional_metrics(
     keywords, prompts = _capture_evaluation(monkeypatch)
     response = _evaluate(boundary_app.client, symbol, market)
     assert response.status_code == 200
-    assert keywords == [name]
+    # The configured news vendor supports CN only. Do not silently relabel its
+    # ticker/keyword search as coverage of another exchange.
+    assert keywords == ([name] if market == "CN" else [])
     assert len(prompts) == 1
     assert f"标的 {market}:{symbol}" in prompts[0]
-    assert f"{name} fixture announcement" in prompts[0]
+    assert (f"{name} fixture announcement" in prompts[0]) == (market == "CN")
     assert all(f"{issuer} fixture announcement" not in prompts[0] for _, _, issuer in ISSUERS if issuer != name)
     result = response.json()
     assert result["symbol"] == symbol and result["market"] == market
@@ -238,7 +240,7 @@ def test_add_position_without_matching_listing_does_not_borrow_other_issuer(boun
     keywords, prompts = _capture_evaluation(monkeypatch)
     response = _evaluate(boundary_app.client, "T", "TSX")
     assert response.status_code == 200
-    assert keywords == ["T"]
+    assert keywords == []
     assert "AT&T" not in prompts[0]
 
 

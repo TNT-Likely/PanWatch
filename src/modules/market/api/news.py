@@ -4,6 +4,8 @@ from src.web.datetime import as_utc
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from marketdata import Market, Symbol
+from src.web.errors import api_error
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock, DataSource
@@ -39,19 +41,29 @@ async def get_news(
     limit: int = Query(default=50, ge=1, le=200, description="返回数量"),
     filter_related: bool = Query(default=True, description="只显示相关新闻"),
     source: str = Query(default="", description="来源过滤，逗号分隔：xueqiu/eastmoney_news/eastmoney"),
+    market: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
     获取新闻列表（基于数据源配置）
 
     - symbols: 股票代码过滤，逗号分隔，空则获取所有自选股相关新闻
+    - market: 可选市场，提供时限定标的匹配和数据源覆盖范围
     - names: 股票名称过滤，逗号分隔（前端直接传递名称，更稳定）
     - hours: 时间范围
     - limit: 返回数量限制
     - filter_related: 是否只显示与自选股相关的新闻
     """
-    # 获取所有自选股（用于匹配）
-    all_stocks = db.query(Stock).all()
+    # A scoped modal request must never borrow a namesake from another market.
+    if market is not None:
+        try:
+            market = Market(market.strip().upper()).value
+        except ValueError as exc:
+            raise api_error(400, "market_unsupported", "不支持的市场") from exc
+    stocks_query = db.query(Stock)
+    if market:
+        stocks_query = stocks_query.filter(Stock.market == market)
+    all_stocks = stocks_query.all()
     stock_map = {s.symbol: s.name for s in all_stocks}
     name_to_symbol = {s.name: s.symbol for s in all_stocks}
 
@@ -65,6 +77,13 @@ async def get_news(
         passed_symbol_names = {name_to_symbol.get(n, ""): n for n in name_list if name_to_symbol.get(n)}
     elif symbols:
         symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        if market:
+            try:
+                symbol_list = [Symbol.parse(symbol.upper(), market).code for symbol in symbol_list]
+                if market == "HK":
+                    symbol_list = [symbol.zfill(5) if symbol.isdigit() else symbol for symbol in symbol_list]
+            except ValueError as exc:
+                raise api_error(400, "stock_symbol_invalid", "股票代码格式无效或与市场不匹配") from exc
         passed_symbol_names = {s: stock_map.get(s, s) for s in symbol_list}
     else:
         symbol_list = list(stock_map.keys())
@@ -87,6 +106,7 @@ async def get_news(
         symbols=symbol_list,
         since_hours=hours,
         symbol_names=passed_symbol_names,  # 直接传递已有的股票名称映射
+        market=market or "CN",
     )
 
     def is_related(item: NewsItem) -> bool:

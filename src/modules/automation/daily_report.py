@@ -12,6 +12,10 @@ from src.modules.research.analysis_history import save_analysis
 from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.portfolio_currency import (
+    CANADIAN_MARKETS, build_portfolio_valuation, canadian_quote_note,
+    constraints_text, has_canadian_positions, portfolio_overview_lines,
+)
 from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
@@ -132,6 +136,7 @@ class DailyReportAgent(BaseAgent):
             "signal_packs": packs,
             "symbol_contexts": context_pack.get("symbols", {}),
             "quality_overview": context_pack.get("quality_overview", {}),
+            "portfolio_valuation": context_pack.get("portfolio_valuation"),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -181,6 +186,8 @@ class DailyReportAgent(BaseAgent):
             quote = pack.quote if pack else None
             stock_name = (w.name or (quote.name if quote else "") or w.symbol).strip()
             lines.append(f"\n### {stock_name}（{w.symbol}）")
+            if w.market.value in CANADIAN_MARKETS:
+                lines.append(canadian_quote_note(w.market, w.symbol, quote))
             if stock_quality:
                 lines.append(
                     f"- 数据质量：{stock_quality.get('score', 0)}（实时新闻 {stock_quality.get('realtime_news_count', 0)} 条，扩展新闻 {stock_quality.get('extended_news_count', 0)} 条，历史新闻 {stock_quality.get('history_news_count', 0)} 条）"
@@ -206,7 +213,8 @@ class DailyReportAgent(BaseAgent):
                 lines.append(
                     f"- 振幅：{amplitude:.1f}%  最高{high_price:.2f} 最低{low_price:.2f}"
                 )
-                lines.append(f"- 成交额：{turnover / 1e8:.2f}亿")
+                if w.market.value not in CANADIAN_MARKETS or turnover > 0:
+                    lines.append(f"- 成交额：{turnover / 1e8:.2f}亿")
             else:
                 current_price = 0
                 lines.append("- 今日：行情数据缺失")
@@ -355,8 +363,9 @@ class DailyReportAgent(BaseAgent):
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
                 if total_qty is not None:
+                    pnl_text = "不可用（行情缺失）" if w.market.value in CANADIAN_MARKETS and not quote else f"{pnl_pct:+.1f}%"
                     lines.append(
-                        f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"
+                        f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_text}（{style}）"
                     )
 
             kline_history = stock_ctx.get("kline_history") or {}
@@ -373,9 +382,7 @@ class DailyReportAgent(BaseAgent):
 
             constraints = stock_ctx.get("constraints") or {}
             if constraints:
-                lines.append(
-                    f"- 资金约束：总可用{safe_num(constraints.get('total_available_funds'), 0):.0f}元，单票仓位占比{safe_num(constraints.get('single_position_ratio'), 0) * 100:.1f}%（{constraints.get('risk_budget_hint', 'normal')}）"
-                )
+                lines.append(constraints_text(constraints))
             memory = stock_ctx.get("memory") or {}
             if memory:
                 lines.append(
@@ -387,19 +394,25 @@ class DailyReportAgent(BaseAgent):
         # 账户资金概况
         if context.portfolio.accounts:
             lines.append("\n## 账户概况")
-            for acc in context.portfolio.accounts:
-                if acc.positions or acc.available_funds > 0:
-                    acc_cost = acc.total_cost
+            valuation = data.get("portfolio_valuation")
+            if valuation is None and (has_canadian_positions(context.portfolio)
+                    or any(w.market.value in CANADIAN_MARKETS for w in context.watchlist)):
+                valuation = build_portfolio_valuation(context.portfolio, packs)
+            if valuation is not None:
+                lines.extend(portfolio_overview_lines(valuation))
+            else:
+                for acc in context.portfolio.accounts:
+                    if acc.positions or acc.available_funds > 0:
+                        acc_cost = acc.total_cost
+                        lines.append(
+                            f"- {acc.name}: 持仓成本{acc_cost:.0f}元 可用资金{acc.available_funds:.0f}元"
+                        )
+                total_funds = context.portfolio.total_available_funds
+                total_cost = context.portfolio.total_cost
+                if total_funds > 0 or total_cost > 0:
                     lines.append(
-                        f"- {acc.name}: 持仓成本{acc_cost:.0f}元 可用资金{acc.available_funds:.0f}元"
+                        f"- 合计: 总持仓成本{total_cost:.0f}元 总可用资金{total_funds:.0f}元"
                     )
-            total_funds = context.portfolio.total_available_funds
-            total_cost = context.portfolio.total_cost
-            if total_funds > 0 or total_cost > 0:
-                lines.append(
-                    f"- 合计: 总持仓成本{total_cost:.0f}元 总可用资金{total_funds:.0f}元"
-                )
-
         user_content = "\n".join(lines)
         return system_prompt, user_content
 

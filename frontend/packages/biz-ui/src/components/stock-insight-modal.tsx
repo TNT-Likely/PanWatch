@@ -1,4 +1,6 @@
+import { useRequestScope } from './use-request-scope'
 import { AnalysisMetadata } from './analysis-metadata'
+import { aggregateInsightHolding, reportMatchesStock, reportSuggestionForStock, reportSymbolQueries, type InsightHolding, type InsightPortfolioPosition } from './stock-insight-data'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
@@ -104,18 +106,9 @@ interface HistoryRecord {
   updated_at?: string
 }
 
-interface PortfolioPosition {
-  symbol: string
-  market: string
-  quantity: number
-  cost_price: number
-  market_value_cny: number | null
-  pnl: number | null
-}
-
 interface PortfolioSummaryResponse {
   accounts: Array<{
-    positions: PortfolioPosition[]
+    positions: InsightPortfolioPosition[]
   }>
 }
 
@@ -337,14 +330,29 @@ function TechnicalIndicatorStrip(props: {
   )
 }
 
-export default function StockInsightModal(props: {
+interface StockInsightModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   symbol: string
   market: string
   stockName?: string
   hasPosition?: boolean
-}) {
+}
+
+export default function StockInsightModal(props: StockInsightModalProps) {
+  // Closing removes the complete session, including nested dialogs and charts.
+  // A listing change must never render the previous listing's state, even for
+  // the render before effects run. Only the auto-analysis throttle spans sessions.
+  const autoTriggeredRef = useRef<Record<string, number>>({})
+  if (!props.open) return null
+  const symbol = String(props.symbol || '').trim()
+  const market = String(props.market || 'CN').trim().toUpperCase()
+  return <StockInsightSession key={JSON.stringify([market, symbol])} {...props} autoTriggered={autoTriggeredRef.current} />
+}
+
+function StockInsightSession(props: StockInsightModalProps & { autoTriggered: Record<string, number> }) {
+  const beginRequest = useRequestScope()
+
   const { toast } = useToast()
   const { palette } = useMarketColors()
   const { t, i18n } = useTranslation('bizUi')
@@ -398,33 +406,34 @@ export default function StockInsightModal(props: {
   const [watchToggleLoading, setWatchToggleLoading] = useState(false)
   const [autoSuggesting, setAutoSuggesting] = useState(false)
   const [imageExporting, setImageExporting] = useState(false)
-  const [holdingAgg, setHoldingAgg] = useState<{
-    quantity: number
-    cost: number
-    unitCost: number
-    marketValue: number
-    pnl: number
-  } | null>(null)
+  const [holdingAgg, setHoldingAgg] = useState<InsightHolding | null>(null)
   const [holdingLoaded, setHoldingLoaded] = useState(false)
   const [holdingLoadError, setHoldingLoadError] = useState(false)
-  const autoTriggeredRef = useRef<Record<string, number>>({})
-  const stockCacheRef = useRef<Record<string, StockItem>>({})
+  const suggestionLoadRef = useRef<(() => boolean) | null>(null)
+  const autoRefreshInFlightRef = useRef(false)
+  const suggestionPollsRef = useRef(new Set<ReturnType<typeof setInterval>>())
   const resolvedName = useMemo(() => props.stockName || quote?.name || symbol, [props.stockName, quote?.name, symbol])
 
   const loadQuote = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('quote')
+    if (!isCurrent()) return
     const data = await insightApi.quote<QuoteResponse>(symbol, market)
-    setQuote(data || null)
-  }, [symbol, market])
+    if (isCurrent()) setQuote(data || null)
+  }, [symbol, market, beginRequest])
 
   const loadKline = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('kline')
+    if (!isCurrent()) return
     const data = await insightApi.klineSummary<KlineSummaryResponse>(symbol, market)
-    setKlineSummary(data?.summary || null)
-  }, [symbol, market])
+    if (isCurrent()) setKlineSummary(data?.summary || null)
+  }, [symbol, market, beginRequest])
 
   const loadMiniKline = useCallback(async (opts?: { silent?: boolean }) => {
     if (!symbol) return
+    const isCurrent = beginRequest('miniKline')
+    if (!isCurrent()) return
     const silent = !!opts?.silent
     if (!silent) setMiniKlineLoading(true)
     try {
@@ -433,47 +442,59 @@ export default function StockInsightModal(props: {
         days: 36,
         interval: '1d',
       })
-      setMiniKlines((data?.klines || []).slice(-30))
+      if (isCurrent()) setMiniKlines((data?.klines || []).slice(-30))
     } catch {
-      setMiniKlines([])
+      if (isCurrent()) setMiniKlines([])
     } finally {
-      if (!silent) setMiniKlineLoading(false)
+      if (isCurrent()) setMiniKlineLoading(false)
     }
-  }, [symbol, market])
+  }, [symbol, market, beginRequest])
 
-  const loadSuggestions = useCallback(async () => {
-    if (!symbol) return
-    const data = await insightApi.suggestions<any[]>(symbol, {
-      market,
-      limit: 20,
-      include_expired: includeExpiredSuggestions,
-    })
-    const list = (data || []).map(item => ({
-      ...item,
-      id: item.id,
-      action: normalizeSuggestionAction(item.action, item.action_label),
-      action_label: item.action_label || '',
-      signal: pickSuggestionText(item.signal, 'signal'),
-      reason: pickSuggestionText(item.reason, 'reason'),
-      should_alert: !!item.should_alert,
-      agent_name: item.agent_name,
-      agent_label: item.agent_label,
-      created_at: item.created_at,
-      is_expired: item.is_expired,
-      prompt_context: item.prompt_context,
-      ai_response: item.ai_response,
-      raw: item.raw || '',
-      meta: item.meta,
-    })) as SuggestionInfo[]
-    setSuggestions(list)
-  }, [symbol, market, includeExpiredSuggestions])
+  const loadSuggestions = useCallback(async (opts?: { coalesce?: boolean }) => {
+    if (!symbol || (opts?.coalesce && suggestionLoadRef.current?.())) return
+    const isCurrent = beginRequest('suggestions')
+    if (!isCurrent()) return
+    suggestionLoadRef.current = isCurrent
+    try {
+      const data = await insightApi.suggestions<any[]>(symbol, {
+        market,
+        limit: 20,
+        include_expired: includeExpiredSuggestions,
+      })
+      const list = (data || []).map(item => ({
+        ...item,
+        id: item.id,
+        action: normalizeSuggestionAction(item.action, item.action_label),
+        action_label: item.action_label || '',
+        signal: pickSuggestionText(item.signal, 'signal'),
+        reason: pickSuggestionText(item.reason, 'reason'),
+        should_alert: !!item.should_alert,
+        agent_name: item.agent_name,
+        agent_label: item.agent_label,
+        created_at: item.created_at,
+        is_expired: item.is_expired,
+        prompt_context: item.prompt_context,
+        ai_response: item.ai_response,
+        raw: item.raw || '',
+        meta: item.meta,
+      })) as SuggestionInfo[]
+      if (isCurrent()) setSuggestions(list)
+    } catch {
+      if (isCurrent()) setSuggestions([])
+    } finally {
+      if (suggestionLoadRef.current === isCurrent) suggestionLoadRef.current = null
+    }
+  }, [symbol, market, includeExpiredSuggestions, beginRequest])
 
   const loadNews = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('news')
+    if (!isCurrent()) return
     const runQuery = async (opts: { useName: boolean; filterRelated: boolean }) => {
       const params = new URLSearchParams()
       params.set('hours', newsHours)
       params.set('limit', '50')
+      params.set('market', market)
       if (!opts.filterRelated) params.set('filter_related', 'false')
       if (opts.useName && resolvedName && resolvedName !== symbol) params.set('names', resolvedName)
       else params.set('symbols', symbol)
@@ -482,17 +503,22 @@ export default function StockInsightModal(props: {
 
     try {
       let data: NewsItem[] = await runQuery({ useName: true, filterRelated: true })
+      if (!isCurrent()) return
       if ((data || []).length === 0 && resolvedName && resolvedName !== symbol) {
         data = await runQuery({ useName: false, filterRelated: true })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         data = await runQuery({ useName: true, filterRelated: false })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         data = await runQuery({ useName: false, filterRelated: false })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         const global = await insightApi.news<NewsItem[]>({
+          market,
           hours: newsHours,
           limit: 80,
         }).catch(() => [])
@@ -505,19 +531,22 @@ export default function StockInsightModal(props: {
           return (n.symbols || []).map(x => String(x).toUpperCase()).includes(upperSymbol)
         })
       }
-      setNews(data || [])
+      if (isCurrent()) setNews(data || [])
     } catch {
-      setNews([])
+      if (isCurrent()) setNews([])
     }
-  }, [symbol, newsHours, resolvedName])
+  }, [symbol, market, newsHours, resolvedName, beginRequest])
 
   const loadAnnouncements = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('announcement')
+    if (!isCurrent()) return
     try {
       const runQuery = async (opts: { useName: boolean; filterRelated: boolean }) => {
         const params = new URLSearchParams()
         params.set('hours', announcementHours)
         params.set('limit', '50')
+        params.set('market', market)
         if (!opts.filterRelated) params.set('filter_related', 'false')
         params.set('source', 'eastmoney')
         if (opts.useName && resolvedName && resolvedName !== symbol) params.set('names', resolvedName)
@@ -525,17 +554,22 @@ export default function StockInsightModal(props: {
         return insightApi.news<NewsItem[]>(Object.fromEntries(params.entries()))
       }
       let data: NewsItem[] = await runQuery({ useName: true, filterRelated: true })
+      if (!isCurrent()) return
       if ((data || []).length === 0 && resolvedName && resolvedName !== symbol) {
         data = await runQuery({ useName: false, filterRelated: true })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         data = await runQuery({ useName: true, filterRelated: false })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         data = await runQuery({ useName: false, filterRelated: false })
       }
+      if (!isCurrent()) return
       if ((data || []).length === 0) {
         const global = await insightApi.news<NewsItem[]>({
+          market,
           hours: announcementHours,
           limit: 80,
           source: 'eastmoney',
@@ -549,144 +583,115 @@ export default function StockInsightModal(props: {
           return (n.symbols || []).map(x => String(x).toUpperCase()).includes(upperSymbol)
         })
       }
-      setAnnouncements(data || [])
+      if (isCurrent()) setAnnouncements(data || [])
     } catch {
-      setAnnouncements([])
+      if (isCurrent()) setAnnouncements([])
     }
-  }, [symbol, announcementHours, resolvedName])
+  }, [symbol, market, announcementHours, resolvedName, beginRequest])
 
   const loadHoldingAgg = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('holding')
+    if (!isCurrent()) return
     setHoldingLoaded(false)
     setHoldingLoadError(false)
     try {
       const data = await insightApi.portfolioSummary<PortfolioSummaryResponse>({ include_quotes: true })
-      let quantity = 0
-      let cost = 0
-      let marketValue = 0
-      let pnl = 0
-      for (const acc of data?.accounts || []) {
-        for (const p of acc.positions || []) {
-          if (p.symbol !== symbol || p.market !== market) continue
-          quantity += Number(p.quantity || 0)
-          cost += Number(p.cost_price || 0) * Number(p.quantity || 0)
-          marketValue += Number(p.market_value_cny || 0)
-          pnl += Number(p.pnl || 0)
-        }
-      }
-      if (quantity > 0) setHoldingAgg({ quantity, cost, unitCost: cost / quantity, marketValue, pnl })
-      else setHoldingAgg(null)
+      if (!isCurrent()) return
+      setHoldingAgg(aggregateInsightHolding((data?.accounts || []).flatMap(account => account.positions || []), symbol, market))
     } catch {
+      if (!isCurrent()) return
       setHoldingAgg(null)
       setHoldingLoadError(true)
     } finally {
-      setHoldingLoaded(true)
+      if (isCurrent()) setHoldingLoaded(true)
     }
-  }, [symbol, market])
+  }, [symbol, market, beginRequest])
 
   const loadReports = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('report')
+    if (!isCurrent()) return
+    const newestFirst = (a: HistoryRecord, b: HistoryRecord) =>
+      (parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0)
+      - (parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0)
     try {
-      const agents = ['premarket_outlook', 'daily_report']
-      const bySymbolResults = await Promise.all(
-        agents.map(agent =>
-          insightApi.history<HistoryRecord[]>({
-            agent_name: agent,
-            stock_symbol: symbol,
-            limit: 1,
-          }).catch(() => [])
-        )
-      )
-      let merged = bySymbolResults
-        .flatMap(items => items || [])
-        .filter(Boolean)
-      // 兼容全局记录（stock_symbol="*"）场景：从最近全局记录中筛选与当前股票相关的报告。
-      if (merged.length === 0) {
-        const globalResults = await Promise.all(
-          agents.map(agent =>
-            insightApi.history<HistoryRecord[]>({
-              agent_name: agent,
-              stock_symbol: '*',
-              limit: 20,
-            }).catch(() => [])
-          )
-        )
-        const upperSymbol = symbol.toUpperCase()
-        const name = (resolvedName || '').trim()
-        merged = globalResults
-          .map(items => {
-            const rows = (items || []).filter(Boolean)
-            const hit = rows.find((r) => {
-              const sug = r?.suggestions || {}
-              const keys = Object.keys(sug || {})
-              if (keys.includes(symbol) || keys.map(k => k.toUpperCase()).includes(upperSymbol)) return true
-              const text = `${r?.title || ''}\n${r?.content || ''}`.toUpperCase()
-              if (upperSymbol && text.includes(upperSymbol)) return true
-              if (name && `${r?.title || ''}\n${r?.content || ''}`.includes(name)) return true
-              return false
-            })
-            return hit || null
-          })
-          .filter(Boolean) as HistoryRecord[]
-      }
-      merged = merged.sort((a, b) => {
-        const am = parseToMs(a.updated_at || a.created_at || a.analysis_date) || 0
-        const bm = parseToMs(b.updated_at || b.created_at || b.analysis_date) || 0
-        return bm - am
-      })
-      setReports(merged)
+      const results = await Promise.all(['premarket_outlook', 'daily_report'].map(async agent => {
+        const directResults = await Promise.all(reportSymbolQueries(symbol, market).map(stockSymbol =>
+          insightApi.history<HistoryRecord[]>({ agent_name: agent, stock_symbol: stockSymbol, limit: 20 }).catch(() => [])
+        ))
+        if (!isCurrent()) return null
+        const direct = directResults.flat().filter(record => record && reportMatchesStock(record, symbol, market)).sort(newestFirst)[0]
+        if (direct) return direct
+        // Resolve each agent independently and require exchange-scoped evidence
+        // for global records, just as for direct symbol results.
+        const global = await insightApi.history<HistoryRecord[]>({ agent_name: agent, stock_symbol: '*', limit: 20 }).catch(() => [])
+        return (global || []).filter(record => record && reportMatchesStock(record, symbol, market)).sort(newestFirst)[0] || null
+      }))
+      if (isCurrent()) setReports(results.filter((record): record is HistoryRecord => record != null).sort(newestFirst))
     } catch {
-      setReports([])
+      if (isCurrent()) setReports([])
     }
-  }, [symbol, resolvedName])
+  }, [symbol, market, beginRequest])
 
   const loadCore = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('loading')
+    if (!isCurrent()) return
     setLoading(true)
     try {
       await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadHoldingAgg()])
     } catch (e) {
-      toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
+      if (isCurrent()) toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [symbol, loadQuote, loadKline, loadMiniKline, loadHoldingAgg, toast])
+  }, [symbol, loadQuote, loadKline, loadMiniKline, loadHoldingAgg, toast, beginRequest])
 
   const handleRefreshAll = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('loading')
+    if (!isCurrent()) return
     setLoading(true)
     try {
       await Promise.allSettled([loadQuote(), loadKline(), loadMiniKline(), loadSuggestions(), loadNews(), loadAnnouncements(), loadHoldingAgg(), loadReports()])
     } catch (e) {
-      toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
+      if (isCurrent()) toast(e instanceof Error ? e.message : tr('messages.loadFailed'), 'error')
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [symbol, loadQuote, loadKline, loadMiniKline, loadSuggestions, loadNews, loadAnnouncements, loadHoldingAgg, loadReports, toast])
+  }, [symbol, loadQuote, loadKline, loadMiniKline, loadSuggestions, loadNews, loadAnnouncements, loadHoldingAgg, loadReports, toast, beginRequest])
 
   const refreshForAuto = useCallback(async () => {
-    if (!symbol) return
-    const tasks: Promise<any>[] = [loadQuote(), loadHoldingAgg()]
-    if (tab === 'overview' || tab === 'kline') {
-      tasks.push(loadKline(), loadMiniKline({ silent: true }))
+    if (!symbol || autoRefreshInFlightRef.current) return
+    autoRefreshInFlightRef.current = true
+    try {
+      const tasks: Promise<any>[] = [loadQuote(), loadHoldingAgg()]
+      if (tab === 'overview' || tab === 'kline') {
+        tasks.push(loadKline(), loadMiniKline({ silent: true }))
+      }
+      if (tab === 'overview' || tab === 'suggestions') {
+        tasks.push(loadSuggestions({ coalesce: true }))
+      }
+      if (tab === 'overview' || tab === 'news') {
+        tasks.push(loadNews())
+      }
+      if (tab === 'overview' || tab === 'announcements') {
+        tasks.push(loadAnnouncements())
+      }
+      if (tab === 'overview' || tab === 'reports') {
+        tasks.push(loadReports())
+      }
+      await Promise.allSettled(tasks)
+    } finally {
+      autoRefreshInFlightRef.current = false
     }
-    if (tab === 'overview' || tab === 'suggestions') {
-      tasks.push(loadSuggestions())
-    }
-    if (tab === 'overview' || tab === 'news') {
-      tasks.push(loadNews())
-    }
-    if (tab === 'overview' || tab === 'announcements') {
-      tasks.push(loadAnnouncements())
-    }
-    if (tab === 'overview' || tab === 'reports') {
-      tasks.push(loadReports())
-    }
-    await Promise.allSettled(tasks)
   }, [symbol, tab, loadQuote, loadHoldingAgg, loadKline, loadMiniKline, loadSuggestions, loadNews, loadAnnouncements, loadReports])
 
   const loadDeepResult = useCallback(async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('deep')
+    if (!isCurrent()) return
     setDeepLoading(true)
     setDeepHistoryLoading(true)
     try {
@@ -694,32 +699,31 @@ export default function StockInsightModal(props: {
         tradingAgentsApi.getLatestForStock(market === 'TSX' || market === 'TSXV' ? `${market}:${symbol}` : symbol),
         tradingAgentsApi.getHistoryComparison(symbol, market, 90),
       ])
+      if (!isCurrent()) return
       setDeepResult(latest.status === 'fulfilled' ? latest.value : null)
       setDeepHistory(history.status === 'fulfilled' ? history.value : null)
     } catch {
+      if (!isCurrent()) return
       setDeepResult(null)
       setDeepHistory(null)
     } finally {
-      setDeepLoaded(true)
-      setDeepLoading(false)
-      setDeepHistoryLoading(false)
+      if (isCurrent()) {
+        setDeepLoaded(true)
+        setDeepLoading(false)
+        setDeepHistoryLoading(false)
+      }
     }
-  }, [symbol, market])
+  }, [symbol, market, beginRequest])
+
+  useEffect(() => { void loadCore() }, [loadCore])
 
   useEffect(() => {
-    if (!props.open || !symbol) return
-    setTab('overview')
-    setSuggestions([])
-    setNews([])
-    setAnnouncements([])
-    setReports([])
-    setMiniKlines([])
-    setWatchingStock(null)
-    setDeepResult(null)
-    setDeepLoaded(false)
-    setDeepHistory(null)
-    loadCore()
-  }, [props.open, symbol, market, loadCore])
+    const polls = suggestionPollsRef.current
+    return () => {
+      polls.forEach(clearInterval)
+      polls.clear()
+    }
+  }, [])
 
   // 切到「深度」tab 时按需拉取(仅首次)
   useEffect(() => {
@@ -731,44 +735,38 @@ export default function StockInsightModal(props: {
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    let cancelled = false
+    const isCurrent = beginRequest('watch')
+    if (!isCurrent()) return
     ;(async () => {
       try {
-        const key = `${market}:${symbol}`
         const stocks = await stocksApi.list()
-        if (cancelled) return
+        if (!isCurrent()) return
         const found = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
-        if (found) {
-          stockCacheRef.current[key] = found
-        } else {
-          delete stockCacheRef.current[key]
-        }
         setWatchingStock(found)
       } catch {
-        if (!cancelled) setWatchingStock(null)
+        if (isCurrent()) setWatchingStock(null)
       }
     })()
-    return () => { cancelled = true }
-  }, [props.open, symbol, market])
+  }, [props.open, symbol, market, beginRequest])
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    loadNews().catch(() => setNews([]))
+    void loadNews()
   }, [props.open, symbol, newsHours, loadNews])
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    loadAnnouncements().catch(() => setAnnouncements([]))
+    void loadAnnouncements()
   }, [props.open, symbol, announcementHours, loadAnnouncements])
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    loadSuggestions().catch(() => setSuggestions([]))
+    void loadSuggestions()
   }, [props.open, symbol, includeExpiredSuggestions, loadSuggestions])
 
   useEffect(() => {
     if (!props.open || !symbol) return
-    loadReports().catch(() => setReports([]))
+    void loadReports()
   }, [props.open, symbol, loadReports])
 
   useEffect(() => {
@@ -810,8 +808,8 @@ export default function StockInsightModal(props: {
     const parts: string[] = []
     if (quote) {
       const items = english
-        ? [`Price ${quote.current_price}`, `Change ${quote.change_pct}%`]
-        : [`价格${quote.current_price}`, `涨跌幅${quote.change_pct}%`]
+        ? [`Price ${formatNumber(quote.current_price)} ${quote.currency || '--'}`, `Change ${quote.change_pct}%`]
+        : [`价格${formatNumber(quote.current_price)} ${quote.currency || '--'}`, `涨跌幅${quote.change_pct}%`]
       if (quote.volume != null) items.push(english ? `Volume ${quote.volume}` : `成交量${quote.volume}`)
       if (quote.turnover_rate != null) items.push(english ? `Turnover rate ${quote.turnover_rate}%` : `换手率${quote.turnover_rate}%`)
       if (quote.pe_ratio != null) items.push(english ? `P/E ${quote.pe_ratio}` : `市盈率${quote.pe_ratio}`)
@@ -846,9 +844,16 @@ export default function StockInsightModal(props: {
       parts.push(`${english ? 'Recent AI suggestions:\n' : '最近AI建议：\n'}${lines.join('\n')}`)
     }
     if (holdingAgg) {
-      parts.push(english
-        ? `Position: ${holdingAgg.quantity} shares; cost ${holdingAgg.unitCost}; market value ${holdingAgg.marketValue}; P&L ${holdingAgg.pnl}`
-        : `持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
+      const amount = (value: number | null) => value == null ? tr('holding.unavailable') : formatNumber(value)
+      parts.push(tr('holding.context', {
+        quantity: holdingAgg.quantity,
+        cost: amount(holdingAgg.unitCost),
+        currency: holdingAgg.currency || tr('holding.unavailable'),
+        nativeValue: amount(holdingAgg.nativeMarketValue),
+        marketValue: amount(holdingAgg.marketValue),
+        pnl: amount(holdingAgg.pnl),
+      }))
+      if (holdingAgg.valuationIncomplete) parts.push(tr('holding.valuationIncomplete'))
     }
     return parts.join('\n')
   }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, english])
@@ -883,6 +888,7 @@ export default function StockInsightModal(props: {
     return out
   }, [reports])
   const activeReport = reportMap[reportTab]
+  const activeReportSuggestion = activeReport ? reportSuggestionForStock(activeReport, symbol, market) : null
   const latestReport = reports[0] || null
   const latestShareSuggestion = suggestions[0] || technicalFallbackSuggestion
   const shareCardPayload = useMemo(() => {
@@ -982,6 +988,8 @@ export default function StockInsightModal(props: {
   }, [shareCardPayload, resolvedName, symbol])
 
   const handleExportShareImage = useCallback(async () => {
+    const isCurrent = beginRequest('export')
+    if (!isCurrent()) return
     const esc = (s: string) => String(s || '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -994,6 +1002,7 @@ export default function StockInsightModal(props: {
     }
 
     setImageExporting(true)
+    let imageUrl: string | undefined
     try {
       const { marketLabel, price, chg, action, signal, reason, risks, technicalBrief, levelsBrief, source, ts } = shareCardPayload
       const change = quote?.change_pct || 0
@@ -1037,19 +1046,20 @@ export default function StockInsightModal(props: {
 
       const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
       const url = URL.createObjectURL(blob)
+      imageUrl = url
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const el = new Image()
         el.onload = () => resolve(el)
         el.onerror = reject
         el.src = url
       })
+      if (!isCurrent()) return
       const canvas = document.createElement('canvas')
       canvas.width = 1200
       canvas.height = 630
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error(tr('messages.canvasUnavailable'))
       ctx.drawImage(img, 0, 0)
-      URL.revokeObjectURL(url)
       const png = canvas.toDataURL('image/png')
       const a = document.createElement('a')
       a.href = png
@@ -1057,13 +1067,14 @@ export default function StockInsightModal(props: {
       a.click()
       toast(tr('messages.imageSaved'), 'success')
     } catch {
-      toast(tr('messages.imageFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.imageFailed'), 'error')
     } finally {
-      setImageExporting(false)
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
+      if (isCurrent()) setImageExporting(false)
     }
-  }, [palette, quote?.change_pct, resolvedName, shareCardPayload, symbol, toast])
+  }, [palette, quote?.change_pct, resolvedName, shareCardPayload, symbol, toast, beginRequest])
 
-  const copyTextWithFallback = useCallback(async (text: string): Promise<boolean> => {
+  const copyTextWithFallback = useCallback(async (text: string, isCurrent: () => boolean): Promise<boolean> => {
     if (!text) return false
 
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -1075,7 +1086,7 @@ export default function StockInsightModal(props: {
       }
     }
 
-    if (typeof document !== 'undefined') {
+    if (isCurrent() && typeof document !== 'undefined') {
       const textarea = document.createElement('textarea')
       textarea.value = text
       textarea.setAttribute('readonly', '')
@@ -1099,19 +1110,24 @@ export default function StockInsightModal(props: {
   }, [])
 
   const handleCopyShareText = useCallback(async () => {
+    const isCurrent = beginRequest('share')
+    if (!isCurrent()) return
     try {
-      const copied = await copyTextWithFallback(shareText)
+      const copied = await copyTextWithFallback(shareText, isCurrent)
+      if (!isCurrent()) return
       if (copied) {
         toast(tr('messages.copied'), 'success')
       } else {
         toast(tr('messages.copyFailed'), 'error')
       }
     } catch {
-      toast(tr('messages.copyFailed'), 'error')
+      if (isCurrent()) toast(tr('messages.copyFailed'), 'error')
     }
-  }, [copyTextWithFallback, shareText, toast])
+  }, [copyTextWithFallback, shareText, toast, beginRequest])
 
   const handleShareInsight = useCallback(async () => {
+    const isCurrent = beginRequest('share')
+    if (!isCurrent()) return
     try {
       if (typeof navigator !== 'undefined' && (navigator as any).share) {
         await (navigator as any).share({
@@ -1120,31 +1136,58 @@ export default function StockInsightModal(props: {
         })
         return
       }
-      const copied = await copyTextWithFallback(shareText)
+      const copied = await copyTextWithFallback(shareText, isCurrent)
+      if (!isCurrent()) return
       if (copied) {
         toast(tr('messages.shareCopied'), 'success')
       } else {
         toast(tr('messages.shareAndCopyFailed'), 'error')
       }
     } catch (e: any) {
-      if (e?.name === 'AbortError') return
-      const copied = await copyTextWithFallback(shareText)
+      if (!isCurrent() || e?.name === 'AbortError') return
+      const copied = await copyTextWithFallback(shareText, isCurrent)
+      if (!isCurrent()) return
       if (copied) {
         toast(tr('messages.shareFailed'), 'success')
       } else {
         toast(tr('messages.shareAndCopyFailed'), 'error')
       }
     }
-  }, [copyTextWithFallback, resolvedName, shareText, toast])
+  }, [copyTextWithFallback, resolvedName, shareText, toast, beginRequest])
+
+  const pollSuggestions = useCallback((isCurrent: () => boolean, onDone: () => void) => {
+    const before = Date.now()
+    let pending = false
+    const refresh = async () => {
+      if (pending || !isCurrent()) return
+      pending = true
+      try { await loadSuggestions({ coalesce: true }) } finally { pending = false }
+    }
+    const poll = setInterval(() => {
+      if (!isCurrent() || Date.now() - before >= 120_000) {
+        clearInterval(poll)
+        suggestionPollsRef.current.delete(poll)
+        if (isCurrent()) onDone()
+        return
+      }
+      void refresh()
+    }, 5_000)
+    suggestionPollsRef.current.add(poll)
+    void refresh()
+  }, [loadSuggestions])
 
   const handleSetAlert = async () => {
     if (!symbol) return
+    const isCurrent = beginRequest('alert')
+    if (!isCurrent()) return
     setAlerting(true)
     try {
       const stocks = await stocksApi.list()
+      if (!isCurrent()) return
       let stock = (stocks || []).find(s => s.symbol === symbol && s.market === market) || null
       if (!stock) {
         stock = await stocksApi.create({ symbol, name: resolvedName || symbol, market })
+        if (!isCurrent()) return
       }
 
       const existingAgents = (stock.agents || []).map(a => ({
@@ -1159,25 +1202,18 @@ export default function StockInsightModal(props: {
         : [...existingAgents, { agent_name: 'intraday_monitor', schedule: '', ai_model_id: null, notify_channel_ids: [] }]
 
       await stocksApi.updateAgents(stock.id, { agents: nextAgents })
+      if (!isCurrent()) return
       await stocksApi.triggerAgent(stock.id, 'intraday_monitor', {
         bypass_throttle: true,
         bypass_market_hours: true,
       })
+      if (!isCurrent()) return
       toast(tr('messages.alertSet'), 'success')
-      // 轮询等待建议生成（最多 2 分钟，每 5 秒一次）
-      const before = Date.now()
-      const poll = setInterval(async () => {
-        if (Date.now() - before > 120_000) { clearInterval(poll); setAlerting(false); return }
-        await loadSuggestions()
-      }, 5_000)
-      await loadSuggestions()
-      // 延迟清理：2 分钟后 interval 自动停止
-      setTimeout(() => clearInterval(poll), 125_000)
-      return
+      pollSuggestions(isCurrent, () => setAlerting(false))
     } catch (e) {
-      toast(e instanceof Error ? e.message : tr('messages.alertFailed'), 'error')
+      if (isCurrent()) toast(e instanceof Error ? e.message : tr('messages.alertFailed'), 'error')
     } finally {
-      setAlerting(false)
+      if (isCurrent()) setAlerting(false)
     }
   }
 
@@ -1188,33 +1224,37 @@ export default function StockInsightModal(props: {
       return
     }
 
+    const isCurrent = beginRequest('watch')
+    if (!isCurrent()) return
     setWatchToggleLoading(true)
     try {
       if (watchingStock) {
         await stocksApi.remove(watchingStock.id)
+        if (!isCurrent()) return
         setWatchingStock(null)
-        delete stockCacheRef.current[`${market}:${symbol}`]
         toast(tr('messages.unfollowed'), 'success')
       } else {
         const created = await stocksApi.create({ symbol, name: resolvedName || symbol, market })
+        if (!isCurrent()) return
         setWatchingStock(created)
-        stockCacheRef.current[`${market}:${symbol}`] = created
         toast(tr('messages.followed'), 'success')
       }
     } catch (e) {
-      toast(e instanceof Error ? e.message : tr('messages.operationFailed'), 'error')
+      if (isCurrent()) toast(e instanceof Error ? e.message : tr('messages.operationFailed'), 'error')
     } finally {
-      setWatchToggleLoading(false)
+      if (isCurrent()) setWatchToggleLoading(false)
     }
-  }, [hasHolding, market, resolvedName, symbol, toast, watchingStock])
+  }, [hasHolding, market, resolvedName, symbol, toast, watchingStock, beginRequest])
 
   const triggerAutoAiSuggestion = useCallback(async () => {
     // 自动建议仅针对”确认未持仓”的股票，且不自动创建股票/绑定 Agent。
     if (!symbol || !market || !holdingLoaded || holdingLoadError || hasHolding || autoSuggesting) return
+    const isCurrent = beginRequest('autoSuggestion')
+    if (!isCurrent()) return
     const key = `${market}:${symbol}`
-    const lastTs = autoTriggeredRef.current[key] || 0
+    const lastTs = props.autoTriggered[key] || 0
     if (Date.now() - lastTs < 5 * 60 * 1000) return
-    autoTriggeredRef.current[key] = Date.now()
+    props.autoTriggered[key] = Date.now()
     setAutoSuggesting(true)
     try {
       // 使用盘中分析生成详情页建议，输入来自行情和结构化技术指标。
@@ -1226,23 +1266,17 @@ export default function StockInsightModal(props: {
         bypass_throttle: true,
         bypass_market_hours: true,
       })
-      // 异步模式：triggerAgent 立即返回，轮询等待建议生成
-      const before = Date.now()
-      const poll = setInterval(async () => {
-        if (Date.now() - before > 120_000) { clearInterval(poll); setAutoSuggesting(false); return }
-        await loadSuggestions()
-      }, 5_000)
-      await loadSuggestions()
-      setTimeout(() => clearInterval(poll), 125_000)
-      return
+      if (!isCurrent()) return
+      pollSuggestions(isCurrent, () => setAutoSuggesting(false))
     } catch (e) {
+      if (!isCurrent()) return
       toast(
         e instanceof Error ? e.message : tr('messages.autoSuggestionFailed'),
         'error'
       )
       setAutoSuggesting(false)
     }
-  }, [symbol, market, resolvedName, holdingLoaded, holdingLoadError, hasHolding, autoSuggesting, loadSuggestions, toast])
+  }, [symbol, market, resolvedName, holdingLoaded, holdingLoadError, hasHolding, autoSuggesting, pollSuggestions, toast, beginRequest, props.autoTriggered])
 
   useEffect(() => {
     if (!props.open || !symbol) return
@@ -1318,7 +1352,7 @@ export default function StockInsightModal(props: {
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1" /> {tr('actions.askAI')}
                 </Button>
-                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading}>
+                <Button variant="outline" size="sm" className="h-8 px-2.5" onClick={() => handleRefreshAll()} disabled={loading} aria-label={tr('actions.refresh')}>
                   <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
@@ -1359,7 +1393,7 @@ export default function StockInsightModal(props: {
               >
                 <Sparkles className="w-3.5 h-3.5 mr-1" /> {tr('actions.askAI')}
               </Button>
-              <Button variant="outline" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleRefreshAll()} disabled={loading}>
+              <Button variant="outline" size="sm" className="h-8 px-2.5 shrink-0" onClick={() => handleRefreshAll()} disabled={loading} aria-label={tr('actions.refresh')}>
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </Button>
             </div>
@@ -1449,7 +1483,7 @@ export default function StockInsightModal(props: {
                             <div className="text-[10px] text-muted-foreground">{tr('holding.cost')}</div>
                             <div
                               className={`font-mono ${
-                                quote?.current_price != null
+                                quote?.current_price != null && holdingAgg.unitCost != null
                                   ? quote.current_price > holdingAgg.unitCost
                                     ? 'text-market-up'
                                     : quote.current_price < holdingAgg.unitCost
@@ -1458,19 +1492,25 @@ export default function StockInsightModal(props: {
                                   : 'text-foreground'
                               }`}
                             >
-                              {formatNumber(holdingAgg.unitCost)}
+                              {formatNumber(holdingAgg.unitCost)} {holdingAgg.currency || '--'}
                             </div>
                           </div>
                           <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.marketValue')}</div>
-                            <div className="font-mono">{formatCompactNumber(holdingAgg.marketValue, english)}</div>
+                            <div className="font-mono">{tr('holding.currencyValue', { value: formatCompactNumber(holdingAgg.marketValue, english), currency: 'CNY' })}</div>
+                            {holdingAgg.currency !== 'CNY' && (
+                              <div className="text-[11px] text-muted-foreground">{tr('holding.nativeValue', { value: formatNumber(holdingAgg.nativeMarketValue), currency: holdingAgg.currency || '--' })}</div>
+                            )}
                           </div>
                           <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.pnl')}</div>
                             <div className={`font-mono ${marketSignTextClass(holdingAgg.pnl)}`}>
-                              {holdingAgg.pnl >= 0 ? '+' : ''}{formatCompactNumber(holdingAgg.pnl, english)}
+                              {tr('holding.currencyValue', { value: `${holdingAgg.pnl != null && holdingAgg.pnl >= 0 ? '+' : ''}${formatCompactNumber(holdingAgg.pnl, english)}`, currency: 'CNY' })}
                             </div>
                           </div>
+                          {holdingAgg.valuationIncomplete && (
+                            <div className="col-span-2 text-[11px] text-muted-foreground" role="status">{tr('holding.valuationIncomplete')}</div>
+                          )}
                         </div>
                       ) : (
                         <div className="text-[11px] text-muted-foreground">{tr('holding.empty')}</div>
@@ -1685,9 +1725,9 @@ export default function StockInsightModal(props: {
                       {agentLabel(activeReport.agent_name)} · {activeReport.analysis_date}
                     </div>
                     <div className="text-[15px] font-medium">{activeReport.title || tr('cards.reportSummary')}</div>
-                    {activeReport.suggestions && (activeReport.suggestions as any)?.[symbol]?.action_label && (
+                    {typeof activeReportSuggestion?.action_label === 'string' && activeReportSuggestion.action_label && (
                       <div className="text-[11px] inline-flex px-2 py-0.5 rounded bg-primary/10 text-primary">
-                        {(activeReport.suggestions as any)[symbol].action_label}
+                        {activeReportSuggestion.action_label}
                       </div>
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">

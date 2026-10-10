@@ -63,7 +63,7 @@ class SignalPackBuilder:
         self._quote_source_cache: dict[tuple[MarketCode, str], str] = {}
         self._tech_cache: dict[tuple[MarketCode, str], dict] = {}
         self._tech_source_cache: dict[tuple[MarketCode, str], str] = {}
-        self._news_cache: dict[tuple[str, int], list[NewsItem]] = {}
+        self._news_cache: dict[tuple[str, tuple[str, ...], int], list[NewsItem]] = {}
         self._flow_cache: dict[tuple[MarketCode, str], dict] = {}
         self._flow_source_cache: dict[tuple[MarketCode, str], str] = {}
         self._events_cache: dict[tuple[str, int], list[dict]] = {}
@@ -248,40 +248,35 @@ class SignalPackBuilder:
                 if key in self._tech_cache and key not in self._tech_source_cache:
                     self._tech_source_cache[key] = "cache"
 
-        # 3) News
-        news_by_symbol: dict[str, list[dict]] = {}
+        # 3) News: the provider request, cache and attachment all share a market.
+        news_by_symbol: dict[tuple[MarketCode, str], list[dict]] = {}
         if include_news:
-            key = (
-                ",".join(sorted(symbol_set)),
-                int(news_hours),
-            )
-            if key not in self._news_cache:
-                try:
-                    collector = NewsCollector.from_database()
-                    all_news = await collector.fetch_all(
-                        symbols=sorted(symbol_set),
-                        since_hours=news_hours,
-                    )
-                    self._news_cache[key] = all_news
-                except Exception as e:
-                    logger.warning(f"SignalPack news 采集失败: {e}")
-                    self._news_cache[key] = []
+            for market, items in by_market.items():
+                requested = {symbol for symbol, _ in items}
+                key = (market.value, tuple(sorted(requested)), int(news_hours))
+                if key not in self._news_cache:
+                    try:
+                        collector = NewsCollector.from_database()
+                        self._news_cache[key] = await collector.fetch_all(
+                            symbols=sorted(requested), since_hours=news_hours,
+                            symbol_names=dict(items), market=market.value,
+                        )
+                    except Exception as e:
+                        logger.warning(f"SignalPack news 采集失败: {e}")
+                        self._news_cache[key] = []
 
-            for it in self._news_cache[key]:
-                # attach to each symbol
-                for sym in it.symbols or []:
-                    if sym not in symbol_set:
-                        continue
-                    news_by_symbol.setdefault(sym, []).append(
-                        {
-                            "source": it.source,
-                            "external_id": it.external_id,
-                            "title": it.title,
-                            "time": it.publish_time.strftime("%Y-%m-%d %H:%M"),
-                            "importance": it.importance,
-                            "url": it.url,
-                        }
-                    )
+                for article in self._news_cache[key]:
+                    for symbol in article.symbols or []:
+                        if symbol not in requested:
+                            continue
+                        news_by_symbol.setdefault((market, symbol), []).append({
+                            "source": article.source,
+                            "external_id": article.external_id,
+                            "title": article.title,
+                            "time": article.publish_time.strftime("%Y-%m-%d %H:%M"),
+                            "importance": article.importance,
+                            "url": article.url,
+                        })
 
         # 4) Capital flow (CN only)
         flow_map: dict[str, dict] = {}
@@ -439,7 +434,7 @@ class SignalPackBuilder:
                 if not tech or tech.get("error"):
                     missing.append("kline")
             if include_news:
-                if not news_by_symbol.get(sym):
+                if not news_by_symbol.get((market, sym)):
                     missing.append("news")
             if include_events:
                 if not events_by_symbol.get(sym):
@@ -462,7 +457,7 @@ class SignalPackBuilder:
                     aggregated=aggregated,
                 ),
                 news=NewsSnapshot(
-                    hours=news_hours, items=[] if market.value in {"TSX", "TSXV"} else news_by_symbol.get(sym, [])[:5]
+                    hours=news_hours, items=news_by_symbol.get((market, sym), [])[:5]
                 )
                 if include_news
                 else None,
@@ -479,7 +474,7 @@ class SignalPackBuilder:
                     "kline": self._tech_source_cache.get((market, sym), "unknown")
                     if include_technical
                     else "skipped",
-                    "news": "db" if include_news else "skipped",
+                    "news": ("db" if news_by_symbol.get((market, sym)) else "unavailable") if include_news else "skipped",
                     "capital_flow": self._flow_source_cache.get(
                         (MarketCode.CN, sym), "unknown"
                     )

@@ -37,9 +37,15 @@ Canadian enrichment failure cannot discard other-market search results.
   Partial P&L excludes unvalued costs, avoiding fabricated complete losses.
   DB-only overview never treats nominal CAD cost as CNY. Full portfolio analysis
   and benchmark/attribution cannot silently use incomplete totals.
+- Scheduled daily, premarket and intraday research preserve Canadian native
+  currency, quote source/time and delay. Cross-currency costs and concentration
+  use the same bounded, dated reference FX as portfolio valuation; missing
+  currency/FX leaves totals and risk budgets unavailable. CNY cash is labelled
+  separately, and legacy synthetic FX is not used in these Canadian contexts.
 - Toronto timezone handles DST. Only the verified TMX 2026 calendar is bundled,
   including December24 13:00 close. Unknown future weekdays fail closed for
-  automatic execution. US-only holidays are not Canadian closures.
+  automatic execution. US-only holidays are not Canadian closures. Alert-health
+  quotas and execution use the same Toronto trading date, including DST.
 - Canadian alerts require a known currency and source time within30 minutes.
   Messages retain source, currency and delayed timestamp information. Historical
   dry runs remain separate from automatic live triggers.

@@ -6,7 +6,7 @@
  * 2. 运行中 — polling /agents/runs/{trace_id}/progress,显示阶段进度
  * 3. 完成 — 顶层摘要 + Markdown 推理 + 可展开 4 分析师报告 + 辩论
  */
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
@@ -30,6 +30,7 @@ import {
 } from '../../../../src/lib/tradingagents-progress'
 import { useTranslation } from 'react-i18next'
 import { suggestionPresentation } from './suggestion-action'
+import { useRequestScope } from './use-request-scope'
 
 const DECISION_COLOR: Record<string, string> = {
   buy: 'text-market-up',
@@ -92,7 +93,12 @@ export interface DeepAnalysisModalProps {
   initialResult?: DeepAnalysisResult | null
 }
 
-export function DeepAnalysisModal({
+export function DeepAnalysisModal(props: DeepAnalysisModalProps) {
+  if (!props.open) return null
+  return <DeepAnalysisSession key={JSON.stringify([props.stockMarket, props.stockSymbol, props.stockId])} {...props} />
+}
+
+function DeepAnalysisSession({
   open,
   onOpenChange,
   stockId,
@@ -101,6 +107,7 @@ export function DeepAnalysisModal({
   stockMarket,
   initialResult = null,
 }: DeepAnalysisModalProps) {
+  const beginRequest = useRequestScope()
   const historySymbol = stockMarket === 'TSX' || stockMarket === 'TSXV' ? `${stockMarket}:${stockSymbol}` : stockSymbol
   const { toast } = useToast()
   const { t } = useTranslation('bizUi')
@@ -111,12 +118,14 @@ export function DeepAnalysisModal({
   const [progress, setProgress] = useState<ProgressResponse | null>(null)
   const [result, setResult] = useState<DeepAnalysisResult | null>(initialResult)
   const [error, setError] = useState<string>('')
+  const watcherRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
   const sseCloseRef = useRef<(() => void) | null>(null)
 
   /** 停止一切进度监听(SSE + polling) */
   const stopWatching = useCallback(() => {
+    watcherRef.current += 1
     if (timerRef.current) {
       clearInterval(timerRef.current)
       timerRef.current = null
@@ -127,108 +136,19 @@ export function DeepAnalysisModal({
     }
   }, [])
 
-  // 弹窗关闭时清理进度监听
-  useEffect(() => {
-    if (!open) stopWatching()
-  }, [open, stopWatching])
+  // Close only the view's watchers. The submitted analysis keeps running and
+  // can be discovered again through its qualified symbol when the view reopens.
+  useLayoutEffect(() => stopWatching, [stopWatching])
 
-  // 重置初始状态 + 后端查询是否有正在跑/已完成的任务
-  useEffect(() => {
-    if (!open) return
-
-    if (initialResult) {
-      setResult(initialResult)
-      setStage('done')
-      return
-    }
-
-    // 先重置为 idle (避免上次 state 残留),然后异步查后端
-    setStage('idle')
-    setResult(null)
-    setError('')
-    setProgress(null)
-    setTraceId(null)
-    let cancelled = false
-
-    // 并发查询运行状态与已保存报告:
-    //   - findRunning:这只股票最近 30 分钟有没有运行中的任务
-    //   - getLatestForStock:有没有已保存的最近一次报告
-    // 优先级:running > failed > done(已有结果)> idle
-    Promise.all([
-      tradingAgentsApi.findRunning(historySymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
-      tradingAgentsApi.getLatestForStock(historySymbol).catch(() => null),
-    ]).then(async ([runningInfo, latestResult]) => {
-      if (cancelled) return
-      // 优先级:running > failed(保留最新错误) > done(已保存的报告) > idle
-      //   - 失败视图可重试,后端会做幂等去重
-
-      // 1) 真正在跑(后端权威源)→ 进入 running
-      if (runningInfo.status === 'running' && runningInfo.trace_id) {
-        const tid = runningInfo.trace_id
-        setTraceId(tid)
-        setStage('running')
-        // 后端确认在跑；即使采集阶段暂时没有日志，也继续由 SSE/polling 接力
-        tradingAgentsApi.getProgress(tid).then(resp => { if (!cancelled) setProgress(resp) })
-        startWatching(tid)
-        return
-      }
-
-      // Keep a failed run's diagnostic visible when the dialog is reopened.
-      if (runningInfo.status === 'failed' && runningInfo.trace_id) {
-        const failedProgress = await tradingAgentsApi.getProgress(runningInfo.trace_id).catch(() => null)
-        if (cancelled) return
-        if (failedProgress?.status === 'failed') {
-          setTraceId(runningInfo.trace_id)
-          setProgress(failedProgress)
-          setError(failedProgress.run?.error || tr('errors.analysisFailed'))
-          setStage('error')
-          clearRunningTrace(historySymbol)
-          return
-        }
-      }
-
-      // 2) 后端 stale/failed → 清掉本地运行痕迹,继续走缓存判断
-      if (runningInfo.status === 'stale' || runningInfo.status === 'failed') {
-        clearRunningTrace(historySymbol)
-      }
-
-      // 3) localStorage 兜底(刚触发后端还没写 log)— 仅在后端 'none' 时尝试
-      if (runningInfo.status === 'none') {
-        const localTrace = loadRunningTrace(historySymbol)
-        if (localTrace) {
-          setTraceId(localTrace)
-          setStage('running')
-          tradingAgentsApi.getProgress(localTrace).then(resp => { if (!cancelled) setProgress(resp) })
-          startWatching(localTrace)
-          return
-        }
-      }
-
-      // 4) 有已保存报告 → done 视图(用户可点「忽略缓存重新分析」)
-      if (latestResult) {
-        latestResult.raw_data.from_cache = true
-        setResult(latestResult)
-        setStage('done')
-        clearRunningTrace(historySymbol)
-        return
-      }
-
-      // 5) 都没有 → idle(开始分析按钮可用,后端幂等保护)
+  const handleProgressResponse = useCallback(async (resp: ProgressResponse, isCurrent: () => boolean) => {
+    if (!isCurrent()) return
+    setProgress(resp)
+    if (resp.status === 'success') {
+      stopWatching()
       clearRunningTrace(historySymbol)
-    })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialResult, historySymbol])
-
-  /** 处理一次进度快照(SSE 推送与轮询共用同一套状态机) */
-  const handleProgressResponse = useCallback(
-    async (resp: ProgressResponse) => {
-      setProgress(resp)
-      if (resp.status === 'success') {
-        // 完成,拉历史结果
-        stopWatching()
-        clearRunningTrace(historySymbol)
+      try {
         const latest = await tradingAgentsApi.getLatestForStock(historySymbol)
+        if (!isCurrent()) return
         if (latest) {
           setResult(latest)
           setStage('done')
@@ -236,115 +156,166 @@ export function DeepAnalysisModal({
           setError(tr('errors.resultMissing'))
           setStage('error')
         }
-      } else if (resp.status === 'failed') {
-        stopWatching()
-        clearRunningTrace(historySymbol)
-        setError(resp.run?.error || tr('errors.analysisFailed'))
+      } catch (e) {
+        if (!isCurrent()) return
+        setError(e instanceof Error ? e.message : tr('errors.resultMissing'))
         setStage('error')
-      } else if (resp.status === 'stale') {
-        // 后端检测到僵尸 running（超过整个任务生命周期窗口）
-        // → 自动重置到 idle,用户可以重新触发
-        stopWatching()
-        clearRunningTrace(historySymbol)
-        setTraceId('')
-        setProgress(null)
-        setStage('idle')
-      } else if (resp.status === 'not_found') {
-        // SSE/轮询暂时没有快照不等于任务不存在；后端 running 记录可能还在采集。
-        // 保留 trace，让下一轮 polling 或刷新页面继续接管。
+      }
+    } else if (resp.status === 'failed') {
+      stopWatching()
+      clearRunningTrace(historySymbol)
+      setError(resp.run?.error || tr('errors.analysisFailed'))
+      setStage('error')
+    } else if (resp.status === 'stale') {
+      stopWatching()
+      clearRunningTrace(historySymbol)
+      setTraceId(null)
+      setProgress(null)
+      setStage('idle')
+    }
+  }, [historySymbol, stopWatching])
+
+  const startWatching = useCallback((tid: string, isCurrent: () => boolean) => {
+    if (!isCurrent()) return
+    stopWatching()
+    const watcher = watcherRef.current
+    const isWatching = () => isCurrent() && watcherRef.current === watcher
+    let terminal = false
+    let polling = false
+    const poll = async () => {
+      // Coalesce timer ticks: a slow response must not be superseded forever by
+      // the next interval, while newer SSE snapshots still invalidate it.
+      if (!isWatching() || polling) return
+      polling = true
+      const isLatest = beginRequest('progress')
+      try {
+        const response = await tradingAgentsApi.getProgress(tid)
+        if (isWatching() && isLatest()) await handleProgressResponse(response, isCurrent)
+      } catch {
+        // A temporary transport error does not cancel the backend analysis.
+      } finally {
+        polling = false
+      }
+    }
+    const startPolling = () => {
+      if (!isWatching() || terminal || timerRef.current) return
+      timerRef.current = setInterval(() => { void poll() }, POLL_INTERVAL_MS)
+      void poll()
+    }
+    const close = subscribeSSE(`/agents/runs/${tid}/progress/stream`, {
+      onEvent: (ev) => {
+        if (!isWatching()) return
+        if (ev.event === 'progress' && ev.data && typeof ev.data === 'object') {
+          // An SSE snapshot is newer than any still-pending polling response.
+          beginRequest('progress')
+          const response = ev.data as ProgressResponse
+          if (isTerminalProgressStatus(response.status)) terminal = true
+          void handleProgressResponse(response, isCurrent)
+        } else if (ev.event === 'done' && ev.data?.status && ev.data.status !== 'timeout') {
+          // A done hint has no complete snapshot. Keep fallback available if
+          // this final fetch fails or the saved result has not caught up yet.
+          if (!shouldContinueProgressWatch(ev.data.status, 'done')) void poll()
+        }
+      },
+      onClosed: startPolling,
+      onFailed: startPolling,
+    })
+    // Some transports invoke callbacks synchronously while subscribing.
+    if (isWatching()) sseCloseRef.current = close
+    else close()
+    void poll()
+  }, [beginRequest, handleProgressResponse, stopWatching])
+
+  useEffect(() => {
+    const isCurrent = beginRequest('run')
+    stopWatching()
+    setTraceId(null)
+    setProgress(null)
+    setError('')
+    setResult(initialResult)
+    setStage(initialResult ? 'done' : 'idle')
+    if (initialResult) return
+    void (async () => {
+      const [runningInfo, latestResult] = await Promise.all([
+        tradingAgentsApi.findRunning(historySymbol).catch(() => ({ trace_id: null, status: 'none' as const })),
+        tradingAgentsApi.getLatestForStock(historySymbol).catch(() => null),
+      ])
+      if (!isCurrent()) return
+      if (runningInfo.status === 'running' && runningInfo.trace_id) {
+        setTraceId(runningInfo.trace_id)
+        setStage('running')
+        startWatching(runningInfo.trace_id, isCurrent)
         return
       }
-    },
-    [historySymbol, stopWatching],
-  )
-
-  const pollProgress = useCallback(
-    async (tid: string) => {
-      try {
-        const resp = await tradingAgentsApi.getProgress(tid)
-        await handleProgressResponse(resp)
-      } catch (e) {
-        // polling 失败不立即终止,记一次错误
-        console.warn('progress poll error:', e)
+      if (runningInfo.status === 'failed' && runningInfo.trace_id) {
+        const failed = await tradingAgentsApi.getProgress(runningInfo.trace_id).catch(() => null)
+        if (!isCurrent()) return
+        if (failed?.status === 'failed') {
+          setTraceId(runningInfo.trace_id)
+          setProgress(failed)
+          setError(failed.run?.error || tr('errors.analysisFailed'))
+          setStage('error')
+          clearRunningTrace(historySymbol)
+          return
+        }
       }
-    },
-    [handleProgressResponse],
-  )
-
-  /** 降级方案:setInterval 轮询(SSE 不可用时) */
-  const startPolling = useCallback(
-    (tid: string) => {
-      if (timerRef.current) clearInterval(timerRef.current)
-      timerRef.current = setInterval(() => pollProgress(tid), POLL_INTERVAL_MS)
-      void pollProgress(tid)
-    },
-    [pollProgress],
-  )
-
-  /** 开始监听进度:优先 SSE(服务端推送),失败/关流降级轮询(轮询代码保留兜底) */
-  const startWatching = useCallback(
-    (tid: string) => {
-      stopWatching()
-      let terminal = false
-      sseCloseRef.current = subscribeSSE(`/agents/runs/${tid}/progress/stream`, {
-        onEvent: (ev) => {
-          if (ev.event === 'progress' && ev.data && typeof ev.data === 'object') {
-            const resp = ev.data as ProgressResponse
-            if (isTerminalProgressStatus(resp.status)) terminal = true
-            void handleProgressResponse(resp)
-          } else if (ev.event === 'done' && ev.data?.status && ev.data.status !== 'timeout') {
-            terminal = !shouldContinueProgressWatch(ev.data.status, 'done')
-            // done 事件只携带状态，不带完整 run/result；终态也要补拉一次快照，
-            // 避免最后一条 progress 被代理丢弃时弹窗停在 running。
-            if (terminal) void pollProgress(tid)
-          }
-        },
-        onClosed: () => {
-          // 服务端正常关流:终态则结束;非终态(如流超时)降级轮询接力
-          if (!terminal) startPolling(tid)
-        },
-        onFailed: () => {
-          // SSE 不可用(旧代理缓冲/网络问题)→ 降级轮询
-          startPolling(tid)
-        },
-      })
-    },
-    [handleProgressResponse, pollProgress, startPolling, stopWatching],
-  )
+      if (runningInfo.status === 'stale' || runningInfo.status === 'failed') clearRunningTrace(historySymbol)
+      if (runningInfo.status === 'none') {
+        const localTrace = loadRunningTrace(historySymbol)
+        if (localTrace) {
+          setTraceId(localTrace)
+          setStage('running')
+          startWatching(localTrace, isCurrent)
+          return
+        }
+      }
+      if (latestResult) {
+        setResult({ ...latestResult, raw_data: { ...latestResult.raw_data, from_cache: true } })
+        setStage('done')
+      }
+      clearRunningTrace(historySymbol)
+    })()
+  }, [initialResult, historySymbol, beginRequest, startWatching, stopWatching])
 
   const handleStart = useCallback(async (force = false) => {
+    // Invalidate both initial restoration and any prior run before triggering.
+    const isCurrent = beginRequest('run')
+    if (!isCurrent()) return
+    stopWatching()
     setStage('running')
     setError('')
     setProgress(null)
+    setResult(null)
+    setTraceId(null)
     try {
       const triggerResp = await tradingAgentsApi.trigger(stockId, { force })
       const tid = triggerResp.trace_id || ''
+      // A closed view must not overwrite a newer session's recovery trace.
+      // The backend can still discover the submitted job when reopened.
+      if (!isCurrent()) return
+      if (tid) saveRunningTrace(historySymbol, tid)
       setTraceId(tid)
       if (!tid) {
-        // 后端未返回 trace_id,只显示 message
         setStage('done')
         toast(triggerResp.message || tr('triggered'), 'success')
         return
       }
-      // 持久化 trace_id 让关闭重开能恢复进度
-      saveRunningTrace(historySymbol, tid)
-      // 启动进度监听(SSE 优先,失败降级轮询)
-      startWatching(tid)
-      // 立即拉一次,尽快渲染初始进度
-      pollProgress(tid)
+      startWatching(tid, isCurrent)
     } catch (e) {
+      if (!isCurrent()) return
       setStage('error')
       setError(e instanceof Error ? e.message : tr('errors.triggerFailed'))
     }
-  }, [stockId, historySymbol, startWatching, pollProgress, toast])
+  }, [stockId, historySymbol, startWatching, stopWatching, toast, beginRequest])
 
   const handleClose = useCallback(() => {
+    beginRequest('run')
     stopWatching()
     onOpenChange(false)
-  }, [onOpenChange, stopWatching])
+  }, [onOpenChange, stopWatching, beginRequest])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={nextOpen => nextOpen ? onOpenChange(true) : handleClose()}>
       <DialogContent className="w-[92vw] max-w-6xl max-h-[85vh] overflow-y-auto scrollbar">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

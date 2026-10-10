@@ -413,7 +413,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
             )
         try:
             articles = await asyncio.to_thread(
-                md_news, [symbol], since_hours=168, names=None
+                md_news, [symbol], since_hours=168, names=None, market=market.value
             )
         except Exception:  # noqa: BLE001 - data-source failures stay within the tool result
             return ToolResult.failure(
