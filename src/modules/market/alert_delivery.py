@@ -127,7 +127,7 @@ class AlertDeliveryWorker:
             if row is None or row.status != "sending" or row.lease_token != claim["token"]:
                 return
             now = now_utc()
-            status = "delivered" if ok else "blocked" if error == "channel_unavailable" else "failed" if row.attempts >= row.max_attempts else "retry"
+            status = "delivered" if ok else "blocked" if error in {"channel_unavailable", "channel_config_invalid"} else "failed" if row.attempts >= row.max_attempts else "retry"
             next_at = now + timedelta(seconds=min(1800, 30 * 2 ** min(row.attempts - 1, 6))) if status == "retry" else None
             changed = db.execute(update(PriceAlertDelivery).where(
                 PriceAlertDelivery.id == row.id, PriceAlertDelivery.status == "sending",
@@ -152,10 +152,12 @@ class AlertDeliveryWorker:
                 try:
                     manager.add_channel(claim["channel_type"], claim["config"])
                     metadata = {}
-                    if claim["channel_type"] == "nats_jetstream":
-                        metadata = {"message_id": claim["event_id"], "occurred_at": claim["created_at"]}
+                    if claim["channel_type"] == "custom_rest":
+                        metadata = {"message_id": claim["event_id"], "occurred_at": claim["created_at"], "managed_delivery": True}
                     result = await asyncio.wait_for(manager.notify_with_result(claim["title"], claim["content"], **metadata), timeout=45)
-                    self.finish(claim, ok=bool(result.get("success")), error="" if result.get("success") else "channel_send_failed")
+                    self.finish(claim, ok=bool(result.get("success")), error="" if result.get("success") else "channel_config_invalid" if result.get("retryable") is False else "channel_send_failed")
+                except ValueError:
+                    self.finish(claim, error="channel_config_invalid" if claim["channel_type"] == "custom_rest" else "channel_send_failed")
                 except TimeoutError:
                     self.finish(claim, error="delivery_timeout")
                 except Exception:

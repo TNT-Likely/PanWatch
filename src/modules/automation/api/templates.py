@@ -380,9 +380,9 @@ def import_template(
     selected = _selected_modules(modules, payload)
     # Validate the new channel before any import changes (including replace).
     if "notifications" in selected:
-        from src.platform.notifications.nats_jetstream import validate_config
+        from src.platform.notifications.custom_rest import validate_config
         for channel_data in payload.notify_channels or []:
-            if channel_data.type == "nats_jetstream":
+            if channel_data.type == "custom_rest":
                 try:
                     validate_config(channel_data.config or {})
                 except ValueError as exc:

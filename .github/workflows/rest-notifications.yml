@@ -1,0 +1,50 @@
+name: REST notification contracts
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rest-notifications.yml'
+      - 'requirements*.txt'
+      - 'src/**'
+      - 'tests/**'
+      - 'frontend/**'
+      - 'docs/notifications/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/rest-notifications.yml'
+      - 'requirements*.txt'
+      - 'src/**'
+      - 'tests/**'
+      - 'frontend/**'
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_monitoring_delivery.py tests/test_template_import.py
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm test --run tests/settings/custom-rest-channel.test.tsx

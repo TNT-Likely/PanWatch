@@ -8,8 +8,8 @@ from src.platform.notifications.notifier import NotifierManager, CHANNEL_TYPES
 from src.web.errors import api_error
 
 def validate_channel_config(channel_type: str, config: dict):
-    if channel_type == "nats_jetstream":
-        from src.platform.notifications.nats_jetstream import validate_config
+    if channel_type == "custom_rest":
+        from src.platform.notifications.custom_rest import validate_config
         try:
             validate_config(config)
         except ValueError as exc:

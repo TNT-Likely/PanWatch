@@ -196,12 +196,12 @@ def test_unknown_channel_is_not_a_success():
         asyncio.run(NotifierManager()._send_custom('unknown-provider', {}, 'QA', 'QA'))
 
 
-def test_nats_delivery_reuses_persisted_metadata_across_worker_retries(factory, monkeypatch):
+def test_rest_delivery_reuses_persisted_metadata_across_worker_retries(factory, monkeypatch):
     hit(factory, seed(factory))
     with factory() as db:
         channel = db.query(NotifyChannel).one()
-        channel.type = 'nats_jetstream'
-        channel.config = {'server_url': 'tls://broker:4222', 'subject': 'panwatch.test', 'stream': 'PANWATCH'}
+        channel.type = 'custom_rest'
+        channel.config = {'endpoint_url': 'https://gateway.example/events'}
         db.commit()
     send = AsyncMock(side_effect=[{'success': False}, {'success': True}])
     monkeypatch.setattr(alert_delivery.NotifierManager, 'notify_with_result', send)
@@ -209,7 +209,7 @@ def test_nats_delivery_reuses_persisted_metadata_across_worker_retries(factory, 
     with factory() as db:
         delivery = db.query(PriceAlertDelivery).one()
         assert delivery.status == 'retry'
-        expected = {'message_id': delivery.event_id, 'occurred_at': delivery.created_at}
+        expected = {'message_id': delivery.event_id, 'occurred_at': delivery.created_at, 'managed_delivery': True}
         retry_delivery(db, delivery.id)
     asyncio.run(AlertDeliveryWorker(factory).drain(limit=1))
     assert send.call_args_list[0].kwargs == send.call_args_list[1].kwargs == expected
@@ -217,15 +217,17 @@ def test_nats_delivery_reuses_persisted_metadata_across_worker_retries(factory, 
         assert db.query(PriceAlertDelivery).one().status == 'delivered'
 
 
-def test_invalid_nats_registration_does_not_abort_delivery_batch(factory):
+def test_invalid_rest_registration_does_not_abort_delivery_batch(factory, monkeypatch):
+    # The second channel is a vendor fixture, never a real receiver under --notify.
+    monkeypatch.setattr(alert_delivery.NotifierManager, "_send_custom", AsyncMock())
     hit(factory, seed(factory, channels=2))
     with factory() as db:
         channel = db.query(NotifyChannel).order_by(NotifyChannel.id).first()
-        channel.type = 'nats_jetstream'
+        channel.type = 'custom_rest'
         channel.config = {'token': 'never-log-this'}
         db.commit()
     assert asyncio.run(AlertDeliveryWorker(factory).drain(limit=2)) == {'processed': 2}
     with factory() as db:
         rows = db.query(PriceAlertDelivery).order_by(PriceAlertDelivery.id).all()
-        assert rows[0].status == 'retry' and rows[0].error_code == 'channel_send_failed'
+        assert rows[0].status == 'blocked' and rows[0].error_code == 'channel_config_invalid'
         assert rows[1].status == 'delivered'

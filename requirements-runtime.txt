@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 apprise>=1.6.0
-nats-py>=2.16,<3
 openai>=1.0.0
 efinance>=0.4.0
 akshare>=1.10.0
