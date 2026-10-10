@@ -133,8 +133,31 @@ def bounded_graph_class(graph_cls):
     namespaces at construction, replacing the factory binding locally. Never
     patch module globals or publish request config across concurrent graphs.
     """
+    from .toolkit_adapter import _cancellation_boundary
+
+    class CancellableGraph(graph_cls):
+        # These methods execute outside LangGraph callbacks. The supported SDKs
+        # write their final report before recording a future memory decision.
+        # Guard _log_state as well so an in-flight report cannot be followed by
+        # a new memory write if cancellation arrived while writing that report.
+        @_cancellation_boundary
+        def propagate(self, *args, **kwargs):
+            return super().propagate(*args, **kwargs)
+
+        @_cancellation_boundary
+        def create_run_state(self, *args, **kwargs):
+            return super().create_run_state(*args, **kwargs)
+
+        @_cancellation_boundary
+        def record_decision(self, *args, **kwargs):
+            return super().record_decision(*args, **kwargs)
+
+        @_cancellation_boundary
+        def _log_state(self, *args, **kwargs):
+            return super()._log_state(*args, **kwargs)
+
     if callable(getattr(graph_cls, "_get_provider_kwargs", None)):
-        class BoundedTradingAgentsGraph(graph_cls):
+        class BoundedTradingAgentsGraph(CancellableGraph):
             def _get_provider_kwargs(self):
                 kwargs = dict(super()._get_provider_kwargs())
                 timeout = self.config.get("llm_timeout_seconds")
@@ -145,7 +168,7 @@ def bounded_graph_class(graph_cls):
         _modern_timeout_boundary(graph_cls)
         _modern_portfolio_boundary(graph_cls)
 
-        class BoundedTradingAgentsGraph(graph_cls):
+        class BoundedTradingAgentsGraph(CancellableGraph):
             _panwatch_preserve_portfolio_markets = True
 
             def create_run_state(self, company_name, trade_date, asset_type="stock", portfolio=None):

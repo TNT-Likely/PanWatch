@@ -473,7 +473,7 @@ def patch_route_to_vendor():
                     mod.route_to_vendor = _patched_route_to_vendor
                     logger.debug(f"[TA toolkit] patched route_to_vendor in {module_path}")
             try:
-                _install_news_cancellation_guards()
+                _install_cancellation_guards()
             except BaseException:
                 for mod, attr, orig in reversed(_patch_saved_sites):
                     setattr(mod, attr, orig)
@@ -497,17 +497,26 @@ class _CancelledNewsPrimary(BaseException):
     """Escape upstream's broad Exception handler, then restore public cancellation."""
 
 
-def _install_news_cancellation_guards() -> None:
+def _install_cancellation_guards() -> None:
+    """Stop new requests and memory writes; in-flight I/O keeps its SDK timeout.
+
+    These shared wrappers read the current run's ContextVar only. Their install
+    and restoration use the same reference count as the vendor routing patch.
+    """
     from functools import wraps
     from importlib import import_module
 
-    def guard_request(original):
+    def guard_memory_lock(original):
+        @contextmanager
         @wraps(original)
         def guarded(*args, **kwargs):
             _raise_if_cancelled()
-            result = original(*args, **kwargs)
-            _raise_if_cancelled()
-            return result
+            with original(*args, **kwargs) as acquired:
+                # Another process/run may have held the memory file while this
+                # task was canceled. Check before the write body, retaining the
+                # SDK context manager's normal release on every exit path.
+                _raise_if_cancelled()
+                yield acquired
         return guarded
 
     def guard_news(original):
@@ -539,9 +548,24 @@ def _install_news_cancellation_guards() -> None:
     for path, name, wrapper in (
         ("tradingagents.agents.tools", "retrieve_news", guard_news),
         ("tradingagents.extensions.news_evidence", "retrieve_news", guard_news),
-        ("tradingagents.extensions.duckduckgo_news", "fetch_news", guard_request),
-        ("tradingagents.extensions.company_website", "resolve_company_website", guard_request),
-        ("tradingagents.extensions.ashare_announcements", "fetch_announcements", guard_request),
+        ("tradingagents.extensions.duckduckgo_news", "fetch_news", _cancellation_boundary),
+        ("tradingagents.extensions.company_website", "resolve_company_website", _cancellation_boundary),
+        ("tradingagents.extensions.ashare_announcements", "fetch_announcements", _cancellation_boundary),
+        # A single enrichment call can make multiple HTTP requests. Check at
+        # DDG's per-request seam *after* acquiring its locks and pacing, as well
+        # as before/after those waits. Announcement discovery imports DDG's
+        # _read_response, whose globals use these same guarded seams.
+        ("tradingagents.extensions.duckduckgo_news", "_check_provider_ready", _cancellation_boundary),
+        ("tradingagents.extensions.duckduckgo_news", "_read_response_unpaced", _cancellation_boundary),
+        # SEC company verification performs separate ticker and submissions
+        # lookups; guarding the outer resolver alone cannot stop the second.
+        ("tradingagents.extensions.company_website", "_get_json", _cancellation_boundary),
+        # Mainland identity resolution precedes the graph's first callback and
+        # may query SSE, SZSE, an English label and BSE in separate requests.
+        ("tradingagents.extensions.ashare_identity", "_get_json", _cancellation_boundary),
+        # Only this module's imported binding changes. Other SDK sessions have
+        # no PanWatch cancel event, and unrelated file locks remain untouched.
+        ("tradingagents.memory.log", "locked", guard_memory_lock),
     ):
         try:
             module = import_module(path)

@@ -13,7 +13,7 @@ its dependencies: rebuild the image to select another source.
 Run from the PanWatch repository root in your activated virtual environment:
 
 ```sh
-python scripts/prepare-tradingagents-requirements.py --install --source "git+https://github.com/idkwhodatis/TradingAgents.git@3e0dc2647749aeec8ec38fd36fed1298b0889c54"
+python scripts/prepare-tradingagents-requirements.py --install --source "git+https://github.com/idkwhodatis/TradingAgents.git@d9765ed9977ebbafa50d0af4b2bf772a4174eba4"
 ```
 
 The public URL above is a tested example, not a product dependency. Substitute
@@ -51,7 +51,7 @@ The explicit empty source ignores any previous `TRADINGAGENTS_SOURCE` value.
 ## Docker
 
 ```sh
-docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@3e0dc2647749aeec8ec38fd36fed1298b0889c54" -t panwatch-custom .
+docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@d9765ed9977ebbafa50d0af4b2bf772a4174eba4" -t panwatch-custom .
 ```
 
 Omit the build argument (or leave it empty) for the official default. The
@@ -97,6 +97,12 @@ request configuration. Other constructor boundaries fail availability validation
 with an explicit timeout-boundary error instead of silently dropping the timeout.
 Modern news cancellation is checked outside enrichment's primary-error handler
 and before/after additional source boundaries; cancellation is never news evidence.
+Mainland identity HTTP, model calls, graph steps and completion writes also honor
+the request's cancellation event. In-flight provider calls finish under their
+existing timeout, but cannot start another request or record a completed decision
+after cancellation. Writes already underway may finish; existing reports and
+checkpoints are retained. A run waiting on the shared trading-memory file lock
+checks cancellation again after acquiring it, before entering the write body.
 
 Run `python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py` after
 installing your source. Check `python -m pip show tradingagents` and the installed

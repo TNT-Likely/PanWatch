@@ -536,18 +536,23 @@ class TradingAgentsAgent(BaseAgent):
             trace_id=trace_id_for_ctx,
             cancel_event=cancel_event,
         ):
+            from .observability import PanWatchCancellationHandler
+
+            callbacks = [progress_handler] if progress_handler else []
+            if cancel_event is not None:
+                callbacks.append(PanWatchCancellationHandler(cancel_event))
             graph = _bounded_graph_class(TradingAgentsGraph)(
                 selected_analysts=ta_config["selected_analysts"],
                 debug=False,
                 config=ta_config,
                 # callbacks 接受 langchain BaseCallbackHandler 列表;LLM 级别用
-                callbacks=[progress_handler] if progress_handler else None,
+                callbacks=callbacks or None,
             )
 
             # 注入 LangGraph 节点级 callbacks(propagator.get_graph_args 默认 callbacks=None,
             # 不会触发 on_chain_start/end → 进度条永远卡 pending)
-            if progress_handler is not None:
-                self._inject_graph_callbacks(graph, progress_handler)
+            for callback in callbacks:
+                self._inject_graph_callbacks(graph, callback)
 
             # 0.5.0 原生提供 instrument_context；标的元数据不应污染 past_context。
             if stock_metadata_context:
