@@ -13,6 +13,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from src.platform.marketdata.instrument_identity import analysis_key, market_value
 from src.modules.portfolio import build_portfolio_service
 from src.platform.persistence.models import AnalysisHistory, Stock, StockSuggestion
 
@@ -95,6 +96,7 @@ def build_watchlist_context(db: Session) -> str:
 
 def build_stock_context(db: Session, symbol: str, market: str) -> str:
     """Return the latest persisted suggestions and analysis for one stock."""
+    market = market_value(market).strip().upper()
     parts: list[str] = []
     suggestions = (
         db.query(StockSuggestion)
@@ -115,13 +117,15 @@ def build_stock_context(db: Session, symbol: str, market: str) -> str:
 
     histories = (
         db.query(AnalysisHistory)
-        .filter(AnalysisHistory.stock_symbol == symbol)
+        .filter(AnalysisHistory.stock_symbol == analysis_key(symbol, market))
         .order_by(AnalysisHistory.created_at.desc())
-        .limit(1)
-        .all()
     )
-    if histories:
-        history = histories[0]
+    # Canadian keys are always qualified. Legacy bare keys remain readable,
+    # but explicit metadata must never identify a different exchange.
+    history = next((item for item in histories
+                    if not (item.raw_data or {}).get("market")
+                    or market_value(item.raw_data["market"]).strip().upper() == market), None)
+    if history is not None:
         parts.append(
             f"最近分析（{history.agent_name}, {history.analysis_date}）：\n{(history.content or '')[:500]}"
         )

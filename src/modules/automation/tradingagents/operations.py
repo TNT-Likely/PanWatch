@@ -315,12 +315,7 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 # ============================================================================
 
 def _resolve_market(market: str) -> MarketCode:
-    code = (market or "CN").strip().upper()
-    if code == "US":
-        return MarketCode.US
-    if code == "HK":
-        return MarketCode.HK
-    return MarketCode.CN
+    return MarketCode(str(getattr(market, "value", market)).strip().upper())
 
 
 def _classify_hit(action: str, ret_pct: float | None) -> bool | None:
@@ -364,7 +359,7 @@ def build_history_comparison(
 
     Args:
         stock_symbol: 股票代码
-        market: CN / US / HK
+        market: CN / US / HK / TSX / TSXV
         days: 回溯多少天的 TA 历史
 
     Returns:
@@ -373,6 +368,8 @@ def build_history_comparison(
             "stats": {...},     # 命中率 + 平均收益
         }
     """
+    resolved_market = _resolve_market(market)
+    market = resolved_market.value
     symbol = (stock_symbol or "").strip()
     if not symbol:
         return {"items": [], "stats": _empty_stats()}
@@ -403,7 +400,7 @@ def build_history_comparison(
 
     # 拉历史 K线(回溯天数 + 30 天缓冲让最早的决策也能算 20 日收益)
     try:
-        collector = KlineCollector(_resolve_market(market))
+        collector = KlineCollector(resolved_market)
         klines = collector.get_klines(symbol, days=days + 40)
     except Exception as e:
         logger.warning(f"[TA history] 拉 K线失败: {e}")

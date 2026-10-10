@@ -236,7 +236,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     )
 
     holding_line = (
-        f"当前持仓 {cur_q:.0f} 股,成本(单价) {cur_c:.3f}"
+        f"当前持仓 {cur_q:.12g} 股,成本(单价) {cur_c:.3f}"
         if is_add
         else "当前空仓(本次为建仓)"
     )
@@ -244,7 +244,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     user_content = (
         f"标的 {market}:{req.symbol}\n"
         f"{holding_line}\n"
-        f"拟{action} {add_q:.0f} 股 @ {add_p:.3f}\n"
+        f"拟{action} {add_q:.12g} 股 @ {add_p:.3f}\n"
         f"{action}后成本(单价) {new_cost:.3f}{dilute_line}\n"
         + (f"{realtime}\n" if realtime else "")
         + (f"{fundamental}\n" if fundamental else "")

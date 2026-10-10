@@ -504,23 +504,48 @@ def _market_for_symbol(symbol: str):
     return MarketCode.US
 
 
+def _panwatch_identity(symbol: str, market=None):
+    """Compare provider aliases only within their explicit market identity.
+
+    Only exact numeric mainland suffixes are aliases; US dotted symbols and
+    HK tickers must never be reduced to mainland codes.
+    """
+    from src.platform.marketdata.models import MarketCode
+
+    value = str(symbol or "").strip().upper()
+    market = MarketCode(getattr(market, "value", market)) if market is not None else _market_for_symbol(value)
+    if market == MarketCode.CN and re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", value):
+        value = value.split(".")[0]
+    if market.value in {"TSX", "TSXV"}:
+        from marketdata.symbol import Symbol
+        value = Symbol.parse(value, market.value).code
+    return market, value
+
+
+def _snapshot_matches(symbol: str, market=None) -> bool:
+    stock = _cache().get("stock")
+    cached_symbol = getattr(stock, "symbol", "")
+    cached_market = getattr(stock, "market", None)
+    if not cached_symbol or cached_market is None:
+        return False
+    return _panwatch_identity(symbol, market) == _panwatch_identity(cached_symbol, cached_market)
+
+
 def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     """用 PanWatch K线构建与原生 load_ohlcv 同结构的 DataFrame(Date/Open/High/Low/Close/Volume)。"""
     _raise_if_cancelled()
     import pandas as pd
 
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
-    market = _market_for_symbol(symbol)
+    market, provider_symbol = _panwatch_identity(symbol)
     # collect() 已经为本次分析准备了 K 线；验证快照只需要同一份数据，
     # 不应因为上游默认 lookback=750 再向东财发起一轮可能阻塞的请求。
     cached_klines = _cache().get("klines")
-    cached_stock = _cache().get("stock")
-    cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock is not None else ""
-    cache_matches_symbol = bool(cached_symbol) and str(cached_symbol) == str(symbol)
+    cache_matches_symbol = _snapshot_matches(symbol, market)
     if cache_matches_symbol and isinstance(cached_klines, (list, tuple)):
         klines = list(cached_klines)
     else:
-        klines = KlineCollector(market).get_klines(symbol, days=750)
+        klines = KlineCollector(market).get_klines(provider_symbol, days=750)
     if not klines:
         return None
     df = pd.DataFrame(

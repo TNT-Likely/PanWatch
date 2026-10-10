@@ -807,6 +807,8 @@ def test_canadian_graph_boundary_preserves_provider_ticker_and_toronto_date(monk
         def __init__(self, **kwargs):
             self.propagator = None
             self.total_cost = 0
+        def _get_provider_kwargs(self):
+            return {}
         def propagate(self, company_name, trade_date, asset_type="stock", portfolio=None):
             captured.append((company_name, trade_date))
             return {"final_trade_decision": "Hold"}, "HOLD"
