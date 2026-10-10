@@ -7,7 +7,7 @@ on:
       - 'src/platform/marketdata/collectors/global_overview.py'
       - 'src/modules/market/api/market.py'
       - 'tests/test_global_overview*.py'
-      - 'tests/fixtures/yahoo_corn_2026_10_09.json'
+      - 'tests/fixtures/yahoo_corn*.json'
       - 'frontend/src/components/GlobalMarketOverview.tsx'
       - 'frontend/src/pages/Dashboard.tsx'
       - 'frontend/src/i18n/locales/**/configuration.ts'

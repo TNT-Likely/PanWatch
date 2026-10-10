@@ -34,6 +34,24 @@ describe('global market overview', () => {
     expect(screen.getByText(/Observation date: 2026-10-09/)).toBeTruthy()
   })
 
+  it('keeps a futures quote and chart neutral when its session change is unknown', () => {
+    const corn: DashboardOverviewInstrument = {
+      ...row('corn', 'commodities'), instrument_type: 'futures', provider_symbol: 'ZC=F',
+      current_price: 500.50, prev_close: null, change_amount: null, change_pct: null,
+      spark: [502, 500.25], unit: 'US cents/bushel', timezone: 'America/Chicago',
+    }
+    const view = render(<GlobalMarketOverview instruments={[corn]} />)
+    const card = screen.getByRole('article')
+    expect(within(card).getByText('500.50')).toBeTruthy()
+    expect(within(card).getByText('--').classList.contains('text-market-flat')).toBe(true)
+    expect(card.querySelector('svg')).not.toBeNull()
+    expect(card.querySelector('.text-market-up, .text-market-down')).toBeNull()
+    expect(within(card).queryByText('Chart unavailable')).toBeNull()
+
+    view.rerender(<GlobalMarketOverview instruments={[{ ...corn, prev_close: 500.25, change_amount: 0.25, change_pct: (500.50 / 500.25 - 1) * 100 }]} />)
+    expect(screen.getByText('+0.05 %').classList.contains('text-market-up')).toBe(true)
+  })
+
   it('persists hiding and ordering across remounts and resets safely', async () => {
     const user = userEvent.setup()
     const view = render(<GlobalMarketOverview instruments={rows} />)

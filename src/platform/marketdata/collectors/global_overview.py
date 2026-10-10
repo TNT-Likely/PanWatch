@@ -89,8 +89,16 @@ def _yahoo_base(spec):
 
 
 def _yahoo_previous_close(meta, bars, timestamp):
-    # Yahoo's daily candle timezone can differ from the display/exchange zone
-    # (e.g. corn is stamped at midnight New York, displayed in Chicago).
+    # Futures daily labels can cover the previous evening. Neither the quote's
+    # calendar date nor Yahoo's currentTradingPeriod proves its session: the
+    # captured corn periods are midnight-to-23:59 calendar windows. Until a
+    # reliable quote-to-session reference is available, keep derived changes
+    # unavailable instead of selecting an older (possibly opposite-sign) close.
+    # Explicit provider changes are handled separately and do not need bars.
+    if meta.get("instrumentType") == "FUTURE":
+        return None
+    # Date calendar-session candles in the provider's zone, which need not be
+    # the instrument's display/exchange zone.
     # A quote's fixed gmtoffset/abbreviation cannot date bars across DST.
     zone = meta.get("exchangeTimezoneName")
     if not isinstance(zone, str) or not zone:
@@ -143,9 +151,9 @@ def _yahoo(spec):
         if change is None and _number(meta.get("fulldayPrice")) == price:
             change = _number(meta.get("fulldayChange"))
         # chartPreviousClose is the *range* baseline, not yesterday's close.
-        # Without a usable change, date bars in the provider's timezone using
-        # the quote's own day, even when it is stale or the market is closed.
-        # Missing/invalid timezone metadata leaves only the change unavailable.
+        # Only calendar-session assets can fall back to the quote's provider
+        # day, even when stale or closed. Unverified futures sessions or missing
+        # timezone metadata leave only the derived change unavailable.
         prev = _number(price - change) if change is not None else _yahoo_previous_close(meta, bars, timestamp)
         if prev is not None and kind != "futures" and prev <= 0:
             prev = None
