@@ -11,10 +11,18 @@ from zoneinfo import ZoneInfo
 from src.platform.runtime.config import Settings
 from src.modules.paper_trading.paper_trading_engine import (
     ALL_MARKETS,
+    ACCOUNT_LOCK,
     ENGINE,
+    account_buying_power,
     compute_market_cash,
+    market_available_cash,
     market_allocations_or_default,
     normalize_allocations,
+    position_buy_cost,
+    sell_block_reason,
+)
+from src.modules.paper_trading.paper_settlement import (
+    buying_power, cash_summary, row_due_date, settlement_date, settlement_status,
 )
 from src.modules.portfolio.portfolio_diagnostics import diagnose_paper_portfolio
 from src.modules.strategy.quant_adapters import available_backends
@@ -24,6 +32,7 @@ from src.platform.persistence.models import (
     NotifyChannel,
     PaperTradingAccount,
     PaperTradingPosition,
+    PaperTradingSettlement,
     PaperTradingTrade,
 )
 from src.web.errors import api_error
@@ -69,6 +78,7 @@ def _serialize_account_dict(
     peak: float,
     market: str | None = None,
     ratio: float | None = None,
+    funds: dict | None = None,
 ) -> dict:
     win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
     out = {
@@ -92,6 +102,8 @@ def _serialize_account_dict(
     if market:
         out["market"] = market
         out["allocation_ratio"] = round(ratio or 0.0, 6)
+    if funds:
+        out.update(funds)
     return out
 
 
@@ -135,7 +147,7 @@ def _build_equity_curve(
     )
     if market:
         realized = sum(t.pnl for t in trades)
-        open_cost = sum(p.entry_price * p.quantity for p in open_positions)
+        open_cost = sum(position_buy_cost(p) for p in open_positions)
         cash_now = compute_market_cash(acc.initial_capital, ratio, realized, open_cost)
     else:
         cash_now = acc.current_capital
@@ -181,6 +193,8 @@ def _account_summary(db: Session, acc: PaperTradingAccount, market: str | None) 
         positions_value = sum(
             (p.current_price or p.entry_price) * p.quantity for p in open_positions
         )
+        funds = cash_summary(db, acc.current_capital)
+        funds["buying_power"] = round(account_buying_power(db, acc), 2)
         return _serialize_account_dict(
             acc,
             initial=acc.initial_capital,
@@ -192,6 +206,7 @@ def _account_summary(db: Session, acc: PaperTradingAccount, market: str | None) 
             winning_trades=acc.winning_trades,
             max_dd=acc.max_drawdown_pct,
             peak=acc.peak_capital,
+            funds=funds,
         )
 
     alloc = market_allocations_or_default(acc)
@@ -210,7 +225,7 @@ def _account_summary(db: Session, acc: PaperTradingAccount, market: str | None) 
         .all()
     )
     realized = sum(t.pnl for t in trades)
-    open_cost = sum(p.entry_price * p.quantity for p in open_positions)
+    open_cost = sum(position_buy_cost(p) for p in open_positions)
     cash = compute_market_cash(acc.initial_capital, ratio, realized, open_cost)
     positions_value = sum(
         (p.current_price or p.entry_price) * p.quantity for p in open_positions
@@ -218,6 +233,10 @@ def _account_summary(db: Session, acc: PaperTradingAccount, market: str | None) 
     winning = sum(1 for t in trades if t.pnl > 0)
     _, peak, max_dd = _build_equity_curve(db, acc, market)
     unrealized = sum(p.unrealized_pnl or 0 for p in open_positions)
+    funds = cash_summary(db, cash, market)
+    funds["buying_power"] = round(market_available_cash(db, acc, market), 2)
+    funds["settled_cash"] = min(funds["settled_cash"],
+        round(buying_power(db, acc.current_capital, "US", all_markets=True), 2))
     return _serialize_account_dict(
         acc,
         initial=acc.initial_capital * ratio,
@@ -231,6 +250,7 @@ def _account_summary(db: Session, acc: PaperTradingAccount, market: str | None) 
         peak=peak,
         market=market,
         ratio=ratio,
+        funds=funds,
     )
 
 
@@ -302,12 +322,18 @@ def _position_response(p: PaperTradingPosition) -> dict:
         if opened.tzinfo is None:
             opened = opened.replace(tzinfo=tz.utc)
         holding_days = max(0, (now - opened).days)
+    block = sell_block_reason(p) if p.status == "open" else None
+    due = p.settlement_date or settlement_date(p.stock_market, p.opened_at)
     return {
         "id": p.id,
         "stock_symbol": p.stock_symbol,
         "stock_market": p.stock_market,
         "stock_name": p.stock_name or "",
         "quantity": p.quantity,
+        "sellable_quantity": p.quantity if p.status == "open" and block is None else 0,
+        "sell_block_reason": block,
+        "settlement_date": due.isoformat() if due else None,
+        "settlement_status": settlement_status(p.stock_market, due),
         "entry_price": p.entry_price,
         "stop_loss": p.stop_loss,
         "target_price": p.target_price,
@@ -329,7 +355,8 @@ def _position_response(p: PaperTradingPosition) -> dict:
     }
 
 
-def _trade_response(t: PaperTradingTrade) -> dict:
+def _trade_response(t: PaperTradingTrade, settlement: PaperTradingSettlement | None = None) -> dict:
+    due = row_due_date(settlement) if settlement else None
     return {
         "id": t.id,
         "stock_symbol": t.stock_symbol,
@@ -347,6 +374,9 @@ def _trade_response(t: PaperTradingTrade) -> dict:
         "holding_days": t.holding_days or 0,
         "opened_at": _format_dt(t.opened_at),
         "closed_at": _format_dt(t.closed_at),
+        "settlement_date": due.isoformat() if due else None,
+        "settlement_status": settlement_status(t.stock_market, due) if settlement else "legacy",
+        "settlement_amount": round(settlement.amount, 2) if settlement else None,
     }
 
 
@@ -388,9 +418,11 @@ def list_trades(limit: int = 50, offset: int = 0, market: str | None = None, db:
         .limit(max(1, min(limit, 200)))
         .all()
     )
+    settlements = {row.trade_id: row for row in db.query(PaperTradingSettlement)
+                   .filter(PaperTradingSettlement.trade_id.in_([t.id for t in rows])).all()}
     return {
         "total": total,
-        "items": [_trade_response(t) for t in rows],
+        "items": [_trade_response(t, settlements.get(t.id)) for t in rows],
     }
 
 
@@ -431,6 +463,11 @@ def get_backends():
 
 @router.post("/account/toggle")
 def toggle_account(body: ToggleBody, db: Session = Depends(get_db)):
+    with ACCOUNT_LOCK:
+        return _toggle_account(body, db)
+
+
+def _toggle_account(body: ToggleBody, db: Session):
     acc = db.query(PaperTradingAccount).first()
     if not acc:
         raise api_error(404, "paper_trading_account_not_found", "模拟盘账户不存在")
@@ -453,12 +490,18 @@ async def close_position(position_id: int):
     result = await ENGINE.close_position_manual_async(position_id)
     if not result.get("ok"):
         logger.warning("模拟盘手动平仓失败: %s", result.get("error"))
-        raise api_error(400, "paper_trading_close_failed", "模拟盘平仓失败")
+        raise api_error(400, result.get("error_code") or "paper_trading_close_failed",
+                        result.get("error") or "模拟盘平仓失败")
     return {"ok": True}
 
 
 @router.post("/account/settings")
 def update_settings(body: UpdateSettingsBody, db: Session = Depends(get_db)):
+    with ACCOUNT_LOCK:
+        return _update_settings(body, db)
+
+
+def _update_settings(body: UpdateSettingsBody, db: Session):
     acc = db.query(PaperTradingAccount).first()
     if not acc:
         raise api_error(404, "paper_trading_account_not_found", "模拟盘账户不存在")
