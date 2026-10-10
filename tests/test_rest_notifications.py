@@ -68,7 +68,7 @@ def test_real_gateway_receives_versioned_unicode_envelope():
         assert send(config) == {"success": True}
     headers, body = calls[0]
     event = json.loads(body)
-    assert set(event) == {'schema_version', 'source', 'event_id', 'timestamp', 'title', 'content', 'format'}
+    assert set(event) == {'schema_version', 'source', 'event_id', 'delivery_id', 'timestamp', 'title', 'content', 'format'}
     assert event['source'] == 'PanWatch' and event['schema_version'] == 1
     assert event['content'] == '**Price** ¥12\nCafé' and event['format'] == 'markdown'
     assert event['title'] == '盯盘 📈' and event['timestamp'].endswith('Z')

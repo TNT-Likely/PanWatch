@@ -334,7 +334,7 @@ class NotifierManager:
             if not apprise_ok:
                 errors.append(last_err or "Apprise 通知发送失败")
 
-        # One immutable envelope per logical send, reused for all policy retries.
+        # One logical event; each destination gets its own stable delivery identity.
         envelope = None
         rest_failure = {}
 
@@ -342,6 +342,7 @@ class NotifierManager:
         for ch_type, config in self._custom_channels:
             ch_ok = False
             last_err = ""
+            delivery = None
             channel_retries = (0 if managed_delivery else min(retry_attempts, 2)) if ch_type == "custom_rest" else retry_attempts
             for attempt in range(0, channel_retries + 1):
                 retry_after = 0.0
@@ -351,10 +352,14 @@ class NotifierManager:
                         content if ch_type in _MARKDOWN_CHANNELS else plain_content
                     )
                     if ch_type == "custom_rest":
-                        from src.platform.notifications.custom_rest import notification_envelope, publish_notification
+                        from src.platform.notifications.custom_rest import destination_envelope, notification_envelope, publish_notification
                         if envelope is None:
                             envelope = notification_envelope(title, content, message_id=message_id, occurred_at=occurred_at)
-                        await publish_notification(config, envelope)
+                        if delivery is None:
+                            # The durable outbox already persisted a per-channel
+                            # ID. Keep it even if an operator repairs the config.
+                            delivery = envelope if managed_delivery else destination_envelope(envelope, config)
+                        await publish_notification(config, delivery)
                     else:
                         await self._send_custom(ch_type, config, title, ch_content)
                     ch_ok = True

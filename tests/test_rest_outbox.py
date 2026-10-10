@@ -67,3 +67,41 @@ def test_recovered_lease_reuses_same_gateway_id(factory):
         asyncio.run(AlertDeliveryWorker(factory).drain(limit=1))
         import json
         assert json.loads(calls[0][1])['event_id'] == claim['event_id']
+
+
+def test_shared_gateway_outbox_destinations_keep_persisted_ids_after_config_repair(factory, tmp_path):
+    import json
+    import sqlite3
+    from test_rest_boundaries import durable_gateway
+
+    with durable_gateway(tmp_path / 'gateway.db') as (origin, calls):
+        rule_id = seed(factory, channels=2)
+        with factory() as db:
+            for channel in db.query(NotifyChannel).all():
+                channel.type = 'custom_rest'
+                channel.config = {'endpoint_url': f'{origin}/chat-{channel.id}'}
+            db.commit()
+        hit(factory, rule_id)
+        with factory() as db:
+            expected = {row.event_id for row in db.query(PriceAlertDelivery).all()}
+        assert asyncio.run(AlertDeliveryWorker(factory).drain(limit=2)) == {'processed': 2}
+        assert len(calls) == 2
+        events = [json.loads(call[2]) for call in calls]
+        assert {event['delivery_id'] for event in events} == expected
+        assert all(event['delivery_id'] == event['event_id'] for event in events)
+        with factory() as db:
+            for row in db.query(PriceAlertDelivery).all():
+                assert row.status == 'retry' and row.attempts == 1
+                channel = db.get(NotifyChannel, row.channel_id)
+                channel.config = {'endpoint_url': f'{origin}/repaired-chat-{channel.id}', 'timeout_seconds': '7'}
+                db.commit()
+                retry_delivery(db, row.id)
+        # New worker simulates a process restart; no new identity from either
+        # retry or the repaired config, even after an ambiguous first response.
+        assert asyncio.run(AlertDeliveryWorker(factory).drain(limit=2)) == {'processed': 2}
+        assert len(calls) == 4
+        assert [call[1:] for call in calls[:2]] == [call[1:] for call in calls[2:]]
+        with sqlite3.connect(tmp_path / 'gateway.db') as db:
+            assert db.execute('SELECT count(*) FROM events').fetchone()[0] == 2
+        with factory() as db:
+            assert all(row.status == 'delivered' and row.attempts == 2 for row in db.query(PriceAlertDelivery).all())

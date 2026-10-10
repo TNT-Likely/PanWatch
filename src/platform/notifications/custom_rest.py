@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -14,6 +15,10 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
+
+from src.platform.observability.log_context import redact_http_logs
+
+logger = logging.getLogger(__name__)
 
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_RETRY_AFTER = 30.0
@@ -84,14 +89,28 @@ def notification_envelope(title: str, content: str, *, message_id: str | None = 
         timestamp = timestamp.replace(tzinfo=UTC)
     def clean(value: str) -> str:
         return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", value)
-    return {"schema_version": 1, "event_id": identifier,
+    return {"schema_version": 1, "event_id": identifier, "delivery_id": identifier,
             "timestamp": timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z"),
             "source": "PanWatch", "title": clean(title), "content": clean(content),
             "format": "markdown"}
 
 
+def destination_envelope(envelope: dict, config: dict) -> dict:
+    """Scope a generic event to one destination, without resolving credentials.
+
+    Routing is defined by the endpoint and auth reference. Timeout, CA changes
+    and credential rotation do not create a new delivery. Durable outbox rows
+    already have per-channel identities and must not be scoped again.
+    """
+    cfg = validate_config(config)
+    identity = json.dumps([envelope["source"], envelope["event_id"],
+                           cfg["endpoint_url"], cfg.get("token_env") or ""],
+                          separators=(",", ":"))
+    return {**envelope, "delivery_id": "destination-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()}
+
+
 def publication_id(envelope: dict) -> str:
-    identity = json.dumps([envelope["source"], envelope["event_id"]], separators=(",", ":"))
+    identity = json.dumps([envelope["source"], envelope["delivery_id"]], separators=(",", ":"))
     return "panwatch-v1-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
@@ -139,16 +158,21 @@ async def publish_notification(config: dict, envelope: dict) -> None:
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
-        async with asyncio.timeout(timeout):
-            async with httpx.AsyncClient(verify=context, trust_env=False, follow_redirects=False,
-                                         timeout=timeout) as client:
-                async with client.stream("POST", cfg["endpoint_url"], content=payload, headers=headers) as response:
-                    if 200 <= response.status_code < 300:
-                        return
-                    status = response.status_code
-                    raise PublishError(f"REST gateway returned HTTP {status}",
-                                       retryable=status == 429 or 500 <= status < 600,
-                                       retry_after=retry_after_seconds(response.headers.get("Retry-After")) if status == 429 else 0)
+        # httpcore DEBUG traces include raw response headers, and httpx includes
+        # the reason phrase. Redact only this task's transport records before
+        # any handler (including the production DEBUG database sink) sees them.
+        with redact_http_logs():
+            async with asyncio.timeout(timeout):
+                async with httpx.AsyncClient(verify=context, trust_env=False, follow_redirects=False,
+                                             timeout=timeout) as client:
+                    async with client.stream("POST", cfg["endpoint_url"], content=payload, headers=headers) as response:
+                        status = response.status_code
+                        logger.debug("REST gateway returned HTTP %d", status)
+                        if 200 <= status < 300:
+                            return
+                        raise PublishError(f"REST gateway returned HTTP {status}",
+                                           retryable=status == 429 or 500 <= status < 600,
+                                           retry_after=retry_after_seconds(response.headers.get("Retry-After")) if status == 429 else 0)
     except PublishError:
         raise
     except (httpx.RequestError, TimeoutError):

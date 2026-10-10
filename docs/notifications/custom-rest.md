@@ -49,7 +49,11 @@ Its success verifies gateway acceptance, not a Telegram message reaching you.
 - No arbitrary methods, headers, body templates, credential-in-URL options or
   insecure TLS switch. Requests ignore ambient proxy settings and credentials.
   This limits accidental routing or credential leakage. Gateway error response
-  bodies are not downloaded or logged; diagnostics omit tokens and headers.
+  bodies are not downloaded or logged. This publisher's HTTP trace records are
+  redacted before reaching any log handler, including the production DEBUG
+  database sink; only transport phases and numeric status diagnostics remain.
+  Tokens, response cookies, headers and reason phrases are omitted. Concurrent
+  HTTP requests from other providers retain their existing logging behavior.
 
 Existing API authentication/settings controls remain in force. Creation, update,
 self-check, template import and runtime use the same validation. Template imports
@@ -62,7 +66,7 @@ imports. Exports contain environment names only, never resolved secrets.
 POST /v1/events
 Content-Type: application/json
 Authorization: Bearer <resolved token, if configured>
-Idempotency-Key: panwatch-v1-<sha256 of compact JSON [source,event_id]>
+Idempotency-Key: panwatch-v1-<sha256 of compact JSON [source,delivery_id]>
 ```
 
 ```json
@@ -70,6 +74,7 @@ Idempotency-Key: panwatch-v1-<sha256 of compact JSON [source,event_id]>
   "schema_version": 1,
   "source": "PanWatch",
   "event_id": "price-alert:42:7:5fd642de22b54b0d87e28bb22150d316",
+  "delivery_id": "price-alert:42:7:5fd642de22b54b0d87e28bb22150d316",
   "timestamp": "2026-10-10T12:30:00Z",
   "title": "Price alert",
   "content": "**Example** crossed your target.",
@@ -84,14 +89,42 @@ must safely adapt the indicated Markdown to its Telegram parse mode and split
 long messages within Telegram limits. `source` is a label, not authentication;
 validate tokens and their allowed sources at the gateway.
 
+### Logical events and destination-specific deliveries
+
+`event_id` identifies the logical send; generic sends selected for multiple REST
+channels share that event ID and timestamp. `delivery_id` identifies an intended
+delivery and is the deduplication identity. Never deduplicate globally on
+`event_id` alone: distinct routes on one gateway must each enqueue a delivery.
+
+For generic sends, `delivery_id` is `destination-` plus SHA-256 of UTF-8 compact
+JSON `[source,event_id,endpoint_url,token_env]`, using validated/trimmed config and
+an empty string for absent `token_env`. Different endpoint paths or auth
+references yield distinct deliveries even if they share one gateway database.
+The actual token value is never part of the envelope or identity. Changing only
+the timeout, CA reference or token value preserves the identity; changing an
+endpoint or auth reference selects a different destination. Identical destination
+configurations intentionally deduplicate. Policy retries reuse the exact body
+and key, independent of channel order.
+
+Price-alert outbox rows already persist a unique event ID per channel. Their
+`delivery_id` equals that persisted `event_id`, keeping both identity and timestamp
+stable across new worker instances, expired leases, manual replay and channel
+configuration repairs. Repairing an outbox channel does not create a second
+logical delivery for a record the gateway already accepted.
+
+This is the corrected version-1 contract for this draft feature. Gateways built
+against the earlier draft must use `delivery_id` (or the new header derivation)
+instead of a global `(source,event_id)` constraint before enabling multiple
+REST destinations on a shared gateway.
+
 ### Required gateway behavior
 
 1. Authenticate and validate the complete event before accepting it.
 2. Atomically insert a durable queue record and a uniqueness constraint on
-   `(source, event_id)` (or the equivalent `Idempotency-Key`). Commit this before
+   `(source, delivery_id)` (or the equivalent `Idempotency-Key`). Commit this before
    returning **202 Accepted**. All 2xx statuses count as acceptance to PanWatch,
    so never return any 2xx before your intended durable acceptance boundary.
-3. If the same event was already accepted, return 2xx without creating another
+3. If the same delivery was already accepted, return 2xx without creating another
    delivery. Retain deduplication records for at least the full replay horizon,
    including operator-initiated retries; do not rely on a short in-memory cache.
 4. Drain the queue independently, handle Telegram rate limits and failures, and
@@ -109,9 +142,9 @@ can still cause a duplicate. Do not claim end-to-end exactly-once guarantees.
 - 5xx, network errors and timeouts: transient.
 - Other statuses, including 3xx, 401/403 and other 4xx: fail without blind retry.
   Fix URL/auth/payload/gateway configuration, then explicitly retry as needed.
-- Generic notification sends reuse one immutable event across notification-policy
-  retries, capped at two additional attempts. Normal backoff is bounded at 2 then
-  4 seconds; a bounded 429 delay can take precedence. There is no hidden HTTP
+- Generic notification sends reuse one immutable per-destination delivery across
+  notification-policy retries, capped at two additional attempts. Normal backoff
+  is bounded at 2 then 4 seconds; a bounded 429 delay can take precedence. There is no hidden HTTP
   client retry layer. Existing quiet-hour policy and other providers are unchanged.
 - Durable price-alert deliveries perform exactly one HTTP attempt per existing
   outbox attempt, avoiding multiplied retry budgets. Outbox backoff starts at 30
@@ -134,7 +167,7 @@ broker deployment or gateway implementation is introduced. On upstream sync,
 check those seams and run:
 
 ```sh
-python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_monitoring_delivery.py tests/test_template_import.py
+python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_rest_boundaries.py tests/test_monitoring_delivery.py tests/test_template_import.py
 cd frontend
 pnpm run test --run tests/settings/custom-rest-channel.test.tsx
 ```
