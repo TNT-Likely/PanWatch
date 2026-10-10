@@ -202,7 +202,7 @@ export default function StockPriceAlertPanel(props: {
       cooldown_minutes: r.cooldown_minutes ?? 30,
       max_triggers_per_day: r.max_triggers_per_day ?? 3,
       repeat_mode: r.repeat_mode || 'repeat',
-      expire_at: r.expire_at ? r.expire_at.slice(0, 16) : '',
+      expire_at: r.expire_at || '',
       notify_channel_ids: r.notify_channel_ids || [],
     })
     setFormOpen(true)
@@ -314,7 +314,7 @@ export default function StockPriceAlertPanel(props: {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => openEdit(r)}><Pencil className="w-3 h-3" /></Button>
+                        <Button variant="secondary" size="sm" className="h-7 px-2" aria-label={tr('editTitle')} onClick={() => openEdit(r)}><Pencil className="w-3 h-3" /></Button>
                         <Button variant={r.enabled ? 'destructive' : 'default'} size="sm" className="h-7 px-2.5" onClick={() => toggleRule(r)}>{r.enabled ? tr('disable') : tr('enable')}</Button>
                         <Button variant="secondary" size="sm" className="h-7 px-2" onClick={() => removeRule(r)}><Trash2 className="w-3 h-3" /></Button>
                       </div>

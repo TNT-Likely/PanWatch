@@ -76,12 +76,18 @@ The screenshots below use the English interface; Simplified Chinese is available
 docker run -d \
   --name panwatch \
   --restart unless-stopped \
+  -e TZ=Asia/Shanghai \
   -p 8000:8000 \
   -v panwatch_data:/app/data \
   sunxiao0721/panwatch:latest
 ```
 
 Open `http://localhost:8000` and create your login credentials.
+
+Set `TZ` explicitly for background schedules and notification quiet hours, for example
+`-e TZ=UTC` or `-e TZ=America/New_York`. The image defaults to `Asia/Shanghai` and does
+not detect the host timezone. Interface timestamps and alert expiry inputs use the
+browser timezone. [Timezone policy](docs/timezones.md)
 
 <details>
 <summary>Initial setup</summary>
@@ -101,6 +107,8 @@ services:
   panwatch:
     image: sunxiao0721/panwatch:latest
     container_name: panwatch
+    environment:
+      TZ: "Asia/Shanghai"
     ports:
       - "8000:8000"
     volumes:
@@ -114,6 +122,10 @@ volumes:
 ```bash
 docker compose up -d
 ```
+
+Change `environment.TZ` to your IANA timezone and run `docker compose up -d` to recreate
+the container. Review existing cron and quiet-hour wall times before changing it;
+the same `09:00` schedule will run at a different instant. Keep the data volume.
 
 </details>
 
@@ -186,7 +198,7 @@ Select the brain icon beside a holding to start TradingAgents deep analysis. Fou
 | `AUTH_PASSWORD` | Preconfigured login password | Set on first visit |
 | `JWT_SECRET` | Secret used to sign JWTs | Generated automatically |
 | `DATA_DIR` | Data storage directory | `./data` |
-| `TZ` | Application timezone for Agent schedules; market-calendar times follow the browser timezone | `Asia/Shanghai` |
+| `TZ` | Deployment timezone for Agent schedules and notification quiet hours; interface display/input use the browser timezone | `Asia/Shanghai` |
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | Skip the initial Chromium installation when browser features are not required | Not set |
 | `LOG_LEVEL` | Console log level. `INFO` prints business events and errors; use `DEBUG` for scheduler heartbeats, collection steps, and other diagnostics. The UI log panel always retains the complete log. | `INFO` |
 | `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` | Outbound HTTP proxy. Configure it through an external environment variable, `http_proxy=http://host:port` in `.env`, or **Settings → Global HTTP Proxy**. Priority: external environment variables > UI > `.env`. `NO_PROXY` includes `localhost,127.0.0.1` by default. | Not set |

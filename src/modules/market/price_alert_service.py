@@ -65,11 +65,13 @@ def validate_condition_group(group: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_expire_at(value: str | datetime | None) -> datetime | None:
-    """Parse the ISO-8601 expiry accepted by both API and agent callers."""
+    """Require a timezone on external strings; internal naive datetimes are UTC."""
     if value in (None, ""):
         return None
     try:
         parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if not isinstance(value, datetime) and parsed.tzinfo is None:
+            raise ValueError("expire_at must include Z or a UTC offset")
         # SQLite stores naive UTC; expiry must use the same instant as the engine.
         return parsed.astimezone(UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
     except (TypeError, ValueError) as exc:

@@ -12,10 +12,11 @@
     "check:i18n": "node scripts/check-i18n-literals.mjs && node scripts/check-ui-primitives.mjs",
     "check:market-colors": "node scripts/check-market-colors.mjs",
     "dev": "vite",
-    "build": "node scripts/check-ui-primitives.mjs && tsc -b && vite build",
+    "build": "node scripts/check-ui-primitives.mjs && node scripts/check-timezones.mjs && tsc -b && vite build",
     "test": "vitest",
     "preview": "vite preview",
-    "check:ui": "node scripts/check-ui-primitives.mjs"
+    "check:ui": "node scripts/check-ui-primitives.mjs",
+    "check:timezones": "node scripts/check-timezones.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

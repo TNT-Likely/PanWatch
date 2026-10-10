@@ -1942,7 +1942,7 @@ function DeepAnalysisSection({
     <div className="space-y-3 text-[13px]">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] text-muted-foreground">
-          {tr('deep.title')}{result?.timestamp ? ` · ${result.timestamp.slice(0, 16).replace('T', ' ')}` : ''}
+          {tr('deep.title')}
         </div>
         <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={onRefresh} disabled={loading || historyLoading}>
           <RefreshCw className={`w-3.5 h-3.5 ${loading || historyLoading ? 'animate-spin' : ''}`} />

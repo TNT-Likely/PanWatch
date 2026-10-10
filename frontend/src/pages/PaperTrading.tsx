@@ -1,4 +1,5 @@
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
+import { localDateForInstant } from '@panwatch/base-ui'
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
@@ -613,7 +614,7 @@ export default function PaperTradingPage() {
                         <td className="py-2 px-2 text-xs">{tr(`exitReasons.${t.exit_reason}`, { defaultValue: t.exit_reason })}</td>
                         <td className="py-2 px-2 text-xs text-muted-foreground">{t.strategy_code || '-'}</td>
                         <td className="text-right py-2 px-2">{tr('days', { count: t.holding_days })}</td>
-                        <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{t.closed_at?.slice(0, 10) || '-'}</td>
+                        <td className="text-right py-2 pl-2 text-xs text-muted-foreground">{localDateForInstant(t.closed_at) || '-'}</td>
                       </tr>
                     ))}
                   </tbody>

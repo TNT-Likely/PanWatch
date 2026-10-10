@@ -1373,7 +1373,7 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
                     },
                     "expire_at": {
                         "type": ["string", "null"],
-                        "description": "ISO-8601 到期时间；传 null 清除到期时间",
+                        "description": "ISO-8601 到期时间，必须带 Z 或明确时区偏移；传 null 清除到期时间",
                     },
                 },
             },
