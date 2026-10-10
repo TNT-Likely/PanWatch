@@ -1,7 +1,7 @@
-name: TradingAgents fork contracts
+name: TradingAgents source contracts
 on:
   pull_request:
-    paths: ['.github/workflows/tradingagents-fork.yml', 'src/modules/automation/tradingagents/**', 'tests/test_tradingagents*.py', 'tests/test_ta*.py', 'requirements*.txt']
+    paths: ['.github/workflows/tradingagents-fork.yml', 'src/modules/automation/tradingagents/**', 'tests/test_tradingagents*.py', 'tests/test_ta*.py', 'requirements*.txt', 'Dockerfile', 'scripts/prepare-tradingagents-requirements.py']
 permissions:
   contents: read
 concurrency:
@@ -12,15 +12,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        layout: [fork, official]
+        include:
+          - layout: official
+            source: ''
+          - layout: custom
+            source: git+https://github.com/idkwhodatis/TradingAgents.git@c12865ae3d4be7790853a1e047d067a0a9931821
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements.txt
-      - name: Install official compatibility baseline
-        if: matrix.layout == 'official'
-        run: python -m pip install --force-reinstall --no-deps 'tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.5.0'
+      - name: Prepare selected runtime manifest
+        env:
+          TRADINGAGENTS_SOURCE: ${{ matrix.source }}
+        run: python scripts/prepare-tradingagents-requirements.py
+      - run: python -m pip install -r .requirements-custom.txt pytest
       - name: Installed wrapper contracts
         run: python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py
+      - name: Build selected Python dependency stage
+        env:
+          TRADINGAGENTS_SOURCE: ${{ matrix.source }}
+        run: docker build --target python-builder --build-arg TRADINGAGENTS_SOURCE -t panwatch-dependencies .

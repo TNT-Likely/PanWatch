@@ -228,6 +228,9 @@ python server.py                              # Backend on :8000
 cd frontend && pnpm install && pnpm dev       # Frontend on :5183
 ```
 
+Optional: [choose a custom TradingAgents installation/build source](docs/tradingagents-source.md). The default stays official v0.5.0.
+
+
 The frontend development server runs at `http://localhost:5183` and proxies `/api` to `127.0.0.1:8000`.
 
 

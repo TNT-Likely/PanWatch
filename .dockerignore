@@ -43,3 +43,5 @@ docs/
 .env
 .env.*
 *.log
+# Build creates its selected manifest from the validated ARG.
+.requirements-*.txt

@@ -32,12 +32,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-runtime.txt ./
+COPY scripts/prepare-tradingagents-requirements.py ./scripts/
+ARG TRADINGAGENTS_SOURCE=""
 COPY packages/ ./packages/
 
 # 本地开发保留 editable 安装；镜像内安装正常包，不依赖源码目录。
 # 不预编译字节码，避免把 .pyc 缓存打进镜像。
-RUN sed 's/^-e //' requirements-runtime.txt > /tmp/requirements-runtime.txt \
-    && pip install --no-cache-dir --no-compile --prefix=/install -r /tmp/requirements-runtime.txt
+RUN python scripts/prepare-tradingagents-requirements.py --non-editable \
+    && pip install --no-cache-dir --no-compile --prefix=/install -r .requirements-custom.txt
 
 
 # ===== Stage 3: Python 运行环境 =====

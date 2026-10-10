@@ -224,6 +224,9 @@ python server.py                              # 后端 :8000
 cd frontend && pnpm install && pnpm dev       # 前端 :5183
 ```
 
+可选：[自定义 TradingAgents 安装/构建来源](docs/tradingagents-source.md)，默认仍为官方 v0.5.0。
+
+
 前端 dev server 跑在 `http://localhost:5183`，并把 `/api` 代理到 `127.0.0.1:8000`。
 
 [前端 UI 约定与检查](frontend/UI_GUIDELINES.zh-CN.md)

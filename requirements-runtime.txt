@@ -25,10 +25,11 @@ xhtml2pdf>=0.2.17
 # 不在 PyPI,用 git+ URL 安装。会拉 langchain/langgraph/yfinance 等较重依赖
 # (~115 个包,首次安装 2-5 分钟)。
 # 用户启用「TradingAgents 深度分析」Agent 时才会真正调用它;不启用零开销。
-# 锁定用户 fork 的已验证 commit (0.6.0)，避免跟随 main 漂移。
+# 默认锁定官方 v0.5.0 release commit，避免同名分支歧义；
+# 自定义安装来源见 docs/tradingagents-source.md。
 # upstream_compat 仅隔离 0.5/0.6 模块布局；portfolio 和工具签名由契约测试保护。
 # REVIEW 不是可交易的 Hold，必须由 result_mapper 显式展示为“待人工复核”。
-tradingagents @ git+https://github.com/idkwhodatis/TradingAgents.git@c12865ae3d4be7790853a1e047d067a0a9931821
+tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@2d17df8da1536c121e4d7395ac5a5dcec9e96d6f
 
 # 本仓内独立行情数据包(editable 本地安装;发 PyPI 前不占外部依赖)
 -e ./packages/marketdata

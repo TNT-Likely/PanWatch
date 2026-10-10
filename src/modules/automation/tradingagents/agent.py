@@ -478,11 +478,12 @@ class TradingAgentsAgent(BaseAgent):
         try:
             import tradingagents  # noqa: F401
             from tradingagents.graph.trading_graph import TradingAgentsGraph  # noqa: F401
+            from .upstream_compat import validate_upstream_contract
+            validate_upstream_contract()
         except ImportError as e:
             return False, (
-                "tradingagents 未安装。运行 `pip install -r requirements.txt` "
-                "(或单独 `pip install \"tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git\"`)。"
-                "公司代理下若失败,临时 `env -u HTTP_PROXY -u HTTPS_PROXY pip install -r requirements.txt`。"
+                "tradingagents 未安装、依赖不完整或来源 API 不兼容。运行 `pip install -r requirements.txt` "
+                "恢复默认依赖；自定义来源见 docs/tradingagents-source.md。"
                 f"原始错误: {e}"
             )
         except Exception as e:
