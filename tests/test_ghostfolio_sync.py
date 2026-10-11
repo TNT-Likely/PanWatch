@@ -1,0 +1,114 @@
+"""Ghostfolio 单向同步:map_market / compute_holdings 纯函数 + sync_now DB 往返。"""
+
+from src.modules.ghostfolio.service import compute_holdings, map_market
+
+EXPORT = {
+    "accounts": [
+        {"id": "a1", "name": "Stake", "currency": "AUD"},
+        {"id": "a2", "name": "CommSec", "currency": "AUD"},
+        {"id": "a3", "name": "IBKR", "currency": "HKD"},
+    ],
+    "activities": [
+        {"accountId": "a1", "type": "BUY", "quantity": "10", "unitPrice": "100", "fee": "5",
+         "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
+                           "name": "Commonwealth Bank of Australia", "currency": "AUD"}},
+        {"accountId": "a1", "type": "DIVIDEND", "quantity": "0", "unitPrice": "42", "fee": "0",
+         "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
+                           "name": "Commonwealth Bank of Australia", "currency": "AUD"}},
+        {"accountId": "a1", "type": "BUY", "quantity": "3.5", "unitPrice": "98.6", "fee": "0",
+         "symbolProfile": {"symbol": "IVV.AX", "dataSource": "YAHOO",
+                           "name": "iShares S&P 500 ETF", "currency": "AUD"}},
+        {"accountId": "a2", "type": "BUY", "quantity": "2", "unitPrice": "190", "fee": "0",
+         "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "name": "Apple Inc.", "currency": "USD"}},
+        {"accountId": "a2", "type": "SELL", "quantity": "1", "unitPrice": "210", "fee": "0",
+         "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "name": "Apple Inc.", "currency": "USD"}},
+        {"accountId": "a2", "type": "BUY", "quantity": "0.05", "unitPrice": "65000", "fee": "0",
+         "symbolProfile": {"symbol": "BTC", "dataSource": "COINGECKO", "name": "Bitcoin", "currency": "USD"}},
+        {"accountId": "a3", "type": "BUY", "quantity": "100", "unitPrice": "38.5", "fee": "0",
+         "symbolProfile": {"symbol": "0700.HK", "dataSource": "YAHOO",
+                           "name": "Tencent Holdings", "currency": "HKD"}},
+    ],
+}
+
+
+def test_map_market():
+    assert map_market("CBA.AX", "YAHOO") == "AU"
+    assert map_market("0700.HK", "YAHOO") == "HK"
+    assert map_market("AAPL", "YAHOO") == "US"
+    assert map_market("BTC", "COINGECKO") is None
+
+
+def test_compute_holdings():
+    holdings = compute_holdings(EXPORT)
+    cba = holdings[("Stake", "CBA", "AU")]
+    assert cba.quantity == 10 and cba.cost == 1005.0  # fee included, DIVIDEND ignored
+    ivv = holdings[("Stake", "IVV", "AU")]
+    assert ivv.quantity == 3.5 and abs(ivv.cost - 345.1) < 1e-9
+    aapl = holdings[("CommSec", "AAPL", "US")]
+    assert aapl.quantity == 1 and aapl.cost == 190.0  # avg-cost 减记卖出
+    assert ("CommSec", "BTC", "US") not in holdings  # COINGECKO skipped
+    # Ruling 1: Ghostfolio .HK 基码补零到 5 位(PanWatch 港股约定 00700)
+    tencent = holdings[("IBKR", "00700", "HK")]
+    assert tencent.quantity == 100
+
+
+def _make_db(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from src.platform.persistence.models import Account, GhostfolioConfig, Position, Stock
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'gf.db'}")
+    Account.__table__.create(engine)
+    Stock.__table__.create(engine)
+    Position.__table__.create(engine)
+    GhostfolioConfig.__table__.create(engine)
+    return sessionmaker(bind=engine)(), engine
+
+
+def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
+    from src.modules.ghostfolio import service
+    from src.platform.persistence.models import Account, Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok"))
+        db.commit()
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+
+        res = service.sync_now(db)
+        assert res.accounts == 3 and res.created == 4 and res.removed == 0
+
+        names = {a.name for a in db.query(Account).all()}
+        assert names == {"GF: Stake", "GF: CommSec", "GF: IBKR"}
+
+        cba = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
+        assert cba.quantity == 10 and abs(cba.cost_price - 100.5) < 1e-9
+        ivv = db.query(Position).join(Stock).filter(Stock.symbol == "IVV").one()
+        assert ivv.quantity == 3.5
+        aapl = db.query(Position).join(Stock).filter(Stock.symbol == "AAPL").one()
+        assert aapl.quantity == 1
+        tencent = db.query(Position).join(Stock).filter(Stock.symbol == "00700").one()
+        assert tencent.quantity == 100
+        assert db.query(Stock).filter_by(symbol="IVV", market="AU").one().name == "iShares S&P 500 ETF"
+
+        # 幂等重跑:全部 update,无新增
+        res2 = service.sync_now(db)
+        assert res2.created == 0 and res2.updated == 4 and res2.removed == 0
+
+        # 移除腿:导出里不再有 IVV → 其持仓删除,CBA 不受影响
+        export_no_ivv = {
+            "accounts": EXPORT["accounts"],
+            "activities": [a for a in EXPORT["activities"]
+                           if (a.get("symbolProfile") or {}).get("symbol") != "IVV.AX"],
+        }
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: export_no_ivv)
+        res3 = service.sync_now(db)
+        assert res3.removed == 1
+        assert db.query(Position).join(Stock).filter(Stock.symbol == "IVV").count() == 0
+        assert db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one().quantity == 10
+
+        cfg = service.get_or_create_config(db)
+        assert cfg.last_status == "ok"
+    finally:
+        db.close()
+        engine.dispose()

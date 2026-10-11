@@ -1472,3 +1472,20 @@ class MCPCallLog(Base):
     duration_ms = Column(Integer, default=0)
     client_ip = Column(String, nullable=True)
     called_at = Column(DateTime, server_default=func.now())
+
+
+class GhostfolioConfig(Base):
+    """Ghostfolio 只读同步配置(单向:Ghostfolio → PanWatch)"""
+
+    __tablename__ = "ghostfolio_configs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    base_url = Column(String, nullable=False)        # 如 http://192.168.0.158:3334
+    api_token = Column(String, nullable=False)       # 只读 PAT,仅用于 GET /api/v1/export
+    account_prefix = Column(String, default="GF: ")  # 只托管该前缀的账户
+    sync_cron = Column(String, default="17 8 * * *")  # 容器时区(缺省每日 08:17)
+    enabled = Column(Boolean, default=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_status = Column(String, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
