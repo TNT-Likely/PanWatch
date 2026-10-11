@@ -53,7 +53,7 @@ def test_deep_analysis_cache_uses_qualified_canadian_identity(monkeypatch):
     requested = []
     history = SimpleNamespace(title='Canadian report', content='Canadian evidence', raw_data={'market': 'TSX'})
     monkeypatch.setattr(module, 'get_analysis', lambda **kwargs: (requested.append(kwargs['stock_symbol']), history)[1])
-    stock = SimpleNamespace(symbol='RY', market=MarketCode.TSX, name='Royal Bank')
+    stock = SimpleNamespace(symbol='RY', market=MarketCode.TSX, name='Royal Bank', asset_type='stock')
     assert agent._try_cache_hit(stock).content == 'Canadian evidence'
     assert requested == ['TSX:RY']
     assert agent._try_cache_hit(SimpleNamespace(symbol='RY', market=MarketCode.US, name='US Royal Bank')) is None

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
+from src.platform.marketdata.instruments import AssetType, infer_asset_type
 from src.web.errors import api_error
 from src.platform.persistence.models import (
     AIModel,
@@ -92,6 +93,7 @@ class TemplateStock(BaseModel):
     symbol: str
     name: str
     market: str
+    asset_type: AssetType | None = None
     sort_order: int = 0
     agents: list[TemplateStockAgent] = Field(default_factory=list)
 
@@ -107,6 +109,7 @@ class TemplatePosition(BaseModel):
     symbol: str
     name: str
     market: str
+    asset_type: AssetType | None = None
     cost_price: float
     quantity: float = Field(gt=0, allow_inf_nan=False)
     invested_amount: float | None = None
@@ -321,6 +324,7 @@ def export_template(
                     "symbol": stock.symbol,
                     "name": stock.name,
                     "market": stock.market,
+                    "asset_type": stock.asset_type,
                     "sort_order": int(stock.sort_order or 0),
                     "agents": [
                         {
@@ -359,6 +363,7 @@ def export_template(
                         "symbol": position.stock.symbol,
                         "name": position.stock.name,
                         "market": position.stock.market,
+                        "asset_type": position.stock.asset_type,
                         "cost_price": float(position.cost_price),
                         "quantity": float(position.quantity),
                         "invested_amount": position.invested_amount,
@@ -716,13 +721,16 @@ def import_template(
             .first()
         )
         if not stock:
-            stock = Stock(symbol=s.symbol, name=s.name, market=s.market)
+            stock = Stock(symbol=s.symbol, name=s.name, market=s.market,
+                          asset_type=infer_asset_type(s.name, s.asset_type))
             db.add(stock)
             db.flush()  # assign id
             created_stocks += 1
         else:
             updated_stocks += 1
             stock.name = s.name or stock.name
+            if s.asset_type is not None:
+                stock.asset_type = s.asset_type
         stock.sort_order = int(s.sort_order or 0)
 
         existing = db.query(StockAgent).filter(StockAgent.stock_id == stock.id).all()
@@ -816,12 +824,15 @@ def import_template(
                     symbol=position_data.symbol,
                     name=position_data.name,
                     market=position_data.market,
+                    asset_type=infer_asset_type(position_data.name, position_data.asset_type),
                 )
                 db.add(stock)
                 db.flush()
                 created_stocks += 1
             elif position_data.name:
                 stock.name = position_data.name
+            if position_data.asset_type is not None:
+                stock.asset_type = position_data.asset_type
 
             position_key = (position_data.market, position_data.symbol)
             position = existing_positions.get(position_key)

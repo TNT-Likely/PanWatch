@@ -17,6 +17,7 @@
           "symbol": "T",
           "name": "TELUS",
           "market": "TSX",
+          "asset_type": "stock",
           "cost_price": 10.0,
           "quantity": 1.5,
           "invested_amount": null,

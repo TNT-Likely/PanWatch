@@ -1,4 +1,241 @@
 export const bizUi = {
+  tour: {
+  "title": "新手操作引导",
+  "welcome": "跟着高亮提示完成一条连贯流程：添加自选、查看行情、连接 AI 并生成第一份分析，然后按需设置提醒和通知。高亮区域可以直接点击，随时可暂停。",
+  "flow": "完整操作流程",
+  "start": "开始操作引导",
+  "progress": "第 {{current}} / {{total}} 步",
+  "pause": "暂停引导",
+  "back": "上一步",
+  "next": "下一步",
+  "skip": "跳过此步",
+  "finish": "完成引导",
+  "verified": "操作已完成，可以继续",
+  "actOnPage": "请点击高亮区域，在页面上完成这一步。",
+  "chooseExisting": "已有自选？选择一只继续",
+  "waiting": "正在寻找页面上的操作入口…",
+  "leftPage": "你已离开当前引导页面。进度已保存。",
+  "return": "回到当前步骤",
+  "openAnalysis": "打开首次分析",
+  "analysisNotReady": "请先查看行情，并在设置中测试默认模型。",
+  "doneTitle": "操作引导已完成",
+  "doneDescription": "你可以继续使用这些页面，也可以从「开始使用」重新打开引导。跳过的可选项随时可以在设置中补充。",
+  "doneAction": "开始使用",
+  "steps": {
+    "stock": {
+      "title": "先添加一只自选",
+      "description": "点击高亮的「添加自选」，搜索股票并确认添加。已有自选也可以直接选一只。"
+    },
+    "stockForm": {
+      "title": "搜索并确认添加",
+      "description": "输入代码或名称，选择搜索结果，再点击「确认添加」。保存后会进入行情步骤。"
+    },
+    "stockChoose": {
+      "title": "选择一只现有自选",
+      "description": "点击任意一张自选卡片或股票名称，用它完成这次体验。示例股票不会自动算作已选择。"
+    },
+    "quote": {
+      "title": "亲手刷新一次行情",
+      "description": "点击高亮的刷新按钮，获取刚才所选股票的真实行情。成功后会高亮对应卡片。"
+    },
+    "quoteRead": {
+      "title": "查看这只股票的行情",
+      "description": "这里显示价格和涨跌幅，点击股票名称还能打开详情。注意数据时间，休市期间可能显示最近交易日行情。点击下一步继续。"
+    },
+    "ai": {
+      "title": "连接并测试默认模型",
+      "description": "在这里添加 AI 服务商和模型，设置一个默认模型，再点击它旁边的测试按钮。已有默认模型可直接测试。"
+    },
+    "providerForm": {
+      "title": "填写服务商连接信息",
+      "description": "填写名称、接口地址和 API Key 后保存。接着为这个服务商添加模型。"
+    },
+    "modelForm": {
+      "title": "添加一个可用模型",
+      "description": "选择服务商并填写模型标识后保存，也可以从发现结果添加。返回列表，将模型设为默认并测试。"
+    },
+    "analysis": {
+      "title": "打开首次分析",
+      "description": "点击这个入口，在弹窗里确认生成。分析使用刚才验证的默认模型，不会自动启动。"
+    },
+    "analysisForm": {
+      "title": "生成并等待结果",
+      "description": "点击「生成首次分析」。这次会实际调用模型并产生用量，你也可以关闭弹窗，稍后回来查看。"
+    },
+    "analysisRead": {
+      "title": "阅读第一份分析",
+      "description": "结果保存在这里，附有模型和生成时间。阅读后点击下一步，去试试价格提醒。"
+    },
+    "alert": {
+      "title": "设置一个价格提醒",
+      "description": "点击「新建提醒」，为刚才的股票填写触发条件。这个步骤可选，也可以跳过。"
+    },
+    "alertForm": {
+      "title": "填写并保存提醒规则",
+      "description": "确认标的，填写规则名称、价格条件和通知渠道，然后保存。规则会实际生效，按你设置的条件监控。"
+    },
+    "notify": {
+      "title": "测试通知渠道",
+      "description": "在这里添加并启用通知渠道，再点击纸飞机测试按钮。这会发送一条真实测试消息；暂时不需要可以跳过。"
+    },
+    "channelForm": {
+      "title": "配置通知渠道",
+      "description": "选择渠道类型并填写接收端信息，保存后启用，再点击列表中的纸飞机按钮测试。"
+    }
+  }
+},
+  guideCenter: {
+  "title": "引导中心",
+  "description": "从第一次使用到进阶探索，所有操作引导都在这里。每条路线独立保存进度，完成后也可以再次体验。",
+  "mainTitle": "主流程：从自选到第一份 AI 分析",
+  "mainBadge": "首次自动进入 · 必做步骤不可跳过",
+  "mainDescription": "添加自选 → 查看行情 → 连接 AI → 生成分析。价格提醒和通知接在后面，可按需完成；整个流程可以暂停，稍后继续。",
+  "moreTitle": "继续探索",
+  "moreDescription": "进入真实页面跟着高亮提示操作。探索路线的进度表示已阅读提示；实际配置和执行仍由你在页面上确认。",
+  "replay": "再次体验",
+  "inProgress": "进行中",
+  "notStarted": "未开始",
+  "trackProgress": "已了解 {{done}} / {{total}} 步",
+  "explore": "开始探索",
+  "understood": "我已了解，继续",
+  "finishTrack": "完成并返回中心",
+  "closeDialog": "在这里完成操作，或关闭弹窗后继续引导。",
+  "explorationHint": "可以先尝试高亮控件，再确认已了解这一步。",
+  "tracks": {
+    "opportunities": {
+      "title": "发现与评估机会",
+      "description": "学会筛选候选、阅读信号依据，并在验证中心回看建议结果。",
+      "steps": {
+        "filters": {
+          "title": "筛选你关心的机会",
+          "description": "点击市场、来源、策略或风险筛选，再点击应用。没有候选时可放宽条件；候选由分析任务产生，不会因为进入引导而生成。"
+        },
+        "signals": {
+          "title": "阅读信号，再决定是否关注",
+          "description": "有候选时点击卡片查看股票详情，先看数据时间、依据、入场区间和失效条件，再主动添加自选。空列表表示当前没有匹配信号，可以继续了解验证中心。"
+        },
+        "evaluation": {
+          "title": "回看建议的后续表现",
+          "description": "使用这里的筛选查看历史建议及后续表现，点击有记录的行查看依据。没有已运行的分析时这里会为空；完成主流程后可回来继续查看。"
+        }
+      }
+    },
+    "paper": {
+      "title": "体验模拟盘",
+      "description": "认识模拟资金、市场分配、运行开关与持仓记录，按自己的选择启动。",
+      "steps": {
+        "capital": {
+          "title": "先查看模拟资金配置",
+          "description": "点击资金配置，查看总资金和 A 股、港股、美股分配比例。修改后需要主动保存；这是模拟账户，独立于实际持仓。"
+        },
+        "controls": {
+          "title": "了解模拟盘的运行开关",
+          "description": "这个开关控制模拟盘是否自动处理信号。确认资金配置后再决定是否启动；上方扫描按钮会处理当前信号，可能产生模拟交易。引导不会替你开启或扫描。"
+        },
+        "positions": {
+          "title": "查看持仓与交易记录",
+          "description": "这里展示模拟持仓、盈亏和可卖数量。有成交后可从上方查看已结束的交易。A 股遵守 T+1；没有信号或交易时列表为空，可以稍后回来。"
+        }
+      }
+    },
+    "assistant": {
+      "title": "使用研究助手",
+      "description": "从自己的问题开始，了解工具权限和后台任务，保留自己的执行选择。",
+      "steps": {
+        "composer": {
+          "title": "提出一个具体问题",
+          "description": "在输入框写下标的、时间范围和你关心的问题，也可以选取股票。点击发送才会实际调用模型；暂时没有模型时，先完成主流程中的 AI 连接。"
+        },
+        "context": {
+          "title": "查看助手的工具权限",
+          "description": "点击这个按钮查看可用工具及权限。涉及写入或其他需要确认的操作，助手会先请求审批；请阅读操作内容再决定是否允许。"
+        },
+        "activity": {
+          "title": "找到会话与进行中的任务",
+          "description": "这里可以返回会话列表、新建研究或查看当前上下文。发送问题后，任务进度和待审批操作会出现在会话中；离开页面后仍可以回来继续查看。"
+        }
+      }
+    },
+    "automation": {
+      "title": "配置日常分析任务",
+      "description": "认识执行时间、绑定标的与历史记录，再按需启用定时分析。",
+      "steps": {
+        "schedule": {
+          "title": "查看实际执行时间",
+          "description": "点击执行周期，查看时区和接下来运行时间，再按需要修改并保存。定时任务只有启用后才会运行，会使用所选模型额度。"
+        },
+        "binding": {
+          "title": "选择任务关注的标的",
+          "description": "点击绑定标的，再点击股票名称切换绑定状态，修改会立即保存。首次分析不会替你绑定或开启定时任务。"
+        },
+        "history": {
+          "title": "核对任务历史与结果",
+          "description": "在这里按任务类型或标的筛选运行记录，点击记录查看结果、模型和时间。尚未执行时列表为空；失败记录可用于检查模型与数据配置。"
+        }
+      }
+    },
+    "datasources": {
+      "title": "检查行情与研究数据源",
+      "description": "认识数据分类、优先级和连接测试，处理缺失数据时有地方可查。",
+      "steps": {
+        "catalog": {
+          "title": "按数据类别查找来源",
+          "description": "点击分类标题展开或收起。行情、K 线、新闻和基本面有各自的数据源；优先级较高的来源会优先尝试，失败后可能使用其他来源。"
+        },
+        "config": {
+          "title": "查看来源配置",
+          "description": "展开分类后点击设置，查看优先级、测试标的和必要的连接参数。需要密钥的来源由你填写并保存；无需密钥的内置来源也可以直接测试。"
+        },
+        "test": {
+          "title": "测试连接并阅读结果",
+          "description": "点击播放按钮测试已启用的来源，查看数据时间、返回数量和缺失明细。测试成功表示这次请求可用，其他市场或标的仍可能缺失；关闭结果弹窗后继续。"
+        }
+      }
+    }
+  }
+},
+  gettingStarted: {
+  title: '开始使用', description: '从一个关注的标的开始，亲手完成第一次行情查看和分析。进度会自动保存。',
+  bannerTitle: '让盯盘侠开始为你工作', bannerDescription: '跟着高亮提示，在真实页面上完成第一次操作。',
+  continue: '继续设置', start: '开始设置', later: '稍后处理', resume: '恢复引导', review: '查看开始指南',
+  progress: '已完成 {{done}} / {{total}} 个必要步骤', loading: '正在读取设置进度…', retry: '重试',
+  completed: '已完成', pending: '待完成', skipped: '稍后处理', optional: '可选', required: '必要',
+  quotesGoal: '先看行情', quotesGoalDesc: '无需 AI 服务，先关注标的、查看价格。',
+  aiGoal: '启用 AI 分析', aiGoalDesc: '在行情基础上连接模型，生成第一份分析。',
+  next: '下一步', backHome: '返回首页', doneTitle: '你已完成所选目标', doneDescription: '现在可以日常查看行情或分析。价格提醒和通知可以随时继续设置。',
+  chooseStock: '选择关注的标的', existingStocks: '从自选列表选择', stockPlaceholder: '请选择一个标的',
+  sampleHint: '首次启动的示例标的也可以选用；选择表示你确认关注它，无需录入持仓。',
+  search: '搜索并添加标的', searchPlaceholder: '输入名称或代码', market: '市场', markets: { CN: 'A 股', HK: '港股', US: '美股' },
+  searching: '搜索中…', noResults: '没有找到匹配标的，可在持仓页手动添加。', manageStocks: '管理或手动添加自选',
+  addStock: '添加并选择', currentStock: '当前标的：{{name}}（{{symbol}}）', selectFirst: '先选择一个关注的标的，再继续此步骤。',
+  fetchQuote: '查看行情', refreshQuote: '刷新行情', quoteHint: '休市时会展示最近一次报价。行情时间和本次获取时间可能不同。',
+  source: '数据源：{{value}}', sourceTime: '行情时间：{{value}}', observedAt: '获取时间：{{value}}', unknown: '来源未提供',
+  dataSources: '检查数据源', configureAi: '配置 AI 服务', aiHint: '添加服务商和模型，设为默认并测试。保存配置不等于连接成功。测试会调用一次所选模型。',
+  model: '默认模型', modelPlaceholder: '请选择一个模型', testModel: '测试默认模型', modelVerified: '当前默认模型已测试通过',
+  configureChanged: '修改服务地址、密钥或模型后，需要重新测试。', runAnalysis: '生成首次分析', rerunAnalysis: '重新生成分析',
+  analysisHint: '使用默认模型进行一次简短分析，可能产生服务商费用。结果包含观察、依据、关注点和数据限制。',
+  analysisScope: '首次分析不会开启定时任务、发送外部通知或产生模拟盘交易。',
+  analysisRunning: '正在获取数据并生成分析，你可以离开页面；回来后会恢复进度。',
+  analysisFailed: '本次分析未完成，可以修正配置后重试。', analysisModel: '分析模型：{{value}}', analysisTime: '生成于：{{value}}',
+  readAnalysis: '怎样阅读这份分析', readAnalysisHint: '先看结论对应的数据依据，再看数据时间和限制。缺少数据的判断需要继续核实。',
+  advanced: '进一步使用', advancedHint: '盘前 / 盘中 / 收盘 Agent 用于日常监控；TradingAgents 深度分析会进行多轮研究，耗时和费用更高，可按需手动启动。', agents: '了解分析任务',
+  createAlert: '创建价格提醒', alertTitle: '设置第一个价格提醒', alertHint: '设定你关心的条件，命中后会记录在应用内通知中心。外部推送需选择通知渠道。',
+  manageAlerts: '管理提醒', alertSaved: '所选标的已有启用中的提醒',
+  configureNotify: '配置通知渠道', notifyHint: '通知是可选的。添加渠道后，主动发送测试消息；发送成功才算通过。',
+  channel: '通知渠道', channelPlaceholder: '请选择启用的渠道', testChannel: '发送测试通知', notifyVerified: '已有启用的渠道发送测试成功',
+  deliveryHint: '测试成功表示发送端接受了消息，请在接收端确认收到。正式提醒仍需在规则中选择该渠道。',
+  skippedHint: '这一步已留待稍后，可以随时继续。', doNow: '现在设置',
+  steps: {
+    stock: { title: '关注一个标的', description: '选择已有自选，或添加你关注的标的。' },
+    quote: { title: '看到第一条行情', description: '确认价格、来源和数据时间。' },
+    ai: { title: '连接并测试 AI', description: '选择默认模型，确认它能正常响应。' },
+    analysis: { title: '完成首次分析', description: '生成并阅读一份简短的分析。' },
+    alert: { title: '设置价格提醒', description: '让重要价格条件出现在通知中心。' },
+    notify: { title: '接收外部通知', description: '接入你常用的渠道并主动测试。' },
+  },
+  errors: { load: '无法读取设置进度，请重试。', action: '操作未完成，请重试。',
+    interrupted: '服务重启中断了分析，进度已保留，请重新生成。', empty: '模型返回了空结果，请重试或更换模型。' },
+},
   logsLogger: '日志源',
   klineModal: { title: 'K线：{{symbol}}', fallbackTitle: 'K线', description: '日K/周K/月K切换，含MA/成交量/MACD。', noStock: '未选择股票' },
   interactiveKline: { loadFailed: '加载K线失败', title: 'K线图', rsi: '强弱线', intervals: { day: '日K', week: '周K', month: '月K' }, refresh: '刷新', libraryFailed: '图表库加载失败（网络受限时可能发生）。可稍后重试或检查网络/代理。', metrics: { latest: '最新价', change: '涨跌', amplitude: '振幅', range: '区间高低', averageVolume: '均量' }, hover: { open: '开盘价', close: '收盘价', high: '最高价', low: '最低价', ma5: '5日均线', ma10: '10日均线', ma20: '20日均线', macd: 'MACD线', signal: '信号线', rsi: 'RSI强弱' }, momentum: '动能指标（MACD{{rsi}}）', momentumRsi: ' + RSI强弱线', help: 'MACD 用来看趋势动能和拐点；RSI 用来看是否偏热/偏弱（一般 70 以上偏热，30 以下偏弱）。', tenThousand: '{{value}}万' },

@@ -19,6 +19,7 @@ from src.platform.persistence.models import (
     PriceAlertHit,
 )
 from src.platform.marketdata.stock_list import search_stocks, refresh_stock_list
+from src.platform.marketdata.instruments import AssetType, infer_asset_type
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import daily_quote_fields
@@ -36,6 +37,7 @@ class StockCreate(BaseModel):
     symbol: str
     name: str
     market: str = "CN"
+    asset_type: AssetType | None = None
 
     @model_validator(mode="after")
     def normalize_identity(self):
@@ -47,6 +49,7 @@ class StockCreate(BaseModel):
 
 class StockUpdate(BaseModel):
     name: str | None = None
+    asset_type: AssetType | None = None
 
 
 class StockAgentInfo(BaseModel):
@@ -62,6 +65,7 @@ class StockResponse(BaseModel):
     symbol: str
     name: str
     market: str
+    asset_type: AssetType = "stock"
     sort_order: int
     agents: list[StockAgentInfo] = []
 
@@ -114,6 +118,7 @@ def _stock_to_response(stock: Stock, agent_display_names: dict[str, str] | None 
         "symbol": stock.symbol,
         "name": stock.name,
         "market": stock.market,
+        "asset_type": infer_asset_type(stock.name, getattr(stock, "asset_type", None)),
         "sort_order": stock.sort_order or 0,
         "agents": [
             {
@@ -272,7 +277,9 @@ def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
         raise api_error(400, "stock_already_exists", f"股票 {stock.symbol} 已存在")
 
     max_order = db.query(func.max(Stock.sort_order)).scalar() or 0
-    db_stock = Stock(**stock.model_dump(), sort_order=int(max_order) + 1)
+    values = stock.model_dump()
+    values["asset_type"] = infer_asset_type(stock.name, stock.asset_type)
+    db_stock = Stock(**values, sort_order=int(max_order) + 1)
     db.add(db_stock)
     db.commit()
     db.refresh(db_stock)
@@ -303,7 +310,7 @@ def update_stock(stock_id: int, stock: StockUpdate, db: Session = Depends(get_db
     if not db_stock:
         raise api_error(404, "stock_not_found", "股票不存在")
 
-    for key, value in stock.model_dump(exclude_unset=True).items():
+    for key, value in stock.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(db_stock, key, value)
 
     db.commit()

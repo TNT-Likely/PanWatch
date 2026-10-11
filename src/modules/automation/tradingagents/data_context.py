@@ -20,6 +20,8 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
+from src.platform.marketdata.instruments import ETF_RESEARCH_CONTEXT, infer_asset_type
+
 logger = logging.getLogger(__name__)
 
 # 统一导出“业务数据 → TradingAgents 上下文”的入口，避免调用方关心内部渲染函数。
@@ -53,7 +55,7 @@ def fetch_financial_abstract(symbol: str) -> dict | None:
         }
         或 None(akshare 失败 / 非 A 股 / 数据为空)
     """
-    if not (symbol and len(symbol) == 6 and symbol.isdigit()):
+    if not (symbol and len(symbol) == 6 and symbol.isdigit() and symbol.startswith(("0", "3", "6", "8", "9"))):
         return None
     try:
         import akshare as ak
@@ -253,13 +255,14 @@ def build_stock_metadata_context(
     currency: str | None = None,
     security_type: str | None = None,
     source_timestamp: str | None = None,
+    asset_type: str | None = None,
 ) -> str:
     """渲染标的元信息，避免模型从 A/HK ticker 反查并臆测公司。"""
     if not stock_symbol:
         return ""
 
     if market in {"TSX", "TSXV"}:
-        return (f"Canadian listed security: {market}:{stock_symbol}; company/name: {stock_name}. "
+        context = (f"Canadian listed security: {market}:{stock_symbol}; company/name: {stock_name}. "
                 f"Verified quote currency: {currency or 'unavailable'}; security type: {security_type or 'unavailable'}; source time: {source_timestamp or 'unavailable'}. "
                 "Exchange timezone America/Toronto, Canadian holidays and jurisdiction. "
                 "Use exact .TO/.V provider identity; do not use US namesakes or assume SEC filings. "
@@ -267,21 +270,29 @@ def build_stock_metadata_context(
                 "Listed ETFs, REITs and trusts are supported: do not invent corporate metrics for funds, "
                 "NAV, holdings, distributions or FFO/AFFO. Portfolio cash is CNY; native security prices "
                 "cannot be compared to CNY cash without verified FX.")
+        if infer_asset_type(stock_name, asset_type) == "etf" or security_type == "ETF":
+            context += f" {ETF_RESEARCH_CONTEXT}"
+        return context
     market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
+    is_etf = infer_asset_type(stock_name, asset_type) == "etf"
     lines = [
         "[Stock Metadata]",
         f"- Ticker: {stock_symbol}",
-        f"- Company name: {stock_name or 'N/A'}",
+        f"- {'Fund name' if is_etf else 'Company name'}: {stock_name or 'N/A'}",
         f"- Market: {market_label}",
+        f"- Asset type: {'ETF' if is_etf else 'stock'}",
     ]
     if industry:
         lines.append(f"- Industry: {industry}")
     if current_price and current_price > 0:
-        lines.append(f"- Current price: {current_price:.2f}")
+        decimals = 3 if is_etf and market != "US" else 2
+        lines.append(f"- Current price: {current_price:.{decimals}f}")
     lines.append(
         "- IMPORTANT: This is an A-share / HK / cross-market ticker. DO NOT guess the "
         "company from the ticker code; always use the company name above."
     )
+    if is_etf:
+        lines.append(f"- {ETF_RESEARCH_CONTEXT}")
     return "\n".join(lines)
 
 

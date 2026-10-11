@@ -47,7 +47,7 @@ def test_all_market_search_preserves_legacy_on_canada_outage(monkeypatch):
     from src.platform.marketdata import stock_list
     from marketdata.vendors import canada
     monkeypatch.setattr(stock_list,'_realtime_search',lambda *a:[{'market':'US','symbol':'RY','name':'Royal'}])
-    monkeypatch.setattr(stock_list,'_cached_search',lambda *a:[])
+    monkeypatch.setattr(stock_list,'_cached_search',lambda *a,**kw:[])
     def unavailable(*a,**kw): raise RuntimeError('Yahoo unavailable')
     monkeypatch.setattr(canada,'search_canadian',unavailable)
     assert stock_list.search_stocks('RY')[0]['market']=='US'
@@ -76,7 +76,7 @@ def test_analyze_carries_metadata_and_toronto_save_cache_date(monkeypatch):
     agent=module.TradingAgentsAgent()
     agent._available=True
     agent.emit_paper_trading_signal=False
-    stock=N(symbol='ZSP-U',market=MarketCode.TSX,name='Canadian USD ETF')
+    stock=N(symbol='ZSP-U',market=MarketCode.TSX,name='Canadian USD ETF',asset_type='etf')
     context=N(_force_refresh=True,_trace_id='qa',report_language='en-US',ai_client=MagicMock(),model_label='QA',portfolio=None)
     saved=[]; metadata=[]; dates=[]
     monkeypatch.setattr(module,'build_ta_llm_config',lambda *a,**k:{'deep_think_llm':'QA','quick_think_llm':'QA'})

@@ -33,6 +33,8 @@ import { applyMarketStatuses, findDisplayQuote, mergePortfolioQuotes, toQuoteMap
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import { useGuidedTour } from '@/components/onboarding/GuidedTour'
+import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
 interface AgentResult {
   success?: boolean
@@ -53,6 +55,7 @@ interface StockAgentInfo {
 }
 
 interface Stock {
+  asset_type?: 'stock' | 'etf'
   id: number
   symbol: string
   name: string
@@ -85,6 +88,7 @@ interface SchedulePreview {
 }
 
 interface SearchResult {
+  asset_type?: 'stock' | 'etf'
   symbol: string
   name: string
   market: string
@@ -97,6 +101,7 @@ interface QuoteRequestItem {
 
 
 interface StockForm {
+  asset_type: 'stock' | 'etf'
   symbol: string
   name: string
   market: string
@@ -118,6 +123,7 @@ interface PositionForm {
   stock_symbol: string
   stock_name: string
   stock_market: string
+  stock_asset_type: 'stock' | 'etf'
 }
 
 // 建议池中的建议（包含来源和时间信息）
@@ -159,7 +165,7 @@ interface PriceAlertRuleSummary {
   enabled: boolean
 }
 
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
+const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN', asset_type: 'stock' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
@@ -193,6 +199,8 @@ const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, {
 
 
 export default function StocksPage() {
+  const tour = useGuidedTour()
+  const tourQuoteBusy = useRef(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation('configuration')
   const confirmAction = useConfirm()
@@ -224,7 +232,7 @@ export default function StocksPage() {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>()
 
   type ViewTab = 'positions' | 'watchlist'
-  const [viewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
+  const [savedViewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
 
   // 建议池建议（来自 /suggestions API）
   const [poolSuggestions, setPoolSuggestions] = useState<Record<string, PoolSuggestion>>({})
@@ -279,7 +287,7 @@ export default function StocksPage() {
 
   // Position form
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
-  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
+  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN', stock_asset_type: 'stock' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
   const [positionSearchQuery, setPositionSearchQuery] = useState('')
@@ -312,6 +320,11 @@ export default function StocksPage() {
 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const viewTab = tour?.active && ['stock', 'quote', 'analysis'].includes(tour.step || '') ? 'watchlist' : savedViewTab
+  useEffect(() => {
+    if (!tour?.active || !['stock', 'quote', 'analysis'].includes(tour.step || '')) return
+    setStockListFilter('')
+  }, [tour?.active, tour?.step])
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
   // Remove watchlist modal
@@ -801,7 +814,11 @@ export default function StocksPage() {
 
   // Refresh market-data lanes without blocking local portfolio metadata.
   const handleRefresh = useCallback(async () => {
-    void refreshKlines()
+    if (tourQuoteBusy.current) return
+    tourQuoteBusy.current = true
+    try {
+      await tour?.observeQuote()
+      void refreshKlines()
     await Promise.all([
       refreshExchangeRates(),
       refreshMarketStatus(),
@@ -809,7 +826,8 @@ export default function StocksPage() {
       loadPoolSuggestions(),
       loadPriceAlertSummaries(),
     ])
-  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshExchangeRates, refreshKlines, refreshMarketStatus, refreshQuotes])
+    } finally { tourQuoteBusy.current = false }
+  }, [tour, loadPoolSuggestions, loadPriceAlertSummaries, refreshExchangeRates, refreshKlines, refreshMarketStatus, refreshQuotes])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -955,7 +973,7 @@ export default function StocksPage() {
   }
 
   const selectStock = (item: SearchResult) => {
-    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
+    setStockForm({ symbol: item.symbol, name: item.name, market: item.market, asset_type: item.asset_type || 'stock' })
     setSearchQuery(`${item.symbol} ${item.name}`)
     setShowDropdown(false)
   }
@@ -972,6 +990,7 @@ export default function StocksPage() {
       setShowStockForm(false)
       load()
       toast(stockT('stocksPage.messages.stockAdded'), 'success')
+      await tour?.selectStock(created.id)
     } catch (e) {
       toast(e instanceof Error ? e.message : stockT('stocksPage.messages.addStockFailed'), 'error')
     }
@@ -1063,6 +1082,7 @@ export default function StocksPage() {
         stock_symbol: position.symbol,
         stock_name: position.name,
         stock_market: position.market,
+        stock_asset_type: position.asset_type || 'stock',
       })
       setEditPositionId(position.id)
     } else {
@@ -1076,6 +1096,7 @@ export default function StocksPage() {
         stock_symbol: '',
         stock_name: '',
         stock_market: 'CN',
+        stock_asset_type: 'stock',
       })
       setEditPositionId(null)
     }
@@ -1116,6 +1137,7 @@ export default function StocksPage() {
       stock_symbol: item.symbol,
       stock_name: item.name,
       stock_market: item.market,
+      stock_asset_type: existing?.asset_type || item.asset_type || 'stock',
     })
     setPositionSearchQuery(`${item.symbol} ${item.name}`)
     setShowPositionDropdown(false)
@@ -1140,6 +1162,7 @@ export default function StocksPage() {
               symbol: positionForm.stock_symbol,
               name: positionForm.stock_name,
               market: positionForm.stock_market,
+              asset_type: positionForm.stock_asset_type,
             })
           })
           stockId = newStock.id
@@ -1175,6 +1198,13 @@ export default function StocksPage() {
         await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
       } else {
         await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      const existingStock = stocks.find(stock => stock.id === stockId)
+      if (existingStock && (existingStock.asset_type || 'stock') !== positionForm.stock_asset_type) {
+        const updatedStock = await fetchAPI<Stock>(`/stocks/${stockId}`, {
+          method: 'PUT', body: JSON.stringify({ asset_type: positionForm.stock_asset_type }),
+        })
+        setStocks(previous => previous.map(stock => stock.id === stockId ? updatedStock : stock))
       }
       setPositionDialogOpen(false)
       if (createdStock) void loadNewStockSummary(createdStock)
@@ -1331,6 +1361,8 @@ export default function StocksPage() {
     return formatted
   }
 
+  const formatQuotePrice = (value: number, assetType?: 'stock' | 'etf', market?: string) => value.toFixed(assetType === 'etf' && market !== 'US' ? 3 : 2)
+
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
     const [market, symbol] = quoteKey.split(':')
@@ -1465,6 +1497,7 @@ export default function StocksPage() {
 
   return (
     <div>
+      <FirstAnalysis />
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
         <div className="flex items-center justify-between gap-2">
@@ -1500,26 +1533,26 @@ export default function StocksPage() {
               )}
             </div>
             {/* Buttons */}
-            <Button variant="secondary" onClick={handleRefresh} disabled={quotesLoading}>
+            <Button data-tour="refresh-quotes" variant="secondary" onClick={handleRefresh} disabled={quotesLoading || tour?.busy}>
               <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
               {stockT('stocksPage.messages.refreshed')}
             </Button>
             <Button variant="secondary" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" /> {stockT('stocksPage.messages.addAccount')}
             </Button>
-            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button data-tour="add-stock" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
               <Plus className="w-4 h-4" /> {stockT('stocksPage.messages.addStock')}
             </Button>
           </div>
           {/* Mobile buttons */}
           <div className="flex md:hidden items-center gap-1.5">
-            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading}>
+            <Button data-tour="refresh-quotes" aria-label={stockT('stocksPage.messages.refreshed')} variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading || tour?.busy}>
               <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
             </Button>
             <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" />
             </Button>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button data-tour="add-stock" aria-label={stockT('stocksPage.messages.addStock')} size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -1693,7 +1726,8 @@ export default function StocksPage() {
             <DialogTitle>{stockT('stocksPage.messages.addToWatchlistTitle')}</DialogTitle>
             <DialogDescription>{stockT('stocksPage.messages.addToWatchlistDescription')}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleStockSubmit}>
+          <div data-tour-instructions />
+          <form data-tour="stock-form" onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
@@ -1744,14 +1778,14 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : searchMarket === 'TSXV' ? 'V / TBRD' : searchMarket === 'HK' ? '00700 or Tencent' : searchMarket === 'US' ? 'AAPL or Apple' : '600519 or Kweichow Moutai' })}
+                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : searchMarket === 'TSXV' ? 'V / TBRD' : searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
                   className="pl-10"
                   autoComplete="off"
                 />
                 {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
               </div>
               {showDropdown && (
-                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto scrollbar card shadow-lg">
+                <div className="relative w-full mt-2 max-h-64 overflow-auto overscroll-contain scrollbar card shadow-lg">
                   {searchResults.map(item => (
                     <button
                       key={`${item.market}-${item.symbol}`}
@@ -1761,15 +1795,23 @@ export default function StocksPage() {
                     >
                       <span className="font-mono text-muted-foreground text-[12px] w-14">{item.symbol}</span>
                       <span className="flex-1 font-medium text-foreground">{item.name}</span>
+                      {item.asset_type === 'etf' && <Badge variant="secondary">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                       <Badge variant="secondary">{marketLabel(item.market)}</Badge>
                     </button>
                   ))}
                 </div>
               )}
               {stockForm.symbol && (
-                <div className="mt-2.5 flex items-center gap-2">
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <Badge><span className="font-mono">{stockForm.symbol}</span> {stockForm.name}</Badge>
                   <Badge variant="secondary">{marketLabel(stockForm.market)}</Badge>
+                  <Select value={stockForm.asset_type} onValueChange={value => setStockForm({ ...stockForm, asset_type: value as 'stock' | 'etf' })}>
+                    <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                      <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
@@ -1837,7 +1879,7 @@ export default function StocksPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-0 md:gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)} aria-label={stockT('stocksPage.messages.addPosition')}>
                       <Plus className="w-3 md:w-3.5 h-3 md:h-3.5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" aria-label={stockT('stocksPage.messages.editAccount')} onClick={() => openAccountDialog(accounts.find(a => a.id === account.id))}>
@@ -1925,6 +1967,7 @@ export default function StocksPage() {
                                       onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                     >
                                       {pos.name}
+                                      {pos.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                                     </button>
                                     {(() => {
                                       const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market)
@@ -1943,7 +1986,7 @@ export default function StocksPage() {
                                     })()}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : pos.market === 'US' ? ' USD' : pos.currency ? ` ${pos.currency}` : '') : ''}</span> : '—'}
+                                    {pos.current_price != null ? <span>{formatQuotePrice(pos.current_price, pos.asset_type, pos.market)}{isForeign ? (pos.market === 'HK' ? ' HKD' : pos.market === 'US' ? ' USD' : pos.currency ? ` ${pos.currency}` : '') : ''}</span> : '—'}
                                     {delayedQuoteNotice(pos)}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
@@ -2095,6 +2138,7 @@ export default function StocksPage() {
                                     onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                   >
                                     {pos.name}
+                                    {pos.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                                   </button>
                                   {pos.trading_style && (
                                     <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
@@ -2103,7 +2147,7 @@ export default function StocksPage() {
                                   )}
                                 </div>
                                 <div title={quoteHint(pos)} className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
-                                  {pos.current_price?.toFixed(2) || '—'}{(pos.market === 'TSX' || pos.market === 'TSXV') && pos.currency ? ` ${pos.currency}` : ''}
+                                  {pos.current_price != null ? formatQuotePrice(pos.current_price, pos.asset_type, pos.market) : '—'}{(pos.market === 'TSX' || pos.market === 'TSXV') && pos.currency ? ` ${pos.currency}` : ''}
                                   <span className="text-[11px] ml-1">{pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}</span>
                                   {delayedQuoteNotice(pos)}
                                 </div>
@@ -2215,7 +2259,7 @@ export default function StocksPage() {
 
       {/* Watchlist */}
       {viewTab === 'watchlist' && (
-        <div className="card p-4">
+        <div data-tour="watchlist" className="card p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="text-[13px] font-semibold text-foreground">{stockT('stocksPage.messages.watchlist')}</h3>
             <div className="flex flex-wrap items-center gap-1">
@@ -2269,7 +2313,7 @@ export default function StocksPage() {
                 .filter(s => !stockListFilter || s.market === stockListFilter)
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
-                  if (!watchlistOnlyAlerts) return true
+                  if (tour?.active || !watchlistOnlyAlerts) return true
                   const { suggestion } = getSuggestionForStock(stock.symbol, stock.market)
                   return !!suggestion?.should_alert
                 })
@@ -2280,6 +2324,10 @@ export default function StocksPage() {
                 return (
                   <div
                     key={stock.id}
+                    data-tour-stock={stock.id}
+                    role={tour?.active && tour.step === 'stock' ? 'button' : undefined}
+                    tabIndex={tour?.active && tour.step === 'stock' ? 0 : undefined}
+                    onKeyDown={e => { if (tour?.active && tour.step === 'stock' && ['Enter', ' '].includes(e.key)) { e.preventDefault(); void tour.selectStock(stock.id) } }}
                     draggable={stockListFilter === '' && !watchlistOnlyAlerts}
                     onDragStart={(e) => {
                       if (stockListFilter !== '' || watchlistOnlyAlerts) return
@@ -2309,6 +2357,7 @@ export default function StocksPage() {
                     className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
+                      if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }
                       setAgentDialogStock(stock)
                     }}
                   >
@@ -2320,21 +2369,22 @@ export default function StocksPage() {
                           </span>
                           <button
                             className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                            onClick={(e) => { e.stopPropagation(); if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }; openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.symbol}
                           </button>
                           <button
                             className="text-[12px] text-muted-foreground truncate hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                            onClick={(e) => { e.stopPropagation(); if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }; openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.name}
+                            {stock.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                           </button>
                         </div>
                       </div>
                       <div className="text-right">
                         <div title={quoteHint(quote || {})} className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
-                          {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
+                          {quote?.current_price != null ? formatQuotePrice(quote.current_price, stock.asset_type, stock.market) : '--'}
                           {delayedQuoteNotice(quote)}
                         </div>
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
@@ -2567,12 +2617,19 @@ export default function StocksPage() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {editPositionId ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
                 <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                   {marketBadge(positionForm.stock_market).label}
                 </span>
                 <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
                 <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                <Select value={positionForm.stock_asset_type} onValueChange={value => setPositionForm({ ...positionForm, stock_asset_type: value as 'stock' | 'etf' })}>
+                  <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8 shrink-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                    <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             ) : (
               <div>
@@ -2603,18 +2660,20 @@ export default function StocksPage() {
                   </div>
                 </div>
                 <div className="relative" ref={positionDropdownRef}>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                  <Input
-                    value={positionSearchQuery}
-                    onChange={e => handlePositionSearchInput(e.target.value)}
-                    onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : positionSearchMarket === 'TSXV' ? 'V / TBRD' : positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
-                    className="pl-9"
-                    autoComplete="off"
-                  />
-                  {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                    <Input
+                      value={positionSearchQuery}
+                      onChange={e => handlePositionSearchInput(e.target.value)}
+                      onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
+                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : positionSearchMarket === 'TSXV' ? 'V / TBRD' : positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
+                      className="pl-9"
+                      autoComplete="off"
+                    />
+                    {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+                  </div>
                   {showPositionDropdown && positionSearchResults.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 max-h-48 overflow-auto scrollbar card shadow-lg">
+                    <div className="relative w-full mt-1 max-h-48 overflow-auto overscroll-contain scrollbar card shadow-lg">
                       {positionSearchResults.map(item => (
                         <button
                           key={`${item.market}-${item.symbol}`}
@@ -2627,18 +2686,26 @@ export default function StocksPage() {
                           </span>
                           <span className="font-mono text-muted-foreground text-[12px]">{item.symbol}</span>
                           <span className="flex-1 text-foreground">{item.name}</span>
+                          {item.asset_type === 'etf' && <Badge variant="secondary">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
                 {positionForm.stock_symbol && (
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                       {marketBadge(positionForm.stock_market).label}
                     </span>
                     <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
                     <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                    <Select value={positionForm.stock_asset_type} onValueChange={value => setPositionForm({ ...positionForm, stock_asset_type: value as 'stock' | 'etf' })}>
+                      <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8 shrink-0"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                        <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <button
                       type="button"
                       onClick={() => {
@@ -2971,6 +3038,7 @@ export default function StocksPage() {
                 }`}
               >
                 {stock.name}
+                {stock.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
               </button>
             ))}
             {stocks.length > 10 && (

@@ -14,12 +14,15 @@ from pathlib import Path
 
 import httpx
 
+from src.platform.marketdata.instruments import infer_asset_type
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = PROJECT_ROOT / "data"
 CACHE_FILE = DATA_DIR / "stock_list_cache.json"
 CACHE_TTL = 86400 * 7  # 7 days
+CACHE_VERSION = 2  # Include listed ETFs; refresh pre-ETF catalogs once.
 
 # 东方财富 A 股（使用 push2delay 域名，避免重定向）
 EASTMONEY_URL = "http://80.push2delay.eastmoney.com/api/qt/clist/get"
@@ -67,6 +70,11 @@ EASTMONEY_BJ_PARAMS = {
 }
 PAGE_SIZE = 100
 
+EASTMONEY_ETF_PARAMS = {
+    **EASTMONEY_PARAMS,
+    "fs": "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827",
+}
+
 
 _AKSHARE_LOCK = threading.Lock()
 _AKSHARE_FUTURE = None
@@ -93,23 +101,26 @@ def _akshare_fallback():
         return future
 
 
-def _load_cache() -> list[dict] | None:
+def _load_cache(*, allow_stale: bool = False) -> list[dict] | None:
     if not os.path.exists(CACHE_FILE):
         return None
     try:
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if time.time() - data.get("ts", 0) < CACHE_TTL:
+        if allow_stale or (
+            data.get("version") == CACHE_VERSION
+            and time.time() - data.get("ts", 0) < data.get("ttl", CACHE_TTL)
+        ):
             return data["stocks"]
     except (json.JSONDecodeError, KeyError):
         pass
     return None
 
 
-def _save_cache(stocks: list[dict]):
+def _save_cache(stocks: list[dict], *, ttl: int = CACHE_TTL):
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"ts": time.time(), "stocks": stocks}, f, ensure_ascii=False)
+        json.dump({"version": CACHE_VERSION, "ts": time.time(), "ttl": ttl, "stocks": stocks}, f, ensure_ascii=False)
 
 
 HEADERS = {
@@ -286,52 +297,106 @@ def _fetch_from_akshare() -> list[dict]:
     return stocks
 
 
+def _fetch_etf_from_eastmoney() -> list[dict]:
+    """Fetch the provider's listed CN ETF boards, excluding OTC funds and LOFs."""
+    def fetch_page(client: httpx.Client, page: int) -> dict:
+        response = client.get(
+            EASTMONEY_URL,
+            params={**EASTMONEY_ETF_PARAMS, "pn": str(page), "pz": str(PAGE_SIZE)},
+        )
+        response.raise_for_status()
+        return response.json().get("data") or {}
+
+    with httpx.Client(follow_redirects=True, headers=HEADERS, timeout=30) as client:
+        first = fetch_page(client, 1)
+        items = first.get("diff") or []
+        pages = (int(first.get("total") or 0) + PAGE_SIZE - 1) // PAGE_SIZE
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            # A failed page fails this catalog so refresh can retain its old ETFs.
+            for page in pool.map(lambda pn: fetch_page(client, pn), range(2, pages + 1)):
+                items.extend(page.get("diff") or [])
+    return [
+        {"symbol": str(item["f12"]), "name": str(item["f14"]), "market": "CN", "asset_type": "etf"}
+        for item in items
+    ]
+
+
+def _fetch_etf_from_sina() -> list[dict]:
+    """Independent CN ETF catalog fallback when Eastmoney is unavailable."""
+    base = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center."
+    with httpx.Client(headers={"Referer": "https://finance.sina.com.cn/"}, timeout=10) as client:
+        response = client.get(base + "getHQNodeStockCount", params={"node": "etf_hq_fund"})
+        response.raise_for_status()
+        total = int(response.json())
+        def fetch_page(page):
+            response = client.get(base + "getHQNodeData", params={
+                "node": "etf_hq_fund", "page": page, "num": PAGE_SIZE,
+                "sort": "symbol", "asc": 1,
+            })
+            response.raise_for_status()
+            items = response.json()
+            if not isinstance(items, list) or not items:
+                raise ValueError("empty Sina ETF page")
+            return [
+                {"symbol": str(item["code"]), "name": str(item["name"]), "market": "CN", "asset_type": "etf"}
+                for item in items
+            ]
+        pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            return [item for page in pool.map(fetch_page, range(1, pages + 1)) for item in page]
+
+
+def _catalog_key(item: dict) -> str:
+    if item["market"] != "CN":
+        return item["market"]
+    if infer_asset_type(item["name"], item.get("asset_type")) == "etf":
+        return "ETF"
+    from src.platform.marketdata.cn_symbol import get_cn_exchange
+    return "BJ" if get_cn_exchange(item["symbol"]) == "BJ" else "CN"
+
+
 def refresh_stock_list() -> list[dict]:
-    """拉取 A 股和港股列表并缓存"""
+    """Fetch stocks and listed ETFs; retain failed catalogs without retaining delistings."""
     stocks = []
-
-    # A 股: 东方财富优先，akshare 备用
-    try:
-        cn_stocks = _fetch_from_eastmoney()
-        stocks.extend(cn_stocks)
-        logger.info(f"东方财富获取 A 股列表成功: {len(cn_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取 A 股失败: {e}")
+    failed = set()
+    catalogs = (
+        ("CN", _fetch_from_eastmoney),
+        ("HK", _fetch_hk_from_eastmoney),
+        ("US", _fetch_us_from_eastmoney),
+        ("BJ", _fetch_bj_from_eastmoney),
+        ("ETF", _fetch_etf_from_eastmoney),
+    )
+    for catalog, fetch in catalogs:
         try:
-            cn_stocks = _akshare_fallback().result(timeout=15)
-            stocks.extend(cn_stocks)
-            logger.info(f"akshare 获取 A 股列表成功: {len(cn_stocks)} 只")
-        except concurrent.futures.TimeoutError:
-            logger.error("akshare 获取超时（15s）")
-        except Exception as e2:
-            logger.error(f"A 股数据源获取失败: {e2}")
+            items = fetch()
+            if not items:
+                raise ValueError("empty catalog")
+        except Exception as exc:
+            logger.warning("%s catalog fetch failed: %s", catalog, exc)
+            items = []
+            if catalog == "CN":
+                try:
+                    items = _akshare_fallback().result(timeout=15)
+                except Exception as fallback_exc:
+                    logger.warning("A-share fallback failed: %s", fallback_exc)
+            elif catalog == "ETF":
+                try:
+                    items = _fetch_etf_from_sina()
+                except Exception as fallback_exc:
+                    logger.warning("ETF fallback failed: %s", fallback_exc)
+            if not items:
+                failed.add(catalog)
+        stocks.extend(items)
 
-    # 港股: 东方财富
-    try:
-        hk_stocks = _fetch_hk_from_eastmoney()
-        stocks.extend(hk_stocks)
-        logger.info(f"东方财富获取港股列表成功: {len(hk_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取港股失败: {e}")
-
-    # 美股: 东方财富
-    try:
-        us_stocks = _fetch_us_from_eastmoney()
-        stocks.extend(us_stocks)
-        logger.info(f"东方财富获取美股列表成功: {len(us_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取美股失败: {e}")
-
-    # 北交所: 东方财富
-    try:
-        bj_stocks = _fetch_bj_from_eastmoney()
-        stocks.extend(bj_stocks)
-        logger.info(f"东方财富获取北交所列表成功: {len(bj_stocks)} 只")
-    except Exception as e:
-        logger.warning(f"东方财富获取北交所失败: {e}")
-
+    previous = _load_cache(allow_stale=True) or []
+    stocks.extend(item for item in previous if _catalog_key(item) in failed)
+    by_key = {}
+    for item in stocks:
+        key = (item["market"], item["symbol"])
+        by_key.setdefault(key, {**item, "asset_type": infer_asset_type(item["name"], item.get("asset_type"))})
+    stocks = list(by_key.values())
     if stocks:
-        _save_cache(stocks)
+        _save_cache(stocks, ttl=300 if failed else CACHE_TTL)
     return stocks
 
 
@@ -340,7 +405,19 @@ def get_stock_list() -> list[dict]:
     cached = _load_cache()
     if cached:
         return cached
-    return refresh_stock_list()
+    return refresh_stock_list() or _load_cache(allow_stale=True) or []
+
+
+def _normalize_symbol(code: str, market: str) -> str:
+    code = (code or "").strip().upper()
+    if market in ("CN", "HK"):
+        import re
+        code = re.sub(r"^(SH|SZ|BJ|HK)(?=\d)", "", code)
+        code = re.sub(r"\.(SH|SZ|BJ|HK)$", "", code)
+        if market == "HK":
+            code = code.zfill(5)
+    # USO, SHY and dotted share-class tickers are actual US symbols.
+    return code
 
 
 def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict]:
@@ -361,36 +438,34 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
     if not items:
         return []
 
-    def _normalize_symbol(code: str, mkt: str) -> str:
-        c = (code or "").strip().upper()
-        # 去掉可能的市场前缀/后缀，如 SH000001 / SZ000001 / BJ830799 / 00700.HK / 836239.BJ
-        for p in ("SH", "SZ", "BJ", "US", "HK"):
-            if c.startswith(p):
-                c = c[len(p):]
-                break
-        if "." in c:
-            # 形如 00700.HK / 836239.BJ
-            c = c.split(".")[0]
-        if mkt == "HK":
-            # 保证为 5 位代码
-            c = c.zfill(5)
-        return c
-
     results = []
+    seen = set()
     for item in items:
         classify = (item.get("Classify") or "").strip()
         security_type = (item.get("SecurityTypeName") or "").strip()
         code_raw = (item.get("Code") or "").strip().upper()
+        name = item.get("Name") or ""
+        asset_type = infer_asset_type(name)
+
+        if classify in ("OTCFUND", "Bond", "Index"):
+            continue
+
+        # Only exchange-listed ETFs are admitted from the Fund category.
+        # OTCFUND, LOFs, indices and bonds remain outside the watchlist search.
+        if classify == "Fund":
+            if str(item.get("MktNum")) not in ("0", "1") or asset_type != "etf":
+                continue
+            stock_market = "CN"
 
         # 判断市场
-        if (
+        elif (
             classify in ("AStock", "BJStock")
             or any(ch in security_type for ch in ("沪", "深", "北"))
             or code_raw.endswith(".BJ")
             or code_raw.startswith("BJ")
         ):
             stock_market = "CN"
-        elif classify == "HKStock" or "港" in security_type:
+        elif classify in ("HK", "HKStock") or "港" in security_type:
             stock_market = "HK"
         elif classify == "UsStock" or "美" in security_type:
             stock_market = "US"
@@ -402,17 +477,25 @@ def _realtime_search(query: str, market: str = "", limit: int = 20) -> list[dict
             continue
 
         # 只保留股票（排除债券等）
-        type_us = item.get("TypeUS", "")
-        if stock_market == "US" and type_us and type_us not in ("1", "2", "3"):  # 1=普通股, 3=ADR/ADS 等；5=ETF 等
-            continue
+        type_us = str(item.get("TypeUS") or "")
+        if stock_market == "US":
+            if type_us and type_us not in ("1", "2", "3", "5"):
+                continue
+            if type_us == "5":
+                asset_type = "etf"
 
         code = item.get("Code", "")
         symbol = _normalize_symbol(code, stock_market)
+        key = (stock_market, symbol)
+        if not symbol or key in seen:
+            continue
+        seen.add(key)
 
         results.append({
             "symbol": symbol,
             "name": item.get("Name", ""),
             "market": stock_market,
+            "asset_type": asset_type,
         })
 
         if len(results) >= limit:
@@ -428,19 +511,26 @@ def search_stocks(query: str, market: str = "", limit: int = 20) -> list[dict]:
         return []
 
     from marketdata.vendors.canada import search_canadian
+
+    def canadian_results(selected_market: str) -> list[dict]:
+        return [
+            {**item, "asset_type": "etf" if item.get("security_type") == "ETF" else "stock"}
+            for item in search_canadian(q, selected_market, limit)
+        ]
+
     if market in {"TSX", "TSXV"}:
-        return search_canadian(q, market, limit)
+        return canadian_results(market)
     results = _realtime_search(q, market, limit)
     if not market:
         try:
-            results = search_canadian(q, "", limit) + results
+            results = canadian_results("") + results
         except Exception as exc:
             logger.warning("Canadian search unavailable; preserving other markets: %s", exc)
     if len(results) >= limit:
         return results[:limit]
 
     # 实时搜索结果不足时，用缓存补全（便于聚合多市场搜索结果）
-    cached = _cached_search(q, market, limit)
+    cached = _cached_search(q, market, limit, refresh_if_missing=not results)
     if not results:
         if cached:
             logger.info("实时搜索无结果，使用缓存搜索")
@@ -458,9 +548,10 @@ def search_stocks(query: str, market: str = "", limit: int = 20) -> list[dict]:
     return results
 
 
-def _cached_search(query: str, market: str = "", limit: int = 20) -> list[dict]:
+def _cached_search(query: str, market: str = "", limit: int = 20, *, refresh_if_missing: bool = True) -> list[dict]:
     """从缓存中模糊搜索股票"""
-    stocks = get_stock_list()
+    # A successful live lookup must not wait for a cold multi-market catalog.
+    stocks = get_stock_list() if refresh_if_missing else _load_cache(allow_stale=True) or []
     if not stocks:
         return []
 
@@ -486,4 +577,4 @@ def _cached_search(query: str, market: str = "", limit: int = 20) -> list[dict]:
             break
 
     results.sort(key=lambda x: x[0])
-    return [r[1] for r in results[:limit]]
+    return [{**r[1], "asset_type": infer_asset_type(r[1]["name"], r[1].get("asset_type"))} for r in results[:limit]]

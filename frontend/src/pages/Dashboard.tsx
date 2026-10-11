@@ -123,7 +123,6 @@ export default function DashboardPage() {
   const [shareBench, setShareBench] = useState(false)
   const [shareDiag, setShareDiag] = useState(false)
   const [shareDigest, setShareDigest] = useState(false)
-  const [showOnboarding, setShowOnboarding] = useState(false)
   const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean }>({
     open: false,
     symbol: '',
@@ -205,17 +204,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-    if (!localStorage.getItem('panwatch_onboarding_completed')) setShowOnboarding(true)
     return () => {
       loadId.current += 1
       benchLoadId.current += 1
     }
   }, [load])
 
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('panwatch_onboarding_completed', 'true')
-    setShowOnboarding(false)
-  }
 
   const openStock = (symbol: string, market: string, name = '', hasPosition = false) =>
     setModal({ open: true, symbol, market: market || 'CN', name, hasPosition })
@@ -355,7 +349,6 @@ export default function DashboardPage() {
   }, [])
   const hasHoldings = (diag?.position_count ?? 0) > 0
   const benchReady = bench && !bench.empty && bench.excess_return != null
-  const hasWatchlist = (overview?.kpis?.watchlist_count ?? 0) > 0
   const portfolioPnlPct =
     diag && diag.total_market_value - diag.total_unrealized_pnl > 0
       ? (diag.total_unrealized_pnl / (diag.total_market_value - diag.total_unrealized_pnl)) * 100
@@ -399,6 +392,7 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container pb-10">
+      <Onboarding />
       {valuationIncomplete && (
         <p role="status" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
           {dashboardT('stocksPage.messages.valuationIncomplete')}
@@ -851,7 +845,6 @@ export default function DashboardPage() {
         )}
       </Suspense>
 
-      <Onboarding open={showOnboarding} onComplete={handleOnboardingComplete} hasStocks={hasWatchlist} />
     </div>
   )
 }

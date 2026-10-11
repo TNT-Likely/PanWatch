@@ -160,7 +160,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="w-full space-y-4 md:space-y-6">
+    <div data-tour="analysis-history" className="w-full space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-500/70 flex items-center justify-center shadow-sm">

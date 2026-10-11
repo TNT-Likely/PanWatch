@@ -102,7 +102,8 @@ def test_execution_links_to_exact_saved_report_across_midnight(
     agent = agent_module.TradingAgentsAgent(cache_ttl_hours=0)
     agent._available = True
     monkeypatch.setattr(agent, "_collect_toolkit_diagnostic", lambda *a: {})
-    stock = SimpleNamespace(symbol=symbol, market=MarketCode(market), name=f"{market} fixture")
+    stock = SimpleNamespace(symbol=symbol, market=MarketCode(market), name=f"{market} fixture",
+                            asset_type="etf" if security_type == "ETF" else "stock")
     context = SimpleNamespace(
         _force_refresh=True, _trace_id="report-link-fixture", report_language="en-US",
         model_label="fixture", ai_client=SimpleNamespace(), portfolio=None,
