@@ -176,7 +176,7 @@ def test_opportunity_refresh_propagates_only_eligible_markets(monkeypatch):
     refresh = Mock(return_value={"count": 0})
     monkeypatch.setattr("src.modules.research.context_scheduler.refresh_strategy_signals", refresh)
     asyncio.run(ContextMaintenanceScheduler()._refresh_opportunities_job())
-    assert refresh.call_args.kwargs["markets"] == ["US"]
+    assert refresh.call_args.kwargs["markets"] == ["US", "AU"]  # 冻结时刻 AU 本地已是 10-02 交易日
 
 
 def test_outcome_waits_for_actual_completed_bars_and_ignores_intraday_tail(monkeypatch):

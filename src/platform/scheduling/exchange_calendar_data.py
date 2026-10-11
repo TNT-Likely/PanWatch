@@ -7,6 +7,7 @@ Sources:
 CN: https://www.sse.com.cn/disclosure/dealinstruc/closed/c/c_20251222_10802510.shtml
 HK: https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2025/ce_SEHK_CT_075_2025.pdf
 US: https://www.nyse.com/trade/hours-calendars
+AU: https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar
 """
 
 from datetime import date, time, timedelta
@@ -40,6 +41,15 @@ HOLIDAYS = {
         "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
         "2026-11-26", "2026-12-25",
     )),
+    ("AU", 2026): frozenset(date.fromisoformat(d) for d in (
+        "2026-01-01",  # New Year's Day
+        "2026-01-26",  # Australia Day
+        "2026-04-03",  # Good Friday
+        "2026-04-06",  # Easter Monday
+        "2026-06-08",  # King's Birthday
+        "2026-12-25",  # Christmas Day
+        "2026-12-28",  # Boxing Day (12-26 周六,补休周一)
+    )),
 }
 
 EARLY_CLOSES = {
@@ -48,4 +58,6 @@ EARLY_CLOSES = {
     ("HK", date(2026, 12, 31)): time(12),
     ("US", date(2026, 11, 27)): time(13),
     ("US", date(2026, 12, 24)): time(13),
+    ("AU", date(2026, 12, 24)): time(14, 10),  # Christmas Eve
+    ("AU", date(2026, 12, 31)): time(14, 10),  # New Year's Eve
 }
