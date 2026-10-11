@@ -13,7 +13,7 @@ from src.web.static_assets import serve_static_asset
 def static_app(tmp_path):
     public = tmp_path / 'static'
     public.mkdir()
-    (public / 'index.html').write_text('<html>public app</html>')
+    (public / 'index.html').write_text('<html><base href="/" data-panwatch-base><meta name="panwatch-base-path" content="">public app</html>')
     (public / 'assets').mkdir()
     (public / 'assets' / 'app.js').write_text('public javascript')
     (tmp_path / 'private-canary.txt').write_text('PRIVATE_FILE_CANARY')
@@ -21,9 +21,15 @@ def static_app(tmp_path):
     # Execute the actual production route function, without running unrelated
     # schedulers or requiring a production DB merely to test public serving.
     tree = ast.parse((Path(__file__).parents[1] / 'server.py').read_text())
-    handler = next(node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'serve_spa')
-    namespace = {'app': app, 'static_dir': str(public), 'serve_static_asset': serve_static_asset}
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[])), 'server.py', 'exec'), namespace)
+    handler = next((node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'serve_spa'), None)
+    if handler is not None:
+        namespace = {'app': app, 'static_dir': str(public), 'serve_static_asset': serve_static_asset}
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[])), 'server.py', 'exec'), namespace)
+    else:
+        # The independent subpath feature moves the production handler here.
+        assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'install_spa' for node in ast.walk(tree))
+        from src.web.spa import install_spa
+        install_spa(app, public)
     return TestClient(app), public
 
 
@@ -38,7 +44,7 @@ def test_production_spa_rejects_path_escape(static_app, path):
 def test_production_spa_serves_assets_and_routes(static_app):
     client, _ = static_app
     assert client.get('/assets/app.js').text == 'public javascript'
-    assert client.get('/portfolio').text == '<html>public app</html>'
+    assert 'public app' in client.get('/portfolio').text
     assert client.get('/').status_code == 200
 
 
@@ -48,4 +54,6 @@ def test_production_spa_rejects_symlink_escape(static_app):
     assert client.get('/leak.txt').status_code == 404
     (public / 'index.html').unlink()
     (public / 'index.html').symlink_to(public.parent / 'private-canary.txt')
-    assert client.get('/portfolio').status_code == 404
+    response = client.get('/portfolio')
+    assert response.status_code == 404
+    assert 'PRIVATE_FILE_CANARY' not in response.text

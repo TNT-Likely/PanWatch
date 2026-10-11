@@ -1,3 +1,4 @@
+import { publicUrl } from './base-path'
 // SSE 客户端基建：基于 fetch + ReadableStream（原生 EventSource 无法带 Authorization header）
 // - readSSE: 单次连接，流结束后 resolve；连接失败直接 reject（调用方据此降级轮询/非流式）
 // - subscribeSSE: 自动重连订阅（带 Last-Event-ID 续推），用于进度/日志等 GET 流
@@ -60,7 +61,7 @@ export async function readSSE(path: string, options: ReadSSEOptions): Promise<{ 
   }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(publicUrl(`/api${path}`), {
     method: options.method || 'GET',
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
