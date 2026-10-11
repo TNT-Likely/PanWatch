@@ -6,7 +6,7 @@ import logging
 
 from marketdata.errors import VendorError
 from marketdata.http import record_error
-from marketdata.symbol import Market, Symbol
+from marketdata.symbol import Symbol
 from marketdata.types import Quote
 from marketdata.vendors.base import QuoteVendor
 
@@ -14,14 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def _yf_ticker(sym: Symbol) -> str:
-    if sym.market == Market.HK:
-        return f"{int(sym.code):04d}.HK" if sym.code.isdigit() else f"{sym.code}.HK"
-    return sym.code
+    return sym.to_yfinance()
 
 
 class YFinanceQuoteVendor(QuoteVendor):
     name = "yfinance"
-    supports_markets = {"HK", "US"}
+    supports_markets = {"HK", "US", "AU"}
 
     def fetch(self, symbols: list[Symbol], config: dict) -> list[Quote]:
         if not symbols:
