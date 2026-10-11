@@ -293,6 +293,11 @@ class TradingAgentsAgent(BaseAgent):
                 cached.raw_data["from_cache"] = True
                 return cached
 
+        # Freeze the report identity before the long-running graph starts. A
+        # midnight crossing must not change its model date, saved row or links.
+        report_key = analysis_key(stock.symbol, stock.market)
+        report_date = analysis_trade_date(stock.market)
+
         # 2) 构造 TradingAgents config (支持 deep / quick 双模型)
         from src.platform.persistence.database import DB_PATH
         output_language = "English" if context.report_language == "en-US" else "Chinese"
@@ -348,6 +353,7 @@ class TradingAgentsAgent(BaseAgent):
                     ai_client=context.ai_client,
                     symbol=stock.symbol,
                     market=stock.market.value,
+                    analysis_date=report_date,
                     ta_config=ta_config,
                     progress_handler=progress_handler,
                     panwatch_data=data,
@@ -386,6 +392,8 @@ class TradingAgentsAgent(BaseAgent):
             ta_result=ta_result,
             model_label=context.model_label,
             output_language=output_language,
+            analysis_key=report_key,
+            analysis_date=report_date,
         )
 
         # 存分析时实时价 → 历史决策表"分析价"立即显示(不必等当日 K线收盘回填)
@@ -409,11 +417,11 @@ class TradingAgentsAgent(BaseAgent):
         try:
             save_analysis(
                 agent_name=self.name,
-                stock_symbol=analysis_key(stock.symbol, stock.market),
+                stock_symbol=report_key,
                 content=result.content,
                 title=result.title,
                 raw_data=result.raw_data,
-                analysis_date=date.fromisoformat(analysis_trade_date(stock.market)),
+                analysis_date=date.fromisoformat(report_date),
             )
         except Exception as e:
             logger.warning(f"[TA] save_analysis 失败,不影响主流程: {e}")
@@ -538,6 +546,7 @@ class TradingAgentsAgent(BaseAgent):
         stock_metadata_context: str = "",
         portfolio: Any | None = None,
         cancel_event: threading.Event | None = None,
+        analysis_date: str | None = None,
     ) -> dict[str, Any]:
         """在 worker 线程跑同步 TradingAgents 流程。
 
@@ -579,7 +588,8 @@ class TradingAgentsAgent(BaseAgent):
             if stock_metadata_context:
                 patch_instrument_context(graph, stock_metadata_context)
 
-            date_str = analysis_trade_date(market)
+            # Optional for callers of the legacy synchronous entry point.
+            date_str = analysis_date if analysis_date is not None else analysis_trade_date(market)
             provider_symbol = symbol
             if market in {"TSX", "TSXV"}:
                 from marketdata.symbol import Symbol

@@ -20,6 +20,10 @@ from typing import Any
 
 from src.modules.automation.base import AnalysisResult
 from src.modules.research.signals.actions import normalize_suggestion, ACTION_LABELS_EN
+from src.platform.marketdata.instrument_identity import (
+    analysis_key as make_analysis_key,
+    analysis_trade_date,
+)
 
 __all__ = [
     "DECISION_LABEL_MAP",
@@ -68,6 +72,8 @@ def map_state_to_result(
     ta_result: dict[str, Any],
     model_label: str = "",
     output_language: str = "Chinese",
+    analysis_key: str | None = None,
+    analysis_date: str | None = None,
 ) -> AnalysisResult:
     """主入口:把 TradingAgents 的 final_state 映射成 AnalysisResult。
 
@@ -75,6 +81,8 @@ def map_state_to_result(
         stock: PanWatch StockConfig(symbol/name/market)
         ta_result: {"decision": str, "final_state": dict, "cost_usd": float}
         model_label: 形如 "deepseek/deepseek-chat",写到 markdown 末尾
+        analysis_key: Exact stock key used to persist this execution's report.
+        analysis_date: Exact ISO date used by this execution and its saved report.
     """
     state = ta_result.get("final_state") or {}
     cost_usd = float(ta_result.get("cost_usd", 0.0) or 0.0)
@@ -129,9 +137,13 @@ def map_state_to_result(
     )
     content = _render_markdown(state, suggestion, model_label, output_language)
     # 详情页可点击链接(配了 panwatch_base_url 才出现)
-    from datetime import date as _date
     from src.modules.research.analysis_link import analysis_detail_markdown
-    _link = analysis_detail_markdown(stock.symbol, _date.today().isoformat())
+    # The agent supplies the frozen persistence identity. Keep direct/legacy
+    # mapper callers working, using the same market-aware identity conventions.
+    market = getattr(stock, "market", None)
+    report_key = analysis_key if analysis_key is not None else make_analysis_key(stock.symbol, market)
+    report_date = analysis_date if analysis_date is not None else analysis_trade_date(market)
+    _link = analysis_detail_markdown(report_key, report_date)
     if _link:
         content = content.rstrip() + f"\n\n---\n{_link}"
     # 通知体只放「最终决策」(决策摘要 + PM 决策书) + 详情链接;
