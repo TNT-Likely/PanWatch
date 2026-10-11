@@ -1130,7 +1130,7 @@ export default function StocksPage() {
         account_id: positionForm.account_id,
         stock_id: stockId,
         cost_price: parseFloat(positionForm.cost_price),
-        quantity: parseInt(positionForm.quantity),
+        quantity: parseFloat(positionForm.quantity),
         invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
       }

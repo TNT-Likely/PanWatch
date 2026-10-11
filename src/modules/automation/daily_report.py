@@ -355,7 +355,7 @@ class DailyReportAgent(BaseAgent):
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
                 if total_qty is not None:
                     lines.append(
-                        f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"
+                        f"- 持仓：{total_qty:.10g}股 成本{avg_cost:.2f} 浮盈{pnl_pct:+.1f}%（{style}）"
                     )
 
             kline_history = stock_ctx.get("kline_history") or {}

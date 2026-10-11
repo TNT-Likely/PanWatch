@@ -444,7 +444,7 @@ class PremarketOutlookAgent(BaseAgent):
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
                 avg_cost = safe_num(position.get("avg_cost"), 1)
                 lines.append(
-                    f"- 持仓：{position['total_quantity']}股 成本{avg_cost:.2f}（{style}）"
+                    f"- 持仓：{position['total_quantity']:.10g}股 成本{avg_cost:.2f}（{style}）"
                 )
 
             constraints = stock_ctx.get("constraints") or {}

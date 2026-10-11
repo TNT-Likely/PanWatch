@@ -12,7 +12,7 @@ class PortfolioService:
     def build_assistant_summary(self) -> str:
         sections: list[str] = []
         real_lines = [
-            f"- {stock.name}({stock.market}:{stock.symbol}) {position.quantity}股 "
+            f"- {stock.name}({stock.market}:{stock.symbol}) {position.quantity:.10g}股 "
             f"成本{position.cost_price} 风格{position.trading_style or '波段'}"
             for position, stock in self._repository.list_real_positions_with_stocks()
         ]

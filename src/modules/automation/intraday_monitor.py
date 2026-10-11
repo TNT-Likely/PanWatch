@@ -486,7 +486,7 @@ class IntradayMonitorAgent(BaseAgent):
                 lines.append(f"\n### 持仓 {i}：{pos.account_name}")
                 lines.append(f"- 交易风格：{style_label}")
                 lines.append(f"- 成本价：{cost_price:.2f}")
-                lines.append(f"- 持仓量：{pos.quantity} 股")
+                lines.append(f"- 持仓量：{pos.quantity:.10g} 股")
                 lines.append(f"- 持仓市值：{market_value:.0f} 元")
                 pnl_note = ""
                 if pnl_pct <= self.stop_loss_warning:
