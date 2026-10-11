@@ -93,8 +93,8 @@ browser timezone. [Timezone policy](docs/timezones.md)
 <summary>Initial setup</summary>
 
 1. Open the web interface and create your login credentials.
-2. Open **Getting started** from the dashboard or navigation. Choose a goal to start an interactive tour across the real watchlist, settings, analysis, and alert pages. Click highlighted controls directly; the tour advances after saved actions or successful checks.
-3. For AI analysis, configure a service in **Settings → AI Services**, set the default model, and test the connection before explicitly generating your first analysis. This action uses your model quota; its result stays on the page.
+2. The main tour opens on first sign-in and follows stocks, quotes, AI setup and a first analysis. Required steps cannot be skipped; you can pause and resume. Reopen it from the **Guide center**, which also offers opportunities, paper trading, assistant, daily tasks and data sources, each with saved progress and replay. Click highlighted controls directly. The main tour verifies saved actions or successful checks; exploration routes record instructions you acknowledge.
+3. In the main tour, configure a service in **Settings → AI Services**, set the default model, and test the connection before explicitly generating your first analysis. This action uses your model quota; its result stays on the page.
 4. Optionally create a price alert and test a notification channel. You can defer or resume the guide; progress survives browser changes and service restarts. A changed model or channel configuration needs a new successful test.
 5. Enable scheduled agents or explore TradingAgents after the basics work. These are configured separately from the first analysis.
 

@@ -12,6 +12,8 @@ export interface ApiResponse<T> {
 }
 
 const API_ERROR_TEXT_EN: Record<string, string> = {
+  onboarding_step_incomplete: 'Complete the current required step before continuing.',
+  onboarding_track_invalid: 'Choose a valid guide route and advance one route at a time.',
   onboarding_analysis_interrupted: 'A service restart interrupted the analysis. Your setup is saved; generate it again.',
   onboarding_analysis_empty: 'The model returned an empty result. Retry or choose another model.',
   onboarding_analysis_running: 'An analysis is running. Wait for it to finish before changing the symbol.',

@@ -17,7 +17,7 @@ export default function FirstAnalysis() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const lock = useRef(false)
-  if (!status?.selected_stock || status.goal !== 'ai') return null
+  if (!status?.selected_stock) return null
   const run = status.analysis
   const running = busy || run?.status === 'running'
   const ready = !!status.quote && status.models.some(model => model.is_default && model.verified)

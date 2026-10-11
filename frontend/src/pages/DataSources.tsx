@@ -347,7 +347,7 @@ export default function DataSourcesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => testSource(source.id)}
+                      data-tour="source-test" onClick={() => testSource(source.id)}
                       disabled={testing === source.id || !source.enabled}
                       title={t('configuration:dataSources.testConnection')}
                     >
@@ -358,7 +358,7 @@ export default function DataSourcesPage() {
                       )}
                     </Button>
                     <Switch checked={source.enabled} onCheckedChange={() => toggleEnabled(source)} />
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openDialog(source)} title={t('configuration:dataSources.settings')}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" data-tour="source-config" onClick={() => openDialog(source)} title={t('configuration:dataSources.settings')}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -404,7 +404,7 @@ export default function DataSourcesPage() {
               <button
                 type="button"
                 className="w-full flex items-center gap-2 mb-3 py-1 text-left group"
-                onClick={() => toggleCategory(category.key)}
+                data-tour="source-category" onClick={() => toggleCategory(category.key)}
               >
                 <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                 <span className="text-[13px] font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
@@ -425,7 +425,7 @@ export default function DataSourcesPage() {
 
       {/* Edit Dialog - 编辑模式只允许修改配置项;新增模式含名称/类型/Provider */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent data-tour="source-config-dialog"><div data-tour-instructions />
           <DialogHeader>
             <DialogTitle>{t('configuration:dataSources.form.title', { name: form.name })}</DialogTitle>
             <DialogDescription>{form.provider}</DialogDescription>
@@ -514,7 +514,7 @@ export default function DataSourcesPage() {
 
       {/* Test Result Dialog */}
       <Dialog open={testResultOpen} onOpenChange={setTestResultOpen}>
-        <DialogContent
+        <DialogContent data-tour="source-test-dialog"
           className="max-w-2xl w-[92vw] max-h-[85vh] overflow-y-auto scrollbar"
           onInteractOutside={(e) => e.preventDefault()}
         >
@@ -533,7 +533,7 @@ export default function DataSourcesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-2 pr-1">
+          <div className="space-y-4 mt-2 pr-1"><div data-tour-instructions />
             {/* Summary */}
             <div className="flex items-center gap-4 p-3 rounded-lg bg-accent/30">
               <div className="flex-1">

@@ -4,10 +4,8 @@ import { bizUi as zhBizUi } from '../zh-CN/biz-ui'
 export const bizUi = {
   tour: {
   "title": "Interactive getting started",
-  "welcome": "Follow the highlights on the actual pages: add a stock, view quotes, then optionally set up AI and alerts. Click highlighted controls directly and pause at any time.",
-  "goal": "Choose your goal",
-  "quotesGoal": "Add a stock and view quotes, then optionally configure alerts and notifications.",
-  "aiGoal": "Go from adding a stock to your first analysis, then optionally configure alerts and notifications.",
+  "welcome": "Follow one continuous tour: add a stock, view quotes, connect AI and generate your first analysis, then optionally configure alerts and notifications. Click highlighted controls directly and pause at any time.",
+  "flow": "Complete workflow",
   "start": "Start guided tour",
   "progress": "Step {{current}} of {{total}}",
   "pause": "Pause tour",
@@ -86,6 +84,116 @@ export const bizUi = {
     "channelForm": {
       "title": "Configure a channel",
       "description": "Choose its type and enter recipient settings. Save and enable it, then click the paper-plane button to test."
+    }
+  }
+},
+  guideCenter: {
+  "title": "Guide center",
+  "description": "Find every walkthrough here, from your first setup to deeper exploration. Each route saves its own progress and can be replayed.",
+  "mainTitle": "Main tour: from a stock to your first AI analysis",
+  "mainBadge": "Starts on first sign-in · Required steps cannot be skipped",
+  "mainDescription": "Add a stock → View quotes → Connect AI → Generate an analysis. Alerts and notifications follow as optional steps. Pause and resume whenever needed.",
+  "moreTitle": "Explore more",
+  "moreDescription": "Follow highlights on the real pages. Exploration progress records instructions you have read; configuration and execution remain your decisions.",
+  "replay": "Explore again",
+  "inProgress": "In progress",
+  "notStarted": "Not started",
+  "trackProgress": "{{done}} of {{total}} steps explored",
+  "explore": "Explore",
+  "understood": "Understood, continue",
+  "finishTrack": "Finish and return",
+  "closeDialog": "Complete your action here, or close the dialog to continue the tour.",
+  "explorationHint": "Try the highlighted controls, then confirm that you understand this step.",
+  "tracks": {
+    "opportunities": {
+      "title": "Discover and evaluate opportunities",
+      "description": "Filter candidates, read their evidence, and review later outcomes.",
+      "steps": {
+        "filters": {
+          "title": "Filter opportunities you care about",
+          "description": "Choose a market, source, strategy or risk, then click Apply. Relax filters if no candidates match. Analysis tasks produce candidates; starting a tour does not create them."
+        },
+        "signals": {
+          "title": "Read a signal before following it",
+          "description": "Open a candidate for stock details. Check data time, evidence, entry range and invalidation before adding it to your watchlist. An empty list means no matching signals; continue to learn about evaluation."
+        },
+        "evaluation": {
+          "title": "Review later outcomes",
+          "description": "Filter historical suggestions and their subsequent performance. Open a row to read the evidence. This page is empty before analyses have run; return after completing the main tour."
+        }
+      }
+    },
+    "paper": {
+      "title": "Explore paper trading",
+      "description": "Learn about simulated capital, allocations, the run switch and position records.",
+      "steps": {
+        "capital": {
+          "title": "Review simulated capital first",
+          "description": "Open Capital configuration to inspect total capital and allocations for China, Hong Kong and US markets. Changes require an explicit Save. This account is separate from your real positions."
+        },
+        "controls": {
+          "title": "Understand the paper trading switch",
+          "description": "This switch controls automatic signal processing. Review allocations before enabling it. Scan processes current signals and may create simulated trades. The tour never enables or scans on your behalf."
+        },
+        "positions": {
+          "title": "Read positions and trade records",
+          "description": "Review simulated positions, profit and sellable quantities. Completed trades become available above after trading. China follows T+1. An empty list is expected before signals or trades exist."
+        }
+      }
+    },
+    "assistant": {
+      "title": "Use the research assistant",
+      "description": "Ask your own question, review tool permissions and follow background work.",
+      "steps": {
+        "composer": {
+          "title": "Ask a specific question",
+          "description": "Enter a symbol, time range and the question you care about, or choose a stock. Sending invokes your model. If no model is configured, finish the AI connection in the main tour first."
+        },
+        "context": {
+          "title": "Review tool permissions",
+          "description": "Open this panel to inspect available tools and permissions. Actions that require approval are presented before execution. Read the requested action before deciding whether to allow it."
+        },
+        "activity": {
+          "title": "Find conversations and ongoing work",
+          "description": "Use this toolbar to return to conversations, start new research or inspect context. After sending, progress and pending approvals appear in the conversation. You can leave and return to ongoing work."
+        }
+      }
+    },
+    "automation": {
+      "title": "Configure daily analysis tasks",
+      "description": "Inspect schedules, stock bindings and history before enabling scheduled work.",
+      "steps": {
+        "schedule": {
+          "title": "Review actual execution times",
+          "description": "Open the execution schedule to inspect its time zone and upcoming runs. Edit and save when needed. Enabled scheduled tasks use the selected model quota."
+        },
+        "binding": {
+          "title": "Choose stocks for a task",
+          "description": "Open stock bindings, then click a stock to toggle its binding. Changes are saved immediately. The first analysis does not bind stocks or enable scheduled tasks."
+        },
+        "history": {
+          "title": "Review run history and results",
+          "description": "Filter runs by task or stock. Open a record for results, model and time. History is empty before tasks run; failed records help diagnose model or data configuration."
+        }
+      }
+    },
+    "datasources": {
+      "title": "Check market and research data",
+      "description": "Find categories, priorities and connection tests when data is missing.",
+      "steps": {
+        "catalog": {
+          "title": "Find sources by data category",
+          "description": "Expand or collapse a category. Quotes, candles, news and fundamentals use their own sources. Higher-priority sources are tried first, with alternatives available after failures."
+        },
+        "config": {
+          "title": "Inspect source configuration",
+          "description": "Expand a category, then open Settings to inspect priority, test symbols and connection parameters. Save credentials for sources that require them. Built-in sources without credentials can also be tested directly."
+        },
+        "test": {
+          "title": "Test and read the result",
+          "description": "Click Play to test an enabled source. Read its data time, count and missing details. A successful request does not guarantee every market or symbol. Close the result dialog to continue."
+        }
+      }
     }
   }
 },

@@ -4,16 +4,18 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Compass, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { onboardingApi, type SetupStatus, type SetupStep, type SetupUpdate } from '@panwatch/api/onboarding'
+import FeatureTour from './FeatureTour'
+import { trackSteps, type FeatureTrack } from './tracks'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Popover, PopoverAnchor, PopoverContent } from '@panwatch/base-ui/components/ui/popover'
 
 const paths: Record<SetupStep, string> = { stock: '/portfolio', quote: '/portfolio', ai: '/settings', analysis: '/portfolio', alert: '/alerts', notify: '/settings' }
-export function tourSteps(goal: 'quotes' | 'ai'): SetupStep[] {
-  return goal === 'quotes' ? ['stock', 'quote', 'alert', 'notify'] : ['stock', 'quote', 'ai', 'analysis', 'alert', 'notify']
+export function tourSteps(): SetupStep[] {
+  return ['stock', 'quote', 'ai', 'analysis', 'alert', 'notify']
 }
 export function resumeStep(status: SetupStatus): SetupStep {
-  const steps = tourSteps(status.goal)
+  const steps = tourSteps()
   if (status.tour_step && status.tour_step !== 'done' && steps.includes(status.tour_step)) return status.tour_step
   return steps.find(key => status.steps.find(item => item.key === key)?.status === 'pending') || 'stock'
 }
@@ -28,6 +30,8 @@ type TourContextValue = {
   selectStock: (id: number) => Promise<void>
   observeQuote: () => Promise<void>
   accept: (value: SetupStatus) => void
+  startTrack: (track: FeatureTrack, restart?: boolean) => Promise<void>
+  updateTrack: (patch: SetupUpdate) => Promise<SetupStatus | undefined>
 }
 const TourContext = createContext<TourContextValue | null>(null)
 export function useGuidedTour() { return useContext(TourContext) }
@@ -73,7 +77,6 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [welcome, setWelcome] = useState(false)
-  const [goal, setGoal] = useState<'quotes' | 'ai'>('ai')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [chooseExisting, setChooseExisting] = useState(false)
@@ -83,7 +86,8 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const revision = useRef(0)
   const opener = useRef<HTMLElement | null>(null)
   const step = status?.tour_step && status.tour_step !== 'done' ? status.tour_step : null
-  const active = !!step && !status?.deferred && !welcome
+  const mainTrack = !status?.active_track || status.active_track === 'main'
+  const active = mainTrack && !!step && !status?.deferred && !welcome
   const onRoute = !!step && location.pathname === paths[step]
 
   const refresh = useCallback(async () => {
@@ -103,6 +107,11 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     return () => { alive.current = false; revision.current++; window.removeEventListener('focus', onFocus) }
   }, [refresh])
   useEffect(() => {
+    if (!status || status.started || status.deferred) return
+    setWelcome(true)
+    navigate('/getting-started', { replace: true })
+  }, [status, navigate])
+  useEffect(() => {
     if (!active && status?.analysis?.status !== 'running') return
     const timer = window.setInterval(() => { if (!lock.current) void refresh() }, 3000)
     return () => window.clearInterval(timer)
@@ -118,13 +127,14 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
       if (route) {
         setChooseExisting(false)
         setWelcome(false)
-        navigate(route === 'done' ? '/' : paths[route])
+        navigate(route === 'done' ? '/getting-started' : paths[route])
       }
+      return value
     } catch (exc) { if (alive.current) setError(exc instanceof Error ? exc.message : t('gettingStarted.errors.action')) }
     finally { lock.current = false; if (alive.current) setBusy(false) }
   }
   const move = (next: SetupStep | 'done', extra: SetupUpdate = {}) => operation(
-    () => onboardingApi.update({ ...extra, tour_step: next, deferred: false }), next)
+    () => onboardingApi.update({ ...extra, track: 'main', tour_step: next, deferred: false }), next)
   const pause = () => operation(() => onboardingApi.update({ deferred: true })).then(() => {
     if (opener.current?.isConnected) opener.current.focus()
   })
@@ -132,6 +142,14 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setWelcome(true)
   }, [])
+  const updateTrack = (patch: SetupUpdate) => operation(() => onboardingApi.update(patch))
+  const startTrack = async (track: FeatureTrack, restart = false) => {
+    const value = await updateTrack({ track, restart, deferred: false })
+    if (!value) return
+    setWelcome(false)
+    const current = value.tracks.find(item => item.key === track)?.step
+    navigate(trackSteps[track].find(item => item.key === current)?.path || trackSteps[track][0].path)
+  }
   const selectStock = async (id: number) => {
     if (!active || step !== 'stock') return
     await move('quote', { stock_id: id })
@@ -186,12 +204,12 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener('keydown', onKey, true)
   })
 
-  const sequence = tourSteps(status?.goal || 'ai')
+  const sequence = tourSteps()
   const index = step ? sequence.indexOf(step) : 0
   const done = status?.steps.find(item => item.key === step)?.status === 'complete'
   const next: SetupStep | 'done' = index + 1 < sequence.length ? sequence[index + 1] : 'done'
   const virtualRef = useMemo(() => ({ current: { getBoundingClientRect: () => target?.rect || new DOMRect(), contextElement: target?.element } }), [target])
-  const value: TourContextValue = { status, active, step, busy, error, openWelcome, refresh, selectStock, observeQuote, accept: setStatus }
+  const value: TourContextValue = { status, active, step, busy, error, openWelcome, refresh, selectStock, observeQuote, accept: setStatus, startTrack, updateTrack }
   const tooltip = active && onRoute && step && status && target && !target.dialog && <Popover open modal={false}>
     <PopoverAnchor virtualRef={virtualRef} />
     <PopoverContent side={target.rect.top > window.innerHeight / 2 ? 'top' : 'bottom'}
@@ -227,6 +245,7 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const instructionHost = target?.dialog?.querySelector('[data-tour-instructions]')
   return <TourContext.Provider value={value}>
     {children}
+    <FeatureTour disabled={welcome} />
     {active && onRoute && target && !target.dialog && createPortal(<svg className="pointer-events-none fixed inset-0 z-[70] h-full w-full" aria-hidden="true">
       <defs><mask id="guided-tour-mask"><rect width="100%" height="100%" fill="white" /><rect x={target.rect.left - 6} y={target.rect.top - 6} width={target.rect.width + 12} height={target.rect.height + 12} rx="12" fill="black" /></mask></defs>
       <rect width="100%" height="100%" fill="rgba(0,0,0,.58)" mask="url(#guided-tour-mask)" />
@@ -245,23 +264,24 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
       {error && <p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
       <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => { if (step) navigate(paths[step]); void refresh() }}>{t('tour.return')}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void pause()}>{t('tour.pause')}</Button></div>
     </div>, document.body)}
-    <Dialog open={welcome} onOpenChange={open => { if (!busy) setWelcome(open) }}>
+    <Dialog open={welcome} onOpenChange={open => { if (!busy) { if (!open && status && !status.started) void pause(); setWelcome(open) } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Compass className="h-5 w-5 text-primary" />{t('tour.title')}</DialogTitle><DialogDescription>{t('tour.welcome')}</DialogDescription></DialogHeader>
-        <div className="grid gap-3" role="group" aria-label={t('tour.goal')}>
-          {(['quotes', 'ai'] as const).map(item => <button key={item} type="button" aria-pressed={goal === item} disabled={busy}
-            className={'rounded-xl border p-4 text-left ' + (goal === item ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent')}
-            onClick={() => setGoal(item)}><p className="text-sm font-semibold">{t(item === 'quotes' ? 'gettingStarted.quotesGoal' : 'gettingStarted.aiGoal')}</p><p className="mt-1 text-xs text-muted-foreground">{t(item === 'quotes' ? 'tour.quotesGoal' : 'tour.aiGoal')}</p></button>)}
-        </div>
+        <ol className="grid gap-3 rounded-xl border bg-muted/30 p-4 sm:grid-cols-2" aria-label={t('tour.flow')}>
+          {sequence.map((item, order) => <li key={item} className="flex items-center gap-2 text-sm">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{order + 1}</span>
+            <span>{t(`gettingStarted.steps.${item}.title`)}{['alert', 'notify'].includes(item) && <span className="ml-1 text-xs text-muted-foreground">· {t('gettingStarted.optional')}</span>}</span>
+          </li>)}
+        </ol>
         {error && <p className="mt-3 text-sm text-destructive" role="alert">{error}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" disabled={busy} onClick={() => setWelcome(false)}>{t('gettingStarted.later')}</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => { void pause(); setWelcome(false) }}>{t('gettingStarted.later')}</Button>
           {status?.tour_step && status.tour_step !== 'done' && <Button variant="secondary" disabled={busy} onClick={() => void move(resumeStep(status))}>{t('gettingStarted.resume')}</Button>}
-          <Button disabled={busy || !status} onClick={() => void move('stock', { goal })}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{t('tour.start')}</Button>
+          <Button disabled={busy || !status} onClick={() => void move('stock')}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{t('tour.start')}</Button>
         </div>
       </DialogContent>
     </Dialog>
-    <Dialog open={status?.tour_step === 'done' && !status.deferred} onOpenChange={open => { if (!open) void operation(() => onboardingApi.update({ deferred: true })) }}>
+    <Dialog open={mainTrack && status?.tour_step === 'done' && !status.deferred} onOpenChange={open => { if (!open) void operation(() => onboardingApi.update({ deferred: true })) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{t('tour.doneTitle')}</DialogTitle><DialogDescription>{t('tour.doneDescription')}</DialogDescription></DialogHeader>
         <p className="text-sm text-muted-foreground">{t('gettingStarted.progress', { done: status?.completed_count || 0, total: status?.required_count || 0 })}</p>

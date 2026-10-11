@@ -2,8 +2,19 @@ import { fetchAPI } from './client'
 import type { StockItem } from './stocks'
 
 export type SetupStep = 'stock' | 'quote' | 'ai' | 'analysis' | 'alert' | 'notify'
+export type TourTrack = 'main' | 'opportunities' | 'paper' | 'assistant' | 'automation' | 'datasources'
+export interface TrackStatus {
+  key: Exclude<TourTrack, 'main'>
+  step: string | null
+  started: boolean
+  completed_steps: string[]
+  completed: boolean
+  total: number
+}
 export interface SetupStatus {
-  goal: 'quotes' | 'ai'
+  goal: 'ai'
+  active_track: TourTrack
+  tracks: TrackStatus[]
   deferred: boolean
   started: boolean
   tour_step: SetupStep | 'done' | null
@@ -18,8 +29,11 @@ export interface SetupStatus {
   required_count: number
 }
 export interface SetupUpdate {
+  track?: TourTrack
+  track_step?: string
+  complete_step?: string
+  restart?: boolean
   tour_step?: SetupStep | 'done'
-  goal?: 'quotes' | 'ai'
   deferred?: boolean
   stock_id?: number
   skip?: 'alert' | 'notify'

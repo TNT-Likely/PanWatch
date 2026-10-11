@@ -17,26 +17,32 @@ from src.modules.administration.onboarding import (
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AIModel, AIService, AgentRun, NotifyChannel, PriceAlertRule, Stock
 from src.web.errors import api_error
+from src.modules.administration.tour_catalog import TRACK_STEPS, track_statuses
 
 router = APIRouter()
 _start_lock = threading.Lock()
 
 
 class ProgressUpdate(BaseModel):
+    # Accept old clients' goal field while all clients now follow the same tour.
     goal: Literal["quotes", "ai"] | None = None
     deferred: bool | None = None
     tour_step: Literal["stock", "quote", "ai", "analysis", "alert", "notify", "done"] | None = None
     stock_id: int | None = None
     skip: Literal["alert", "notify"] | None = None
     unskip: Literal["alert", "notify"] | None = None
+    track: Literal["main", "opportunities", "paper", "assistant", "automation", "datasources"] | None = None
+    track_step: str | None = None
+    complete_step: str | None = None
+    restart: bool = False
 
 
 def _selected(db, state):
     return db.get(Stock, state.get("stock_id")) if state.get("stock_id") else None
 
 
-def get_status(db: Session) -> dict:
-    state = read_value(db, STATE_KEY)
+def get_status(db: Session, state: dict | None = None) -> dict:
+    state = read_value(db, STATE_KEY) if state is None else state
     stock = _selected(db, state)
     models = db.query(AIModel).order_by(AIModel.id).all()
     model_items = []
@@ -71,14 +77,19 @@ def get_status(db: Session) -> dict:
     facts = {"stock": bool(stock), "quote": bool(quote), "ai": bool(default and default["verified"]),
              "analysis": bool(stock and analysis and analysis["status"] == "success" and analysis["content"]),
              "alert": bool(alert), "notify": any(ch["verified"] for ch in channel_items)}
-    goal = state.get("goal", "ai")
-    required = ["stock", "quote"] + (["ai", "analysis"] if goal == "ai" else [])
+    required = ["stock", "quote", "ai", "analysis"]
+    tour_step = state.get("tour_step")
+    # A quotes-only tour may already be at its optional steps or marked done.
+    # Resume its first unfinished required action without discarding saved facts.
+    if state.get("goal") == "quotes" and tour_step in ("alert", "notify", "done"):
+        tour_step = next((key for key in required if not facts[key]), tour_step)
     skipped = state.get("skipped", [])
     steps = [{"key": key, "required": key in required,
               "status": "complete" if done else "skipped" if key in skipped else "pending"}
              for key, done in facts.items()]
-    return {"goal": goal, "deferred": bool(state.get("deferred")), "started": bool(state),
-            "tour_step": state.get("tour_step"),
+    return {"goal": "ai", "deferred": bool(state.get("deferred")), "started": bool(state),
+            "active_track": state.get("active_track", "main"), "tracks": track_statuses(state),
+            "tour_step": tour_step,
             "selected_stock": {"id": stock.id, "name": stock.name, "symbol": stock.symbol, "market": stock.market} if stock else None,
             "models": model_items, "channels": channel_items, "quote": quote, "analysis": analysis,
             "steps": steps, "completed": all(facts[key] for key in required),
@@ -93,6 +104,15 @@ def status(db: Session = Depends(get_db)):
 @router.patch("")
 def update(body: ProgressUpdate, db: Session = Depends(get_db)):
     state = read_value(db, STATE_KEY)
+    if state.get("goal") == "quotes":
+        state["tour_step"] = get_status(db)["tour_step"]
+    state["goal"] = "ai"
+    if body.track is not None:
+        state["active_track"] = body.track
+    if body.tour_step is not None:
+        if body.track not in (None, "main"):
+            raise api_error(400, "onboarding_track_invalid", "主流程与其他路线不能同时推进")
+        state["active_track"] = "main"
     if body.stock_id is not None:
         if not db.get(Stock, body.stock_id):
             raise api_error(404, "stock_not_found", "股票不存在")
@@ -104,7 +124,35 @@ def update(body: ProgressUpdate, db: Session = Depends(get_db)):
             state.pop("quote", None)
             state.pop("analysis_trace_id", None)
         state["stock_id"] = body.stock_id
-    for key in ("goal", "deferred", "tour_step"):
+    if body.tour_step is not None:
+        sequence = ["stock", "quote", "ai", "analysis", "alert", "notify", "done"]
+        before = sequence[:sequence.index(body.tour_step)]
+        facts = get_status(db, state)["steps"]
+        if any(item["required"] and item["key"] in before and item["status"] != "complete" for item in facts):
+            raise api_error(409, "onboarding_step_incomplete", "请先完成当前必做步骤")
+    track = state.get("active_track", "main")
+    if body.track_step is not None or body.complete_step is not None or (body.track is not None and track != "main"):
+        if track not in TRACK_STEPS:
+            raise api_error(400, "onboarding_track_invalid", "请选择有效的引导路线")
+        sequence = TRACK_STEPS[track]
+        saved = state.setdefault("tracks", {}).setdefault(track, {})
+        if body.track is not None and (body.restart or saved.get("step") in (None, "done")):
+            saved["step"] = sequence[0]
+        current = saved.get("step")
+        completed = set(saved.get("completed_steps") or [])
+        if body.track_step is not None:
+            if body.track_step not in sequence or (body.track_step != current and body.track_step not in completed):
+                raise api_error(409, "onboarding_step_incomplete", "请按顺序体验当前路线")
+            saved["step"] = body.track_step
+            current = body.track_step
+        if body.complete_step is not None:
+            if body.complete_step not in sequence or body.complete_step != current:
+                raise api_error(409, "onboarding_step_incomplete", "请先完成当前引导步骤")
+            completed.add(current)
+            index = sequence.index(current)
+            saved["step"] = sequence[index + 1] if index + 1 < len(sequence) else "done"
+        saved["completed_steps"] = [key for key in sequence if key in completed]
+    for key in ("deferred", "tour_step"):
         value = getattr(body, key)
         if value is not None:
             state[key] = value

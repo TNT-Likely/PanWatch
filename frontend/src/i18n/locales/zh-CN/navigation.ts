@@ -1,6 +1,6 @@
 export const navigation = {
   items: {
-    gettingStarted: '开始使用',
+    gettingStarted: '引导中心',
     home: '首页',
     portfolio: '持仓',
     opportunities: '机会',

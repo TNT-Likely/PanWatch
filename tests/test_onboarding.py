@@ -79,14 +79,15 @@ def test_defer_and_optional_skip_persist_without_completing(setup):
     assert not result["deferred"] and result["completed_count"] == 0
 
 
-def test_quotes_goal_requires_explicit_selection_and_real_quote(setup, monkeypatch):
+def test_legacy_quotes_goal_now_continues_to_ai_after_real_quote(setup, monkeypatch):
     client, factory = setup
     assert client.post("/api/onboarding/quote").status_code == 400
     result = select_with_quote(client, monkeypatch, "quotes").json()
-    assert result["completed"] and result["completed_count"] == 2
+    assert not result["completed"] and result["completed_count"] == 2
+    assert result["goal"] == "ai" and result["required_count"] == 4
     assert result["quote"]["current_price"] == 123.4
     assert result["quote"]["source_time"] == "2026-10-09T15:00:00+08:00"
-    assert client.get("/api/onboarding").json()["completed"]
+    assert not client.get("/api/onboarding").json()["completed"]
     result = client.patch("/api/onboarding", json={"stock_id": 2}).json()
     assert result["quote"] is None and result["completed_count"] == 1
 
@@ -252,14 +253,70 @@ def test_background_analysis_settles_durably_through_agent_runtime(setup, monkey
 def test_tour_position_is_validated_and_persisted_without_forging_facts(setup):
     client, factory = setup
     assert client.get("/api/onboarding").json()["tour_step"] is None
-    result = client.patch("/api/onboarding", json={"tour_step": "quote", "deferred": False}).json()
+    result = client.patch("/api/onboarding", json={"stock_id": 1, "tour_step": "quote", "deferred": False}).json()
     assert result["tour_step"] == "quote"
     result = client.patch("/api/onboarding", json={"deferred": True}).json()
     assert result["tour_step"] == "quote" and result["deferred"]
     assert client.get("/api/onboarding").json()["tour_step"] == "quote"
     assert client.patch("/api/onboarding", json={"tour_step": "invalid"}).status_code == 422
-    result = client.patch("/api/onboarding", json={"tour_step": "done"}).json()
-    assert result["tour_step"] == "done" and not result["completed"]
-    assert result["completed_count"] == 0
+    assert client.patch("/api/onboarding", json={"tour_step": "done"}).status_code == 409
+    result = client.get("/api/onboarding").json()
+    assert result["tour_step"] == "quote" and not result["completed"]
+    assert result["completed_count"] == 1
     with factory() as db:
         assert db.query(AgentRun).count() == 0
+
+
+@pytest.mark.parametrize('step', ['alert', 'notify', 'done'])
+def test_legacy_completed_quotes_tour_resumes_ai_without_losing_facts(setup, step):
+    client, factory = setup
+    legacy = {'goal': 'quotes', 'tour_step': step, 'deferred': True, 'stock_id': 1,
+              'quote': {'stock_id': 1, 'current_price': 123, 'source': 'legacy'}, 'skipped': ['notify']}
+    with factory() as db:
+        write_value(db, STATE_KEY, legacy); db.commit()
+    status = client.get('/api/onboarding').json()
+    assert status['tour_step'] == 'ai' and not status['completed']
+    assert status['quote']['current_price'] == 123 and status['deferred']
+    assert status['selected_stock']['id'] == 1 and status['required_count'] == 4
+    with factory() as db:
+        assert read_value(db, STATE_KEY) == legacy  # GET does not mutate saved progress.
+    status = client.patch('/api/onboarding', json={'deferred': False}).json()
+    assert status['tour_step'] == 'ai'
+    with factory() as db:
+        assert read_value(db, STATE_KEY)['goal'] == 'ai'
+
+
+@pytest.mark.parametrize('track,steps', [
+    ('opportunities', ['filters', 'signals', 'evaluation']), ('paper', ['capital', 'controls', 'positions']),
+    ('assistant', ['composer', 'context', 'activity']), ('automation', ['schedule', 'binding', 'history']),
+    ('datasources', ['catalog', 'config', 'test'])])
+def test_exploration_tracks_complete_resume_replay_independently(setup, track, steps):
+    client, factory = setup
+    client.patch('/api/onboarding', json={'stock_id': 1, 'tour_step': 'quote', 'deferred': True})
+    status = client.patch('/api/onboarding', json={'track': track, 'deferred': False}).json()
+    assert status['active_track'] == track and status['tour_step'] == 'quote'
+    assert client.patch('/api/onboarding', json={'complete_step': steps[-1]}).status_code == 409
+    for index, step in enumerate(steps):
+        status = client.patch('/api/onboarding', json={'complete_step': step}).json()
+        item = next(item for item in status['tracks'] if item['key'] == track)
+        assert item['completed_steps'] == steps[:index+1]
+        assert item['step'] == (steps[index+1] if index+1 < len(steps) else 'done')
+    assert item['completed'] and not status['completed']
+    client.patch('/api/onboarding', json={'deferred': True})
+    assert client.get('/api/onboarding').json()['tracks'] == status['tracks']
+    status = client.patch('/api/onboarding', json={'track': track, 'restart': True, 'deferred': False}).json()
+    item = next(item for item in status['tracks'] if item['key'] == track)
+    assert item['step'] == steps[0] and item['completed']
+    assert status['tour_step'] == 'quote' and status['selected_stock']['id'] == 1
+    with factory() as db:
+        assert db.query(AgentRun).count() == 0
+
+
+def test_main_actions_cannot_be_skipped_by_changing_tour_position(setup):
+    client, factory = setup
+    assert client.patch('/api/onboarding', json={'tour_step': 'quote'}).status_code == 409
+    assert client.patch('/api/onboarding', json={'tour_step': 'analysis'}).status_code == 409
+    assert client.patch('/api/onboarding', json={'tour_step': 'done'}).status_code == 409
+    assert client.patch('/api/onboarding', json={'track': 'invalid'}).status_code == 422
+    assert client.patch('/api/onboarding', json={'track': 'paper', 'tour_step': 'stock'}).status_code == 400
+    assert client.get('/api/onboarding').json()['completed_count'] == 0

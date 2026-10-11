@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation, Link } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
 import { onboardingApi, type SetupStatus } from '@panwatch/api/onboarding'
 import i18n from '@/i18n'
+import { featureTracks, trackSteps } from '@/components/onboarding/tracks'
 
 vi.mock('@panwatch/api/onboarding', () => ({ onboardingApi: { status: vi.fn(), update: vi.fn(), quote: vi.fn(), analyze: vi.fn() } }))
 const stock = { id: 1, symbol: '600519', name: '测试标的', market: 'CN' }
@@ -15,7 +16,7 @@ const quote = { current_price: 123.4, change_pct: 1.2, source: 'controlled', obs
 const model = { id: 5, name: 'QA', model: 'qa-model', is_default: true, verified: true }
 let current: SetupStatus
 function state(overrides: Partial<SetupStatus> = {}): SetupStatus {
-  return { goal: 'ai', started: false, deferred: false, tour_step: null, selected_stock: null, models: [], channels: [],
+  return { goal: 'ai', active_track: 'main', tracks: featureTracks.map(key => ({ key, step: null, started: false, completed: false, completed_steps: [], total: 3 })), started: !!overrides.tour_step || !!overrides.selected_stock, deferred: false, tour_step: null, selected_stock: null, models: [], channels: [],
     quote: null, analysis: null, completed: false, completed_count: 0, required_count: 4,
     steps: (['stock', 'quote', 'ai', 'analysis', 'alert', 'notify'] as const).map(key => ({ key, status: 'pending', required: !['alert', 'notify'].includes(key) })), ...overrides }
 }
@@ -29,6 +30,7 @@ function Controls() {
     <div data-tour-stock="1">股票报价</div>
     <button data-tour="add-alert">实际提醒入口</button>
     <section id="sec-ai">真实模型设置</section><section id="sec-notify">真实渠道设置</section>
+    <button data-tour="opportunity-filters">实际机会筛选</button><div data-tour="opportunity-signals">候选列表</div><div data-tour="evaluations">验证中心</div>
     <Link to="/history">离开页面</Link><FirstAnalysis />
   </>
 }
@@ -41,22 +43,35 @@ beforeEach(async () => {
   await i18n.changeLanguage('zh-CN')
   current = state()
   vi.mocked(onboardingApi.status).mockImplementation(async () => current)
-  vi.mocked(onboardingApi.update).mockImplementation(async patch => { current = { ...current, ...patch }; return current })
+  vi.mocked(onboardingApi.update).mockImplementation(async patch => {
+    current = { ...current, ...patch, active_track: patch.track || current.active_track, started: true }
+    if (patch.track && patch.track !== 'main') current.tracks = current.tracks.map(item => item.key === patch.track ? { ...item, started: true, step: !item.step || item.step === 'done' || patch.restart ? trackSteps[item.key][0].key : item.step } : item)
+    if (patch.complete_step) current.tracks = current.tracks.map(item => {
+      if (item.key !== current.active_track) return item
+      const steps = trackSteps[item.key]
+      const index = steps.findIndex(step => step.key === patch.complete_step)
+      const completed_steps = [...new Set([...item.completed_steps, patch.complete_step!])]
+      return { ...item, completed_steps, completed: completed_steps.length === steps.length, step: steps[index + 1]?.key || 'done' }
+    })
+    return current
+  })
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 100, y: 100, left: 100, top: 100, width: 200, height: 40, right: 300, bottom: 140, toJSON: () => ({}) })
   HTMLElement.prototype.scrollIntoView = vi.fn()
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe('interactive page tour', () => {
-  it('opens a goal dialog, then navigates to actual controls without automatic model or quote actions', async () => {
+  it('automatically opens the unified main tour, then navigates to actual controls without automatic model or quote actions', async () => {
     localStorage.setItem('panwatch_onboarding_completed', 'true')
     renderTour()
     const dialog = await screen.findByRole('dialog')
+    expect(screen.queryByRole('group', { name: '选择体验目标' })).toBeNull()
+    expect(screen.getAllByRole('list', { name: '完整操作流程' }).at(-1)?.children.length).toBe(6)
     await waitFor(() => expect((dialog.querySelector('button:last-child') as HTMLButtonElement).disabled).toBe(false))
     await userEvent.click(screen.getAllByRole('button', { name: '开始操作引导' }).at(-1)!)
     expect(await screen.findByText('先添加一只自选')).toBeTruthy()
     expect(screen.getByTestId('path').textContent).toBe('/portfolio')
-    expect(onboardingApi.update).toHaveBeenCalledWith({ goal: 'ai', tour_step: 'stock', deferred: false })
+    expect(onboardingApi.update).toHaveBeenCalledWith({ track: 'main', tour_step: 'stock', deferred: false })
     expect(onboardingApi.quote).not.toHaveBeenCalled()
     expect(onboardingApi.analyze).not.toHaveBeenCalled()
   })
@@ -65,7 +80,7 @@ describe('interactive page tour', () => {
     renderTour('/portfolio')
     await screen.findByText('先添加一只自选')
     await userEvent.click(screen.getByRole('button', { name: '保存真实自选' }))
-    expect(onboardingApi.update).toHaveBeenCalledWith({ stock_id: 1, tour_step: 'quote', deferred: false })
+    expect(onboardingApi.update).toHaveBeenCalledWith({ stock_id: 1, track: 'main', tour_step: 'quote', deferred: false })
     expect(await screen.findByText('亲手刷新一次行情')).toBeTruthy()
     expect(onboardingApi.quote).not.toHaveBeenCalled()
   })
@@ -103,6 +118,7 @@ describe('interactive page tour', () => {
     first.unmount()
     renderTour()
     await userEvent.click(await screen.findByRole('button', { name: '恢复引导' }))
+    await userEvent.click(screen.getAllByRole('button', { name: '恢复引导' }).at(-1)!)
     expect(await screen.findByText('亲手刷新一次行情')).toBeTruthy()
     expect(current.deferred).toBe(false)
   })
@@ -121,7 +137,7 @@ describe('interactive page tour', () => {
     renderTour('/alerts')
     await screen.findByText('设置一个价格提醒')
     await userEvent.click(screen.getByRole('button', { name: '跳过此步' }))
-    expect(onboardingApi.update).toHaveBeenCalledWith({ skip: 'alert', tour_step: 'notify', deferred: false })
+    expect(onboardingApi.update).toHaveBeenCalledWith({ skip: 'alert', track: 'main', tour_step: 'notify', deferred: false })
     expect(await screen.findByText('测试通知渠道')).toBeTruthy()
     expect(current.completed).toBe(false)
   })
@@ -138,14 +154,60 @@ describe('interactive page tour', () => {
     expect((screen.getByRole('button', { name: '生成首次分析' }) as HTMLButtonElement).disabled).toBe(true)
     expect(await screen.findByText(/你可以离开页面/)).toBeTruthy()
   })
-  it('uses the saved step and omits AI steps from the quotes goal', () => {
-    expect(tourSteps('quotes')).toEqual(['stock', 'quote', 'alert', 'notify'])
-    expect(resumeStep(state({ goal: 'quotes', tour_step: 'notify' }))).toBe('notify')
-    expect(resumeStep(state({ goal: 'quotes', tour_step: 'ai' }))).toBe('stock')
+  it('uses the saved step in one sequence that always includes quotes and AI', () => {
+    expect(tourSteps()).toEqual(['stock', 'quote', 'ai', 'analysis', 'alert', 'notify'])
+    expect(resumeStep(state({ tour_step: 'notify' }))).toBe('notify')
+    expect(resumeStep(state({ tour_step: 'ai' }))).toBe('ai')
   })
   it('continues to offer the launcher after a deferred dashboard banner', async () => {
     current = state({ deferred: true, tour_step: 'quote' })
     render(<MemoryRouter><Onboarding /></MemoryRouter>)
     expect(await screen.findByRole('link', { name: '恢复引导' })).toHaveProperty('pathname', '/getting-started')
+  })
+})
+
+
+describe('guide center', () => {
+  it('keeps all optional routes available after main completion, preserving main state', async () => {
+    current = state({ started: true, completed: true, completed_count: 4, deferred: true, tour_step: 'done' })
+    renderTour()
+    await screen.findByRole('heading', { name: '引导中心' })
+    expect(screen.getAllByRole('button', { name: '开始探索' })).toHaveLength(5)
+    await userEvent.click(screen.getAllByRole('button', { name: '开始探索' })[0])
+    await screen.findByText('筛选你关心的机会')
+    expect(screen.getByTestId('path').textContent).toBe('/opportunities')
+    expect(current.tour_step).toBe('done')
+    expect(onboardingApi.analyze).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
+    await screen.findByText('阅读信号，再决定是否关注')
+    await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
+    await screen.findByText('回看建议的后续表现')
+    expect(screen.getByTestId('path').textContent).toBe('/evaluations')
+    await userEvent.click(screen.getByRole('button', { name: '完成并返回中心' }))
+    await screen.findByRole('heading', { name: '引导中心' })
+    expect(screen.getAllByRole('button', { name: '再次体验' })).toHaveLength(2)
+  })
+  it('starts automatically at first sign-in, but does not reopen after a persistent pause', async () => {
+    const first = renderTour('/')
+    await screen.findByRole('dialog')
+    await userEvent.click(screen.getByRole('button', { name: '稍后处理' }))
+    await waitFor(() => expect(current.deferred).toBe(true))
+    first.unmount()
+    renderTour('/')
+    await screen.findByTestId('path')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByTestId('path').textContent).toBe('/')
+  })
+  it('resumes a paused replay from its saved step instead of restarting it', async () => {
+    current = state({ started: true, deferred: true, tour_step: 'ai', active_track: 'opportunities' })
+    current.tracks = current.tracks.map(item => item.key === 'opportunities' ? {
+      ...item, started: true, completed: true, step: 'signals', completed_steps: ['filters', 'signals', 'evaluation'],
+    } : item)
+    renderTour()
+    const card = await screen.findByRole('region', { name: '发现与评估机会' })
+    await userEvent.click(within(card).getByRole('button', { name: '恢复引导' }))
+    await screen.findByText('阅读信号，再决定是否关注')
+    expect(onboardingApi.update).toHaveBeenCalledWith({ track: 'opportunities', restart: false, deferred: false })
+    expect(current.tour_step).toBe('ai')
   })
 })
