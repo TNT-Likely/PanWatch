@@ -567,7 +567,7 @@ export default function AgentsPage() {
                       <Badge variant="secondary" className="text-[10px]">{modeLabel}</Badge>
                       <button
                         type="button"
-                        onClick={() => openBindDialog(agent)}
+                        data-tour="agent-binding" onClick={() => openBindDialog(agent)}
                         className={`max-w-[320px] truncate px-2 py-0.5 rounded-md border text-[11px] transition-colors ${
                           boundStocks.length > 0
                             ? 'bg-primary/12 border-primary/35 text-primary hover:bg-primary/18'
@@ -583,7 +583,7 @@ export default function AgentsPage() {
                     {/* 执行周期 - 可点击编辑 */}
                     <div className="flex items-center gap-2.5 mt-3.5 ml-[22px] flex-wrap">
                       <button
-                        onClick={() => openScheduleDialog(agent)}
+                        data-tour="agent-schedule" onClick={() => openScheduleDialog(agent)}
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent/50 hover:bg-accent transition-colors"
                       >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
@@ -765,7 +765,7 @@ export default function AgentsPage() {
 
       {/* 调度设置弹窗 */}
       <Dialog open={!!scheduleDialogAgent} onOpenChange={open => !open && setScheduleDialogAgent(null)}>
-        <DialogContent>
+        <DialogContent data-tour="agent-schedule-dialog"><div data-tour-instructions />
           <DialogHeader>
             <DialogTitle>{configT('schedule.title')}</DialogTitle>
             <DialogDescription>{agentName(scheduleDialogAgent)}</DialogDescription>
@@ -884,7 +884,7 @@ export default function AgentsPage() {
       </Dialog>
 
       <Dialog open={!!bindDialogAgent} onOpenChange={(open) => !open && setBindDialogAgent(null)}>
-        <DialogContent>
+        <DialogContent data-tour="agent-binding-dialog"><div data-tour-instructions />
           <DialogHeader>
             <DialogTitle>
               {bindDialogAgent ? configT('binding.titleWithAgent', { agent: agentName(bindDialogAgent) }) : configT('binding.title')}

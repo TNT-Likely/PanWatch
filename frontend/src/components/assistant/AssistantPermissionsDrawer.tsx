@@ -55,7 +55,7 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="right-0 left-auto top-0 h-dvh w-full max-w-md translate-x-0 translate-y-0 rounded-none border-l border-border/60 p-0 md:top-0 md:translate-y-0">
+      <DialogContent data-tour="assistant-permissions-dialog" className="right-0 left-auto top-0 h-dvh w-full max-w-md translate-x-0 translate-y-0 rounded-none border-l border-border/60 p-0 md:top-0 md:translate-y-0">
         <DialogHeader className="border-b border-border/50 px-5 py-5 pr-12">
           <DialogTitle className="flex items-center gap-2">
             <span className="rounded-lg bg-primary/10 p-1.5 text-primary"><SlidersHorizontal className="h-4 w-4" /></span>
@@ -63,7 +63,7 @@ export function AssistantPermissionsDrawer({ open, onOpenChange }: AssistantPerm
           </DialogTitle>
           <DialogDescription>{tr('description')}</DialogDescription>
         </DialogHeader>
-        <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4 scrollbar">
+        <div className="h-[calc(100dvh-5.75rem)] overflow-y-auto p-4 scrollbar"><div data-tour-instructions />
           {error && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>}
           {permissions ? (
             <AgentPermissionsPanel permissions={permissions} onChange={(change) => { void changePermission(change) }} variant="drawer" />

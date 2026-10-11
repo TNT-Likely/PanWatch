@@ -29,6 +29,8 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any
 
+from src.platform.marketdata.instruments import ETF_RESEARCH_CONTEXT, infer_asset_type
+
 logger = logging.getLogger(__name__)
 
 
@@ -759,6 +761,7 @@ def _stock_meta_header(symbol: str) -> str:
         industry = quote.get("industry") or ""
 
     market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
+    is_etf = infer_asset_type(name, getattr(stock, "asset_type", None)) == "etf"
     cur_price = _attr(quote, "current_price", "") or _attr(quote, "price", "")
     change_pct = _attr(quote, "change_pct", "")
 
@@ -770,7 +773,7 @@ def _stock_meta_header(symbol: str) -> str:
     if cur_price:
         try:
             lines.append(
-                f"  Current price: {float(cur_price):.2f}"
+                f"  Current price: {float(cur_price):.{3 if is_etf and market != 'US' else 2}f}"
                 + (f" ({float(change_pct):+.2f}%)" if change_pct != "" else "")
             )
         except (TypeError, ValueError):
@@ -779,6 +782,8 @@ def _stock_meta_header(symbol: str) -> str:
         "  IMPORTANT: This is an A-share / HK / cross-market ticker. DO NOT guess the company "
         "from the ticker code alone — use the name above."
     )
+    if is_etf:
+        lines.append(f"  Asset type: ETF. {ETF_RESEARCH_CONTEXT}")
     return "\n".join(lines)
 
 
@@ -868,6 +873,12 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         return f"{header}\n\n[No capital flow data available for {symbol}]"
 
     # 4) 基本面 / 财报:有真实 akshare 财务数据时返回完整指标,否则 fallback 到 quote
+    stock = _cache().get("stock")
+    if (
+        infer_asset_type(getattr(stock, "name", ""), getattr(stock, "asset_type", None)) == "etf"
+        and any(word in method for word in ("fundamental", "financial", "income", "balance", "sheet", "cashflow", "cash_flow"))
+    ):
+        return f"{header}\n\n[ETF fund-specific fundamentals are not available from PanWatch.] {ETF_RESEARCH_CONTEXT}"
     financial = _cache().get("financial")
     if "fundamental" in method or "financial" in method:
         if financial:

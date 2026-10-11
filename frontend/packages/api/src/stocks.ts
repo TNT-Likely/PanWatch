@@ -1,5 +1,7 @@
 import { fetchAPI } from './client'
 
+export type AssetType = 'stock' | 'etf'
+
 export interface StockAgentInfo {
   agent_name: string
   schedule: string
@@ -12,6 +14,7 @@ export interface StockItem {
   symbol: string
   name: string
   market: string
+  asset_type?: AssetType
   sort_order?: number
   agents?: StockAgentInfo[]
 }
@@ -20,6 +23,7 @@ export interface StockCreatePayload {
   symbol: string
   name: string
   market: string
+  asset_type?: AssetType
 }
 
 export interface StockAgentUpdatePayload {

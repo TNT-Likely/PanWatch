@@ -56,3 +56,20 @@ def test_tencent_us_kline_resolves_exchange_suffix(monkeypatch):
     out2 = v.fetch([Symbol.parse("BABA", market="US")], {"days": 30})
     assert len(out2) == 10 and len(calls) == 1  # 记忆后缀后一次请求直达
     kv._US_SUFFIX_CACHE.clear()
+
+
+def test_tencent_etf_kline_resolves_amex_and_caches_suffix(monkeypatch):
+    kv._US_SUFFIX_CACHE.clear()
+    calls = []
+    bars = [Bar(date=f"2026-07-{i:02d}", open=1, close=2, high=3, low=1, volume=10) for i in range(1, 11)]
+    def fetch(symbol, days):
+        calls.append(symbol)
+        return bars if symbol == "usSPY.AM" else bars[:1]
+    monkeypatch.setattr(kv, "fetch_tencent_kline_raw", fetch)
+    vendor = kv.TencentKlineVendor()
+    assert len(vendor.fetch([Symbol.parse("SPY", "US")], {"days": 30})) == 10
+    assert calls == ["usSPY.OQ", "usSPY.N", "usSPY.AM"]
+    calls.clear()
+    assert len(vendor.fetch([Symbol.parse("SPY", "US")], {"days": 30})) == 10
+    assert calls == ["usSPY.AM"]
+    kv._US_SUFFIX_CACHE.clear()

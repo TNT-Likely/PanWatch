@@ -169,7 +169,7 @@ export default function EvaluationsPage() {
     }
   }
 
-  return <div className="w-full space-y-4 md:space-y-6">
+  return <div data-tour="evaluations" className="w-full space-y-4 md:space-y-6">
     <section className="card overflow-hidden">
       <div className="p-4 md:p-5 border-b border-border/60">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

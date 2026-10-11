@@ -5,6 +5,7 @@ import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@pan
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
 import PatSection from '@/components/PatSection'
+import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import { UserAvatar } from '@/components/UserAvatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -194,6 +195,7 @@ const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
 export default function SettingsPage() {
+  const tour = useGuidedTour()
   const { t } = useTranslation(['configuration', 'common'])
   const confirmAction = useConfirm()
   const configT = t as unknown as (key: string, options?: Record<string, unknown>) => string
@@ -203,6 +205,11 @@ export default function SettingsPage() {
   const [channels, setChannels] = useState<NotifyChannel[]>([])
   const [version, setVersion] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    if (!loading && window.location.hash) {
+      document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'start' })
+    }
+  }, [loading])
   const [executionTimezone, setExecutionTimezone] = useState<string | null>(null)
   const [health, setHealth] = useState<AgentsHealth | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
@@ -552,6 +559,7 @@ export default function SettingsPage() {
     try {
       await fetchAPI(`/providers/models/${id}`, { method: 'PUT', body: JSON.stringify({ is_default: true }) })
       load()
+      void tour?.refresh()
     } catch {
       toast(configT('configuration:settingsPage.messages.settingFailed'), 'error')
     }
@@ -560,12 +568,13 @@ export default function SettingsPage() {
   const testModel = async (id: number) => {
     setTestingModel(id)
     try {
-      await fetchAPI(`/providers/models/${id}/test`, { method: 'POST' })
+      await fetchAPI(`/providers/models/${id}/test`, { method: 'POST', timeoutMs: 60000 })
       toast(configT('configuration:settingsPage.messages.modelTested'), 'success')
     } catch (e) {
       toast(e instanceof Error ? e.message : configT('configuration:settingsPage.messages.testFailed'), 'error')
     } finally {
       setTestingModel(null)
+      void tour?.refresh()
     }
   }
 
@@ -632,6 +641,7 @@ export default function SettingsPage() {
     try {
       await fetchAPI(`/channels/${id}`, { method: 'PUT', body: JSON.stringify({ is_default: true }) })
       load()
+      void tour?.refresh()
     } catch {
       toast(configT('configuration:settingsPage.messages.settingFailed'), 'error')
     }
@@ -655,6 +665,7 @@ export default function SettingsPage() {
       toast(e instanceof Error ? e.message : configT('configuration:settingsPage.messages.testFailed'), 'error')
     } finally {
       setTesting(null)
+      void tour?.refresh()
     }
   }
 
@@ -700,6 +711,7 @@ export default function SettingsPage() {
 
   return (
     <div>
+
       <input
         ref={importFileRef}
         type="file"
@@ -854,6 +866,8 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-0.5">
                             <Button
                               variant="ghost" size="icon" className="h-6 w-6"
+                              data-tour={m.is_default ? 'test-default-model' : undefined}
+                              aria-label={configT('configuration:settingsPage.ai.test')}
                               onClick={() => testModel(m.id)}
                               disabled={testingModel === m.id}
                               title={configT('configuration:settingsPage.ai.test')}
@@ -914,6 +928,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button
                       variant="ghost" size="icon" className="h-7 w-7"
+                      data-tour="test-channel"
+                      aria-label={configT('configuration:settingsPage.notifications.sendTest')}
                       onClick={() => testChannel(ch.id)}
                       disabled={testing === ch.id || !ch.enabled}
                       title={configT('configuration:settingsPage.notifications.sendTest')}
@@ -1191,11 +1207,12 @@ export default function SettingsPage() {
 
       {/* Service Dialog */}
       <Dialog open={serviceDialogOpen} onOpenChange={setServiceDialogOpen}>
-        <DialogContent>
+        <DialogContent data-tour="provider-form">
           <DialogHeader>
             <DialogTitle>{editServiceId ? configT('configuration:settingsPage.dialogs.providerEdit') : configT('configuration:settingsPage.dialogs.providerAdd')}</DialogTitle>
             <DialogDescription>{configT('configuration:settingsPage.dialogs.providerDescription')}</DialogDescription>
           </DialogHeader>
+          <div data-tour-instructions />
           <div className="space-y-4 mt-2">
             <div>
               <Label>{configT('configuration:settingsPage.dialogs.name')}</Label>
@@ -1245,11 +1262,12 @@ export default function SettingsPage() {
 
       {/* Model Dialog */}
       <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
-        <DialogContent>
+        <DialogContent data-tour="model-form">
           <DialogHeader>
             <DialogTitle>{editModelId ? configT('configuration:settingsPage.dialogs.modelEdit') : configT('configuration:settingsPage.dialogs.modelAdd')}</DialogTitle>
             <DialogDescription>{configT('configuration:settingsPage.dialogs.modelDescription')}</DialogDescription>
           </DialogHeader>
+          <div data-tour-instructions />
           <div className="space-y-4 mt-2">
             <div>
               <Label>{configT('configuration:settingsPage.dialogs.provider')}</Label>
@@ -1297,11 +1315,12 @@ export default function SettingsPage() {
 
       {/* 批量选择嗅探到的模型 */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent>
+        <DialogContent data-tour="model-discovery">
           <DialogHeader>
             <DialogTitle>{configT('configuration:settingsPage.dialogs.discovered', { count: batchCandidates.length })}</DialogTitle>
             <DialogDescription>{configT('configuration:settingsPage.dialogs.discoveredDescription')}</DialogDescription>
           </DialogHeader>
+          <div data-tour-instructions />
           <div className="mt-3 flex items-center justify-between px-0.5 text-xs text-muted-foreground">
             <span>{configT('configuration:settingsPage.dialogs.selected')} <span className="font-mono text-foreground">{batchChecked.size}</span> / {batchCandidates.length}</span>
             <button
@@ -1371,11 +1390,12 @@ export default function SettingsPage() {
 
       {/* Channel Dialog */}
       <Dialog open={channelDialogOpen} onOpenChange={setChannelDialogOpen}>
-        <DialogContent>
+        <DialogContent data-tour="channel-form">
           <DialogHeader>
             <DialogTitle>{editChannelId ? configT('configuration:settingsPage.dialogs.channelEdit') : configT('configuration:settingsPage.dialogs.channelAdd')}</DialogTitle>
             <DialogDescription>{configT('configuration:settingsPage.dialogs.channelDescription')}</DialogDescription>
           </DialogHeader>
+          <div data-tour-instructions />
           <div className="space-y-4 mt-2">
             <div>
               <Label htmlFor="channel-name">{configT('configuration:settingsPage.dialogs.channelName')}</Label>
