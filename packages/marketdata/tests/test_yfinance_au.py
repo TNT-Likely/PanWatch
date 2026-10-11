@@ -1,32 +1,57 @@
+from marketdata.http import capture_errors
 from marketdata.symbol import Market, Symbol
+from marketdata.vendors import yfinance as YF
 from marketdata.vendors.kline import YahooKlineVendor
 from marketdata.vendors.yfinance import YFinanceQuoteVendor
 
 
-class _FastInfo(dict):
-    def __getitem__(self, k):
-        return self.get(k)
+def _chart_meta_payload(**meta_overrides):
+    return {
+        "chart": {
+            "result": [{
+                "meta": {
+                    "regularMarketPrice": 102.5,
+                    "chartPreviousClose": 100.0,
+                    "regularMarketDayHigh": 103.0,
+                    "regularMarketDayLow": 100.1,
+                    "regularMarketVolume": 123400.0,
+                    **meta_overrides,
+                },
+                "timestamp": [1760000000],
+                "indicators": {"quote": [{"open": [100.4]}]},
+            }],
+            "error": None,
+        }
+    }
 
 
-def test_yfinance_quote_au_uses_ax_suffix(monkeypatch):
+def test_yfinance_quote_au_direct_chart(monkeypatch):
     captured = {}
 
-    class _Ticker:
-        def __init__(self, t):
-            captured["ticker"] = t
-            self.fast_info = _FastInfo(
-                last_price=102.5, previous_close=100.0, open=100.4,
-                day_high=103.0, day_low=100.1,
-            )
+    def fake_market_get(url, *, host_key=None, params=None, headers=None, **k):
+        captured.update(url=url, host_key=host_key, params=params, headers=headers)
+        return _chart_meta_payload()
 
-    import yfinance
-    monkeypatch.setattr(yfinance, "Ticker", _Ticker)
-    v = YFinanceQuoteVendor()
-    quotes = v.fetch([Symbol(market=Market.AU, code="VAS")], config={})
-    assert captured["ticker"] == "VAS.AX"
-    assert quotes and quotes[0].symbol == "VAS"
-    assert quotes[0].market == "AU"
-    assert quotes[0].current_price == 102.5
+    monkeypatch.setattr(YF, "market_get", fake_market_get)
+    quotes = YFinanceQuoteVendor().fetch([Symbol(market=Market.AU, code="VAS")], config={})
+    assert "VAS.AX" in captured["url"]
+    assert captured["host_key"] == "query2.finance.yahoo.com"
+    assert captured["params"]["range"] == "1d"
+    assert quotes and quotes[0].symbol == "VAS" and quotes[0].market == "AU"
+    q = quotes[0]
+    assert q.current_price == 102.5 and q.prev_close == 100.0
+    assert q.open_price == 100.4 and q.high_price == 103.0 and q.low_price == 100.1
+    assert q.change_amount == 2.5 and q.change_pct == 2.5
+    assert q.volume == 123400.0
+
+
+def test_yfinance_quote_missing_price_skips(monkeypatch):
+    monkeypatch.setattr(YF, "market_get",
+                        lambda *a, **k: _chart_meta_payload(regularMarketPrice=None))
+    with capture_errors() as errs:
+        quotes = YFinanceQuoteVendor().fetch([Symbol(market=Market.AU, code="VAS")], config={})
+    assert quotes == []
+    assert errs and "regularMarketPrice" in errs[0]
 
 
 def test_yahoo_kline_au_uses_ax_suffix(monkeypatch):
