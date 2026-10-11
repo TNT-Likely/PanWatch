@@ -8,6 +8,7 @@ class MarketCode(str, Enum):
     CN = "CN"  # A股
     HK = "HK"  # 港股
     US = "US"  # 美股
+    AU = "AU"  # 澳股(ASX)
 
 
 @dataclass
@@ -25,6 +26,7 @@ class MarketDef:
     timezone: str
     sessions: list[TradingSession]
     symbol_pattern: str  # 正则，用于校验股票代码格式
+    currency: str  # 计价/报价币种，估值按币种解析汇率
 
     def get_tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
@@ -46,6 +48,7 @@ MARKETS: dict[MarketCode, MarketDef] = {
             TradingSession(time(13, 0), time(15, 0)),
         ],
         symbol_pattern=r"^[036]\d{5}$",
+        currency="CNY",
     ),
     MarketCode.HK: MarketDef(
         code=MarketCode.HK,
@@ -56,6 +59,7 @@ MARKETS: dict[MarketCode, MarketDef] = {
             TradingSession(time(13, 0), time(16, 0)),
         ],
         symbol_pattern=r"^\d{5}$",
+        currency="HKD",
     ),
     MarketCode.US: MarketDef(
         code=MarketCode.US,
@@ -65,6 +69,17 @@ MARKETS: dict[MarketCode, MarketDef] = {
             TradingSession(time(9, 30), time(16, 0)),
         ],
         symbol_pattern=r"^[A-Z]{1,5}$",
+        currency="USD",
+    ),
+    MarketCode.AU: MarketDef(
+        code=MarketCode.AU,
+        name="澳股",
+        timezone="Australia/Sydney",
+        sessions=[
+            TradingSession(time(10, 0), time(16, 0)),
+        ],
+        symbol_pattern=r"^[A-Z]{1,6}$",  # ASX 代码:1-6 位字母,如 CBA/BHP/VAS
+        currency="AUD",
     ),
 }
 

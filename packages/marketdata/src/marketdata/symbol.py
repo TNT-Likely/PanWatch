@@ -11,11 +11,13 @@ class Market(str, Enum):
     CN = "CN"
     HK = "HK"
     US = "US"
+    AU = "AU"
 
 
 _CN_RE = re.compile(r"^[036]\d{5}$")   # 6 位,0/3/6 开头
 _HK_RE = re.compile(r"^\d{5}$")        # 5 位数字
 _US_RE = re.compile(r"^[A-Z.]{1,6}$")  # 1-6 位字母(含指数 .DJI)
+_AU_RE = re.compile(r"^[A-Z]{1,6}$")   # ASX 代码;Yahoo 后缀 .AX
 
 
 def _detect_market(code: str) -> Market:
@@ -24,6 +26,8 @@ def _detect_market(code: str) -> Market:
         return Market.CN
     if _HK_RE.match(c):
         return Market.HK
+    if c.endswith(".AX") and _AU_RE.fullmatch(c.removesuffix(".AX")):
+        return Market.AU  # .AX 后缀必须先于 _US_RE:后者含点号,会吞掉 VAS.AX
     if _US_RE.match(c):
         return Market.US
     # 兜底:6 位数字当 CN,其余当 US
@@ -61,6 +65,8 @@ class Symbol:
     def to_yfinance(self) -> str:
         if self.market == Market.HK:
             return f"{int(self.code):04d}.HK" if self.code.isdigit() else f"{self.code}.HK"
+        if self.market == Market.AU:
+            return f"{self.code}.AX"
         return self.code  # US 直接用;CN 由 vendor.supports_markets 拦截,不会走到这
 
     def to_eastmoney_secid(self) -> str:
