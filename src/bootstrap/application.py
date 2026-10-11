@@ -234,3 +234,16 @@ async def version():
 # be imported as __mp_main__ and server in one reload worker; capturing the
 # mutable router context there would nest two complete server startups.
 application_lifespan = app.router.lifespan_context
+
+
+# Outermost: normalize the public prefix before auth/response middleware and routing.
+from src.platform.runtime.config import Settings
+from src.web.public_path import PublicPathMiddleware
+
+_public_settings = Settings()
+app.state.public_base_path = _public_settings.panwatch_base_path
+app.add_middleware(
+    PublicPathMiddleware,
+    base_path=_public_settings.panwatch_base_path,
+    proxy_mode=_public_settings.panwatch_proxy_mode,
+)

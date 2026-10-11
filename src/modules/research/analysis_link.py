@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import AppSettings
@@ -44,7 +45,7 @@ def analysis_detail_url(symbol: str, date: str, base_url: str = "") -> str:
         base_url = get_base_url()
     if not base_url:
         return ""
-    return f"{base_url}/analysis/{symbol}/{date}"
+    return f"{base_url.rstrip('/')}/analysis/{quote(symbol, safe='')}/{quote(date, safe='')}"
 
 
 def analysis_detail_markdown(

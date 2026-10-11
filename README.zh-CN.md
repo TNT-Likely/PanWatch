@@ -340,3 +340,8 @@ PanWatch 完全免费开源。如果它节省了你的时间或改善了工作�
 ## License
 
 [MIT](LICENSE)
+
+### Reverse-proxy subpaths / 反向代理子路径
+
+Set `PANWATCH_BASE_PATH=/apps/panwatch` at runtime to host PanWatch under a subpath.
+See [Caddy, Podman, prefix-preserving and prefix-stripping examples](docs/reverse-proxy-subpath.md).

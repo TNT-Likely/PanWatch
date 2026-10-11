@@ -795,7 +795,7 @@ export default function ChatWidget({
                     }`}
                   >
                     {msg.role === 'assistant' ? (
-                      <AssistantMarkdown content={msg.content} />
+                      <AssistantMarkdown documentId={JSON.stringify([embedded ? 'assistant-page' : 'assistant-widget', activeConvId, msg.id])} content={msg.content} />
                     ) : (
                       msg.content
                     )}
@@ -876,7 +876,7 @@ export default function ChatWidget({
               // 流式增量渲染（未闭合代码块乐观闭合）
               <div className="flex justify-start">
                 <div className="max-w-[92%] rounded-xl bg-accent/60 px-3 py-2 text-[13px] leading-relaxed text-foreground sm:max-w-[85%]">
-                  <AssistantMarkdown content={streamText} streaming />
+                  <AssistantMarkdown documentId={JSON.stringify([embedded ? 'assistant-page' : 'assistant-widget', activeConvId, 'stream'])} content={streamText} streaming />
                 </div>
               </div>
             )}

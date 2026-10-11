@@ -346,3 +346,8 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 ## License
 
 [MIT](LICENSE)
+
+### Reverse-proxy subpaths / 反向代理子路径
+
+Set `PANWATCH_BASE_PATH=/apps/panwatch` at runtime to host PanWatch under a subpath.
+See [Caddy, Podman, prefix-preserving and prefix-stripping examples](docs/reverse-proxy-subpath.md).

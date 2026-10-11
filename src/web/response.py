@@ -2,6 +2,7 @@
 import json
 
 from starlette.types import ASGIApp, Receive, Scope, Send
+from src.web.public_path import app_path
 
 
 class ResponseWrapperMiddleware:
@@ -14,7 +15,7 @@ class ResponseWrapperMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/"):
+        if scope["type"] != "http" or not app_path(scope).startswith("/api/"):
             await self.app(scope, receive, send)
             return
 

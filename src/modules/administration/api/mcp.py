@@ -14,6 +14,7 @@
 import json
 import logging
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
@@ -68,9 +69,19 @@ def _bump_last_used(db: Session, row: PersonalAccessToken, request: Request) -> 
 
 def authenticate_pat(request: Request, db: Session) -> dict:
     """校验 Authorization: Bearer pwmcp_...，返回 PAT 元数据；失败抛 HTTPException。"""
+    # RFC 9728 discovery must stay inside this deployment's public prefix.
+    # PublicPathMiddleware sets the canonical ASGI root_path explicitly; do not
+    # infer a prefix/origin from Forwarded or X-Forwarded-* request headers here.
+    # Encode unsafe characters before putting the absolute URL in a quoted
+    # authentication parameter (the request host is still client-supplied).
+    metadata_url = quote(
+        f'{str(request.base_url).rstrip("/")}/.well-known/oauth-protected-resource',
+        safe=":/[]@!$&'()*+,;=%~._-",
+    )
+    challenge = {"WWW-Authenticate": f'Bearer resource_metadata="{metadata_url}"'}
     header = request.headers.get("authorization") or ""
     if not header.lower().startswith("bearer "):
-        raise api_error(401, "mcp_bearer_required", "缺少 Bearer PAT")
+        raise api_error(401, "mcp_bearer_required", "缺少 Bearer PAT", headers=challenge)
     token = header[7:].strip()
     if not looks_like_pat(token):
         raise api_error(403, "mcp_pat_required", "MCP 端点需要 PAT(pwmcp_ 前缀)")
@@ -81,12 +92,12 @@ def authenticate_pat(request: Request, db: Session) -> dict:
         .first()
     )
     if row is None or not verify_pat_hash(token, row.token_hash):
-        raise api_error(401, "mcp_token_invalid", "无效的 token")
+        raise api_error(401, "mcp_token_invalid", "无效的 token", headers=challenge)
     if row.revoked_at is not None:
-        raise api_error(401, "mcp_token_revoked", "token 已吊销")
+        raise api_error(401, "mcp_token_revoked", "token 已吊销", headers=challenge)
     exp = _to_utc(row.expires_at)
     if exp is not None and exp < datetime.now(timezone.utc):
-        raise api_error(401, "mcp_token_expired", "token 已过期")
+        raise api_error(401, "mcp_token_expired", "token 已过期", headers=challenge)
 
     try:
         scopes = set(json.loads(row.scopes_json or "[]"))
