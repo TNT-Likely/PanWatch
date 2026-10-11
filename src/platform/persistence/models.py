@@ -87,6 +87,7 @@ class Stock(Base):
     symbol = Column(String, nullable=False)
     name = Column(String, nullable=False)
     market = Column(String, nullable=False)  # CN / HK / US
+    asset_type = Column(String, nullable=False, default="stock", server_default="stock")
     # 以下字段已废弃，持仓信息移至 Position 表
     cost_price = Column(Float, nullable=True)
     quantity = Column(Integer, nullable=True)

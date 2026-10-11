@@ -7,6 +7,7 @@ describe('route page loaders', () => {
     expect(Object.keys(pageLoaders)).toEqual([
       'login',
       'dashboard',
+      'gettingStarted',
       'stocks',
       'opportunities',
       'paperTrading',
@@ -28,5 +29,9 @@ describe('route page loaders', () => {
 
   it('does not preload an unknown route', () => {
     expect(resolveRouteKey('/missing')).toBeNull()
+  })
+
+  it('resolves the recoverable setup page', () => {
+    expect(resolveRouteKey('/getting-started')).toBe('gettingStarted')
   })
 })
