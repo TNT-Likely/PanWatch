@@ -1171,6 +1171,32 @@ def register_mcp_log_cleanup(sched: AgentScheduler) -> None:
     )
     logger.info("MCP 日志保留期清理任务已注册")
 
+def register_ghostfolio_sync(sched: AgentScheduler) -> None:
+    """Ghostfolio 持仓单向同步:按配置表的 sync_cron(POSIX 5 段)注册到主调度器。"""
+    from src.modules.ghostfolio.service import (
+        GHOSTFOLIO_ENABLED,
+        get_or_create_config,
+        run_scheduled_sync,
+    )
+    if not GHOSTFOLIO_ENABLED:
+        return
+    from src.platform.persistence.database import SessionLocal
+    from src.platform.scheduling.schedule_parser import parse_schedule
+
+    db = SessionLocal()
+    try:
+        cfg = get_or_create_config(db)
+        cron = cfg.sync_cron or "17 8 * * *"
+    finally:
+        db.close()
+    sched.scheduler.add_job(
+        run_scheduled_sync,
+        parse_schedule(cron, timezone=Settings().app_timezone),
+        id="ghostfolio_sync",
+        replace_existing=True,
+    )
+    logger.info(f"Ghostfolio 同步任务已注册 (cron: {cron})")
+
 
 def reload_scheduler() -> bool:
     """重载调度器（用于配置导入/批量修改后立即生效）"""
@@ -1577,6 +1603,11 @@ async def lifespan(app):
         register_mcp_log_cleanup(scheduler)
     except Exception as e:
         logger.error(f"MCP 日志清理任务注册失败: {e}")
+    # Ghostfolio 持仓单向同步(按配置表 sync_cron)
+    try:
+        register_ghostfolio_sync(scheduler)
+    except Exception as e:
+        logger.error(f"Ghostfolio 同步任务注册失败: {e}")
     try:
         # Preserve FastAPI's original lifespan, including registered recovery
         # hooks. Database initialization must precede this context.

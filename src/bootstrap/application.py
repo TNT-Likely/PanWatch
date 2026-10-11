@@ -27,6 +27,8 @@ from src.modules.assistant import api as assistant_api
 from src.modules.assistant.task_runner import assistant_task_runner
 from src.modules.assistant.export_jobs import context_export_runner
 from src.modules.automation.api import agents, suggestions, templates
+from src.modules.ghostfolio import api as ghostfolio_api
+from src.modules.ghostfolio.service import GHOSTFOLIO_ENABLED
 from src.modules.market.api import (
     discovery,
     klines,
@@ -188,6 +190,15 @@ app.include_router(
 
 
 app.include_router(notifications_api.router, prefix="/api/notifications", tags=["notifications"], dependencies=protected)
+
+# Ghostfolio 单向同步(特性开关 GHOSTFOLIO_ENABLED,默认开)
+if GHOSTFOLIO_ENABLED:
+    app.include_router(
+        ghostfolio_api.router,
+        prefix="/api/ghostfolio",
+        tags=["ghostfolio"],
+        dependencies=protected,
+    )
 
 app.router.on_startup.append(assistant_task_runner.recover_pending)
 app.router.on_startup.append(context_export_runner.recover_pending)
