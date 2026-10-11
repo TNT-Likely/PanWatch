@@ -11,12 +11,13 @@ location needs to be exposed on the proxy.
 | --- | --- | --- |
 | `PANWATCH_BASE_PATH` | empty (same as `/`) | Public path, e.g. `/apps/panwatch`. One final slash is accepted. |
 | `PANWATCH_PROXY_MODE` | `preserve` | `preserve`: upstream requests retain the prefix; `strip`: the proxy removes it. |
+| `FORWARDED_ALLOW_IPS` | Uvicorn's loopback default | Comma-separated trusted proxy IPs, as seen by the backend; required for HTTPS termination at a non-loopback proxy. |
 
 Install the updated requirements when upgrading from an older source checkout:
 this feature requires FastAPI >=0.110.1 (Starlette >=0.37.2) for canonical ASGI
 root-path routing. Container builds install the requirements automatically.
 
-Restart the server/container after changing either variable. Use ASCII path
+Restart the server/container after changing these variables. Use ASCII path
 segments made of letters, digits, `.`, `_`, `~`, and `-`; empty segments, `.`/`..`,
 percent encodings, URLs, whitespace, query strings, fragments and backslashes
 are rejected at startup. These settings are explicit: `X-Forwarded-Prefix`,
@@ -26,6 +27,42 @@ mode. Do not also use Uvicorn `--root-path` or a second ASGI prefix wrapper.
 保留路径与剥离路径是两种不同配置，不能混用。默认 `preserve` 模式会拒绝没有前缀的
 请求；`strip` 模式的容器内部仍用 `/api/...`，但浏览器始终访问带前缀的公开 URL。
 反向代理应只公开该前缀，容器端口应绑定 loopback 或受信任的私有网络。
+
+## Trusted proxy headers for HTTPS / HTTPS 代理信任配置
+
+When Caddy terminates HTTPS and forwards HTTP to PanWatch, it preserves the public
+`Host` and sets `X-Forwarded-Proto`. Uvicorn only applies forwarded headers from
+trusted connection peers. Its default trusts loopback (`127.0.0.1`, plus `::1`
+in newer versions), not another container's private IP. Without explicit trust,
+MCP's `WWW-Authenticate` metadata URL and metadata `resource` URL will use `http`
+even though the public site uses HTTPS.
+
+Set `FORWARDED_ALLOW_IPS` in the **PanWatch process/container environment** to the
+proxy's actual source IP as seen by PanWatch. For example, if that peer is
+`10.89.0.2`:
+
+```sh
+FORWARDED_ALLOW_IPS=10.89.0.2 python server.py
+# For the container command below, add: -e FORWARDED_ALLOW_IPS=10.89.0.2
+```
+
+Replace this illustrative address with your proxy's peer IP. A Caddy upstream
+name such as `panwatch:8000` identifies the destination; it is not the proxy's
+source IP, and DNS names are not resolved by this trust setting. Container port
+forwarding/NAT can also change the peer seen by PanWatch, even when Caddy connects
+to a published `127.0.0.1` port on the host. Keep the proxy address stable and
+recheck it after network changes. Prefer specific IPs; do not use `*` or trust a
+whole shared/private subnet containing untrusted workloads. A private address
+alone does not establish trust. Restrict backend access to the intended proxy.
+
+`python server.py` uses Uvicorn's existing environment setting; putting it only
+in PanWatch's application `.env` does not export it to Uvicorn. With the Uvicorn
+CLI, the equivalent is `--proxy-headers --forwarded-allow-ips=10.89.0.2`.
+This does not select a path prefix or make `Forwarded`, `X-Forwarded-Host`,
+`X-Forwarded-Prefix`, or `X-Script-Name` authoritative.
+
+跨容器 HTTPS 反代必须显式信任后端实际看到的代理源 IP；仅加入私有网络还不够。
+请将此变量传入 PanWatch 进程／容器，勿使用 `*`，也勿信任包含不可信容器的整个网段。
 
 ## Caddy: preserve the prefix (recommended)
 
@@ -112,7 +149,9 @@ podman run -d --name panwatch \
 The image health check automatically uses the correct internal path for the
 selected mode. If Caddy runs in another container, use a shared private Podman
 network and the PanWatch container's network name instead of `127.0.0.1`; do not
-assume one container's loopback reaches another container.
+assume one container's loopback reaches another container. For HTTPS, also set
+`FORWARDED_ALLOW_IPS` as described above; joining the network does not configure
+Uvicorn's trust list.
 
 ## Verification and migration
 
@@ -131,6 +170,10 @@ Open `http://192.0.2.10/apps/panwatch/`, then directly open/reload
   `WWW-Authenticate: Bearer resource_metadata="..."`. Clients should follow that
   challenge rather than require an origin-root `/.well-known/` route. This is
   discovery for the existing PAT authentication, not an OAuth authorization server.
+- Through the public HTTPS proxy, both that challenge URL and metadata `resource`
+  must begin with the public `https://` origin and contain the prefix exactly once.
+  If either advertises `http://`, check the backend's actual proxy peer and
+  `FORWARDED_ALLOW_IPS`; do not solve it by trusting every client.
 - With preserve mode, unprefixed backend `/api/health` returns 404. With strip
   mode, test the public proxy URL instead: only that URL should be exposed.
 
@@ -173,6 +216,7 @@ provider and makes no authentication-policy changes.
 References: [Caddy handle_path](https://caddyserver.com/docs/caddyfile/directives/handle_path),
 [Caddy query placeholders](https://caddyserver.com/docs/caddyfile/concepts#placeholders),
 [Caddy streaming](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#streaming),
+[Uvicorn proxy-header settings](https://www.uvicorn.org/settings/#http),
 [FastAPI behind a proxy](https://fastapi.tiangolo.com/advanced/behind-a-proxy/),
 [manifest identity](https://www.w3.org/TR/appmanifest/#id-member), and
 [RFC 9728 discovery challenges](https://www.rfc-editor.org/rfc/rfc9728.html#section-5).

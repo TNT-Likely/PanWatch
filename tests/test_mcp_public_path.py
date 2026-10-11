@@ -1,14 +1,18 @@
 """Follow the production MCP discovery challenge through each proxy mode."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from uvicorn import Config
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from src.bootstrap.application import oauth_protected_resource_metadata
 from src.modules.administration.api import mcp, pats
@@ -133,3 +137,58 @@ def test_discovery_does_not_change_pat_authentication(deployment):
     assert accepted.status_code == 200
     assert accepted.json()["jsonrpc"] == "2.0"
     assert accepted.json()["result"]["serverInfo"]["name"] == "PanWatch"
+
+
+@pytest.mark.parametrize("trusted_ips,peer,scheme", [
+    (None, "10.89.0.2", "http"),
+    (None, "127.0.0.1", "https"),
+    ("10.89.0.2", "10.89.0.2", "https"),
+    ("127.0.0.1,10.89.0.2", "10.89.0.2", "https"),
+    ("10.89.0.2", "10.89.0.3", "http"),
+])
+def test_uvicorn_proxy_trust_controls_mcp_discovery(
+    deployment, monkeypatch, trusted_ips, peer, scheme,
+):
+    """HTTP upstream traffic only advertises HTTPS for a trusted TCP peer."""
+    client, prefix, _, upstream, _ = deployment
+    if trusted_ips is None:
+        monkeypatch.delenv("FORWARDED_ALLOW_IPS", raising=False)
+    else:
+        monkeypatch.setenv("FORWARDED_ALLOW_IPS", trusted_ips)
+
+    # Match server.py: let Uvicorn load its default/environment proxy trust.
+    # TestClient alone bypasses this outer server middleware entirely.
+    config = Config(client.app, log_config=None, interface="asgi3", lifespan="off")
+    config.load()
+    assert isinstance(config.loaded_app, ProxyHeadersMiddleware)
+    headers = {
+        **UNTRUSTED_HEADERS,
+        "Host": urlsplit(ORIGIN).netloc,
+        "X-Forwarded-Proto": "https",
+        # A forged allowed address in a header must not confer peer trust.
+        "X-Forwarded-For": "10.89.0.2",
+    }
+    public_origin = f"{scheme}://{urlsplit(ORIGIN).netloc}"
+
+    async def check_discovery():
+        transport = httpx.ASGITransport(app=config.loaded_app, client=(peer, 43210))
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://panwatch:8000", headers=headers,
+        ) as proxy:
+            response = await proxy.post(upstream(prefix + "/mcp"), json=RPC)
+            assert response.status_code == 401
+            assert response.json()["detail"]["code"] == "mcp_bearer_required"
+            metadata_url = public_origin + prefix + METADATA_PATH
+            assert response.headers["www-authenticate"] == (
+                f'Bearer resource_metadata="{metadata_url}"'
+            )
+            # Follow the advertised path through the same HTTP upstream hop.
+            metadata = await proxy.get(upstream(urlsplit(metadata_url).path))
+            assert metadata.status_code == 200
+            assert metadata.json() == {
+                "resource": public_origin + prefix + "/mcp",
+                "authorization_servers": [],
+                "bearer_methods_supported": ["header"],
+            }
+
+    asyncio.run(check_discovery())
