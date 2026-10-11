@@ -72,7 +72,7 @@ def fetch_tencent_kline_raw(tsym: str, days: int) -> list[Bar]:
 
 # 腾讯美股日K必须带交易所后缀(usTSLA.OQ=纳斯达克 / usBABA.N=纽交所);裸 us{CODE}
 # 只回"首日+最新"两根退化数据,错后缀只回 1 根。后缀无法从代码推断 → 依次试
-# .OQ/.N/裸,根数达标即命中并进程内记忆(下次直达,不再多请求)。
+# .OQ/.N/.AM/裸,根数达标即命中并进程内记忆(下次直达,不再多请求)。
 _US_SUFFIX_CACHE: dict[str, str] = {}
 
 
@@ -81,7 +81,7 @@ def _fetch_tencent_us_kline(code: str, days: int) -> list[Bar]:
     ok_threshold = min(want, 5)  # 正常历史远多于 5 根;退化响应只有 1-2 根
     cached = _US_SUFFIX_CACHE.get(code)
     suffixes = ([cached] if cached is not None else []) + [
-        s for s in (".OQ", ".N", "") if s != cached
+        s for s in (".OQ", ".N", ".AM", "") if s != cached
     ]
     best: list[Bar] = []
     for suf in suffixes:

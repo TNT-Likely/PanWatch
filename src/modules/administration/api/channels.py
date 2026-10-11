@@ -91,30 +91,40 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db)):
 @router.post("/{channel_id}/test")
 async def test_channel(channel_id: int, db: Session = Depends(get_db)):
     """发送测试通知"""
+    from src.modules.administration.onboarding import channel_fingerprint, record_check
     channel = db.query(NotifyChannel).filter(NotifyChannel.id == channel_id).first()
     if not channel:
         raise api_error(404, "channel_not_found", "通知渠道不存在")
+
+    identity = channel_fingerprint(channel)
 
     notifier = NotifierManager()
     try:
         notifier.add_channel(channel.type, channel.config or {})
     except Exception as exc:
+        record_check(db, "channel", channel.id, identity, False)
         raise api_error(400, "channel_config_invalid", "通知渠道配置无效") from exc
 
     from src.platform.language import resolve_report_language
 
     english = resolve_report_language(db) == "en-US"
-    result = await notifier.notify_with_result(
-        title="Test notification" if english else "测试通知",
-        content=(
-            "This PanWatch test confirms that the notification channel is configured correctly."
-            if english
-            else "这是一条来自盯盘侠的测试通知，如果您收到此消息说明通知渠道配置正确。"
-        ),
-        bypass_quiet_hours=True,
-    )
+    try:
+        result = await notifier.notify_with_result(
+            title="Test notification" if english else "测试通知",
+            content=(
+                "This PanWatch test confirms that the notification channel is configured correctly."
+                if english
+                else "这是一条来自盯盘侠的测试通知，如果您收到此消息说明通知渠道配置正确。"
+            ),
+            bypass_quiet_hours=True,
+        )
+    except Exception as exc:
+        record_check(db, "channel", channel.id, identity, False)
+        raise api_error(500, "channel_test_failed", "测试通知发送失败") from exc
 
     if result.get("success"):
+        record_check(db, "channel", channel.id, identity, True)
         return {"ok": True, "message": "Test notification sent" if english else "测试通知发送成功"}
     else:
+        record_check(db, "channel", channel.id, identity, False)
         raise api_error(500, "channel_test_failed", "测试通知发送失败")

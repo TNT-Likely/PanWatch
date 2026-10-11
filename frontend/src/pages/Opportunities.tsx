@@ -612,7 +612,7 @@ export default function OpportunitiesPage() {
         </div>
       )}
 
-      <div className="card p-3 md:p-4 mb-4">
+      <div data-tour="opportunity-filters" className="card p-3 md:p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
           <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US')}>
             <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
@@ -685,7 +685,7 @@ export default function OpportunitiesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div data-tour="opportunity-signals" className="grid min-h-12 grid-cols-1 md:grid-cols-2 gap-3">
         {groupedItems.map((group) => {
           const item = group.primary
           const payload = item.payload && typeof item.payload === 'object' ? item.payload as Record<string, unknown> : {}

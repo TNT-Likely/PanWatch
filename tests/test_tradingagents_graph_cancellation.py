@@ -150,7 +150,7 @@ def execution_probe(monkeypatch, tmp_path):
             _force_refresh=True, _progress_handler=run.handler, report_language="en-US", model_label="fixture",
             ai_client=SimpleNamespace(api_key=None, model="fixture", base_url="https://example.invalid/v1"),
         )
-        data = {"stock": SimpleNamespace(symbol=symbol, name="Fixture", market=SimpleNamespace(value="CN" if symbol.isdigit() else "US"))}
+        data = {"stock": SimpleNamespace(symbol=symbol, name="Fixture", asset_type="stock", market=SimpleNamespace(value="CN" if symbol.isdigit() else "US"))}
         original = agent._run_tradingagents_sync
         def worker(**kwargs):
             try:
