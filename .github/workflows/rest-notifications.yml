@@ -10,7 +10,7 @@ on:
       - 'frontend/**'
       - 'docs/notifications/**'
   push:
-    branches: [main]
+    branches: [main, master]
     paths:
       - '.github/workflows/rest-notifications.yml'
       - 'requirements*.txt'
