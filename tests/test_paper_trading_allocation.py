@@ -16,7 +16,7 @@ from src.modules.paper_trading.paper_trading_engine import (
 
 class TestNormalizeAllocations(unittest.TestCase):
     def test_fill_missing_markets(self):
-        """归一化 — 缺失市场补 0 且覆盖三市场"""
+        """归一化 — 缺失市场补 0 且覆盖四市场"""
         out = normalize_allocations({"CN": 0.6})
         self.assertEqual(set(out.keys()), set(ALL_MARKETS))
         self.assertAlmostEqual(out["CN"], 0.6)
@@ -35,9 +35,9 @@ class TestNormalizeAllocations(unittest.TestCase):
         self.assertEqual(out["US"], 1.0)
 
     def test_none_input(self):
-        """归一化 — 入参为 None 时三市场全 0"""
+        """归一化 — 入参为 None 时四市场全 0"""
         out = normalize_allocations(None)
-        self.assertEqual(out, {"CN": 0.0, "HK": 0.0, "US": 0.0})
+        self.assertEqual(out, {"CN": 0.0, "HK": 0.0, "US": 0.0, "AU": 0.0})
 
 
 class TestAllocationsFromExcluded(unittest.TestCase):
@@ -93,7 +93,7 @@ class TestMarketAllocationsOrDefault(unittest.TestCase):
             market_allocations={"CN": 1.0, "HK": 0, "US": 0}, initial_capital=1_000_000
         )
         out = market_allocations_or_default(acc)
-        self.assertEqual(out, {"CN": 1.0, "HK": 0.0, "US": 0.0})
+        self.assertEqual(out, {"CN": 1.0, "HK": 0.0, "US": 0.0, "AU": 0.0})
 
     def test_sum_le_one_invariant(self):
         """账户比例 — 合理配置合计不超过 1"""

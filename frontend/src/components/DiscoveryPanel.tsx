@@ -27,12 +27,12 @@ export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfo
   const { t } = useTranslation('configuration')
   const discoveryT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = useCallback((key: string, options?: Record<string, unknown>) => discoveryT(`p4.components.discovery.${key}`, options), [discoveryT])
-  const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us' } as Record<string, string>)[market] || market}`), [discoveryT])
+  const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us', AU: 'au' } as Record<string, string>)[market] || market}`), [discoveryT])
   const navigate = useNavigate()
   const [watchlist, setWatchlist] = useState<DashboardWatchStock[] | null>(null)
 
   const [discoverTab, setDiscoverTab] = useLocalStorage<'boards' | 'stocks'>('panwatch_dashboard_discoverTab', 'boards')
-  const [discoverMarket, setDiscoverMarket] = useLocalStorage<'CN' | 'HK' | 'US'>('panwatch_dashboard_discoverMarket', 'CN')
+  const [discoverMarket, setDiscoverMarket] = useLocalStorage<'CN' | 'HK' | 'US' | 'AU'>('panwatch_dashboard_discoverMarket', 'CN')
   const [stocksMode, setStocksMode] = useLocalStorage<'turnover' | 'gainers' | 'for_you'>('panwatch_dashboard_stocksMode', 'for_you')
   const [boardsMode, setBoardsMode] = useLocalStorage<'gainers' | 'turnover'>('panwatch_dashboard_boardsMode', 'gainers')
   const [hotStocks, setHotStocks] = useState<HotStockItem[]>([])
@@ -195,7 +195,7 @@ export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfo
             <Button variant="outline" size="sm" onClick={() => navigate('/opportunities')} className="h-7 text-[12px]">
               {tr('openOpportunities')}
             </Button>
-            <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'CN' | 'HK' | 'US')}>
+            <Select value={discoverMarket} onValueChange={(v) => setDiscoverMarket(v as 'CN' | 'HK' | 'US' | 'AU')}>
               <SelectTrigger className="h-7 w-[90px] text-[12px]">
                 <SelectValue />
               </SelectTrigger>
@@ -203,6 +203,7 @@ export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfo
                 <SelectItem value="CN">{marketLabel('CN')}</SelectItem>
                 <SelectItem value="HK">{marketLabel('HK')}</SelectItem>
                 <SelectItem value="US">{marketLabel('US')}</SelectItem>
+                <SelectItem value="AU">{marketLabel('AU')}</SelectItem>
               </SelectContent>
             </Select>
             <Button

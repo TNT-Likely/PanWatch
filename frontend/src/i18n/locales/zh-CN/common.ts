@@ -60,5 +60,6 @@ export const common = {
     CN: 'A股',
     HK: '港股',
     US: '美股',
+    AU: '澳股',
   },
 } as const

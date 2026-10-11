@@ -39,7 +39,7 @@ export const bizUi = {
   },
   stockInsight: {
     description: 'View overview, charts, AI suggestions, news, and analysis history in one place',
-    markets: { CN: 'A-shares', HK: 'Hong Kong', US: 'U.S.' },
+    markets: { CN: 'A-shares', HK: 'Hong Kong', US: 'U.S.', AU: 'Australia' },
     actions: { generating: 'Generating', image: 'Image', share: 'Share', copy: 'Copy', processing: 'Working...', held: 'Held', unfollow: 'Unfollow', follow: 'Follow', setting: 'Setting...', setAlert: 'Set alert', askAI: 'Ask AI', refresh: 'Refresh', holdingCannotUnfollow: 'A held stock cannot be unfollowed', more: 'More', openDetails: 'Open details ↗' },
     tabs: { overview: 'Overview', suggestions: 'Suggestions ({{count}})', reports: 'Reports ({{count}})', deep: 'Deep analysis', deepCount: 'Deep analysis (1)', kline: 'Chart', announcements: 'Filings ({{count}})', news: 'News ({{count}})' },
     autoRefresh: 'Auto refresh', seconds: '{{count}} sec',

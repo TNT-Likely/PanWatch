@@ -69,7 +69,7 @@ def _pick_num(mapping: dict, keys: list[str]) -> float | None:
 
 def _normalize_market(market: str) -> str:
     m = (market or "CN").strip().upper()
-    return m if m in ("CN", "HK", "US") else "CN"
+    return m if m in ("CN", "HK", "US", "AU") else "CN"
 
 
 def _latest_snapshot_stocks(db: Session, market: str, limit: int = 120) -> list[dict]:

@@ -36,7 +36,7 @@ export const bizUi = {
   },
   stockInsight: {
     description: '概览、K线、AI建议、新闻、历史分析都在同一弹窗查看',
-    markets: { CN: 'A股', HK: '港股', US: '美股' },
+    markets: { CN: 'A股', HK: '港股', US: '美股', AU: '澳股' },
     actions: { generating: '生成中', image: '图片', share: '分享', copy: '复制', processing: '处理中...', held: '持仓中', unfollow: '取消关注', follow: '快速关注', setting: '设置中...', setAlert: '一键设提醒', askAI: '问 AI', refresh: '刷新', holdingCannotUnfollow: '持仓中的股票无法取消关注', more: '更多', openDetails: '打开详情页 ↗' },
     tabs: { overview: '概览', suggestions: '建议 ({{count}})', reports: '报告 ({{count}})', deep: '深度', deepCount: '深度 (1)', kline: 'K线', announcements: '公告 ({{count}})', news: '新闻 ({{count}})' },
     autoRefresh: '自动刷新', seconds: '{{count}}秒',

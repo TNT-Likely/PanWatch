@@ -218,7 +218,7 @@ export default function OpportunitiesPage() {
   const [strategyCatalog, setStrategyCatalog] = useState<StrategyCatalogItem[]>([])
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
 
-  const [market, setMarket] = useLocalStorage<'ALL' | 'CN' | 'HK' | 'US'>('panwatch_opportunities_market_v3', DEFAULT_FILTERS.market)
+  const [market, setMarket] = useLocalStorage<'ALL' | 'CN' | 'HK' | 'US' | 'AU'>('panwatch_opportunities_market_v3', DEFAULT_FILTERS.market)
   const [source, setSource] = useLocalStorage<SourceFilter>('panwatch_opportunities_source_v3', DEFAULT_FILTERS.source)
   const [holding, setHolding] = useLocalStorage<HoldingFilter>('panwatch_opportunities_holding_v3', DEFAULT_FILTERS.holding)
   const [strategy, setStrategy] = useLocalStorage('panwatch_opportunities_strategy_v3', DEFAULT_FILTERS.strategy)
@@ -614,13 +614,14 @@ export default function OpportunitiesPage() {
 
       <div className="card p-3 md:p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
-          <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US')}>
+          <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US' | 'AU')}>
             <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">{oppT('opportunities.markets.ALL')}</SelectItem>
               <SelectItem value="CN">{oppT('opportunities.markets.CN')}</SelectItem>
               <SelectItem value="HK">{oppT('opportunities.markets.HK')}</SelectItem>
               <SelectItem value="US">{oppT('opportunities.markets.US')}</SelectItem>
+              <SelectItem value="AU">{oppT('opportunities.markets.AU')}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={source} onValueChange={(v) => setSource(v as SourceFilter)}>

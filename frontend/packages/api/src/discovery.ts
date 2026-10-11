@@ -33,7 +33,7 @@ export interface HotBoardItem {
 
 export const discoveryApi = {
   listHotStocks: (params?: {
-    market?: 'CN' | 'HK' | 'US'
+    market?: 'CN' | 'HK' | 'US' | 'AU'
     mode?: 'turnover' | 'gainers' | 'for_you'
     limit?: number
   }) =>
@@ -46,7 +46,7 @@ export const discoveryApi = {
     ),
 
   listHotBoards: (params?: {
-    market?: 'CN' | 'HK' | 'US'
+    market?: 'CN' | 'HK' | 'US' | 'AU'
     mode?: 'gainers' | 'turnover' | 'hot'
     limit?: number
   }) =>

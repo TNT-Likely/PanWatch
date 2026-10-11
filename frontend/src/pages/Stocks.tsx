@@ -308,7 +308,7 @@ export default function StocksPage() {
   const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
 
   // Stock list filter
-  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股, 'AU' = 澳股
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
   // Remove watchlist modal
@@ -1265,7 +1265,7 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m === 'AU' ? stockT('stocksPage.markets.au') : m
   const quoteHint = (quote: { daily_move_status?: string; quote_date?: string | null }) => {
     const status = quote.daily_move_status
     const label = status && status !== 'current' ? stockT(`stocksPage.quoteStatus.${status}`) : ''
@@ -1277,6 +1277,7 @@ export default function StocksPage() {
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: stockT('stocksPage.markets.hkShort') }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: stockT('stocksPage.markets.usShort') }
+    if (m === 'AU') return { style: 'bg-purple-500/10 text-purple-600', label: stockT('stocksPage.markets.auShort') }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1652,6 +1653,7 @@ export default function StocksPage() {
                     { value: 'CN', label: stockT('stocksPage.markets.cn') },
                     { value: 'HK', label: stockT('stocksPage.markets.hk') },
                     { value: 'US', label: stockT('stocksPage.markets.us') },
+                    { value: 'AU', label: stockT('stocksPage.markets.au') },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -2169,6 +2171,7 @@ export default function StocksPage() {
                 { value: 'CN', label: stockT('stocksPage.markets.cn'), count: stocks.filter(s => s.market === 'CN').length },
                 { value: 'HK', label: stockT('stocksPage.markets.hk'), count: stocks.filter(s => s.market === 'HK').length },
                 { value: 'US', label: stockT('stocksPage.markets.us'), count: stocks.filter(s => s.market === 'US').length },
+                { value: 'AU', label: stockT('stocksPage.markets.au'), count: stocks.filter(s => s.market === 'AU').length },
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -2525,6 +2528,7 @@ export default function StocksPage() {
                       { value: 'CN', label: stockT('stocksPage.markets.cn') },
                       { value: 'HK', label: stockT('stocksPage.markets.hk') },
                       { value: 'US', label: stockT('stocksPage.markets.us') },
+                      { value: 'AU', label: stockT('stocksPage.markets.au') },
                     ].map(opt => (
                       <button
                         key={opt.value}
@@ -2547,7 +2551,7 @@ export default function StocksPage() {
                     value={positionSearchQuery}
                     onChange={e => handlePositionSearchInput(e.target.value)}
                     onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
+                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'AU' ? 'VAS or Vanguard Aussie Shares' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
                     className="pl-9"
                     autoComplete="off"
                   />

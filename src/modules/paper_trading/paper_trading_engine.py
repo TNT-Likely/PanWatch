@@ -152,12 +152,12 @@ def _safe_float(v: Any) -> float | None:
 # 分市场资金配置（投资比例 → 子池现金）
 # ---------------------------------------------------------------------------
 
-ALL_MARKETS: tuple[str, ...] = ("CN", "HK", "US")
-DEFAULT_ALLOCATIONS: dict[str, float] = {"CN": 0.5, "HK": 0.3, "US": 0.2}
+ALL_MARKETS: tuple[str, ...] = ("CN", "HK", "US", "AU")
+DEFAULT_ALLOCATIONS: dict[str, float] = {"CN": 0.5, "HK": 0.3, "US": 0.2, "AU": 0.0}
 
 
 def normalize_allocations(raw: dict | None) -> dict[str, float]:
-    """补齐三市场、clamp 到 [0,1]，返回 {market: ratio}。"""
+    """补齐四市场、clamp 到 [0,1]，返回 {market: ratio}。"""
     raw = raw or {}
     out: dict[str, float] = {}
     for m in ALL_MARKETS:

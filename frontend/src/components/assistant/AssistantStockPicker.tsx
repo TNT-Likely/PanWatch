@@ -18,7 +18,7 @@ interface AssistantStockPickerProps {
 export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: AssistantStockPickerProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const markets = ['CN', 'HK', 'US'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
+  const markets = ['CN', 'HK', 'US', 'AU'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
   const [market, setMarket] = useState('CN')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AssistantStockSearchResult[]>([])
