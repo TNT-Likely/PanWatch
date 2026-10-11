@@ -52,7 +52,7 @@ def test_next_us_open_is_correct_in_beijing_across_dst(monkeypatch):
     ]:
         freeze(monkeypatch, instant)
         data = get_market_calendars(days=14, timezone="Asia/Shanghai")
-        assert {market["market"] for market in data["markets"]} == {"CN", "HK", "US"}
+        assert {market["market"] for market in data["markets"]} == {"CN", "HK", "US", "AU"}
         assert all(market["days"][0]["date"] == instant.date().isoformat() for market in data["markets"])
         us = next(market for market in data["markets"] if market["market"] == "US")
         assert datetime.fromisoformat(us["next_open"]).astimezone(ZoneInfo("Asia/Shanghai")).isoformat() == expected

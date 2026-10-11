@@ -8,6 +8,7 @@ class MarketCode(str, Enum):
     CN = "CN"  # A股
     HK = "HK"  # 港股
     US = "US"  # 美股
+    AU = "AU"  # 澳股(ASX)
 
 
 @dataclass
@@ -65,6 +66,15 @@ MARKETS: dict[MarketCode, MarketDef] = {
             TradingSession(time(9, 30), time(16, 0)),
         ],
         symbol_pattern=r"^[A-Z]{1,5}$",
+    ),
+    MarketCode.AU: MarketDef(
+        code=MarketCode.AU,
+        name="澳股",
+        timezone="Australia/Sydney",
+        sessions=[
+            TradingSession(time(10, 0), time(16, 0)),
+        ],
+        symbol_pattern=r"^[A-Z]{1,6}$",  # ASX 代码:1-6 位字母,如 CBA/BHP/VAS
     ),
 }
 
