@@ -7,6 +7,7 @@ import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import AccountMenu from '@/components/AccountMenu'
+import { GuidedTourProvider } from '@/components/onboarding/GuidedTour'
 import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
 import { RouteErrorBoundary, RouteLoadingFallback } from '@/components/RouteBoundary'
@@ -143,6 +144,7 @@ function App() {
 
   return (
     <RequireAuth>
+    <GuidedTourProvider>
     <NotificationProvider>
     <div
       className={isAssistantRoute
@@ -353,6 +355,7 @@ function App() {
       </Dialog>
     </div>
     </NotificationProvider>
+    </GuidedTourProvider>
     </RequireAuth>
   )
 }

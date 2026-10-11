@@ -1,7 +1,94 @@
 export const bizUi = {
+  tour: {
+  "title": "新手操作引导",
+  "welcome": "跟着高亮提示在真实页面上操作：添加自选、查看行情，再按需配置 AI 和提醒。高亮区域可以直接点击，随时可暂停。",
+  "goal": "选择体验目标",
+  "quotesGoal": "添加自选并查看行情，之后可选设置提醒和通知。",
+  "aiGoal": "从添加自选到生成第一份分析，之后可选设置提醒和通知。",
+  "start": "开始操作引导",
+  "progress": "第 {{current}} / {{total}} 步",
+  "pause": "暂停引导",
+  "back": "上一步",
+  "next": "下一步",
+  "skip": "跳过此步",
+  "finish": "完成引导",
+  "verified": "操作已完成，可以继续",
+  "actOnPage": "请点击高亮区域，在页面上完成这一步。",
+  "chooseExisting": "已有自选？选择一只继续",
+  "waiting": "正在寻找页面上的操作入口…",
+  "leftPage": "你已离开当前引导页面。进度已保存。",
+  "return": "回到当前步骤",
+  "openAnalysis": "打开首次分析",
+  "analysisNotReady": "请先查看行情，并在设置中测试默认模型。",
+  "doneTitle": "操作引导已完成",
+  "doneDescription": "你可以继续使用这些页面，也可以从「开始使用」重新打开引导。跳过的可选项随时可以在设置中补充。",
+  "doneAction": "开始使用",
+  "steps": {
+    "stock": {
+      "title": "先添加一只自选",
+      "description": "点击高亮的「添加自选」，搜索股票并确认添加。已有自选也可以直接选一只。"
+    },
+    "stockForm": {
+      "title": "搜索并确认添加",
+      "description": "输入代码或名称，选择搜索结果，再点击「确认添加」。保存后会进入行情步骤。"
+    },
+    "stockChoose": {
+      "title": "选择一只现有自选",
+      "description": "点击任意一张自选卡片或股票名称，用它完成这次体验。示例股票不会自动算作已选择。"
+    },
+    "quote": {
+      "title": "亲手刷新一次行情",
+      "description": "点击高亮的刷新按钮，获取刚才所选股票的真实行情。成功后会高亮对应卡片。"
+    },
+    "quoteRead": {
+      "title": "查看这只股票的行情",
+      "description": "这里显示价格和涨跌幅，点击股票名称还能打开详情。注意数据时间，休市期间可能显示最近交易日行情。点击下一步继续。"
+    },
+    "ai": {
+      "title": "连接并测试默认模型",
+      "description": "在这里添加 AI 服务商和模型，设置一个默认模型，再点击它旁边的测试按钮。已有默认模型可直接测试。"
+    },
+    "providerForm": {
+      "title": "填写服务商连接信息",
+      "description": "填写名称、接口地址和 API Key 后保存。接着为这个服务商添加模型。"
+    },
+    "modelForm": {
+      "title": "添加一个可用模型",
+      "description": "选择服务商并填写模型标识后保存，也可以从发现结果添加。返回列表，将模型设为默认并测试。"
+    },
+    "analysis": {
+      "title": "打开首次分析",
+      "description": "点击这个入口，在弹窗里确认生成。分析使用刚才验证的默认模型，不会自动启动。"
+    },
+    "analysisForm": {
+      "title": "生成并等待结果",
+      "description": "点击「生成首次分析」。这次会实际调用模型并产生用量，你也可以关闭弹窗，稍后回来查看。"
+    },
+    "analysisRead": {
+      "title": "阅读第一份分析",
+      "description": "结果保存在这里，附有模型和生成时间。阅读后点击下一步，去试试价格提醒。"
+    },
+    "alert": {
+      "title": "设置一个价格提醒",
+      "description": "点击「新建提醒」，为刚才的股票填写触发条件。这个步骤可选，也可以跳过。"
+    },
+    "alertForm": {
+      "title": "填写并保存提醒规则",
+      "description": "确认标的，填写规则名称、价格条件和通知渠道，然后保存。规则会实际生效，按你设置的条件监控。"
+    },
+    "notify": {
+      "title": "测试通知渠道",
+      "description": "在这里添加并启用通知渠道，再点击纸飞机测试按钮。这会发送一条真实测试消息；暂时不需要可以跳过。"
+    },
+    "channelForm": {
+      "title": "配置通知渠道",
+      "description": "选择渠道类型并填写接收端信息，保存后启用，再点击列表中的纸飞机按钮测试。"
+    }
+  }
+},
   gettingStarted: {
   title: '开始使用', description: '从一个关注的标的开始，亲手完成第一次行情查看和分析。进度会自动保存。',
-  bannerTitle: '让盯盘侠开始为你工作', bannerDescription: '选择关注的标的，查看行情，再按需接入 AI 和提醒。',
+  bannerTitle: '让盯盘侠开始为你工作', bannerDescription: '跟着高亮提示，在真实页面上完成第一次操作。',
   continue: '继续设置', start: '开始设置', later: '稍后处理', resume: '恢复引导', review: '查看开始指南',
   progress: '已完成 {{done}} / {{total}} 个必要步骤', loading: '正在读取设置进度…', retry: '重试',
   completed: '已完成', pending: '待完成', skipped: '稍后处理', optional: '可选', required: '必要',

@@ -2,6 +2,93 @@ import type { TranslationShape } from '../../resource-types'
 import { bizUi as zhBizUi } from '../zh-CN/biz-ui'
 
 export const bizUi = {
+  tour: {
+  "title": "Interactive getting started",
+  "welcome": "Follow the highlights on the actual pages: add a stock, view quotes, then optionally set up AI and alerts. Click highlighted controls directly and pause at any time.",
+  "goal": "Choose your goal",
+  "quotesGoal": "Add a stock and view quotes, then optionally configure alerts and notifications.",
+  "aiGoal": "Go from adding a stock to your first analysis, then optionally configure alerts and notifications.",
+  "start": "Start guided tour",
+  "progress": "Step {{current}} of {{total}}",
+  "pause": "Pause tour",
+  "back": "Back",
+  "next": "Next",
+  "skip": "Skip step",
+  "finish": "Finish tour",
+  "verified": "Action completed. You can continue.",
+  "actOnPage": "Use the highlighted controls to complete this step.",
+  "chooseExisting": "Already have stocks? Choose one",
+  "waiting": "Looking for the control on this page…",
+  "leftPage": "You left the current tour page. Your progress is saved.",
+  "return": "Return to this step",
+  "openAnalysis": "Open first analysis",
+  "analysisNotReady": "View a quote and test your default model in Settings first.",
+  "doneTitle": "Tour complete",
+  "doneDescription": "Keep using these pages or reopen the tour from Getting started. You can configure skipped optional steps in Settings at any time.",
+  "doneAction": "Get started",
+  "steps": {
+    "stock": {
+      "title": "Add your first stock",
+      "description": "Click Add stock, search and confirm. You can also choose a stock in your watchlist."
+    },
+    "stockForm": {
+      "title": "Search and confirm",
+      "description": "Enter a symbol or name, choose a search result, then confirm the addition. Saving takes you to quotes."
+    },
+    "stockChoose": {
+      "title": "Choose an existing stock",
+      "description": "Click a watchlist card or name to use it for this tour. Samples are not selected automatically."
+    },
+    "quote": {
+      "title": "Refresh the quote yourself",
+      "description": "Click the highlighted refresh button to retrieve a real quote. Its card is highlighted after success."
+    },
+    "quoteRead": {
+      "title": "Read the stock quote",
+      "description": "Read its price and change, or click the name for details. Check the data time: closed markets may show the last trading day's quote. Click Next to continue."
+    },
+    "ai": {
+      "title": "Connect and test a default model",
+      "description": "Add a provider and model, set a default, then click its test button. An existing default can be tested directly."
+    },
+    "providerForm": {
+      "title": "Enter provider credentials",
+      "description": "Save a name, endpoint and API key, then add a model for the provider."
+    },
+    "modelForm": {
+      "title": "Add a usable model",
+      "description": "Choose a provider and save its model identifier, or add a discovered model. Return to the list, set it as default and test."
+    },
+    "analysis": {
+      "title": "Open your first analysis",
+      "description": "Open this dialog and confirm generation. It uses your tested default model and starts only when you click."
+    },
+    "analysisForm": {
+      "title": "Generate and wait for results",
+      "description": "Click Generate first analysis. This calls your model and uses quota. You can close the dialog and return later."
+    },
+    "analysisRead": {
+      "title": "Read your first analysis",
+      "description": "The saved result includes the model and generation time. Read it, then click Next to try price alerts."
+    },
+    "alert": {
+      "title": "Create a price alert",
+      "description": "Click New alert and choose conditions for your stock. This step is optional and can be skipped."
+    },
+    "alertForm": {
+      "title": "Save an alert rule",
+      "description": "Check the stock, enter a name, price condition and channels, then save. The rule becomes active and monitors your conditions."
+    },
+    "notify": {
+      "title": "Test a notification channel",
+      "description": "Add and enable a channel, then click its paper-plane test button. This sends a real message. You can skip this optional step."
+    },
+    "channelForm": {
+      "title": "Configure a channel",
+      "description": "Choose its type and enter recipient settings. Save and enable it, then click the paper-plane button to test."
+    }
+  }
+},
   gettingStarted: {
   title: 'Getting started', description: 'Start with one symbol and see your first quote and analysis. Your progress is saved automatically.',
   bannerTitle: 'Put PanWatch to work', bannerDescription: 'Choose a symbol, view its quote, then connect AI and alerts when you need them.',

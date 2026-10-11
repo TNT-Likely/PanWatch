@@ -6,6 +6,7 @@ export interface SetupStatus {
   goal: 'quotes' | 'ai'
   deferred: boolean
   started: boolean
+  tour_step: SetupStep | 'done' | null
   selected_stock: StockItem | null
   models: Array<{ id: number; name: string; model: string; is_default: boolean; verified: boolean }>
   channels: Array<{ id: number; name: string; enabled: boolean; is_default: boolean; verified: boolean }>
@@ -17,6 +18,7 @@ export interface SetupStatus {
   required_count: number
 }
 export interface SetupUpdate {
+  tour_step?: SetupStep | 'done'
   goal?: 'quotes' | 'ai'
   deferred?: boolean
   stock_id?: number

@@ -1,4 +1,4 @@
-"""Recoverable setup checklist and its single, notification-free first analysis."""
+"""Recoverable interactive setup tour and its single, notification-free first analysis."""
 
 import asyncio
 import math
@@ -25,6 +25,7 @@ _start_lock = threading.Lock()
 class ProgressUpdate(BaseModel):
     goal: Literal["quotes", "ai"] | None = None
     deferred: bool | None = None
+    tour_step: Literal["stock", "quote", "ai", "analysis", "alert", "notify", "done"] | None = None
     stock_id: int | None = None
     skip: Literal["alert", "notify"] | None = None
     unskip: Literal["alert", "notify"] | None = None
@@ -77,6 +78,7 @@ def get_status(db: Session) -> dict:
               "status": "complete" if done else "skipped" if key in skipped else "pending"}
              for key, done in facts.items()]
     return {"goal": goal, "deferred": bool(state.get("deferred")), "started": bool(state),
+            "tour_step": state.get("tour_step"),
             "selected_stock": {"id": stock.id, "name": stock.name, "symbol": stock.symbol, "market": stock.market} if stock else None,
             "models": model_items, "channels": channel_items, "quote": quote, "analysis": analysis,
             "steps": steps, "completed": all(facts[key] for key in required),
@@ -102,7 +104,7 @@ def update(body: ProgressUpdate, db: Session = Depends(get_db)):
             state.pop("quote", None)
             state.pop("analysis_trace_id", None)
         state["stock_id"] = body.stock_id
-    for key in ("goal", "deferred"):
+    for key in ("goal", "deferred", "tour_step"):
         value = getattr(body, key)
         if value is not None:
             state[key] = value

@@ -93,7 +93,7 @@ browser timezone. [Timezone policy](docs/timezones.md)
 <summary>Initial setup</summary>
 
 1. Open the web interface and create your login credentials.
-2. Open **Getting started** from the dashboard or navigation. Choose quotes only or a first AI analysis, select a symbol, and fetch its quote with source and data time.
+2. Open **Getting started** from the dashboard or navigation. Choose a goal to start an interactive tour across the real watchlist, settings, analysis, and alert pages. Click highlighted controls directly; the tour advances after saved actions or successful checks.
 3. For AI analysis, configure a service in **Settings → AI Services**, set the default model, and test the connection before explicitly generating your first analysis. This action uses your model quota; its result stays on the page.
 4. Optionally create a price alert and test a notification channel. You can defer or resume the guide; progress survives browser changes and service restarts. A changed model or channel configuration needs a new successful test.
 5. Enable scheduled agents or explore TradingAgents after the basics work. These are configured separately from the first analysis.

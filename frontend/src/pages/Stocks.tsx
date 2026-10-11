@@ -33,7 +33,8 @@ import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, t
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
-import SetupReturnLink from '@/components/SetupReturnLink'
+import { useGuidedTour } from '@/components/onboarding/GuidedTour'
+import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
 interface AgentResult {
   success?: boolean
@@ -194,6 +195,8 @@ const toPriceAlertSummaryMap = (rows: PriceAlertRuleSummary[]): Record<string, {
 
 
 export default function StocksPage() {
+  const tour = useGuidedTour()
+  const tourQuoteBusy = useRef(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation('configuration')
   const confirmAction = useConfirm()
@@ -225,7 +228,7 @@ export default function StocksPage() {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval>>()
 
   type ViewTab = 'positions' | 'watchlist'
-  const [viewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
+  const [savedViewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
 
   // 建议池建议（来自 /suggestions API）
   const [poolSuggestions, setPoolSuggestions] = useState<Record<string, PoolSuggestion>>({})
@@ -310,6 +313,11 @@ export default function StocksPage() {
 
   // Stock list filter
   const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const viewTab = tour?.active && ['stock', 'quote', 'analysis'].includes(tour.step || '') ? 'watchlist' : savedViewTab
+  useEffect(() => {
+    if (!tour?.active || !['stock', 'quote', 'analysis'].includes(tour.step || '')) return
+    setStockListFilter('')
+  }, [tour?.active, tour?.step])
   const [watchlistOnlyAlerts, setWatchlistOnlyAlerts] = useLocalStorage<boolean>('panwatch_watchlist_only_alerts', false)
 
   // Remove watchlist modal
@@ -773,14 +781,19 @@ export default function StocksPage() {
 
   // Refresh quotes only (decoupled from portfolio and scans)
   const handleRefresh = useCallback(async () => {
-    void refreshKlines()
+    if (tourQuoteBusy.current) return
+    tourQuoteBusy.current = true
+    try {
+      await tour?.observeQuote()
+      void refreshKlines()
     await Promise.all([
       refreshMarketStatus(),
       refreshQuotes(),
       loadPoolSuggestions(),
       loadPriceAlertSummaries(),
     ])
-  }, [loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshMarketStatus, refreshQuotes])
+    } finally { tourQuoteBusy.current = false }
+  }, [tour, loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshMarketStatus, refreshQuotes])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -941,6 +954,7 @@ export default function StocksPage() {
       setShowStockForm(false)
       load()
       toast(stockT('stocksPage.messages.stockAdded'), 'success')
+      await tour?.selectStock(created.id)
     } catch (e) {
       toast(e instanceof Error ? e.message : stockT('stocksPage.messages.addStockFailed'), 'error')
     }
@@ -1420,7 +1434,7 @@ export default function StocksPage() {
 
   return (
     <div>
-      <SetupReturnLink />
+      <FirstAnalysis />
       {/* Header */}
       <div className="flex flex-col gap-2 md:gap-3 mb-5 md:mb-6">
         <div className="flex items-center justify-between gap-2">
@@ -1456,26 +1470,26 @@ export default function StocksPage() {
               )}
             </div>
             {/* Buttons */}
-            <Button variant="secondary" onClick={handleRefresh} disabled={quotesLoading}>
+            <Button data-tour="refresh-quotes" variant="secondary" onClick={handleRefresh} disabled={quotesLoading || tour?.busy}>
               <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
               {stockT('stocksPage.messages.refreshed')}
             </Button>
             <Button variant="secondary" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" /> {stockT('stocksPage.messages.addAccount')}
             </Button>
-            <Button onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button data-tour="add-stock" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
               <Plus className="w-4 h-4" /> {stockT('stocksPage.messages.addStock')}
             </Button>
           </div>
           {/* Mobile buttons */}
           <div className="flex md:hidden items-center gap-1.5">
-            <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading}>
+            <Button data-tour="refresh-quotes" aria-label={stockT('stocksPage.messages.refreshed')} variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={handleRefresh} disabled={quotesLoading || tour?.busy}>
               <RefreshCw className={`w-4 h-4 ${quotesLoading ? 'animate-spin' : ''}`} />
             </Button>
             <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={() => openAccountDialog()}>
               <Building2 className="w-4 h-4" />
             </Button>
-            <Button size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
+            <Button data-tour="add-stock" aria-label={stockT('stocksPage.messages.addStock')} size="sm" className="h-8 w-8 p-0" onClick={() => { setStockForm(emptyStockForm); setSearchQuery(''); setShowStockForm(true) }}>
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -1644,7 +1658,8 @@ export default function StocksPage() {
             <DialogTitle>{stockT('stocksPage.messages.addToWatchlistTitle')}</DialogTitle>
             <DialogDescription>{stockT('stocksPage.messages.addToWatchlistDescription')}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleStockSubmit}>
+          <div data-tour-instructions />
+          <form data-tour="stock-form" onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
               <div className="flex items-center gap-2 mb-2">
                 <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
@@ -2162,7 +2177,7 @@ export default function StocksPage() {
 
       {/* Watchlist */}
       {viewTab === 'watchlist' && (
-        <div className="card p-4">
+        <div data-tour="watchlist" className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[13px] font-semibold text-foreground">{stockT('stocksPage.messages.watchlist')}</h3>
             <div className="flex items-center gap-1">
@@ -2214,7 +2229,7 @@ export default function StocksPage() {
                 .filter(s => !stockListFilter || s.market === stockListFilter)
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
-                  if (!watchlistOnlyAlerts) return true
+                  if (tour?.active || !watchlistOnlyAlerts) return true
                   const { suggestion } = getSuggestionForStock(stock.symbol, stock.market)
                   return !!suggestion?.should_alert
                 })
@@ -2225,6 +2240,10 @@ export default function StocksPage() {
                 return (
                   <div
                     key={stock.id}
+                    data-tour-stock={stock.id}
+                    role={tour?.active && tour.step === 'stock' ? 'button' : undefined}
+                    tabIndex={tour?.active && tour.step === 'stock' ? 0 : undefined}
+                    onKeyDown={e => { if (tour?.active && tour.step === 'stock' && ['Enter', ' '].includes(e.key)) { e.preventDefault(); void tour.selectStock(stock.id) } }}
                     draggable={stockListFilter === '' && !watchlistOnlyAlerts}
                     onDragStart={(e) => {
                       if (stockListFilter !== '' || watchlistOnlyAlerts) return
@@ -2254,6 +2273,7 @@ export default function StocksPage() {
                     className={`group rounded-xl border border-border/40 bg-background/30 hover:bg-accent/20 transition-colors p-3 cursor-pointer ${draggingWatchStockId === stock.id ? 'opacity-60' : ''}`}
                     onClick={() => {
                       if (isSuppressCardClick()) return
+                      if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }
                       setAgentDialogStock(stock)
                     }}
                   >
@@ -2265,13 +2285,13 @@ export default function StocksPage() {
                           </span>
                           <button
                             className="font-mono text-[12px] font-semibold text-foreground hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                            onClick={(e) => { e.stopPropagation(); if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }; openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.symbol}
                           </button>
                           <button
                             className="text-[12px] text-muted-foreground truncate hover:text-primary"
-                            onClick={(e) => { e.stopPropagation(); openStockDetail(stock.symbol, stock.market, stock.name, false) }}
+                            onClick={(e) => { e.stopPropagation(); if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }; openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.name}
                           </button>

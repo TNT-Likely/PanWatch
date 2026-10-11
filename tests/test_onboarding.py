@@ -247,3 +247,19 @@ def test_background_analysis_settles_durably_through_agent_runtime(setup, monkey
         else:
             assert "Evidence from the quote" in saved.result
             assert calls == ["model", "closed"]
+
+
+def test_tour_position_is_validated_and_persisted_without_forging_facts(setup):
+    client, factory = setup
+    assert client.get("/api/onboarding").json()["tour_step"] is None
+    result = client.patch("/api/onboarding", json={"tour_step": "quote", "deferred": False}).json()
+    assert result["tour_step"] == "quote"
+    result = client.patch("/api/onboarding", json={"deferred": True}).json()
+    assert result["tour_step"] == "quote" and result["deferred"]
+    assert client.get("/api/onboarding").json()["tour_step"] == "quote"
+    assert client.patch("/api/onboarding", json={"tour_step": "invalid"}).status_code == 422
+    result = client.patch("/api/onboarding", json={"tour_step": "done"}).json()
+    assert result["tour_step"] == "done" and not result["completed"]
+    assert result["completed_count"] == 0
+    with factory() as db:
+        assert db.query(AgentRun).count() == 0
