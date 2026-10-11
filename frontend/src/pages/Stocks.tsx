@@ -33,6 +33,7 @@ import { applyMarketStatuses, findDisplayQuote, mergePortfolioQuotes, toQuoteMap
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import { MARKET_CATEGORIES, matchesMarketCategory, searchStocksByMarketCategory } from '@/lib/market-categories'
 import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
@@ -278,6 +279,9 @@ export default function StocksPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
+  const searchControllerRef = useRef<AbortController | null>(null)
+  const searchGenerationRef = useRef(0)
   const [refreshingStockList, setRefreshingStockList] = useState(false)
 
   // Account form
@@ -294,6 +298,8 @@ export default function StocksPage() {
   const [positionSearchMarket, setPositionSearchMarket] = useState('')  // 搜索市场筛选
   const [positionSearchResults, setPositionSearchResults] = useState<SearchResult[]>([])
   const [positionSearching, setPositionSearching] = useState(false)
+  const [positionSearchError, setPositionSearchError] = useState('')
+  const positionSearchControllerRef = useRef<AbortController | null>(null)
   const [showPositionDropdown, setShowPositionDropdown] = useState(false)
   const positionSearchTimer = useRef<ReturnType<typeof setTimeout>>()
   const positionDropdownRef = useRef<HTMLDivElement>(null)
@@ -319,7 +325,7 @@ export default function StocksPage() {
   const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
 
   // Stock list filter
-  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const [stockListFilter, setStockListFilter] = useState('')  // UI category; securities retain their exchange IDs
   const viewTab = tour?.active && ['stock', 'quote', 'analysis'].includes(tour.step || '') ? 'watchlist' : savedViewTab
   useEffect(() => {
     if (!tour?.active || !['stock', 'quote', 'analysis'].includes(tour.step || '')) return
@@ -419,6 +425,43 @@ export default function StocksPage() {
   }
   const searchTimer = useRef<ReturnType<typeof setTimeout>>()
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const cancelSearch = useCallback(() => {
+    searchGenerationRef.current += 1
+    clearTimeout(searchTimer.current)
+    searchControllerRef.current?.abort()
+  }, [])
+  const cancelPositionSearch = useCallback(() => {
+    clearTimeout(positionSearchTimer.current)
+    positionSearchControllerRef.current?.abort()
+  }, [])
+
+  useEffect(() => {
+    if (showStockForm) return
+    cancelSearch()
+    setSearchQuery('')
+    setSearchMarket('')
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearching(false)
+    setSearchError('')
+  }, [showStockForm, cancelSearch])
+
+  useEffect(() => {
+    if (positionDialogOpen) return
+    cancelPositionSearch()
+    setPositionSearchQuery('')
+    setPositionSearchMarket('')
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearching(false)
+    setPositionSearchError('')
+  }, [positionDialogOpen, cancelPositionSearch])
+
+  useEffect(() => () => {
+    cancelSearch()
+    cancelPositionSearch()
+  }, [cancelSearch, cancelPositionSearch])
 
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
     return buildQuoteItemsFrom(stocks, portfolioRaw)
@@ -933,36 +976,49 @@ export default function StocksPage() {
 
   // ========== Stock handlers ==========
   const doSearch = async (q: string, market: string = searchMarket) => {
-    if (q.length < 1) { setSearchResults([]); setShowDropdown(false); return }
+    cancelSearch()
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearchError('')
+    if (!q.trim()) { setSearching(false); return }
+    const controller = new AbortController()
+    searchControllerRef.current = controller
     setSearching(true)
     try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setSearchResults(results)
-      setShowDropdown(results.length > 0)
-    } catch { setSearchResults([]) }
-    finally { setSearching(false) }
+      const response = await searchStocksByMarketCategory<SearchResult>(q.trim(), market, { signal: controller.signal })
+      if (controller.signal.aborted) return
+      setSearchResults(response.results)
+      setShowDropdown(response.results.length > 0)
+      if (response.failedMarkets.length) setSearchError(stockT('stocksPage.messages.searchPartialFailure', { markets: response.failedMarkets.join(', ') }))
+    } catch {
+      if (!controller.signal.aborted) setSearchError(stockT('stocksPage.messages.searchFailed'))
+    } finally {
+      if (!controller.signal.aborted) setSearching(false)
+    }
   }
 
   const handleSearchInput = (value: string) => {
+    cancelSearch()
     setSearchQuery(value)
-    clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => doSearch(value), 500)
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearching(false)
+    setSearchError('')
+    if (value.trim()) searchTimer.current = setTimeout(() => doSearch(value), 500)
   }
 
   const handleSearchMarketChange = (market: string) => {
     setSearchMarket(market)
-    if (searchQuery) {
-      doSearch(searchQuery, market)
-    }
+    void doSearch(searchQuery, market)
   }
 
   const refreshStockListCache = async () => {
+    const searchGeneration = searchGenerationRef.current
     setRefreshingStockList(true)
     try {
       const result = await fetchAPI<{ count: number }>('/stocks/refresh-list', { method: 'POST' })
       toast(stockT('stocksPage.messages.refreshListDone', { count: result.count }), 'success')
-      if (searchQuery) {
+      if (searchQuery && searchGeneration === searchGenerationRef.current) {
         doSearch(searchQuery)
       }
     } catch (e) {
@@ -973,6 +1029,8 @@ export default function StocksPage() {
   }
 
   const selectStock = (item: SearchResult) => {
+    cancelSearch()
+    setSearching(false)
     setStockForm({ symbol: item.symbol, name: item.name, market: item.market, asset_type: item.asset_type || 'stock' })
     setSearchQuery(`${item.symbol} ${item.name}`)
     setShowDropdown(false)
@@ -1104,31 +1162,45 @@ export default function StocksPage() {
   }
 
   const doPositionSearch = async (q: string, market: string = positionSearchMarket) => {
-    if (q.length < 1) { setPositionSearchResults([]); setShowPositionDropdown(false); return }
+    cancelPositionSearch()
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearchError('')
+    if (!q.trim()) { setPositionSearching(false); return }
+    const controller = new AbortController()
+    positionSearchControllerRef.current = controller
     setPositionSearching(true)
     try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setPositionSearchResults(results)
-      setShowPositionDropdown(results.length > 0)
-    } catch { setPositionSearchResults([]) }
-    finally { setPositionSearching(false) }
+      const response = await searchStocksByMarketCategory<SearchResult>(q.trim(), market, { signal: controller.signal })
+      if (controller.signal.aborted) return
+      setPositionSearchResults(response.results)
+      setShowPositionDropdown(response.results.length > 0)
+      if (response.failedMarkets.length) setPositionSearchError(stockT('stocksPage.messages.searchPartialFailure', { markets: response.failedMarkets.join(', ') }))
+    } catch {
+      if (!controller.signal.aborted) setPositionSearchError(stockT('stocksPage.messages.searchFailed'))
+    } finally {
+      if (!controller.signal.aborted) setPositionSearching(false)
+    }
   }
 
   const handlePositionSearchInput = (value: string) => {
+    cancelPositionSearch()
     setPositionSearchQuery(value)
-    clearTimeout(positionSearchTimer.current)
-    positionSearchTimer.current = setTimeout(() => doPositionSearch(value), 500)
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearching(false)
+    setPositionSearchError('')
+    if (value.trim()) positionSearchTimer.current = setTimeout(() => doPositionSearch(value), 500)
   }
 
   const handlePositionSearchMarketChange = (market: string) => {
     setPositionSearchMarket(market)
-    if (positionSearchQuery) {
-      doPositionSearch(positionSearchQuery, market)
-    }
+    void doPositionSearch(positionSearchQuery, market)
   }
 
   const selectPositionStock = (item: SearchResult) => {
+    cancelPositionSearch()
+    setPositionSearching(false)
     // 检查是否已有此股票
     const existing = stocks.find(s => s.symbol === item.symbol && s.market === item.market)
     setPositionForm({
@@ -1734,16 +1806,13 @@ export default function StocksPage() {
                 <div className="flex flex-wrap items-center gap-1">
                   {[
                     { value: '', label: stockT('stocksPage.markets.all') },
-                    { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                    { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                    { value: 'US', label: stockT('stocksPage.markets.us') },
-                    { value: 'TSX', label: stockT('stocksPage.markets.tsx') },
-                    { value: 'TSXV', label: stockT('stocksPage.markets.tsxv') },
+                    ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`) })),
                   ].map(opt => (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => handleSearchMarketChange(opt.value)}
+                      aria-pressed={searchMarket === opt.value}
                       className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                         searchMarket === opt.value
                           ? 'bg-primary text-primary-foreground'
@@ -1778,12 +1847,13 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : searchMarket === 'TSXV' ? 'V / TBRD' : searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
+                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'CA' ? 'ZSP / REI-UN / TBRD' : searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
                   className="pl-10"
                   autoComplete="off"
                 />
                 {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
               </div>
+              {searchError && <p className="mt-2 text-[12px] text-destructive" role="status">{searchError}</p>}
               {showDropdown && (
                 <div className="relative w-full mt-2 max-h-64 overflow-auto overscroll-contain scrollbar card shadow-lg">
                   {searchResults.map(item => (
@@ -2265,15 +2335,12 @@ export default function StocksPage() {
             <div className="flex flex-wrap items-center gap-1">
               {[
                 { value: '', label: stockT('stocksPage.markets.all'), count: stocks.length },
-                { value: 'CN', label: stockT('stocksPage.markets.cn'), count: stocks.filter(s => s.market === 'CN').length },
-                { value: 'HK', label: stockT('stocksPage.markets.hk'), count: stocks.filter(s => s.market === 'HK').length },
-                { value: 'US', label: stockT('stocksPage.markets.us'), count: stocks.filter(s => s.market === 'US').length },
-                { value: 'TSX', label: stockT('stocksPage.markets.tsx'), count: stocks.filter(s => s.market === 'TSX').length },
-                { value: 'TSXV', label: stockT('stocksPage.markets.tsxv'), count: stocks.filter(s => s.market === 'TSXV').length },
+                ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`), count: stocks.filter(s => matchesMarketCategory(s.market, value)).length })),
               ].map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setStockListFilter(opt.value)}
+                  aria-pressed={stockListFilter === opt.value}
                   className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                     stockListFilter === opt.value
                       ? 'bg-primary text-primary-foreground'
@@ -2310,7 +2377,7 @@ export default function StocksPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {stocks
-                .filter(s => !stockListFilter || s.market === stockListFilter)
+                .filter(s => matchesMarketCategory(s.market, stockListFilter))
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
                   if (tour?.active || !watchlistOnlyAlerts) return true
@@ -2638,16 +2705,13 @@ export default function StocksPage() {
                   <div className="flex flex-wrap items-center gap-1">
                     {[
                       { value: '', label: stockT('stocksPage.markets.all') },
-                      { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                      { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                      { value: 'US', label: stockT('stocksPage.markets.us') },
-                      { value: 'TSX', label: stockT('stocksPage.markets.tsx') },
-                      { value: 'TSXV', label: stockT('stocksPage.markets.tsxv') },
+                      ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`) })),
                     ].map(opt => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => handlePositionSearchMarketChange(opt.value)}
+                        aria-pressed={positionSearchMarket === opt.value}
                         className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                           positionSearchMarket === opt.value
                             ? 'bg-primary text-primary-foreground'
@@ -2666,12 +2730,13 @@ export default function StocksPage() {
                       value={positionSearchQuery}
                       onChange={e => handlePositionSearchInput(e.target.value)}
                       onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'TSX' ? 'ZSP / REI-UN / SHOP' : positionSearchMarket === 'TSXV' ? 'V / TBRD' : positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
+                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'CA' ? 'ZSP / REI-UN / TBRD' : positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
                       className="pl-9"
                       autoComplete="off"
                     />
                     {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
                   </div>
+                  {positionSearchError && <p className="mt-2 text-[12px] text-destructive" role="status">{positionSearchError}</p>}
                   {showPositionDropdown && positionSearchResults.length > 0 && (
                     <div className="relative w-full mt-1 max-h-48 overflow-auto overscroll-contain scrollbar card shadow-lg">
                       {positionSearchResults.map(item => (

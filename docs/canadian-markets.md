@@ -6,6 +6,19 @@ Exchange-listed ETFs are supported, alongside stocks, listed REITs, trusts and
 other exchange-listed funds. Non-exchange mutual-fund NAV flows, Canadian paper
 trading, discovery/factor scanning, futures, crypto and bonds are outside scope.
 
+## Market categories in the interface
+
+Watchlist filters, add-stock/add-holding dialogs, and the assistant stock picker
+show one **Canada** category alongside Mainland China, Hong Kong, and US. Canada
+searches both TSX and TSX Venture; the watchlist tab counts and includes both.
+The category is presentation-only, not a new API market or stored exchange.
+Search results, holdings, quotes, research routes, and exchange calendars retain
+their original `TSX` / `TSXV` identity, including `.TO` / `.V` entry support.
+Existing data needs no migration. Exchange badges still disambiguate identical
+ticker strings. If one exchange search fails, results from the other remain
+available with a warning; changing the query/category or closing the picker
+discards older in-flight results.
+
 ## Identity and provider boundaries
 
 Persist the exchange separately from the symbol: `TSX:ZSP`, `TSX:REI-UN`,
