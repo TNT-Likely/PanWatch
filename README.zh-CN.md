@@ -134,6 +134,10 @@ docker compose up -d
 
 </details>
 
+## 可选单点登录
+
+单所有者应用支持可选 OpenID Connect SSO，默认关闭。启用时必须明确配置 issuer/sub 允许名单与唯一 HTTPS 地址；请先阅读 [OIDC 配置与安全说明](docs/oidc-sso.zh-CN.md)。
+
 ## 详细说明
 
 <details>

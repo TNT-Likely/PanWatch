@@ -1,8 +1,10 @@
-import { Suspense, useState, useEffect, useRef } from 'react'
-import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
+import { Suspense, useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi } from '@panwatch/api/app'
+import { subscribeAuthStatus } from '@panwatch/api/auth-session'
+import RequireAuth from '@/components/RequireAuth'
 import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
@@ -47,41 +49,11 @@ const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: Nav
   { to: '/settings', icon: Settings, labelKey: 'settings' },
 ]
 
-// 认证守卫组件
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking')
-  const location = useLocation()
-
-  useEffect(() => {
-    // 检查本地 token
-    if (isAuthenticated()) {
-      setAuthState('authenticated')
-      return
-    }
-
-    // 没有 token，需要去登录页（设置密码或登录）
-    setAuthState('unauthenticated')
-  }, [])
-
-  if (authState === 'checking') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  if (authState === 'unauthenticated') {
-    return <Navigate to="/login" state={{ from: location }} replace />
-  }
-
-  return <>{children}</>
-}
-
 function App() {
   const { t } = useTranslation(['common', 'navigation'])
   const { mode, setMode } = useTheme()
   const location = useLocation()
+  const authenticated = useSyncExternalStore(subscribeAuthStatus, isAuthenticated)
   const isAssistantRoute = location.pathname === '/assistant' || location.pathname.startsWith('/assistant/')
   const [version, setVersion] = useState('')
   const [logsOpen, setLogsOpen] = useState(false)
@@ -108,7 +80,7 @@ function App() {
 
   useEffect(() => {
     if (checkedUpdateRef.current) return
-    if (!isAuthenticated()) return
+    if (!authenticated) return
     const current = String(version || '').trim()
     if (!current || current === 'dev') return
     checkedUpdateRef.current = true
@@ -124,7 +96,7 @@ function App() {
         setUpgradeOpen(true)
       })
       .catch(() => {})
-  }, [version])
+  }, [version, authenticated])
 
   // 登录页面不显示导航
   if (location.pathname === '/login') {

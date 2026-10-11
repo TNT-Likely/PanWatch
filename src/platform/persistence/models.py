@@ -1472,3 +1472,50 @@ class MCPCallLog(Base):
     duration_ms = Column(Integer, default=0)
     client_ip = Column(String, nullable=True)
     called_at = Column(DateTime, server_default=func.now())
+
+
+class OIDCLoginTransaction(Base):
+    """One-use, browser-bound authorization-code transaction (ten minute TTL)."""
+
+    __tablename__ = "oidc_login_transactions"
+
+    state_hash = Column(String(64), primary_key=True)
+    browser_hash = Column(String(64), nullable=False, index=True)
+    nonce = Column(String(128), nullable=False)
+    verifier = Column(String(128), nullable=False)
+    config_binding = Column(String(64), nullable=False)
+    expires_at = Column(Integer, nullable=False, index=True)
+
+
+class OIDCSession(Base):
+    """Revocable local owner session; no provider tokens are persisted."""
+
+    __tablename__ = "oidc_sessions"
+
+    session_hash = Column(String(64), primary_key=True)
+    csrf_token = Column(String(128), nullable=False)
+    issuer = Column(String, nullable=False)
+    subject = Column(String(255), nullable=False)
+    config_binding = Column(String(64), nullable=False)
+    expires_at = Column(Integer, nullable=False, index=True)
+
+
+class OIDCBrowserGeneration(Base):
+    """Browser-visible login generation and bounded logout tombstone.
+
+    SQLite must never reuse an ID after cleanup: response ordering compares
+    server-issued generations, never client-supplied cookie ordering.
+    """
+
+    __tablename__ = "oidc_browser_generations"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    browser_hash = Column(String(64), nullable=False, unique=True)
+    config_binding = Column(String(64), nullable=False, index=True)
+    expires_at = Column(Integer, nullable=False, index=True)
+    revoked = Column(Boolean, nullable=False, default=False)
+    session_hash = Column(String(64), nullable=True, unique=True)
+    csrf_token = Column(String(128), nullable=True)
+    subject = Column(String(255), nullable=True)
+    session_expires_at = Column(Integer, nullable=True)

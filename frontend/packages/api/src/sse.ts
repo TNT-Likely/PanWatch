@@ -2,7 +2,7 @@ import { publicUrl } from './base-path'
 // SSE 客户端基建：基于 fetch + ReadableStream（原生 EventSource 无法带 Authorization header）
 // - readSSE: 单次连接，流结束后 resolve；连接失败直接 reject（调用方据此降级轮询/非流式）
 // - subscribeSSE: 自动重连订阅（带 Last-Event-ID 续推），用于进度/日志等 GET 流
-import { getToken, localizedApiError, type ApiResponse } from './client'
+import { AuthChangedError, AuthExpiredError, authHeaders, captureAuthRequest, handleUnauthorized, localizedApiError, type ApiResponse } from './client'
 import { interfaceText } from './locale'
 
 export interface SSEEvent {
@@ -53,20 +53,21 @@ function parseEventBlock(block: string): SSEEvent | null {
  * 连接失败（HTTP 非 2xx / content-type 不对 / 网络错误）时抛异常。
  */
 export async function readSSE(path: string, options: ReadSSEOptions): Promise<{ lastEventId: number }> {
-  const headers: Record<string, string> = { Accept: 'text/event-stream' }
-  const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  const headers: Record<string, string> = { Accept: 'text/event-stream', ...authHeaders(options.method) }
   if (options.lastEventId && options.lastEventId > 0) {
     headers['Last-Event-ID'] = String(options.lastEventId)
   }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
 
+  const sentAuth = captureAuthRequest(headers, options.signal)
   const res = await fetch(publicUrl(`/api${path}`), {
     method: options.method || 'GET',
+    credentials: 'same-origin',
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     signal: options.signal,
   })
+  await handleUnauthorized(path, res.status, sentAuth)
   if (!res.ok) {
     const body: ApiResponse<unknown> = await res.json().catch(() => ({
       code: res.status,
@@ -146,6 +147,10 @@ export function subscribeSSE(path: string, options: SubscribeSSEOptions): () => 
         return
       } catch (err) {
         if (closed || controller.signal.aborted) return
+        if (err instanceof AuthExpiredError || err instanceof AuthChangedError) {
+          options.onFailed?.(err)
+          return
+        }
         attempt += 1
         if (attempt > maxRetries) {
           options.onFailed?.(err)

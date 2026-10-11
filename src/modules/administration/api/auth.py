@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ import jwt
 
 from src.platform.persistence.database import get_db, SessionLocal
 from src.platform.persistence.models import AppSettings
+from src.modules.administration import oidc
 from src.web.errors import api_error
 
 router = APIRouter()
@@ -159,15 +160,28 @@ def init_auth_from_env(db: Session) -> bool:
 
 
 def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ):
     """验证当前用户（用作依赖）"""
-    # 检查是否已设置密码
+    config = oidc.require_config() if oidc.enabled() else None
+    if config:
+        session = oidc.get_session(db, request, config)
+        if session is not None:
+            oidc.check_csrf(request, session, config)
+            request.state.oidc_session_identity = (session.session_hash, session.config_binding)
+            return "user"
+        # SSO-only must reject existing password JWTs, not just hide the form.
+        if not config.allow_password:
+            raise api_error(401, "auth_required", "未登录")
+
     password_hash = get_password_hash(db)
-    if not password_hash:
-        # 未设置密码，允许访问（初始状态）
+    if not password_hash and config is None:
+        # Preserve the existing unconfigured local-install behavior only without SSO.
         return None
+    if not password_hash:
+        raise api_error(401, "auth_required", "未登录")
 
     # 已设置密码，需要验证 token
     if not credentials:
@@ -190,17 +204,51 @@ def get_current_user(
 
 
 @router.get("/status")
-def auth_status(db: Session = Depends(get_db)):
-    """获取认证状态"""
+def auth_status(
+    request: Request,
+    response: Response,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+):
+    """Public capability discovery plus verified browser authentication state."""
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Vary"] = "Cookie, Authorization"
+    config = oidc.require_config() if oidc.enabled() else None
     password_hash = get_password_hash(db)
+    session = oidc.get_session(db, request, config) if config else None
+    password_allowed = config is None or config.allow_password
+    bearer_valid = bool(password_allowed and password_hash and credentials and verify_token(credentials.credentials))
     return {
-        "initialized": password_hash is not None,
+        "initialized": config is not None or password_hash is not None,
+        "oidc_enabled": config is not None,
+        "password_enabled": password_allowed,
+        "authenticated": session is not None or bearer_valid,
+        "auth_method": "oidc" if session else "password" if bearer_valid else None,
+        "csrf_token": session.csrf_token if session else None,
+        "oidc_login_url": config.public_url + "/api/auth/oidc/login" if config else None,
     }
+
+
+@router.post("/logout")
+def logout(request: Request, response: Response,
+           credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+           db: Session = Depends(get_db)):
+    """Revoke only this browser's local session; never redirect to arbitrary URLs."""
+    response.headers["Cache-Control"] = "no-store"
+    config = oidc.require_config() if oidc.enabled() else None
+    if config:
+        password_authenticated = bool(config.allow_password and credentials and get_password_hash(db)
+                                      and verify_token(credentials.credentials))
+        oidc.logout_browser(db, request, config, password_authenticated=password_authenticated)
+        # Never expire shared browser state from a potentially delayed logout.
+    return {"logged_out": True}
 
 
 @router.post("/setup", response_model=TokenResponse)
 def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
     """首次设置用户名和密码"""
+    if oidc.enabled():
+        raise api_error(403, "auth_setup_disabled", "启用单点登录时禁止公开设置账号")
     if get_password_hash(db):
         raise api_error(400, "auth_already_configured", "已设置过账号，请使用登录接口")
 
@@ -221,6 +269,8 @@ def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     """登录"""
+    if not oidc.password_enabled():
+        raise api_error(403, "password_login_disabled", "密码登录已禁用")
     stored_hash = get_password_hash(db)
     stored_username = get_stored_username(db)
     if not stored_hash or not stored_username:
@@ -243,6 +293,8 @@ def change_password(
     _: str = Depends(get_current_user),
 ):
     """修改密码"""
+    if not oidc.password_enabled():
+        raise api_error(403, "password_login_disabled", "密码登录已禁用")
     if len(data.password) < 6:
         raise api_error(400, "password_too_short", "密码长度至少 6 位")
 

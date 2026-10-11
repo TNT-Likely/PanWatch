@@ -138,6 +138,10 @@ If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BR
 
 </details>
 
+## Optional single sign-on
+
+Optional OpenID Connect SSO is available for the single-owner app. It is disabled by default; enabling it requires an explicit issuer/subject allowlist and a canonical HTTPS URL. See the [OIDC setup and security guide](docs/oidc-sso.md) before enabling it.
+
 ## Reference
 
 <details>

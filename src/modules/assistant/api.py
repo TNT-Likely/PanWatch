@@ -774,15 +774,13 @@ def list_context_exports(
 
 @router.get('/exports/{export_id}', response_model=ContextExportJobDTO)
 async def get_context_export(export_id: int, service: AssistantService = Depends(get_assistant_service)):
+    """Read saved export state; POST creation/retry and startup recovery own execution."""
     try:
         def get(worker):
             repository = ExportJobRepository(worker._repository.session)
             return repository.dto(repository.get(export_id))
 
-        snapshot = await service.in_worker(get)
-        if snapshot.status == 'queued':
-            context_export_runner.start(snapshot.id)
-        return snapshot
+        return await service.in_worker(get)
     except LookupError as exc:
         raise api_error(404, 'assistant_resource_not_found', '助手资源不存在') from exc
 

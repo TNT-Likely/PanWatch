@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Moon, Sun, Monitor, Check, LogOut, Stethoscope, Languages, type LucideIcon } from 'lucide-react'
+import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
@@ -49,7 +50,10 @@ export default function AccountMenu({
   onOpenSelfCheck,
   size = 'md',
 }: AccountMenuProps) {
-  const { t, i18n: i18nInstance } = useTranslation('settings')
+  const { t, i18n: i18nInstance } = useTranslation(['settings', 'auth'])
+  const { toast } = useToast()
+  const [signingOut, setSigningOut] = useState(false)
+  const logoutPending = useRef(false)
   const currentLocale = normalizeLocale(i18nInstance.resolvedLanguage || i18nInstance.language)
   useInterfaceLanguage()
   const [open, setOpen] = useState(false)
@@ -182,7 +186,20 @@ export default function AccountMenu({
             <>
               <div className="my-1 h-px bg-border/50" />
               <button
-                onClick={logout}
+                disabled={signingOut}
+                onClick={async () => {
+                  if (logoutPending.current) return
+                  logoutPending.current = true
+                  setSigningOut(true)
+                  try {
+                    await logout()
+                  } catch {
+                    toast(t('auth:messages.logoutFailed'), 'error')
+                  } finally {
+                    logoutPending.current = false
+                    setSigningOut(false)
+                  }
+                }}
                 className="flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
