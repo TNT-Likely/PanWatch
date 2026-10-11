@@ -96,7 +96,7 @@ def deployment(request, tmp_path, monkeypatch):
 
 def test_root_login_deeplinks_assets_and_api(deployment):
     client, prefix, mode, upstream = deployment
-    for path in ("/", "/login", "/assistant/123", "/portfolio?account=1", "/index.html"):
+    for path in ("/", "/login", "/assistant/123", "/getting-started", "/portfolio", "/settings", "/opportunities", "/evaluations", "/paper-trading", "/agents", "/history", "/datasources", "/alerts", "/portfolio?account=1", "/index.html"):
         response = client.get(upstream(path))
         assert response.status_code == 200
         assert f'<base href="{prefix}/"' in response.text

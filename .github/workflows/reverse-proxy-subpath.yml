@@ -71,7 +71,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Frontend prefix and service-worker contracts
         working-directory: frontend
-        run: pnpm run test --run tests/api/base-path.test.tsx tests/api/public-url.test.ts tests/api/service-worker-scope.test.ts tests/routing/analysis-modal-public-links.test.tsx tests/routing/markdown-fragments.test.tsx tests/routing/markdown-footnote-identity.test.tsx
+        run: pnpm run test --run tests/api/base-path.test.tsx tests/api/public-url.test.ts tests/api/service-worker-scope.test.ts tests/routing/analysis-modal-public-links.test.tsx tests/routing/markdown-fragments.test.tsx tests/routing/markdown-footnote-identity.test.tsx tests/onboarding/getting-started.test.tsx
       - name: Build the single runtime-configurable frontend
         working-directory: frontend
         run: pnpm build

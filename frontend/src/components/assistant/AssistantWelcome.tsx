@@ -60,7 +60,7 @@ export function AssistantWelcome({ onSubmit, onSelectStock, disabled = false }: 
         />
       ) : (
         <>
-          <form
+          <form data-tour="assistant-composer"
             className="mt-6 flex w-full max-w-3xl items-center gap-2 rounded-2xl border border-border/70 bg-background p-2 shadow-[0_18px_50px_-32px_hsl(var(--foreground)/0.5)] transition-shadow focus-within:ring-2 focus-within:ring-primary/20 sm:mt-9"
             onSubmit={(event) => {
               event.preventDefault()

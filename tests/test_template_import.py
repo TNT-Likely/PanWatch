@@ -316,6 +316,25 @@ def test_export_only_contains_selected_modules():
     assert "stocks" not in exported
 
 
+@pytest.mark.parametrize("modules", ["watchlist,portfolio", "portfolio"])
+def test_template_roundtrip_preserves_etf_type_without_name_hint(monkeypatch, modules):
+    monkeypatch.setitem(sys.modules, "server", SimpleNamespace(reload_scheduler=lambda: False))
+    source = _session()
+    fund = Stock(symbol="02800", name="盈富基金", market="HK", asset_type="etf")
+    account = Account(name="ETF account")
+    source.add_all([fund, account])
+    source.flush()
+    source.add(Position(account_id=account.id, stock_id=fund.id, cost_price=24.84, quantity=500))
+    source.commit()
+    exported = export_template(include_internal=True, modules=modules, db=source)
+    target = _session()
+    import_template(payload=TemplatePayload.model_validate(exported), mode="merge", db=target)
+    assert target.query(Stock).one().asset_type == "etf"
+    assert target.query(Position).one().quantity == 500
+    source.close()
+    target.close()
+
+
 def test_template_does_not_export_or_restore_agent_output_language(monkeypatch):
     """旧配置包中的独立报告语言不应覆盖界面语言。"""
     monkeypatch.setitem(

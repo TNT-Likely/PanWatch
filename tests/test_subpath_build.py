@@ -43,7 +43,7 @@ def test_production_assets_and_pwa_are_confined_to_prefix(prefix, mode):
         assert path.startswith(prefix + "/")
         return client.get(path if mode == "preserve" else path[len(prefix):])
 
-    for path in ("/", "/login", "/assistant/123"):
+    for path in ("/", "/login", "/assistant/123", "/getting-started", "/portfolio", "/settings", "/opportunities", "/evaluations", "/paper-trading", "/agents", "/history", "/datasources", "/alerts"):
         response = get_public(prefix + path)
         assert response.status_code == 200
         parser = AssetParser()

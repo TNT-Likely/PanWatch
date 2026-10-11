@@ -628,7 +628,7 @@ export default function ChatWidget({
           ? 'relative flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden'
           : 'relative flex h-full flex-col overflow-hidden'}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-accent/20 px-3 py-2.5 sm:px-4 sm:py-3">
+      <div data-tour="assistant-toolbar" className="flex items-center justify-between gap-2 border-b border-border/40 bg-accent/20 px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {embedded && (
             <button
@@ -673,7 +673,7 @@ export default function ChatWidget({
           {embedded && (
             <button
               type="button"
-              onClick={() => setPermissionsOpen(true)}
+              data-tour="assistant-permissions" onClick={() => setPermissionsOpen(true)}
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
               title={assistantT('assistantPage.permissions')}
               aria-label={assistantT('assistantPage.permissions')}

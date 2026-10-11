@@ -46,6 +46,26 @@ describe.each(['', '/panwatch', '/apps/panwatch'])('public prefix %s', prefix =>
     }))
   })
 
+
+  it('uses the prefix for all onboarding API operations', async () => {
+    setPrefix(prefix)
+    localStorage.setItem('token', 'test-token')
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ code: 0, data: {} })))
+    vi.stubGlobal('fetch', fetchMock)
+    const { onboardingApi } = await import('../../packages/api/src/onboarding')
+    await onboardingApi.status()
+    await onboardingApi.update({ tour_step: 'stock' })
+    await onboardingApi.quote()
+    await onboardingApi.analyze()
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `${prefix}/api/onboarding`, `${prefix}/api/onboarding`,
+      `${prefix}/api/onboarding/quote`, `${prefix}/api/onboarding/analysis`,
+    ])
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options.headers.Authorization).toBe('Bearer test-token')
+    }
+  })
+
   it('uses the prefix for SSE and preserves resume headers and streamed events', async () => {
     setPrefix(prefix)
     localStorage.setItem('token', 'test-token')

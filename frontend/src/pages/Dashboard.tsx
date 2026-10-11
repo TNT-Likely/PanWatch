@@ -123,7 +123,6 @@ export default function DashboardPage() {
   const [shareBench, setShareBench] = useState(false)
   const [shareDiag, setShareDiag] = useState(false)
   const [shareDigest, setShareDigest] = useState(false)
-  const [showOnboarding, setShowOnboarding] = useState(false)
   const [modal, setModal] = useState<{ open: boolean; symbol: string; market: string; name: string; hasPosition: boolean }>({
     open: false,
     symbol: '',
@@ -205,17 +204,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-    if (!localStorage.getItem('panwatch_onboarding_completed')) setShowOnboarding(true)
     return () => {
       loadId.current += 1
       benchLoadId.current += 1
     }
   }, [load])
 
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('panwatch_onboarding_completed', 'true')
-    setShowOnboarding(false)
-  }
 
   const openStock = (symbol: string, market: string, name = '', hasPosition = false) =>
     setModal({ open: true, symbol, market: market || 'CN', name, hasPosition })
@@ -355,7 +349,6 @@ export default function DashboardPage() {
   }, [])
   const hasHoldings = (diag?.position_count ?? 0) > 0
   const benchReady = bench && !bench.empty && bench.excess_return != null
-  const hasWatchlist = (overview?.kpis?.watchlist_count ?? 0) > 0
   const portfolioPnlPct =
     diag && diag.total_market_value - diag.total_unrealized_pnl > 0
       ? (diag.total_unrealized_pnl / (diag.total_market_value - diag.total_unrealized_pnl)) * 100
@@ -398,6 +391,7 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container pb-10">
+      <Onboarding />
       {/* 顶部:标题 + 刷新 + 日期/市场状态 pills */}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
@@ -845,7 +839,6 @@ export default function DashboardPage() {
         )}
       </Suspense>
 
-      <Onboarding open={showOnboarding} onComplete={handleOnboardingComplete} hasStocks={hasWatchlist} />
     </div>
   )
 }

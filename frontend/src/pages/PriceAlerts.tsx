@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import PriceAlertFormDialog, { type AlertConditionItem, type PriceAlertFormState, type PriceAlertSubmitPayload } from '@panwatch/biz-ui/components/price-alert-form-dialog'
+import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import { getCurrentLocale } from '@/i18n'
 
 interface Delivery {
@@ -101,6 +102,7 @@ function conditionText(item: AlertConditionItem, translate: (key: string) => str
 }
 
 export default function PriceAlertsPage() {
+  const tour = useGuidedTour()
   const { t } = useTranslation('configuration')
   const confirmAction = useConfirm()
   const alertT = (key: string, options?: Record<string, unknown>) =>
@@ -211,7 +213,7 @@ export default function PriceAlertsPage() {
     setEditingId(null)
     setForm({
       ...DEFAULT_FORM,
-      stock_id: stockOptions[0]?.id || 0,
+      stock_id: (tour?.active ? tour.status?.selected_stock?.id : null) || stockOptions[0]?.id || 0,
     })
     setFormOpen(true)
   }
@@ -252,6 +254,7 @@ export default function PriceAlertsPage() {
       setFormOpen(false)
       await load()
       toast(alertT('messages.saved'), 'success')
+      void tour?.refresh()
     } catch (e) {
       toast(e instanceof Error ? e.message : alertT('messages.saveFailed'), 'error')
     } finally {
@@ -330,7 +333,7 @@ export default function PriceAlertsPage() {
             {scanRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
             {alertT('scan')}
           </Button>
-          <Button size="sm" className="h-8" onClick={openCreate}>
+          <Button data-tour="add-alert" size="sm" className="h-8" onClick={openCreate}>
             <Plus className="w-3.5 h-3.5" />
             {alertT('create')}
           </Button>

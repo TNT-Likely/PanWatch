@@ -9,6 +9,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.instruments import infer_asset_type
 
 
 class Settings(BaseSettings):
@@ -96,6 +97,10 @@ class StockConfig:
     symbol: str
     name: str
     market: MarketCode
+    asset_type: str | None = None
+
+    def __post_init__(self):
+        self.asset_type = infer_asset_type(self.name, self.asset_type)
 
 
 @dataclass

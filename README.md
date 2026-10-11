@@ -70,6 +70,10 @@ The screenshots below use the English interface; Simplified Chinese is available
 | **Notifications** | Deliver reports and alerts through Telegram, WeCom, DingTalk, Feishu, Bark, or webhooks. |
 | **Mobile** | Install the PWA on your home screen and use the same workspace on your phone. |
 
+Stock and listed ETF search, watchlists, holdings, price alerts, quotes and candlesticks share the same workflow across mainland China, Hong Kong and US markets. Search by code or name (for example, `510300`, `159915`, `02800` or `SPY`). The asset type is saved with each instrument; select **ETF** for funds whose provider name does not identify them as ETFs.
+
+ETF deep analysis uses fund-specific context and does not substitute company financial statements. Fund holdings, NAV, fees and tracking error are not yet supplied as structured data. Paper trading continues to use its existing market rules and cost model; ETF-specific T+0 exceptions and fee schedules are not modeled.
+
 ## Quick Start
 
 ```bash
@@ -93,9 +97,10 @@ browser timezone. [Timezone policy](docs/timezones.md)
 <summary>Initial setup</summary>
 
 1. Open the web interface and create your login credentials.
-2. Go to **Settings → AI Services** and configure an OpenAI-compatible API, such as OpenAI, Zhipu AI, DeepSeek, or Ollama.
-3. Go to **Settings → Notification Channels** and add Telegram or another delivery channel.
-4. Go to **Portfolio → Add Stock**, add a symbol to your watchlist, and enable the relevant agents.
+2. The main tour opens on first sign-in and follows stocks, quotes, AI setup and a first analysis. Required steps cannot be skipped; you can pause and resume. Reopen it from the **Guide center**, which also offers opportunities, paper trading, assistant, daily tasks and data sources, each with saved progress and replay. Click highlighted controls directly. The main tour verifies saved actions or successful checks; exploration routes record instructions you acknowledge.
+3. In the main tour, configure a service in **Settings → AI Services**, set the default model, and test the connection before explicitly generating your first analysis. This action uses your model quota; its result stays on the page.
+4. Optionally create a price alert and test a notification channel. You can defer or resume the guide; progress survives browser changes and service restarts. A changed model or channel configuration needs a new successful test.
+5. Enable scheduled agents or explore TradingAgents after the basics work. These are configured separately from the first analysis.
 
 </details>
 
