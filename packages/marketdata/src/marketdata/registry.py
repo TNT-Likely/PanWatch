@@ -36,6 +36,7 @@ from marketdata.vendors.news import (
     EastmoneyAnnNewsVendor,
     EastmoneyStockNewsVendor,
     XueqiuNewsVendor,
+    YahooNewsVendor,
 )
 from marketdata.vendors.northbound import HexinNorthboundVendor
 from marketdata.vendors.sina import SinaQuoteVendor
@@ -77,6 +78,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "xueqiu": XueqiuNewsVendor,
         "eastmoney_news": EastmoneyStockNewsVendor,
         "eastmoney": EastmoneyAnnNewsVendor,
+        "yahoo": YahooNewsVendor,
     },
     "dragon_tiger": {
         "eastmoney": EastmoneyDragonTigerVendor,

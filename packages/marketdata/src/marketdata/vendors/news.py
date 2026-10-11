@@ -21,6 +21,7 @@ import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from marketdata.errors import VendorError
 from marketdata.http import market_get, record_error
 from marketdata.symbol import Symbol
 from marketdata.types import NewsArticle
@@ -430,3 +431,51 @@ def _parse_ann_item(item: dict, symbols: list[str]) -> NewsArticle | None:
         importance=importance,
         url=url,
     )
+
+
+# ---------------------------------------------------------------------------
+# yahoo(yfinance .news)—— AU 等非 CN 市场兜底新闻源
+# ---------------------------------------------------------------------------
+
+def _yahoo_pub_time(v) -> datetime:
+    if isinstance(v, (int, float)):
+        return datetime.fromtimestamp(v, tz=timezone.utc)
+    if isinstance(v, str):
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return _EPOCH
+
+
+class YahooNewsVendor(_NewsVendorBase):
+    name = "yahoo"
+    supports_markets = {"AU"}
+
+    def fetch(self, symbols: list[Symbol], config: dict) -> list[NewsArticle]:
+        if not symbols:
+            return []
+        try:
+            import yfinance as yf
+        except ImportError as e:
+            raise VendorError("yfinance 未安装,执行 `pip install yfinance` 后启用") from e
+        out: list[NewsArticle] = []
+        for s in symbols:
+            try:
+                items = yf.Ticker(s.to_yfinance()).news or []
+            except Exception:
+                record_error(f"yahoo news {s.to_yfinance()}: 拉取失败")
+                continue
+            for it in items[:20]:
+                content = it.get("content") or {}
+                url = (content.get("canonicalUrl") or {}).get("url") or it.get("link") or ""
+                out.append(NewsArticle(
+                    source="yahoo",
+                    external_id=str(it.get("id") or it.get("uuid") or ""),
+                    title=content.get("title") or it.get("title") or "",
+                    content="",
+                    publish_time=_yahoo_pub_time(content.get("pubDate") or it.get("providerPublishTime")),
+                    symbols=[s.code],
+                    url=url,
+                ))
+        return out
