@@ -17,6 +17,7 @@ export interface Position {
   symbol: string
   name: string
   market: string
+  asset_type?: 'stock' | 'etf'
   cost_price: number
   quantity: number
   invested_amount: number | null

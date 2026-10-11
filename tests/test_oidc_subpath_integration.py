@@ -65,6 +65,10 @@ def test_production_oidc_callback_cookie_api_sse_and_logout(db, provider, monkey
     assert status.status_code == 200
     assert status.json()['data']['oidc_login_url'] == ORIGIN + prefix + '/api/auth/oidc/login'
     assert client.get(prefix + '/api/accounts').status_code == 401
+    assert client.get(prefix + '/api/onboarding').status_code == 401
+    assert client.patch(prefix + '/api/onboarding', json={'deferred': True}).status_code == 401
+    for action in ('quote', 'analysis'):
+        assert client.post(prefix + '/api/onboarding/' + action).status_code == 401
     started = client.get(prefix + '/api/auth/oidc/login')
     assert started.status_code == 303
     params = parse_qs(urlsplit(started.headers['location']).query)
@@ -80,6 +84,10 @@ def test_production_oidc_callback_cookie_api_sse_and_logout(db, provider, monkey
     status = client.get(prefix + '/api/auth/status').json()['data']
     assert status['authenticated'] and status['auth_method'] == 'oidc'
     headers = {'Origin': ORIGIN, 'X-CSRF-Token': status['csrf_token']}
+    onboarding = client.get(prefix + '/api/onboarding')
+    assert onboarding.status_code == 200 and onboarding.headers['cache-control'] == 'no-store'
+    assert client.patch(prefix + '/api/onboarding', json={'deferred': True}).status_code == 403
+    assert client.patch(prefix + '/api/onboarding', json={'deferred': True}, headers=headers).status_code == 200
     accounts = client.get(prefix + '/api/accounts')
     assert accounts.status_code == 200 and accounts.headers['cache-control'] == 'no-store'
     assert client.post(prefix + '/api/accounts', json={'name': 'Synthetic account', 'available_funds': 0}, headers=headers).status_code == 200
@@ -89,5 +97,7 @@ def test_production_oidc_callback_cookie_api_sse_and_logout(db, provider, monkey
     assert client.post(prefix + '/api/auth/logout', headers=headers).status_code == 200
     assert not client.get(prefix + '/api/auth/status').json()['data']['authenticated']
     assert client.get(prefix + '/api/accounts').status_code == 401
+    assert client.get(prefix + '/api/onboarding').status_code == 401
+    assert client.patch(prefix + '/api/onboarding', json={'deferred': False}, headers=headers).status_code == 401
     assert client.get(prefix + '/login').status_code == 200
     client.close()

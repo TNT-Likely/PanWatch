@@ -379,7 +379,7 @@ export default function PaperTradingPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline ml-1">{tr('refresh')}</span>
           </Button>
-          <Button variant="outline" size="sm" className="h-8" onClick={handleToggle}>
+          <Button data-tour="paper-controls" variant="outline" size="sm" className="h-8" onClick={handleToggle}>
             <Power className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{account?.enabled ? tr('pause') : tr('start')}</span>
           </Button>
@@ -417,7 +417,7 @@ export default function PaperTradingPage() {
               )
             })}
           </div>
-          <Button variant="outline" size="sm" className="h-8" onClick={handleOpenConfig}>
+          <Button data-tour="paper-capital" variant="outline" size="sm" className="h-8" onClick={handleOpenConfig}>
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{tr('capitalConfig')}</span>
           </Button>
@@ -556,7 +556,7 @@ export default function PaperTradingPage() {
       )}
 
       {/* Open Positions */}
-      <div className="card p-4">
+      <div data-tour="paper-positions" className="card p-4">
         <h2 className="text-sm font-semibold mb-3">{tr('currentPositions', { count: positions.length })}</h2>
         {positions.length === 0 ? (
           <div className="text-center text-muted-foreground text-sm py-8">{tr('noPositions')}</div>
@@ -704,7 +704,7 @@ export default function PaperTradingPage() {
 
       {/* 资金配置对话框 */}
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent>
+        <DialogContent data-tour="paper-config-dialog"><div data-tour-instructions />
           <DialogHeader>
             <DialogTitle>{tr('configTitle')}</DialogTitle>
             <DialogDescription>{tr('configDescription')}</DialogDescription>

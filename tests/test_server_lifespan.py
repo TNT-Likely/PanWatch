@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -16,7 +16,15 @@ def _isolate_startup(monkeypatch, server):
         "register_mcp_log_cleanup", "warmup_javascript_runtime",
     ):
         monkeypatch.setattr(server, name, Mock(side_effect=lambda *args, _name=name, **kwargs: initialization.append(_name)))
-    monkeypatch.setattr(server, "SessionLocal", lambda: SimpleNamespace(close=lambda: None))
+    startup_db = MagicMock()
+    startup_db.__enter__.return_value = startup_db
+    monkeypatch.setattr(server, "SessionLocal", lambda: startup_db)
+    from src.modules.administration import onboarding
+    monkeypatch.setattr(
+        onboarding,
+        "recover_interrupted_analysis",
+        Mock(side_effect=lambda db: initialization.append("recover_interrupted_analysis")),
+    )
     monkeypatch.setattr(server, "Settings", lambda: SimpleNamespace(app_timezone="Asia/Shanghai"))
     schedulers = [Mock() for _ in range(4)]
     monkeypatch.setattr(server, "build_scheduler", lambda: schedulers[0])
@@ -68,6 +76,8 @@ def test_production_lifespan_recovers_tasks_once_and_dispatches_shutdown(monkeyp
 
     def startup_probe():
         assert "init_db" in initialization and "seed_sample_stocks" in initialization
+        assert initialization.count("recover_interrupted_analysis") == 1
+        assert initialization.index("init_db") < initialization.index("recover_interrupted_analysis") < initialization.index("setup_logging")
         startup_calls.append(True)
 
     monkeypatch.setattr(server.app.router, "on_startup", [*server.app.router.on_startup, startup_probe])

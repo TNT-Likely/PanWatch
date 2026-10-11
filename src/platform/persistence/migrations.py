@@ -2171,6 +2171,15 @@ def _m136_paper_trading_settlement(conn: Connection) -> None:
     # outstanding proceeds from historical trades or rewrite realized P&L.
 
 
+def _m137_stock_asset_type(conn: Connection) -> None:
+    _add_column_if_missing(
+        conn, "stocks", "asset_type",
+        "ALTER TABLE stocks ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'stock'",
+    )
+    if _has_table(conn, "stocks"):
+        conn.execute(text("UPDATE stocks SET asset_type = 'etf' WHERE UPPER(name) LIKE '%ETF%'"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2208,6 +2217,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(134, "remove_manual_feedback", _m134_remove_manual_feedback),
     Migration(135, "retire_unused_agents", _m135_retire_unused_agents),
     Migration(136, "paper_trading_settlement", _m136_paper_trading_settlement),
+    Migration(137, "stock_asset_type", _m137_stock_asset_type),
 )
 
 

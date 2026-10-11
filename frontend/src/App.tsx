@@ -1,6 +1,6 @@
 import { Suspense, useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle } from 'lucide-react'
+import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle, Compass } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
 import { appApi } from '@panwatch/api/app'
 import { subscribeAuthStatus } from '@panwatch/api/auth-session'
@@ -9,6 +9,7 @@ import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import AccountMenu from '@/components/AccountMenu'
+import { GuidedTourProvider } from '@/components/onboarding/GuidedTour'
 import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
 import { RouteErrorBoundary, RouteLoadingFallback } from '@/components/RouteBoundary'
@@ -22,6 +23,7 @@ import { NotificationBell, NotificationProvider } from '@/components/notificatio
 const {
   LoginPage,
   DashboardPage,
+  GettingStartedPage,
   OpportunitiesPage,
   StocksPage,
   AgentsPage,
@@ -47,6 +49,7 @@ const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: Nav
   { to: '/history', icon: Clock, labelKey: 'history' },
   { to: '/datasources', icon: Database, labelKey: 'dataSources' },
   { to: '/settings', icon: Settings, labelKey: 'settings' },
+  { to: '/getting-started', icon: Compass, labelKey: 'gettingStarted' },
 ]
 
 function App() {
@@ -113,6 +116,7 @@ function App() {
 
   return (
     <RequireAuth>
+    <GuidedTourProvider>
     <NotificationProvider>
     <div
       className={isAssistantRoute
@@ -270,6 +274,7 @@ function App() {
           <Suspense fallback={<RouteLoadingFallback />}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/getting-started" element={<GettingStartedPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
               <Route path="/portfolio" element={<StocksPage />} />
               <Route path="/agents" element={<AgentsPage />} />
@@ -322,6 +327,7 @@ function App() {
       </Dialog>
     </div>
     </NotificationProvider>
+    </GuidedTourProvider>
     </RequireAuth>
   )
 }

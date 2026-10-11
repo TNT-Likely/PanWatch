@@ -511,6 +511,7 @@ def get_portfolio_summary(
                 "symbol": stock.symbol,
                 "name": stock.name,
                 "market": stock.market,
+                "asset_type": stock.asset_type,
                 "cost_price": pos.cost_price,
                 "quantity": pos.quantity,
                 "invested_amount": pos.invested_amount,
