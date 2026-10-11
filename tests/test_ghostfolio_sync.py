@@ -1,6 +1,10 @@
 """Ghostfolio 单向同步:map_market / compute_holdings 纯函数 + sync_now DB 往返。"""
 
-from src.modules.ghostfolio.service import compute_holdings, map_market
+import pytest
+import requests
+
+from src.modules.ghostfolio import service
+from src.modules.ghostfolio.service import compute_holdings, fetch_export, map_market
 
 EXPORT = {
     "accounts": [
@@ -112,3 +116,80 @@ def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
     finally:
         db.close()
         engine.dispose()
+
+
+class _Resp:
+    def __init__(self, status, payload):
+        self.status_code = status
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"HTTP {self.status_code}")
+
+
+def test_fetch_export_direct_bearer_ok(monkeypatch):
+    seen = []
+
+    def fake_get(url, headers=None, timeout=None):
+        seen.append((url, headers["Authorization"]))
+        return _Resp(200, {"accounts": [], "activities": []})
+
+    monkeypatch.setattr(service.requests, "get", fake_get)
+    assert fetch_export("http://gf.test", "PAT") == {"accounts": [], "activities": []}
+    assert seen == [("http://gf.test/api/v1/export", "Bearer PAT")]
+
+
+def test_fetch_export_exchanges_pat_on_401(monkeypatch):
+    seen = []
+
+    def fake_get(url, headers=None, timeout=None):
+        seen.append(headers["Authorization"])
+        if headers["Authorization"] == "Bearer PAT":
+            return _Resp(401, {"statusCode": 401, "message": "Unauthorized"})
+        return _Resp(200, EXPORT)
+
+    def fake_post(url, json=None, timeout=None):
+        seen.append(("POST", url))
+        return _Resp(200, {"authToken": "JWT42"})
+
+    monkeypatch.setattr(service.requests, "get", fake_get)
+    monkeypatch.setattr(service.requests, "post", fake_post)
+
+    assert fetch_export("http://gf.test/", "PAT") == EXPORT
+    assert seen == [
+        "Bearer PAT",
+        ("POST", "http://gf.test/api/v1/auth/anonymous"),
+        "Bearer JWT42",
+    ]
+
+
+def test_fetch_export_exchange_rejected_raises(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return _Resp(401, {"statusCode": 401})
+
+    def fake_post(url, json=None, timeout=None):
+        return _Resp(403, {"statusCode": 403, "message": "Forbidden"})
+
+    monkeypatch.setattr(service.requests, "get", fake_get)
+    monkeypatch.setattr(service.requests, "post", fake_post)
+
+    with pytest.raises(requests.HTTPError):
+        fetch_export("http://gf.test", "PAT")
+
+
+def test_fetch_export_exchange_missing_token_raises(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return _Resp(401, {"statusCode": 401})
+
+    def fake_post(url, json=None, timeout=None):
+        return _Resp(200, {"statusCode": 200})
+
+    monkeypatch.setattr(service.requests, "get", fake_get)
+    monkeypatch.setattr(service.requests, "post", fake_post)
+
+    with pytest.raises(ValueError):
+        fetch_export("http://gf.test", "PAT")

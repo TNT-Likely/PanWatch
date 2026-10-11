@@ -51,12 +51,31 @@ def map_market(symbol: str, data_source: str) -> str | None:
     return "US" if _US_RE.fullmatch(s) else None
 
 
+def _exchange_token(base_url: str, token: str) -> str:
+    r = requests.post(
+        f"{base_url.rstrip('/')}/api/v1/auth/anonymous",
+        json={"accessToken": token},
+        timeout=30,
+    )
+    r.raise_for_status()
+    auth = r.json().get("authToken")
+    if not auth:
+        raise ValueError("ghostfolio auth exchange returned no authToken")
+    return auth
+
 def fetch_export(base_url: str, token: str) -> dict:
+    base = base_url.rstrip("/")
     r = requests.get(
-        f"{base_url.rstrip('/')}/api/v1/export",
+        f"{base}/api/v1/export",
         headers={"Authorization": f"Bearer {token}"},
         timeout=30,
     )
+    if r.status_code == 401:
+        r = requests.get(
+            f"{base}/api/v1/export",
+            headers={"Authorization": f"Bearer {_exchange_token(base, token)}"},
+            timeout=30,
+        )
     r.raise_for_status()
     return r.json()
 
