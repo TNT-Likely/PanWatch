@@ -13,7 +13,7 @@ its dependencies: rebuild the image to select another source.
 Run from the PanWatch repository root in your activated virtual environment:
 
 ```sh
-python scripts/prepare-tradingagents-requirements.py --install --source "git+https://github.com/idkwhodatis/TradingAgents.git@d9765ed9977ebbafa50d0af4b2bf772a4174eba4"
+python scripts/prepare-tradingagents-requirements.py --install --source "git+https://github.com/idkwhodatis/TradingAgents.git@77240b1f2ab2ca5a93af4534edb864c1a0857539"
 ```
 
 The public URL above is a tested example, not a product dependency. Substitute
@@ -51,7 +51,7 @@ The explicit empty source ignores any previous `TRADINGAGENTS_SOURCE` value.
 ## Docker
 
 ```sh
-docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@d9765ed9977ebbafa50d0af4b2bf772a4174eba4" -t panwatch-custom .
+docker build --build-arg "TRADINGAGENTS_SOURCE=git+https://github.com/idkwhodatis/TradingAgents.git@77240b1f2ab2ca5a93af4534edb864c1a0857539" -t panwatch-custom .
 ```
 
 Omit the build argument (or leave it empty) for the official default. The
