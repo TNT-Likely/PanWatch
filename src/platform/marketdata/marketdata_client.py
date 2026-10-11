@@ -91,6 +91,9 @@ def _quote_to_row(q: Quote) -> dict:
         "source_timestamp": q.source_timestamp.isoformat() if q.source_timestamp else None,
         "observed_at": q.timestamp.isoformat(),
         "source": q.source,
+        "currency": q.currency,
+        "security_type": q.security_type,
+        "delayed": q.delayed,
     }
 
 
@@ -127,7 +130,8 @@ def _article_to_newsitem(a):
 
 
 def md_news(
-    symbols: list[str], since_hours: int = 2, names: dict[str, str] | None = None
+    symbols: list[str], since_hours: int = 2, names: dict[str, str] | None = None,
+    *, market: str = "CN",
 ) -> list:
     """聚合新闻(个股新闻 + 公告),返回 list[NewsItem](与旧 NewsCollector.fetch_all 同形)。
 
@@ -141,7 +145,7 @@ def md_news(
     # 包内 news vendor 的 publish_time 是 aware(UTC);这里的 now 也必须 aware,
     # 否则 since 过滤会 "can't compare offset-naive and offset-aware datetimes"。
     arts = get_market_data().news(
-        list(symbols or []), since_hours=since_hours, names=names,
+        list(symbols or []), market=market, since_hours=since_hours, names=names,
         now=datetime.now(timezone.utc),
     )
     return [_article_to_newsitem(a) for a in arts]
@@ -167,4 +171,5 @@ def md_stock_data(symbols: list[str], market: str) -> list:
         change_amount=q.change_amount or 0.0, volume=q.volume or 0.0,
         turnover=q.turnover or 0.0, open_price=q.open_price or 0.0,
         high_price=q.high_price or 0.0, low_price=q.low_price or 0.0,
-        prev_close=q.prev_close or 0.0) for q in quotes]
+        prev_close=q.prev_close or 0.0, currency=q.currency, security_type=q.security_type,
+        source_timestamp=q.source_timestamp, source=q.source, delayed=q.delayed) for q in quotes]

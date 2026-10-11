@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from src.platform.marketdata.datasource_symbols import normalize_test_symbols
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import DataSource
 from src.web.errors import api_error
@@ -112,7 +113,7 @@ def _to_response(source: DataSource, health_map: dict | None = None) -> dict:
         "enabled": source.enabled,
         "priority": source.priority,
         "supports_batch": source.supports_batch or False,
-        "test_symbols": source.test_symbols or [],
+        "test_symbols": normalize_test_symbols(source.test_symbols),
         "engine_attached": source.type in _ENGINE_ATTACHED_TYPES,
         "health": health,
         "is_orphan": _is_orphan(source.type, source.provider),
@@ -230,7 +231,7 @@ async def test_datasource(source_id: int, db: Session = Depends(get_db)):
         "type_label": TYPE_LABELS.get(source.type, source.type),
         "provider": source.provider,
         "supports_batch": source.supports_batch or False,
-        "test_symbols": result.test_symbols or source.test_symbols or [],
+        "test_symbols": result.test_symbols,
         "count": result.count,
         "duration_ms": result.duration_ms,
         "error": result.error,

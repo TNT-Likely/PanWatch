@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from src.platform.marketdata.instrument_identity import analysis_key
+
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
@@ -138,7 +140,7 @@ def fire_and_forget_trigger(stock: Any, source_agent: str = "intraday_monitor") 
     if not symbol:
         return None
 
-    trace_id = f"auto-{source_agent}-{symbol}-{int(_time.time() * 1000)}"
+    trace_id = f"auto-{source_agent}-{analysis_key(symbol, getattr(stock, 'market', ''))}-{int(_time.time() * 1000)}"
 
     async def _run():
         try:
@@ -187,7 +189,7 @@ def try_auto_trigger(stock: Any, source_agent: str = "intraday_monitor") -> str 
     symbol = getattr(stock, "symbol", "") or ""
     change_pct = getattr(stock, "change_pct", None)
 
-    ok, reason = should_auto_trigger(symbol, change_pct)
+    ok, reason = should_auto_trigger(analysis_key(symbol, getattr(stock, "market", "")), change_pct)
     if not ok:
         logger.debug(f"[auto_trigger] 不触发 {symbol}: {reason}")
         return None
@@ -224,6 +226,10 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 
         for r in records:
             checked += 1
+            # Canadian reports already persist suggestions via the scoped execution path.
+            if r.stock_symbol.startswith(("TSX:", "TSXV:")):
+                skipped += 1
+                continue
             raw = r.raw_data or {}
             sug = normalize_suggestion(raw.get("suggestion") or {}, agent_name="tradingagents")
             action = (sug.get("action") or "hold").lower()
@@ -309,12 +315,7 @@ def backfill_tradingagents_suggestions(days: int = 7) -> dict:
 # ============================================================================
 
 def _resolve_market(market: str) -> MarketCode:
-    code = (market or "CN").strip().upper()
-    if code == "US":
-        return MarketCode.US
-    if code == "HK":
-        return MarketCode.HK
-    return MarketCode.CN
+    return MarketCode(str(getattr(market, "value", market)).strip().upper())
 
 
 def _classify_hit(action: str, ret_pct: float | None) -> bool | None:
@@ -358,7 +359,7 @@ def build_history_comparison(
 
     Args:
         stock_symbol: 股票代码
-        market: CN / US / HK
+        market: CN / US / HK / TSX / TSXV
         days: 回溯多少天的 TA 历史
 
     Returns:
@@ -367,6 +368,8 @@ def build_history_comparison(
             "stats": {...},     # 命中率 + 平均收益
         }
     """
+    resolved_market = _resolve_market(market)
+    market = resolved_market.value
     symbol = (stock_symbol or "").strip()
     if not symbol:
         return {"items": [], "stats": _empty_stats()}
@@ -379,7 +382,7 @@ def build_history_comparison(
             db.query(AnalysisHistory)
             .filter(
                 AnalysisHistory.agent_name == "tradingagents",
-                AnalysisHistory.stock_symbol == symbol,
+                AnalysisHistory.stock_symbol == analysis_key(symbol, market),
                 AnalysisHistory.analysis_date >= cutoff_date,
             )
             .order_by(AnalysisHistory.analysis_date.desc())
@@ -397,7 +400,7 @@ def build_history_comparison(
 
     # 拉历史 K线(回溯天数 + 30 天缓冲让最早的决策也能算 20 日收益)
     try:
-        collector = KlineCollector(_resolve_market(market))
+        collector = KlineCollector(resolved_market)
         klines = collector.get_klines(symbol, days=days + 40)
     except Exception as e:
         logger.warning(f"[TA history] 拉 K线失败: {e}")

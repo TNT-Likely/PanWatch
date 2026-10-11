@@ -375,6 +375,11 @@ DATA_SOURCE_SEEDS: list[dict] = [
             "supports_batch": True,  # 支持批量查询
             "test_symbols": list(DEFAULT_TEST_SYMBOLS),
         },
+        *[{"name": f"Yahoo Canada {kind}", "type": kind, "provider": "yahoo_canada",
+           "config": {"description": "Delayed public TSX/TSXV listed securities (CAD/USD)."},
+           "enabled": True, "priority": 0, "supports_batch": kind == "quote",
+           "test_symbols": ["ZSP.TO", "REI-UN.TO", "RCK.V"]}
+          for kind in ("quote", "kline")],
         # K线数据源
         {
             "name": "腾讯K线",
@@ -652,6 +657,8 @@ def seed_data_sources(db=None, *, reset_test_symbols: bool = False) -> list[dict
     if owns_session:
         db = SessionLocal()
 
+    from src.platform.marketdata.datasource_symbols import normalize_test_symbols
+
     seeded_missing: list[dict] = []
     for source_data in DATA_SOURCE_SEEDS:
         existing = (
@@ -670,6 +677,8 @@ def seed_data_sources(db=None, *, reset_test_symbols: bool = False) -> list[dict
                 existing.test_symbols = list(source_data.get("test_symbols", []))
             elif not existing.test_symbols:  # 启动对账只补空值,不覆盖用户配置
                 existing.test_symbols = source_data.get("test_symbols", [])
+            else:
+                existing.test_symbols = normalize_test_symbols(existing.test_symbols)
         else:
             db.add(DataSource(**source_data))
             seeded_missing.append(
@@ -1332,7 +1341,8 @@ async def trigger_agent_for_stock(
 ) -> dict:
     """手动触发 Agent 执行（单只股票）"""
     start = time.monotonic()
-    trace_id = trace_id or f"man-{agent_name}-{stock.symbol}-{int(time.time() * 1000)}"
+    from src.platform.marketdata.instrument_identity import analysis_key
+    trace_id = trace_id or f"man-{agent_name}-{analysis_key(stock.symbol, stock.market)}-{int(time.time() * 1000)}"
     agent_cls = AGENT_REGISTRY.get(agent_name)
     if not agent_cls:
         raise ValueError(f"Agent {agent_name} 未注册实际实现")

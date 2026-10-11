@@ -151,7 +151,8 @@ def _build_intraday_prompt_with_atr(atr_pct):
         total_available_funds = 100000.0
         accounts: list = []
 
-        def get_positions_for_stock(self, symbol):
+        def get_positions_for_stock(self, symbol, market):
+            assert symbol == "000001" and market == MarketCode.CN
             return []
 
     class _Ctx:

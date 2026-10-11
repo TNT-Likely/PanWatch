@@ -1,7 +1,7 @@
 import { ArrowLeft, Loader2, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { fetchAPI } from '@panwatch/api'
 import { useTranslation } from 'react-i18next'
+import { MARKET_CATEGORIES, searchStocksByMarketCategory } from '@/lib/market-categories'
 
 export interface AssistantStockSearchResult {
   symbol: string
@@ -18,7 +18,7 @@ interface AssistantStockPickerProps {
 export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: AssistantStockPickerProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const markets = ['CN', 'HK', 'US'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
+  const markets = MARKET_CATEGORIES.map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
   const [market, setMarket] = useState('CN')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AssistantStockSearchResult[]>([])
@@ -36,15 +36,20 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
 
     const controller = new AbortController()
     setResults([])
+    setLoading(false)
+    setError('')
     const timer = window.setTimeout(async () => {
       setLoading(true)
       setError('')
       try {
-        const nextResults = await fetchAPI<AssistantStockSearchResult[]>(
-          `/stocks/search?q=${encodeURIComponent(trimmedQuery)}&market=${market}`,
+        const response = await searchStocksByMarketCategory<AssistantStockSearchResult>(
+          trimmedQuery, market,
           { signal: controller.signal },
         )
-        if (!controller.signal.aborted) setResults(nextResults)
+        if (!controller.signal.aborted) {
+          setResults(response.results)
+          if (response.failedMarkets.length) setError(assistantT('stocksPage.messages.searchPartialFailure', { markets: response.failedMarkets.join(', ') }))
+        }
       } catch (cause) {
         if (!controller.signal.aborted) {
           setResults([])
@@ -79,7 +84,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
         {markets.map((item) => (
           <button
             key={item.value}
@@ -114,7 +119,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
       </label>
 
       <div className="mt-2 max-h-56 overflow-y-auto overscroll-contain scrollbar">
-        {error && <p className="px-3 py-3 text-[12px] text-destructive">{error}</p>}
+        {error && <p className="px-3 py-3 text-[12px] text-destructive" role="status">{error}</p>}
         {!loading && !error && query.trim() && results.length === 0 && (
           <p className="px-3 py-3 text-[12px] text-muted-foreground">{assistantT('assistantPage.stockPicker.empty')}</p>
         )}

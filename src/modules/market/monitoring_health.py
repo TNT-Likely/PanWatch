@@ -1,9 +1,9 @@
 """Read-only monitoring and delivery health, without channel credentials."""
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import func
 
+from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.persistence.models import PriceAlertDelivery, PriceAlertHealth, PriceAlertHit, PriceAlertRule, PriceAlertScanHealth
 
 
@@ -27,8 +27,11 @@ def monitoring_health(db, *, rule_ids=None, limit=200):
     items = []
     for rule in rules:
         check = checks.get(rule.id)
-        market_tz = {"CN": "Asia/Shanghai", "HK": "Asia/Hong_Kong", "US": "America/New_York"}.get(rule.stock.market if rule.stock else "", "UTC")
-        today = datetime.now(ZoneInfo(market_tz)).date().isoformat()
+        try:
+            market_tz = MARKETS[MarketCode(rule.stock.market)].get_tz()
+        except (AttributeError, KeyError, ValueError):
+            market_tz = UTC
+        today = now.replace(tzinfo=UTC).astimezone(market_tz).date().isoformat()
         used = (rule.trigger_count_today or 0) if rule.trigger_date == today else 0
         cap = rule.max_triggers_per_day or 0
         status = check.status if check else "never_checked"

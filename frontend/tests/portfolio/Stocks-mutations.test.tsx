@@ -110,3 +110,47 @@ it('reveals portfolio metadata and suggestions while quotes and K-lines are pend
   await waitFor(() => expect(klinesApi.summaryBatch).toHaveBeenCalledTimes(1))
   expect(vi.mocked(fetchAPI).mock.calls.some(([path]) => path === '/portfolio/summary?include_quotes=false&refresh_exchange_rates=false')).toBe(true)
 })
+
+  it.each(['TSX', 'TSXV'])('preserves fractional quantities for Canadian %s holdings', async market => {
+    let quantity = 100
+    vi.mocked(klinesApi.summaryBatch).mockImplementation(() => new Promise(() => {}))
+    vi.mocked(fetchAPI).mockImplementation(async (path, options) => {
+      if (path === '/stocks') return [{ id: 1, symbol: 'REI-UN', name: 'Stock', market, currency: 'CAD', agents: [] }]
+      if (path === '/positions/1' && options?.method === 'PUT') {
+        quantity = JSON.parse(String(options.body)).quantity
+        return { id: 1 }
+      }
+      if (path.startsWith('/portfolio/summary')) return {
+        exchange_rates: { HKD_CNY: 1, USD_CNY: 7, CAD_CNY: 5 },
+        accounts: [{ id: 1, name: 'Account', available_funds: 0, positions: [{
+          id: 1, stock_id: 1, symbol: 'REI-UN', name: 'Stock', market, currency: 'CAD',
+          cost_price: 8, quantity, invested_amount: null, trading_style: '',
+          current_price: null, change_pct: null, daily_move_status: 'closed',
+        }] }],
+        total: { total_market_value: 0, total_cost: 0, total_pnl: 0,
+          total_pnl_pct: 0, total_daily_pnl: 0, available_funds: 0, total_assets: 0 },
+      }
+      if (path === '/quotes/batch') return [{ symbol: 'REI-UN', market, currency: 'CAD', current_price: 10, change_pct: null, daily_move_status: 'closed', is_delayed: true, source_timestamp: '2026-10-09T19:45:00+00:00' }]
+      if (path === '/stocks/markets/status') return []
+      if (path.startsWith('/suggestions')) return {}
+      if (path === '/price-alerts') return []
+      throw new Error(`Unexpected request: ${path}`)
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><MarketColorProvider><StocksPage /></MarketColorProvider></MemoryRouter>)
+    await waitFor(() => expect(klinesApi.summaryBatch).toHaveBeenCalledTimes(1))
+    const quotesBefore = vi.mocked(fetchAPI).mock.calls.filter(([path]) => path === '/quotes/batch').length
+    await user.click(screen.getAllByRole('button', { name: '编辑持仓' })[0])
+    const dialog = screen.getByRole('dialog')
+    const input = within(dialog).getByPlaceholderText('0')
+    await user.clear(input)
+    await user.type(input, '250.125')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getAllByText('250.125').length).toBeGreaterThan(0))
+    expect(quantity).toBe(250.125)
+    expect(screen.getAllByText(/延迟行情.*来源时间/).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getAllByText('10.00 CAD').length).toBeGreaterThan(0)
+    expect(klinesApi.summaryBatch).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(fetchAPI).mock.calls.filter(([path]) => path === '/quotes/batch')).toHaveLength(quotesBefore)
+  })

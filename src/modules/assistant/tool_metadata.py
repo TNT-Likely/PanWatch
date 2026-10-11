@@ -15,7 +15,7 @@ TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
     "get_stock_events": ("Get stock events", "Read CN announcements with source links, publication dates and IDs; HK/US regulatory filings are not covered."),
     "get_event_details": ("Read announcement", "Verify an event ID against its instrument, then read original text; disclose unavailable content."),
     "get_portfolio": ("Get portfolio", "Read live and paper-trading positions, allocation, and a portfolio summary."),
-    "get_stock_quote": ("Get live quote", "Read the latest price, change, and intraday quote data for a stock."),
+    "get_stock_quote": ("Get source quote", "Read a stock quote with currency, security type, source time, and freshness. Delayed or unknown snapshots are not real-time quotes."),
     "find_research_candidates": ("Find research candidates", "Find stocks and opportunity signals worth further research from the market and portfolio."),
     "get_kline_summary": ("Analyze price trend", "Read moving averages, momentum, and a recent candlestick-indicator summary for a stock."),
     "get_stock_news": ("Get stock news", "Retrieve recent news, announcements, and a concise summary for a stock."),
@@ -37,7 +37,7 @@ TOOL_PRESENTATIONS_EN: dict[str, tuple[str, str]] = {
 
 INPUT_DESCRIPTIONS_EN: dict[str, str] = {
     "symbol": "Stock symbol, for example 600519.",
-    "market": "Market code: CN, HK, or US.",
+    "market": "Market code: CN, HK, US, TSX, or TSXV.",
     "query": "Stock symbol or name.",
     "limit": "Maximum number of results.",
     "date": "Trading date in YYYY-MM-DD format.",

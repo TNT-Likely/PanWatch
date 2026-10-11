@@ -1,6 +1,7 @@
 from src.web.datetime import as_utc
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from marketdata import Symbol
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -147,7 +148,7 @@ def _parse_verdict(text: str) -> str:
 async def _fetch_fundamental_context(symbol: str, market: str, *, quotes=None) -> str:
     """基本面摘要:PE / 换手率 / 市值 / 今日振幅(取自实时行情,失败返回空)。"""
     try:
-        mc = MarketCode(market) if market in ("CN", "HK", "US") else MarketCode.CN
+        mc = MarketCode(market) if market in ("CN", "HK", "US", "TSX", "TSXV") else MarketCode.CN
         rows = quotes if quotes is not None else await asyncio.to_thread(md_quote_rows, [symbol], mc.value)
         if not rows:
             return ""
@@ -176,11 +177,11 @@ async def _fetch_message_context(db: Session, symbol: str, market: str) -> str:
     try:
         from src.platform.marketdata.collectors.news_collector import NewsCollector
 
-        stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+        stock = db.query(Stock).filter(Stock.symbol == symbol, Stock.market == market).first()
         name = stock.name if stock else symbol
         collector = NewsCollector.from_database()
         items = await collector.fetch_all(
-            symbols=[symbol], since_hours=72, symbol_names={symbol: name}
+            symbols=[symbol], since_hours=72, symbol_names={symbol: name}, market=market
         )
         items = sorted(items, key=lambda x: x.publish_time, reverse=True)[:5]
         if items:
@@ -236,7 +237,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     )
 
     holding_line = (
-        f"当前持仓 {cur_q:.0f} 股,成本(单价) {cur_c:.3f}"
+        f"当前持仓 {cur_q:.12g} 股,成本(单价) {cur_c:.3f}"
         if is_add
         else "当前空仓(本次为建仓)"
     )
@@ -244,7 +245,7 @@ async def add_position_eval(req: AddPositionEvalRequest, db: Session = Depends(g
     user_content = (
         f"标的 {market}:{req.symbol}\n"
         f"{holding_line}\n"
-        f"拟{action} {add_q:.0f} 股 @ {add_p:.3f}\n"
+        f"拟{action} {add_q:.12g} 股 @ {add_p:.3f}\n"
         f"{action}后成本(单价) {new_cost:.3f}{dilute_line}\n"
         + (f"{realtime}\n" if realtime else "")
         + (f"{fundamental}\n" if fundamental else "")
@@ -294,13 +295,13 @@ def _parse_tone(text: str) -> str:
     return "中性"
 
 
-async def _fetch_recent_announcements(symbol: str, name: str, limit: int = 5) -> list[dict]:
+async def _fetch_recent_announcements(symbol: str, name: str, limit: int = 5, *, market: str = "CN") -> list[dict]:
     """取近 7 天公告/新闻(优先东财公告),失败返回 []。"""
     try:
         from src.platform.marketdata.collectors.news_collector import NewsCollector
 
         items = await NewsCollector.from_database().fetch_all(
-            symbols=[symbol], since_hours=168, symbol_names={symbol: name}
+            symbols=[symbol], since_hours=168, symbol_names={symbol: name}, market=market
         )
         anns = [it for it in items if it.source == "eastmoney"] or items
         anns = sorted(anns, key=lambda x: x.publish_time, reverse=True)[:limit]
@@ -327,16 +328,24 @@ class AnnouncementEvalRequest(BaseModel):
 async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(get_db)):
     """近期公告 → AI 逐条判利好/利空/中性 + 一句话。降级:无全文则用标题。"""
     market = _parse_market(req.market).value
-    cache_key = f"{market}:{req.symbol}"
+    try:
+        symbol = Symbol.parse(req.symbol.strip().upper(), market).code
+        if not symbol:
+            raise ValueError("Empty symbol")
+        if market == "HK" and symbol.isdigit():
+            symbol = symbol.zfill(5)
+    except ValueError as exc:
+        raise api_error(400, "stock_symbol_invalid", "股票代码格式无效或与市场不匹配") from exc
+    cache_key = f"{market}:{symbol}"
     cached = _ANN_CACHE.get(cache_key)
     if cached is not None:
         return cached
 
-    stock = db.query(Stock).filter(Stock.symbol == req.symbol).first()
-    name = stock.name if stock else req.symbol
-    anns = await _fetch_recent_announcements(req.symbol, name)
+    stock = db.query(Stock).filter(Stock.symbol == symbol, Stock.market == market).first()
+    name = stock.name if stock else symbol
+    anns = await _fetch_recent_announcements(symbol, name, market=market)
     if not anns:
-        result = {"symbol": req.symbol, "market": market, "items": []}
+        result = {"symbol": symbol, "market": market, "items": []}
         _ANN_CACHE.set(cache_key, result, ttl_sec=600)  # 无数据短缓存
         return result
 
@@ -346,10 +355,10 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
         for i, a in enumerate(top)
     )
     system_prompt = (
-        "你是 A股公告解读助手。对每条公告判断对股价的影响倾向(利好/利空/中性)并给一句话理由,"
+        "你是股票公告与新闻解读助手。对每条公告判断对股价的影响倾向(利好/利空/中性)并给一句话理由,"
         "只依据给定信息、不臆造。严格逐条一行,格式: 序号|利好或利空或中性|一句话"
     )
-    user_content = f"标的 {name}({market}:{req.symbol}) 近期公告:\n{listing}"
+    user_content = f"标的 {name}({market}:{symbol}) 近期公告:\n{listing}"
     try:
         content = await get_configured_failover_client(db, req.model_id).chat(
             system_prompt, user_content, temperature=0.2
@@ -369,6 +378,6 @@ async def announcement_eval(req: AnnouncementEvalRequest, db: Session = Depends(
     for i, a in enumerate(top):
         tone, note = tone_map.get(i, ("中性", ""))
         items.append({"title": a["title"], "time": a["time"], "tone": tone, "summary": note})
-    result = {"symbol": req.symbol, "market": market, "items": items}
+    result = {"symbol": symbol, "market": market, "items": items}
     _ANN_CACHE.set(cache_key, result)
     return result

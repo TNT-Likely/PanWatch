@@ -1,11 +1,13 @@
 import i18n, { getCurrentLocale, type SupportedLocale } from './index'
 
-export type MarketCode = 'CN' | 'HK' | 'US'
+export type MarketCode = 'CN' | 'HK' | 'US' | 'TSX' | 'TSXV'
 
 const MARKET_CURRENCIES: Record<MarketCode, string> = {
   CN: 'CNY',
   HK: 'HKD',
   US: 'USD',
+  TSX: 'CAD',
+  TSXV: 'CAD',
 }
 
 function localeOrCurrent(locale?: SupportedLocale): SupportedLocale {
@@ -57,7 +59,7 @@ export function formatDate(
 }
 
 export function formatMarketName(market: MarketCode | 'all' | string): string {
-  if (market === 'CN' || market === 'HK' || market === 'US' || market === 'all') {
+  if (market === 'CN' || market === 'HK' || market === 'US' || market === 'TSX' || market === 'TSXV' || market === 'all') {
     return i18n.t(`common:markets.${market}`)
   }
   return market

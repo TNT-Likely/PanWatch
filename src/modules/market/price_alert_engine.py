@@ -224,6 +224,10 @@ class PriceAlertEngine:
                 "change_pct": quote.get("change_pct"),
                 "turnover": quote.get("turnover"),
                 "volume": quote.get("volume"),
+                "currency": quote.get("currency"),
+                "source_timestamp": quote.get("source_timestamp"),
+                "source": quote.get("source"),
+                "delayed": quote.get("delayed"),
             },
             "conditions": results,
             "group_op": op,
@@ -301,6 +305,8 @@ class PriceAlertEngine:
             ]
         )
         hit_lines = []
+        if snapshot.get("market") in {"TSX", "TSXV"}:
+            lines.append(f"Currency: {quote.get('currency') or 'unavailable'}; delayed source: {quote.get('source')}; as of: {quote.get('source_timestamp')}")
         for h in snapshot.get("conditions") or []:
             if h.get("matched"):
                 hit_lines.append(
@@ -443,6 +449,17 @@ class PriceAlertEngine:
                     items.append({"rule_id": rule.id, "status": "source_failed"})
                     continue
 
+                if not dry_run and stock.market in {"TSX", "TSXV"}:
+                    try:
+                        stamp = datetime.fromisoformat(str(quote.get("source_timestamp", "")).replace("Z", "+00:00"))
+                        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+                        fresh = 0 <= age <= 1800 and quote.get("currency") in {"CAD", "USD"}
+                    except (ValueError, TypeError):
+                        fresh = False
+                    if not fresh:
+                        skipped += 1
+                        items.append({"rule_id": rule.id, "status": "stale_quote"})
+                        continue
                 if not dry_run and not quote_date_is_current(stock.market, quote):
                     skipped += 1
                     items.append({"rule_id": rule.id, "status": "stale_quote"})

@@ -1,3 +1,4 @@
+import { useRequestScope } from './use-request-scope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { fetchAPI } from '@panwatch/api'
@@ -155,12 +156,18 @@ function addHistogram(chart: any, LW: any, options: any) {
   throw new Error('Histogram series API not available')
 }
 
-export default function InteractiveKline(props: {
+interface InteractiveKlineProps {
   symbol: string
   market: string
   initialInterval?: '1d' | '1w' | '1m'
   initialDays?: '60' | '120' | '250'
-}) {
+}
+
+export default function InteractiveKline(props: InteractiveKlineProps) {
+  return <InteractiveKlineSession key={JSON.stringify([props.market, props.symbol])} {...props} />
+}
+
+function InteractiveKlineSession(props: InteractiveKlineProps) {
   const { t, i18n } = useTranslation('bizUi')
   const { palette } = useMarketColors()
   const tr = (key: string, options?: Record<string, unknown>) =>
@@ -188,8 +195,11 @@ export default function InteractiveKline(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const macdRef = useRef<HTMLDivElement | null>(null)
 
+  const beginRequest = useRequestScope()
   const load = async () => {
     if (!props.symbol) return
+    const isCurrent = beginRequest('klines')
+    if (!isCurrent()) return
     setLoading(true)
     setError('')
     setHoverTip(prev => (prev.visible ? { visible: false, x: 0, y: 0, row: null } : prev))
@@ -202,25 +212,30 @@ export default function InteractiveKline(props: {
       for (const d of attempts) {
         try {
           const res = await fetchAPI<KlinesResponse>(query(d))
+          if (!isCurrent()) return
           const kl = res.klines || []
           if (kl.length > best.length) best = kl
           if (d === fixedDays && kl.length > 0) break
         } catch (e) {
+          if (!isCurrent()) return
           lastError = e
         }
       }
       if (!best.length && lastError) throw lastError
-      setData(best)
+      if (isCurrent()) setData(best)
     } catch (e) {
+      if (!isCurrent()) return
       setError(e instanceof Error ? e.message : tr('loadFailed'))
       setData([])
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }
 
   useEffect(() => {
+    setData([])
     void load()
+    return () => { beginRequest('klines') }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.symbol, props.market, interval, fixedDays])
 

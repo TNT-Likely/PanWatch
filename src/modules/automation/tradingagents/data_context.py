@@ -252,12 +252,27 @@ def build_stock_metadata_context(
     market: str = "CN",
     current_price: float | None = None,
     industry: str = "",
+    currency: str | None = None,
+    security_type: str | None = None,
+    source_timestamp: str | None = None,
     asset_type: str | None = None,
 ) -> str:
     """渲染标的元信息，避免模型从 A/HK ticker 反查并臆测公司。"""
     if not stock_symbol:
         return ""
 
+    if market in {"TSX", "TSXV"}:
+        context = (f"Canadian listed security: {market}:{stock_symbol}; company/name: {stock_name}. "
+                f"Verified quote currency: {currency or 'unavailable'}; security type: {security_type or 'unavailable'}; source time: {source_timestamp or 'unavailable'}. "
+                "Exchange timezone America/Toronto, Canadian holidays and jurisdiction. "
+                "Use exact .TO/.V provider identity; do not use US namesakes or assume SEC filings. "
+                "Currency must come from verified quote metadata (CAD or USD); unknown remains unavailable. "
+                "Listed ETFs, REITs and trusts are supported: do not invent corporate metrics for funds, "
+                "NAV, holdings, distributions or FFO/AFFO. Portfolio cash is CNY; native security prices "
+                "cannot be compared to CNY cash without verified FX.")
+        if infer_asset_type(stock_name, asset_type) == "etf" or security_type == "ETF":
+            context += f" {ETF_RESEARCH_CONTEXT}"
+        return context
     market_label = {"CN": "中国 A 股", "HK": "港股", "US": "美股"}.get(market, market)
     is_etf = infer_asset_type(stock_name, asset_type) == "etf"
     lines = [
@@ -312,6 +327,10 @@ def to_tradingagents_portfolio(portfolio: Any):
 
         for position in getattr(account, "positions", ()) or ():
             ticker = str(getattr(position, "symbol", "") or "").strip().upper()
+            market = getattr(getattr(position, "market", ""), "value", getattr(position, "market", ""))
+            if market in {"TSX", "TSXV"}:
+                from marketdata.symbol import Symbol
+                ticker = Symbol.parse(ticker, market).to_yfinance()
             quantity = _finite_number(getattr(position, "quantity", None))
             # TradingAgents 0.5.0 用正数表示多头、负数表示空头；这里只过滤
             # 零数量和脏数据，不能把空头当成“无持仓”丢掉。

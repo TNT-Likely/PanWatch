@@ -1,0 +1,41 @@
+name: Canadian market contracts
+on:
+  pull_request:
+    paths: ['.github/workflows/canadian-markets.yml', 'packages/marketdata/**', 'src/**', 'frontend/**', 'server.py', 'requirements*.txt', 'tests/**']
+permissions:
+  contents: read
+concurrency:
+  group: canadian-markets-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt ruff==0.16.9
+      - name: Reject undefined names in backend paths
+        run: ruff check --select F821 src packages/marketdata server.py
+      - name: Canadian identity, providers, calendar, valuation and analysis
+        run: python -m pytest -q packages/marketdata/tests tests/test_canada*.py tests/test_trading_calendar.py tests/test_market_quote_display.py tests/test_portfolio_accounts.py tests/test_stocks_quote_routing.py tests/test_dashboard_loading.py tests/test_template_import.py tests/test_context_enrichments.py tests/test_tradingagents_module_layout.py tests/test_tradingagents_v050_compat.py tests/test_tradingagents_agent.py tests/test_tradingagents_report_links.py tests/test_tradingagents_stock_metadata.py tests/test_tradingagents_hk_routes.py tests/test_tradingagents_a_share_data_routes.py tests/test_ta_load_ohlcv_patch.py tests/test_tradingagents_toolkit_isolation.py tests/test_tradingagents_auto_trigger.py tests/test_tradingagents_history_comparison.py tests/test_tradingagents_trigger_idempotency.py
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm check:ui && pnpm check:i18n && pnpm check:market-colors && pnpm check:timezones
+      - run: pnpm run test --run
+      - run: pnpm build

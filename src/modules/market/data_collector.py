@@ -203,7 +203,7 @@ class DataCollectorManager:
             db.close()
 
     async def collect_news(
-        self, symbols: list[str], hours: int = 12
+        self, symbols: list[str], hours: int = 12, *, market: str = "CN"
     ) -> CollectorResult:
         """采集新闻（使用所有已启用的新闻数据源）"""
         from src.platform.marketdata.collectors.news_collector import NewsCollector
@@ -213,7 +213,7 @@ class DataCollectorManager:
 
         try:
             collector = NewsCollector.from_database()
-            news_list = await collector.fetch_all(symbols=symbols, since_hours=hours)
+            news_list = await collector.fetch_all(symbols=symbols, since_hours=hours, market=market)
 
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
             self._log(
@@ -363,17 +363,13 @@ class DataCollectorManager:
 
     async def test_source(self, source: DataSource) -> CollectorResult:
         """测试单个数据源"""
-        test_symbols = source.test_symbols or list(DEFAULT_TEST_SYMBOLS)
+        from src.platform.marketdata.datasource_symbols import normalize_test_symbols
 
+        test_symbols: list[str] = []
         start_time = datetime.now()
-        self._log(
-            source.name,
-            source.type,
-            "start",
-            f"开始测试，测试股票: {','.join(test_symbols)}",
-        )
-
         try:
+            test_symbols = normalize_test_symbols(source.test_symbols) or list(DEFAULT_TEST_SYMBOLS)
+            self._log(source.name, source.type, "start", f"开始测试，测试股票: {','.join(test_symbols)}")
             # 收集 vendor/market_get 的真实失败原因,失败时透到 UI(而不是笼统的"无数据")
             with capture_errors() as errs:
                 result = await self._test_source_impl(source, test_symbols)
@@ -605,9 +601,10 @@ class DataCollectorManager:
         errors: list[dict[str, str]] = []
         first_error = ""
         for symbol in test_symbols[:_TEST_SYMBOL_LIMIT]:
-            market = Symbol.parse(symbol).market.value
+            parsed = Symbol.parse(symbol)
+            market = parsed.market.value
             try:
-                bars = await asyncio.to_thread(md.klines, symbol, market=market, days=30)
+                bars = await asyncio.to_thread(md.klines, parsed.code, market=market, days=30)
                 if bars:
                     last = bars[-1]
                     results.append(

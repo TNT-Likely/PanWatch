@@ -27,7 +27,7 @@ export default function DiscoveryPanel({ monitorStocks, portfolioSummary: portfo
   const { t } = useTranslation('configuration')
   const discoveryT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = useCallback((key: string, options?: Record<string, unknown>) => discoveryT(`p4.components.discovery.${key}`, options), [discoveryT])
-  const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us' } as Record<string, string>)[market] || market}`), [discoveryT])
+  const marketLabel = useCallback((market: string) => discoveryT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us', TSX: 'tsx', TSXV: 'tsxv' } as Record<string, string>)[market] || market}`), [discoveryT])
   const navigate = useNavigate()
   const [watchlist, setWatchlist] = useState<DashboardWatchStock[] | null>(null)
 

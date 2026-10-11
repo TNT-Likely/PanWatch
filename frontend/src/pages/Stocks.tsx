@@ -29,10 +29,11 @@ import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
 import { browserTimezone } from '@panwatch/base-ui'
-import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
+import { applyMarketStatuses, findDisplayQuote, mergePortfolioQuotes, toQuoteMap, type Position, type PortfolioSummary, type QuoteResponse, type DisplayQuote } from '@/lib/portfolio-quotes'
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import { MARKET_CATEGORIES, matchesMarketCategory, searchStocksByMarketCategory } from '@/lib/market-categories'
 import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
@@ -267,6 +268,8 @@ export default function StocksPage() {
   const initialLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadPromiseRef = useRef<Promise<void> | null>(null)
   const configLoadedRef = useRef(false)
+  const exchangeRatesControllerRef = useRef<AbortController | null>(null)
+  const portfolioLoadGenerationRef = useRef(0)
 
   // Stock form
   const [showStockForm, setShowStockForm] = useState(false)
@@ -276,6 +279,9 @@ export default function StocksPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
+  const searchControllerRef = useRef<AbortController | null>(null)
+  const searchGenerationRef = useRef(0)
   const [refreshingStockList, setRefreshingStockList] = useState(false)
 
   // Account form
@@ -292,6 +298,8 @@ export default function StocksPage() {
   const [positionSearchMarket, setPositionSearchMarket] = useState('')  // 搜索市场筛选
   const [positionSearchResults, setPositionSearchResults] = useState<SearchResult[]>([])
   const [positionSearching, setPositionSearching] = useState(false)
+  const [positionSearchError, setPositionSearchError] = useState('')
+  const positionSearchControllerRef = useRef<AbortController | null>(null)
   const [showPositionDropdown, setShowPositionDropdown] = useState(false)
   const positionSearchTimer = useRef<ReturnType<typeof setTimeout>>()
   const positionDropdownRef = useRef<HTMLDivElement>(null)
@@ -304,9 +312,10 @@ export default function StocksPage() {
     stockId: number
     symbol: string
     name: string
+    market: string
   } | null>(null)
-  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string) => {
-    setDeepAnalysisTarget({ stockId, symbol, name })
+  const openDeepAnalysis = useCallback((stockId: number, symbol: string, name: string, market: string) => {
+    setDeepAnalysisTarget({ stockId, symbol, name, market })
   }, [])
   const [triggeringAgent, setTriggeringAgent] = useState<string | null>(null)
   const [schedulePreviewCache, setSchedulePreviewCache] = useState<Record<string, SchedulePreview | { error: string }>>({})
@@ -316,7 +325,7 @@ export default function StocksPage() {
   const [agentResultDialog, setAgentResultDialog] = useState<{ title: string; content: string; should_alert: boolean; notified: boolean } | null>(null)
 
   // Stock list filter
-  const [stockListFilter, setStockListFilter] = useState('')  // '' = 全部, 'CN' = A股, 'HK' = 港股, 'US' = 美股
+  const [stockListFilter, setStockListFilter] = useState('')  // UI category; securities retain their exchange IDs
   const viewTab = tour?.active && ['stock', 'quote', 'analysis'].includes(tour.step || '') ? 'watchlist' : savedViewTab
   useEffect(() => {
     if (!tour?.active || !['stock', 'quote', 'analysis'].includes(tour.step || '')) return
@@ -416,6 +425,43 @@ export default function StocksPage() {
   }
   const searchTimer = useRef<ReturnType<typeof setTimeout>>()
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const cancelSearch = useCallback(() => {
+    searchGenerationRef.current += 1
+    clearTimeout(searchTimer.current)
+    searchControllerRef.current?.abort()
+  }, [])
+  const cancelPositionSearch = useCallback(() => {
+    clearTimeout(positionSearchTimer.current)
+    positionSearchControllerRef.current?.abort()
+  }, [])
+
+  useEffect(() => {
+    if (showStockForm) return
+    cancelSearch()
+    setSearchQuery('')
+    setSearchMarket('')
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearching(false)
+    setSearchError('')
+  }, [showStockForm, cancelSearch])
+
+  useEffect(() => {
+    if (positionDialogOpen) return
+    cancelPositionSearch()
+    setPositionSearchQuery('')
+    setPositionSearchMarket('')
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearching(false)
+    setPositionSearchError('')
+  }, [positionDialogOpen, cancelPositionSearch])
+
+  useEffect(() => () => {
+    cancelSearch()
+    cancelPositionSearch()
+  }, [cancelSearch, cancelPositionSearch])
 
   const buildQuoteItems = useCallback((): QuoteRequestItem[] => {
     return buildQuoteItemsFrom(stocks, portfolioRaw)
@@ -598,11 +644,42 @@ export default function StocksPage() {
     }
   }, [])
 
+  // A separate, event-driven FX lane keeps metadata/quotes responsive. Newer
+  // refreshes abort and supersede old snapshots without depending on render state.
+  const refreshExchangeRates = useCallback(async (signal?: AbortSignal) => {
+    exchangeRatesControllerRef.current?.abort()
+    const controller = new AbortController()
+    exchangeRatesControllerRef.current = controller
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) controller.abort()
+    try {
+      const data = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal: controller.signal })
+      if (!controller.signal.aborted) {
+        setPortfolioRaw(previous => previous ? { ...previous, exchange_rates: data.exchange_rates } : previous)
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        // Do not keep valuing Canadian holdings with an unverified old rate.
+        setPortfolioRaw(previous => previous?.exchange_rates ? { ...previous, exchange_rates: {
+          ...previous.exchange_rates, CAD_CNY: null, CANADA_USD_CNY: null,
+        } } : previous)
+        console.warn('Portfolio exchange rates unavailable:', error)
+      }
+    } finally {
+      signal?.removeEventListener('abort', abort)
+    }
+  }, [])
+
   const loadPortfolio = useCallback(async () => {
+    const generation = ++portfolioLoadGenerationRef.current
+    exchangeRatesControllerRef.current?.abort()
     try {
       // Mutation refresh is local metadata only; render using the quotes already on screen.
       const portfolioData = await fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false&refresh_exchange_rates=false')
+      if (generation !== portfolioLoadGenerationRef.current) return
       setPortfolioRaw(portfolioData)
+      void refreshExchangeRates()
       setAccounts(portfolioData.accounts.map(account => ({
         id: account.id,
         name: account.name,
@@ -622,7 +699,7 @@ export default function StocksPage() {
     } catch (e) {
       console.error(e)
     }
-  }, [requestQuotes, quotes, stocks])
+  }, [refreshExchangeRates, requestQuotes, quotes, stocks])
 
   const loadInitialData = useCallback((signal: AbortSignal): Promise<void> => {
     if (initialLoadPromiseRef.current) return initialLoadPromiseRef.current
@@ -668,12 +745,7 @@ export default function StocksPage() {
         if (!signal.aborted) console.warn('Portfolio quotes unavailable:', error)
       })
 
-      // FX refresh also runs independently of the metadata shell and quotes.
-      void fetchAPI<PortfolioSummary>('/portfolio/summary?include_quotes=false', { signal }).then(data => {
-        if (!signal.aborted) setPortfolioRaw(previous => previous ? { ...previous, exchange_rates: data.exchange_rates } : previous)
-      }).catch(error => {
-        if (!signal.aborted) console.warn('Portfolio exchange rates unavailable:', error)
-      })
+      void refreshExchangeRates(signal)
 
       void loadPortfolioPageBackgroundData({
         loadMarketStatus: refreshMarketStatus,
@@ -697,7 +769,7 @@ export default function StocksPage() {
 
     initialLoadPromiseRef.current = run
     return run
-  }, [refreshMarketStatus, requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
+  }, [refreshExchangeRates, refreshMarketStatus, requestKlineSummaries, requestPriceAlerts, requestQuotes, requestSuggestions])
 
   // Load news for specific stock or all watchlist
   const loadNews = useCallback(async (stockName?: string) => {
@@ -783,7 +855,7 @@ export default function StocksPage() {
     return (agent.schedule || '').trim()
   }
 
-  // Refresh quotes only (decoupled from portfolio and scans)
+  // Refresh market-data lanes without blocking local portfolio metadata.
   const handleRefresh = useCallback(async () => {
     if (tourQuoteBusy.current) return
     tourQuoteBusy.current = true
@@ -791,19 +863,22 @@ export default function StocksPage() {
       await tour?.observeQuote()
       void refreshKlines()
     await Promise.all([
+      refreshExchangeRates(),
       refreshMarketStatus(),
       refreshQuotes(),
       loadPoolSuggestions(),
       loadPriceAlertSummaries(),
     ])
     } finally { tourQuoteBusy.current = false }
-  }, [tour, loadPoolSuggestions, loadPriceAlertSummaries, refreshKlines, refreshMarketStatus, refreshQuotes])
+  }, [tour, loadPoolSuggestions, loadPriceAlertSummaries, refreshExchangeRates, refreshKlines, refreshMarketStatus, refreshQuotes])
 
   useEffect(() => {
     const controller = new AbortController()
     void loadInitialData(controller.signal)
     return () => {
       controller.abort()
+      exchangeRatesControllerRef.current?.abort()
+      portfolioLoadGenerationRef.current++
       initialLoadPromiseRef.current = null
     }
   }, [loadInitialData])
@@ -901,36 +976,49 @@ export default function StocksPage() {
 
   // ========== Stock handlers ==========
   const doSearch = async (q: string, market: string = searchMarket) => {
-    if (q.length < 1) { setSearchResults([]); setShowDropdown(false); return }
+    cancelSearch()
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearchError('')
+    if (!q.trim()) { setSearching(false); return }
+    const controller = new AbortController()
+    searchControllerRef.current = controller
     setSearching(true)
     try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setSearchResults(results)
-      setShowDropdown(results.length > 0)
-    } catch { setSearchResults([]) }
-    finally { setSearching(false) }
+      const response = await searchStocksByMarketCategory<SearchResult>(q.trim(), market, { signal: controller.signal })
+      if (controller.signal.aborted) return
+      setSearchResults(response.results)
+      setShowDropdown(response.results.length > 0)
+      if (response.failedMarkets.length) setSearchError(stockT('stocksPage.messages.searchPartialFailure', { markets: response.failedMarkets.join(', ') }))
+    } catch {
+      if (!controller.signal.aborted) setSearchError(stockT('stocksPage.messages.searchFailed'))
+    } finally {
+      if (!controller.signal.aborted) setSearching(false)
+    }
   }
 
   const handleSearchInput = (value: string) => {
+    cancelSearch()
     setSearchQuery(value)
-    clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => doSearch(value), 500)
+    setSearchResults([])
+    setShowDropdown(false)
+    setSearching(false)
+    setSearchError('')
+    if (value.trim()) searchTimer.current = setTimeout(() => doSearch(value), 500)
   }
 
   const handleSearchMarketChange = (market: string) => {
     setSearchMarket(market)
-    if (searchQuery) {
-      doSearch(searchQuery, market)
-    }
+    void doSearch(searchQuery, market)
   }
 
   const refreshStockListCache = async () => {
+    const searchGeneration = searchGenerationRef.current
     setRefreshingStockList(true)
     try {
       const result = await fetchAPI<{ count: number }>('/stocks/refresh-list', { method: 'POST' })
       toast(stockT('stocksPage.messages.refreshListDone', { count: result.count }), 'success')
-      if (searchQuery) {
+      if (searchQuery && searchGeneration === searchGenerationRef.current) {
         doSearch(searchQuery)
       }
     } catch (e) {
@@ -941,6 +1029,8 @@ export default function StocksPage() {
   }
 
   const selectStock = (item: SearchResult) => {
+    cancelSearch()
+    setSearching(false)
     setStockForm({ symbol: item.symbol, name: item.name, market: item.market, asset_type: item.asset_type || 'stock' })
     setSearchQuery(`${item.symbol} ${item.name}`)
     setShowDropdown(false)
@@ -1072,31 +1162,45 @@ export default function StocksPage() {
   }
 
   const doPositionSearch = async (q: string, market: string = positionSearchMarket) => {
-    if (q.length < 1) { setPositionSearchResults([]); setShowPositionDropdown(false); return }
+    cancelPositionSearch()
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearchError('')
+    if (!q.trim()) { setPositionSearching(false); return }
+    const controller = new AbortController()
+    positionSearchControllerRef.current = controller
     setPositionSearching(true)
     try {
-      const marketParam = market ? `&market=${market}` : ''
-      const results = await fetchAPI<SearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}${marketParam}`)
-      setPositionSearchResults(results)
-      setShowPositionDropdown(results.length > 0)
-    } catch { setPositionSearchResults([]) }
-    finally { setPositionSearching(false) }
+      const response = await searchStocksByMarketCategory<SearchResult>(q.trim(), market, { signal: controller.signal })
+      if (controller.signal.aborted) return
+      setPositionSearchResults(response.results)
+      setShowPositionDropdown(response.results.length > 0)
+      if (response.failedMarkets.length) setPositionSearchError(stockT('stocksPage.messages.searchPartialFailure', { markets: response.failedMarkets.join(', ') }))
+    } catch {
+      if (!controller.signal.aborted) setPositionSearchError(stockT('stocksPage.messages.searchFailed'))
+    } finally {
+      if (!controller.signal.aborted) setPositionSearching(false)
+    }
   }
 
   const handlePositionSearchInput = (value: string) => {
+    cancelPositionSearch()
     setPositionSearchQuery(value)
-    clearTimeout(positionSearchTimer.current)
-    positionSearchTimer.current = setTimeout(() => doPositionSearch(value), 500)
+    setPositionSearchResults([])
+    setShowPositionDropdown(false)
+    setPositionSearching(false)
+    setPositionSearchError('')
+    if (value.trim()) positionSearchTimer.current = setTimeout(() => doPositionSearch(value), 500)
   }
 
   const handlePositionSearchMarketChange = (market: string) => {
     setPositionSearchMarket(market)
-    if (positionSearchQuery) {
-      doPositionSearch(positionSearchQuery, market)
-    }
+    void doPositionSearch(positionSearchQuery, market)
   }
 
   const selectPositionStock = (item: SearchResult) => {
+    cancelPositionSearch()
+    setPositionSearching(false)
     // 检查是否已有此股票
     const existing = stocks.find(s => s.symbol === item.symbol && s.market === item.market)
     setPositionForm({
@@ -1112,6 +1216,11 @@ export default function StocksPage() {
   }
 
   const handlePositionSubmit = async () => {
+    const quantity = Number(positionForm.quantity)
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast(stockT('stocksPage.messages.invalidQuantity'), 'error')
+      return
+    }
     try {
       let stockId = positionForm.stock_id
       let createdStock: QuoteRequestItem | undefined
@@ -1153,7 +1262,7 @@ export default function StocksPage() {
         account_id: positionForm.account_id,
         stock_id: stockId,
         cost_price: parseFloat(positionForm.cost_price),
-        quantity: parseInt(positionForm.quantity),
+        quantity: positionForm.stock_market === 'TSX' || positionForm.stock_market === 'TSXV' ? Number(positionForm.quantity) : parseInt(positionForm.quantity),
         invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
       }
@@ -1295,7 +1404,7 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m === 'TSX' ? stockT('stocksPage.markets.tsx') : m === 'TSXV' ? stockT('stocksPage.markets.tsxv') : m
   const quoteHint = (quote: { daily_move_status?: string; quote_date?: string | null }) => {
     const status = quote.daily_move_status
     const label = status && status !== 'current' ? stockT(`stocksPage.quoteStatus.${status}`) : ''
@@ -1303,10 +1412,17 @@ export default function StocksPage() {
     return [label, date].filter(Boolean).join(' · ')
   }
 
+  const delayedQuoteNotice = (quote?: { is_delayed?: boolean | null; delayed?: boolean | null; source_timestamp?: string | null } | null) => (quote?.is_delayed ?? quote?.delayed) ? (
+    <span className="block text-[10px] font-normal text-muted-foreground whitespace-normal">
+      {stockT('stocksPage.quoteStatus.delayed')}{quote?.source_timestamp ? ` · ${stockT('stocksPage.quoteStatus.sourceTime', { time: formatDateTime(quote.source_timestamp) })}` : ''}
+    </span>
+  ) : null
+
   // 市场徽章样式和短标签
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: stockT('stocksPage.markets.hkShort') }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: stockT('stocksPage.markets.usShort') }
+    if (m === 'TSX' || m === 'TSXV') return { style: 'bg-violet-500/10 text-violet-600', label: m }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1321,7 +1437,9 @@ export default function StocksPage() {
 
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
-    return quotes[quoteKey] || null
+    const [market, symbol] = quoteKey.split(':')
+    const uniqueSymbol = stocks.filter(stock => stock.symbol === symbol).length === 1
+    return findDisplayQuote(quotes, market, symbol, uniqueSymbol)
   }
 
   const getPriceAlertSummary = (symbol: string, market: string) => {
@@ -1372,7 +1490,7 @@ export default function StocksPage() {
   }
 
   const unpricedAccountIds = new Set(
-    (portfolio?.accounts || []).filter(account => account.positions.some(position => position.current_price == null)).map(account => account.id),
+    (portfolio?.accounts || []).filter(account => account.valuation_incomplete || account.positions.some(position => position.current_price == null || position.valuation_status === 'fx_unavailable' || position.valuation_status === 'currency_unavailable')).map(account => account.id),
   )
   const portfolioTotalsReady = unpricedAccountIds.size === 0
 
@@ -1542,6 +1660,11 @@ export default function StocksPage() {
         </div>
       </div>
 
+      {portfolio?.total.valuation_incomplete && (
+        <p role="status" className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+          {stockT('stocksPage.messages.valuationIncomplete')}
+        </p>
+      )}
       {/* Portfolio Total Summary */}
       {portfolioLoading && !portfolio ? (
         // 首次加载时显示骨架屏
@@ -1678,19 +1801,18 @@ export default function StocksPage() {
           <div data-tour-instructions />
           <form data-tour="stock-form" onSubmit={handleStockSubmit}>
             <div className="relative" ref={dropdownRef}>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
                 <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   {[
                     { value: '', label: stockT('stocksPage.markets.all') },
-                    { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                    { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                    { value: 'US', label: stockT('stocksPage.markets.us') },
+                    ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`) })),
                   ].map(opt => (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => handleSearchMarketChange(opt.value)}
+                      aria-pressed={searchMarket === opt.value}
                       className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                         searchMarket === opt.value
                           ? 'bg-primary text-primary-foreground'
@@ -1725,12 +1847,13 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
+                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'CA' ? 'ZSP / REI-UN / TBRD' : searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
                   className="pl-10"
                   autoComplete="off"
                 />
                 {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
               </div>
+              {searchError && <p className="mt-2 text-[12px] text-destructive" role="status">{searchError}</p>}
               {showDropdown && (
                 <div className="relative w-full mt-2 max-h-64 overflow-auto overscroll-contain scrollbar card shadow-lg">
                   {searchResults.map(item => (
@@ -1868,7 +1991,7 @@ export default function StocksPage() {
                             {account.positions.map((pos, i) => {
                               const stock = stocks.find(s => s.id === pos.stock_id)
                               const badge = marketBadge(pos.market)
-                              const isForeign = pos.market === 'HK' || pos.market === 'US'
+                              const isForeign = ['HK', 'US', 'TSX', 'TSXV'].includes(pos.market)
                               const changeColor = marketSignTextClass(pos.change_pct)
                               const pnlColor = marketSignTextClass(pos.pnl)
                               return (
@@ -1933,7 +2056,8 @@ export default function StocksPage() {
                                     })()}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{formatQuotePrice(pos.current_price, pos.asset_type, pos.market)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
+                                    {pos.current_price != null ? <span>{formatQuotePrice(pos.current_price, pos.asset_type, pos.market)}{isForeign ? (pos.market === 'HK' ? ' HKD' : pos.market === 'US' ? ' USD' : pos.currency ? ` ${pos.currency}` : '') : ''}</span> : '—'}
+                                    {delayedQuoteNotice(pos)}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
@@ -1945,7 +2069,7 @@ export default function StocksPage() {
                                       <div className="flex flex-col items-end">
                                         {isForeign ? (
                                           <>
-                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : 'USD'}</span>
+                                            <span>{formatMoney(pos.market_value)} {pos.market === 'HK' ? 'HKD' : pos.market === 'US' ? 'USD' : pos.currency || '—'}</span>
                                             {pos.market_value_cny && <span className="text-[10px] text-muted-foreground/60">≈{formatMoney(pos.market_value_cny)}</span>}
                                           </>
                                         ) : <span>{formatMoney(pos.market_value)}</span>}
@@ -2020,7 +2144,7 @@ export default function StocksPage() {
                                         onChanged={loadPriceAlertSummaries}
                                       />
                                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)} title={stockT('stocksPage.messages.relatedNews')}><Newspaper className="w-3 h-3" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name, pos.market)}><Brain className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                     </div>
@@ -2093,8 +2217,9 @@ export default function StocksPage() {
                                   )}
                                 </div>
                                 <div title={quoteHint(pos)} className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
-                                  {pos.current_price != null ? formatQuotePrice(pos.current_price, pos.asset_type, pos.market) : '—'}
+                                  {pos.current_price != null ? formatQuotePrice(pos.current_price, pos.asset_type, pos.market) : '—'}{(pos.market === 'TSX' || pos.market === 'TSXV') && pos.currency ? ` ${pos.currency}` : ''}
                                   <span className="text-[11px] ml-1">{pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}</span>
+                                  {delayedQuoteNotice(pos)}
                                 </div>
                               </div>
                               {/* Row 2 (Suggestion badge, dedicated row to avoid wrapping mess) */}
@@ -2183,7 +2308,7 @@ export default function StocksPage() {
                                     onChanged={loadPriceAlertSummaries}
                                   />
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openNewsDialog(pos.name)}><Newspaper className="w-3 h-3" /></Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name)}><Brain className="w-3 h-3" /></Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-primary" title={stockT('stocksPage.messages.deepAnalysis')} onClick={() => openDeepAnalysis(pos.stock_id, pos.symbol, pos.name, pos.market)}><Brain className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={stockT('stocksPage.messages.editPosition')} onClick={() => openPositionDialog(account.id, pos)}><Pencil className="w-3 h-3" /></Button>
                                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => handleDeletePosition(pos.id)}><Trash2 className="w-3 h-3" /></Button>
                                 </div>
@@ -2205,18 +2330,17 @@ export default function StocksPage() {
       {/* Watchlist */}
       {viewTab === 'watchlist' && (
         <div data-tour="watchlist" className="card p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h3 className="text-[13px] font-semibold text-foreground">{stockT('stocksPage.messages.watchlist')}</h3>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {[
                 { value: '', label: stockT('stocksPage.markets.all'), count: stocks.length },
-                { value: 'CN', label: stockT('stocksPage.markets.cn'), count: stocks.filter(s => s.market === 'CN').length },
-                { value: 'HK', label: stockT('stocksPage.markets.hk'), count: stocks.filter(s => s.market === 'HK').length },
-                { value: 'US', label: stockT('stocksPage.markets.us'), count: stocks.filter(s => s.market === 'US').length },
+                ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`), count: stocks.filter(s => matchesMarketCategory(s.market, value)).length })),
               ].map(opt => (
                 <button
                   key={opt.value}
                   onClick={() => setStockListFilter(opt.value)}
+                  aria-pressed={stockListFilter === opt.value}
                   className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                     stockListFilter === opt.value
                       ? 'bg-primary text-primary-foreground'
@@ -2253,7 +2377,7 @@ export default function StocksPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {stocks
-                .filter(s => !stockListFilter || s.market === stockListFilter)
+                .filter(s => matchesMarketCategory(s.market, stockListFilter))
                 .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.id - b.id)
                 .filter(stock => {
                   if (tour?.active || !watchlistOnlyAlerts) return true
@@ -2328,6 +2452,7 @@ export default function StocksPage() {
                       <div className="text-right">
                         <div title={quoteHint(quote || {})} className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
                           {quote?.current_price != null ? formatQuotePrice(quote.current_price, stock.asset_type, stock.market) : '--'}
+                          {delayedQuoteNotice(quote)}
                         </div>
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
@@ -2401,7 +2526,7 @@ export default function StocksPage() {
                           size="icon"
                           className="h-7 w-7 hover:text-primary"
                           title={stockT('stocksPage.messages.deepAnalysis')}
-                          onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name)}
+                          onClick={() => openDeepAnalysis(stock.id, stock.symbol, stock.name, stock.market)}
                         >
                           <Brain className="w-3.5 h-3.5" />
                         </Button>
@@ -2460,6 +2585,7 @@ export default function StocksPage() {
           onOpenChange={(open) => { if (!open) setDeepAnalysisTarget(null) }}
           stockId={deepAnalysisTarget.stockId}
           stockSymbol={deepAnalysisTarget.symbol}
+          stockMarket={deepAnalysisTarget.market}
           stockName={deepAnalysisTarget.name}
         />
       )}
@@ -2574,19 +2700,18 @@ export default function StocksPage() {
               </div>
             ) : (
               <div>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <Label className="mb-0">{stockT('stocksPage.messages.searchStock')}</Label>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     {[
                       { value: '', label: stockT('stocksPage.markets.all') },
-                      { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                      { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                      { value: 'US', label: stockT('stocksPage.markets.us') },
+                      ...MARKET_CATEGORIES.map(value => ({ value, label: stockT(`stocksPage.markets.${value.toLowerCase()}`) })),
                     ].map(opt => (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => handlePositionSearchMarketChange(opt.value)}
+                        aria-pressed={positionSearchMarket === opt.value}
                         className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
                           positionSearchMarket === opt.value
                             ? 'bg-primary text-primary-foreground'
@@ -2605,12 +2730,13 @@ export default function StocksPage() {
                       value={positionSearchQuery}
                       onChange={e => handlePositionSearchInput(e.target.value)}
                       onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
+                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'CA' ? 'ZSP / REI-UN / TBRD' : positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
                       className="pl-9"
                       autoComplete="off"
                     />
                     {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
                   </div>
+                  {positionSearchError && <p className="mt-2 text-[12px] text-destructive" role="status">{positionSearchError}</p>}
                   {showPositionDropdown && positionSearchResults.length > 0 && (
                     <div className="relative w-full mt-1 max-h-48 overflow-auto overscroll-contain scrollbar card shadow-lg">
                       {positionSearchResults.map(item => (
@@ -2677,7 +2803,7 @@ export default function StocksPage() {
                   onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
                   placeholder="0"
                   className="font-mono"
-                  inputMode="numeric"
+                  inputMode={positionForm.stock_market === 'TSX' || positionForm.stock_market === 'TSXV' ? 'decimal' : 'numeric'}
                 />
               </div>
             </div>

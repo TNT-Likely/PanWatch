@@ -1,3 +1,4 @@
+from src.platform.marketdata.instrument_identity import instrument_get, unambiguous_stock_map
 """盘前分析 Agent - 开盘前展望今日走势"""
 
 import asyncio
@@ -16,6 +17,9 @@ from src.modules.research.analysis_history import save_analysis
 from src.platform.marketdata.cn_symbol import get_cn_prefix
 from src.modules.automation.suggestion_pool import save_suggestion
 from src.modules.research.context_builder import ContextBuilder
+from src.modules.research.portfolio_currency import (
+    CANADIAN_MARKETS, canadian_quote_note, constraints_text,
+)
 from src.modules.research.context_store import (
     save_agent_context_run,
     save_agent_prediction_outcome,
@@ -195,6 +199,7 @@ class PremarketOutlookAgent(BaseAgent):
             "signal_packs": packs,
             "symbol_contexts": symbol_contexts,
             "quality_overview": quality_overview,
+            "portfolio_valuation": context_pack.get("portfolio_valuation"),
             "news": news_items,
             "timestamp": datetime.now().isoformat(),
             "run_trace_id": trace_id,
@@ -276,11 +281,13 @@ class PremarketOutlookAgent(BaseAgent):
         news_items = data.get("news", []) or []
 
         for stock in context.watchlist:
-            pack = packs.get(stock.symbol)
-            stock_ctx = symbol_contexts.get(stock.symbol, {}) or {}
+            pack = instrument_get(packs, stock.symbol, stock.market)
+            stock_ctx = instrument_get(symbol_contexts, stock.symbol, stock.market, {}) or {}
             stock_quality = (stock_ctx.get("data_quality") or {})
             stock_coverage = stock_quality.get("coverage") or {}
             tech = (pack.technical if pack else None) or {}
+            if stock.market.value in CANADIAN_MARKETS:
+                lines.append(canadian_quote_note(stock.market, stock.symbol, pack.quote if pack else None))
             if tech.get("error"):
                 lines.append(f"\n### {stock.name}（{stock.symbol}）")
                 lines.append(f"- 数据获取失败：{tech.get('error')}")
@@ -438,7 +445,7 @@ class PremarketOutlookAgent(BaseAgent):
                     lines.append(f"- 突破状态：{kline_history.get('breakout_state')}")
 
             # 持仓信息
-            position = context.portfolio.get_aggregated_position(stock.symbol)
+            position = context.portfolio.get_aggregated_position(stock.symbol, stock.market)
             if position:
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
@@ -449,9 +456,7 @@ class PremarketOutlookAgent(BaseAgent):
 
             constraints = stock_ctx.get("constraints") or {}
             if constraints:
-                lines.append(
-                    f"- 资金约束：总可用 {safe_num(constraints.get('total_available_funds'), 0):.0f}，单票仓位占比 {safe_num(constraints.get('single_position_ratio'), 0) * 100:.1f}%（{constraints.get('risk_budget_hint', 'normal')}）"
-                )
+                lines.append(constraints_text(constraints))
             memory = stock_ctx.get("memory") or {}
             if memory:
                 lines.append(
@@ -694,7 +699,7 @@ class PremarketOutlookAgent(BaseAgent):
         )
 
         # 保存各股票建议到建议池
-        stock_map = {s.symbol: s for s in context.watchlist}
+        stock_map = unambiguous_stock_map(context.watchlist)
         packs = data.get("signal_packs", {}) or {}
         symbol_contexts = data.get("symbol_contexts", {}) or {}
         analysis_date = (data.get("timestamp") or "")[:10] or date.today().strftime(
@@ -871,6 +876,7 @@ class PremarketOutlookAgent(BaseAgent):
             analysis_date=analysis_date,
             context_payload={
                 "quality_overview": quality_overview,
+                "portfolio_valuation": data.get("portfolio_valuation"),
                 "symbols": compact_context,
             },
             quality={"score": quality_overview.get("avg_score", 0)},
@@ -893,6 +899,7 @@ class PremarketOutlookAgent(BaseAgent):
                 "us_indices": data.get("us_indices"),
                 "timestamp": data.get("timestamp"),
                 "quality_overview": quality_overview,
+                "portfolio_valuation": data.get("portfolio_valuation"),
                 "context_summary": compact_context,
                 "context_payload": context_payload,
                 "news": data.get("news"),

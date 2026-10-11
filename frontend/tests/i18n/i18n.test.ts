@@ -11,6 +11,7 @@ import {
   formatCurrency,
   formatDate,
   formatMarketName,
+  formatMarketCurrency,
   formatPercent,
 } from '@/i18n/format'
 
@@ -109,5 +110,19 @@ describe('locale-sensitive formatters', () => {
     expect(formatPercent(0.125)).toBe('12.5%')
     expect(formatMarketName('CN')).toBe('China A-shares')
     expect(formatDate('2026-09-27T00:00:00Z', { timeZone: 'UTC', year: 'numeric' })).toBe('2026')
+  })
+})
+
+
+describe('Canadian market labels and currency', () => {
+  it('uses CAD for both exchanges and distinct translated market labels', async () => {
+    await changeLocale('en-US')
+    expect(formatMarketCurrency(12.5, 'TSX')).toContain('CA$12.50')
+    expect(formatMarketCurrency(12.5, 'TSXV')).toContain('CA$12.50')
+    expect(formatMarketName('TSX')).toBe('TSX')
+    expect(formatMarketName('TSXV')).toBe('TSX Venture')
+    await changeLocale('zh-CN')
+    expect(formatMarketName('TSX')).toBe('多伦多证券交易所')
+    expect(formatMarketName('TSXV')).toBe('多伦多创业交易所')
   })
 })

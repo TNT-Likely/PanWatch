@@ -74,3 +74,18 @@ it('shows REVIEW as a review state in an English historical report', async () =>
   expect(await screen.findByText('Review required')).toBeTruthy()
   expect(screen.queryByText('Hold')).toBeNull()
 })
+
+it.each(['TSX', 'TSXV'])('uses %s-qualified history and running lookup without changing the visible symbol', async market => {
+  render(<DeepAnalysisModal {...props} stockSymbol="RY" stockMarket={market} stockName="Royal Bank" />)
+  await waitFor(() => expect(tradingAgentsApi.findRunning).toHaveBeenCalledWith(`${market}:RY`))
+  await waitFor(() => expect(tradingAgentsApi.getLatestForStock).toHaveBeenCalledWith(`${market}:RY`))
+  expect(screen.getByRole('heading').textContent).toContain('(RY)')
+})
+
+it('keeps the Canadian market identity in the historical detail link', async () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null)
+  render(<DeepAnalysisModal {...props} stockSymbol="RY" stockMarket="TSX" initialResult={result} />)
+  fireEvent.click(screen.getByRole('button', { name: '查看详细页' }))
+  expect(open).toHaveBeenCalledWith('/analysis/TSX%3ARY/2026-10-01', '_blank')
+  open.mockRestore()
+})

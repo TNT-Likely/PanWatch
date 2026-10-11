@@ -28,7 +28,7 @@ def test_announcement_eval_maps_tone_per_item(monkeypatch):
     """逐条公告映射 AI 判定的利好/利空。"""
     insights._ANN_CACHE.clear()
 
-    async def fake_fetch(symbol, name, limit=5):
+    async def fake_fetch(symbol, name, limit=5, *, market="CN"):
         return [
             {"title": "中标重大项目", "time": "2026-06-18 09:00", "content": ""},
             {"title": "股东拟减持", "time": "2026-06-17 16:00", "content": ""},
@@ -57,7 +57,7 @@ def test_announcement_eval_empty(monkeypatch):
     """无公告时返回空列表,不调 AI。"""
     insights._ANN_CACHE.clear()
 
-    async def fake_fetch(symbol, name, limit=5):
+    async def fake_fetch(symbol, name, limit=5, *, market="CN"):
         return []
 
     called = {"ai": 0}

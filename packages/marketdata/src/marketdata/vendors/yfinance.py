@@ -21,11 +21,15 @@ def _yf_ticker(sym: Symbol) -> str:
 
 class YFinanceQuoteVendor(QuoteVendor):
     name = "yfinance"
-    supports_markets = {"HK", "US"}
+    supports_markets = {"HK", "US", "TSX", "TSXV"}
 
     def fetch(self, symbols: list[Symbol], config: dict) -> list[Quote]:
         if not symbols:
             return []
+        canadian = [s for s in symbols if s.market.value in {"TSX", "TSXV"}]
+        if canadian:
+            from marketdata.vendors.canada import CanadaQuoteVendor
+            return CanadaQuoteVendor().fetch(canadian, config)
         try:
             import yfinance as yf
         except ImportError as e:

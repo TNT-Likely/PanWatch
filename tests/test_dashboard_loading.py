@@ -75,7 +75,7 @@ def test_market_quotes_run_concurrently_and_preserve_partial_results(monkeypatch
         finally:
             release.set()
         result = pending.result(timeout=3)
-    assert set(result) == {"CN", "US"}
+    assert set(result) == {"CN:CN", "US:US"}
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ def snapshot_setup(db, monkeypatch):
         prev_close=11.5, volume=100, turnover=1200,
     )
     portfolio = SimpleNamespace(
-        get_positions_for_stock=lambda _: [SimpleNamespace(cost_price=10, trading_style="long")],
+        get_positions_for_stock=lambda _, market=None: [SimpleNamespace(cost_price=10, trading_style="long")],
         total_available_funds=100,
     )
     monkeypatch.setattr(server, "load_watchlist_for_agent", lambda _: [stock])

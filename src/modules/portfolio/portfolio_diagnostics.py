@@ -35,6 +35,7 @@ def diagnose_positions(positions: list[dict]) -> dict:
     """
     if not positions:
         return {
+            "valuation_incomplete": False,
             "position_count": 0,
             "total_market_value": 0.0,
             "hhi": 0.0,
@@ -63,6 +64,10 @@ def diagnose_positions(positions: list[dict]) -> dict:
 
     alerts: list[str] = []
     alert_details: list[dict] = []
+    incomplete = any(p.get("valuation_incomplete") for p in positions)
+    if incomplete:
+        alerts.append("估值不完整：部分持仓缺少已确认币种、汇率或行情；合计和占比仅覆盖可估值持仓")
+        alert_details.append({"code": "valuation_incomplete"})
     if max_w >= MAX_SINGLE_WEIGHT:
         alerts.append(f"单仓集中度过高:最大持仓占 {max_w * 100:.0f}%")
         alert_details.append({"code": "single_concentration", "weight": round(max_w * 100)})
@@ -79,6 +84,7 @@ def diagnose_positions(positions: list[dict]) -> dict:
                 alert_details.append({"code": "market_concentration", "market": m, "weight": round(v / total * 100)})
 
     return {
+        "valuation_incomplete": incomplete,
         "position_count": len(positions),
         "total_market_value": round(total, 2),
         "hhi": round(hhi, 4),

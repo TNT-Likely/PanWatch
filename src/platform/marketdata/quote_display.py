@@ -78,6 +78,9 @@ def assistant_quote_fields(market: str, quote: dict, now: datetime | None = None
             freshness = "delayed"
         else:
             freshness = "fresh" if age <= 600 else "delayed" if age <= 3600 else "stale"
+    # A provider-declared delay wins even when its source timestamp is recent.
+    if quote.get("delayed") is True and freshness == "fresh":
+        freshness = "delayed"
     current = freshness == "fresh"
     return {
         "quote_date": quote_date,
@@ -93,3 +96,27 @@ def assistant_quote_fields(market: str, quote: dict, now: datetime | None = None
         "source_change_pct": quote.get("change_pct"),
         "source_change_amount": quote.get("change_amount"),
     }
+
+
+def assistant_quote_summary(market: str, quote: dict) -> str:
+    """Render the same source/currency/freshness contract for every assistant host."""
+    symbol = quote.get("symbol") or "?"
+    name = quote.get("name") or symbol
+    currency = quote.get("currency") or "币种未知"
+    security_type = quote.get("security_type") or "证券类型未知"
+    source = quote.get("source") or "来源未知"
+    as_of = quote.get("source_timestamp") or quote.get("quote_date") or "时间未知"
+    delayed = {True: "是", False: "否"}.get(quote.get("delayed"), "未知")
+    summary = (
+        f"{name}（{market}:{symbol}）来源报价 {quote.get('current_price')} {currency}，"
+        f"证券类型 {security_type}；来源 {source}，数据时点 {as_of}；"
+        f"市场 {quote['market_status']}，时效 {quote['freshness']}，供应商延迟 {delayed}。"
+    )
+    summary += f"来源涨跌幅 {quote.get('source_change_pct')}%，成交量 {quote.get('volume')}。"
+    if quote.get("observed_at"):
+        summary += f"采集时间 {quote['observed_at']}。"
+    if quote['is_realtime']:
+        summary += f"涨跌幅 {quote.get('change_pct')}%。"
+    else:
+        summary += "不能视为当前实时行情。"
+    return summary

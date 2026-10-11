@@ -29,3 +29,13 @@ it('shows US candles in the detail modal while the technical summary is still pe
   expect(insightApi.klines).toHaveBeenCalledWith('LI', { market: 'US', days: 36, interval: '1d' })
   expect(screen.queryByText('暂无K线摘要')).toBeNull()
 })
+
+it('visibly labels Canadian provider snapshots as delayed with their source time', async () => {
+  vi.mocked(insightApi.quote).mockResolvedValueOnce({
+    symbol: 'ZSP', name: 'BMO ETF', market: 'TSX', current_price: 10,
+    currency: 'CAD', is_delayed: true, source_timestamp: '2026-10-09T19:45:00+00:00',
+  })
+  render(<MemoryRouter><MarketColorProvider><StockInsightModal open onOpenChange={vi.fn()} symbol="ZSP" market="TSX" stockName="BMO ETF" /></MarketColorProvider></MemoryRouter>)
+  expect(await screen.findByText(/延迟行情.*来源时间/)).toBeTruthy()
+  expect(insightApi.klines).toHaveBeenCalledWith('ZSP', { market: 'TSX', days: 36, interval: '1d' })
+})

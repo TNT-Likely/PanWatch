@@ -60,5 +60,7 @@ export const common = {
     CN: 'A股',
     HK: '港股',
     US: '美股',
+    TSX: '多伦多证券交易所',
+    TSXV: '多伦多创业交易所',
   },
 } as const

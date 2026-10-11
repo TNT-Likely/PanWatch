@@ -113,7 +113,7 @@ export default function FactorWeightsPanel() {
                 return (
                   <tr key={key} className="border-b border-border/30 last:border-0">
                     <td className="py-2 pr-3 text-foreground">{tr(`factors.${({ alpha_score: 'alpha', catalyst_score: 'catalyst', quality_score: 'quality', risk_penalty: 'risk', crowd_penalty: 'crowding' } as Record<string, string>)[item.factor_code] || item.factor_code}`)}</td>
-                    <td className="py-2 pr-3 text-muted-foreground">{factorT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us' } as Record<string, string>)[item.market] || item.market}`)}</td>
+                    <td className="py-2 pr-3 text-muted-foreground">{factorT(`stocksPage.markets.${({ CN: 'cn', HK: 'hk', US: 'us', TSX: 'tsx', TSXV: 'tsxv' } as Record<string, string>)[item.market] || item.market}`)}</td>
                     <td className="py-2 pr-3 text-right font-mono text-foreground">{formatMetric(item.weight, 2)}</td>
                     <td className="py-2 pr-3 text-right font-mono text-muted-foreground">{formatMetric(item.last_ic)}</td>
                     <td className="py-2 pr-3 text-right font-mono text-muted-foreground">{formatMetric(item.last_ir)}</td>

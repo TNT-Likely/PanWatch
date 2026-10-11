@@ -35,6 +35,8 @@ class NewsCollector:
         symbols: list[str] | None = None,
         since_hours: int = 2,
         symbol_names: dict[str, str] | None = None,
+        *,
+        market: str = "CN",
     ) -> list[NewsItem]:
         """
         聚合所有已启用新闻数据源的新闻（聚合/去重/排序均在 marketdata 包内完成）。
@@ -43,10 +45,11 @@ class NewsCollector:
             symbols: 股票代码列表
             since_hours: 获取最近 N 小时的新闻（公告类源的窗口由包内自动放宽）
             symbol_names: 股票代码到名称的映射（可选，eastmoney_news 用名称搜索效果更好）
+            market: 显式交易市场，供应商未覆盖时返回空结果
 
         Returns:
             按时间倒序排列的新闻列表
         """
         from src.platform.marketdata.marketdata_client import md_news
 
-        return await asyncio.to_thread(md_news, symbols or [], since_hours, symbol_names)
+        return await asyncio.to_thread(md_news, symbols or [], since_hours, symbol_names, market=market)

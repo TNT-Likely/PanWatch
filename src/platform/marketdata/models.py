@@ -8,6 +8,8 @@ class MarketCode(str, Enum):
     CN = "CN"  # A股
     HK = "HK"  # 港股
     US = "US"  # 美股
+    TSX = "TSX"
+    TSXV = "TSXV"
 
 
 @dataclass
@@ -67,6 +69,9 @@ MARKETS: dict[MarketCode, MarketDef] = {
         symbol_pattern=r"^[A-Z]{1,5}$",
     ),
 }
+for _code, _name in [(MarketCode.TSX, "TSX"), (MarketCode.TSXV, "TSX Venture")]:
+    MARKETS[_code] = MarketDef(_code, _name, "America/Toronto", [TradingSession(time(9,30), time(16,0))], r"^[A-Z0-9]+(?:-[A-Z0-9]+)*$")
+
 
 
 @dataclass
@@ -85,6 +90,11 @@ class StockData:
     low_price: float
     prev_close: float
     timestamp: datetime = field(default_factory=datetime.now)
+    currency: str | None = None
+    security_type: str | None = None
+    source_timestamp: datetime | None = None
+    source: str = ""
+    delayed: bool = False
 
 
 @dataclass

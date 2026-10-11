@@ -62,6 +62,7 @@ export interface DashboardAccountSummary {
   /** 今日盈亏(账户内所有持仓 daily_pnl 汇总,元) */
   total_daily_pnl: number
   total_assets: number
+  valuation_incomplete?: boolean
   positions: DashboardPosition[]
 }
 
@@ -76,10 +77,13 @@ export interface DashboardPortfolioSummary {
     total_daily_pnl: number
     available_funds: number
     total_assets: number
+    valuation_incomplete?: boolean
   }
   exchange_rates?: {
     HKD_CNY: number
     USD_CNY?: number
+    CAD_CNY?: number | null
+    CANADA_USD_CNY?: number | null
   }
 }
 

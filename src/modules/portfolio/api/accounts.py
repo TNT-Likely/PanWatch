@@ -1,13 +1,14 @@
 """账户和持仓管理 API"""
 import asyncio
 import logging
+import math
 import time
 import httpx
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +17,9 @@ from src.platform.persistence.models import Account, PriceAlertRule, Position, S
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
+from src.platform.marketdata.reference_fx import (
+    CAD_RATE_CACHE, USD_RATE_CACHE, reference_cny_rate as _reference_cny_rate,
+)
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import ai_api_error, api_error
 
@@ -25,6 +29,9 @@ router = APIRouter()
 # 汇率缓存
 _hkd_rate_cache: dict = {"rate": 0.92, "ts": 0}  # 港币默认汇率 0.92
 _usd_rate_cache: dict = {"rate": 7.25, "ts": 0}  # 美元默认汇率 7.25
+CANADIAN_MARKETS = {"TSX", "TSXV"}
+_cad_rate_cache = CAD_RATE_CACHE
+_canada_usd_rate_cache = USD_RATE_CACHE
 EXCHANGE_RATE_TTL = 3600  # 1 小时缓存
 
 
@@ -96,6 +103,49 @@ def get_usd_cny_rate() -> float:
     return _usd_rate_cache["rate"]
 
 
+def get_cad_cny_rate(*, refresh: bool = True) -> float | None:
+    return _reference_cny_rate("CAD", _cad_rate_cache, refresh=refresh)
+
+
+def get_canada_usd_cny_rate(*, refresh: bool = True) -> float | None:
+    """Canadian USD listings must not inherit the legacy USD synthetic fallback."""
+    return _reference_cny_rate("USD", _canada_usd_rate_cache, refresh=refresh)
+
+
+def _position_quote(quotes: dict, stock: Stock, stocks: list[Stock]) -> dict | None:
+    quote = quotes.get(f"{stock.market}:{stock.symbol}")
+    if quote is not None:
+        return quote
+    # Compatibility for legacy callers/mocks, never cross-market symbol collisions.
+    if len({s.market for s in stocks if s.symbol == stock.symbol}) == 1:
+        quote = quotes.get(stock.symbol)
+        if quote and quote.get("market", stock.market) == stock.market:
+            return quote
+    return None
+
+
+def _valuation_currency(market: str, quote: dict | None) -> str | None:
+    if market in CANADIAN_MARKETS:
+        currency = (quote or {}).get("currency")
+        return currency if currency in ("CAD", "USD") else None
+    return {"CN": "CNY", "HK": "HKD", "US": "USD"}.get(market)
+
+
+def _valuation_status(currency, rate, price) -> str:
+    if currency is None:
+        return "currency_unavailable"
+    if rate is None:
+        return "fx_unavailable"
+    return "quote_unavailable" if price is None else "available"
+
+
+def _validate_quantity(quantity: float, market: str) -> None:
+    if not math.isfinite(quantity) or quantity <= 0:
+        raise api_error(422, "invalid_quantity", "持仓数量必须为正有限数")
+    if market not in CANADIAN_MARKETS and not float(quantity).is_integer():
+        raise api_error(422, "invalid_quantity", "该市场持仓数量必须为整数")
+
+
 # ========== Pydantic Models ==========
 
 class AccountCreate(BaseModel):
@@ -123,14 +173,14 @@ class PositionCreate(BaseModel):
     account_id: int
     stock_id: int
     cost_price: float
-    quantity: int
+    quantity: float = Field(gt=0, allow_inf_nan=False)
     invested_amount: float | None = None
     trading_style: str | None = None  # short: 短线, swing: 波段, long: 长线
 
 
 class PositionUpdate(BaseModel):
     cost_price: float | None = None
-    quantity: int | None = None
+    quantity: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     invested_amount: float | None = None
     trading_style: str | None = None
 
@@ -140,7 +190,7 @@ class PositionResponse(BaseModel):
     account_id: int
     stock_id: int
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None
     sort_order: int
     trading_style: str | None
@@ -273,6 +323,8 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
     if not stock:
         raise api_error(400, "stock_not_found", "股票不存在")
 
+    _validate_quantity(data.quantity, stock.market)
+
     # 检查是否已存在该账户的该股票持仓
     existing = db.query(Position).filter(
         Position.account_id == data.account_id,
@@ -321,6 +373,8 @@ def update_position(position_id: int, data: PositionUpdate, db: Session = Depend
     if not position:
         raise api_error(404, "position_not_found", "持仓不存在")
 
+    if data.quantity is not None:
+        _validate_quantity(data.quantity, position.stock.market)
     if data.cost_price is not None:
         position.cost_price = data.cost_price
     if data.quantity is not None:
@@ -422,6 +476,7 @@ def get_portfolio_summary(
                 "total_pnl_pct": 0,
                 "available_funds": 0,
                 "total_assets": 0,
+                "valuation_incomplete": False,
             }
         }
 
@@ -442,18 +497,29 @@ def get_portfolio_summary(
     hkd_rate = get_hkd_cny_rate() if refresh_exchange_rates and "HK" in markets else _hkd_rate_cache["rate"]
     usd_rate = get_usd_cny_rate() if refresh_exchange_rates and "US" in markets else _usd_rate_cache["rate"]
 
+    # Metadata refresh is cache-only, including verified CAD and Canadian USD FX.
+    canada = bool(markets & CANADIAN_MARKETS)
+    cad_rate = get_cad_cny_rate(refresh=refresh_exchange_rates) if canada else None
+    canada_usd = get_canada_usd_cny_rate(refresh=refresh_exchange_rates) if canada else None
+    rates = {"CNY": 1.0, "HKD": hkd_rate, "USD": usd_rate, "CAD": cad_rate, "CANADA_USD": canada_usd}
+
     # 计算各账户持仓
     account_summaries = []
     grand_total_market_value = 0
     grand_total_cost = 0
     grand_available_funds = 0
     grand_daily_pnl = 0
+    grand_pnl = 0
+    grand_valued_cost = 0
 
     for acc in accounts:
         positions_data = []
         acc_market_value = 0
         acc_cost = 0
         acc_daily_pnl = 0
+        acc_incomplete = False
+        acc_pnl = 0
+        acc_valued_cost = 0
 
         positions_sorted = sorted(
             list(acc.positions or []),
@@ -464,20 +530,17 @@ def get_portfolio_summary(
             if not stock:
                 continue
 
-            quote = quotes.get(stock.symbol)
+            quote = _position_quote(quotes, stock, stocks)
             current_price = quote["current_price"] if quote else None
             daily_fields = daily_quote_fields(stock.market, quote)
             change_pct = daily_fields["change_pct"]
             prev_close = quote.get("prev_close") if quote else None
 
-            # 根据市场确定汇率
-            is_foreign = stock.market in ("HK", "US")
-            if stock.market == "HK":
-                rate = hkd_rate
-            elif stock.market == "US":
-                rate = usd_rate
-            else:
-                rate = 1.0
+            currency = _valuation_currency(stock.market, quote)
+            rate = rates.get("CANADA_USD" if stock.market in CANADIAN_MARKETS and currency == "USD" else currency)
+            is_foreign = currency != "CNY"
+            valuation_status = _valuation_status(currency, rate, current_price)
+            acc_incomplete |= valuation_status != "available"
 
             market_value = None
             market_value_cny = None
@@ -486,24 +549,28 @@ def get_portfolio_summary(
             daily_pnl = None
             daily_pnl_pct = None
 
-            if daily_fields["daily_move_status"] in ("closed", "pre_market"):
+            if rate is not None and daily_fields["daily_move_status"] in ("closed", "pre_market"):
                 daily_pnl = 0.0
-            elif daily_fields["daily_move_status"] == "current" and current_price is not None and prev_close and prev_close > 0:
+            elif rate is not None and daily_fields["daily_move_status"] == "current" and current_price is not None and prev_close and prev_close > 0:
                 daily_pnl = (current_price - prev_close) * pos.quantity * rate
                 daily_pnl_pct = (current_price - prev_close) / prev_close * 100
                 acc_daily_pnl += daily_pnl
 
             cost = pos.cost_price * pos.quantity
-            cost_cny = cost * rate  # 假设成本价也是原币种
-            acc_cost += cost_cny
+            cost_cny = cost * rate if rate is not None else None
+            if cost_cny is not None:
+                acc_cost += cost_cny
 
             if current_price is not None:
                 market_value = current_price * pos.quantity  # 原币种市值
+            if current_price is not None and rate is not None:
                 market_value_cny = market_value * rate  # 人民币市值
                 pnl = market_value_cny - cost_cny
                 pnl_pct = (pnl / cost_cny * 100) if cost_cny > 0 else 0
 
                 acc_market_value += market_value_cny
+                acc_pnl += pnl
+                acc_valued_cost += cost_cny
 
             positions_data.append({
                 "id": pos.id,
@@ -518,22 +585,28 @@ def get_portfolio_summary(
                 "sort_order": pos.sort_order or 0,
                 "trading_style": pos.trading_style,
                 "current_price": current_price,
-                "current_price_cny": round(current_price * rate, 2) if current_price else None,
+                "current_price_cny": round(current_price * rate, 2) if current_price is not None and rate is not None else None,
                 "change_pct": change_pct,
-                "market_value": round(market_value, 2) if market_value else None,
-                "market_value_cny": round(market_value_cny, 2) if market_value_cny else None,
-                "pnl": round(pnl, 2) if pnl else None,
-                "pnl_pct": round(pnl_pct, 2) if pnl_pct else None,
+                "market_value": round(market_value, 2) if market_value is not None else None,
+                "market_value_cny": round(market_value_cny, 2) if market_value_cny is not None else None,
+                "pnl": round(pnl, 2) if pnl is not None else None,
+                "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
                 "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
                 "daily_pnl_pct": round(daily_pnl_pct, 2) if daily_pnl_pct is not None else None,
                 "exchange_rate": rate if is_foreign else None,
+                "currency": currency,
+                "valuation_status": valuation_status,
+                "source_timestamp": (quote or {}).get("source_timestamp"),
+                "is_delayed": (quote or {}).get("delayed"),
+                "source": (quote or {}).get("source"),
+                "security_type": (quote or {}).get("security_type"),
                 "daily_move_status": daily_fields["daily_move_status"],
                 "quote_date": daily_fields["quote_date"],
             })
 
         if include_quotes:
-            acc_pnl = acc_market_value - acc_cost
-            acc_pnl_pct = (acc_pnl / acc_cost * 100) if acc_cost > 0 else 0
+            # Missing prices cannot turn known costs into fictitious losses.
+            acc_pnl_pct = (acc_pnl / acc_valued_cost * 100) if acc_valued_cost > 0 else 0
             acc_total_assets = acc_market_value + acc.available_funds
         else:
             acc_pnl = 0
@@ -551,16 +624,18 @@ def get_portfolio_summary(
             "total_daily_pnl": round(acc_daily_pnl, 2),
             "total_assets": round(acc_total_assets, 2),
             "positions": positions_data,
+            "valuation_incomplete": acc_incomplete,
         })
 
         grand_total_market_value += acc_market_value
         grand_total_cost += acc_cost
         grand_available_funds += acc.available_funds
         grand_daily_pnl += acc_daily_pnl
+        grand_pnl += acc_pnl
+        grand_valued_cost += acc_valued_cost
 
     if include_quotes:
-        grand_pnl = grand_total_market_value - grand_total_cost
-        grand_pnl_pct = (grand_pnl / grand_total_cost * 100) if grand_total_cost > 0 else 0
+        grand_pnl_pct = (grand_pnl / grand_valued_cost * 100) if grand_valued_cost > 0 else 0
         grand_total_assets = grand_total_market_value + grand_available_funds
     else:
         grand_pnl = 0
@@ -573,6 +648,11 @@ def get_portfolio_summary(
         for symbol, quote in quotes.items():
             quotes_dict[symbol] = {
                 "current_price": quote.get("current_price"),
+                "currency": quote.get("currency"),
+                "source_timestamp": quote.get("source_timestamp"),
+                "is_delayed": quote.get("delayed"),
+                "source": quote.get("source"),
+                "security_type": quote.get("security_type"),
                 **daily_quote_fields(quote.get("market", "CN"), quote),
             }
 
@@ -586,10 +666,13 @@ def get_portfolio_summary(
             "total_daily_pnl": round(grand_daily_pnl, 2),
             "available_funds": round(grand_available_funds, 2),
             "total_assets": round(grand_total_assets, 2),
+            "valuation_incomplete": any(a["valuation_incomplete"] for a in account_summaries),
         },
         "exchange_rates": {
             "HKD_CNY": hkd_rate,
             "USD_CNY": usd_rate,
+            "CAD_CNY": cad_rate,
+            "CANADA_USD_CNY": canada_usd,
         },
         "quotes": quotes_dict,  # 可选：返回行情数据
     }
@@ -629,7 +712,8 @@ def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict:
     else:
         results = [fetch_batch(batch) for batch in batches]
 
-    return {item["symbol"]: item for items in results for item in items}
+    return {f"{market}:{item['symbol']}": {**item, "market": market}
+            for (market, _), items in zip(batches, results) for item in items}
 
 
 # 组合基准/归因结果缓存:重建全持仓 NAV 很贵(逐只拉 K 线),按持仓指纹缓存结果。
@@ -661,6 +745,9 @@ def _gather_holdings(db: Session) -> list[dict]:
     markets = {stock.market for stock in stocks}
     hkd = get_hkd_cny_rate() if "HK" in markets else 1.0
     usd = get_usd_cny_rate() if "US" in markets else 1.0
+    cad = get_cad_cny_rate() if markets & CANADIAN_MARKETS else None
+    canada_usd = get_canada_usd_cny_rate() if markets & CANADIAN_MARKETS else None
+    rates = {"CNY": 1.0, "HKD": hkd, "USD": usd, "CAD": cad, "CANADA_USD": canada_usd}
 
     out: list[dict] = []
     seen: dict[tuple[str, str], dict] = {}
@@ -669,18 +756,21 @@ def _gather_holdings(db: Session) -> list[dict]:
             stock = stock_map.get(pos.stock_id)
             if not stock:
                 continue
-            rate = hkd if stock.market == "HK" else usd if stock.market == "US" else 1.0
-            quote = quotes.get(stock.symbol)
+            quote = _position_quote(quotes, stock, stocks)
             price = quote.get("current_price") if quote else None
-            cost_cny = pos.cost_price * pos.quantity * rate
-            mv_cny = (price * pos.quantity * rate) if price else cost_cny
-            pnl_cny = (mv_cny - cost_cny) if price else 0.0
+            currency = _valuation_currency(stock.market, quote)
+            rate = rates.get("CANADA_USD" if stock.market in CANADIAN_MARKETS and currency == "USD" else currency)
+            status = _valuation_status(currency, rate, price)
+            cost_cny = pos.cost_price * pos.quantity * rate if rate is not None else None
+            mv_cny = price * pos.quantity * rate if status == "available" else None
+            pnl_cny = mv_cny - cost_cny if mv_cny is not None else None
             key = (stock.market, stock.symbol)
             if key in seen:  # 多账户同一标的合并
                 h = seen[key]
                 h["quantity"] += pos.quantity
-                h["market_value"] += mv_cny
-                h["unrealized_pnl"] += pnl_cny
+                if mv_cny is not None:
+                    h["market_value"] += mv_cny
+                    h["unrealized_pnl"] += pnl_cny
             else:
                 h = {
                     "symbol": stock.symbol,
@@ -688,6 +778,9 @@ def _gather_holdings(db: Session) -> list[dict]:
                     "name": stock.name,
                     "quantity": pos.quantity,
                     "fx": rate,
+                    "currency": currency,
+                    "valuation_status": status,
+                    "valuation_incomplete": status != "available",
                     "market_value": mv_cny,
                     "unrealized_pnl": pnl_cny,
                     "strategy_code": pos.trading_style or "",
@@ -728,6 +821,8 @@ def portfolio_benchmark(
     holdings = _gather_holdings(db)
     if not holdings:
         return {"empty": True, "reason": "no_holdings"}
+    if any(h.get("valuation_incomplete") for h in holdings):
+        return {"empty": True, "reason": "valuation_incomplete", "valuation_incomplete": True}
     res = build_portfolio_benchmark(holdings, days=days, benchmark_code=bcode)
     if not res:
         # 失败/数据不足不缓存,下轮可重试(由 K 线负缓存兜住打爆)
@@ -807,6 +902,8 @@ def portfolio_attribution(days: int = 60, benchmark: str = "000300", db: Session
     holdings = _gather_holdings(db)
     if not holdings:
         return {"items": []}
+    if any(h.get("valuation_incomplete") for h in holdings):
+        return {"items": [], "reason": "valuation_incomplete", "valuation_incomplete": True}
     items = build_attribution(holdings, days=days, benchmark_code=bcode)
     result = {"items": items}
     if items:  # 空结果不缓存,下轮可重试
@@ -843,6 +940,9 @@ def _prepare_portfolio_review(model_id, bind):
         if not holdings:
             return {"empty": True, "reason": "no_holdings"}
 
+        if any(h.get("valuation_incomplete") for h in holdings):
+            return {"empty": True, "reason": "valuation_incomplete", "valuation_incomplete": True,
+                    "diagnostics": diagnose_positions(holdings)}
         diag = diagnose_positions(holdings)
         totals = _gather_account_totals(db, market_value=diag["total_market_value"])
         bench = build_portfolio_benchmark(holdings, days=60) or {}

@@ -172,6 +172,8 @@ def build_portfolio_benchmark(
 
     kline_fetch(symbol, market) -> list[KlineData];默认用 KlineCollector(带缓存)。
     """
+    if any(h.get("market") in {"TSX", "TSXV"} for h in holdings):
+        return None  # No verified Canadian benchmark series.
     bench_dates, bench_closes = _fetch_benchmark_series(benchmark_code, days)
     if len(bench_dates) < 2:
         return None
@@ -237,6 +239,8 @@ def build_attribution(
 
     contribution_i ≈ 起始权重_i × 区间收益_i;和≈组合收益。用于"谁拖累/贡献"。
     """
+    if any(h.get("market") in {"TSX", "TSXV"} for h in holdings):
+        return []  # Do not substitute a Chinese benchmark.
     bench_dates, _ = _fetch_benchmark_series(benchmark_code, days)
     if len(bench_dates) < 2:
         return []

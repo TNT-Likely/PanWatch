@@ -52,7 +52,7 @@ def test_next_us_open_is_correct_in_beijing_across_dst(monkeypatch):
     ]:
         freeze(monkeypatch, instant)
         data = get_market_calendars(days=14, timezone="Asia/Shanghai")
-        assert {market["market"] for market in data["markets"]} == {"CN", "HK", "US"}
+        assert {market["market"] for market in data["markets"]} == {"CN", "HK", "US", "TSX", "TSXV"}
         assert all(market["days"][0]["date"] == instant.date().isoformat() for market in data["markets"])
         us = next(market for market in data["markets"] if market["market"] == "US")
         assert datetime.fromisoformat(us["next_open"]).astimezone(ZoneInfo("Asia/Shanghai")).isoformat() == expected
@@ -176,7 +176,7 @@ def test_opportunity_refresh_propagates_only_eligible_markets(monkeypatch):
     refresh = Mock(return_value={"count": 0})
     monkeypatch.setattr("src.modules.research.context_scheduler.refresh_strategy_signals", refresh)
     asyncio.run(ContextMaintenanceScheduler()._refresh_opportunities_job())
-    assert refresh.call_args.kwargs["markets"] == ["US"]
+    assert refresh.call_args.kwargs["markets"] == ["US", "TSX", "TSXV"]
 
 
 def test_outcome_waits_for_actual_completed_bars_and_ignores_intraday_tail(monkeypatch):
