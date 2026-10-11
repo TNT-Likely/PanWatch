@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dashboardApi, homeApi, portfolioApi, recommendationsApi } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
+import { GuidedTourProvider } from '@/components/onboarding/GuidedTour'
+import { onboardingApi, type SetupStatus } from '@panwatch/api/onboarding'
 
 vi.mock('@panwatch/api', () => ({
   dashboardApi: {
@@ -15,7 +17,7 @@ vi.mock('@panwatch/api', () => ({
   recommendationsApi: { listStrategySignals: vi.fn() },
 }))
 vi.mock('@/components/DiscoveryPanel', () => ({ default: () => null }))
-vi.mock('@panwatch/biz-ui/components/onboarding', () => ({ Onboarding: () => null }))
+vi.mock('@panwatch/api/onboarding', () => ({ onboardingApi: { status: vi.fn(), update: vi.fn() } }))
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -49,6 +51,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals() })
 
 describe('dashboard progressive loading', () => {
+  it('renders the dashboard without flashing setup UI while completion status loads or after a reload', async () => {
+    const saved: SetupStatus = { goal: 'ai', active_track: 'main', tracks: [], started: true, deferred: true,
+      tour_step: 'done', selected_stock: null, models: [], channels: [], quote: null, analysis: null,
+      steps: [], completed: true, completed_count: 4, required_count: 4 }
+    const status = deferred<SetupStatus>()
+    vi.mocked(onboardingApi.status).mockReturnValue(status.promise)
+    const view = () => <MemoryRouter><GuidedTourProvider><DashboardPage /></GuidedTourProvider></MemoryRouter>
+    const first = render(view())
+    const expectNoGuide = () => {
+      expect(screen.queryByRole('region', { name: '开始使用' })).toBeNull()
+      expect(screen.queryByRole('link', { name: '查看开始指南' })).toBeNull()
+      expect(screen.queryByRole('button', { name: '稍后处理' })).toBeNull()
+    }
+    expectNoGuide()
+    await act(async () => status.resolve(saved))
+    expectNoGuide()
+    first.unmount()
+    const reloadStatus = deferred<SetupStatus>()
+    vi.mocked(onboardingApi.status).mockReturnValue(reloadStatus.promise)
+    render(view())
+    expectNoGuide()
+    await act(async () => reloadStatus.resolve(saved))
+    expectNoGuide()
+  })
   it('renders fast data and the benchmark before a slow quote snapshot or attribution, then curates once', async () => {
     const snapshot = deferred<{ stocks: [] }>()
     const alerts = deferred<[]>()

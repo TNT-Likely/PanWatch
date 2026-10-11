@@ -25,7 +25,6 @@ import {
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useTranslation } from 'react-i18next'
-import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
 import DiscoveryPanel from '@/components/DiscoveryPanel'
 import Sparkline from '@/components/Sparkline'
 import BenchChart from '@/components/BenchChart'
@@ -391,7 +390,6 @@ export default function DashboardPage() {
 
   return (
     <div className="page-container pb-10">
-      <Onboarding />
       {/* 顶部:标题 + 刷新 + 日期/市场状态 pills */}
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">

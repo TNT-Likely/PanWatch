@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GettingStartedPage from '@/pages/GettingStarted'
 import { GuidedTourProvider, useGuidedTour, resumeStep, tourSteps } from '@/components/onboarding/GuidedTour'
 import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
-import { Onboarding } from '@panwatch/biz-ui/components/onboarding'
 import { onboardingApi, type SetupStatus } from '@panwatch/api/onboarding'
 import i18n from '@/i18n'
 import { featureTracks, trackSteps } from '@/components/onboarding/tracks'
@@ -159,10 +158,31 @@ describe('interactive page tour', () => {
     expect(resumeStep(state({ tour_step: 'notify' }))).toBe('notify')
     expect(resumeStep(state({ tour_step: 'ai' }))).toBe('ai')
   })
-  it('continues to offer the launcher after a deferred dashboard banner', async () => {
-    current = state({ deferred: true, tour_step: 'quote' })
-    render(<MemoryRouter><Onboarding /></MemoryRouter>)
-    expect(await screen.findByRole('link', { name: '恢复引导' })).toHaveProperty('pathname', '/getting-started')
+  it.each([
+    { tour_step: 'done', completed: true, deferred: true },
+    { tour_step: 'done', completed: true, deferred: false },
+    { tour_step: 'quote', deferred: false },
+    { tour_step: 'analysis', deferred: true },
+    { tour_step: 'analysis', active_track: 'paper', deferred: false },
+  ] satisfies Partial<SetupStatus>[])('hides the first-analysis entry outside the active main analysis step (%j)', async overrides => {
+    current = state({ selected_stock: stock, ...overrides })
+    renderTour('/portfolio')
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: '打开首次分析' })).toBeNull()
+    expect(onboardingApi.analyze).not.toHaveBeenCalled()
+  })
+  it('keeps a successful analysis readable during a replay, then removes its entry on Next', async () => {
+    current = state({ tour_step: 'analysis', selected_stock: stock, quote, models: [model], completed: true,
+      analysis: { id: 7, trace_id: 'qa', status: 'success', content: '已保存的首次分析结果', error_code: '', error_message: '', model_label: 'QA', created_at: '2026-10-10T00:00:00Z' } })
+    current.steps = current.steps.map(step => step.key === 'analysis' ? { ...step, status: 'complete' } : step)
+    renderTour('/portfolio')
+    await userEvent.click(await screen.findByRole('button', { name: '打开首次分析' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('已保存的首次分析结果')).toBeTruthy()
+    await userEvent.click(await within(dialog).findByRole('button', { name: '下一步' }))
+    await screen.findByText('设置一个价格提醒')
+    expect(screen.queryByRole('button', { name: '打开首次分析' })).toBeNull()
+    expect(onboardingApi.analyze).not.toHaveBeenCalled()
   })
 })
 
