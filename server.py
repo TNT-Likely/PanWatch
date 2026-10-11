@@ -1360,7 +1360,7 @@ async def trigger_agent_for_stock(
         symbol=stock.symbol,
         name=stock.name,
         market=market,
-        asset_type=stock.asset_type,
+        asset_type=getattr(stock, "asset_type", None),
     )
 
     # 加载该股票的持仓信息
