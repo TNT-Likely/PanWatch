@@ -118,6 +118,31 @@ def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
         engine.dispose()
 
 
+FLAT_EXPORT = {
+    "accounts": [{"id": "p1", "name": "Pearler (Taxable - DCA Strategy)"}],
+    "activities": [
+        {"accountId": "p1", "type": "BUY", "quantity": 85, "unitPrice": 11.63, "fee": 0,
+         "symbol": "VGS.AX", "dataSource": "YAHOO", "currency": "AUD"},
+        {"accountId": "p1", "type": "BUY", "quantity": 2, "unitPrice": 336.5, "fee": 1.95,
+         "symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"},
+        {"accountId": "p1", "type": "SELL", "quantity": 1, "unitPrice": 340, "fee": 0,
+         "symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"},
+        {"accountId": "p1", "type": "DIVIDEND", "quantity": 0, "unitPrice": 42, "fee": 0,
+         "symbol": "VGS.AX", "dataSource": "YAHOO", "currency": "AUD"},
+    ],
+}
+
+
+def test_compute_holdings_accepts_flat_export_shape():
+    h = compute_holdings(FLAT_EXPORT)
+    vgs = h[("Pearler (Taxable - DCA Strategy)", "VGS", "AU")]
+    assert vgs.quantity == 85 and abs(vgs.cost - 85 * 11.63) < 1e-9
+    assert vgs.name == "VGS"
+    aapl = h[("Pearler (Taxable - DCA Strategy)", "AAPL", "US")]
+    assert aapl.quantity == 1
+    assert abs(aapl.cost - 337.475) < 1e-9
+
+
 class _Resp:
     def __init__(self, status, payload):
         self.status_code = status

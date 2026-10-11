@@ -87,8 +87,8 @@ def compute_holdings(export: dict) -> dict[tuple[str, str, str], Holding]:
         if act.get("type") not in ("BUY", "SELL"):
             continue  # DIVIDEND/TRANSFER 不参与持仓与成本
         sp = act.get("symbolProfile") or {}
-        raw = (sp.get("symbol") or "").upper()
-        market = map_market(raw, sp.get("dataSource") or "")
+        raw = (sp.get("symbol") or act.get("symbol") or "").upper()
+        market = map_market(raw, sp.get("dataSource") or act.get("dataSource") or "")
         if market is None:
             continue
         base = raw.removesuffix(".AX")
