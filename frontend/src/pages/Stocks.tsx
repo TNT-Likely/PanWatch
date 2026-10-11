@@ -55,6 +55,7 @@ interface StockAgentInfo {
 }
 
 interface Stock {
+  asset_type?: 'stock' | 'etf'
   id: number
   symbol: string
   name: string
@@ -87,6 +88,7 @@ interface SchedulePreview {
 }
 
 interface SearchResult {
+  asset_type?: 'stock' | 'etf'
   symbol: string
   name: string
   market: string
@@ -99,6 +101,7 @@ interface QuoteRequestItem {
 
 
 interface StockForm {
+  asset_type: 'stock' | 'etf'
   symbol: string
   name: string
   market: string
@@ -120,6 +123,7 @@ interface PositionForm {
   stock_symbol: string
   stock_name: string
   stock_market: string
+  stock_asset_type: 'stock' | 'etf'
 }
 
 // 建议池中的建议（包含来源和时间信息）
@@ -161,7 +165,7 @@ interface PriceAlertRuleSummary {
   enabled: boolean
 }
 
-const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN' }
+const emptyStockForm: StockForm = { symbol: '', name: '', market: 'CN', asset_type: 'stock' }
 const emptyAccountForm: AccountForm = { name: '', available_funds: '0' }
 
 const buildQuoteItemsFrom = (stockList: Stock[], portfolio: PortfolioSummary | null): QuoteRequestItem[] => {
@@ -281,7 +285,7 @@ export default function StocksPage() {
 
   // Position form
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
-  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN' })
+  const [positionForm, setPositionForm] = useState<PositionForm>({ account_id: 0, stock_id: 0, cost_price: '', quantity: '', invested_amount: '', trading_style: '', stock_symbol: '', stock_name: '', stock_market: 'CN', stock_asset_type: 'stock' })
   const [editPositionId, setEditPositionId] = useState<number | null>(null)
   const [positionDialogAccountId, setPositionDialogAccountId] = useState<number | null>(null)
   const [positionSearchQuery, setPositionSearchQuery] = useState('')
@@ -937,7 +941,7 @@ export default function StocksPage() {
   }
 
   const selectStock = (item: SearchResult) => {
-    setStockForm({ symbol: item.symbol, name: item.name, market: item.market })
+    setStockForm({ symbol: item.symbol, name: item.name, market: item.market, asset_type: item.asset_type || 'stock' })
     setSearchQuery(`${item.symbol} ${item.name}`)
     setShowDropdown(false)
   }
@@ -1046,6 +1050,7 @@ export default function StocksPage() {
         stock_symbol: position.symbol,
         stock_name: position.name,
         stock_market: position.market,
+        stock_asset_type: position.asset_type || 'stock',
       })
       setEditPositionId(position.id)
     } else {
@@ -1059,6 +1064,7 @@ export default function StocksPage() {
         stock_symbol: '',
         stock_name: '',
         stock_market: 'CN',
+        stock_asset_type: 'stock',
       })
       setEditPositionId(null)
     }
@@ -1099,6 +1105,7 @@ export default function StocksPage() {
       stock_symbol: item.symbol,
       stock_name: item.name,
       stock_market: item.market,
+      stock_asset_type: existing?.asset_type || item.asset_type || 'stock',
     })
     setPositionSearchQuery(`${item.symbol} ${item.name}`)
     setShowPositionDropdown(false)
@@ -1118,6 +1125,7 @@ export default function StocksPage() {
               symbol: positionForm.stock_symbol,
               name: positionForm.stock_name,
               market: positionForm.stock_market,
+              asset_type: positionForm.stock_asset_type,
             })
           })
           stockId = newStock.id
@@ -1153,6 +1161,13 @@ export default function StocksPage() {
         await fetchAPI(`/positions/${editPositionId}`, { method: 'PUT', body: JSON.stringify(payload) })
       } else {
         await fetchAPI('/positions', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      const existingStock = stocks.find(stock => stock.id === stockId)
+      if (existingStock && (existingStock.asset_type || 'stock') !== positionForm.stock_asset_type) {
+        const updatedStock = await fetchAPI<Stock>(`/stocks/${stockId}`, {
+          method: 'PUT', body: JSON.stringify({ asset_type: positionForm.stock_asset_type }),
+        })
+        setStocks(previous => previous.map(stock => stock.id === stockId ? updatedStock : stock))
       }
       setPositionDialogOpen(false)
       if (createdStock) void loadNewStockSummary(createdStock)
@@ -1301,6 +1316,8 @@ export default function StocksPage() {
     const formatted = value.toFixed(4).replace(/\.?0+$/, '')
     return formatted
   }
+
+  const formatQuotePrice = (value: number, assetType?: 'stock' | 'etf', market?: string) => value.toFixed(assetType === 'etf' && market !== 'US' ? 3 : 2)
 
   // 获取股票的行情信息
   const getStockQuote = (quoteKey: string) => {
@@ -1708,14 +1725,14 @@ export default function StocksPage() {
                   value={searchQuery}
                   onChange={e => handleSearchInput(e.target.value)}
                   onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'HK' ? '00700 or Tencent' : searchMarket === 'US' ? 'AAPL or Apple' : '600519 or Kweichow Moutai' })}
+                  placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: searchMarket === 'HK' ? '00700 / 02800' : searchMarket === 'US' ? 'AAPL / SPY' : '600519 / 510300' })}
                   className="pl-10"
                   autoComplete="off"
                 />
                 {searching && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
               </div>
               {showDropdown && (
-                <div className="absolute z-50 w-full mt-2 max-h-64 overflow-auto scrollbar card shadow-lg">
+                <div className="relative w-full mt-2 max-h-64 overflow-auto overscroll-contain scrollbar card shadow-lg">
                   {searchResults.map(item => (
                     <button
                       key={`${item.market}-${item.symbol}`}
@@ -1725,15 +1742,23 @@ export default function StocksPage() {
                     >
                       <span className="font-mono text-muted-foreground text-[12px] w-14">{item.symbol}</span>
                       <span className="flex-1 font-medium text-foreground">{item.name}</span>
+                      {item.asset_type === 'etf' && <Badge variant="secondary">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                       <Badge variant="secondary">{marketLabel(item.market)}</Badge>
                     </button>
                   ))}
                 </div>
               )}
               {stockForm.symbol && (
-                <div className="mt-2.5 flex items-center gap-2">
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <Badge><span className="font-mono">{stockForm.symbol}</span> {stockForm.name}</Badge>
                   <Badge variant="secondary">{marketLabel(stockForm.market)}</Badge>
+                  <Select value={stockForm.asset_type} onValueChange={value => setStockForm({ ...stockForm, asset_type: value as 'stock' | 'etf' })}>
+                    <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                      <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
@@ -1801,7 +1826,7 @@ export default function StocksPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-0 md:gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" onClick={() => openPositionDialog(account.id)} aria-label={stockT('stocksPage.messages.addPosition')}>
                       <Plus className="w-3 md:w-3.5 h-3 md:h-3.5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 md:h-8 md:w-8" aria-label={stockT('stocksPage.messages.editAccount')} onClick={() => openAccountDialog(accounts.find(a => a.id === account.id))}>
@@ -1889,6 +1914,7 @@ export default function StocksPage() {
                                       onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                     >
                                       {pos.name}
+                                      {pos.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                                     </button>
                                     {(() => {
                                       const { suggestion, kline } = getSuggestionForStock(pos.symbol, pos.market)
@@ -1907,7 +1933,7 @@ export default function StocksPage() {
                                     })()}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
-                                    {pos.current_price != null ? <span>{pos.current_price.toFixed(2)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
+                                    {pos.current_price != null ? <span>{formatQuotePrice(pos.current_price, pos.asset_type, pos.market)}{isForeign ? (pos.market === 'HK' ? ' HKD' : ' USD') : ''}</span> : '—'}
                                   </td>
                                   <td title={quoteHint(pos)} className={`px-4 py-2.5 text-right font-mono text-[12px] ${changeColor}`}>
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
@@ -2058,6 +2084,7 @@ export default function StocksPage() {
                                     onClick={() => openStockDetail(pos.symbol, pos.market, pos.name, true)}
                                   >
                                     {pos.name}
+                                    {pos.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                                   </button>
                                   {pos.trading_style && (
                                     <span className={`shrink-0 text-[9px] px-1 py-0.5 rounded ${pos.trading_style === 'short' ? 'bg-rose-500/10 text-rose-600' : pos.trading_style === 'long' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>
@@ -2066,7 +2093,7 @@ export default function StocksPage() {
                                   )}
                                 </div>
                                 <div title={quoteHint(pos)} className={`font-mono text-[13px] font-medium whitespace-nowrap shrink-0 ${changeColor}`}>
-                                  {pos.current_price?.toFixed(2) || '—'}
+                                  {pos.current_price != null ? formatQuotePrice(pos.current_price, pos.asset_type, pos.market) : '—'}
                                   <span className="text-[11px] ml-1">{pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}</span>
                                 </div>
                               </div>
@@ -2294,12 +2321,13 @@ export default function StocksPage() {
                             onClick={(e) => { e.stopPropagation(); if (tour?.active && tour.step === 'stock') { void tour.selectStock(stock.id); return }; openStockDetail(stock.symbol, stock.market, stock.name, false) }}
                           >
                             {stock.name}
+                            {stock.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                           </button>
                         </div>
                       </div>
                       <div className="text-right">
                         <div title={quoteHint(quote || {})} className={`font-mono text-[14px] font-bold leading-tight ${changeColor}`}>
-                          {quote?.current_price != null ? quote.current_price.toFixed(2) : '--'}
+                          {quote?.current_price != null ? formatQuotePrice(quote.current_price, stock.asset_type, stock.market) : '--'}
                         </div>
                         <div className={`font-mono text-[11px] leading-tight ${changeColor}`}>
                           {quote?.change_pct != null ? `${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct.toFixed(2)}%` : '--'}
@@ -2530,12 +2558,19 @@ export default function StocksPage() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {editPositionId ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg bg-accent/30">
                 <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                   {marketBadge(positionForm.stock_market).label}
                 </span>
                 <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
                 <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                <Select value={positionForm.stock_asset_type} onValueChange={value => setPositionForm({ ...positionForm, stock_asset_type: value as 'stock' | 'etf' })}>
+                  <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8 shrink-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                    <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             ) : (
               <div>
@@ -2564,18 +2599,20 @@ export default function StocksPage() {
                   </div>
                 </div>
                 <div className="relative" ref={positionDropdownRef}>
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                  <Input
-                    value={positionSearchQuery}
-                    onChange={e => handlePositionSearchInput(e.target.value)}
-                    onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
-                    placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 or Tencent' : positionSearchMarket === 'US' ? 'LI or Li Auto' : positionSearchMarket === 'CN' ? '600519 or Kweichow Moutai' : '600519 / 00700 / AAPL' })}
-                    className="pl-9"
-                    autoComplete="off"
-                  />
-                  {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                    <Input
+                      value={positionSearchQuery}
+                      onChange={e => handlePositionSearchInput(e.target.value)}
+                      onFocus={() => positionSearchResults.length > 0 && setShowPositionDropdown(true)}
+                      placeholder={stockT('stocksPage.messages.searchPlaceholder', { example: positionSearchMarket === 'HK' ? '00700 / 02800' : positionSearchMarket === 'US' ? 'AAPL / SPY' : positionSearchMarket === 'CN' ? '600519 / 510300' : '510300 / 02800 / SPY' })}
+                      className="pl-9"
+                      autoComplete="off"
+                    />
+                    {positionSearching && <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />}
+                  </div>
                   {showPositionDropdown && positionSearchResults.length > 0 && (
-                    <div className="absolute z-50 w-full mt-1 max-h-48 overflow-auto scrollbar card shadow-lg">
+                    <div className="relative w-full mt-1 max-h-48 overflow-auto overscroll-contain scrollbar card shadow-lg">
                       {positionSearchResults.map(item => (
                         <button
                           key={`${item.market}-${item.symbol}`}
@@ -2588,18 +2625,26 @@ export default function StocksPage() {
                           </span>
                           <span className="font-mono text-muted-foreground text-[12px]">{item.symbol}</span>
                           <span className="flex-1 text-foreground">{item.name}</span>
+                          {item.asset_type === 'etf' && <Badge variant="secondary">{stockT('stocksPage.assetTypes.etf')}</Badge>}
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
                 {positionForm.stock_symbol && (
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className={`text-[9px] px-1.5 py-0.5 rounded ${marketBadge(positionForm.stock_market).style}`}>
                       {marketBadge(positionForm.stock_market).label}
                     </span>
                     <span className="font-mono text-[12px] text-muted-foreground">{positionForm.stock_symbol}</span>
                     <span className="text-[13px] text-foreground">{positionForm.stock_name}</span>
+                    <Select value={positionForm.stock_asset_type} onValueChange={value => setPositionForm({ ...positionForm, stock_asset_type: value as 'stock' | 'etf' })}>
+                      <SelectTrigger aria-label={stockT('stocksPage.assetTypes.label')} className="w-28 h-8 shrink-0"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="stock">{stockT('stocksPage.assetTypes.stock')}</SelectItem>
+                        <SelectItem value="etf">{stockT('stocksPage.assetTypes.etf')}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <button
                       type="button"
                       onClick={() => {
@@ -2932,6 +2977,7 @@ export default function StocksPage() {
                 }`}
               >
                 {stock.name}
+                {stock.asset_type === 'etf' && <Badge variant="secondary" className="ml-1">{stockT('stocksPage.assetTypes.etf')}</Badge>}
               </button>
             ))}
             {stocks.length > 10 && (

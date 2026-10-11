@@ -757,6 +757,7 @@ def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:
                     symbol=s.symbol,
                     name=s.name,
                     market=market,
+                    asset_type=s.asset_type,
                 )
             )
         return result
@@ -1359,6 +1360,7 @@ async def trigger_agent_for_stock(
         symbol=stock.symbol,
         name=stock.name,
         market=market,
+        asset_type=stock.asset_type,
     )
 
     # 加载该股票的持仓信息

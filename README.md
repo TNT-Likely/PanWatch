@@ -70,6 +70,10 @@ The screenshots below use the English interface; Simplified Chinese is available
 | **Notifications** | Deliver reports and alerts through Telegram, WeCom, DingTalk, Feishu, Bark, or webhooks. |
 | **Mobile** | Install the PWA on your home screen and use the same workspace on your phone. |
 
+Stock and listed ETF search, watchlists, holdings, price alerts, quotes and candlesticks share the same workflow across mainland China, Hong Kong and US markets. Search by code or name (for example, `510300`, `159915`, `02800` or `SPY`). The asset type is saved with each instrument; select **ETF** for funds whose provider name does not identify them as ETFs.
+
+ETF deep analysis uses fund-specific context and does not substitute company financial statements. Fund holdings, NAV, fees and tracking error are not yet supplied as structured data. Paper trading continues to use its existing market rules and cost model; ETF-specific T+0 exceptions and fee schedules are not modeled.
+
 ## Quick Start
 
 ```bash
