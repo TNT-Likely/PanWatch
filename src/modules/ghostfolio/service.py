@@ -8,6 +8,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import requests
 from sqlalchemy.orm import Session
@@ -17,6 +18,48 @@ from src.platform.persistence.models import Account, GhostfolioConfig, Position,
 logger = logging.getLogger(__name__)
 
 GHOSTFOLIO_ENABLED = os.getenv("GHOSTFOLIO_ENABLED", "1") == "1"
+
+
+class ExportValidationError(ValueError):
+    """导出不完整或结构非法——此时绝不应用任何变更。"""
+
+
+def validate_export(export: object) -> None:
+    """校验导出完整性;不完整/部分导出必须让同步整体中止而非部分应用。"""
+    if not isinstance(export, dict):
+        raise ExportValidationError("export is not a JSON object")
+    accounts = export.get("accounts")
+    if not isinstance(accounts, list) or not accounts:
+        raise ExportValidationError("accounts missing or empty (partial export)")
+    ids = set()
+    for acc in accounts:
+        if not isinstance(acc, dict) or not acc.get("id"):
+            raise ExportValidationError("account entry without id")
+        ids.add(acc["id"])
+    activities = export.get("activities")
+    if not isinstance(activities, list):
+        raise ExportValidationError("activities missing (partial export)")
+    for i, act in enumerate(activities):
+        if not isinstance(act, dict):
+            raise ExportValidationError(f"activity[{i}] is not an object")
+        if not act.get("accountId") or act["accountId"] not in ids:
+            raise ExportValidationError(f"activity[{i}] references unknown accountId")
+        if not act.get("type"):
+            raise ExportValidationError(f"activity[{i}] missing type")
+        if act["type"] in ("BUY", "SELL"):
+            for field_name in ("quantity", "unitPrice"):
+                try:
+                    float(act.get(field_name))
+                except (TypeError, ValueError):
+                    raise ExportValidationError(f"activity[{i}] non-numeric {field_name}")
+            if act.get("fee") is not None:
+                try:
+                    float(act["fee"])
+                except (TypeError, ValueError):
+                    raise ExportValidationError(f"activity[{i}] non-numeric fee")
+        if not act.get("date"):
+            raise ExportValidationError(f"activity[{i}] missing date")
+
 
 _US_RE = re.compile(r"^[A-Z.]{1,6}$")
 _AU_RE = re.compile(r"^[A-Z]{1,6}$")
@@ -127,6 +170,13 @@ def sync_now(db: Session, dry_run: bool = False) -> SyncResult:
     cfg = get_or_create_config(db)
     res = SyncResult()
     export = fetch_export(cfg.base_url, cfg.api_token)
+    try:
+        validate_export(export)
+    except ExportValidationError as e:
+        cfg.last_sync_at = datetime.now()
+        cfg.last_status = f"aborted: {e}"
+        db.commit()
+        raise
     holdings = compute_holdings(export)
     if dry_run:
         return res
@@ -174,7 +224,6 @@ def sync_now(db: Session, dry_run: bool = False) -> SyncResult:
                 db.delete(pos)
                 res.removed += 1
 
-    from datetime import datetime, timezone
     cfg.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC,与列类型一致
     cfg.last_status = "ok"
     db.commit()

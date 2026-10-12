@@ -14,21 +14,28 @@ EXPORT = {
     ],
     "activities": [
         {"accountId": "a1", "type": "BUY", "quantity": "10", "unitPrice": "100", "fee": "5",
+         "date": "2026-01-02T10:00:00+11:00",
          "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
                            "name": "Commonwealth Bank of Australia", "currency": "AUD"}},
         {"accountId": "a1", "type": "DIVIDEND", "quantity": "0", "unitPrice": "42", "fee": "0",
+         "date": "2026-01-03T10:00:00+11:00",
          "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
                            "name": "Commonwealth Bank of Australia", "currency": "AUD"}},
         {"accountId": "a1", "type": "BUY", "quantity": "3.5", "unitPrice": "98.6", "fee": "0",
+         "date": "2026-01-04T10:00:00+11:00",
          "symbolProfile": {"symbol": "IVV.AX", "dataSource": "YAHOO",
                            "name": "iShares S&P 500 ETF", "currency": "AUD"}},
         {"accountId": "a2", "type": "BUY", "quantity": "2", "unitPrice": "190", "fee": "0",
+         "date": "2026-01-05T10:00:00+11:00",
          "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "name": "Apple Inc.", "currency": "USD"}},
         {"accountId": "a2", "type": "SELL", "quantity": "1", "unitPrice": "210", "fee": "0",
+         "date": "2026-01-06T10:00:00+11:00",
          "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "name": "Apple Inc.", "currency": "USD"}},
         {"accountId": "a2", "type": "BUY", "quantity": "0.05", "unitPrice": "65000", "fee": "0",
+         "date": "2026-01-07T10:00:00+11:00",
          "symbolProfile": {"symbol": "BTC", "dataSource": "COINGECKO", "name": "Bitcoin", "currency": "USD"}},
         {"accountId": "a3", "type": "BUY", "quantity": "100", "unitPrice": "38.5", "fee": "0",
+         "date": "2026-01-08T10:00:00+11:00",
          "symbolProfile": {"symbol": "0700.HK", "dataSource": "YAHOO",
                            "name": "Tencent Holdings", "currency": "HKD"}},
     ],
@@ -122,15 +129,68 @@ FLAT_EXPORT = {
     "accounts": [{"id": "p1", "name": "Pearler (Taxable - DCA Strategy)"}],
     "activities": [
         {"accountId": "p1", "type": "BUY", "quantity": 85, "unitPrice": 11.63, "fee": 0,
+         "date": "2026-01-02T10:00:00+11:00",
          "symbol": "VGS.AX", "dataSource": "YAHOO", "currency": "AUD"},
         {"accountId": "p1", "type": "BUY", "quantity": 2, "unitPrice": 336.5, "fee": 1.95,
+         "date": "2026-01-03T10:00:00+11:00",
          "symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"},
         {"accountId": "p1", "type": "SELL", "quantity": 1, "unitPrice": 340, "fee": 0,
+         "date": "2026-01-04T10:00:00+11:00",
          "symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"},
         {"accountId": "p1", "type": "DIVIDEND", "quantity": 0, "unitPrice": 42, "fee": 0,
+         "date": "2026-01-05T10:00:00+11:00",
          "symbol": "VGS.AX", "dataSource": "YAHOO", "currency": "AUD"},
     ],
 }
+
+
+def test_validate_export_rejects_incomplete_shapes():
+    """不完整/非法导出必须被识别:空对象、空账户、缺 activities、非法数量、未知账户。"""
+    from src.modules.ghostfolio.service import ExportValidationError, validate_export
+
+    with pytest.raises(ExportValidationError):
+        validate_export({})  # 完全为空(HTTP 200 但无内容)
+    with pytest.raises(ExportValidationError):
+        validate_export({"accounts": [], "activities": []})  # 空账户列表视为部分导出
+    with pytest.raises(ExportValidationError):
+        validate_export({"accounts": [{"id": "a1"}]})  # 缺 activities 键
+    with pytest.raises(ExportValidationError):
+        validate_export({"accounts": [{"id": "a1"}], "activities": [
+            {"accountId": "a1", "type": "BUY", "quantity": "x",
+             "unitPrice": "1", "date": "2026-01-02"}]})  # 数量非数值
+    with pytest.raises(ExportValidationError):
+        validate_export({"accounts": [{"id": "a1"}], "activities": [
+            {"accountId": "a2", "type": "BUY", "quantity": "1",
+             "unitPrice": "1", "date": "2026-01-02"}]})  # 活动引用未知账户
+    with pytest.raises(ExportValidationError):
+        validate_export({"accounts": [{"id": "a1"}], "activities": [
+            {"accountId": "a1", "type": "BUY", "quantity": "1",
+             "unitPrice": "1"}]})  # BUY 缺日期
+    validate_export(EXPORT)  # 完整导出通过
+    validate_export(FLAT_EXPORT)  # 扁平形态同样通过
+
+
+def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monkeypatch):
+    """畸形但 HTTP 成功的导出 {} 不得删除任何既有持仓(评审复现场景)。"""
+    from src.platform.persistence.models import Position
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+        service.sync_now(db)
+        before = db.query(Position).count()
+        assert before == 4
+
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: {})
+        with pytest.raises(service.ExportValidationError):
+            service.sync_now(db)
+        assert db.query(Position).count() == before  # 持仓原样保留
+        assert service.get_or_create_config(db).last_status.startswith("aborted:")
+    finally:
+        db.close()
+        engine.dispose()
 
 
 def test_compute_holdings_accepts_flat_export_shape():
