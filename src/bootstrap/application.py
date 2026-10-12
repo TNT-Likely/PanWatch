@@ -191,7 +191,7 @@ app.include_router(
 
 app.include_router(notifications_api.router, prefix="/api/notifications", tags=["notifications"], dependencies=protected)
 
-# Ghostfolio 单向同步(特性开关 GHOSTFOLIO_ENABLED,默认开)
+# Ghostfolio 单向同步(特性开关 GHOSTFOLIO_ENABLED,默认关;须显式启用)
 if GHOSTFOLIO_ENABLED:
     app.include_router(
         ghostfolio_api.router,

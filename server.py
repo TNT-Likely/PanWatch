@@ -1173,32 +1173,15 @@ def register_mcp_log_cleanup(sched: AgentScheduler) -> None:
 
 def register_ghostfolio_sync(sched: AgentScheduler) -> None:
     """Ghostfolio 持仓单向同步:按配置表的 sync_cron(POSIX 5 段)注册到主调度器。"""
-    from src.modules.ghostfolio.service import (
-        GHOSTFOLIO_ENABLED,
-        get_or_create_config,
-        run_scheduled_sync,
-    )
-    if not GHOSTFOLIO_ENABLED:
-        return
+    from src.modules.ghostfolio.service import get_or_create_config, reconcile_sync_job
     from src.platform.persistence.database import SessionLocal
-    from src.platform.scheduling.schedule_parser import parse_schedule
 
     db = SessionLocal()
     try:
         cfg = get_or_create_config(db)
-        if not cfg.enabled:
-            logger.info("Ghostfolio 同步未启用,不注册定时任务")
-            return
-        cron = cfg.sync_cron or "17 8 * * *"
+        reconcile_sync_job(sched, cfg)
     finally:
         db.close()
-    sched.scheduler.add_job(
-        run_scheduled_sync,
-        parse_schedule(cron, timezone=Settings().app_timezone),
-        id="ghostfolio_sync",
-        replace_existing=True,
-    )
-    logger.info(f"Ghostfolio 同步任务已注册 (cron: {cron})")
 
 
 def reload_scheduler() -> bool:
@@ -1213,6 +1196,7 @@ def reload_scheduler() -> bool:
                 pass
         scheduler = build_scheduler()
         register_mcp_log_cleanup(scheduler)
+        register_ghostfolio_sync(scheduler)
         scheduler.start()
         logger.info("Agent 调度器已重载")
         return True

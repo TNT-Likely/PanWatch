@@ -192,6 +192,25 @@ def get_or_create_config(db: Session) -> GhostfolioConfig:
     return cfg
 
 
+def reconcile_sync_job(scheduler_wrapper, cfg: GhostfolioConfig) -> None:
+    """按部署开关与持久配置替换或移除同步任务。"""
+    from apscheduler.jobstores.base import JobLookupError
+    from src.platform.runtime.config import Settings
+    from src.platform.scheduling.schedule_parser import parse_schedule
+
+    if GHOSTFOLIO_ENABLED and cfg.enabled:
+        scheduler_wrapper.scheduler.add_job(
+            run_scheduled_sync,
+            parse_schedule(cfg.sync_cron or "17 8 * * *", timezone=Settings().app_timezone),
+            id="ghostfolio_sync", replace_existing=True,
+        )
+    else:
+        try:
+            scheduler_wrapper.scheduler.remove_job("ghostfolio_sync")
+        except JobLookupError:
+            pass
+
+
 def _resolve_account(db: Session, cfg: GhostfolioConfig, gf_id: str, display_name: str) -> Account:
     """按上游 ID 解析本地账户;历史“前缀+名称”账户在尚无映射时按名称收编一次。"""
     m = db.query(GhostfolioAccountMap).filter_by(gf_account_id=gf_id).one_or_none()

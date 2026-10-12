@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -6,6 +8,7 @@ from src.modules.ghostfolio import service
 from src.platform.persistence.database import get_db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class GhostfolioConfigIn(BaseModel):
@@ -33,6 +36,14 @@ def put_config(body: GhostfolioConfigIn, db: Session = Depends(get_db)):
     for k, v in body.model_dump().items():
         setattr(cfg, k, v)
     db.commit()
+    try:
+        import server
+        scheduler = getattr(server, "scheduler", None)
+        if scheduler is None:
+            raise RuntimeError("Agent scheduler is not initialized")
+        service.reconcile_sync_job(scheduler, cfg)
+    except Exception as e:
+        logger.warning(f"Ghostfolio 定时任务配置未能即时更新: {e}")
     return {"ok": True}
 
 

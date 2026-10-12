@@ -591,13 +591,108 @@ def test_register_ghostfolio_sync_skips_when_disabled(tmp_path, monkeypatch):
         added: list = []
 
         class _Sched:
+            def __init__(self):
+                self.scheduler = self
+
             def add_job(self, *a, **k):
                 added.append(a)
+
+            def remove_job(self, job_id):
+                from apscheduler.jobstores.base import JobLookupError
+                raise JobLookupError(job_id)
 
         server_mod.register_ghostfolio_sync(_Sched())
         assert added == []
     finally:
         engine.dispose()
+
+
+def test_reconcile_sync_job_enabled_disabled_and_cron_change(monkeypatch):
+    """开关与 cron 变动即时替换或移除定时任务。"""
+    from apscheduler.jobstores.base import JobLookupError
+
+    class _Jobs:
+        def __init__(self):
+            self.calls = []
+            self.exists = False
+
+        def add_job(self, *args, **kwargs):
+            self.calls.append(("add", args, kwargs))
+            self.exists = True
+
+        def remove_job(self, job_id):
+            if not self.exists:
+                raise JobLookupError(job_id)
+            self.calls.append(("remove", job_id))
+            self.exists = False
+
+    class _Wrapper:
+        def __init__(self):
+            self.scheduler = _Jobs()
+
+    wrapper = _Wrapper()
+    cfg = service.GhostfolioConfig(enabled=True, sync_cron="17 8 * * *")
+    monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+    monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+    service.reconcile_sync_job(wrapper, cfg)
+    assert wrapper.scheduler.calls[0][2]["id"] == "ghostfolio_sync"
+    assert wrapper.scheduler.calls[0][2]["replace_existing"] is True
+    cfg.sync_cron = "30 9 * * *"
+    service.reconcile_sync_job(wrapper, cfg)
+    assert str(wrapper.scheduler.calls[0][1][1]) != str(wrapper.scheduler.calls[1][1][1])
+    cfg.enabled = False
+    service.reconcile_sync_job(wrapper, cfg)
+    service.reconcile_sync_job(wrapper, cfg)  # 不存在时移除无异常
+    assert wrapper.scheduler.calls[-1] == ("remove", "ghostfolio_sync")
+    assert len(wrapper.scheduler.calls) == 3
+    cfg.enabled = True
+    monkeypatch.setenv("GHOSTFOLIO_ENABLED", "0")
+    monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", False)
+    service.reconcile_sync_job(wrapper, cfg)
+    assert len(wrapper.scheduler.calls) == 3
+
+
+def test_put_config_reconciles_scheduler(tmp_path, monkeypatch):
+    """配置开关和 cron 写入后立即更新运行中的定时任务。"""
+    from src.modules.ghostfolio import api
+    import server
+
+    db, engine = _make_db(tmp_path)
+    try:
+        calls = []
+        wrapper = object()
+        monkeypatch.setattr(server, "scheduler", wrapper, raising=False)
+        monkeypatch.setattr(service, "reconcile_sync_job", lambda sched, cfg:
+                            calls.append((sched, cfg.enabled, cfg.sync_cron)))
+        body = api.GhostfolioConfigIn(base_url="http://gf.test", api_token="tok",
+                                      enabled=True, sync_cron="30 9 * * *")
+        assert api.put_config(body, db=db) == {"ok": True}
+        assert calls == [(wrapper, True, "30 9 * * *")]
+        assert service.get_or_create_config(db).sync_cron == "30 9 * * *"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_reload_scheduler_registers_ghostfolio(monkeypatch):
+    """调度器重建后重建同步任务。"""
+    import server
+
+    calls = []
+
+    class _Sched:
+        def shutdown(self):
+            calls.append("shutdown")
+
+        def start(self):
+            calls.append("start")
+
+    monkeypatch.setattr(server, "scheduler", _Sched(), raising=False)
+    monkeypatch.setattr(server, "build_scheduler", _Sched)
+    monkeypatch.setattr(server, "register_mcp_log_cleanup", lambda sched: calls.append("mcp"))
+    monkeypatch.setattr(server, "register_ghostfolio_sync", lambda sched: calls.append("ghostfolio"))
+    assert server.reload_scheduler() is True
+    assert calls == ["shutdown", "mcp", "ghostfolio", "start"]
 
 
 def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
