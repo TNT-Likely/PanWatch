@@ -39,6 +39,8 @@ def put_config(body: GhostfolioConfigIn, db: Session = Depends(get_db)):
 @router.post("/sync/preview")
 def preview(db: Session = Depends(get_db)):
     cfg = service.get_or_create_config(db)
+    if not service.GHOSTFOLIO_ENABLED or not cfg.enabled:
+        return {"error": "disabled"}
     if not cfg.base_url:
         return {"error": "not configured"}
     export = service.fetch_export(cfg.base_url, cfg.api_token)

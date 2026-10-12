@@ -78,10 +78,20 @@ def _make_db(tmp_path):
 
 def test_sync_now_disabled_does_not_fetch(tmp_path, monkeypatch):
     """enabled=False 时不得发起任何导出请求(定时与手动同一条路径)。"""
+    from src.platform.persistence.models import Account, Position, Stock
+
     db, engine = _make_db(tmp_path)
     try:
         db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=False))
+        account = Account(name="GF: Existing")
+        stock = Stock(symbol="IVV", name="iShares", market="AU")
+        db.add_all([account, stock])
+        db.flush()
+        db.add(Position(account_id=account.id, stock_id=stock.id, cost_price=65.79,
+                        quantity=163, invested_amount=10723))
         db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
 
         def _boom(base, token):
             raise AssertionError("fetch must not be called when disabled")
@@ -90,6 +100,73 @@ def test_sync_now_disabled_does_not_fetch(tmp_path, monkeypatch):
         res = service.sync_now(db)
         assert res.status == "disabled"
         assert service.get_or_create_config(db).last_status == "disabled"
+        assert db.query(Account).one().name == "GF: Existing"
+        pos = db.query(Position).one()
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == (163, 65.79, 10723)
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_sync_now_global_flag_disabled_with_enabled_config(tmp_path, monkeypatch):
+    """部署级开关关闭时,已启用的配置也不得同步。"""
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "0")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", False)
+        monkeypatch.setattr(service, "fetch_export",
+                            lambda base, token: (_ for _ in ()).throw(AssertionError("must not fetch")))
+        res = service.sync_now(db)
+        assert res.status == "disabled"
+        assert service.get_or_create_config(db).last_status == "disabled"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_sync_now_both_flags_enabled(tmp_path, monkeypatch):
+    """部署和配置同时启用时才允许同步。"""
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        fetched = []
+
+        def _fetch(base, token):
+            fetched.append(base)
+            return EXPORT
+
+        monkeypatch.setattr(service, "fetch_export", _fetch)
+        res = service.sync_now(db)
+        assert res.status == "ok"
+        assert fetched == ["http://gf.test"]
+        assert res.created == 4
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_preview_disabled_does_not_fetch(tmp_path, monkeypatch):
+    """预览入口在任一开关关闭时不得请求导出。"""
+    from src.modules.ghostfolio import api
+
+    db, engine = _make_db(tmp_path)
+    try:
+        cfg = service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True)
+        db.add(cfg)
+        db.commit()
+        monkeypatch.setattr(service, "fetch_export",
+                            lambda base, token: (_ for _ in ()).throw(AssertionError("must not fetch")))
+        for global_enabled, config_enabled in ((False, True), (True, False)):
+            monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1" if global_enabled else "0")
+            monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", global_enabled)
+            cfg.enabled = config_enabled
+            db.commit()
+            assert api.preview(db=db) == {"error": "disabled"}
     finally:
         db.close()
         engine.dispose()
