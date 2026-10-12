@@ -161,7 +161,7 @@ def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding],
         key = (act.get("accountId") or "default", base, market)
         h = holdings.get(key) or Holding(symbol=base, name=sp.get("name") or base,
                                          market=market, quantity=0.0, cost=0.0)
-        ccy = (sp.get("currency") or act.get("currency") or "").upper()
+        ccy = ((act.get("currency") or "") or (sp.get("currency") or "")).upper()
         if h.currency and ccy and h.currency != ccy:
             raise ExportValidationError(
                 f"mixed currencies for {market}:{base}: {h.currency} vs {ccy}")

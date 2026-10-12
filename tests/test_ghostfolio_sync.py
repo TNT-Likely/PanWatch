@@ -134,6 +134,20 @@ def test_compute_holdings_rejects_mixed_currency():
         compute_holdings(_mixed_currency_export())
 
 
+def test_activity_currency_overrides_profile_and_detects_conflicts():
+    """交易币种优先于档案币种,仅交易币种不一致时中止。"""
+    export = _mixed_currency_export()
+    activities = [{**act, "symbolProfile": {**act["symbolProfile"], "currency": "USD"},
+                   "currency": currency} for act, currency in
+                  zip(export["activities"], ("USD", "AUD"))]
+    with pytest.raises(ExportValidationError, match="mixed currencies"):
+        compute_holdings({"accounts": export["accounts"], "activities": activities})
+    activities[0] = {**activities[0], "currency": "AUD"}
+    holdings, _ = compute_holdings({"accounts": export["accounts"], "activities": activities})
+    assert holdings[("m1", "CBA", "AU")].currency == "AUD"
+    assert holdings[("m1", "CBA", "AU")].cost == 200
+
+
 def test_compute_holdings_reports_skipped_types_and_currency():
     """非交易活动按类型计数;交易持仓保留成本计价币种。"""
     export = {"accounts": EXPORT["accounts"], "activities": EXPORT["activities"] + [
