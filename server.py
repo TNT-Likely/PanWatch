@@ -1196,7 +1196,10 @@ def reload_scheduler() -> bool:
                 pass
         scheduler = build_scheduler()
         register_mcp_log_cleanup(scheduler)
-        register_ghostfolio_sync(scheduler)
+        try:
+            register_ghostfolio_sync(scheduler)
+        except Exception as e:
+            logger.error(f"Ghostfolio 同步任务注册失败: {e}")
         scheduler.start()
         logger.info("Agent 调度器已重载")
         return True
