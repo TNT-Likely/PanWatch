@@ -180,6 +180,41 @@ def test_sync_mixed_currency_aborts_without_changing_positions(tmp_path, monkeyp
         engine.dispose()
 
 
+def test_sync_invalid_date_aborts_without_changing_positions(tmp_path, monkeypatch):
+    """无效交易日期中止同步,保留现有持仓。"""
+    from copy import deepcopy
+    from src.platform.persistence.models import Account, GhostfolioAccountMap, Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        cfg = service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True)
+        acc = Account(name="GF: Stake")
+        stock = Stock(symbol="CBA", name="CBA", market="AU")
+        db.add_all([cfg, acc, stock])
+        db.flush()
+        db.add(GhostfolioAccountMap(gf_account_id="a1", account_id=acc.id))
+        pos = Position(account_id=acc.id, stock_id=stock.id, quantity=7,
+                       cost_price=88, invested_amount=616)
+        db.add(pos)
+        db.commit()
+        bad_export = deepcopy(EXPORT)
+        bad_export["activities"][0]["date"] = "not-a-date"
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: bad_export)
+
+        with pytest.raises(ExportValidationError, match=r"activity\[0\].*CBA.AX"):
+            service.sync_now(db)
+        db.refresh(cfg)
+        db.refresh(pos)
+        assert cfg.last_status.startswith("aborted:")
+        assert cfg.last_sync_at is not None
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == (7, 88, 616)
+        assert db.query(Position).count() == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_preview_mixed_currency_returns_invalid_export(tmp_path, monkeypatch):
     """预览遇货币冲突返回错误而非部分持仓。"""
     from src.modules.ghostfolio import api

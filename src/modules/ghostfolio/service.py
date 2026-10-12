@@ -59,6 +59,11 @@ def validate_export(export: object) -> None:
                     raise ExportValidationError(f"activity[{i}] non-numeric fee")
         if not act.get("date"):
             raise ExportValidationError(f"activity[{i}] missing date")
+        try:
+            datetime.fromisoformat(act["date"])
+        except (TypeError, ValueError):
+            symbol = (act.get("symbolProfile") or {}).get("symbol") or act.get("symbol") or "未知标的"
+            raise ExportValidationError(f"activity[{i}] {symbol} 日期无效")
 
 
 _US_RE = re.compile(r"^[A-Z.]{1,6}$")
