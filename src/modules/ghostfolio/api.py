@@ -13,7 +13,7 @@ class GhostfolioConfigIn(BaseModel):
     api_token: str
     account_prefix: str = "GF: "
     sync_cron: str = "17 8 * * *"
-    enabled: bool = True
+    enabled: bool = False
 
 
 @router.get("/status")

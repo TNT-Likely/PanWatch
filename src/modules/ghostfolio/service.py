@@ -17,7 +17,7 @@ from src.platform.persistence.models import Account, GhostfolioConfig, Position,
 
 logger = logging.getLogger(__name__)
 
-GHOSTFOLIO_ENABLED = os.getenv("GHOSTFOLIO_ENABLED", "1") == "1"
+GHOSTFOLIO_ENABLED = os.getenv("GHOSTFOLIO_ENABLED", "0") == "1"
 
 
 class ExportValidationError(ValueError):
@@ -81,6 +81,8 @@ class SyncResult:
     updated: int = 0
     removed: int = 0
     skipped: int = 0
+    pending_removals: int = 0   # Task 6 起使用
+    status: str = "ok"
 
 
 def map_market(symbol: str, data_source: str) -> str | None:
@@ -166,8 +168,14 @@ def get_or_create_config(db: Session) -> GhostfolioConfig:
     return cfg
 
 
-def sync_now(db: Session, dry_run: bool = False) -> SyncResult:
+def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) -> SyncResult:
     cfg = get_or_create_config(db)
+    if not GHOSTFOLIO_ENABLED or not cfg.enabled:
+        cfg.last_status = "disabled"
+        db.commit()
+        res = SyncResult()
+        res.status = "disabled"
+        return res
     res = SyncResult()
     export = fetch_export(cfg.base_url, cfg.api_token)
     try:
@@ -231,14 +239,18 @@ def sync_now(db: Session, dry_run: bool = False) -> SyncResult:
 
 
 def run_scheduled_sync() -> None:
-    """供调度器调用(注册方式与 MCP 日志清理相同,见 server.py)。"""
+    """定时入口:每次运行都重新检查用户开关,而不是只在注册时检查。"""
+    from src.platform.persistence.database import SessionLocal
+
     if not GHOSTFOLIO_ENABLED:
         return
-    from src.platform.persistence.database import SessionLocal
     db = SessionLocal()
     try:
+        if not get_or_create_config(db).enabled:
+            logger.info("Ghostfolio 同步未启用,跳过本次运行")
+            return
         sync_now(db)
-    except Exception as e:  # 同步失败不影响其它任务
-        logger.warning("ghostfolio sync failed: %s", e)
+    except Exception:
+        logger.exception("Ghostfolio 定时同步失败")
     finally:
         db.close()

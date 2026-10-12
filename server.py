@@ -1186,6 +1186,9 @@ def register_ghostfolio_sync(sched: AgentScheduler) -> None:
     db = SessionLocal()
     try:
         cfg = get_or_create_config(db)
+        if not cfg.enabled:
+            logger.info("Ghostfolio 同步未启用,不注册定时任务")
+            return
         cron = cfg.sync_cron or "17 8 * * *"
     finally:
         db.close()

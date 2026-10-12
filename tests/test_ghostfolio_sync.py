@@ -76,14 +76,70 @@ def _make_db(tmp_path):
     return sessionmaker(bind=engine)(), engine
 
 
+def test_sync_now_disabled_does_not_fetch(tmp_path, monkeypatch):
+    """enabled=False 时不得发起任何导出请求(定时与手动同一条路径)。"""
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=False))
+        db.commit()
+
+        def _boom(base, token):
+            raise AssertionError("fetch must not be called when disabled")
+
+        monkeypatch.setattr(service, "fetch_export", _boom)
+        res = service.sync_now(db)
+        assert res.status == "disabled"
+        assert service.get_or_create_config(db).last_status == "disabled"
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_run_scheduled_sync_honors_disabled(tmp_path, monkeypatch):
+    """定时入口每次运行都重新检查用户开关。"""
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=False))
+        db.commit()
+        monkeypatch.setattr("src.platform.persistence.database.SessionLocal", lambda: db)
+        monkeypatch.setattr(service, "fetch_export",
+                            lambda base, token: (_ for _ in ()).throw(AssertionError("must not fetch")))
+        service.run_scheduled_sync()  # 不抛错、不请求
+    finally:
+        engine.dispose()
+
+
+def test_register_ghostfolio_sync_skips_when_disabled(tmp_path, monkeypatch):
+    """enabled=False 时不向调度器注册任何任务。"""
+    import server as server_mod
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=False))
+        db.commit()
+        monkeypatch.setattr("src.platform.persistence.database.SessionLocal", lambda: db)
+        added: list = []
+
+        class _Sched:
+            def add_job(self, *a, **k):
+                added.append(a)
+
+        server_mod.register_ghostfolio_sync(_Sched())
+        assert added == []
+    finally:
+        engine.dispose()
+
+
 def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
     from src.modules.ghostfolio import service
     from src.platform.persistence.models import Account, Position, Stock
 
     db, engine = _make_db(tmp_path)
     try:
-        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok"))
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
         db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
         monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
 
         res = service.sync_now(db)
@@ -178,6 +234,8 @@ def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monke
     try:
         db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
         db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
         monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
         service.sync_now(db)
         before = db.query(Position).count()
