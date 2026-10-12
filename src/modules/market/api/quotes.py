@@ -1,10 +1,13 @@
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from src.platform.marketdata.marketdata_client import md_quote_rows
+from src.platform.marketdata.enablement import require_market_enabled
 from src.platform.marketdata.models import MarketCode
+from src.platform.persistence.database import get_db
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import api_error
 
@@ -71,9 +74,10 @@ def _quote_to_response(symbol: str, market: MarketCode, quote: dict | None) -> d
 
 
 @router.get("/{symbol}")
-async def get_quote(symbol: str, market: str = "CN"):
+async def get_quote(symbol: str, market: str = "CN", db: Session = Depends(get_db)):
     """获取单只股票实时行情"""
     market_code = _parse_market(market)
+    require_market_enabled(db, market_code.value)
     rows = await asyncio.to_thread(md_quote_rows, [symbol], market_code.value)
     if not rows:
         raise api_error(404, "quote_not_found", "行情不存在")
@@ -85,10 +89,13 @@ async def get_quote(symbol: str, market: str = "CN"):
 
 
 @router.post("/batch")
-async def get_quotes_batch(payload: QuoteBatchRequest):
+async def get_quotes_batch(payload: QuoteBatchRequest, db: Session = Depends(get_db)):
     """批量获取股票实时行情"""
     if not payload.items:
         return []
+
+    for mk in {item.market for item in payload.items}:
+        require_market_enabled(db, _parse_market(mk).value)
 
     market_items: dict[MarketCode, list[str]] = {}
     for item in payload.items:

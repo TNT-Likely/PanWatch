@@ -91,3 +91,22 @@ def set_market_enabled(db: Session, code: str, enabled: bool) -> None:
         db.add(row)
     row.value = json.dumps(ov)
     db.commit()
+
+
+def disabled_optional_markets(db: Session) -> set[str]:
+    """当前被禁用的可选市场集合(核心市场永不在内)。"""
+    eff = set(effective_markets(db))
+    return {m for m in OPTIONAL_MARKETS if m not in eff}
+
+
+def require_market_enabled(db: Session, code: str) -> None:
+    """市场未启用时抛 400 market_disabled(API 入口统一闸门)。"""
+    if not hasattr(db, "query"):
+        # 直接以函数形式调用(无依赖注入,如单测):按默认有效市场处理
+        if str(code).upper() not in CORE_MARKETS:
+            from src.web.errors import api_error
+            raise api_error(400, "market_disabled", f"市场 {code} 未启用")
+        return
+    if not is_market_enabled(db, code):
+        from src.web.errors import api_error
+        raise api_error(400, "market_disabled", f"市场 {code} 未启用")

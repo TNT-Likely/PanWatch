@@ -1,11 +1,14 @@
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
+from src.platform.marketdata.enablement import require_market_enabled
 from src.platform.marketdata.models import MarketCode
+from src.platform.persistence.database import get_db
 from src.web.errors import api_error
 
 router = APIRouter()
@@ -102,9 +105,11 @@ def _aggregate_klines(klines, interval: str) -> list:
 
 
 @router.get("/{symbol}")
-def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = "1d"):
+def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = "1d",
+               db: Session = Depends(get_db)):
     """获取单只股票K线数据"""
     market_code = _parse_market(market)
+    require_market_enabled(db, market_code.value)
     collector = KlineCollector(market_code)
     klines = collector.get_klines(symbol, days=days)
     klines = _aggregate_klines(klines, interval)
@@ -118,10 +123,13 @@ def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = 
 
 
 @router.post("/batch")
-def get_klines_batch(payload: KlineBatchRequest):
+def get_klines_batch(payload: KlineBatchRequest, db: Session = Depends(get_db)):
     """批量获取K线数据"""
     if not payload.items:
         return []
+
+    for mk in {item.market for item in payload.items}:
+        require_market_enabled(db, _parse_market(mk).value)
 
     keys = [(item.symbol, _parse_market(item.market), item.days or 60, item.interval or "1d")
             for item in payload.items]
@@ -139,9 +147,10 @@ def get_klines_batch(payload: KlineBatchRequest):
 
 
 @router.get("/{symbol}/summary")
-def get_kline_summary(symbol: str, market: str = "CN"):
+def get_kline_summary(symbol: str, market: str = "CN", db: Session = Depends(get_db)):
     """获取单只股票K线摘要"""
     market_code = _parse_market(market)
+    require_market_enabled(db, market_code.value)
     collector = KlineCollector(market_code)
     summary = collector.get_kline_summary(symbol)
     return {
@@ -152,10 +161,13 @@ def get_kline_summary(symbol: str, market: str = "CN"):
 
 
 @router.post("/summary/batch")
-def get_kline_summary_batch(payload: KlineSummaryBatchRequest):
+def get_kline_summary_batch(payload: KlineSummaryBatchRequest, db: Session = Depends(get_db)):
     """批量获取K线摘要"""
     if not payload.items:
         return []
+
+    for mk in {item.market for item in payload.items}:
+        require_market_enabled(db, _parse_market(mk).value)
 
     market_codes = [_parse_market(item.market) for item in payload.items]
 

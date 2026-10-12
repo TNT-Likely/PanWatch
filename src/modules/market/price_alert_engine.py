@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector, kline_source
 from src.platform.marketdata.marketdata_client import md_quote_rows
+from src.platform.marketdata.enablement import disabled_optional_markets
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import quote_date_is_current
 from src.platform.persistence.database import SessionLocal
@@ -408,8 +409,15 @@ class PriceAlertEngine:
                 return {"total_rules": 0, "triggered": 0, "skipped": 0, "items": []}
 
             # Apply the gate before any quote/K-line request.
-            gates = {r.id: self._can_trigger(r, now, bypass_market_hours=bypass_market_hours)
-                     for r in rules if r.stock is not None}
+            disabled_markets = disabled_optional_markets(db)
+            gates = {
+                r.id: (
+                    (False, "market_disabled")
+                    if r.stock.market in disabled_markets
+                    else self._can_trigger(r, now, bypass_market_hours=bypass_market_hours)
+                )
+                for r in rules if r.stock is not None
+            }
             stocks = [r.stock for r in rules if r.stock is not None and gates[r.id][0]]
             try:
                 quote_map = await self._fetch_quotes_map(stocks)

@@ -8,6 +8,7 @@ import sys
 
 from src.modules.automation.base import PortfolioInfo
 from src.platform.marketdata.models import MARKETS
+from src.platform.marketdata.enablement import OPTIONAL_MARKETS, disabled_optional_markets
 from src.platform.persistence.models import StockAgent
 from src.platform.scheduling.trading_calendar import is_trading_day
 
@@ -29,10 +30,17 @@ def schedule_plans(db, agent, *, global_schedule: str | None = None) -> list[Sch
     inherited = []
     plans = []
     bindings = db.query(StockAgent).filter(StockAgent.agent_name == agent.name).all()
+    disabled: set[str] | None = None
     for binding in bindings:
         stock = binding.stock
         if stock is None:
             continue
+        # 可选市场未启用:不注册该股的调度/预览(核心市场零额外查询)
+        if stock.market in OPTIONAL_MARKETS:
+            if disabled is None:
+                disabled = disabled_optional_markets(db)
+            if stock.market in disabled:
+                continue
         key = (stock.market, stock.symbol)
         # Batch reports have a shared schedule; per-stock overrides apply to single mode.
         if agent.execution_mode == "single" and (binding.schedule or "").strip():

@@ -20,6 +20,7 @@ from src.platform.persistence.models import (
 from src.platform.marketdata.stock_list import search_stocks, refresh_stock_list
 from src.platform.marketdata.instruments import AssetType, infer_asset_type
 from src.platform.marketdata.marketdata_client import md_quote_rows
+from src.platform.marketdata.enablement import require_market_enabled
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.platform.scheduling import trading_calendar
@@ -226,8 +227,10 @@ def get_market_calendar(market: str, days: int = Query(default=14, ge=1, le=31))
 
 
 @router.get("/search")
-def search(q: str = Query("", min_length=1), market: str = Query("")):
+def search(q: str = Query("", min_length=1), market: str = Query(""), db: Session = Depends(get_db)):
     """模糊搜索股票(代码/名称)"""
+    if market.strip():
+        require_market_enabled(db, market.strip())
     return search_stocks(q, market)
 
 
@@ -283,6 +286,7 @@ def get_quotes(db: Session = Depends(get_db)):
 
 @router.post("", response_model=StockResponse)
 def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
+    require_market_enabled(db, stock.market)
     existing = db.query(Stock).filter(
         Stock.symbol == stock.symbol, Stock.market == stock.market
     ).first()

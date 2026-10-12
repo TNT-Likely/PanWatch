@@ -12,7 +12,22 @@ import logging
 
 from marketdata import MarketData, Quote, SourceConfig
 
+from src.platform.marketdata.enablement import OPTIONAL_MARKETS, disabled_optional_markets
+
 logger = logging.getLogger(__name__)
+
+
+def _optional_market_disabled(market: str) -> bool:
+    """禁用的可选市场直接短路:不触达 vendor、不预热。核心市场零 DB 开销。"""
+    if market not in OPTIONAL_MARKETS:
+        return False
+    from src.platform.persistence.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return market in disabled_optional_markets(db)
+    finally:
+        db.close()
 
 
 class DbConfigProvider:
@@ -103,6 +118,8 @@ def md_quote_rows(symbols: list[str], market: str) -> list[dict]:
     syms = list(symbols)
     if not syms:
         return []
+    if _optional_market_disabled(market):
+        return []
     quotes = get_market_data().quotes(syms, market=market)
     return [_quote_to_row(q) for q in quotes]
 
@@ -160,6 +177,8 @@ def md_stock_data(symbols: list[str], market: str) -> list:
 
     syms = list(symbols)
     if not syms:
+        return []
+    if _optional_market_disabled(market):
         return []
     quotes = get_market_data().quotes(syms, market=market)
     return [StockData(

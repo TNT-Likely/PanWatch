@@ -10,6 +10,7 @@ import threading
 import time
 
 from src.platform.marketdata.collectors.market_http import fetch_source
+from src.platform.marketdata.enablement import OPTIONAL_MARKETS, disabled_optional_markets
 from src.platform.marketdata.models import MARKETS, MarketCode
 
 logger = logging.getLogger(__name__)
@@ -400,12 +401,27 @@ class KlineCollector:
     def __init__(self, market: MarketCode):
         self.market = market
 
+    def _market_disabled(self) -> bool:
+        """可选市场未启用时短路:不读缓存、不联网。核心市场零 DB 开销。"""
+        market = self.market.value
+        if market not in OPTIONAL_MARKETS:
+            return False
+        from src.platform.persistence.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            return market in disabled_optional_markets(db)
+        finally:
+            db.close()
+
     def get_klines(self, symbol: str, days: int = 60) -> list[KlineData]:
         """获取日K线数据。
 
         正缓存(按市场状态 TTL)+ 同标的并发合并(只联网一次)+ 失败负缓存
         (源短暂故障时冷却窗口内不再联网),避免多消费者并发把数据源打爆。
         """
+        if self._market_disabled():
+            return []
         cache_key = f"{self.market.value}:{symbol}"
         need = max(1, int(days or 1))
 
