@@ -1,6 +1,6 @@
-"""Ghostfolio 单向同步:拉取 /api/v1/export,映射为 GF: 前缀账户与持仓。
+"""Ghostfolio 单向同步:拉取 /api/v1/export,按不可变上游账户 ID 映射本地账户与持仓。
 
-只读:绝不写回 Ghostfolio。仅管理 account_prefix 前缀账户,其它账户不动。
+只读:绝不写回 Ghostfolio。通过显式本地映射识别账户,仅清理已映射账户的持仓。
 """
 from __future__ import annotations
 

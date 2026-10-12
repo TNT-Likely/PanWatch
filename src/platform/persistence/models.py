@@ -1483,7 +1483,7 @@ class GhostfolioConfig(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     base_url = Column(String, nullable=False)        # 如 http://192.168.0.158:3334
     api_token = Column(String, nullable=False)       # 只读 PAT,仅用于 GET /api/v1/export
-    account_prefix = Column(String, default="GF: ")  # 只托管该前缀的账户
+    account_prefix = Column(String, default="GF: ")  # 仅用于新账户命名及按旧前缀账户名称收编一次
     sync_cron = Column(String, default="17 8 * * *")  # 容器时区(缺省每日 08:17)
     enabled = Column(Boolean, default=False)
     last_sync_at = Column(DateTime, nullable=True)
