@@ -147,7 +147,7 @@ def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding],
         raw = (sp.get("symbol") or act.get("symbol") or "").upper()
         market = map_market(raw, sp.get("dataSource") or act.get("dataSource") or "")
         if market is None:
-            continue
+            raise ExportValidationError(f"无法映射交易标的: {raw}")
         base = raw.removesuffix(".AX")
         if raw.endswith(".HK"):
             stem = raw.removesuffix(".HK")
@@ -218,12 +218,12 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
     export = fetch_export(cfg.base_url, cfg.api_token)
     try:
         validate_export(export)
+        holdings, skipped_types = compute_holdings(export)
     except ExportValidationError as e:
         cfg.last_sync_at = datetime.now()
         cfg.last_status = f"aborted: {e}"
         db.commit()
         raise
-    holdings, skipped_types = compute_holdings(export)
     res.skipped_types = skipped_types
     if dry_run:
         return res

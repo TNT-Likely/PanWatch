@@ -31,9 +31,6 @@ EXPORT = {
         {"accountId": "a2", "type": "SELL", "quantity": "1", "unitPrice": "210", "fee": "0",
          "date": "2026-01-06T10:00:00+11:00",
          "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "name": "Apple Inc.", "currency": "USD"}},
-        {"accountId": "a2", "type": "BUY", "quantity": "0.05", "unitPrice": "65000", "fee": "0",
-         "date": "2026-01-07T10:00:00+11:00",
-         "symbolProfile": {"symbol": "BTC", "dataSource": "COINGECKO", "name": "Bitcoin", "currency": "USD"}},
         {"accountId": "a3", "type": "BUY", "quantity": "100", "unitPrice": "38.5", "fee": "0",
          "date": "2026-01-08T10:00:00+11:00",
          "symbolProfile": {"symbol": "0700.HK", "dataSource": "YAHOO",
@@ -57,7 +54,6 @@ def test_compute_holdings():
     assert ivv.quantity == 3.5 and abs(ivv.cost - 345.1) < 1e-9
     aapl = holdings[("a2", "AAPL", "US")]
     assert aapl.quantity == 1 and aapl.cost == 190.0  # avg-cost 减记卖出
-    assert ("a2", "BTC", "US") not in holdings  # COINGECKO skipped
     # Ruling 1: Ghostfolio .HK 基码补零到 5 位(PanWatch 港股约定 00700)
     tencent = holdings[("a3", "00700", "HK")]
     assert tencent.quantity == 100
@@ -73,9 +69,37 @@ def test_compute_holdings_sorts_by_date():
     assert skipped == {"DIVIDEND": 1}
 
 
-def test_compute_holdings_rejects_mixed_currency():
-    """同一(账户,标的)出现多种货币成本 → 视为数据质量问题,整体中止。"""
-    export = {
+def test_compute_holdings_same_day_keeps_export_order():
+    """同日交易保持导出原序:先卖与先买应得到不同持仓。"""
+    buy = {"accountId": "a2", "type": "BUY", "quantity": "2", "unitPrice": "190",
+           "date": "2026-01-05T09:00:00+11:00",
+           "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"}}
+    sell = {"accountId": "a2", "type": "SELL", "quantity": "1", "unitPrice": "210",
+            "date": "2026-01-05T17:00:00+11:00",
+            "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO", "currency": "USD"}}
+    forward, _ = compute_holdings({"accounts": EXPORT["accounts"], "activities": [buy, sell]})
+    backward, _ = compute_holdings({"accounts": EXPORT["accounts"], "activities": [sell, buy]})
+    assert forward[("a2", "AAPL", "US")].quantity == 1
+    assert forward[("a2", "AAPL", "US")].cost == 190.0
+    assert backward[("a2", "AAPL", "US")].quantity == 2
+    assert backward[("a2", "AAPL", "US")].cost == 380.0
+
+
+def test_compute_holdings_rejects_unmappable_trade():
+    """不能映射的买卖活动必须中止,不得静默丢弃。"""
+    for activity_type in ("BUY", "SELL"):
+        export = {"accounts": EXPORT["accounts"], "activities": [
+            EXPORT["activities"][0],
+            {"accountId": "a2", "type": activity_type, "quantity": "1", "unitPrice": "100",
+             "date": "2026-01-09T10:00:00+11:00",
+             "symbolProfile": {"symbol": "BTC", "dataSource": "COINGECKO", "currency": "USD"}},
+        ]}
+        with pytest.raises(ExportValidationError, match="BTC"):
+            compute_holdings(export)
+
+
+def _mixed_currency_export():
+    return {
         "accounts": [{"id": "m1", "name": "Mix"}],
         "activities": [
             {"accountId": "m1", "type": "BUY", "quantity": "1", "unitPrice": "100", "fee": "0",
@@ -88,8 +112,12 @@ def test_compute_holdings_rejects_mixed_currency():
                                "name": "CBA", "currency": "USD"}},
         ],
     }
+
+
+def test_compute_holdings_rejects_mixed_currency():
+    """同一(账户,标的)出现多种货币成本 → 视为数据质量问题,整体中止。"""
     with pytest.raises(ExportValidationError):
-        compute_holdings(export)
+        compute_holdings(_mixed_currency_export())
 
 
 def test_compute_holdings_reports_skipped_types_and_currency():
@@ -117,6 +145,58 @@ def _make_db(tmp_path):
     GhostfolioConfig.__table__.create(engine)
     GhostfolioAccountMap.__table__.create(engine)
     return sessionmaker(bind=engine)(), engine
+
+
+def test_sync_mixed_currency_aborts_without_changing_positions(tmp_path, monkeypatch):
+    """货币冲突记录中止状态,现有持仓不变。"""
+    from src.platform.persistence.models import Account, GhostfolioAccountMap, Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        cfg = service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True)
+        acc = Account(name="GF: Mix")
+        stock = Stock(symbol="CBA", name="CBA", market="AU")
+        db.add_all([cfg, acc, stock])
+        db.flush()
+        db.add(GhostfolioAccountMap(gf_account_id="m1", account_id=acc.id))
+        pos = Position(account_id=acc.id, stock_id=stock.id, quantity=7,
+                       cost_price=88, invested_amount=616)
+        db.add(pos)
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: _mixed_currency_export())
+
+        with pytest.raises(ExportValidationError, match="mixed currencies"):
+            service.sync_now(db)
+        db.refresh(cfg)
+        db.refresh(pos)
+        assert cfg.last_status.startswith("aborted: mixed currencies")
+        assert cfg.last_sync_at is not None
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == (7, 88, 616)
+        assert db.query(Position).count() == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_preview_mixed_currency_returns_invalid_export(tmp_path, monkeypatch):
+    """预览遇货币冲突返回错误而非部分持仓。"""
+    from src.modules.ghostfolio import api
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: _mixed_currency_export())
+        result = api.preview(db=db)
+        assert result["error"].startswith("invalid export: mixed currencies")
+        assert "holdings" not in result
+    finally:
+        db.close()
+        engine.dispose()
 
 
 def test_same_named_upstream_accounts_stay_distinct(tmp_path, monkeypatch):
