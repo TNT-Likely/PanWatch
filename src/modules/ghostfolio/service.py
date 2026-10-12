@@ -191,11 +191,18 @@ def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding],
             h.quantity -= cut
             h.cost -= avg * cut
         holdings[key] = h
-    for h in holdings.values():
+    retained: dict[tuple[str, str, str], Holding] = {}
+    for k, h in holdings.items():
         if not math.isfinite(h.quantity) or not math.isfinite(h.cost):
             raise ExportValidationError(
                 f"non-finite reconstructed values for {h.market}:{h.symbol}")
-    return ({k: h for k, h in holdings.items() if h.quantity > 1e-9}, skipped)
+        if h.quantity <= 1e-9:
+            continue
+        if not math.isfinite(h.cost / h.quantity):
+            raise ExportValidationError(
+                f"non-finite unit cost for {h.market}:{h.symbol}")
+        retained[k] = h
+    return retained, skipped
 
 
 def get_or_create_config(db: Session) -> GhostfolioConfig:

@@ -974,6 +974,39 @@ def test_reconstructed_cost_overflow_aborts_without_changing_positions(tmp_path,
         engine.dispose()
 
 
+def test_derived_unit_cost_overflow_aborts_without_changing_positions(tmp_path, monkeypatch):
+    """有限总成本除以小数量溢出为 inf 单价时,必须整体中止且持仓不变。"""
+    from src.platform.persistence.models import Position, Stock
+    from src.modules.ghostfolio.service import validate_export
+
+    overflow = {"accounts": EXPORT["accounts"], "activities": [
+        {**EXPORT["activities"][0], "quantity": "0.5", "unitPrice": "1", "fee": "1e308"}]}
+    validate_export(overflow)
+    with pytest.raises(ExportValidationError, match="AU:CBA"):
+        compute_holdings(overflow)
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+        service.sync_now(db)
+        pos = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
+        before = (pos.quantity, pos.cost_price, pos.invested_amount)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: overflow)
+        with pytest.raises(ExportValidationError, match="AU:CBA"):
+            service.sync_now(db)
+        db.refresh(pos)
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == before
+        assert db.query(Position).count() == 4
+        assert service.get_or_create_config(db).last_status.startswith("aborted:")
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monkeypatch):
     """畸形但 HTTP 成功的导出 {} 不得删除任何既有持仓(评审复现场景)。"""
     from src.platform.persistence.models import Position
