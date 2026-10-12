@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import requests
 from sqlalchemy.orm import Session
 
-from src.platform.persistence.models import Account, GhostfolioConfig, Position, Stock
+from src.platform.persistence.models import Account, GhostfolioAccountMap, GhostfolioConfig, Position, Stock
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,6 @@ def fetch_export(base_url: str, token: str) -> dict:
 
 
 def compute_holdings(export: dict) -> dict[tuple[str, str, str], Holding]:
-    names = {a["id"]: a.get("name") or a["id"] for a in export.get("accounts") or []}
     holdings: dict[tuple[str, str, str], Holding] = {}
     for act in export.get("activities") or []:
         if act.get("type") not in ("BUY", "SELL"):
@@ -141,7 +140,7 @@ def compute_holdings(export: dict) -> dict[tuple[str, str, str], Holding]:
             # Ghostfolio 港股 0700.HK → PanWatch 约定 5 位基码 00700
             stem = raw.removesuffix(".HK")
             base = stem.zfill(5) if stem.isdigit() else stem
-        key = (names.get(act.get("accountId"), act.get("accountId") or "default"), base, market)
+        key = (act.get("accountId") or "default", base, market)
         h = holdings.get(key) or Holding(symbol=base, name=sp.get("name") or base,
                                          market=market, quantity=0.0, cost=0.0)
         qty = float(act.get("quantity") or 0)
@@ -168,6 +167,27 @@ def get_or_create_config(db: Session) -> GhostfolioConfig:
     return cfg
 
 
+def _resolve_account(db: Session, cfg: GhostfolioConfig, gf_id: str, display_name: str) -> Account:
+    """按上游 ID 解析本地账户;历史“前缀+名称”账户在尚无映射时按名称收编一次。"""
+    m = db.query(GhostfolioAccountMap).filter_by(gf_account_id=gf_id).one_or_none()
+    if m:
+        return db.query(Account).filter_by(id=m.account_id).one()
+    legacy = (
+        db.query(Account)
+        .filter(
+            Account.name == f"{cfg.account_prefix}{display_name}",
+            ~Account.id.in_(db.query(GhostfolioAccountMap.account_id)),
+        )
+        .one_or_none()
+    )
+    acc = legacy or Account(name=f"{cfg.account_prefix}{display_name}")
+    if not legacy:
+        db.add(acc)
+        db.flush()
+    db.add(GhostfolioAccountMap(gf_account_id=gf_id, account_id=acc.id))
+    return acc
+
+
 def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) -> SyncResult:
     cfg = get_or_create_config(db)
     if not GHOSTFOLIO_ENABLED or not cfg.enabled:
@@ -189,29 +209,25 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
     if dry_run:
         return res
 
-    prefix = cfg.account_prefix or "GF: "
-    wanted_accounts = {acc for (acc, _, _) in holdings}
+    names = {a["id"]: a.get("name") or a["id"] for a in export["accounts"]}
+    wanted_accounts = {gf_id for (gf_id, _, _) in holdings}
     gf_account_ids: dict[str, int] = {}
-    for acc_name in wanted_accounts:
-        row = db.query(Account).filter(Account.name == f"{prefix}{acc_name}").first()
-        if row is None:
-            row = Account(name=f"{prefix}{acc_name}")
-            db.add(row)
-            db.flush()
-        gf_account_ids[acc_name] = row.id
+    for gf_id in wanted_accounts:
+        row = _resolve_account(db, cfg, gf_id, names[gf_id])
+        gf_account_ids[gf_id] = row.id
         res.accounts += 1
 
     seen: set[tuple[int, str, str]] = set()
-    for (acc_name, base, market), h in holdings.items():
+    for (gf_id, base, market), h in holdings.items():
         stock = db.query(Stock).filter_by(symbol=base, market=market).first()
         if stock is None:
             stock = Stock(symbol=base, name=h.name, market=market)
             db.add(stock)
             db.flush()
-        pos = db.query(Position).filter_by(account_id=gf_account_ids[acc_name],
+        pos = db.query(Position).filter_by(account_id=gf_account_ids[gf_id],
                                            stock_id=stock.id).first()
         if pos is None:
-            pos = Position(account_id=gf_account_ids[acc_name], stock_id=stock.id,
+            pos = Position(account_id=gf_account_ids[gf_id], stock_id=stock.id,
                            cost_price=h.cost / h.quantity, quantity=h.quantity,
                            invested_amount=h.cost)
             db.add(pos)
@@ -221,10 +237,10 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
             pos.quantity = h.quantity
             pos.invested_amount = h.cost
             res.updated += 1
-        seen.add((gf_account_ids[acc_name], base, market))
+        seen.add((gf_account_ids[gf_id], base, market))
 
-    # 只清理前缀账户里已不在导出中的持仓
-    for acc in db.query(Account).filter(Account.name.like(f"{prefix}%")).all():
+    # 只清理已有映射账户里已不在导出中的持仓
+    for acc in db.query(Account).join(GhostfolioAccountMap, GhostfolioAccountMap.account_id == Account.id).all():
         for pos in db.query(Position).filter_by(account_id=acc.id).all():
             sym = pos.stock.symbol
             mkt = pos.stock.market

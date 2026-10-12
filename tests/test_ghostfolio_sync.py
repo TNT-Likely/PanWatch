@@ -51,29 +51,68 @@ def test_map_market():
 
 def test_compute_holdings():
     holdings = compute_holdings(EXPORT)
-    cba = holdings[("Stake", "CBA", "AU")]
+    cba = holdings[("a1", "CBA", "AU")]
     assert cba.quantity == 10 and cba.cost == 1005.0  # fee included, DIVIDEND ignored
-    ivv = holdings[("Stake", "IVV", "AU")]
+    ivv = holdings[("a1", "IVV", "AU")]
     assert ivv.quantity == 3.5 and abs(ivv.cost - 345.1) < 1e-9
-    aapl = holdings[("CommSec", "AAPL", "US")]
+    aapl = holdings[("a2", "AAPL", "US")]
     assert aapl.quantity == 1 and aapl.cost == 190.0  # avg-cost 减记卖出
-    assert ("CommSec", "BTC", "US") not in holdings  # COINGECKO skipped
+    assert ("a2", "BTC", "US") not in holdings  # COINGECKO skipped
     # Ruling 1: Ghostfolio .HK 基码补零到 5 位(PanWatch 港股约定 00700)
-    tencent = holdings[("IBKR", "00700", "HK")]
+    tencent = holdings[("a3", "00700", "HK")]
     assert tencent.quantity == 100
 
 
 def _make_db(tmp_path):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from src.platform.persistence.models import Account, GhostfolioConfig, Position, Stock
+    from src.platform.persistence.models import Account, GhostfolioConfig, GhostfolioAccountMap, Position, Stock
 
     engine = create_engine(f"sqlite:///{tmp_path / 'gf.db'}")
     Account.__table__.create(engine)
     Stock.__table__.create(engine)
     Position.__table__.create(engine)
     GhostfolioConfig.__table__.create(engine)
+    GhostfolioAccountMap.__table__.create(engine)
     return sessionmaker(bind=engine)(), engine
+
+
+def test_same_named_upstream_accounts_stay_distinct(tmp_path, monkeypatch):
+    """两个同名上游账户必须保持两个独立本地账户(不可变 ID 识别,而非名称)。"""
+    from src.platform.persistence.models import Position
+
+    export = {
+        "accounts": [
+            {"id": "x1", "name": "Stake", "currency": "AUD"},
+            {"id": "x2", "name": "Stake", "currency": "AUD"},
+        ],
+        "activities": [
+            {"accountId": "x1", "type": "BUY", "quantity": "10", "unitPrice": "100", "fee": "0",
+             "date": "2026-01-02T10:00:00+11:00",
+             "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
+                               "name": "Commonwealth Bank of Australia", "currency": "AUD"}},
+            {"accountId": "x2", "type": "BUY", "quantity": "5", "unitPrice": "100", "fee": "0",
+             "date": "2026-01-02T10:00:00+11:00",
+             "symbolProfile": {"symbol": "VAS.AX", "dataSource": "YAHOO",
+                               "name": "Vanguard Australian Shares", "currency": "AUD"}},
+        ],
+    }
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: export)
+        res = service.sync_now(db)
+        assert res.accounts == 2
+        from src.platform.persistence.models import Stock
+        cba = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
+        vas = db.query(Position).join(Stock).filter(Stock.symbol == "VAS").one()
+        assert cba.account_id != vas.account_id
+        assert db.query(service.GhostfolioAccountMap).count() == 2
+    finally:
+        db.close()
+        engine.dispose()
 
 
 def test_sync_now_disabled_does_not_fetch(tmp_path, monkeypatch):
@@ -330,10 +369,10 @@ def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monke
 
 def test_compute_holdings_accepts_flat_export_shape():
     h = compute_holdings(FLAT_EXPORT)
-    vgs = h[("Pearler (Taxable - DCA Strategy)", "VGS", "AU")]
+    vgs = h[("p1", "VGS", "AU")]
     assert vgs.quantity == 85 and abs(vgs.cost - 85 * 11.63) < 1e-9
     assert vgs.name == "VGS"
-    aapl = h[("Pearler (Taxable - DCA Strategy)", "AAPL", "US")]
+    aapl = h[("p1", "AAPL", "US")]
     assert aapl.quantity == 1
     assert abs(aapl.cost - 337.475) < 1e-9
 

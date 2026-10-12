@@ -1490,3 +1490,14 @@ class GhostfolioConfig(Base):
     last_status = Column(String, default="")
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class GhostfolioAccountMap(Base):
+    """Ghostfolio 上游账户 → PanWatch 本地账户的稳定映射(以不可变上游 ID 识别)。"""
+
+    __tablename__ = "ghostfolio_account_maps"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    gf_account_id = Column(String, nullable=False, unique=True)  # 上游账户 ID(不可变)
+    account_id = Column(Integer, nullable=False)                  # 本地 Account.id
+    created_at = Column(DateTime, server_default=func.now())
