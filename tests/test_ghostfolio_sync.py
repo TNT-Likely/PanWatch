@@ -695,6 +695,32 @@ def test_reload_scheduler_registers_ghostfolio(monkeypatch):
     assert calls == ["shutdown", "mcp", "ghostfolio", "start"]
 
 
+def test_reload_scheduler_survives_ghostfolio_registration_failure(monkeypatch):
+    """同步配置异常不阻止共享调度器启动。"""
+    import server
+
+    calls = []
+
+    class _Sched:
+        def shutdown(self):
+            calls.append("shutdown")
+
+        def start(self):
+            calls.append("start")
+
+    monkeypatch.setattr(server, "scheduler", _Sched(), raising=False)
+    monkeypatch.setattr(server, "build_scheduler", _Sched)
+    monkeypatch.setattr(server, "register_mcp_log_cleanup", lambda sched: calls.append("mcp"))
+
+    def bad_registration(sched):
+        calls.append("ghostfolio")
+        raise ValueError("invalid cron")
+
+    monkeypatch.setattr(server, "register_ghostfolio_sync", bad_registration)
+    assert server.reload_scheduler() is True
+    assert calls == ["shutdown", "mcp", "ghostfolio", "start"]
+
+
 def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
     from src.modules.ghostfolio import service
     from src.platform.persistence.models import Account, Position, Stock
@@ -871,6 +897,76 @@ def test_sync_rejects_invalid_quantity_without_removal(tmp_path, monkeypatch, qu
             service.sync_now(db)
         db.refresh(cba)
         assert (cba.quantity, cba.cost_price, cba.invested_amount) == original
+        assert db.query(Position).count() == 4
+        assert service.get_or_create_config(db).last_status.startswith("aborted:")
+    finally:
+        db.close()
+        engine.dispose()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("dataSource", ["YAHOO"]),
+    ("symbolProfile.dataSource", ["YAHOO"]),
+    ("account.name", {"en": "Stake"}),
+])
+def test_metadata_types_abort_and_preview_returns_error(tmp_path, monkeypatch, field, value):
+    """数据源及账户名类型非法时,预览返回导出错误而非 500。"""
+    from src.modules.ghostfolio import api
+    from src.modules.ghostfolio.service import validate_export
+
+    trade = EXPORT["activities"][0]
+    export = {"accounts": EXPORT["accounts"], "activities": [trade]}
+    if field == "account.name":
+        export = {**export, "accounts": [{**EXPORT["accounts"][0], "name": value}]}
+    elif field == "symbolProfile.dataSource":
+        export = {**export, "activities": [{**trade, "symbolProfile": {
+            **trade["symbolProfile"], "dataSource": value}}]}
+    else:
+        export = {**export, "activities": [{**trade, field: value}]}
+    pattern = r"account\[0\].*name" if field == "account.name" else r"activity\[0\].*" + field.replace(".", r"\.")
+    with pytest.raises(ExportValidationError, match=pattern):
+        validate_export(export)
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: export)
+        result = api.preview(db=db)
+        assert result["error"].startswith("invalid export:")
+        assert "holdings" not in result
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_reconstructed_cost_overflow_aborts_without_changing_positions(tmp_path, monkeypatch):
+    """有限交易数值相乘溢出时仍须整体中止,保留已有持仓。"""
+    from src.platform.persistence.models import Position, Stock
+    from src.modules.ghostfolio.service import validate_export
+
+    overflow = {"accounts": EXPORT["accounts"], "activities": [
+        {**EXPORT["activities"][0], "quantity": "1e308", "unitPrice": "2"}]}
+    validate_export(overflow)
+    with pytest.raises(ExportValidationError, match="AU:CBA"):
+        compute_holdings(overflow)
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+        service.sync_now(db)
+        pos = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
+        before = (pos.quantity, pos.cost_price, pos.invested_amount)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: overflow)
+        with pytest.raises(ExportValidationError, match="AU:CBA"):
+            service.sync_now(db)
+        db.refresh(pos)
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == before
         assert db.query(Position).count() == 4
         assert service.get_or_create_config(db).last_status.startswith("aborted:")
     finally:

@@ -37,6 +37,8 @@ def validate_export(export: object) -> None:
         if (not isinstance(acc, dict) or not isinstance(acc.get("id"), (str, int))
                 or not acc["id"]):
             raise ExportValidationError(f"account[{i}] invalid id")
+        if "name" in acc and not isinstance(acc["name"], str):
+            raise ExportValidationError(f"account[{i}] invalid name")
         ids.add(acc["id"])
     activities = export.get("activities")
     if not isinstance(activities, list):
@@ -53,7 +55,7 @@ def validate_export(export: object) -> None:
         if profile is not None and not isinstance(profile, dict):
             raise ExportValidationError(f"activity[{i}] invalid symbolProfile")
         for source, prefix in ((act, ""), (profile or {}, "symbolProfile.")):
-            for field_name in ("symbol", "currency", "name"):
+            for field_name in ("symbol", "currency", "name", "dataSource"):
                 if field_name in source and not isinstance(source[field_name], str):
                     raise ExportValidationError(f"activity[{i}] invalid {prefix}{field_name}")
         if act["type"] in ("BUY", "SELL"):
@@ -189,6 +191,10 @@ def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding],
             h.quantity -= cut
             h.cost -= avg * cut
         holdings[key] = h
+    for h in holdings.values():
+        if not math.isfinite(h.quantity) or not math.isfinite(h.cost):
+            raise ExportValidationError(
+                f"non-finite reconstructed values for {h.market}:{h.symbol}")
     return ({k: h for k, h in holdings.items() if h.quantity > 1e-9}, skipped)
 
 
