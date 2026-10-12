@@ -217,7 +217,6 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
         gf_account_ids[gf_id] = row.id
         res.accounts += 1
 
-    seen: set[tuple[int, str, str]] = set()
     for (gf_id, base, market), h in holdings.items():
         stock = db.query(Stock).filter_by(symbol=base, market=market).first()
         if stock is None:
@@ -237,19 +236,30 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
             pos.quantity = h.quantity
             pos.invested_amount = h.cost
             res.updated += 1
-        seen.add((gf_account_ids[gf_id], base, market))
 
-    # 只清理已有映射账户里已不在导出中的持仓
-    for acc in db.query(Account).join(GhostfolioAccountMap, GhostfolioAccountMap.account_id == Account.id).all():
-        for pos in db.query(Position).filter_by(account_id=acc.id).all():
-            sym = pos.stock.symbol
-            mkt = pos.stock.market
-            if (acc.id, sym, mkt) not in seen:
-                db.delete(pos)
-                res.removed += 1
+    # 删除腿:仅有效导出可触发;整账户清空需 confirm_empty 显式确认
+    res.pending_removals = 0
+    for acc in db.query(Account).filter(Account.name.like(f"{cfg.account_prefix}%")).all():
+        maps = db.query(GhostfolioAccountMap).filter_by(account_id=acc.id).all()
+        gf_ids = {m.gf_account_id for m in maps}
+        if not gf_ids:
+            continue  # 无映射的前缀账户不托管(历史遗留,人工处理)
+        positions = db.query(Position).filter(Position.account_id == acc.id).all()
+        drops = []
+        for pos in positions:
+            stock = db.query(Stock).filter(Stock.id == pos.stock_id).one()
+            if any((gid, stock.symbol, stock.market) in holdings for gid in gf_ids):
+                continue
+            drops.append(pos)
+        if drops and len(drops) == len(positions) and not confirm_empty:
+            res.pending_removals += len(drops)
+            continue
+        for pos in drops:
+            db.delete(pos)
+            res.removed += 1
 
     cfg.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC,与列类型一致
-    cfg.last_status = "ok"
+    cfg.last_status = "pending account-emptying removals" if res.pending_removals else "ok"
     db.commit()
     return res
 

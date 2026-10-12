@@ -50,5 +50,5 @@ def preview(db: Session = Depends(get_db)):
 
 
 @router.post("/sync")
-def sync(db: Session = Depends(get_db)):
-    return service.sync_now(db).__dict__
+def sync(confirm_empty: bool = False, db: Session = Depends(get_db)):
+    return service.sync_now(db, confirm_empty=confirm_empty).__dict__

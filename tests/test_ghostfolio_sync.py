@@ -115,6 +115,35 @@ def test_same_named_upstream_accounts_stay_distinct(tmp_path, monkeypatch):
         engine.dispose()
 
 
+def test_account_emptying_requires_confirm(tmp_path, monkeypatch):
+    """valid 导出但某账户整体清空:默认保留并计数,confirm_empty=True 才真正删除。"""
+    from src.platform.persistence.models import Position
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: EXPORT)
+        service.sync_now(db)
+        assert db.query(Position).count() == 4
+
+        stake_emptied = {"accounts": EXPORT["accounts"],
+                         "activities": [a for a in EXPORT["activities"] if a["accountId"] != "a1"]}
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: stake_emptied)
+        res = service.sync_now(db)
+        assert res.pending_removals == 2 and res.removed == 0
+        assert db.query(Position).count() == 4  # Stake 的 CBA/IVV 仍保留
+        assert "pending" in service.get_or_create_config(db).last_status
+
+        res2 = service.sync_now(db, confirm_empty=True)
+        assert res2.removed == 2 and db.query(Position).count() == 2
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_sync_now_disabled_does_not_fetch(tmp_path, monkeypatch):
     """enabled=False 时不得发起任何导出请求(定时与手动同一条路径)。"""
     from src.platform.persistence.models import Account, Position, Stock
