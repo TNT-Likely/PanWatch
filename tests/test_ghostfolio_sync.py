@@ -665,6 +665,36 @@ def test_validate_export_rejects_incomplete_shapes():
     validate_export(FLAT_EXPORT)  # 扁平形态同样通过
 
 
+@pytest.mark.parametrize("quantity", ["NaN", "Infinity", "-5"])
+def test_sync_rejects_invalid_quantity_without_removal(tmp_path, monkeypatch, quantity):
+    """异常数量不得使持仓过滤后被误删。"""
+    from src.platform.persistence.models import Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+        service.sync_now(db)
+        cba = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
+        original = (cba.quantity, cba.cost_price, cba.invested_amount)
+        malformed = {"accounts": EXPORT["accounts"], "activities": [
+            {**act, "quantity": quantity} if act is EXPORT["activities"][0] else act
+            for act in EXPORT["activities"]]}
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: malformed)
+        with pytest.raises(ExportValidationError, match=r"activity\[0\].*quantity"):
+            service.sync_now(db)
+        db.refresh(cba)
+        assert (cba.quantity, cba.cost_price, cba.invested_amount) == original
+        assert db.query(Position).count() == 4
+        assert service.get_or_create_config(db).last_status.startswith("aborted:")
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monkeypatch):
     """畸形但 HTTP 成功的导出 {} 不得删除任何既有持仓(评审复现场景)。"""
     from src.platform.persistence.models import Position

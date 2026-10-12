@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -47,16 +48,15 @@ def validate_export(export: object) -> None:
         if not act.get("type"):
             raise ExportValidationError(f"activity[{i}] missing type")
         if act["type"] in ("BUY", "SELL"):
-            for field_name in ("quantity", "unitPrice"):
+            for field_name in ("quantity", "unitPrice", "fee"):
+                if field_name == "fee" and act.get("fee") is None:
+                    continue
                 try:
-                    float(act.get(field_name))
+                    value = float(act.get(field_name))
                 except (TypeError, ValueError):
                     raise ExportValidationError(f"activity[{i}] non-numeric {field_name}")
-            if act.get("fee") is not None:
-                try:
-                    float(act["fee"])
-                except (TypeError, ValueError):
-                    raise ExportValidationError(f"activity[{i}] non-numeric fee")
+                if not math.isfinite(value) or (value <= 0 if field_name == "quantity" else value < 0):
+                    raise ExportValidationError(f"activity[{i}] invalid {field_name}")
         if not act.get("date"):
             raise ExportValidationError(f"activity[{i}] missing date")
         try:
