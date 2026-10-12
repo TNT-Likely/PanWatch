@@ -89,6 +89,7 @@ class SyncResult:
     removed: int = 0
     skipped: int = 0
     skipped_types: dict[str, int] = field(default_factory=dict)
+    applied: list[dict[str, str | int | float]] = field(default_factory=list)
     pending_removals: list[dict[str, str | int]] = field(default_factory=list)
     pending_removal_count: int = 0
     status: str = "ok"
@@ -237,9 +238,11 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
     names = {a["id"]: a.get("name") or a["id"] for a in export["accounts"]}
     wanted_accounts = {gf_id for (gf_id, _, _) in holdings}
     gf_account_ids: dict[str, int] = {}
+    local_names: dict[str, str] = {}
     for gf_id in wanted_accounts:
         row = _resolve_account(db, cfg, gf_id, names[gf_id])
         gf_account_ids[gf_id] = row.id
+        local_names[gf_id] = row.name
         res.accounts += 1
 
     for (gf_id, base, market), h in holdings.items():
@@ -253,14 +256,20 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
         if pos is None:
             pos = Position(account_id=gf_account_ids[gf_id], stock_id=stock.id,
                            cost_price=h.cost / h.quantity, quantity=h.quantity,
-                           invested_amount=h.cost)
+                           invested_amount=h.cost, currency=h.currency)
             db.add(pos)
             res.created += 1
         else:
             pos.cost_price = h.cost / h.quantity
             pos.quantity = h.quantity
             pos.invested_amount = h.cost
+            pos.currency = h.currency
             res.updated += 1
+        res.applied.append({
+            "account_id": gf_account_ids[gf_id], "account_name": local_names[gf_id],
+            "symbol": base, "market": market, "quantity": h.quantity,
+            "cost": h.cost, "currency": h.currency,
+        })
 
     # 删除腿:仅有效导出可触发;整账户清空需 confirm_empty 显式确认
     for acc in db.query(Account).join(GhostfolioAccountMap,

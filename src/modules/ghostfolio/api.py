@@ -49,7 +49,7 @@ def preview(db: Session = Depends(get_db)):
         holdings, _skipped = service.compute_holdings(export)
     except service.ExportValidationError as e:
         return {"error": f"invalid export: {e}"}
-    return {"holdings": {f"{a}|{s}|{m}": {"quantity": h.quantity, "cost": h.cost}
+    return {"holdings": {f"{a}|{s}|{m}": {"quantity": h.quantity, "cost": h.cost, "currency": h.currency}
                          for (a, s, m), h in holdings.items()}}
 
 

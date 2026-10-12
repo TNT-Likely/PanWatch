@@ -208,6 +208,24 @@ def test_sync_mixed_currency_aborts_without_changing_positions(tmp_path, monkeyp
         engine.dispose()
 
 
+def test_preview_includes_holding_currency(tmp_path, monkeypatch):
+    """预览返回每个持仓的成本币种。"""
+    from src.modules.ghostfolio import api
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: EXPORT)
+        assert api.preview(db=db)["holdings"]["a1|CBA|AU"] == {
+            "quantity": 10, "cost": 1005.0, "currency": "AUD"}
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_sync_invalid_date_aborts_without_changing_positions(tmp_path, monkeypatch):
     """无效交易日期中止同步,保留现有持仓。"""
     from copy import deepcopy
@@ -597,12 +615,18 @@ def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
         res = service.sync_now(db)
         assert res.accounts == 3 and res.created == 4 and res.removed == 0
         assert res.skipped_types == {"DIVIDEND": 1}
+        assert len(res.applied) == 4
+        assert {"account_id": next(a.account_id for a in db.query(service.GhostfolioAccountMap).all()
+                                   if a.gf_account_id == "a1"),
+                "account_name": "GF: Stake", "symbol": "CBA", "market": "AU",
+                "quantity": 10, "cost": 1005.0, "currency": "AUD"} in res.applied
 
         names = {a.name for a in db.query(Account).all()}
         assert names == {"GF: Stake", "GF: CommSec", "GF: IBKR"}
 
         cba = db.query(Position).join(Stock).filter(Stock.symbol == "CBA").one()
         assert cba.quantity == 10 and abs(cba.cost_price - 100.5) < 1e-9
+        assert cba.currency == "AUD"
         ivv = db.query(Position).join(Stock).filter(Stock.symbol == "IVV").one()
         assert ivv.quantity == 3.5
         aapl = db.query(Position).join(Stock).filter(Stock.symbol == "AAPL").one()
@@ -614,6 +638,8 @@ def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
         # 幂等重跑:全部 update,无新增
         res2 = service.sync_now(db)
         assert res2.created == 0 and res2.updated == 4 and res2.removed == 0
+        assert res2.applied == res.applied
+        assert cba.currency == "AUD"
 
         # 移除腿:导出里不再有 IVV → 其持仓删除,CBA 不受影响
         export_no_ivv = {
