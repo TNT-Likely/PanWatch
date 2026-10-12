@@ -41,6 +41,7 @@ from marketdata.vendors.northbound import HexinNorthboundVendor
 from marketdata.vendors.sina import SinaQuoteVendor
 from marketdata.vendors.tencent import TencentQuoteVendor
 from marketdata.vendors.yfinance import YFinanceQuoteVendor
+from marketdata.vendors.yahoo_au import YahooAUQuoteVendor
 
 # 各数据类型 → {vendor name: vendor 类}。注意:vendor 的 import 本身是廉价的
 # (可选三方依赖如 yfinance 均在 fetch() 内部惰性 import),模块级导入不会引入重依赖。
@@ -50,6 +51,7 @@ VENDOR_CLASSES_BY_TYPE: dict[str, dict[str, type]] = {
         "sina": SinaQuoteVendor,
         "eastmoney": EastmoneyQuoteVendor,
         "yfinance": YFinanceQuoteVendor,
+        "yahoo_au": YahooAUQuoteVendor,
     },
     "kline": {
         "tencent": TencentKlineVendor,

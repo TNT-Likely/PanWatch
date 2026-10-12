@@ -91,6 +91,7 @@ def _quote_to_row(q: Quote) -> dict:
         "source_timestamp": q.source_timestamp.isoformat() if q.source_timestamp else None,
         "observed_at": q.timestamp.isoformat(),
         "source": q.source,
+        "currency": q.currency,
     }
 
 

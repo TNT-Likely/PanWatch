@@ -50,6 +50,8 @@ class Quote:
     quote_date: date | None = None
     source_timestamp: datetime | None = None
     source: str = ""
+    # 报价币种(如 AUD/HKD/USD/CNY);估值按币种解析汇率,缺失则视为不完整。
+    currency: str | None = None
 
 
 @dataclass
