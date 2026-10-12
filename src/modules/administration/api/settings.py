@@ -57,6 +57,7 @@ SETTING_DESCRIPTIONS = {
     "notify_dedupe_ttl_overrides": "通知幂等窗口覆盖（JSON，空为默认）",
     "stock_link_platform": "股票链接平台（点击股票代码跳转的行情网站）",
     "panwatch_base_url": "PanWatch 公开访问地址（用于通知里的分析详情页链接，如 https://panwatch.example.com）",
+    "market_enablement": "可选市场开启映射(JSON,如 {\"AU\": true})",
 }
 
 SETTING_KEYS = list(SETTING_DESCRIPTIONS.keys())
@@ -73,6 +74,7 @@ def _get_env_defaults() -> dict[str, str]:
         "notify_dedupe_ttl_overrides": s.notify_dedupe_ttl_overrides,
         "stock_link_platform": "xueqiu",
         "panwatch_base_url": os.getenv("PANWATCH_BASE_URL", ""),
+        "market_enablement": os.getenv("MARKET_ENABLEMENT", "{}"),
     }
 
 
@@ -192,6 +194,17 @@ def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db
         raise api_error(400, "onboarding_progress_readonly", "引导进度由实际操作记录")
     if key == "ui_language" and update.value not in {"zh-CN", "en-US"}:
         raise api_error(400, "ui_language_invalid", "界面语言仅支持 zh-CN 或 en-US")
+    if key == "market_enablement":
+        import json as _json
+        from src.platform.marketdata import enablement as _em
+        try:
+            raw = _json.loads(update.value)
+        except ValueError:
+            raise api_error(400, "invalid_setting", "market_enablement 必须是 JSON 对象")
+        if not isinstance(raw, dict) or not all(
+            str(k).upper() in _em.OPTIONAL_MARKETS and isinstance(v, bool) for k, v in raw.items()
+        ):
+            raise api_error(400, "invalid_setting", "market_enablement 仅接受可选市场到布尔值的映射")
     setting = db.query(AppSettings).filter(AppSettings.key == key).first()
     if not setting:
         desc = SETTING_DESCRIPTIONS.get(key, "")
