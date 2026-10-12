@@ -33,9 +33,10 @@ def validate_export(export: object) -> None:
     if not isinstance(accounts, list) or not accounts:
         raise ExportValidationError("accounts missing or empty (partial export)")
     ids = set()
-    for acc in accounts:
-        if not isinstance(acc, dict) or not acc.get("id"):
-            raise ExportValidationError("account entry without id")
+    for i, acc in enumerate(accounts):
+        if (not isinstance(acc, dict) or not isinstance(acc.get("id"), (str, int))
+                or not acc["id"]):
+            raise ExportValidationError(f"account[{i}] invalid id")
         ids.add(acc["id"])
     activities = export.get("activities")
     if not isinstance(activities, list):
@@ -43,10 +44,18 @@ def validate_export(export: object) -> None:
     for i, act in enumerate(activities):
         if not isinstance(act, dict):
             raise ExportValidationError(f"activity[{i}] is not an object")
-        if not act.get("accountId") or act["accountId"] not in ids:
+        account_id = act.get("accountId")
+        if not isinstance(account_id, (str, int)) or not account_id or account_id not in ids:
             raise ExportValidationError(f"activity[{i}] references unknown accountId")
-        if not act.get("type"):
+        if not isinstance(act.get("type"), str) or not act["type"]:
             raise ExportValidationError(f"activity[{i}] missing type")
+        profile = act.get("symbolProfile")
+        if profile is not None and not isinstance(profile, dict):
+            raise ExportValidationError(f"activity[{i}] invalid symbolProfile")
+        for source, prefix in ((act, ""), (profile or {}, "symbolProfile.")):
+            for field_name in ("symbol", "currency", "name"):
+                if field_name in source and not isinstance(source[field_name], str):
+                    raise ExportValidationError(f"activity[{i}] invalid {prefix}{field_name}")
         if act["type"] in ("BUY", "SELL"):
             for field_name in ("quantity", "unitPrice", "fee"):
                 if field_name == "fee" and act.get("fee") is None:

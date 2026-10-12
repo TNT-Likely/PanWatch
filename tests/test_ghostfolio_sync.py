@@ -262,7 +262,7 @@ def test_sync_invalid_date_aborts_without_changing_positions(tmp_path, monkeypat
 
 
 def test_sync_invalid_date_with_malformed_symbol_profile_aborts(tmp_path, monkeypatch):
-    """标的资料格式错误时,无效日期仍须记录中止状态。"""
+    """标的资料格式错误时记录中止状态,即使日期也无效。"""
     from copy import deepcopy
     from src.platform.persistence.models import Account, GhostfolioAccountMap, Position, Stock
 
@@ -285,7 +285,7 @@ def test_sync_invalid_date_with_malformed_symbol_profile_aborts(tmp_path, monkey
         monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
         monkeypatch.setattr(service, "fetch_export", lambda base, token: bad_export)
 
-        with pytest.raises(ExportValidationError, match=r"activity\[0\].*CBA.AX"):
+        with pytest.raises(ExportValidationError, match=r"activity\[0\].*symbolProfile"):
             service.sync_now(db)
         db.refresh(cfg)
         db.refresh(pos)
@@ -798,6 +798,54 @@ def test_validate_export_rejects_incomplete_shapes():
              "unitPrice": "1"}]})  # BUY 缺日期
     validate_export(EXPORT)  # 完整导出通过
     validate_export(FLAT_EXPORT)  # 扁平形态同样通过
+
+
+@pytest.mark.parametrize("field,value", [
+    ("unitPrice", "NaN"), ("unitPrice", "-1"),
+    ("fee", "Infinity"), ("fee", "-1"), ("quantity", "0"),
+])
+def test_validate_export_rejects_invalid_trade_numbers(field, value):
+    """价格和费用须为非负有限数,买卖数量须为正。"""
+    from src.modules.ghostfolio.service import validate_export
+
+    trade = {**EXPORT["activities"][0], field: value}
+    with pytest.raises(ExportValidationError, match=field):
+        validate_export({"accounts": EXPORT["accounts"], "activities": [trade]})
+
+
+@pytest.mark.parametrize("field,value", [
+    ("accounts", [{"id": ["a1"]}]),
+    ("symbolProfile", "CBA.AX"),
+    ("symbol", 123),
+])
+def test_malformed_field_types_abort_and_preview_returns_error(tmp_path, monkeypatch, field, value):
+    """畸形账户或标的字段必须作为导出错误处理而非抛出原生异常。"""
+    from src.modules.ghostfolio import api
+    from src.modules.ghostfolio.service import validate_export
+
+    export = {"accounts": EXPORT["accounts"], "activities": [EXPORT["activities"][0]]}
+    if field == "accounts":
+        export = {**export, "accounts": value}
+    elif field == "symbolProfile":
+        export = {**export, "activities": [{**export["activities"][0], field: value}]}
+    else:
+        export = {**export, "activities": [{**export["activities"][0],
+                  "symbolProfile": {**export["activities"][0]["symbolProfile"], field: value}}]}
+    with pytest.raises(ExportValidationError, match="account|symbolProfile|symbol"):
+        validate_export(export)
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: export)
+        result = api.preview(db=db)
+        assert result["error"].startswith("invalid export:")
+        assert "holdings" not in result
+    finally:
+        db.close()
+        engine.dispose()
 
 
 @pytest.mark.parametrize("quantity", ["NaN", "Infinity", "-5"])
