@@ -20,14 +20,29 @@ _US_RE = re.compile(r"^[A-Z.]{1,6}$")  # 1-6 位字母(含指数 .DJI)
 _AU_RE = re.compile(r"^[A-Z]{1,6}$")   # ASX 代码;Yahoo 后缀 .AX
 
 
+_AU_SUFFIX = ".AX"
+
+
+def _strip_au_suffix(c: str) -> str | None:
+    """剥掉一个或多个 .AX 后缀;剩余部分不是合法 ASX 代码时返回 None。"""
+    base = c
+    stripped = False
+    while base.endswith(_AU_SUFFIX):
+        base = base.removesuffix(_AU_SUFFIX)
+        stripped = True
+    if stripped and _AU_RE.fullmatch(base):
+        return base
+    return None
+
+
 def _detect_market(code: str) -> Market:
     c = code.strip().upper()
     if _CN_RE.match(c):
         return Market.CN
     if _HK_RE.match(c):
         return Market.HK
-    if c.endswith(".AX") and _AU_RE.fullmatch(c.removesuffix(".AX")):
-        return Market.AU  # .AX 后缀必须先于 _US_RE:后者含点号,会吞掉 VAS.AX
+    if _strip_au_suffix(c) is not None:
+        return Market.AU  # .AX 后缀先于 _US_RE:后者含点号,会吞掉 VAS.AX;裸代码仍归 US
     if _US_RE.match(c):
         return Market.US
     # 兜底:6 位数字当 CN,其余当 US
@@ -50,9 +65,15 @@ class Symbol:
 
     @classmethod
     def parse(cls, raw: str, market: str | None = None) -> "Symbol":
-        code = raw.strip()
+        code = raw.strip().upper()
+        au_base = _strip_au_suffix(code)
         if market:
-            return cls(Market(market), code)
+            requested = Market(str(market).upper())
+            if au_base is not None and requested != Market.AU:
+                raise ValueError(f"market {requested.value} conflicts with .AX suffix in {raw!r}")
+            return cls(requested, au_base if au_base is not None else code)
+        if au_base is not None:
+            return cls(Market.AU, au_base)
         return cls(_detect_market(code), code)
 
     def to_tencent(self) -> str:
