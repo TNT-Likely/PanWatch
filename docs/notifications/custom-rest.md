@@ -1,13 +1,22 @@
-# Custom REST API notification publisher
+# Custom Webhook / REST notifications
 
-PanWatch sends a fixed JSON POST to your notification gateway. Multiple apps can
-implement this same small contract; the gateway owns the persistent queue,
-Telegram integration, rate limiting and downstream retries. PanWatch does not
-install a broker, create a gateway or accept incoming commands.
+PanWatch sends a JSON POST using the familiar Apprise Custom JSON fields
+(`version`, `title`, `message`, `type`), with additional delivery metadata. A
+generic webhook can consume `title` and `message` without implementing a new
+PanWatch-versioned protocol. A durable notification gateway can also use the
+stable IDs and `Idempotency-Key` to enqueue/deduplicate before acknowledging.
+PanWatch does not install a broker, create a gateway or accept incoming commands.
+
+Existing Apprise-backed channels are unchanged. This channel retains a small,
+explicit HTTP exception because the supported Custom
+JSON public APIs cannot meet all of its required security/delivery guarantees.
+It does **not** claim to call Apprise's Custom JSON transport. See the verified
+gaps below; adding a wrapper that replaced all of Custom JSON's send logic would
+not provide useful reuse.
 
 ## Setup
 
-In Settings → Notification channels, add **Custom REST API**. Example API payload
+In Settings → Notification channels, add **Custom Webhook / REST**. Example API payload
 for the existing authenticated `/api/channels` endpoint:
 
 ```json
@@ -60,7 +69,7 @@ self-check, template import and runtime use the same validation. Template import
 validate REST settings before changing any selected records, including replace
 imports. Exports contain environment names only, never resolved secrets.
 
-## Wire contract (version 1)
+## Generic JSON payload
 
 ```http
 POST /v1/events
@@ -71,23 +80,32 @@ Idempotency-Key: panwatch-v1-<sha256 of compact JSON [source,delivery_id]>
 
 ```json
 {
-  "schema_version": 1,
+  "version": "1.0",
+  "type": "info",
   "source": "PanWatch",
   "event_id": "price-alert:42:7:5fd642de22b54b0d87e28bb22150d316",
   "delivery_id": "price-alert:42:7:5fd642de22b54b0d87e28bb22150d316",
   "timestamp": "2026-10-10T12:30:00Z",
   "title": "Price alert",
-  "content": "**Example** crossed your target.",
-  "format": "markdown"
+  "message": "**Example** crossed your target."
 }
 ```
 
-UTF-8 text and Markdown are retained; nonprinting controls except LF/tab are
-removed. The complete serialized body must be at most 256 KiB; oversized events
-fail without truncation. This contract has no binary/image attachments. A backend
-must safely adapt the indicated Markdown to its Telegram parse mode and split
-long messages within Telegram limits. `source` is a label, not authentication;
-validate tokens and their allowed sources at the gateway.
+`version: "1.0"` is the Apprise JSON envelope convention, not a PanWatch protocol
+version. There is no `schema_version`, `content`, or `format` field and no
+compatibility mode for the earlier draft. `message` contains Markdown. The
+`panwatch-v1-` header prefix versions only the stable identity derivation; it is
+unchanged so retries/replay do not acquire a new deduplication identity.
+
+UTF-8 text, Markdown, and leading/trailing title/message whitespace are retained;
+nonprinting controls except LF/tab are removed. The complete UTF-8 JSON body must
+be at most 256 KiB; oversized events fail before sending, without truncation or
+splitting into multiple requests. This is shape compatibility with Apprise's
+Custom JSON, not byte-identical formatting or its default text-length/overflow
+behavior. The unused `attachments` field is omitted; there are no binary/image
+attachments. A receiver forwarding to Telegram
+must adapt Markdown and message lengths to its chosen parse mode. `source` is a
+label, not authentication; validate tokens and allowed sources at the receiver.
 
 ### Logical events and destination-specific deliveries
 
@@ -112,12 +130,11 @@ stable across new worker instances, expired leases, manual replay and channel
 configuration repairs. Repairing an outbox channel does not create a second
 logical delivery for a record the gateway already accepted.
 
-This is the corrected version-1 contract for this draft feature. Gateways built
-against the earlier draft must use `delivery_id` (or the new header derivation)
-instead of a global `(source,event_id)` constraint before enabling multiple
-REST destinations on a shared gateway.
+### Durable gateway behavior
 
-### Required gateway behavior
+For a generic webhook, 2xx means only that its HTTP handler accepted the request.
+The stronger durable/replay guarantee requires the receiver to implement this
+behavior (it is not implied by Apprise, HTTP, or the JSON shape):
 
 1. Authenticate and validate the complete event before accepting it.
 2. Atomically insert a durable queue record and a uniqueness constraint on
@@ -158,20 +175,63 @@ can still cause a duplicate. Do not claim end-to-end exactly-once guarantees.
   logical event. An application crash before gateway acceptance can lose a report
   notification. Persisting all report deliveries is a separate feature.
 
-## Keeping this fork small
+## Why the focused HTTP exception remains
 
-The transport and contract live in `src/platform/notifications/custom_rest.py`.
-The notifier registry/dispatch, settings fields, import/API validator and existing
-alert-outbox metadata are the only integration points. No persistence schema,
-broker deployment or gateway implementation is introduced. On upstream sync,
-check those seams and run:
+The [official Custom JSON API](https://appriseit.com/services/json/) supports
+`json://` / `jsons://`, methods, custom headers and added/removed/remapped payload
+fields. Tests exercise the **real** public `Apprise.add(dict)` → notification
+path with a controlled Requests boundary on **1.6.0 and 1.13.1**, rather than
+mocking Apprise itself. Default JSON fields, Unicode/Markdown, extra metadata,
+Bearer/idempotency headers and message remapping are available in both versions.
+Those capabilities do not solve these remaining gaps. The `trust_env` and CA-path
+probes intentionally pass unsupported options to establish the missing public
+hooks; they are not claims that Apprise violates its documented Boolean `verify`
+contract or promises to accept Requests session options:
+
+| Requirement | Apprise 1.6.0 / 1.13.1 public Custom JSON path | Focused exception |
+| --- | --- | --- |
+| Never redirect credentials | 1.6.0 does not pass `allow_redirects`; 1.13.1 supports `redirect=no` | Disable redirects for every supported version |
+| Isolate ambient proxy/netrc credentials; destination-specific PEM CA | Requests uses its default environment-trusting session; no public session injection, `trust_env=False` or destination CA-context input | Explicit verified SSL context, `trust_env=False` |
+| Whole-attempt deadline and cancellation that closes the socket | `cto`/`rto` are socket timeouts; synchronous Requests is run in an executor by async notification | Native async deadline and cancellation |
+| Do not download/log receiver bodies or secrets | Requests eagerly reads responses; Custom JSON DEBUG includes headers in registration URLs and failed-response bodies | Stream headers only; task-scoped HTTP log redaction |
+| One owner of retries, with status/Retry-After | Notification result is Boolean; it does not expose numeric status and bounded `Retry-After` needed by our policy/outbox | Return a safe typed outcome; caller owns every retry |
+
+These are required for loopback and remote destinations alike; choosing stock
+Custom JSON only when no token is configured would still weaken isolation,
+deadlines, and retry semantics. Changing the JSON payload removes the old
+protocol concern but does not remove these independent transport gaps.
+
+`custom_rest.py` owns configuration validation, environment resolution, payload
+size/encoding, and stable delivery identity. `webhook_transport.py` contains only
+the bounded POST and safe HTTP outcome classification; it has no URL scheme
+registry, generic method/header/template configuration, retry loop, monkeypatch,
+or global environment mutation. Existing notifier policy and durable outbox
+continue owning retries. No Apprise internals or alternate plugin registry are
+used. The application dependency stays `apprise>=1.6.0`.
+
+The exception can be removed when supported public Custom JSON APIs provide an
+injectable environment-isolated, cancellable HTTP boundary, per-destination TLS
+trust, headers-only responses, secret-safe logging, and structured failure
+metadata. At that point the configuration and delivery layer can directly use
+Apprise without changing IDs or outbox semantics. Tagged implementations reviewed:
+[1.6.0 Custom JSON](https://github.com/caronc/apprise/blob/v1.6.0/apprise/plugins/NotifyJSON.py),
+[1.13.1 Custom JSON](https://github.com/caronc/apprise/blob/v1.13.1/apprise/plugins/custom_json.py).
+
+## Verification
+
+No persistence schema, broker deployment or gateway implementation is introduced.
+Run the public capability/gap tests in separate environments with `apprise==1.6.0`
+and `apprise==1.13.1`, then run the delivery regressions in each environment:
 
 ```sh
-python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_rest_boundaries.py tests/test_monitoring_delivery.py tests/test_template_import.py
+python -m pytest -q tests/test_apprise_json_contract.py tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_rest_boundaries.py tests/test_monitoring_delivery.py tests/test_template_import.py
 cd frontend
 pnpm run test --run tests/settings/custom-rest-channel.test.tsx
 ```
 
-The REST tests deliberately use the real notifier rather than the suite's global
-notification no-op. They use disposable local HTTP/HTTPS receivers and temporary
-certificates, never paid LLMs, external receivers or a real Telegram bot.
+The REST contract CI runs these two pinned Apprise versions on Python 3.11.
+The public probes pin expectations for the two reviewed versions; they do not
+impose an application dependency upper bound. The REST tests deliberately use the
+real notifier rather than the suite's notification no-op, with disposable local
+HTTP/HTTPS receivers, temporary certificates and controlled HTTP boundaries.
+They do not prove live external delivery or a real Telegram receipt.

@@ -23,14 +23,19 @@ permissions:
 
 jobs:
   backend:
+    name: Apprise ${{ matrix.apprise }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        apprise: ['1.6.0', '1.13.1']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install -r requirements.txt
-      - run: python -m pytest -q tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_rest_boundaries.py tests/test_monitoring_delivery.py tests/test_template_import.py
+      - run: python -m pip install -r requirements.txt "apprise==${{ matrix.apprise }}"
+      - run: python -m pytest -q tests/test_apprise_json_contract.py tests/test_rest_notifications.py tests/test_rest_outbox.py tests/test_rest_boundaries.py tests/test_monitoring_delivery.py tests/test_template_import.py
   frontend:
     runs-on: ubuntu-latest
     defaults:

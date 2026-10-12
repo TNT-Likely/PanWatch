@@ -1,36 +1,22 @@
-"""Small outbound HTTP contract; the receiving gateway owns durable delivery."""
+"""PanWatch delivery metadata and config for Apprise-compatible JSON webhooks."""
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-import logging
 import math
 import os
 import re
 import ssl
 from datetime import UTC, datetime
-from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-import httpx
-
-from src.platform.observability.log_context import redact_http_logs
-
-logger = logging.getLogger(__name__)
+from src.platform.notifications.webhook_transport import (
+    MAX_RETRY_AFTER, PublishError, post_notification, retry_after_seconds,
+)
 
 MAX_PAYLOAD_BYTES = 256 * 1024
-MAX_RETRY_AFTER = 30.0
 CONFIG_FIELDS = ("endpoint_url", "token_env", "tls_ca_env", "timeout_seconds")
-
-
-class PublishError(RuntimeError):
-    """Safe error information; never carry URLs, responses or credentials."""
-    def __init__(self, message: str, *, retryable: bool, retry_after: float = 0):
-        super().__init__(message)
-        self.retryable = retryable
-        self.retry_after = retry_after
 
 
 def validate_config(config: dict) -> dict:
@@ -89,10 +75,9 @@ def notification_envelope(title: str, content: str, *, message_id: str | None = 
         timestamp = timestamp.replace(tzinfo=UTC)
     def clean(value: str) -> str:
         return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", value)
-    return {"schema_version": 1, "event_id": identifier, "delivery_id": identifier,
+    return {"version": "1.0", "type": "info", "event_id": identifier, "delivery_id": identifier,
             "timestamp": timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z"),
-            "source": "PanWatch", "title": clean(title), "content": clean(content),
-            "format": "markdown"}
+            "source": "PanWatch", "title": clean(title), "message": clean(content)}
 
 
 def destination_envelope(envelope: dict, config: dict) -> dict:
@@ -112,24 +97,6 @@ def destination_envelope(envelope: dict, config: dict) -> dict:
 def publication_id(envelope: dict) -> str:
     identity = json.dumps([envelope["source"], envelope["delivery_id"]], separators=(",", ":"))
     return "panwatch-v1-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
-
-
-def retry_after_seconds(value: str | None) -> float:
-    if not value:
-        return 0
-    try:
-        delay = float(value)
-        if not math.isfinite(delay):
-            return 0
-    except ValueError:
-        try:
-            date = parsedate_to_datetime(value)
-            if date.tzinfo is None:
-                date = date.replace(tzinfo=UTC)
-            delay = (date - datetime.now(UTC)).total_seconds()
-        except (ValueError, TypeError, OverflowError):
-            return 0
-    return min(MAX_RETRY_AFTER, max(0, delay))
 
 
 async def publish_notification(config: dict, envelope: dict) -> None:
@@ -157,25 +124,5 @@ async def publish_notification(config: dict, envelope: dict) -> None:
     headers = {"Content-Type": "application/json", "Idempotency-Key": publication_id(envelope)}
     if token:
         headers["Authorization"] = "Bearer " + token
-    try:
-        # httpcore DEBUG traces include raw response headers, and httpx includes
-        # the reason phrase. Redact only this task's transport records before
-        # any handler (including the production DEBUG database sink) sees them.
-        with redact_http_logs():
-            async with asyncio.timeout(timeout):
-                async with httpx.AsyncClient(verify=context, trust_env=False, follow_redirects=False,
-                                             timeout=timeout) as client:
-                    async with client.stream("POST", cfg["endpoint_url"], content=payload, headers=headers) as response:
-                        status = response.status_code
-                        logger.debug("REST gateway returned HTTP %d", status)
-                        if 200 <= status < 300:
-                            return
-                        raise PublishError(f"REST gateway returned HTTP {status}",
-                                           retryable=status == 429 or 500 <= status < 600,
-                                           retry_after=retry_after_seconds(response.headers.get("Retry-After")) if status == 429 else 0)
-    except PublishError:
-        raise
-    except (httpx.RequestError, TimeoutError):
-        raise PublishError("REST request failed: check connectivity, TLS trust and timeout", retryable=True) from None
-    except Exception:
-        raise PublishError("REST request failed: check gateway configuration", retryable=False) from None
+    await post_notification(cfg["endpoint_url"], payload, headers=headers,
+                            context=context, timeout=timeout)

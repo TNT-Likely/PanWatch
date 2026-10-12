@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from src.platform.notifications import custom_rest as rest
+from src.platform.notifications import webhook_transport
 from src.platform.notifications.notifier import CHANNEL_TYPES, NotifierManager
 from src.modules.administration.api.channels import validate_channel_config
 
@@ -63,14 +64,14 @@ def policy(attempts=2, quiet=False):
     return SimpleNamespace(retry_attempts=attempts, retry_backoff_seconds=0, is_quiet_now=lambda: quiet)
 
 
-def test_real_gateway_receives_versioned_unicode_envelope():
+def test_real_gateway_receives_apprise_compatible_unicode_payload():
     with gateway() as (config, calls):
         assert send(config) == {"success": True}
     headers, body = calls[0]
     event = json.loads(body)
-    assert set(event) == {'schema_version', 'source', 'event_id', 'delivery_id', 'timestamp', 'title', 'content', 'format'}
-    assert event['source'] == 'PanWatch' and event['schema_version'] == 1
-    assert event['content'] == '**Price** ¥12\nCafé' and event['format'] == 'markdown'
+    assert set(event) == {'version', 'type', 'source', 'event_id', 'delivery_id', 'timestamp', 'title', 'message'}
+    assert event['source'] == 'PanWatch' and event['version'] == '1.0'
+    assert event['message'] == '**Price** ¥12\nCafé' and event['type'] == 'info'
     assert event['title'] == '盯盘 📈' and event['timestamp'].endswith('Z')
     assert headers['Idempotency-Key'] == rest.publication_id(event)
     assert headers['Content-Type'] == 'application/json'
@@ -205,7 +206,7 @@ def test_timeout_network_error_and_cancellation_close_client(monkeypatch, caplog
         async def __aenter__(self): return self
         async def __aexit__(self, *args): self.closed = True
         def stream(self, *args, **kwargs): raise error
-    monkeypatch.setattr(rest.httpx, 'AsyncClient', Client)
+    monkeypatch.setattr(webhook_transport.httpx, 'AsyncClient', Client)
     for error in [TimeoutError('secret-token'), httpx.ConnectError('secret-token')]:
         result = send(CONFIG, policy=policy())
         assert not result['success'] and result['retryable']
@@ -319,3 +320,45 @@ def test_real_https_redirect_never_forwards_token(certificate, monkeypatch):
 @pytest.mark.parametrize('endpoint', ['https://192.168.1.10:8443/v1/events', 'https://notifications.internal/events', 'https://[::1]:8443/events'])
 def test_verified_https_private_gateway_configuration_is_allowed(endpoint):
     assert rest.validate_config({'endpoint_url': endpoint, 'tls_ca_env': 'PRIVATE_CA_PEM'})['endpoint_url'] == endpoint
+
+
+def test_payload_preserves_whitespace_and_long_markdown_without_splitting():
+    # Shape compatibility does not import Apprise's default 32K overflow policy.
+    title, message = '  Title\t ', '\n  **Long** ' + '文' * 33000 + '\t\n'
+    with gateway() as (config, calls):
+        manager = NotifierManager()
+        manager.add_channel('custom_rest', config)
+        assert asyncio.run(manager.notify_with_result(title, message))['success']
+    assert len(calls) == 1
+    event = json.loads(calls[0][1])
+    assert event['title'] == title and event['message'] == message
+    assert 'schema_version' not in event and 'content' not in event and 'format' not in event
+
+
+def test_payload_byte_limit_is_checked_before_network(monkeypatch):
+    envelope = rest.notification_envelope('Title', '')
+    def encoded_size(event):
+        return len(json.dumps(event, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+    envelope['message'] = 'a' * (rest.MAX_PAYLOAD_BYTES - encoded_size(envelope))
+    transport = AsyncMock()
+    monkeypatch.setattr(rest, 'post_notification', transport)
+    asyncio.run(rest.publish_notification(CONFIG, envelope))
+    assert len(transport.await_args.args[1]) == rest.MAX_PAYLOAD_BYTES
+    transport.reset_mock()
+    with pytest.raises(ValueError, match='256 KiB'):
+        asyncio.run(rest.publish_notification(CONFIG, envelope | {'message': envelope['message'] + 'é'}))
+    transport.assert_not_called()
+
+
+def test_transport_ignores_ambient_proxy_and_netrc(tmp_path, monkeypatch):
+    netrc = tmp_path / '.netrc'
+    netrc.write_text('machine 127.0.0.1 login ambient-user password ambient-secret\n')
+    netrc.chmod(0o600)
+    monkeypatch.setenv('NETRC', str(netrc))
+    monkeypatch.setenv('HTTP_PROXY', 'http://127.0.0.1:1')
+    monkeypatch.setenv('HTTPS_PROXY', 'http://127.0.0.1:1')
+    monkeypatch.setenv('ALL_PROXY', 'http://127.0.0.1:1')
+    monkeypatch.setenv('NO_PROXY', '')
+    with gateway() as (config, calls):
+        assert send(config)['success']
+    assert len(calls) == 1 and 'Authorization' not in calls[0][0]

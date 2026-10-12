@@ -34,7 +34,7 @@ async function openCustomRestDialog(language: string, resource: typeof en | type
   return { user, labels, section, dialog }
 }
 
-it.each(locales)('creates a Custom REST API channel with environment references in %s', async (language, resource) => {
+it.each(locales)('creates a Custom Webhook / REST channel with environment references in %s', async (language, resource) => {
   const { user, labels, section, dialog } = await openCustomRestDialog(language, resource)
   expect(within(dialog).getByText(labels.channels.customRestHint)).toBeTruthy()
   expect(within(dialog).getAllByRole('textbox')).toHaveLength(4)
@@ -60,7 +60,7 @@ it.each(locales)('creates a Custom REST API channel with environment references 
 })
 
 for (const dismiss of ['cancel', 'escape'] as const) {
-  it.each(locales)(`discards Custom REST API values after ${dismiss} and reopen in %s`, async (language, resource) => {
+  it.each(locales)(`discards Custom Webhook / REST values after ${dismiss} and reopen in %s`, async (language, resource) => {
     const { user, labels, section, dialog } = await openCustomRestDialog(language, resource)
     await user.type(within(dialog).getByLabelText(labels.dialogs.channelName), 'Discard me')
     await user.type(within(dialog).getByLabelText(labels.channels.fields.restEndpoint), 'https://discard.example.net/notify')

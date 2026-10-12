@@ -69,7 +69,7 @@ def sanitize_for_telegram(content: str) -> str:
 # 渠道类型定义 (label + 表单字段)
 CHANNEL_TYPES = {
     "custom_rest": {
-        "label": "Custom REST API",
+        "label": "Custom Webhook / REST",
         "fields": ["endpoint_url", "token_env", "tls_ca_env", "timeout_seconds"],
     },
     "telegram": {
