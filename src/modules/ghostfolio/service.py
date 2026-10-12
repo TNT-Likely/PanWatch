@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import requests
@@ -81,7 +81,8 @@ class SyncResult:
     updated: int = 0
     removed: int = 0
     skipped: int = 0
-    pending_removals: int = 0   # Task 6 起使用
+    pending_removals: list[dict[str, str | int]] = field(default_factory=list)
+    pending_removal_count: int = 0
     status: str = "ok"
 
 
@@ -238,28 +239,31 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
             res.updated += 1
 
     # 删除腿:仅有效导出可触发;整账户清空需 confirm_empty 显式确认
-    res.pending_removals = 0
-    for acc in db.query(Account).filter(Account.name.like(f"{cfg.account_prefix}%")).all():
+    for acc in db.query(Account).join(GhostfolioAccountMap,
+                                      GhostfolioAccountMap.account_id == Account.id).distinct().all():
         maps = db.query(GhostfolioAccountMap).filter_by(account_id=acc.id).all()
         gf_ids = {m.gf_account_id for m in maps}
-        if not gf_ids:
-            continue  # 无映射的前缀账户不托管(历史遗留,人工处理)
         positions = db.query(Position).filter(Position.account_id == acc.id).all()
         drops = []
         for pos in positions:
             stock = db.query(Stock).filter(Stock.id == pos.stock_id).one()
             if any((gid, stock.symbol, stock.market) in holdings for gid in gf_ids):
                 continue
-            drops.append(pos)
+            drops.append((pos, stock))
         if drops and len(drops) == len(positions) and not confirm_empty:
-            res.pending_removals += len(drops)
+            for _, stock in drops:
+                res.pending_removals.append({"gf_account_id": maps[0].gf_account_id,
+                                             "account_id": acc.id, "symbol": stock.symbol,
+                                             "market": stock.market})
+            res.pending_removal_count += len(drops)
             continue
-        for pos in drops:
+        for pos, _ in drops:
             db.delete(pos)
             res.removed += 1
 
     cfg.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC,与列类型一致
-    cfg.last_status = "pending account-emptying removals" if res.pending_removals else "ok"
+    res.status = "pending account-emptying removals" if res.pending_removal_count else "ok"
+    cfg.last_status = res.status
     db.commit()
     return res
 

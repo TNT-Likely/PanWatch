@@ -133,13 +133,94 @@ def test_account_emptying_requires_confirm(tmp_path, monkeypatch):
                          "activities": [a for a in EXPORT["activities"] if a["accountId"] != "a1"]}
         monkeypatch.setattr(service, "fetch_export", lambda b, t: stake_emptied)
         res = service.sync_now(db)
-        assert res.pending_removals == 2 and res.removed == 0
+        assert res.pending_removal_count == 2 and res.removed == 0
+        assert {(item["gf_account_id"], item["account_id"], item["symbol"], item["market"])
+                for item in res.pending_removals} == {
+                    ("a1", res.pending_removals[0]["account_id"], "CBA", "AU"),
+                    ("a1", res.pending_removals[0]["account_id"], "IVV", "AU"),
+                }
         assert db.query(Position).count() == 4  # Stake 的 CBA/IVV 仍保留
-        assert "pending" in service.get_or_create_config(db).last_status
+        assert res.status == service.get_or_create_config(db).last_status == "pending account-emptying removals"
 
         res2 = service.sync_now(db, confirm_empty=True)
         assert res2.removed == 2 and db.query(Position).count() == 2
     finally:
+        db.close()
+        engine.dispose()
+
+
+def test_mixed_removals_and_renamed_mapped_account(tmp_path, monkeypatch):
+    """重命名映射账户仍须受清空确认保护;其他账户的单标的删除照常执行。"""
+    from src.platform.persistence.models import Account, Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        mixed_export = {"accounts": EXPORT["accounts"], "activities": EXPORT["activities"] + [{
+            "accountId": "a2", "type": "BUY", "quantity": "1", "unitPrice": "10", "fee": "0",
+            "date": "2026-01-09T10:00:00+11:00",
+            "symbolProfile": {"symbol": "MSFT", "dataSource": "YAHOO", "name": "Microsoft",
+                              "currency": "USD"}}]}
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: mixed_export)
+        service.sync_now(db)
+        stake = db.query(Account).filter_by(name="GF: Stake").one()
+        stake.name = "Renamed Stake"
+        db.commit()
+        reduced = {"accounts": EXPORT["accounts"], "activities": [
+            a for a in mixed_export["activities"] if a["accountId"] != "a1"
+            and (a.get("symbolProfile") or {}).get("symbol") != "AAPL"]}
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: reduced)
+        res = service.sync_now(db)
+        assert res.removed == 1 and res.pending_removal_count == 2
+        assert {(item["gf_account_id"], item["symbol"], item["market"])
+                for item in res.pending_removals} == {("a1", "CBA", "AU"), ("a1", "IVV", "AU")}
+        assert db.query(Position).filter_by(account_id=stake.id).count() == 2
+        assert db.query(Position).join(Stock).filter(Stock.symbol == "AAPL").count() == 0
+        res2 = service.sync_now(db, confirm_empty=True)
+        assert res2.removed == 2 and db.query(Position).filter_by(account_id=stake.id).count() == 0
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_sync_api_confirm_empty_query(tmp_path, monkeypatch):
+    """HTTP 查询参数控制整账户清空,响应列出待确认的账户与标的。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from src.modules.ghostfolio import api
+    from src.platform.persistence.database import get_db
+    from src.platform.persistence.models import Position
+
+    db, engine = _make_db(tmp_path)
+    app = FastAPI()
+    app.include_router(api.router, prefix="/api/ghostfolio")
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        db.add(service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True))
+        db.commit()
+        monkeypatch.setenv("GHOSTFOLIO_ENABLED", "1")
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: EXPORT)
+        service.sync_now(db)
+        reduced = {"accounts": EXPORT["accounts"],
+                   "activities": [a for a in EXPORT["activities"] if a["accountId"] != "a1"]}
+        monkeypatch.setattr(service, "fetch_export", lambda b, t: reduced)
+        with TestClient(app) as client:
+            response = client.post("/api/ghostfolio/sync")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["pending_removal_count"] == 2 and data["removed"] == 0
+            assert {(item["gf_account_id"], item["symbol"], item["market"])
+                    for item in data["pending_removals"]} == {("a1", "CBA", "AU"), ("a1", "IVV", "AU")}
+            assert db.query(Position).count() == 4
+            confirmed = client.post("/api/ghostfolio/sync?confirm_empty=true")
+            assert confirmed.status_code == 200
+            assert confirmed.json()["removed"] == 2 and db.query(Position).count() == 2
+    finally:
+        app.dependency_overrides.clear()
         db.close()
         engine.dispose()
 
