@@ -1,6 +1,6 @@
 # Grouped global market overview
 
-The homepage shows 29 indicative observations in nine configurable groups. Visibility and order (both groups and individual instruments) are saved in this browser under `panwatch.globalOverview.v1`; Reset restores the default. Preferences are not synced between devices. No holdings, securities market codes, trading sessions or valuation rules change.
+The homepage shows CSI 300, ChiNext, Hang Seng, Nasdaq Composite and S&P 500 by default. All 29 indicative observations in nine groups remain available in Customize; groups with no visible instruments do not leave empty headings. Visibility and order (both groups and individual instruments) are saved in this browser under `panwatch.globalOverview.v1` only after a customization. Existing saved layouts, including show-all, are preserved. Reset clears this preference and restores the five-index default, including when market data is still loading. Preferences are not synced between devices. No holdings, securities market codes, trading sessions or valuation rules change.
 
 ## Sources, identity and licensing
 

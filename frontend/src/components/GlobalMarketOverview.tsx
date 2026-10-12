@@ -7,14 +7,19 @@ import { marketSignTextClass } from '@/lib/market-colors'
 
 export const OVERVIEW_GROUPS = ['china', 'hongKong', 'us', 'canada', 'europe', 'asia', 'commodities', 'crypto', 'fixedIncome']
 const STORAGE_KEY = 'panwatch.globalOverview.v1'
+const DEFAULT_VISIBLE_IDS = new Set(['csi300', 'chinext', 'hsi', 'nasdaq', 'sp500'])
 type Preferences = { order: string[]; hidden: string[] }
-const defaults = (): Preferences => ({ order: [], hidden: [] })
-export function loadOverviewPreferences(): Preferences {
+const defaults = (instruments: DashboardOverviewInstrument[]): Preferences => ({
+  order: [],
+  hidden: instruments.filter(ix => !DEFAULT_VISIBLE_IDS.has(ix.id)).map(ix => ix.id),
+})
+export function loadOverviewPreferences(): Preferences | null {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    if (!value || typeof value !== 'object' || (!Array.isArray(value.order) && !Array.isArray(value.hidden))) return null
     const strings = (v: unknown) => Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : []
     return { order: strings(value?.order), hidden: strings(value?.hidden) }
-  } catch { return defaults() }
+  } catch { return null }
 }
 export function orderedItems<T>(items: T[], order: string[], key: (item: T) => string): T[] {
   const rank = (item: T) => { const n = order.indexOf(key(item)); return n < 0 ? order.length : n }
@@ -26,11 +31,18 @@ export default function GlobalMarketOverview({ instruments, loading = false }: {
   const translate = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const tr = (key: string, options?: Record<string, unknown>) => translate(`globalOverview.${key}`, options)
   const [editing, setEditing] = useState(false)
-  const [prefs, setPrefs] = useState(loadOverviewPreferences)
+  const [savedPrefs, setSavedPrefs] = useState(loadOverviewPreferences)
+  // Resolve defaults from the latest catalog, including its initial async load.
+  // An explicit saved empty hidden list remains the user's show-all preference.
+  const prefs = savedPrefs ?? defaults(instruments)
   const groups = useMemo(() => orderedItems(OVERVIEW_GROUPS, prefs.order, id => `group:${id}`), [prefs.order])
   const save = (next: Preferences) => {
-    setPrefs(next)
+    setSavedPrefs(next)
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* Storage can be disabled. Keep this session usable. */ }
+  }
+  const reset = () => {
+    setSavedPrefs(null)
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* Keep defaults usable for this session. */ }
   }
   const toggle = (key: string) => save({ ...prefs, hidden: prefs.hidden.includes(key) ? prefs.hidden.filter(id => id !== key) : [...prefs.hidden, key] })
   const move = (keys: string[], index: number, offset: number) => {
@@ -40,14 +52,15 @@ export default function GlobalMarketOverview({ instruments, loading = false }: {
     ;[ordered[index], ordered[next]] = [ordered[next], ordered[index]]
     save({ ...prefs, order: [...prefs.order.filter(key => !keys.includes(key)), ...ordered] })
   }
+  // Do not freeze an empty hidden list before the full catalog arrives.
   const controls = (key: string, name: string, keys: string[], index: number) => (
     <div className="flex items-center gap-1">
       <label className="flex items-center gap-1 text-xs">
-        <input type="checkbox" checked={!prefs.hidden.includes(key)} onChange={() => toggle(key)} aria-label={tr('show', { name })} />
+        <input type="checkbox" disabled={!instruments.length} checked={!prefs.hidden.includes(key)} onChange={() => toggle(key)} aria-label={tr('show', { name })} />
         {name}
       </label>
-      <Button size="sm" variant="ghost" disabled={index === 0} aria-label={tr('up', { name })} onClick={() => move(keys, index, -1)}>↑</Button>
-      <Button size="sm" variant="ghost" disabled={index === keys.length - 1} aria-label={tr('down', { name })} onClick={() => move(keys, index, 1)}>↓</Button>
+      <Button size="sm" variant="ghost" disabled={!instruments.length || index === 0} aria-label={tr('up', { name })} onClick={() => move(keys, index, -1)}>↑</Button>
+      <Button size="sm" variant="ghost" disabled={!instruments.length || index === keys.length - 1} aria-label={tr('down', { name })} onClick={() => move(keys, index, 1)}>↓</Button>
     </div>
   )
   const asOf = (ix: DashboardOverviewInstrument) => {
@@ -66,7 +79,7 @@ export default function GlobalMarketOverview({ instruments, loading = false }: {
       </div>
       <p className="mb-3 text-xs text-muted-foreground">{tr('hint')}</p>
       {editing && <div className="mb-3 rounded border p-2">
-        <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{tr('preferencesHint')}</p><Button size="sm" variant="outline" onClick={() => save(defaults())}>{tr('reset')}</Button></div>
+        <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{tr('preferencesHint')}</p><Button size="sm" variant="outline" onClick={reset}>{tr('reset')}</Button></div>
         {groups.map((group, index) => <div key={group} className="my-2">
           {controls(`group:${group}`, tr(`groups.${group}`), groups.map(id => `group:${id}`), index)}
           <div className="grid gap-1 pl-3 sm:grid-cols-2 lg:grid-cols-3">
