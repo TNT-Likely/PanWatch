@@ -44,7 +44,11 @@ def preview(db: Session = Depends(get_db)):
     if not cfg.base_url:
         return {"error": "not configured"}
     export = service.fetch_export(cfg.base_url, cfg.api_token)
-    holdings = service.compute_holdings(export)
+    try:
+        service.validate_export(export)
+        holdings, _skipped = service.compute_holdings(export)
+    except service.ExportValidationError as e:
+        return {"error": f"invalid export: {e}"}
     return {"holdings": {f"{a}|{s}|{m}": {"quantity": h.quantity, "cost": h.cost}
                          for (a, s, m), h in holdings.items()}}
 

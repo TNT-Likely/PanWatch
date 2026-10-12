@@ -72,6 +72,7 @@ class Holding:
     market: str
     quantity: float
     cost: float  # 净买入成本(含 fee)
+    currency: str = ""
 
 
 @dataclass
@@ -81,6 +82,7 @@ class SyncResult:
     updated: int = 0
     removed: int = 0
     skipped: int = 0
+    skipped_types: dict[str, int] = field(default_factory=dict)
     pending_removals: list[dict[str, str | int]] = field(default_factory=list)
     pending_removal_count: int = 0
     status: str = "ok"
@@ -126,11 +128,21 @@ def fetch_export(base_url: str, token: str) -> dict:
     return r.json()
 
 
-def compute_holdings(export: dict) -> dict[tuple[str, str, str], Holding]:
+def _activity_sort_key(pair: tuple[int, dict]) -> tuple[str, int]:
+    """按活动日期升序;同日保持导出原序(稳定)。ISO 日期前 10 位字典序即日期序。"""
+    idx, act = pair
+    return ((act.get("date") or "")[:10], idx)
+
+
+def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding], dict[str, int]]:
+    names = {a["id"]: a.get("name") or a["id"] for a in export.get("accounts") or []}
+    skipped: dict[str, int] = {}
     holdings: dict[tuple[str, str, str], Holding] = {}
-    for act in export.get("activities") or []:
+    for _, act in sorted(enumerate(export.get("activities") or []), key=_activity_sort_key):
         if act.get("type") not in ("BUY", "SELL"):
-            continue  # DIVIDEND/TRANSFER 不参与持仓与成本
+            t = act.get("type") or "UNKNOWN"
+            skipped[t] = skipped.get(t, 0) + 1  # DIVIDEND/TRANSFER/公司行为:报告而非静默忽略
+            continue
         sp = act.get("symbolProfile") or {}
         raw = (sp.get("symbol") or act.get("symbol") or "").upper()
         market = map_market(raw, sp.get("dataSource") or act.get("dataSource") or "")
@@ -138,25 +150,30 @@ def compute_holdings(export: dict) -> dict[tuple[str, str, str], Holding]:
             continue
         base = raw.removesuffix(".AX")
         if raw.endswith(".HK"):
-            # Ghostfolio 港股 0700.HK → PanWatch 约定 5 位基码 00700
             stem = raw.removesuffix(".HK")
             base = stem.zfill(5) if stem.isdigit() else stem
         key = (act.get("accountId") or "default", base, market)
         h = holdings.get(key) or Holding(symbol=base, name=sp.get("name") or base,
                                          market=market, quantity=0.0, cost=0.0)
+        ccy = (sp.get("currency") or act.get("currency") or "").upper()
+        if h.currency and ccy and h.currency != ccy:
+            raise ExportValidationError(
+                f"mixed currencies for {market}:{base}: {h.currency} vs {ccy}")
+        if not h.currency:
+            h.currency = ccy
         qty = float(act.get("quantity") or 0)
         price = float(act.get("unitPrice") or 0)
         fee = float(act.get("fee") or 0)
         if act["type"] == "BUY":
             h.quantity += qty
             h.cost += qty * price + fee
-        elif h.quantity > 0:  # SELL 按移动平均成本减记
+        elif h.quantity > 0:
             avg = h.cost / h.quantity
             cut = min(qty, h.quantity)
             h.quantity -= cut
             h.cost -= avg * cut
         holdings[key] = h
-    return {k: h for k, h in holdings.items() if h.quantity > 1e-9}
+    return ({k: h for k, h in holdings.items() if h.quantity > 1e-9}, skipped)
 
 
 def get_or_create_config(db: Session) -> GhostfolioConfig:
@@ -206,7 +223,8 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
         cfg.last_status = f"aborted: {e}"
         db.commit()
         raise
-    holdings = compute_holdings(export)
+    holdings, skipped_types = compute_holdings(export)
+    res.skipped_types = skipped_types
     if dry_run:
         return res
 

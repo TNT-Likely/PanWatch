@@ -4,7 +4,7 @@ import pytest
 import requests
 
 from src.modules.ghostfolio import service
-from src.modules.ghostfolio.service import compute_holdings, fetch_export, map_market
+from src.modules.ghostfolio.service import ExportValidationError, compute_holdings, fetch_export, map_market
 
 EXPORT = {
     "accounts": [
@@ -50,7 +50,7 @@ def test_map_market():
 
 
 def test_compute_holdings():
-    holdings = compute_holdings(EXPORT)
+    holdings, _ = compute_holdings(EXPORT)
     cba = holdings[("a1", "CBA", "AU")]
     assert cba.quantity == 10 and cba.cost == 1005.0  # fee included, DIVIDEND ignored
     ivv = holdings[("a1", "IVV", "AU")]
@@ -61,6 +61,48 @@ def test_compute_holdings():
     # Ruling 1: Ghostfolio .HK 基码补零到 5 位(PanWatch 港股约定 00700)
     tencent = holdings[("a3", "00700", "HK")]
     assert tencent.quantity == 100
+
+
+def test_compute_holdings_sorts_by_date():
+    """乱序导出按日期重排后再聚合:先买后卖的平均成本核算不因顺序漂移。"""
+    shuffled = {"accounts": EXPORT["accounts"],
+                "activities": list(reversed(EXPORT["activities"]))}
+    holdings, skipped = compute_holdings(shuffled)
+    aapl = holdings[("a2", "AAPL", "US")]
+    assert aapl.quantity == 1 and aapl.cost == 190.0  # 若未排序,SELL 先于 BUY 会留下 2 股
+    assert skipped == {"DIVIDEND": 1}
+
+
+def test_compute_holdings_rejects_mixed_currency():
+    """同一(账户,标的)出现多种货币成本 → 视为数据质量问题,整体中止。"""
+    export = {
+        "accounts": [{"id": "m1", "name": "Mix"}],
+        "activities": [
+            {"accountId": "m1", "type": "BUY", "quantity": "1", "unitPrice": "100", "fee": "0",
+             "date": "2026-01-02T10:00:00+11:00",
+             "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
+                               "name": "CBA", "currency": "AUD"}},
+            {"accountId": "m1", "type": "BUY", "quantity": "1", "unitPrice": "100", "fee": "0",
+             "date": "2026-01-03T10:00:00+11:00",
+             "symbolProfile": {"symbol": "CBA.AX", "dataSource": "YAHOO",
+                               "name": "CBA", "currency": "USD"}},
+        ],
+    }
+    with pytest.raises(ExportValidationError):
+        compute_holdings(export)
+
+
+def test_compute_holdings_reports_skipped_types_and_currency():
+    """非交易活动按类型计数;交易持仓保留成本计价币种。"""
+    export = {"accounts": EXPORT["accounts"], "activities": EXPORT["activities"] + [
+        {"accountId": "a1", "type": "TRANSFER", "date": "2026-01-09T10:00:00+11:00"},
+        {"accountId": "a1", "type": "TRANSFER", "date": "2026-01-10T10:00:00+11:00"},
+        {"accountId": "a1", "type": "SPLIT", "date": "2026-01-11T10:00:00+11:00"},
+    ]}
+    holdings, skipped = compute_holdings(export)
+    assert holdings[("a1", "CBA", "AU")].currency == "AUD"
+    assert holdings[("a2", "AAPL", "US")].currency == "USD"
+    assert skipped == {"DIVIDEND": 1, "TRANSFER": 2, "SPLIT": 1}
 
 
 def _make_db(tmp_path):
@@ -375,6 +417,7 @@ def test_sync_now_upserts_and_removes(tmp_path, monkeypatch):
 
         res = service.sync_now(db)
         assert res.accounts == 3 and res.created == 4 and res.removed == 0
+        assert res.skipped_types == {"DIVIDEND": 1}
 
         names = {a.name for a in db.query(Account).all()}
         assert names == {"GF: Stake", "GF: CommSec", "GF: IBKR"}
@@ -483,7 +526,7 @@ def test_sync_now_aborts_on_malformed_export_preserves_positions(tmp_path, monke
 
 
 def test_compute_holdings_accepts_flat_export_shape():
-    h = compute_holdings(FLAT_EXPORT)
+    h, _ = compute_holdings(FLAT_EXPORT)
     vgs = h[("p1", "VGS", "AU")]
     assert vgs.quantity == 85 and abs(vgs.cost - 85 * 11.63) < 1e-9
     assert vgs.name == "VGS"
