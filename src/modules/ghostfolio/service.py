@@ -252,9 +252,8 @@ def sync_now(db: Session, dry_run: bool = False, confirm_empty: bool = False) ->
             drops.append((pos, stock))
         if drops and len(drops) == len(positions) and not confirm_empty:
             for _, stock in drops:
-                res.pending_removals.append({"gf_account_id": maps[0].gf_account_id,
-                                             "account_id": acc.id, "symbol": stock.symbol,
-                                             "market": stock.market})
+                res.pending_removals.append({"account_id": acc.id, "account_name": acc.name,
+                                             "symbol": stock.symbol, "market": stock.market})
             res.pending_removal_count += len(drops)
             continue
         for pos, _ in drops:

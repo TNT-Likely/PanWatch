@@ -117,7 +117,7 @@ def test_same_named_upstream_accounts_stay_distinct(tmp_path, monkeypatch):
 
 def test_account_emptying_requires_confirm(tmp_path, monkeypatch):
     """valid 导出但某账户整体清空:默认保留并计数,confirm_empty=True 才真正删除。"""
-    from src.platform.persistence.models import Position
+    from src.platform.persistence.models import Account, Position
 
     db, engine = _make_db(tmp_path)
     try:
@@ -127,6 +127,7 @@ def test_account_emptying_requires_confirm(tmp_path, monkeypatch):
         monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
         monkeypatch.setattr(service, "fetch_export", lambda b, t: EXPORT)
         service.sync_now(db)
+        stake = db.query(Account).filter_by(name="GF: Stake").one()
         assert db.query(Position).count() == 4
 
         stake_emptied = {"accounts": EXPORT["accounts"],
@@ -134,11 +135,10 @@ def test_account_emptying_requires_confirm(tmp_path, monkeypatch):
         monkeypatch.setattr(service, "fetch_export", lambda b, t: stake_emptied)
         res = service.sync_now(db)
         assert res.pending_removal_count == 2 and res.removed == 0
-        assert {(item["gf_account_id"], item["account_id"], item["symbol"], item["market"])
-                for item in res.pending_removals} == {
-                    ("a1", res.pending_removals[0]["account_id"], "CBA", "AU"),
-                    ("a1", res.pending_removals[0]["account_id"], "IVV", "AU"),
-                }
+        assert res.pending_removals == [
+            {"account_id": stake.id, "account_name": stake.name, "symbol": "CBA", "market": "AU"},
+            {"account_id": stake.id, "account_name": stake.name, "symbol": "IVV", "market": "AU"},
+        ]
         assert db.query(Position).count() == 4  # Stake 的 CBA/IVV 仍保留
         assert res.status == service.get_or_create_config(db).last_status == "pending account-emptying removals"
 
@@ -175,8 +175,10 @@ def test_mixed_removals_and_renamed_mapped_account(tmp_path, monkeypatch):
         monkeypatch.setattr(service, "fetch_export", lambda b, t: reduced)
         res = service.sync_now(db)
         assert res.removed == 1 and res.pending_removal_count == 2
-        assert {(item["gf_account_id"], item["symbol"], item["market"])
-                for item in res.pending_removals} == {("a1", "CBA", "AU"), ("a1", "IVV", "AU")}
+        assert res.pending_removals == [
+            {"account_id": stake.id, "account_name": "Renamed Stake", "symbol": "CBA", "market": "AU"},
+            {"account_id": stake.id, "account_name": "Renamed Stake", "symbol": "IVV", "market": "AU"},
+        ]
         assert db.query(Position).filter_by(account_id=stake.id).count() == 2
         assert db.query(Position).join(Stock).filter(Stock.symbol == "AAPL").count() == 0
         res2 = service.sync_now(db, confirm_empty=True)
@@ -192,7 +194,7 @@ def test_sync_api_confirm_empty_query(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from src.modules.ghostfolio import api
     from src.platform.persistence.database import get_db
-    from src.platform.persistence.models import Position
+    from src.platform.persistence.models import Account, Position
 
     db, engine = _make_db(tmp_path)
     app = FastAPI()
@@ -205,6 +207,7 @@ def test_sync_api_confirm_empty_query(tmp_path, monkeypatch):
         monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
         monkeypatch.setattr(service, "fetch_export", lambda b, t: EXPORT)
         service.sync_now(db)
+        stake = db.query(Account).filter_by(name="GF: Stake").one()
         reduced = {"accounts": EXPORT["accounts"],
                    "activities": [a for a in EXPORT["activities"] if a["accountId"] != "a1"]}
         monkeypatch.setattr(service, "fetch_export", lambda b, t: reduced)
@@ -213,8 +216,10 @@ def test_sync_api_confirm_empty_query(tmp_path, monkeypatch):
             assert response.status_code == 200
             data = response.json()
             assert data["pending_removal_count"] == 2 and data["removed"] == 0
-            assert {(item["gf_account_id"], item["symbol"], item["market"])
-                    for item in data["pending_removals"]} == {("a1", "CBA", "AU"), ("a1", "IVV", "AU")}
+            assert data["pending_removals"] == [
+                {"account_id": stake.id, "account_name": stake.name, "symbol": "CBA", "market": "AU"},
+                {"account_id": stake.id, "account_name": stake.name, "symbol": "IVV", "market": "AU"},
+            ]
             assert db.query(Position).count() == 4
             confirmed = client.post("/api/ghostfolio/sync?confirm_empty=true")
             assert confirmed.status_code == 200
