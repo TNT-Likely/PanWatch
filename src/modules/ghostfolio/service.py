@@ -62,7 +62,8 @@ def validate_export(export: object) -> None:
         try:
             datetime.fromisoformat(act["date"])
         except (TypeError, ValueError):
-            symbol = (act.get("symbolProfile") or {}).get("symbol") or act.get("symbol") or "未知标的"
+            profile = act.get("symbolProfile")
+            symbol = (profile.get("symbol") if isinstance(profile, dict) else None) or act.get("symbol") or "未知标的"
             raise ExportValidationError(f"activity[{i}] {symbol} 日期无效")
 
 
@@ -134,9 +135,9 @@ def fetch_export(base_url: str, token: str) -> dict:
 
 
 def _activity_sort_key(pair: tuple[int, dict]) -> tuple[str, int]:
-    """按活动日期升序;同日保持导出原序(稳定)。ISO 日期前 10 位字典序即日期序。"""
+    """按解析后的活动日期升序;同日保持导出原序。"""
     idx, act = pair
-    return ((act.get("date") or "")[:10], idx)
+    return (datetime.fromisoformat(act["date"]).date().isoformat(), idx)
 
 
 def compute_holdings(export: dict) -> tuple[dict[tuple[str, str, str], Holding], dict[str, int]]:

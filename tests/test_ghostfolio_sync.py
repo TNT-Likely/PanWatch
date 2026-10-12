@@ -69,6 +69,20 @@ def test_compute_holdings_sorts_by_date():
     assert skipped == {"DIVIDEND": 1}
 
 
+def test_compute_holdings_basic_iso_date_sorts_with_extended_dates():
+    """基本格式日期按日排序,不因字符串格式改变先买后卖顺序。"""
+    buy = {"accountId": "a2", "type": "BUY", "quantity": "2", "unitPrice": "190",
+           "date": "20260105", "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO"}}
+    sell = {"accountId": "a2", "type": "SELL", "quantity": "1", "unitPrice": "210",
+            "date": "2026-01-06T09:00:00+11:00",
+            "symbolProfile": {"symbol": "AAPL", "dataSource": "YAHOO"}}
+    export = {"accounts": EXPORT["accounts"], "activities": [sell, buy]}
+    service.validate_export(export)
+    holdings, _ = compute_holdings(export)
+    assert holdings[("a2", "AAPL", "US")].quantity == 1
+    assert holdings[("a2", "AAPL", "US")].cost == 190.0
+
+
 def test_compute_holdings_same_day_keeps_export_order():
     """同日交易保持导出原序:先卖与先买应得到不同持仓。"""
     buy = {"accountId": "a2", "type": "BUY", "quantity": "2", "unitPrice": "190",
@@ -208,6 +222,42 @@ def test_sync_invalid_date_aborts_without_changing_positions(tmp_path, monkeypat
         db.refresh(pos)
         assert cfg.last_status.startswith("aborted:")
         assert cfg.last_sync_at is not None
+        assert (pos.quantity, pos.cost_price, pos.invested_amount) == (7, 88, 616)
+        assert db.query(Position).count() == 1
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_sync_invalid_date_with_malformed_symbol_profile_aborts(tmp_path, monkeypatch):
+    """标的资料格式错误时,无效日期仍须记录中止状态。"""
+    from copy import deepcopy
+    from src.platform.persistence.models import Account, GhostfolioAccountMap, Position, Stock
+
+    db, engine = _make_db(tmp_path)
+    try:
+        cfg = service.GhostfolioConfig(base_url="http://gf.test", api_token="tok", enabled=True)
+        acc = Account(name="GF: Stake")
+        stock = Stock(symbol="CBA", name="CBA", market="AU")
+        db.add_all([cfg, acc, stock])
+        db.flush()
+        db.add(GhostfolioAccountMap(gf_account_id="a1", account_id=acc.id))
+        pos = Position(account_id=acc.id, stock_id=stock.id, quantity=7,
+                       cost_price=88, invested_amount=616)
+        db.add(pos)
+        db.commit()
+        bad_export = deepcopy(EXPORT)
+        bad_export["activities"][0]["date"] = "not-a-date"
+        bad_export["activities"][0]["symbolProfile"] = "bad-profile"
+        bad_export["activities"][0]["symbol"] = "CBA.AX"
+        monkeypatch.setattr(service, "GHOSTFOLIO_ENABLED", True)
+        monkeypatch.setattr(service, "fetch_export", lambda base, token: bad_export)
+
+        with pytest.raises(ExportValidationError, match=r"activity\[0\].*CBA.AX"):
+            service.sync_now(db)
+        db.refresh(cfg)
+        db.refresh(pos)
+        assert cfg.last_status.startswith("aborted:")
         assert (pos.quantity, pos.cost_price, pos.invested_amount) == (7, 88, 616)
         assert db.query(Position).count() == 1
     finally:
