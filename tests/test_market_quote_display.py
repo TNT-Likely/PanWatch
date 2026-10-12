@@ -102,8 +102,8 @@ def test_portfolio_only_sums_today_for_open_markets(monkeypatch):
             db.commit()
             monkeypatch.setattr(api, "get_usd_cny_rate", lambda: 7)
             monkeypatch.setattr(api, "_fetch_quotes_for_stocks", lambda _: {
-                "600519": {"market": "CN", "current_price": 11, "prev_close": 10, "change_pct": 10},
-                "AAPL": {"market": "US", "current_price": 50, "prev_close": 40, "change_pct": 25},
+                "CN:600519": {"market": "CN", "current_price": 11, "prev_close": 10, "change_pct": 10},
+                "US:AAPL": {"market": "US", "current_price": 50, "prev_close": 40, "change_pct": 25},
             })
             result = api.get_portfolio_summary(db=db)
             rows = {p["market"]: p for p in result["accounts"][0]["positions"]}
@@ -113,7 +113,7 @@ def test_portfolio_only_sums_today_for_open_markets(monkeypatch):
             assert rows["CN"]["daily_pnl"] == 0
             assert rows["US"]["daily_pnl"] == 140
             assert result["total"]["total_daily_pnl"] == 140
-            assert result["quotes"]["600519"]["change_pct"] is None
+            assert result["quotes"]["CN:600519"]["change_pct"] is None
 
             def forbidden():
                 raise AssertionError("Metadata-only refresh must not call external FX sources")

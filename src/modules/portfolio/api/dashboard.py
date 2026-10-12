@@ -239,6 +239,9 @@ def get_dashboard_overview(
             fx = 0.92
         elif market_code == "US":
             fx = 7.25
+        elif market_code == "AU":
+            # 与上方 HK/US 静态汇率同风格的近似值(澳元);精确折算走估值接口
+            fx = 4.70
         cost = float(pos.cost_price or 0.0) * float(pos.quantity or 0) * fx
         invested_cost += cost
         bucket = by_market.setdefault(
