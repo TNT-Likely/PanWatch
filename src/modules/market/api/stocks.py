@@ -126,11 +126,40 @@ def _stock_to_response(stock: Stock, agent_display_names: dict[str, str] | None 
     }
 
 
+@router.get("/markets/enabled")
+def get_effective_markets(db: Session = Depends(get_db)):
+    """有效市场:核心市场 + 已开启可选市场。前端选择器的唯一数据源。"""
+    from src.platform.marketdata.enablement import CORE_MARKETS, effective_markets, market_capabilities
+
+    out = []
+    for code in effective_markets(db):
+        m = MARKETS.get(MarketCode(code))
+        if not m:
+            continue
+        out.append({
+            "code": code,
+            "name": m.name,
+            "optional": code not in CORE_MARKETS,
+            "capabilities": sorted(market_capabilities(db, code)),
+            "currency": m.currency,
+        })
+    return {"markets": out}
+
+
 @router.get("/markets/status")
-def get_market_status():
-    """获取各市场的交易状态"""
+def get_market_status(db: Session = Depends(get_db)):
+    """获取各(有效)市场的交易状态"""
+    from src.platform.marketdata.enablement import CORE_MARKETS, effective_markets
+
+    if hasattr(db, "query"):
+        effective = set(effective_markets(db))
+    else:
+        # 直接以函数形式调用(无 FastAPI 依赖注入,如单测):按默认有效市场处理
+        effective = set(CORE_MARKETS)
     result = []
     for market_code, market_def in MARKETS.items():
+        if market_code.value not in effective:
+            continue
         try:
             now = trading_calendar._now_in_market_tz(market_code)
             status = trading_calendar.market_status(market_code, now)
