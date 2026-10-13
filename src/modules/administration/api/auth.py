@@ -1,11 +1,16 @@
-"""认证 API - 简单的单用户 JWT 认证"""
+"""认证 API - 简单的单用户 JWT 认证
+
+支持两种模式（环境变量 AUTH_MODE）：
+- local（默认）：应用自身的用户名/密码 + JWT 登录
+- proxy：认证卸载到前置网关（nginx-mgr/authsvc），信任反代注入的用户身份头
+"""
 import os
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -24,6 +29,18 @@ JWT_EXPIRE_DAYS = 30
 # 环境变量配置（Docker 部署用）
 ENV_AUTH_USERNAME = os.getenv("AUTH_USERNAME")
 ENV_AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
+
+# 网关认证模式配置：
+# AUTH_MODE=proxy 时登录由前置网关（nginx-mgr authsvc）承担，应用信任
+# PROXY_AUTH_HEADER 指定的身份头（默认 X-Homenas-Auth-User）。
+# 安全前提：容器端口仅绑定回环地址，外部无法绕过网关直连伪造该头。
+AUTH_MODE = os.getenv("AUTH_MODE", "local").strip().lower() or "local"
+if AUTH_MODE not in ("local", "proxy"):
+    raise RuntimeError(f"AUTH_MODE 仅支持 local/proxy，当前值: {AUTH_MODE}")
+PROXY_AUTH_HEADER = os.getenv("PROXY_AUTH_HEADER", "X-Homenas-Auth-User")
+PROXY_LOGOUT_URL = os.getenv(
+    "PROXY_LOGOUT_URL", "https://auth.codefine.site:6870/clear"
+)
 
 # 设置项 key
 AUTH_USERNAME_KEY = "auth_username"
@@ -144,6 +161,8 @@ def init_auth_from_env(db: Session) -> bool:
     Returns:
         True if initialized from env, False otherwise
     """
+    if AUTH_MODE == "proxy":
+        return False  # 认证已卸载到网关，无需本地账号
     if not ENV_AUTH_USERNAME or not ENV_AUTH_PASSWORD:
         return False
 
@@ -158,10 +177,22 @@ def init_auth_from_env(db: Session) -> bool:
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ):
     """验证当前用户（用作依赖）"""
+    # 网关认证模式：信任前置反代注入的身份头
+    if AUTH_MODE == "proxy":
+        user = (request.headers.get(PROXY_AUTH_HEADER) or "").strip()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="网关认证未通过",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+
     # 检查是否已设置密码
     password_hash = get_password_hash(db)
     if not password_hash:
@@ -189,8 +220,15 @@ async def get_current_user(
 @router.get("/status")
 async def auth_status(db: Session = Depends(get_db)):
     """获取认证状态"""
+    if AUTH_MODE == "proxy":
+        return {
+            "mode": "proxy",
+            "initialized": True,
+            "logout_url": PROXY_LOGOUT_URL,
+        }
     password_hash = get_password_hash(db)
     return {
+        "mode": "local",
         "initialized": password_hash is not None,
     }
 
@@ -198,6 +236,9 @@ async def auth_status(db: Session = Depends(get_db)):
 @router.post("/setup", response_model=TokenResponse)
 async def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
     """首次设置用户名和密码"""
+    if AUTH_MODE == "proxy":
+        raise HTTPException(400, "认证已由网关管理，请在统一登录页操作")
+
     if get_password_hash(db):
         raise HTTPException(400, "已设置过账号，请使用登录接口")
 
@@ -218,6 +259,9 @@ async def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: Session = Depends(get_db)):
     """登录"""
+    if AUTH_MODE == "proxy":
+        raise HTTPException(400, "认证已由网关管理，请在统一登录页操作")
+
     stored_hash = get_password_hash(db)
     stored_username = get_stored_username(db)
     if not stored_hash or not stored_username:
@@ -240,6 +284,9 @@ async def change_password(
     _: str = Depends(get_current_user),
 ):
     """修改密码"""
+    if AUTH_MODE == "proxy":
+        raise HTTPException(400, "认证已由网关管理，请在统一登录页操作")
+
     if len(data.password) < 6:
         raise HTTPException(400, "密码长度至少 6 位")
 

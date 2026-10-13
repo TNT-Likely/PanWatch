@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom'
 import { TrendingUp, Bot, ScrollText, Settings, List, Database, Clock, LayoutDashboard, Github, BellRing, Sparkles, Activity, ClipboardCheck, MessageCircle } from 'lucide-react'
 import { useTheme } from '@/hooks/use-theme'
-import { appApi, fetchAPI, isAuthenticated } from '@panwatch/api'
+import { appApi, authApi, fetchAPI, getAuthMode, isAuthenticated, setAuthMode } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
 import OpportunitiesPage from '@/pages/Opportunities'
 import StocksPage from '@/pages/Stocks'
@@ -43,22 +43,10 @@ const mobilePrimaryNavItems = navItems.slice(0, 5)
 const mobileMoreNavItems = navItems.slice(5)
 
 // 认证守卫组件
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking')
+function RequireAuth({ ready, children }: { ready: boolean; children: React.ReactNode }) {
   const location = useLocation()
 
-  useEffect(() => {
-    // 检查本地 token
-    if (isAuthenticated()) {
-      setAuthState('authenticated')
-      return
-    }
-
-    // 没有 token，需要去登录页（设置密码或登录）
-    setAuthState('unauthenticated')
-  }, [])
-
-  if (authState === 'checking') {
+  if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -66,7 +54,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (authState === 'unauthenticated') {
+  // 网关认证模式：页面与 API 均在网关之后，能加载即已认证
+  if (getAuthMode() === 'proxy') {
+    return <>{children}</>
+  }
+
+  if (!isAuthenticated()) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
@@ -91,6 +84,20 @@ function App() {
       .catch(() => {})
   }, [])
 
+  // 启动时拉取认证模式（local/proxy），供 RequireAuth 与 /login 分支判断
+  const [authReady, setAuthReady] = useState(false)
+  useEffect(() => {
+    authApi
+      .status()
+      .then((s) => {
+        if (s.mode === 'proxy' || s.mode === 'local') {
+          setAuthMode(s.mode, s.logout_url)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAuthReady(true))
+  }, [])
+
   useEffect(() => {
     if (checkedUpdateRef.current) return
     if (!isAuthenticated()) return
@@ -109,10 +116,20 @@ function App() {
         setUpgradeOpen(true)
       })
       .catch(() => {})
-  }, [version])
+  }, [version, authReady])
 
-  // 登录页面不显示导航
+  // 登录页面不显示导航（网关认证模式下没有应用内登录页，直接回主页）
   if (location.pathname === '/login') {
+    if (!authReady) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
+      )
+    }
+    if (getAuthMode() === 'proxy') {
+      return <Navigate to="/" replace />
+    }
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -121,7 +138,7 @@ function App() {
   }
 
   return (
-    <RequireAuth>
+    <RequireAuth ready={authReady}>
     <div
       className={isAssistantRoute
         ? 'relative flex h-dvh flex-col overflow-hidden bg-background pb-16 md:pb-0'

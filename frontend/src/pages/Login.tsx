@@ -22,6 +22,11 @@ export default function LoginPage() {
     // 检查认证状态
     authApi.status()
       .then(data => {
+        if (data.mode === 'proxy') {
+          // 认证已卸载到网关，应用内没有登录页
+          navigate('/', { replace: true })
+          return
+        }
         setIsSetup(!data.initialized)
         setChecking(false)
       })

@@ -8,17 +8,54 @@ interface ApiResponse<T> {
   message: string
 }
 
+// ============================================================
+// 认证模式（由 /auth/status 拉取后设置，见 setAuthMode）
+// local: 应用自身 JWT 登录；proxy: 认证卸载到前置网关，
+//        请求凭据依赖同域 cookie，由网关注入身份头
+// ============================================================
+export type AuthMode = 'local' | 'proxy'
+
+let authMode: AuthMode = 'local'
+let proxyLogoutUrl = ''
+const authModeListeners = new Set<() => void>()
+
+export function setAuthMode(mode: AuthMode, logoutUrl?: string) {
+  authMode = mode
+  proxyLogoutUrl = logoutUrl || ''
+  authModeListeners.forEach((listener) => listener())
+}
+
+export function getAuthMode(): AuthMode {
+  return authMode
+}
+
+/** 订阅认证模式变化（供 React useSyncExternalStore 等使用） */
+export function subscribeAuthMode(listener: () => void): () => void {
+  authModeListeners.add(listener)
+  return () => authModeListeners.delete(listener)
+}
+
 export function getToken(): string | null {
   return localStorage.getItem('token')
 }
 
 export function logout() {
+  if (authMode === 'proxy') {
+    // 网关模式：清的是网关 cookie，跳统一登出页（无地址则刷新触发 302）
+    if (proxyLogoutUrl) {
+      window.location.href = proxyLogoutUrl
+    } else {
+      window.location.reload()
+    }
+    return
+  }
   localStorage.removeItem('token')
   localStorage.removeItem('token_expires')
   window.location.href = '/login'
 }
 
 export function isAuthenticated(): boolean {
+  if (authMode === 'proxy') return true
   const token = getToken()
   if (!token) return false
 
@@ -77,6 +114,11 @@ export async function fetchAPI<T>(path: string, options?: ApiRequestOptions): Pr
   }
 
   if (res.status === 401) {
+    if (authMode === 'proxy') {
+      // 网关 cookie 失效：刷新页面，由网关 302 引导到统一登录页
+      window.location.reload()
+      throw new Error('登录已过期')
+    }
     logout()
     throw new Error('登录已过期')
   }

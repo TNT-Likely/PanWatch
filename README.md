@@ -144,9 +144,12 @@ docker-compose up -d
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
-| `AUTH_USERNAME` | 预设登录用户名 | 首次访问时设置 |
-| `AUTH_PASSWORD` | 预设登录密码 | 首次访问时设置 |
-| `JWT_SECRET` | JWT 签名密钥 | 自动生成 |
+| `AUTH_MODE` | 认证模式：`local` 应用自身用户名密码 + JWT 登录；`proxy` 将认证卸载到前置网关（nginx 反代），应用信任网关注入的身份头，应用内不再出现登录页。要求容器端口仅绑定回环地址（如 `127.0.0.1:8000:8000`），防止绕过网关伪造身份头 | `local` |
+| `PROXY_AUTH_HEADER` | `AUTH_MODE=proxy` 时信任的网关身份头名称 | `X-Homenas-Auth-User` |
+| `PROXY_LOGOUT_URL` | `AUTH_MODE=proxy` 时前端「退出登录」跳转的统一登出地址 | `https://auth.codefine.site:6870/clear` |
+| `AUTH_USERNAME` | 预设登录用户名（仅 `local` 模式） | 首次访问时设置 |
+| `AUTH_PASSWORD` | 预设登录密码（仅 `local` 模式） | 首次访问时设置 |
+| `JWT_SECRET` | JWT 签名密钥（仅 `local` 模式） | 自动生成 |
 | `DATA_DIR` | 数据存储目录 | `./data` |
 | `TZ` | 应用时区（影响 Agent 调度触发时间与时间展示） | `Asia/Shanghai` |
 | `PLAYWRIGHT_SKIP_BROWSER_INSTALL` | 跳过首次 Chromium 安装（不需要截图时可用） | 未设置 |
