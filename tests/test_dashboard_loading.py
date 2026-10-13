@@ -75,7 +75,8 @@ def test_market_quotes_run_concurrently_and_preserve_partial_results(monkeypatch
         finally:
             release.set()
         result = pending.result(timeout=3)
-    assert set(result) == {"CN", "US"}
+    # Task 8 起行情按 market:symbol 键控，避免跨市场同代码冲突（如 US:CBA / AU:CBA）
+    assert set(result) == {"CN:CN", "US:US"}
 
 
 @pytest.fixture
