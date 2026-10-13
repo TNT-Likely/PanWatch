@@ -1,0 +1,14 @@
+{
+  "maxProductionFiles": 20,
+  "maxProductionChanges": 800,
+  "reminderDays": 7,
+  "closeDays": 14,
+  "statusContext": "PR policy",
+  "labels": {
+    "needsWork": "pr:needs-work",
+    "needsSplit": "pr:needs-split",
+    "needsEvidence": "pr:needs-evidence",
+    "hold": "pr:hold",
+    "scopeApproved": "pr:scope-approved"
+  }
+}

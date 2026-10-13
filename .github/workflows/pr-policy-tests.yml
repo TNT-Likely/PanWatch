@@ -1,0 +1,21 @@
+name: PR policy tests
+on:
+  pull_request:
+    paths:
+      - '.github/pr-policy.json'
+      - '.github/scripts/pr-policy*'
+      - '.github/workflows/pr-policy*.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/pr-policy.json'
+      - '.github/scripts/pr-policy*'
+      - '.github/workflows/pr-policy*.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: node --test .github/scripts/pr-policy.test.cjs

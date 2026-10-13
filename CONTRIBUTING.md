@@ -77,7 +77,7 @@ make install-hooks
 3. Keep network calls mocked in unit tests; tests must not require paid APIs or send real notifications.
 4. Update both language resources and public documentation when user-visible behavior changes.
 5. Run checks proportional to the affected area, followed by `git diff --check`.
-6. Open a pull request using the format below.
+6. Open a pull request using the template and [scope and acceptance policy](docs/pr-policy.md).
 
 ## Validation
 
@@ -192,11 +192,15 @@ Pull-request titles and descriptions must be written in English. Titles should a
 
 1. **Background** — the problem and user impact.
 2. **Changes** — implementation and behavior changes grouped by module.
-3. **Validation** — exact commands that were run and their results.
-4. **Boundaries and risks** — compatibility, untested paths, and known limitations.
-5. **Follow-up** — only concrete work intentionally left for later.
+3. **Scope** — one independently usable outcome, exclusions, and the agreed proposal where applicable.
+4. **Validation** — current tested commit, exact commands and actual results.
+5. **Acceptance evidence** — reproducible steps, expected/observed behavior and accessible evidence.
+6. **Boundaries and risks** — compatibility, untested paths, and known limitations.
+7. **Follow-up** — only concrete work intentionally left for later.
 
-Use a `codex/`-prefixed branch when changes are made through Codex unless a maintainer requests otherwise. The repository normally uses squash merge.
+Use `<type>/<short-english-kebab-case>` branches, for example `fix/report-symbol` or `feature/market-enablement`. The repository normally uses squash merge.
+
+The initial scope budget is 20 production files and 800 added + deleted production lines, excluding tests, Markdown docs and known lockfiles. Maintainers can approve a current-head exception. See the [complete policy](docs/pr-policy.md) for evidence proportional to risk, read-only rollout, 7-day reminders, 14-day closure notices, and hold/exception labels. Existing PRs receive a full notice period; compliant PRs waiting for maintainer review are not automatically closed.
 
 ## Reporting bugs and security issues
 
