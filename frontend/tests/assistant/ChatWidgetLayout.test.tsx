@@ -2,12 +2,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { chatApi, fetchAPI } from '@panwatch/api'
+import { chatApi, fetchAPI, marketsApi } from '@panwatch/api'
 import ChatWidget from '@/components/ChatWidget'
 import i18n from '@/i18n'
 
 vi.mock('@panwatch/api', () => ({
   fetchAPI: vi.fn(),
+  marketsApi: { getEffectiveMarkets: vi.fn().mockResolvedValue({ markets: [] }) },
   chatApi: {
     listConversations: vi.fn().mockResolvedValue([]),
     createConversation: vi.fn().mockResolvedValue({
@@ -37,6 +38,7 @@ vi.mock('@panwatch/api', () => ({
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.mocked(marketsApi.getEffectiveMarkets).mockRejectedValue(new Error('Unavailable'))
   vi.mocked(chatApi.listConversations).mockResolvedValue([])
   vi.mocked(chatApi.createConversation).mockResolvedValue({ id: 1, title: '', stock_symbol: null, stock_market: null, created_at: '2026-09-12T00:00:00Z' })
   vi.mocked(chatApi.getConversation).mockResolvedValue({

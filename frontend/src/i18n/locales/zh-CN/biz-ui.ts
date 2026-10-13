@@ -205,7 +205,7 @@ export const bizUi = {
   next: '下一步', backHome: '返回首页', doneTitle: '你已完成所选目标', doneDescription: '现在可以日常查看行情或分析。价格提醒和通知可以随时继续设置。',
   chooseStock: '选择关注的标的', existingStocks: '从自选列表选择', stockPlaceholder: '请选择一个标的',
   sampleHint: '首次启动的示例标的也可以选用；选择表示你确认关注它，无需录入持仓。',
-  search: '搜索并添加标的', searchPlaceholder: '输入名称或代码', market: '市场', markets: { CN: 'A 股', HK: '港股', US: '美股' },
+  search: '搜索并添加标的', searchPlaceholder: '输入名称或代码', market: '市场', markets: { CN: 'A 股', HK: '港股', US: '美股', AU: '澳股' },
   searching: '搜索中…', noResults: '没有找到匹配标的，可在持仓页手动添加。', manageStocks: '管理或手动添加自选',
   addStock: '添加并选择', currentStock: '当前标的：{{name}}（{{symbol}}）', selectFirst: '先选择一个关注的标的，再继续此步骤。',
   fetchQuote: '查看行情', refreshQuote: '刷新行情', quoteHint: '休市时会展示最近一次报价。行情时间和本次获取时间可能不同。',
@@ -273,7 +273,7 @@ export const bizUi = {
   },
   stockInsight: {
     description: '概览、K线、AI建议、新闻、历史分析都在同一弹窗查看',
-    markets: { CN: 'A股', HK: '港股', US: '美股' },
+    markets: { CN: 'A股', HK: '港股', US: '美股', AU: '澳股' },
     actions: { generating: '生成中', image: '图片', share: '分享', copy: '复制', processing: '处理中...', held: '持仓中', unfollow: '取消关注', follow: '快速关注', setting: '设置中...', setAlert: '一键设提醒', askAI: '问 AI', refresh: '刷新', holdingCannotUnfollow: '持仓中的股票无法取消关注', more: '更多', openDetails: '打开详情页 ↗' },
     tabs: { overview: '概览', suggestions: '建议 ({{count}})', reports: '报告 ({{count}})', deep: '深度', deepCount: '深度 (1)', kline: 'K线', announcements: '公告 ({{count}})', news: '新闻 ({{count}})' },
     autoRefresh: '自动刷新', seconds: '{{count}}秒',

@@ -7,6 +7,7 @@ import { AssistantStockPicker } from '@/components/assistant/AssistantStockPicke
 
 vi.mock('@panwatch/api', () => ({
   fetchAPI: vi.fn(),
+  marketsApi: { getEffectiveMarkets: vi.fn().mockRejectedValue(new Error('Unavailable')) },
 }))
 
 describe('AssistantStockPicker', () => {

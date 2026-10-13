@@ -208,7 +208,7 @@ export const bizUi = {
   next: 'Next step', backHome: 'Back to Home', doneTitle: 'Your selected goal is complete', doneDescription: 'You can now check quotes or analyses every day. Continue with alerts and notifications whenever you like.',
   chooseStock: 'Choose a symbol to follow', existingStocks: 'Choose from your watchlist', stockPlaceholder: 'Choose a symbol',
   sampleHint: 'You can use an example from the initial watchlist. Selecting it confirms your choice; no position is required.',
-  search: 'Find and add a symbol', searchPlaceholder: 'Enter a name or symbol', market: 'Market', markets: { CN: 'A shares', HK: 'Hong Kong', US: 'United States' },
+  search: 'Find and add a symbol', searchPlaceholder: 'Enter a name or symbol', market: 'Market', markets: { CN: 'A shares', HK: 'Hong Kong', US: 'United States', AU: 'AU' },
   searching: 'Searching…', noResults: 'No matches found. You can add a symbol manually on the Portfolio page.', manageStocks: 'Manage or manually add symbols',
   addStock: 'Add and select', currentStock: 'Selected: {{name}} ({{symbol}})', selectFirst: 'Choose a symbol before continuing with this step.',
   fetchQuote: 'View quote', refreshQuote: 'Refresh quote', quoteHint: 'When the market is closed, the latest available quote is shown. Quote time can differ from retrieval time.',
@@ -276,7 +276,7 @@ export const bizUi = {
   },
   stockInsight: {
     description: 'View overview, charts, AI suggestions, news, and analysis history in one place',
-    markets: { CN: 'A-shares', HK: 'Hong Kong', US: 'U.S.' },
+    markets: { CN: 'A-shares', HK: 'Hong Kong', US: 'U.S.', AU: 'AU' },
     actions: { generating: 'Generating', image: 'Image', share: 'Share', copy: 'Copy', processing: 'Working...', held: 'Held', unfollow: 'Unfollow', follow: 'Follow', setting: 'Setting...', setAlert: 'Set alert', askAI: 'Ask AI', refresh: 'Refresh', holdingCannotUnfollow: 'A held stock cannot be unfollowed', more: 'More', openDetails: 'Open details ↗' },
     tabs: { overview: 'Overview', suggestions: 'Suggestions ({{count}})', reports: 'Reports ({{count}})', deep: 'Deep analysis', deepCount: 'Deep analysis (1)', kline: 'Chart', announcements: 'Filings ({{count}})', news: 'News ({{count}})' },
     autoRefresh: 'Auto refresh', seconds: '{{count}} sec',

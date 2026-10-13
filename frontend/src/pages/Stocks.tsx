@@ -33,6 +33,7 @@ import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, t
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import { useEffectiveMarkets } from '@/hooks/useEffectiveMarkets'
 import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
@@ -202,6 +203,7 @@ export default function StocksPage() {
   const tour = useGuidedTour()
   const tourQuoteBusy = useRef(false)
   const [searchParams, setSearchParams] = useSearchParams()
+  const { codes, capabilityCodes } = useEffectiveMarkets()
   const { t } = useTranslation('configuration')
   const confirmAction = useConfirm()
   const stockT = t as unknown as (key: string, options?: Record<string, unknown>) => string
@@ -729,7 +731,7 @@ export default function StocksPage() {
 
   const handledAssistantTargetRef = useRef<string | null>(null)
   useEffect(() => {
-    const target = parseAssistantPortfolioTarget(searchParams)
+    const target = parseAssistantPortfolioTarget(searchParams, codes)
     if (!target) {
       handledAssistantTargetRef.current = null
       return
@@ -743,7 +745,7 @@ export default function StocksPage() {
     next.delete('symbol')
     next.delete('market')
     setSearchParams(next, { replace: true })
-  }, [openKlineDialog, searchParams, setSearchParams])
+  }, [openKlineDialog, searchParams, setSearchParams, codes])
 
   // Open news dialog - pass stock name for more stable search
   const openNewsDialog = useCallback((stockName?: string) => {
@@ -1295,7 +1297,7 @@ export default function StocksPage() {
     return value.toFixed(2)
   }
 
-  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m
+  const marketLabel = (m: string) => m === 'CN' ? stockT('stocksPage.markets.cn') : m === 'HK' ? stockT('stocksPage.markets.hk') : m === 'US' ? stockT('stocksPage.markets.us') : m === 'AU' ? stockT('stocksPage.markets.au') : m
   const quoteHint = (quote: { daily_move_status?: string; quote_date?: string | null }) => {
     const status = quote.daily_move_status
     const label = status && status !== 'current' ? stockT(`stocksPage.quoteStatus.${status}`) : ''
@@ -1307,6 +1309,7 @@ export default function StocksPage() {
   const marketBadge = (m: string) => {
     if (m === 'HK') return { style: 'bg-orange-500/10 text-orange-600', label: stockT('stocksPage.markets.hkShort') }
     if (m === 'US') return { style: 'bg-green-500/10 text-green-600', label: stockT('stocksPage.markets.usShort') }
+    if (m === 'AU') return { style: 'bg-purple-500/10 text-purple-600', label: stockT('stocksPage.markets.auShort') }
     return { style: 'bg-blue-500/10 text-blue-600', label: 'A' }
   }
 
@@ -1683,9 +1686,7 @@ export default function StocksPage() {
                 <div className="flex items-center gap-1">
                   {[
                     { value: '', label: stockT('stocksPage.markets.all') },
-                    { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                    { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                    { value: 'US', label: stockT('stocksPage.markets.us') },
+                    ...capabilityCodes('search').map(value => ({ value, label: marketLabel(value) })),
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -2210,9 +2211,7 @@ export default function StocksPage() {
             <div className="flex items-center gap-1">
               {[
                 { value: '', label: stockT('stocksPage.markets.all'), count: stocks.length },
-                { value: 'CN', label: stockT('stocksPage.markets.cn'), count: stocks.filter(s => s.market === 'CN').length },
-                { value: 'HK', label: stockT('stocksPage.markets.hk'), count: stocks.filter(s => s.market === 'HK').length },
-                { value: 'US', label: stockT('stocksPage.markets.us'), count: stocks.filter(s => s.market === 'US').length },
+                ...codes.map(value => ({ value, label: marketLabel(value), count: stocks.filter(s => s.market === value).length })),
               ].map(opt => (
                 <button
                   key={opt.value}
@@ -2579,9 +2578,7 @@ export default function StocksPage() {
                   <div className="flex items-center gap-1">
                     {[
                       { value: '', label: stockT('stocksPage.markets.all') },
-                      { value: 'CN', label: stockT('stocksPage.markets.cn') },
-                      { value: 'HK', label: stockT('stocksPage.markets.hk') },
-                      { value: 'US', label: stockT('stocksPage.markets.us') },
+                      ...capabilityCodes('search').map(value => ({ value, label: marketLabel(value) })),
                     ].map(opt => (
                       <button
                         key={opt.value}

@@ -2,6 +2,7 @@ import { ArrowLeft, Loader2, Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { fetchAPI } from '@panwatch/api'
 import { useTranslation } from 'react-i18next'
+import { useEffectiveMarkets } from '@/hooks/useEffectiveMarkets'
 
 export interface AssistantStockSearchResult {
   symbol: string
@@ -18,7 +19,9 @@ interface AssistantStockPickerProps {
 export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: AssistantStockPickerProps) {
   const { t } = useTranslation('configuration')
   const assistantT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const markets = ['CN', 'HK', 'US'].map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
+  const { codes } = useEffectiveMarkets()
+  const markets = codes.map(value => ({ value, label: assistantT(`assistantPage.stockPicker.markets.${value}`) }))
+  const cols = ({ 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' } as Record<number, string>)[markets.length] ?? 'grid-cols-3'
   const [market, setMarket] = useState('CN')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AssistantStockSearchResult[]>([])
@@ -79,7 +82,7 @@ export function AssistantStockPicker({ onSelect, onCancel, disabled = false }: A
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-accent/40 p-1" role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
+      <div className={`mt-3 grid ${cols} gap-1 rounded-xl bg-accent/40 p-1`} role="group" aria-label={assistantT('assistantPage.stockPicker.market')}>
         {markets.map((item) => (
           <button
             key={item.value}
