@@ -224,6 +224,14 @@ def update_setting(key: str, update: SettingUpdate, db: Session = Depends(get_db
         except Exception:
             pass
 
+    # 市场开关改动立刻重建调度计划:被禁市场的股票不再保留任何执行入口
+    if key == "market_enablement":
+        try:
+            from src.modules.automation.scheduling_policy import request_scheduler_reload
+            request_scheduler_reload()
+        except Exception:
+            pass
+
     return setting
 
 

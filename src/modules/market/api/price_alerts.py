@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from src.platform.runtime.config import Settings
 from src.modules.market import price_alert_service
 from src.modules.market.price_alert_engine import ENGINE
-from src.platform.marketdata.enablement import require_market_enabled
+from src.platform.marketdata.enablement import require_market_capability
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock
 from src.modules.market.monitoring_health import monitoring_health
@@ -135,7 +135,8 @@ def retry_alert_delivery(delivery_id: int, db: Session = Depends(get_db)):
 def create_alert_rule(body: PriceAlertCreate, db: Session = Depends(get_db)):
     stock = db.query(Stock).filter(Stock.id == body.stock_id).first()
     if stock is not None:
-        require_market_enabled(db, stock.market)
+        # AU 等可选市场无 alerts 能力:即使市场开启也拒绝创建
+        require_market_capability(db, stock.market, "alerts")
     try:
         row = price_alert_service.create_alert_rule(
             db,
@@ -164,7 +165,7 @@ def update_alert_rule(rule_id: int, body: PriceAlertUpdate, db: Session = Depend
     if rule is not None:
         stock = db.query(Stock).filter(Stock.id == rule.stock_id).first()
         if stock is not None:
-            require_market_enabled(db, stock.market)
+            require_market_capability(db, stock.market, "alerts")
     updates = body.model_dump(exclude_unset=True)
     try:
         row = price_alert_service.update_alert_rule(db, rule_id, updates)

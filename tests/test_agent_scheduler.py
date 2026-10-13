@@ -116,3 +116,28 @@ def test_real_intraday_batch_without_data_does_not_call_ai_or_record_report(monk
     context.ai_client.chat.assert_not_awaited()
     context.notifier.notify_with_result.assert_not_awaited()
     record.assert_not_called()
+
+
+def test_market_disabled_after_planning_filtered_at_execution_time(monkeypatch):
+    """执行时二次核验市场开关:计划构建后禁用市场不得继续执行(防御纵深)。"""
+    import src.platform.marketdata.enablement as enablement
+    import src.platform.persistence.database as database
+
+    class _FakeDB:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(enablement, "effective_markets", lambda db: ["CN"])
+    monkeypatch.setattr(database, "SessionLocal", lambda: _FakeDB())
+    scheduler, agent, _, record = scheduler_fixture(monkeypatch, markets=[MarketCode.HK])
+    asyncio.run(scheduler._run_agent("intraday_monitor"))
+    agent.run_single.assert_not_awaited()
+    record.assert_not_called()
+
+    # 对照:市场仍有效时正常执行
+    monkeypatch.setattr(enablement, "effective_markets", lambda db: ["CN", "HK", "US"])
+    scheduler2, agent2, _, record2 = scheduler_fixture(monkeypatch, markets=[MarketCode.HK])
+    asyncio.run(scheduler2._run_agent("intraday_monitor"))
+    agent2.run_single.assert_awaited_once()

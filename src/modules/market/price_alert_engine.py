@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector, kline_source
 from src.platform.marketdata.marketdata_client import md_quote_rows
-from src.platform.marketdata.enablement import disabled_optional_markets
+from src.platform.marketdata.enablement import capability_enabled, disabled_optional_markets
 from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import quote_date_is_current
 from src.platform.persistence.database import SessionLocal
@@ -414,6 +414,8 @@ class PriceAlertEngine:
                 r.id: (
                     (False, "market_disabled")
                     if r.stock.market in disabled_markets
+                    else (False, "capability_disabled")
+                    if not capability_enabled(db, r.stock.market, "alerts")
                     else self._can_trigger(r, now, bypass_market_hours=bypass_market_hours)
                 )
                 for r in rules if r.stock is not None

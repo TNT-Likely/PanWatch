@@ -110,3 +110,13 @@ def require_market_enabled(db: Session, code: str) -> None:
     if not is_market_enabled(db, code):
         from src.web.errors import api_error
         raise api_error(400, "market_disabled", f"市场 {code} 未启用")
+
+
+def require_market_capability(db: Session, code: str, cap: str) -> None:
+    """市场已启用但不含所需能力时抛 400 capability_disabled(如 AU 无 alerts)。"""
+    if not is_market_enabled(db, code):
+        from src.web.errors import api_error
+        raise api_error(400, "market_disabled", f"市场 {code} 未启用")
+    if not capability_enabled(db, code, cap):
+        from src.web.errors import api_error
+        raise api_error(400, "capability_disabled", f"市场 {code} 不支持能力 {cap}")

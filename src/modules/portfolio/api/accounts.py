@@ -17,6 +17,7 @@ from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MARKETS, MarketCode
 from src.platform.marketdata.quote_display import daily_quote_fields
+from src.platform.marketdata.enablement import require_market_enabled
 from src.web.errors import ai_api_error, api_error
 
 logger = logging.getLogger(__name__)
@@ -359,6 +360,8 @@ def create_position(data: PositionCreate, db: Session = Depends(get_db)):
     stock = db.query(Stock).filter(Stock.id == data.stock_id).first()
     if not stock:
         raise api_error(400, "stock_not_found", "股票不存在")
+    # 市场闸门:禁用市场的已保留股票不可再新建持仓(既有持仓保留)
+    require_market_enabled(db, stock.market)
 
     # 检查是否已存在该账户的该股票持仓
     existing = db.query(Position).filter(

@@ -61,3 +61,4 @@ Setting `{"AU": false}` (or removing the override) takes effect immediately: eve
 - News and fundamentals inputs are empty for AU; AI analysis flows that depend on them degrade accordingly.
 - The ASX trading calendar is published per year (NSW rules); the next year's dates must be added when ASX publishes them, mirroring the CN/HK/US calendar policy.
 - HKD/USD rates keep their legacy static fallbacks client-side; AUD intentionally has none.
+- A held symbol with no available quote shows as zero market value in CNY totals (long-standing display behavior for all markets; only missing FX is reported as valuation-incomplete).

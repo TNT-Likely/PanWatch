@@ -103,6 +103,12 @@ class AgentScheduler:
                     keys = set(stock_keys)
                     targets = [stock for stock in targets if (stock.market, stock.symbol) in keys]
                 eligible = [stock for stock in targets if market_allowed(agent_name, stock.market)]
+                # 执行时再核一次市场开关:计划构建之后被禁用的市场不得继续执行(防御纵深)
+                from src.platform.marketdata.enablement import effective_markets
+                from src.platform.persistence.database import SessionLocal
+                with SessionLocal() as _enablement_db:
+                    _enabled_markets = set(effective_markets(_enablement_db))
+                eligible = [stock for stock in eligible if stock.market in _enabled_markets]
                 if not eligible:
                     logger.debug("[调度] %s 无符合交易日/时段的关联股票，跳过", agent_name)
                     return

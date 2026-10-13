@@ -28,6 +28,7 @@ from src.platform.scheduling.schedule_parser import parse_schedule
 from src.modules.automation.scheduling_policy import request_scheduler_reload
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 from src.web.errors import api_error
+from marketdata.symbol import Symbol
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -271,7 +272,8 @@ def get_quotes(db: Session = Depends(get_db)):
         try:
             items = md_quote_rows(symbols, market)
             for item in items:
-                quotes[item["symbol"]] = {
+                # 键带市场前缀,避免 AU/US 等同代码跨市场互相覆盖
+                quotes[f"{market}:{item['symbol']}"] = {
                     "current_price": item["current_price"],
                     "change_pct": item["change_pct"],
                     "change_amount": item["change_amount"],
@@ -286,15 +288,24 @@ def get_quotes(db: Session = Depends(get_db)):
 
 @router.post("", response_model=StockResponse)
 def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
-    require_market_enabled(db, stock.market)
+    market = str(stock.market).strip().upper()
+    require_market_enabled(db, market)
+    # 入口归一化:统一大小写/剥离 .AX 等后缀,冲突输入在边界拒绝,
+    # 保证重复检查与落库使用同一规范身份(见 docs/AU-SUPPORT.md 符号规则)。
+    try:
+        canonical = Symbol.parse(stock.symbol, market).code
+    except ValueError as exc:
+        raise api_error(400, "symbol_market_conflict", str(exc))
     existing = db.query(Stock).filter(
-        Stock.symbol == stock.symbol, Stock.market == stock.market
+        Stock.symbol == canonical, Stock.market == market
     ).first()
     if existing:
-        raise api_error(400, "stock_already_exists", f"股票 {stock.symbol} 已存在")
+        raise api_error(400, "stock_already_exists", f"股票 {canonical} 已存在")
 
     max_order = db.query(func.max(Stock.sort_order)).scalar() or 0
     values = stock.model_dump()
+    values["symbol"] = canonical
+    values["market"] = market
     values["asset_type"] = infer_asset_type(stock.name, stock.asset_type)
     db_stock = Stock(**values, sort_order=int(max_order) + 1)
     db.add(db_stock)
