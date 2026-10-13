@@ -83,7 +83,10 @@ COPY requirements.txt ./
 COPY packages/ ./packages/
 
 # 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# PIP_INDEX_URL 可在构建时替换为镜像源,如:
+#   --build-arg PIP_INDEX_URL=https://mirrors.ustc.edu.cn/pypi/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} -r requirements.txt
 
 # 注意: Playwright 浏览器将在首次启动时自动安装到 data 目录
 # 这样可以减小镜像体积，并支持跨版本持久化
