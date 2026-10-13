@@ -65,13 +65,11 @@ def test_retirement_removes_configuration_without_losing_reports_or_reseeding(tm
 @pytest.mark.parametrize('retired', ['chart_analyst', 'news_digest'])
 def test_retired_suggestions_do_not_override_current_agent_results(tmp_path, monkeypatch, retired):
     from src.modules.automation import suggestion_pool
-    from src.modules.strategy import entry_candidates
 
     engine = create_engine(f"sqlite:///{tmp_path / 'suggestions.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     monkeypatch.setattr(suggestion_pool, 'SessionLocal', factory)
-    monkeypatch.setattr(entry_candidates, 'SessionLocal', factory)
     with factory() as db:
         for agent in ['daily_report', retired]:
             db.add(StockSuggestion(stock_symbol='601238', stock_name='广汽集团', stock_market='CN',
@@ -79,7 +77,6 @@ def test_retired_suggestions_do_not_override_current_agent_results(tmp_path, mon
             db.commit()
     assert suggestion_pool.get_latest_suggestions(['601238'])['CN:601238']['agent_name'] == 'daily_report'
     assert [item['agent_name'] for item in suggestion_pool.get_suggestions_for_stock('601238')] == ['daily_report']
-    assert [item.agent_name for item in entry_candidates._load_latest_suggestions()] == ['daily_report']
     # The explicit historical view still includes the retired agent's record.
     assert len(suggestion_pool.get_suggestions_for_stock('601238', include_expired=True)) == 2
     engine.dispose()

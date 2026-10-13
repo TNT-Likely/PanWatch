@@ -1,4 +1,4 @@
-"""A 股交易成本模型 —— 回测(Phase 0)与模拟盘(Phase 1)共用。
+"""Historical paper-ledger fee policy retained for manual legacy-position exits.
 
 成本口径(2023-08-28 印花税下调后):
 - 印花税:**卖出单边** 0.05%(万 5)

@@ -1,5 +1,5 @@
 import { fetchAPI } from './client'
-import type { StrategySignalItem } from './recommendations'
+import type { QlibOpportunities } from './qlib'
 
 type QueryValue = string | number | boolean | null | undefined
 
@@ -170,57 +170,10 @@ export interface DashboardTopicItem {
   sentiment: string
 }
 
-export interface DashboardRiskSignalItem extends StrategySignalItem {
-  risk_flags?: string[]
-}
-
 export interface DashboardOverviewResponse {
   generated_at: string
   market: 'ALL' | 'CN' | 'HK' | 'US'
-  snapshot_date: string
-  data_freshness: {
-    strategy_snapshot_date: string
-    entry_snapshot_date: string
-    market_scan_snapshot_date: string
-    latest_history_updated_at: string
-  }
-  kpis: {
-    watchlist_count: number
-    positions_count: number
-    available_funds: number
-    invested_cost: number
-    total_assets_estimate: number
-    executable_opportunities: number
-    risk_positions: number
-    win_rate_3d?: number | null
-    win_sample_3d: number
-    errors_24h: number
-  }
-  portfolio: {
-    positions_count: number
-    watchlist_count: number
-    available_funds: number
-    invested_cost: number
-    by_market: Array<{
-      market: string
-      positions: number
-      invested_cost: number
-    }>
-  }
-  action_center: {
-    opportunities: StrategySignalItem[]
-    risk_items: DashboardRiskSignalItem[]
-  }
-  market_pulse: {
-    hot_stocks: DashboardMarketStock[]
-    hot_topics: DashboardTopicItem[]
-  }
-  strategy: {
-    coverage: Record<string, any>
-    factor_stats: Record<string, any>
-    by_market: Array<Record<string, any>>
-    top_by_strategy: Array<Record<string, any>>
-  }
+  selection: QlibOpportunities
   insights: DashboardInsightItem[]
 }
 

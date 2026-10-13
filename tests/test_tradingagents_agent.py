@@ -444,14 +444,12 @@ class TestPhaseBFeatures(unittest.TestCase):
             deep_model="claude-sonnet-4",
             quick_model="claude-haiku",
             timeout_minutes=20,
-            emit_paper_trading_signal=True,
             enable_sec_edgar=True,
             holding_period_days=10,
         )
         self.assertEqual(agent.deep_model, "claude-sonnet-4")
         self.assertEqual(agent.quick_model, "claude-haiku")
         self.assertEqual(agent.timeout_minutes, 20)
-        self.assertTrue(agent.emit_paper_trading_signal)
         self.assertTrue(agent.enable_sec_edgar)
         self.assertEqual(agent.holding_period_days, 10)
 
@@ -494,59 +492,9 @@ class TestPhaseBFeatures(unittest.TestCase):
         graph = graph_cls(config={"llm_timeout_seconds": 7})
         self.assertEqual(graph._get_provider_kwargs(), {"max_retries": 0, "timeout": 7.0})
 
-    def test_paper_trading_bridge_disabled_skips(self):
-        """模拟盘 bridge — enabled=False 直接 skip,不写库"""
-        from src.modules.automation.tradingagents.decision import (
-            maybe_emit_paper_trading_signal,
-        )
-        result = maybe_emit_paper_trading_signal(
-            stock_symbol="600519",
-            stock_market="CN",
-            stock_name="贵州茅台",
-            decision="buy",
-            confidence=7.0,
-            signal_text="...",
-            reason="...",
-            current_price=1300.0,
-            enabled=False,
-        )
-        self.assertFalse(result)
-
-    def test_paper_trading_bridge_sell_skipped(self):
-        """模拟盘 bridge — SELL 不开新仓 (不会写 buy 信号)"""
-        from src.modules.automation.tradingagents.decision import (
-            maybe_emit_paper_trading_signal,
-        )
-        result = maybe_emit_paper_trading_signal(
-            stock_symbol="600519",
-            stock_market="CN",
-            stock_name="X",
-            decision="sell",
-            confidence=7.0,
-            signal_text="",
-            reason="",
-            current_price=1300.0,
-            enabled=True,
-        )
-        self.assertFalse(result)
-
-    def test_paper_trading_bridge_no_price_skipped(self):
-        """模拟盘 bridge — 当前价缺失时不写信号(避免错价)"""
-        from src.modules.automation.tradingagents.decision import (
-            maybe_emit_paper_trading_signal,
-        )
-        result = maybe_emit_paper_trading_signal(
-            stock_symbol="600519",
-            stock_market="CN",
-            stock_name="X",
-            decision="buy",
-            confidence=7.0,
-            signal_text="",
-            reason="",
-            current_price=None,
-            enabled=True,
-        )
-        self.assertFalse(result)
+    def test_agent_decisions_cannot_emit_paper_signals(self):
+        from src.modules.automation.tradingagents import decision
+        self.assertFalse(hasattr(decision, "maybe_emit_paper_trading_signal"))
 
 
 class TestPortfolioContext(unittest.TestCase):

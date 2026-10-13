@@ -2180,6 +2180,27 @@ def _m137_stock_asset_type(conn: Connection) -> None:
         conn.execute(text("UPDATE stocks SET asset_type = 'etf' WHERE UPPER(name) LIKE '%ETF%'"))
 
 
+def _m138_qlib_position_lineage(conn: Connection) -> None:
+    _add_column_if_missing(conn, "paper_trading_positions", "research_meta", "ALTER TABLE paper_trading_positions ADD COLUMN research_meta TEXT NOT NULL DEFAULT '{}'")
+    if _has_table(conn, "agent_configs"):
+        for ident, raw in conn.execute(text("SELECT id, config FROM agent_configs WHERE name = 'tradingagents'")):
+            config = json.loads(raw or "{}")
+            if "emit_paper_trading_signal" in config:
+                config.pop("emit_paper_trading_signal")
+                conn.execute(text("UPDATE agent_configs SET config=:config WHERE id=:id"), {"id": ident, "config": json.dumps(config)})
+
+
+def _m139_retire_selection_tables(conn: Connection) -> None:
+    # The user authorized deleting selection-specific history, NOT account ledgers.
+    # Keep historical migrations unchanged; this terminal migration retires their
+    # tables after upgrade. No consumer or fallback reads these objects anymore.
+    for table in ("strategy_factor_snapshots", "strategy_outcomes", "entry_candidate_outcomes",
+                  "strategy_weight_history", "factor_weight_history", "portfolio_risk_snapshots",
+                  "market_regime_snapshots", "backtest_runs", "strategy_signal_runs", "entry_candidates",
+                  "market_scan_snapshots", "strategy_weights", "factor_weights", "strategy_catalog"):
+        conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2218,6 +2239,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(135, "retire_unused_agents", _m135_retire_unused_agents),
     Migration(136, "paper_trading_settlement", _m136_paper_trading_settlement),
     Migration(137, "stock_asset_type", _m137_stock_asset_type),
+    Migration(138, "qlib_position_lineage", _m138_qlib_position_lineage),
+    Migration(139, "retire_selection_tables", _m139_retire_selection_tables),
 )
 
 

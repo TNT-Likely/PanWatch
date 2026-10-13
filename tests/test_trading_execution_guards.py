@@ -12,9 +12,8 @@ from sqlalchemy.pool import StaticPool
 
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import (
-    AgentConfig, EntryCandidate, EntryCandidateOutcome, PaperTradingAccount,
+    AgentConfig, PaperTradingAccount,
     PaperTradingPosition, PaperTradingTrade, PriceAlertRule, Stock, StockAgent,
-    StrategySignalRun, StrategyOutcome,
 )
 from src.platform.scheduling import trading_calendar as calendar
 from src.platform.scheduling.schedule_parser import preview_schedule
@@ -114,40 +113,23 @@ def test_effective_stock_override_is_registered_without_global_duplicate(monkeyp
     assert {job.args[1] for job in jobs} == {plan.stock_keys for plan in plans}
 
 
-def test_paper_scan_does_not_buy_or_sell_closed_markets_when_us_is_open(monkeypatch, memory_db):
+def test_paper_scan_never_auto_manages_unsupported_markets_or_legacy_holdings(monkeypatch, memory_db):
     from src.modules.paper_trading import paper_trading_engine as module
     freeze(monkeypatch, datetime(2026, 10, 1, 22, tzinfo=ZoneInfo("Asia/Shanghai")))
     monkeypatch.setattr(module, "SessionLocal", memory_db)
     with memory_db() as db:
-        db.add(PaperTradingAccount(enabled=True, initial_capital=1_000_000, current_capital=1_000_000,
-                                  market_allocations={"CN": .5, "HK": 0, "US": .5}))
-        for market, symbol in [("CN", "601238"), ("US", "AAPL")]:
-            db.add(StrategySignalRun(strategy_code="trend_follow", snapshot_date="2026-09-30",
-                stock_symbol=symbol, stock_market=market, status="active", action="buy",
-                entry_low=9, entry_high=11, rank_score=90))
+        db.add(PaperTradingAccount(enabled=True, initial_capital=100000, current_capital=100000))
         db.add(PaperTradingPosition(stock_symbol="600519", stock_market="CN", quantity=100,
-            entry_price=15, current_price=10, stop_loss=12, status="open",
-            opened_at=datetime(2026, 9, 1)))
+            entry_price=15, current_price=10, stop_loss=12, status="open", opened_at=datetime(2026, 9, 1)))
         db.commit()
     engine = module.PaperTradingEngine()
-    quote_requests = []
-    def quotes(pairs):
-        quote_requests.extend(pairs)
-        return {(market, symbol): {"current_price": 10} for symbol, market in pairs}
-    monkeypatch.setattr(engine, "_fetch_quotes_map", quotes)
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {})
     result = engine._scan_sync()
-    assert result["status"] == "ok"
-    assert result["opened"] == 1 and result["closed"] == 0
-    assert quote_requests and all(market == "US" for _, market in quote_requests)
-    with memory_db() as db:
-        assert db.query(PaperTradingPosition).filter_by(stock_symbol="600519").one().status == "open"
-        assert db.query(PaperTradingTrade).count() == 0
-    # Manual close is also a fill and cannot use a last-known holiday price.
-    fetch = Mock(side_effect=AssertionError("closed-market quote must not be requested"))
+    assert result["opened"] == result["closed"] == 0
+    fetch = Mock(side_effect=AssertionError("closed-market quotes must not be requested"))
     monkeypatch.setattr(module, "md_quote_rows", fetch)
     with memory_db() as db:
-        position = db.query(PaperTradingPosition).filter_by(stock_symbol="600519").one()
-        assert engine.close_position_manual(position.id)["ok"] is False
+        assert engine.close_position_manual(db.query(PaperTradingPosition).one().id)["ok"] is False
     fetch.assert_not_called()
 
 
@@ -170,13 +152,12 @@ def test_alerts_filter_before_quotes_and_manual_non_dry_scan_cannot_bypass(monke
     assert fetch.call_args.args[0] == []
 
 
-def test_opportunity_refresh_propagates_only_eligible_markets(monkeypatch):
+def test_maintenance_only_calls_new_qlib_scheduler(monkeypatch):
     from src.modules.research.context_scheduler import ContextMaintenanceScheduler
-    freeze(monkeypatch, datetime(2026, 10, 1, 22, tzinfo=ZoneInfo("Asia/Shanghai")))
-    refresh = Mock(return_value={"count": 0})
-    monkeypatch.setattr("src.modules.research.context_scheduler.refresh_strategy_signals", refresh)
-    asyncio.run(ContextMaintenanceScheduler()._refresh_opportunities_job())
-    assert refresh.call_args.kwargs["markets"] == ["US"]
+    tick = Mock(return_value={"status": "idle"})
+    monkeypatch.setattr("src.modules.research.context_scheduler.scheduled_tick", tick)
+    asyncio.run(ContextMaintenanceScheduler()._qlib_job())
+    tick.assert_called_once_with()
 
 
 def test_outcome_waits_for_actual_completed_bars_and_ignores_intraday_tail(monkeypatch):
@@ -232,9 +213,7 @@ def test_paper_fill_rejects_a_known_previous_day_quote(monkeypatch, memory_db):
     with memory_db() as db:
         db.add(PaperTradingAccount(enabled=True, initial_capital=1_000_000, current_capital=1_000_000,
                                   market_allocations={"CN": 1, "HK": 0, "US": 0}))
-        db.add(StrategySignalRun(strategy_code="trend_follow", snapshot_date="2026-09-30",
-            stock_symbol="601238", stock_market="CN", status="active", action="buy",
-            entry_low=9, entry_high=11, rank_score=90))
+
         db.add(PaperTradingPosition(stock_symbol="600519", stock_market="CN", quantity=100,
             entry_price=15, current_price=10, stop_loss=12, status="open"))
         db.commit()

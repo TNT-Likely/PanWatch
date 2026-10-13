@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dashboardApi, homeApi, portfolioApi, recommendationsApi } from '@panwatch/api'
+import { dashboardApi, homeApi, portfolioApi } from '@panwatch/api'
 import DashboardPage from '@/pages/Dashboard'
 import { GuidedTourProvider } from '@/components/onboarding/GuidedTour'
 import { onboardingApi, type SetupStatus } from '@panwatch/api/onboarding'
@@ -14,7 +14,6 @@ vi.mock('@panwatch/api', () => ({
   },
   portfolioApi: { diagnostics: vi.fn(), benchmark: vi.fn(), attribution: vi.fn() },
   homeApi: { alertHitsToday: vi.fn(), todos: vi.fn() },
-  recommendationsApi: { listStrategySignals: vi.fn() },
 }))
 vi.mock('@/components/DiscoveryPanel', () => ({ default: () => null }))
 vi.mock('@panwatch/api/onboarding', () => ({ onboardingApi: { status: vi.fn(), update: vi.fn() } }))
@@ -34,8 +33,8 @@ const summary = { accounts: [], total: {
   total_market_value: 10000, total_cost: 9000, total_pnl: 1000, total_pnl_pct: 11,
   total_daily_pnl: 321, available_funds: 2000, total_assets: 12000,
 } }
-const opportunity = { stock_symbol: '600519', stock_name: '机会标的', stock_market: 'CN', signal: '机会已就绪' }
-const overview = { kpis: { watchlist_count: 2 }, action_center: { opportunities: [opportunity] } }
+const opportunity = { symbol: 'SH600519', market: 'CN', rank: 1, rank_percentile: 100, raw_score: -0.02, rank_change: null, tradable: true, reference_close: 10, factor_inputs: {}, explanation_kind: 'processed_inputs' }
+const overview = { generated_at: '2026-10-13', market: 'ALL' as const, selection: { items: [opportunity], run: null, status: 'ready', mode: 'research' }, insights: [] }
 const benchmark = { excess_return: 1.25, portfolio_return: 2, benchmark_return: 0.75,
   curve: [{ date: '2026-10-01', portfolio: 100, benchmark: 100 }, { date: '2026-10-02', portfolio: 102, benchmark: 100.75 }] }
 
@@ -43,7 +42,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   localStorage.setItem('panwatch_onboarding_completed', 'true')
-  for (const api of [dashboardApi, homeApi, portfolioApi, recommendationsApi]) {
+  for (const api of [dashboardApi, homeApi, portfolioApi]) {
     for (const method of Object.values(api)) vi.mocked(method).mockReturnValue(new Promise(() => {}))
   }
   vi.mocked(dashboardApi.curate).mockResolvedValue({ items: [] })
@@ -105,18 +104,17 @@ describe('dashboard progressive loading', () => {
     await act(async () => { diag.resolve(diagnostics); ps.resolve(summary); bn.resolve(benchmark); ov.resolve(overview) })
     expect(screen.getByText('+¥321')).toBeTruthy()
     expect(screen.getAllByText(/\+1.25%/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('机会标的').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('SH600519').length).toBeGreaterThan(0)
     expect(dashboardApi.curate).not.toHaveBeenCalled()
     await act(async () => { snapshot.resolve({ stocks: [] }); alerts.resolve([]) })
     await waitFor(() => expect(dashboardApi.curate).toHaveBeenCalledTimes(1))
   })
 
-  it('loads fallback opportunities immediately if overview fails without waiting for quotes', async () => {
+  it('keeps selection empty when overview fails and never falls back to old scores', async () => {
     vi.mocked(dashboardApi.overview).mockRejectedValue(new Error('offline'))
-    vi.mocked(recommendationsApi.listStrategySignals).mockResolvedValue({ items: [opportunity] })
     render(<MemoryRouter><DashboardPage /></MemoryRouter>)
-    expect((await screen.findAllByText('机会标的')).length).toBeGreaterThan(0)
-    expect(recommendationsApi.listStrategySignals).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText('暂无研究产物。请先导入数据、运行实验，再审批研究模型。')).toBeTruthy()
+    expect(screen.queryByText('SH600519')).toBeNull()
     expect(dashboardApi.curate).not.toHaveBeenCalled()
   })
 

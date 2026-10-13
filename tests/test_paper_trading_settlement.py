@@ -23,7 +23,7 @@ from src.modules.paper_trading.paper_trading_notifier import _format_daily_summa
 from src.platform.persistence.database import Base, get_db
 from src.platform.persistence.models import (
     PaperTradingAccount, PaperTradingPosition, PaperTradingSettlement,
-    PaperTradingTrade, StrategySignalRun,
+    PaperTradingTrade,
 )
 from src.platform.scheduling import trading_calendar as calendar
 
@@ -91,74 +91,48 @@ def seed_position(factory, market, now):
 
 
 @pytest.mark.parametrize("market", ["HK", "US"])
-def test_cash_account_same_day_sale_blocks_reuse_until_due(monkeypatch, storage, market):
+def test_cash_account_sale_blocks_reuse_until_due(monkeypatch, storage, market):
     now = local(market, "2026-10-09")
     freeze(monkeypatch, now)
     ident = seed_position(storage, market, now)
-    engine = engine_module.PaperTradingEngine()
     with storage() as db:
         account = db.query(PaperTradingAccount).one()
-        engine._close_position(db, account, db.get(PaperTradingPosition, ident), 12, "manual")
-        db.add(StrategySignalRun(stock_symbol="NEW", stock_market=market, status="active",
-            strategy_code="trend_follow", snapshot_date="2026-10-09", action="buy",
-            rank_score=90, entry_low=10, entry_high=10))
+        engine_module.PaperTradingEngine()._close_position(db, account, db.get(PaperTradingPosition, ident), 12, "manual")
         db.commit()
-        cash_after_sale, pnl_after_sale = account.current_capital, account.total_pnl
-        row = db.query(PaperTradingSettlement).one()
-        assert row.amount == engine_module.COST_MODEL.fill("sell", 12, 400).cash_delta
-        assert row.settlement_date == date(2026, 10, 13)
-        funds = api._account_summary(db, account, market)
-        assert funds["cash_balance"] > 5000
-        assert funds["buying_power"] < 1000
-        assert funds["buying_power"] == funds["settled_cash"]
-        assert funds["unsettled_cash"] == round(row.amount, 2)
-        assert engine_module.market_available_cash(db, account, market) < 1000
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {(market, "NEW"): {"current_price": 10}})
-    assert engine._scan_sync()["opened"] == 0
-    # The US stock market is open on Columbus Day, but cash is still blocked.
-    freeze(monkeypatch, local(market, "2026-10-12"))
-    assert engine._scan_sync()["opened"] == 0
-    # A new engine/session simulates restart and catches up the persisted ledger.
+        capital = account.current_capital
+        assert api._account_summary(db, account, market)["buying_power"] < 1000
+        assert db.query(PaperTradingSettlement).one().settlement_date == date(2026, 10, 13)
     freeze(monkeypatch, local(market, "2026-10-13"))
     resumed = engine_module.PaperTradingEngine()
-    monkeypatch.setattr(resumed, "_fetch_quotes_map", lambda pairs: {(market, "NEW"): {"current_price": 10}})
-    result = resumed._scan_sync()
-    assert result["opened"] == 1 and result["settled"] == 1
+    assert resumed._scan_sync()["settled"] == 1
     with storage() as db:
         account = db.query(PaperTradingAccount).one()
-        pos = db.query(PaperTradingPosition).filter_by(status="open").one()
-        outlay = engine_module.position_buy_cost(pos)
-        assert account.current_capital == pytest.approx(cash_after_sale - outlay)
-        assert account.total_pnl == pnl_after_sale
+        assert account.current_capital == capital
+        assert api._account_summary(db, account, market)["buying_power"] == round(capital, 2)
         assert db.query(PaperTradingSettlement).one().status == "settled"
-        assert pos.settlement_date == (date(2026, 10, 15) if market == "HK" else date(2026, 10, 14))
-        assert engine_module.sell_block_reason(pos) is None
     assert resumed._scan_sync()["settled"] == 0
 
-
-def test_cn_proceeds_reused_without_unlocking_new_shares(monkeypatch, storage):
-    now = local("CN", "2026-10-09")
+def test_cn_proceeds_reused_by_qlib_without_unlocking_new_shares(monkeypatch, storage):
+    from tests.qlib_fixture import paper_decision
+    now = local("CN", "2026-10-09").replace(hour=9, minute=31)
     freeze(monkeypatch, now)
     ident = seed_position(storage, "CN", now)
     engine = engine_module.PaperTradingEngine()
     with storage() as db:
         account = db.query(PaperTradingAccount).one()
-        old_settled_cash = account.current_capital
         engine._close_position(db, account, db.get(PaperTradingPosition, ident), 12, "manual")
-        db.add(StrategySignalRun(stock_symbol="NEW", stock_market="CN", status="active",
-            strategy_code="trend_follow", snapshot_date="2026-10-09", action="buy",
-            rank_score=90, entry_low=10, entry_high=10))
         db.commit()
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "NEW"): {"current_price": 10}})
+        cash = account.current_capital
+    paper_decision(storage)
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600000"): {"current_price": 10, "open_price": 10, "prev_close": 10, "volume": 100000, "quote_date": "2026-10-09"}})
     assert engine._scan_sync()["opened"] == 1
     with storage() as db:
         account = db.query(PaperTradingAccount).one()
         pos = db.query(PaperTradingPosition).filter_by(status="open").one()
         row = db.query(PaperTradingSettlement).one()
-        assert row.remaining_amount == pytest.approx(row.amount - engine_module.position_buy_cost(pos))
-        funds = api._account_summary(db, account, "CN")
-        assert funds["buying_power"] == round(account.current_capital, 2)
-        assert funds["settled_cash"] == round(old_settled_cash, 2)
+        cost = engine_module.position_buy_cost(pos)
+        assert account.current_capital == pytest.approx(cash - cost)
+        assert row.remaining_amount == pytest.approx(max(0, row.amount - cost))
         assert engine_module.sell_block_reason(pos) == "paper_trading_t1_locked"
 
 
@@ -226,9 +200,10 @@ def test_unrounded_limit_does_not_spend_displayed_cents(storage):
         cash = 1005.506
         assert settlement.cash_summary(db, cash, "US")["buying_power"] == 1005.51
         assert settlement.buying_power(db, cash, "US") == cash
-        assert engine_module._compute_quantity(rank_score=90, market_budget=10000,
-            price=10, available_cash=settlement.buying_power(db, cash, "US"),
-            cost_model=engine_module.COST_MODEL) == 0
+        from src.modules.qlib_research.policy import lot_quantity
+        assert lot_quantity(budget=10000,
+            price=10, available=settlement.buying_power(db, cash, "US"),
+            costs=engine_module.COST_MODEL) == 0
 
 
 def test_reallocation_cannot_spend_invested_cash_or_cn_pending_proceeds(monkeypatch, storage):
@@ -263,27 +238,45 @@ def test_unallocated_reserve_and_notifications_share_the_buying_limit(storage):
         assert _account_funds(db, account)["buying_power"] == 4000
 
 
-def test_one_scan_cannot_spend_shared_cash_in_two_markets(monkeypatch, storage):
-    freeze(monkeypatch, local("CN", "2026-10-09"))
+def test_qlib_scan_respects_shared_invested_cash(monkeypatch, storage):
+    from tests.qlib_fixture import paper_decision
+    freeze(monkeypatch, local("CN", "2026-10-09").replace(hour=9, minute=31))
     with storage() as db:
         old = PaperTradingPosition(stock_symbol="OLD", stock_market="US", quantity=350,
             entry_price=10, current_price=10, highest_price=10, status="open")
         account = PaperTradingAccount(initial_capital=5000,
             current_capital=5000 - engine_module.position_buy_cost(old), enabled=True,
             market_allocations={"CN": .5, "HK": .5, "US": 0})
-        db.add_all([old, account])
-        for market in ["CN", "HK"]:
-            db.add(StrategySignalRun(stock_symbol="NEW", stock_market=market, status="active",
-                strategy_code="trend_follow", action="buy", rank_score=90,
-                entry_low=10, entry_high=10, snapshot_date="2026-10-09"))
-        db.commit()
+        db.add_all([old, account]); db.commit()
+    paper_decision(storage)
     engine = engine_module.PaperTradingEngine()
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {
-        (m, "NEW"): {"current_price": 10} for m in ["CN", "HK"]})
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600000"): {"current_price": 10, "open_price": 10, "prev_close": 10, "volume": 100000, "quote_date": "2026-10-09"}})
     assert engine._scan_sync()["opened"] == 1
     with storage() as db:
         assert db.query(PaperTradingAccount).one().current_capital >= 0
-        assert db.query(PaperTradingPosition).filter_by(stock_symbol="NEW").count() == 1
+        assert db.query(PaperTradingPosition).filter_by(stock_symbol="600000").count() == 1
+    assert engine._scan_sync()["opened"] == 0
+
+
+@pytest.mark.parametrize("field,value", [("quote_date", None), ("quote_date", "2026-10-08"),
+    ("open_price", -10), ("prev_close", -10), ("volume", float("inf")), ("open_price", float("nan"))])
+def test_qlib_invalid_opening_quote_cannot_spend_cash(monkeypatch, storage, field, value):
+    from tests.qlib_fixture import paper_decision
+    from src.platform.persistence.qlib_models import QlibExecution
+    freeze(monkeypatch, local("CN", "2026-10-09").replace(hour=9, minute=31))
+    with storage() as db:
+        db.add(PaperTradingAccount(initial_capital=10000, current_capital=10000, enabled=True))
+        db.commit()
+    paper_decision(storage)
+    quote = {"current_price": 10, "open_price": 10, "prev_close": 10, "volume": 100000,
+             "quote_date": "2026-10-09", field: value}
+    engine = engine_module.PaperTradingEngine()
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600000"): quote})
+    assert engine._scan_sync()["opened"] == 0
+    with storage() as db:
+        assert db.query(PaperTradingAccount).one().current_capital == 10000
+        assert db.query(PaperTradingPosition).count() == 0
+        assert db.query(QlibExecution).one().status == "rejected"
 
 
 def test_trade_and_cash_roll_back_with_failed_settlement(monkeypatch, storage):

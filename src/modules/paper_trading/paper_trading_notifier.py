@@ -14,7 +14,6 @@ from src.platform.persistence.models import (
     PaperTradingAccount,
     PaperTradingPosition,
     PaperTradingTrade,
-    StrategySignalRun,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +118,7 @@ EXIT_REASON_LABELS_EN = {
 }
 
 STRATEGY_NAME_MAP = {
+    "qlib": "Qlib 冻结模型组合",
     "trend_follow": "趋势延续",
     "macd_golden": "MACD金叉",
     "volume_breakout": "放量突破",
@@ -129,6 +129,7 @@ STRATEGY_NAME_MAP = {
     "momentum": "动量策略",
 }
 STRATEGY_NAME_MAP_EN = {
+    "qlib": "Qlib frozen model portfolio",
     "trend_follow": "Trend continuation",
     "macd_golden": "MACD golden cross",
     "volume_breakout": "Volume breakout",
@@ -165,45 +166,20 @@ def _stock_display(symbol: str, market: str, name: str = "") -> str:
 
 
 def _format_entry_message(pos: dict, sig: dict | None, english: bool = False) -> tuple[str, str]:
-    """格式化建仓通知，返回 (title, body)。pos/sig 为序列化后的 dict。"""
     name = pos.get("stock_name") or pos["stock_symbol"]
     title = f"[Paper trading entry] {name}" if english else f"【模拟盘建仓】{name}"
-
-    # 盈亏比
-    rr_str = ""
-    entry_price = pos.get("entry_price", 0)
-    stop_loss = pos.get("stop_loss", 0)
-    target_price = pos.get("target_price", 0)
-    if stop_loss and target_price and entry_price:
-        risk = abs(entry_price - stop_loss)
-        reward = abs(target_price - entry_price)
-        if risk > 0:
-            rr_str = f"\nRisk/reward: {reward / risk:.1f}:1" if english else f"\n盈亏比: {reward / risk:.1f}:1"
-
-    score_str = ""
-    strategy_code = pos.get("strategy_code", "")
-    if sig:
-        if sig.get("rank_score"):
-            score_str = f" | Score: {sig['rank_score']:.1f}" if english else f" | 评分: {sig['rank_score']:.1f}"
-        if sig.get("strategy_code"):
-            strategy_code = sig["strategy_code"]
-
-    stock_info = _stock_display(pos["stock_symbol"], pos["stock_market"], name)
-    if english:
-        body = (
-            f"Stock: {stock_info}\nDirection: Buy\n"
-            f"Entry: {entry_price:.2f} | Quantity: {pos['quantity']} shares\n"
-            f"Stop loss: {stop_loss:.2f} | Target: {target_price:.2f}\n"
-            f"Strategy: {_strategy_label(strategy_code, True)}{score_str}{rr_str}"
-        )
-    else:
-        body = (
-            f"股票: {stock_info}\n方向: 买入\n"
-            f"买入价: {entry_price:.2f} | 数量: {pos['quantity']} 股\n"
-            f"止损价: {stop_loss:.2f} | 目标价: {target_price:.2f}\n"
-            f"策略: {_strategy_label(strategy_code)}{score_str}{rr_str}"
-        )
-    return title, body
+    stock = _stock_display(pos["stock_symbol"], pos["stock_market"], name)
+    price = pos["entry_price"]
+    lines = [f"Stock: {stock}" if english else f"股票: {stock}",
+             f"Entry: {price:.2f} | Quantity: {pos['quantity']}" if english else f"入场: {price:.2f} | 数量: {pos['quantity']}",
+             f"Strategy: {_strategy_label(pos.get('strategy_code', ''), english)}" if english else f"策略: {_strategy_label(pos.get('strategy_code', ''), english)}"]
+    if pos.get("stop_loss") and pos.get("target_price"):
+        lines.append(f"{pos['stop_loss']:.2f} / {pos['target_price']:.2f}")
+    research = pos.get("research") or {}
+    if research:
+        lines.append("Virtual next-open fill, not a broker execution" if english else "下一开盘虚拟成交，非券商实盘")
+        lines.append(f"run={research['run_id']} · model={research['model_id']} · decision={research['decision_id']}")
+    return title, "\n".join(lines)
 
 
 def _format_exit_message(pos: dict, trade: dict, english: bool = False) -> tuple[str, str]:
@@ -228,20 +204,7 @@ def _format_exit_message(pos: dict, trade: dict, english: bool = False) -> tuple
     return title, body
 
 
-def _dedup_signals(signals: list[StrategySignalRun]) -> list[tuple[StrategySignalRun, int]]:
-    """按 (stock_symbol, stock_market) 去重，保留 rank_score 最高的信号。
-    返回 [(signal, strategy_count), ...]，已按 rank_score desc 排序。
-    """
-    seen: dict[tuple[str, str], tuple[StrategySignalRun, int]] = {}
-    for sig in signals:
-        key = (sig.stock_symbol, sig.stock_market)
-        if key not in seen:
-            seen[key] = (sig, 1)
-        else:
-            _, count = seen[key]
-            seen[key] = (seen[key][0], count + 1)
-    # 已按 rank_score desc 查询，保留首次出现的顺序即可
-    return list(seen.values())
+
 
 
 def _funding_lines(account: PaperTradingAccount, funds: dict | None, english: bool) -> list[str]:
@@ -261,29 +224,15 @@ def _account_funds(db, account: PaperTradingAccount) -> dict:
     return funds
 
 
-def _format_premarket_plan(signals: list[StrategySignalRun], account: PaperTradingAccount, english: bool = False, funds: dict | None = None) -> tuple[str, str]:
-    """格式化盘前计划，返回 (title, body)。信号会自动去重。"""
-    title = "[Paper trading pre-market plan]" if english else "【模拟盘盘前计划】"
-    if not signals:
-        return title, "No candidates today" if english else "今日无候选股票"
-
-    deduped = _dedup_signals(signals)
-
+def _format_premarket_plan(decisions, account, english=False, funds=None):
+    title = "[Qlib paper pre-market plan]" if english else "【Qlib 模拟盘盘前计划】"
     lines = _funding_lines(account, funds, english)
-    lines.append("Today's candidates:" if english else "今日候选:")
-    for i, (sig, strat_count) in enumerate(deduped, 1):
-        name = sig.stock_name or sig.stock_symbol
-        from src.modules.administration.stock_link import stock_link_markdown
-        link = stock_link_markdown(sig.stock_symbol, sig.stock_market)
-        entry_range = ""
-        if sig.entry_low and sig.entry_high:
-            entry_range = f" Entry range: {sig.entry_low:.2f}-{sig.entry_high:.2f}" if english else f" 入场区间: {sig.entry_low:.2f}-{sig.entry_high:.2f}"
-        score_str = (f" Score: {sig.rank_score:.1f}" if english else f" 评分:{sig.rank_score:.1f}") if sig.rank_score else ""
-        strat_label = _strategy_label(sig.strategy_code, english)
-        if strat_count > 1:
-            strat_label = f"{strat_label} + {strat_count - 1} more" if english else f"{strat_label} 等{strat_count}个策略"
-        lines.append(f"{i}. {name} ({link}){entry_range}{score_str} [{strat_label}]")
-
+    for decision in decisions:
+        payload = decision.payload
+        lines.append(f"{payload['execution_date']} · run={payload['run_id']} · model={payload['model_id']}")
+        lines.append(", ".join(payload["symbols"]))
+    if not decisions:
+        lines.append("No approved decision" if english else "暂无已审批的冻结决策")
     return title, "\n".join(lines)
 
 
@@ -384,14 +333,13 @@ async def send_premarket_plan(*, markets: list[str] | None = None) -> None:
             for market in calendar.eligible_markets(markets):
                 if alloc.get(market, 0.0) <= 0:
                     continue
-                signals = (db.query(StrategySignalRun).filter(
-                    StrategySignalRun.status == "active",
-                    StrategySignalRun.stock_market == market,
-                    StrategySignalRun.action.in_(["buy", "add"]),
-                    StrategySignalRun.entry_low.isnot(None),
-                    StrategySignalRun.entry_high.isnot(None),
-                ).order_by(StrategySignalRun.rank_score.desc()).all())
-                title, body = _format_premarket_plan(signals, account, english=_report_is_english(),
+                if market != "CN":
+                    continue
+                from src.platform.persistence.qlib_models import QlibRecord
+                day = calendar._resolve_date(calendar._to_market_code(market), None)
+                decisions = [item for item in db.query(QlibRecord).filter_by(kind="decision").all()
+                             if item.payload["execution_date"] == day.isoformat()]
+                title, body = _format_premarket_plan(decisions, account, english=_report_is_english(),
                     funds=_account_funds(db, account))
                 day = calendar._resolve_date(calendar._to_market_code(market), None)
                 await mgr.notify(f"{title} {market} · {day}", body)

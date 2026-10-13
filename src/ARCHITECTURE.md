@@ -77,8 +77,8 @@ web ───────────────► modules ──────�
 | `automation` | 定时分析 Agent、运行记录、TradingAgents、AgentScheduler | agent service / scheduler |
 | `market` | 标的、采集编排、新闻、K 线上下文、价格告警 | market/alert service |
 | `portfolio` | 账户、仓位、诊断、业绩基准 | `PortfolioService` |
-| `research` | 分析历史、上下文、证据、结果评估、signals | research/context service |
-| `strategy` | 因子、信号、候选标的、校准、backtest | strategy service |
+| `research` | 分析历史、上下文、证据、Agent 后验评估 | research/context service |
+| `qlib_research` | 冻结数据、Qlib 训练/回测、模型治理、排名及模拟决策 | Qlib service / policy |
 | `paper_trading` | 模拟盘执行、账本、分配、通知 | paper-trading service |
 | `reporting` | 报告与 PDF 等产物渲染 | render/export function |
 | `administration` | 健康检查、设置维护、PAT、升级检查 | administration service |
@@ -115,8 +115,8 @@ Agent 执行循环。`bootstrap` 中只保留确有启动期职责的文件；�
 | `automation` | `modules/automation/api/` | Agent、建议池、模板 |
 | `market` | `modules/market/api/` | 标的、行情、K 线、新闻、发现、价格告警 |
 | `portfolio` | `modules/portfolio/api/` | 账户、持仓历史、仪表盘 |
-| `research` | `modules/research/api/` | 上下文、洞察、评估、建议 |
-| `strategy` | `modules/strategy/api/` | 因子接口 |
+| `research` | `modules/research/api/` | 上下文、洞察与 Agent 后验评估 |
+| `qlib_research` | `modules/qlib_research/api.py` | 数据、实验、模型审批、排名与决策 |
 | `paper_trading` | `modules/paper_trading/api/` | 模拟盘接口 |
 
 ## 关键流程

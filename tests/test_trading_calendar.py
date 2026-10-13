@@ -190,75 +190,23 @@ def test_交易日照常发盘前计划和日终摘要(monkeypatch, loaded_calen
     assert calls == {"premarket": 1, "summary": 1}
 
 
-# ---------------------------------------------------------------------------
-# 机会刷新的非交易日守卫(周末重算全市场只是白烧资源)
-# ---------------------------------------------------------------------------
-
-
-def test_周末跳过机会刷新(monkeypatch):
-    """周末不重算机会池 —— 行情没变,扫全市场纯属浪费。"""
+def test_context_scheduler_uses_qlib_without_legacy_refresh(monkeypatch):
     from src.modules.research.context_scheduler import ContextMaintenanceScheduler
-
-    calls = {"n": 0}
-
-    def _fake_refresh(**kwargs):
-        calls["n"] += 1
-        return {"count": 0}
-
-    monkeypatch.setattr(
-        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
-    )
-    saturday = datetime(2026, 8, 8, 22, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday.astimezone(tc._market_tz(code)))
-
+    calls = []
+    monkeypatch.setattr("src.modules.research.context_scheduler.scheduled_tick", lambda: calls.append("qlib"))
     sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
-    asyncio.run(sched._refresh_opportunities_job())
+    asyncio.run(sched._qlib_job())
+    assert calls == ["qlib"]
+    assert not hasattr(sched, "refresh_opportunities_once")
 
-    assert calls["n"] == 0
 
-
-def test_交易日照常刷新机会(monkeypatch, loaded_calendar):
-    """交易日机会刷新不受守卫影响。"""
+def test_qlib_scheduler_failure_is_contained(monkeypatch):
     from src.modules.research.context_scheduler import ContextMaintenanceScheduler
-
-    calls = {"n": 0}
-
-    def _fake_refresh(**kwargs):
-        calls["n"] += 1
-        return {"count": 3, "snapshot_date": "2026-08-10"}
-
-    monkeypatch.setattr(
-        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
-    )
-    monday = datetime(2026, 8, 10, 9, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: monday.astimezone(tc._market_tz(code)))
-
+    def fail():
+        raise ValueError("worker unavailable")
+    monkeypatch.setattr("src.modules.research.context_scheduler.scheduled_tick", fail)
     sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
-    asyncio.run(sched._refresh_opportunities_job())
-
-    assert calls["n"] == 1
-
-
-def test_手动刷新机会不受非交易日守卫影响(monkeypatch):
-    """手动触发是用户显式意图,周末也必须能跑。"""
-    from src.modules.research.context_scheduler import ContextMaintenanceScheduler
-
-    calls = {"n": 0}
-
-    def _fake_refresh(**kwargs):
-        calls["n"] += 1
-        return {"count": 1}
-
-    monkeypatch.setattr(
-        "src.modules.research.context_scheduler.refresh_strategy_signals", _fake_refresh
-    )
-    saturday = datetime(2026, 8, 8, 22, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(tc, "_now_in_market_tz", lambda code: saturday.astimezone(tc._market_tz(code)))
-
-    sched = ContextMaintenanceScheduler(timezone="Asia/Shanghai")
-    asyncio.run(sched.refresh_opportunities_once())
-
-    assert calls["n"] == 1
+    asyncio.run(sched._qlib_job())
 
 
 def test_上下文后验评估仅在夜间运行且不启动补跑(monkeypatch):

@@ -36,7 +36,6 @@ from src.modules.automation.agent_catalog import (
     AGENT_SEED_SPECS,
     AGENT_KIND_WORKFLOW,
 )
-from src.modules.strategy.strategy_catalog import ensure_strategy_catalog
 from src.modules.automation.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
 from src.modules.automation.daily_report import DailyReportAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
@@ -729,8 +728,6 @@ def reconcile_data_sources(db, *, reset_test_symbols: bool = False) -> dict:
 
 def seed_strategies():
     """初始化策略目录。"""
-    ensure_strategy_catalog()
-    logger.info("策略目录初始化完成")
 
 
 def load_watchlist_for_agent(agent_name: str) -> list[StockConfig]:

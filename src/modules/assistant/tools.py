@@ -30,7 +30,7 @@ from src.modules.market.price_alert_service import (
     parse_expire_at,
 )
 from src.modules.portfolio import build_portfolio_service
-from src.modules.strategy.strategy_engine import list_strategy_signals
+from src.modules.qlib_research.service import opportunities as qlib_opportunities
 from src.platform.marketdata.collectors.discovery_collector import (
     EastMoneyDiscoveryCollector,
 )
@@ -154,45 +154,7 @@ def _hot_board_payload(item: object) -> dict[str, object]:
     }
 
 
-def _format_candidate_price(value: object) -> str:
-    if value is None:
-        return ""
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return str(value)
-    if number.is_integer():
-        return str(int(number))
-    return f"{number:.4f}".rstrip("0").rstrip(".")
 
-
-def _compact_research_candidate(item: dict[str, Any]) -> dict[str, Any]:
-    entry_low = item.get("entry_low")
-    entry_high = item.get("entry_high")
-    if entry_low is not None or entry_high is not None:
-        entry_range = f"{_format_candidate_price(entry_low) or '--'} ~ {_format_candidate_price(entry_high) or '--'}"
-    else:
-        entry_range = ""
-    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-    source_meta = payload.get("source_meta") if isinstance(payload.get("source_meta"), dict) else {}
-    quote = source_meta.get("quote") if isinstance(source_meta.get("quote"), dict) else {}
-    return {
-        "symbol": str(item.get("stock_symbol") or ""),
-        "market": str(item.get("stock_market") or "CN"),
-        "name": str(item.get("stock_name") or item.get("stock_symbol") or ""),
-        "score": item.get("rank_score", item.get("score")),
-        "action": item.get("action_label") or item.get("action") or "观望",
-        "risk": item.get("risk_level_label") or item.get("risk_level") or "未知",
-        "source": item.get("source_pool_label") or item.get("source_pool") or "未知",
-        "signal": item.get("signal") or "",
-        "reason": item.get("reason") or "",
-        "entry_range": entry_range,
-        "target_price": item.get("target_price"),
-        "stop_loss": item.get("stop_loss"),
-        "invalidation": item.get("invalidation") or "",
-        "current_price": quote.get("current_price"),
-        "change_pct": quote.get("change_pct"),
-    }
 
 
 def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
@@ -242,63 +204,22 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         )
 
     async def find_research_candidates(_request: RunRequest, arguments: dict) -> ToolResult:
-        market = str(arguments.get("market") or "").strip().upper()
-        holding = str(arguments.get("holding") or "unheld").strip().lower()
-        risk_level = str(arguments.get("risk_level") or "").strip().lower()
+        market = str(arguments.get("market") or "CN").upper()
         try:
-            min_score = float(arguments.get("min_score", 70))
             limit = int(arguments.get("limit", 5))
-        except (TypeError, ValueError):
-            return ToolResult.failure(
-                summary="机会筛选参数无效。",
-                error_code="candidate_filter_invalid",
-            )
-        if (
-            (market and market not in {"CN", "HK", "US"})
-            or holding not in {"all", "held", "unheld"}
-            or (risk_level and risk_level not in {"all", "low", "medium", "high"})
-            or not 0 <= min_score <= 100
-            or not 1 <= limit <= 10
-        ):
-            return ToolResult.failure(
-                summary="机会筛选参数无效。",
-                error_code="candidate_filter_invalid",
-            )
-
+        except (ValueError, TypeError):
+            return ToolResult.failure(summary="候选参数无效。", error_code="candidate_filter_invalid")
+        if market != "CN" or not 1 <= limit <= 10:
+            return ToolResult.failure(summary="Qlib 当前仅支持 A 股研究。", error_code="candidate_market_unsupported")
         try:
-            result = await asyncio.to_thread(
-                list_strategy_signals,
-                market=market,
-                status="active",
-                min_score=min_score,
-                limit=limit,
-                source_pool="all",
-                holding=holding,
-                risk_level=risk_level,
-                include_payload=True,
-            )
-        except Exception:  # noqa: BLE001 - provider/database failures become controlled tool results
-            return ToolResult.failure(
-                summary="机会数据暂时不可用。",
-                error_code="candidate_data_unavailable",
-            )
-
-        items = [_compact_research_candidate(item) for item in result.get("items", [])]
-        names = "、".join(item["name"] for item in items[:3])
-        summary = (
-            f"找到 {len(items)} 个研究候选：{names}。"
-            if items
-            else "暂无符合条件的研究候选。"
-        )
+            result = await asyncio.to_thread(qlib_opportunities)
+        except Exception:
+            return ToolResult.failure(summary="Qlib 数据不可用。", error_code="candidate_data_unavailable")
+        items = result["items"][:limit]
         return ToolResult.success(
-            summary=summary,
-            data={
-                "snapshot_date": result.get("snapshot_date") or "",
-                "count": len(items),
-                "items": items,
-            },
-            sources=[{"name": "PanWatch 机会信号"}],
-            observed_at=datetime.now(UTC),
+            summary=f"Qlib 模型研究排名，状态 {result['status']}；原始分不是概率或买入建议。",
+            data={"items": items, "run": result["run"], "mode": result["mode"], "status": result["status"]},
+            sources=[{"name": "PanWatch Qlib 冻结预测"}], observed_at=datetime.now(UTC),
         )
 
     async def get_stock_quote(_request: RunRequest, arguments: dict) -> ToolResult:
@@ -996,42 +917,13 @@ def build_panwatch_tool_registry(session: Session) -> ToolRegistry:
         tool_spec(
             name="find_research_candidates",
             title="发现研究候选",
-            description="查询 PanWatch 最新机会信号，返回适合进一步研究的候选标的及其评分、风险和入场计划。只读，不会刷新策略或执行交易。",
+            description="查询 Qlib 冻结的 A 股模型研究排名与输入。分数不是概率或买入计划；不刷新数据、不交易。",
             risk=ToolRisk.READ,
             input_schema={
                 "type": "object",
                 "properties": {
-                    "market": {
-                        "type": "string",
-                        "enum": ["CN", "HK", "US"],
-                        "description": "可选市场代码；不填表示全部市场",
-                    },
-                    "holding": {
-                        "type": "string",
-                        "enum": ["all", "held", "unheld"],
-                        "default": "unheld",
-                        "description": "持仓过滤；默认只看未持仓标的",
-                    },
-                    "risk_level": {
-                        "type": "string",
-                        "enum": ["all", "low", "medium", "high"],
-                        "default": "all",
-                        "description": "可选风险等级过滤",
-                    },
-                    "min_score": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 100,
-                        "default": 70,
-                        "description": "最低机会分数",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 10,
-                        "default": 5,
-                        "description": "最多返回候选数量",
-                    },
+                    "market": {"type": "string", "enum": ["CN"], "default": "CN"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
                 },
             },
         ),

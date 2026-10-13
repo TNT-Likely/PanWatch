@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from src.modules.paper_trading import paper_trading_engine as module
 from src.modules.paper_trading.api import paper_trading as api
 from src.platform.persistence.database import Base, get_db
-from src.platform.persistence.models import PaperTradingAccount, PaperTradingPosition, PaperTradingTrade, StrategySignalRun
+from src.platform.persistence.models import PaperTradingAccount, PaperTradingPosition, PaperTradingTrade
 from src.platform.scheduling import trading_calendar as calendar
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -49,48 +49,17 @@ def position(storage, *, market="CN", opened=NOW, **kwargs):
         return pos.id
 
 
-@pytest.mark.parametrize("reason,price,fields", [
-    ("stop_loss", 8, {"stop_loss": 9}),
-    ("target_price", 12, {"target_price": 11}),
-    ("trailing_stop", 10, {"highest_price": 12}),
-    ("signal_reversal", 10, {}),
-    ("time_stop", 10, {}),
-])
-def test_auto_exit_waits_for_next_trading_day(monkeypatch, storage, reason, price, fields):
+def test_legacy_positions_are_not_automatically_transferred(monkeypatch, storage):
     freeze(monkeypatch)
-    # holding_days=1 forces a time exit on Monday; same-day other triggers remain blocked.
-    fields = dict(fields)
-    high = fields.pop("highest_price", 10)
-    ident = position(storage, **fields)
-    with storage() as db:
-        sig = StrategySignalRun(stock_symbol="600519", stock_market="CN", strategy_code="trend_follow", snapshot_date="2026-10-09",
-            action="sell" if reason == "signal_reversal" else "buy", status="active", holding_days=1)
-        db.add(sig); db.flush()
-        pos = db.get(PaperTradingPosition, ident)
-        pos.highest_price = high
-        pos.signal_run_id = sig.id
-        db.commit()
+    ident = position(storage, stop_loss=9, target_price=12)
     engine = module.PaperTradingEngine()
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600519"): {"current_price": price}})
-    # A later scan on the purchase date must not close or change account cash.
-    result = engine._scan_sync()
-    assert result["closed"] == 0
-    with storage() as db:
-        assert db.get(PaperTradingPosition, ident).status == "open"
-        assert db.get(PaperTradingPosition, ident).current_price == price
-        assert db.query(PaperTradingTrade).count() == 0
-        assert db.query(PaperTradingAccount).one().current_capital == 98999
-    # Weekend is not a fill session even though the settlement date has passed.
-    freeze(monkeypatch, NOW + timedelta(days=1))
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600519"): {"current_price": 8}})
     assert engine._scan_sync()["closed"] == 0
     freeze(monkeypatch, NOW + timedelta(days=3))
-    assert engine._scan_sync()["closed"] == 1
-    with storage() as db:
-        assert db.get(PaperTradingPosition, ident).status == "closed"
-        trade = db.query(PaperTradingTrade).one()
-        assert trade.exit_reason == reason
-        assert db.query(PaperTradingAccount).one().total_trades == 1
     assert engine._scan_sync()["closed"] == 0
+    with storage() as db:
+        assert db.get(PaperTradingPosition, ident).status == "open"
+        assert db.query(PaperTradingTrade).count() == 0
 
 
 def test_manual_same_day_rejects_before_quote_and_without_writes(monkeypatch, storage):
@@ -119,30 +88,24 @@ def test_shared_fill_guard_rejects_same_day(monkeypatch, storage):
         assert db.get(PaperTradingPosition, ident).status == "open"
 
 
-def test_buy_then_later_scan_stays_locked_after_reloading_storage(monkeypatch, storage):
-    freeze(monkeypatch)
-    with storage() as db:
-        db.add(StrategySignalRun(stock_symbol="600519", stock_market="CN", strategy_code="trend_follow",
-            snapshot_date="2026-10-09", status="active", action="buy", entry_low=9,
-            entry_high=11, stop_loss=9, target_price=12, rank_score=90))
-        db.commit()
+def test_qlib_buy_persists_t1_lock_across_engine_reload(monkeypatch, storage):
+    from tests.qlib_fixture import paper_decision
+    instant = NOW.replace(hour=9, minute=31)
+    freeze(monkeypatch, instant)
+    paper_decision(storage, asof="2026-10-08", symbols=("SH600519",))
     engine = module.PaperTradingEngine()
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600519"): {"current_price": 10}})
+    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600519"): {"current_price": 10, "open_price": 10, "prev_close": 10, "volume": 100000, "quote_date": "2026-10-09"}})
     assert engine._scan_sync()["opened"] == 1
     with storage() as db:
         pos = db.query(PaperTradingPosition).one()
-        assert pos.opened_at == NOW.astimezone(timezone.utc).replace(tzinfo=None)
-        capital = db.query(PaperTradingAccount).one().current_capital
-    # A fresh engine/session simulates a restart: skip_keys from the entry scan are gone.
-    engine = module.PaperTradingEngine()
-    monkeypatch.setattr(engine, "_fetch_quotes_map", lambda pairs: {("CN", "600519"): {"current_price": 8}})
-    freeze(monkeypatch, NOW + timedelta(hours=1))
-    assert engine._scan_sync()["closed"] == 0
+        assert pos.research_meta["model_id"]
+        capital, ident = db.query(PaperTradingAccount).one().current_capital, pos.id
+    freeze(monkeypatch, instant + timedelta(hours=1))
+    result = module.PaperTradingEngine().close_position_manual(ident)
+    assert result["error_code"] == "paper_trading_t1_locked"
     with storage() as db:
         assert db.query(PaperTradingTrade).count() == 0
         assert db.query(PaperTradingAccount).one().current_capital == capital
-    freeze(monkeypatch, NOW + timedelta(days=3))
-    assert engine._scan_sync()["closed"] == 1
 
 
 @pytest.mark.parametrize("opened,now,expected", [

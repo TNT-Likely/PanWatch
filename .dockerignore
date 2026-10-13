@@ -9,6 +9,7 @@
 **/.pytest_cache/
 venv/
 .venv/
+.venv-qlib/
 **/*.egg-info/
 packages/*/build/
 

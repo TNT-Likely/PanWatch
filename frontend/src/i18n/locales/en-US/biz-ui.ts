@@ -107,19 +107,19 @@ export const bizUi = {
   "tracks": {
     "opportunities": {
       "title": "Discover and evaluate opportunities",
-      "description": "Filter candidates, read their evidence, and review later outcomes.",
+      "description": "Explore Qlib data, backtests, reviewed publication and forward paper execution.",
       "steps": {
         "filters": {
-          "title": "Filter opportunities you care about",
-          "description": "Choose a market, source, strategy or risk, then click Apply. Relax filters if no candidates match. Analysis tasks produce candidates; starting a tour does not create them."
+          "title": "Explore the research workbench",
+          "description": "Switch between model ranks, research, governance, data/runtime and forward paper tabs. Import authorized data and train first if empty; the tour never imports, trains or publishes."
         },
         "signals": {
-          "title": "Read a signal before following it",
-          "description": "Open a candidate for stock details. Check data time, evidence, entry range and invalidation before adding it to your watchlist. An empty list means no matching signals; continue to learn about evaluation."
+          "title": "Read frozen model ranks",
+          "description": "Check prediction dates, model identity, raw scores, ranks and coverage. Scores are not probabilities or buy advice. The research basket never changes model ranks or places orders."
         },
         "evaluation": {
-          "title": "Review later outcomes",
-          "description": "Filter historical suggestions and their subsequent performance. Open a row to read the evidence. This page is empty before analyses have run; return after completing the main tour."
+          "title": "Review out-of-sample and rolling backtests",
+          "description": "Open Research to inspect equity, Rank IC, momentum baseline, three rolling windows and frozen settings. Synthetic data validates engineering only; publication and paper decisions require explicit confirmation."
         }
       }
     },
@@ -133,7 +133,7 @@ export const bizUi = {
         },
         "controls": {
           "title": "Understand the paper trading switch",
-          "description": "This switch controls automatic signal processing. Review allocations before enabling it. Scan processes current signals and may create simulated trades. The tour never enables or scans on your behalf."
+          "description": "This switch executes explicitly confirmed Qlib decisions at the next China-market opening window. Legacy holdings remain manually managed. The tour never creates decisions, enables trading or scans on your behalf."
         },
         "positions": {
           "title": "Read positions and trade records",

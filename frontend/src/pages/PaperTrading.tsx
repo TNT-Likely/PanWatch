@@ -1,4 +1,5 @@
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
+import { Link } from 'react-router-dom'
 import { localDateForInstant } from '@panwatch/base-ui'
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
@@ -109,6 +110,7 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
 export default function PaperTradingPage() {
   const { toast } = useToast()
   const { t, i18n } = useTranslation('configuration')
+  const { t: qlibT } = useTranslation('qlib')
   const confirmAction = useConfirm()
   const paperT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const locale = i18n.resolvedLanguage === 'en-US' ? 'en-US' : 'zh-CN'
@@ -390,6 +392,11 @@ export default function PaperTradingPage() {
         </div>
       </div>
 
+      <div className="rounded-lg border bg-card p-3 text-sm space-y-2">
+        <p>{qlibT('paperNote')}</p>
+        <Link className="text-primary underline" to="/opportunities">{qlibT('paperTitle')}</Link>
+      </div>
+
       {/* Market View Filter + 资金配置 */}
       {account && (
         <div className="flex items-center justify-between gap-2">
@@ -583,6 +590,7 @@ export default function PaperTradingPage() {
                     <td className="py-2 pr-3">
                       <div className="font-medium">{p.stock_name || p.stock_symbol}</div>
                       <div className="text-xs text-muted-foreground">{p.stock_symbol} · {p.stock_market}</div>
+                      {p.research?.model_id && <div className="mt-1 break-all text-xs text-muted-foreground" title={JSON.stringify(p.research)}>{qlibT('lineage')}: {p.research.run_id?.slice(0, 8)} / {p.research.model_id.slice(0, 8)} / {p.research.decision_id?.slice(0, 8)}</div>}
                     </td>
                     <td className="text-right py-2 px-2">{p.entry_price.toFixed(2)}</td>
                     <td className="text-right py-2 px-2">{p.current_price?.toFixed(2) ?? '-'}</td>
@@ -656,6 +664,7 @@ export default function PaperTradingPage() {
                         <td className="py-2 pr-3">
                           <div className="font-medium">{t.stock_name || t.stock_symbol}</div>
                           <div className="text-xs text-muted-foreground">{t.stock_symbol} · {t.stock_market}</div>
+                          {t.research?.model_id && <div className="mt-1 break-all text-xs text-muted-foreground" title={JSON.stringify(t.research)}>{qlibT('lineage')}: {t.research.run_id?.slice(0, 8)} / {t.research.model_id.slice(0, 8)} / {t.research.decision_id?.slice(0, 8)}</div>}
                         </td>
                         <td className="text-right py-2 px-2">{t.entry_price.toFixed(2)}</td>
                         <td className="text-right py-2 px-2">{t.exit_price.toFixed(2)}</td>

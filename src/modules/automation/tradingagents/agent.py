@@ -95,7 +95,6 @@ class TradingAgentsAgent(BaseAgent):
         quick_model: str | None = None,   # 分析师工具调用用的快模型 (留空 = deep_model)
         timeout_minutes: int = 30,        # 整个流程硬超时;0.3.0 工具链更重,默认提到 30 min
         collection_timeout_seconds: int = 45,  # 单个外部数据源采集硬超时
-        emit_paper_trading_signal: bool = False,  # 是否把 BUY 决策写入 StrategySignalRun 驱动模拟盘
         enable_sec_edgar: bool = False,   # 美股财报可显式优先使用 SEC EDGAR
         holding_period_days: int = 5,     # 上游决策质量回测/持仓期限语义
         llm_timeout_seconds: int = 300,   # 单次 LLM 请求超时,给慢响应留出时间
@@ -123,7 +122,6 @@ class TradingAgentsAgent(BaseAgent):
         self.quick_model = (quick_model or "").strip() or None
         self.timeout_minutes = max(1, int(timeout_minutes))
         self.collection_timeout_seconds = max(5, int(collection_timeout_seconds))
-        self.emit_paper_trading_signal = bool(emit_paper_trading_signal)
         self.enable_sec_edgar = bool(enable_sec_edgar)
         self.holding_period_days = max(1, int(holding_period_days))
         self.llm_timeout_seconds = max(1, int(llm_timeout_seconds))
@@ -453,28 +451,8 @@ class TradingAgentsAgent(BaseAgent):
         except Exception as e:
             logger.warning(f"[TA] save_suggestion 失败,不影响主流程: {e}")
 
-        # 7) 可选:把 BUY/SELL 决策写入 StrategySignalRun 驱动模拟盘
-        if self.emit_paper_trading_signal:
-            try:
-                from src.modules.automation.tradingagents.decision import (
-                    maybe_emit_paper_trading_signal,
-                )
-                quote = data.get("quote") or {}
-                current_price = quote.get("current_price")
-                sug = result.raw_data.get("suggestion") or {}
-                maybe_emit_paper_trading_signal(
-                    stock_symbol=stock.symbol,
-                    stock_market=stock.market.value,
-                    stock_name=stock.name,
-                    decision=str(sug.get("action") or ""),
-                    confidence=float(sug.get("confidence") or 5.0),
-                    signal_text=str(sug.get("signal") or ""),
-                    reason=str(sug.get("reason") or ""),
-                    current_price=current_price,
-                    enabled=True,
-                )
-            except Exception as e:
-                logger.warning(f"[TA] 写模拟盘信号失败,不影响主流程: {e}")
+        # Agent interpretations never create portfolio orders. Qlib decisions
+        # require their own immutable prediction lineage and explicit approval.
 
         return result
 

@@ -29,7 +29,7 @@ function Controls() {
     <div data-tour-stock="1">股票报价</div>
     <button data-tour="add-alert">实际提醒入口</button>
     <section id="sec-ai">真实模型设置</section><section id="sec-notify">真实渠道设置</section>
-    <button data-tour="opportunity-filters">实际机会筛选</button><div data-tour="opportunity-signals">候选列表</div><div data-tour="evaluations">验证中心</div>
+    <div role="tablist">实际研究导航</div><div data-testid="qlib-workbench">候选列表</div><button id="qlib-tab-research">研究回测入口</button>
     <Link to="/history">离开页面</Link><FirstAnalysis />
   </>
 }
@@ -194,15 +194,15 @@ describe('guide center', () => {
     await screen.findByRole('heading', { name: '引导中心' })
     expect(screen.getAllByRole('button', { name: '开始探索' })).toHaveLength(5)
     await userEvent.click(screen.getAllByRole('button', { name: '开始探索' })[0])
-    await screen.findByText('筛选你关心的机会')
+    await screen.findByText('认识研究工作台')
     expect(screen.getByTestId('path').textContent).toBe('/opportunities')
     expect(current.tour_step).toBe('done')
     expect(onboardingApi.analyze).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
-    await screen.findByText('阅读信号，再决定是否关注')
+    await screen.findByText('阅读冻结模型排名')
     await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
-    await screen.findByText('回看建议的后续表现')
-    expect(screen.getByTestId('path').textContent).toBe('/evaluations')
+    await screen.findByText('核对样本外与滚动回测')
+    expect(screen.getByTestId('path').textContent).toBe('/opportunities')
     await userEvent.click(screen.getByRole('button', { name: '完成并返回中心' }))
     await screen.findByRole('heading', { name: '引导中心' })
     expect(screen.getAllByRole('button', { name: '再次体验' })).toHaveLength(2)
@@ -226,7 +226,7 @@ describe('guide center', () => {
     renderTour()
     const card = await screen.findByRole('region', { name: '发现与评估机会' })
     await userEvent.click(within(card).getByRole('button', { name: '恢复引导' }))
-    await screen.findByText('阅读信号，再决定是否关注')
+    await screen.findByText('阅读冻结模型排名')
     expect(onboardingApi.update).toHaveBeenCalledWith({ track: 'opportunities', restart: false, deferred: false })
     expect(current.tour_step).toBe('ai')
   })

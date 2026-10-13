@@ -5,9 +5,9 @@ export const featureTracks: FeatureTrack[] = ['opportunities', 'paper', 'assista
 export type FeatureStep = { key: string; path: string; selector: string; fallback?: string; dialog?: string }
 export const trackSteps: Record<FeatureTrack, FeatureStep[]> = {
   opportunities: [
-    { key: 'filters', path: '/opportunities', selector: '[data-tour="opportunity-filters"]' },
-    { key: 'signals', path: '/opportunities', selector: '[data-tour="opportunity-signals"]' },
-    { key: 'evaluation', path: '/evaluations', selector: '[data-tour="evaluations"]' },
+    { key: 'filters', path: '/opportunities', selector: '[role="tablist"]' },
+    { key: 'signals', path: '/opportunities', selector: '[data-testid="qlib-workbench"]' },
+    { key: 'evaluation', path: '/opportunities', selector: '#qlib-tab-research' },
   ],
   paper: [
     { key: 'capital', path: '/paper-trading', selector: '[data-tour="paper-capital"]', dialog: '[data-tour="paper-config-dialog"]' },

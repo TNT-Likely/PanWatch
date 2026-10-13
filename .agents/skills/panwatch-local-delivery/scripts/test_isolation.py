@@ -168,6 +168,31 @@ class IsolationTests(unittest.TestCase):
         with self.assertRaises(qa.IsolationError):
             qa.preflight(run, require_frontend=True)
 
+    def test_qlib_interpreter_is_explicit_and_checked(self):
+        run = qa.prepare(self.repo, self.root, Path(sys.executable), qlib_python=Path(sys.executable))
+        qa.preflight(run)
+        with patch.dict(os.environ, {"QLIB_WORKER_PYTHON": "/untrusted/interpreter"}):
+            env = qa.child_environment(run)
+        self.assertEqual(env["QLIB_WORKER_PYTHON"], str(Path(sys.executable).absolute()))
+        default_run = self.prepare()
+        with patch.dict(os.environ, {"QLIB_WORKER_PYTHON": "/untrusted/interpreter"}):
+            self.assertNotIn("QLIB_WORKER_PYTHON", qa.child_environment(default_run))
+        with self.assertRaises(qa.IsolationError):
+            qa.prepare(self.repo, self.root, Path(sys.executable), qlib_python=self.root / "missing")
+
+    def test_frontend_seal_regression(self):
+        run = self.prepare()
+        with self.assertRaises(qa.IsolationError):
+            qa.preflight(run, require_frontend=True)
+        dist = run / "source/frontend/dist"
+        dist.mkdir(parents=True)
+        (dist / "index.html").write_text("<html>synthetic build fixture</html>")
+        qa.seal_frontend(run)
+        qa.preflight(run, require_frontend=True)
+        (run / "source/static/index.html").write_text("different build")
+        with self.assertRaises(qa.IsolationError):
+            qa.preflight(run, require_frontend=True)
+
     def test_snapshot_module_origin_checks_use_exported_packages(self):
         run = self.prepare()
         probe = qa.BOOTSTRAP.split("from src.platform.persistence import database")[0] + "\nprint(json.dumps(origins))\n"

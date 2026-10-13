@@ -1,0 +1,4 @@
+# Upstream v0.9.7 commit. PyPI does not publish a Linux aarch64 wheel.
+# Install only after the hashed runtime lock, with --no-deps --no-build-isolation.
+pyqlib @ https://codeload.github.com/microsoft/qlib/tar.gz/da920b7f954f48ab1bb64117c976710de198373e \
+    --hash=sha256:016ec8f5d415e4b4251412e60a395154332cb2db0239c20a522b04de6198131f

@@ -25,7 +25,7 @@ from src.modules.paper_trading.paper_settlement import (
     buying_power, cash_summary, row_due_date, settlement_date, settlement_status,
 )
 from src.modules.portfolio.portfolio_diagnostics import diagnose_paper_portfolio
-from src.modules.strategy.quant_adapters import available_backends
+from src.modules.qlib_research.service import runtime_health
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import (
     AppSettings,
@@ -345,6 +345,7 @@ def _position_response(p: PaperTradingPosition) -> dict:
         ),
         "status": p.status,
         "signal_run_id": p.signal_run_id,
+        "research": p.research_meta or {},
         "signal_snapshot_date": p.signal_snapshot_date or "",
         "signal_action": p.signal_action or "",
         "strategy_code": p.strategy_code or "",
@@ -369,6 +370,7 @@ def _trade_response(t: PaperTradingTrade, settlement: PaperTradingSettlement | N
         "pnl_pct": round(t.pnl_pct, 2),
         "exit_reason": t.exit_reason,
         "signal_run_id": t.signal_run_id,
+        "research": (t.meta or {}).get("research", {}),
         "signal_snapshot_date": t.signal_snapshot_date or "",
         "strategy_code": t.strategy_code or "",
         "holding_days": t.holding_days or 0,
@@ -458,7 +460,7 @@ def get_diagnostics():
 @router.get("/backends")
 def get_backends():
     """可用回测后端探测(builtin 永远可用;vectorbt/rqalpha/qlib 视安装情况)。"""
-    return available_backends()
+    return {"qlib": runtime_health(), "source": "qlib_only", "supported_markets": ["CN"]}
 
 
 @router.post("/account/toggle")

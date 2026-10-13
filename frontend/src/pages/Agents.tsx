@@ -1100,23 +1100,7 @@ export default function AgentsPage() {
               </div>
             </section>
 
-            {/* 模拟盘对接 */}
-            <section>
-              <div className="flex items-center gap-2 mb-2">
-                <input
-                  type="checkbox"
-                  id="emit-paper-trading"
-                  checked={!!taConfigForm.emit_paper_trading_signal}
-                  onChange={e => setTaConfigForm({ ...taConfigForm, emit_paper_trading_signal: e.target.checked })}
-                />
-                <label htmlFor="emit-paper-trading" className="font-medium cursor-pointer">
-                  {configT('advanced.writeBuy')}
-                </label>
-              </div>
-              <div className="text-[11px] text-muted-foreground">
-                {configT('advanced.paperHint')}
-              </div>
-            </section>
+
 
             {/* 联动触发(intraday 急涨/急跌) */}
             {(() => {
