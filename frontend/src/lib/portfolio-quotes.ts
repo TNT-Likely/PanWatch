@@ -31,7 +31,8 @@ export interface Position {
   pnl_pct: number | null
   daily_pnl: number | null
   daily_pnl_pct: number | null
-  exchange_rate: number | null  // 汇率（仅港股）
+  exchange_rate: number | null  // 汇率（仅港/美/澳股）
+  currency?: string | null  // 报价币种；缺省时按 market 推断
   daily_move_status?: string
   quote_date?: string | null
 }
@@ -59,10 +60,12 @@ export interface PortfolioSummary {
     total_daily_pnl: number
     available_funds: number
     total_assets: number
+    valuation_complete?: boolean  // false = 有持仓缺少币种/汇率，未计入 CNY 合计
   }
   exchange_rates?: {
     HKD_CNY: number
     USD_CNY?: number
+    AUD_CNY?: number
   }
   quotes?: Record<string, { current_price: number | null; change_pct: number | null }>
 }
@@ -82,15 +85,25 @@ export const toQuoteMap = (rows: QuoteResponse[]): Record<string, DisplayQuote> 
 
 const round2 = (value: number) => Math.round(value * 100) / 100
 
+// 币种 → CNY 汇率。HK/USD 保留既有兜底值；AUD 无兜底：缺汇率即估值不完整，绝不按 1:1 折算。
+const currencyFor = (pos: Position): string | null =>
+  pos.currency ?? (pos.market === 'HK' ? 'HKD' : pos.market === 'US' ? 'USD' : pos.market === 'AU' ? 'AUD' : pos.market === 'CN' ? 'CNY' : null)
+
+const rateFor = (currency: string | null, rates: PortfolioSummary['exchange_rates']): number | null => {
+  if (currency === 'CNY') return 1
+  if (currency === 'HKD') return rates?.HKD_CNY ?? 0.92
+  if (currency === 'USD') return rates?.USD_CNY ?? 7.25
+  if (currency === 'AUD') return rates?.AUD_CNY ?? null
+  return null
+}
+
 export const mergePortfolioQuotes = (
   portfolio: PortfolioSummary | null,
   quotes: Record<string, DisplayQuote>
 ): PortfolioSummary | null => {
   if (!portfolio) return null
 
-  const hkdRate = portfolio.exchange_rates?.HKD_CNY ?? 0.92
-  const usdRate = portfolio.exchange_rates?.USD_CNY ?? 7.25
-
+  let anyUnvalued = false
   let grandMarketValue = 0
   let grandCost = 0
   let grandAvailable = 0
@@ -108,9 +121,11 @@ export const mergePortfolioQuotes = (
       const inactive = daily_move_status != null && daily_move_status !== 'current'
       // An explicit null from the latest quote must not resurrect an older daily change.
       const change_pct = inactive ? null : quote ? quote.change_pct : pos.change_pct ?? null
-      const rate = pos.market === 'HK' ? hkdRate : pos.market === 'US' ? usdRate : 1
+      // 缺汇率的持仓保持 native 市值，CNY 字段一律 null，且不计入账户/组合合计。
+      const rate = rateFor(currencyFor(pos), portfolio.exchange_rates)
+      if (rate == null) anyUnvalued = true
 
-      const cost = pos.cost_price * pos.quantity * rate
+      const cost = rate != null ? pos.cost_price * pos.quantity * rate : 0
       accCost += cost
 
       let market_value: number | null = null
@@ -122,15 +137,17 @@ export const mergePortfolioQuotes = (
 
       if (current_price != null) {
         market_value = current_price * pos.quantity
-        market_value_cny = market_value * rate
-        accMarketValue += market_value_cny
-        pnl = market_value_cny - cost
-        pnl_pct = cost > 0 ? (pnl / cost * 100) : 0
+        if (rate != null) {
+          market_value_cny = market_value * rate
+          accMarketValue += market_value_cny
+          pnl = market_value_cny - cost
+          pnl_pct = cost > 0 ? (pnl / cost * 100) : 0
+        }
       }
 
-      if (daily_move_status === 'closed' || daily_move_status === 'pre_market') {
+      if (rate != null && (daily_move_status === 'closed' || daily_move_status === 'pre_market')) {
         daily_pnl = 0
-      } else if (current_price != null && change_pct != null && change_pct !== -100) {
+      } else if (rate != null && current_price != null && change_pct != null && change_pct !== -100) {
         const prev = current_price / (1 + change_pct / 100)
         if (isFinite(prev) && prev > 0) {
           daily_pnl = round2((current_price - prev) * pos.quantity * rate)
@@ -142,7 +159,7 @@ export const mergePortfolioQuotes = (
       return {
         ...pos,
         current_price,
-        current_price_cny: current_price != null ? current_price * rate : null,
+        current_price_cny: rate != null && current_price != null ? current_price * rate : null,
         change_pct,
         market_value,
         market_value_cny,
@@ -152,7 +169,7 @@ export const mergePortfolioQuotes = (
         daily_pnl_pct,
         daily_move_status,
         quote_date: quote ? quote.quote_date : pos.quote_date,
-        exchange_rate: pos.market === 'HK' || pos.market === 'US' ? rate : null,
+        exchange_rate: rate != null && (pos.market === 'HK' || pos.market === 'US' || pos.market === 'AU') ? rate : null,
       }
     })
 
@@ -192,6 +209,7 @@ export const mergePortfolioQuotes = (
       total_daily_pnl: round2(grandDailyPnl),
       available_funds: round2(grandAvailable),
       total_assets: round2(grandTotalAssets),
+      valuation_complete: !anyUnvalued,
     },
   }
 }

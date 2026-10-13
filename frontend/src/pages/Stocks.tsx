@@ -1565,6 +1565,11 @@ export default function StocksPage() {
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <TrendingUp className="w-4 h-4" />
               <span className="text-[12px]">{stockT('stocksPage.messages.totalMarketValue')}</span>
+              {portfolio.total.valuation_complete === false && (
+                <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 py-0">
+                  {stockT('stocksPage.messages.valuationIncomplete')}
+                </Badge>
+              )}
             </div>
             <div className="text-[20px] font-bold text-foreground font-mono">
               {portfolioTotalsReady ? formatMoney(portfolio.total.total_market_value) : '--'}
