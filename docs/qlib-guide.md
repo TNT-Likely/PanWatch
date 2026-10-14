@@ -60,6 +60,12 @@ The destination must not exist. Never present its performance as market evidence
 
 ## Workflow and boundaries
 
+Daily use does not require retraining: inspect highlights, preview and explicitly confirm the whole portfolio, then track it in paper trading. Pending plans are visible by default; completed/cancelled/superseded/expired records remain in collapsed history. Starting the account never restores them.
+
+Training/rebuild controls live in collapsed data maintenance. Repeated upstream history failures stop synchronization while preserving data, models, ranks and the resume cursor. Resume later rather than retraining/rebuilding for network errors; accepting a resume request does not prove upstream recovery. Technical error codes remain expandable.
+
+With an approved model, opt into after-close updates in universe settings for per-market data and ranking updates. This never trains, approves or confirms paper plans automatically. Recurring automatic paper-plan confirmation is not implemented; starting the paper account is not continuing authorization for future daily plans.
+
 Everyday selection lives at `/opportunities`: overview cards, familiar filters,
 two-column stock cards and shared stock details. Top-10%/20% filters use positions
 in the entire frozen research universe, not win probabilities. Reference prices

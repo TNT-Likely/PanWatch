@@ -153,6 +153,7 @@ export default function QlibDataPipeline({
     latest?.error_code ||
     relatedModelJob?.error_code ||
     latestHistory?.error_code
+  const errorCode = statusError?.match(/qlib_[a-z_]+/)?.[0] ?? statusError
   const act = async (operation: () => Promise<unknown>) => {
     if (busy) return
     setBusy(true)
@@ -181,22 +182,14 @@ export default function QlibDataPipeline({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{tr('title')}</h2>
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy || anyWorking}
-            onClick={edit}
-          >
-            {tr(state?.config ? 'configure' : 'start')}
-          </Button>
-          {state?.config && (
+          {!state?.config && (
             <Button
               size="sm"
               variant="outline"
               disabled={busy || anyWorking}
-              onClick={() => void act(() => qlibApi.universeJob('catalog'))}
+              onClick={edit}
             >
-              {tr('catalog')}
+              {tr('start')}
             </Button>
           )}
           {!!data?.total && (
@@ -211,6 +204,50 @@ export default function QlibDataPipeline({
               }}
             >
               {tr('browse')}
+            </Button>
+          )}
+          {!pending && resumable && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                void act(() =>
+                  qlibApi.universeJobAction(resumable.id, 'resume'),
+                )
+              }
+            >
+              {tr('resume')}
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{tr('dailyHelp')}</p>
+      <details className="mt-3" data-testid="research-maintenance">
+        <summary className="cursor-pointer text-xs text-primary">
+          {tr('maintenance')}
+        </summary>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {tr('maintenanceNote')}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {state?.config && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || anyWorking}
+              onClick={edit}
+            >
+              {tr('configure')}
+            </Button>
+          )}
+          {state?.config && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || anyWorking}
+              onClick={() => void act(() => qlibApi.universeJob('catalog'))}
+            >
+              {tr('catalog')}
             </Button>
           )}
           {!!data?.total && (
@@ -298,22 +335,8 @@ export default function QlibDataPipeline({
               {tr('cancel')}
             </Button>
           )}
-          {!pending && resumable && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                void act(() =>
-                  qlibApi.universeJobAction(resumable.id, 'resume'),
-                )
-              }
-            >
-              {tr('resume')}
-            </Button>
-          )}
         </div>
-      </div>
+      </details>
       <p className="mt-2 text-xs text-muted-foreground">{tr('flow')}</p>
       <div
         className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4"
@@ -374,9 +397,17 @@ export default function QlibDataPipeline({
         </p>
       )}
       {statusError && (
-        <p className="mt-2 break-words text-xs text-destructive" role="alert">
-          {tr('failed')} <code>{statusError}</code>
-        </p>
+        <div className="mt-2 break-words text-xs text-destructive" role="alert">
+          <p>
+            {tr('failed')} {issue(errorCode ?? statusError)}
+          </p>
+          <details className="mt-1 text-muted-foreground">
+            <summary className="cursor-pointer">
+              {tr('technicalDetails')}
+            </summary>
+            <code>{statusError}</code>
+          </details>
+        </div>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">

@@ -1,5 +1,11 @@
 export const qlib = {
   plan: {
+    activeTitle: '待执行的模拟计划',
+    noActivePlans:
+      '目前没有待执行计划。已结束的计划在下方历史中，不会因启动账户而恢复。',
+    historyTitle: '历史计划（{{count}}）',
+    historyNote:
+      '保留已成交、拒单、取消、被替代和过期记录供复盘；启动账户不会重新执行这些计划。仅展示最近 25 份计划。',
     currency: 'CNY',
     itemCashLimit: '逐项资金上限（含费）',
     keep: '保留持仓',
@@ -130,6 +136,11 @@ export const qlib = {
       '重建将接受上游历史修订并创建新的行情版本，不删除旧版本。旧模型不能使用变更后的训练历史；需重新训练、审核后才能切换排名。是否继续？',
     exclusionReason: '不可预测原因',
     issues: {
+      qlib_source_unavailable_resume_sync:
+        '上游行情连续不可用，本轮同步已停止。已完成数据、模型和排名保留；稍后点击“继续未完成同步”重试，不需要重新训练或重建。',
+      qlib_universe_status_unavailable:
+        '暂时无法读取研究池状态，请稍后刷新；没有清空数据。',
+      qlib_universe_members_unavailable: '暂时无法读取股票目录，请稍后重试。',
       qlib_history_quality_insufficient:
         '观察到的日线有效率低于 95%，不参与预测',
       qlib_history_latest_bar_invalid: '最近已收盘日的价格字段无效，不能预测',
@@ -149,6 +160,12 @@ export const qlib = {
       qlib_source_prices_invalid: '上游价格或成交量无效',
     },
     title: '全市场研究母池',
+    dailyHelp:
+      '日常只需看精选、预览计划和到模拟盘跟踪。已有审核模型后，不必每天训练或重建；开启研究池设置中的“盘后自动同步”可自动更新行情与排名，但不会自动下单。',
+    maintenance: '数据维护工具（设置、训练、重建）',
+    maintenanceNote:
+      '首次接入或更换模型才需要逐步设置、训练和审核。同步中断先续传；重建只用于确认过的历史修订，不用于普通网络错误。',
+    technicalDetails: '查看技术错误码',
     start: '初始化完整研究池',
     configure: '研究池设置',
     catalog: '刷新全部股票目录',

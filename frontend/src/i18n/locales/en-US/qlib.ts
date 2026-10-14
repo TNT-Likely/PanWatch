@@ -1,5 +1,11 @@
 export const qlib = {
   plan: {
+    activeTitle: 'Pending paper plans',
+    noActivePlans:
+      'No pending plan. Completed plans remain in history and will not resume when the account starts.',
+    historyTitle: 'Plan history ({{count}})',
+    historyNote:
+      'Filled, rejected, cancelled, superseded and expired plans remain for review. Starting the account does not rerun them. Showing the latest 25 plans only.',
     currency: 'CNY',
     itemCashLimit: 'Item cash cap incl. fees',
     keep: 'Keep holding',
@@ -146,6 +152,12 @@ export const qlib = {
       'Accept upstream historical revisions into new versions without deleting old artifacts? Changed training history requires retraining and review before switching rankings.',
     exclusionReason: 'Prediction exclusion reason',
     issues: {
+      qlib_source_unavailable_resume_sync:
+        'Upstream histories were repeatedly unavailable, so synchronization stopped. Completed data, models and ranks are preserved. Retry Resume unfinished sync later; no retraining or rebuild is needed.',
+      qlib_universe_status_unavailable:
+        'Research status is temporarily unavailable. Refresh later; no data was cleared.',
+      qlib_universe_members_unavailable:
+        'The stock directory is temporarily unavailable. Please retry later.',
       qlib_history_quality_insufficient:
         'Less than 95% of observed bars satisfy the contract',
       qlib_history_latest_bar_invalid:
@@ -170,6 +182,12 @@ export const qlib = {
       qlib_source_prices_invalid: 'Invalid source price or volume',
     },
     title: 'Full-market research universe',
+    dailyHelp:
+      'Daily use: highlights, plan preview, then paper tracking. An approved model does not need daily training or rebuilding. Enable after-close updating in universe settings for automatic data/ranking updates, not automatic orders.',
+    maintenance: 'Data maintenance (settings, training, rebuilding)',
+    maintenanceNote:
+      'Setup, training and review are for first use or model changes. Resume interrupted downloads; rebuild only reviewed historical revisions, not ordinary network failures.',
+    technicalDetails: 'Technical error code',
     start: 'Initialize full universe',
     configure: 'Universe settings',
     catalog: 'Refresh complete directory',

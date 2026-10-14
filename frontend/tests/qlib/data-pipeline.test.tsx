@@ -134,6 +134,7 @@ it('training budget is not a pool size and a disabled overseas source is explici
   })
   view()
   expect(await screen.findByText('2825')).toBeTruthy()
+  await userEvent.click(screen.getByText('数据维护工具（设置、训练、重建）'))
   expect(screen.getByText(/训练样本预算 128 只，不限制预测池/)).toBeTruthy()
   expect(
     (
@@ -150,7 +151,7 @@ it('read failures stay explicit and never fabricate coverage', async () => {
   vi.mocked(qlibApi.universe).mockRejectedValue(new Error('503 controlled'))
   view()
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'qlib_universe_status_unavailable',
+    '暂时无法读取研究池状态',
   )
   expect(qlibApi.universeJob).not.toHaveBeenCalled()
 })
@@ -180,8 +181,12 @@ it('a later successful training never hides unfinished history or its resume act
   })
   view()
   expect((await screen.findByRole('alert')).textContent).toContain(
-    'qlib_source_unavailable_resume_sync',
+    '上游行情连续不可用',
   )
+  expect(
+    (screen.getByTestId('research-maintenance') as HTMLDetailsElement).open,
+  ).toBe(false)
+  expect(qlibApi.universeJobAction).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: '继续未完成同步' }))
   await waitFor(() =>
     expect(qlibApi.universeJobAction).toHaveBeenCalledWith(

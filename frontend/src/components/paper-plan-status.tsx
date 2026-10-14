@@ -37,10 +37,91 @@ export default function PaperPlanStatus({
     const timer = window.setInterval(() => void reload(), 20000)
     return () => window.clearInterval(timer)
   }, [reload, refreshKey])
+  const current =
+    items?.filter((plan) => ['waiting_open', 'paused'].includes(plan.status)) ??
+    []
+  const history =
+    items?.filter(
+      (plan) => !['waiting_open', 'paused'].includes(plan.status),
+    ) ?? []
+  const planCard = (plan: QlibPaperPlan) => (
+    <article
+      key={plan.id}
+      data-plan-state={plan.status}
+      className="space-y-2 border-t pt-3 text-sm"
+    >
+      <p className="font-medium">
+        {tr('states.' + plan.status)} · {plan.execution_date} 09:30–09:35
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {tr('resultCount', {
+          filled: plan.filled,
+          rejected: plan.rejected,
+        })}{' '}
+        · {tr('sourceDate', { date: plan.asof_date })}
+      </p>
+      {!compact && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {plan.orders.map((o) => (
+            <span className="rounded border px-2 py-1" key={o.symbol}>
+              {tr(o.side)} {o.name} ·{' '}
+              {tr('estimatedShares', { count: o.estimated_quantity })}
+            </span>
+          ))}
+        </div>
+      )}
+      {!compact && !!plan.events.length && (
+        <div className="max-h-48 overflow-auto scrollbar rounded border p-2 space-y-2 text-xs">
+          {plan.events.map((e, index) => (
+            <p key={index}>
+              <code>{e.symbol}</code> ·{' '}
+              {tr(e.side === 'buy' || e.side === 'sell' ? e.side : 'filter')} ·{' '}
+              {tr('eventStates.' + e.status)} · {e.quantity}{' '}
+              {e.reason && <>· {planError(e.reason, qlibT)}</>}
+            </p>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <Link
+          className="text-primary underline"
+          to={'/opportunities?market=CN&run=' + plan.run_id}
+        >
+          {tr('sourceOpportunity')}
+        </Link>
+        {compact && (
+          <Link className="text-primary underline" to="/paper-trading">
+            {tr('track')}
+          </Link>
+        )}
+        {plan.can_cancel && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              if (!(await confirmAction(tr('cancelNote')))) return
+              setBusy(true)
+              try {
+                await qlibApi.cancelPlan(plan.id)
+                await reload()
+              } catch (cause) {
+                setError(String(cause instanceof Error ? cause.message : cause))
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            {tr('cancel')}
+          </Button>
+        )}
+      </div>
+    </article>
+  )
   return (
     <section className="card p-3 space-y-3" data-testid="paper-plan-status">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-medium text-sm">{tr('statusTitle')}</h2>
+        <h2 className="font-medium text-sm">{tr('activeTitle')}</h2>
         <Button
           size="sm"
           variant="outline"
@@ -62,80 +143,31 @@ export default function PaperPlanStatus({
         </p>
       )}
       {items?.length === 0 && <p className="text-sm">{tr('emptyPlans')}</p>}
-      {(compact ? items?.slice(0, 1) : items)?.map((plan) => (
-        <article key={plan.id} className="space-y-2 border-t pt-3 text-sm">
-          <p className="font-medium">
-            {tr('states.' + plan.status)} · {plan.execution_date} 09:30–09:35
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {tr('resultCount', {
-              filled: plan.filled,
-              rejected: plan.rejected,
-            })}{' '}
-            · {tr('sourceDate', { date: plan.asof_date })}
-          </p>
-          {!compact && (
-            <div className="flex flex-wrap gap-2 text-xs">
-              {plan.orders.map((o) => (
-                <span className="rounded border px-2 py-1" key={o.symbol}>
-                  {tr(o.side)} {o.name} ·{' '}
-                  {tr('estimatedShares', { count: o.estimated_quantity })}
-                </span>
-              ))}
+      {items && items.length > 0 && current.length === 0 && (
+        <p className="text-sm">{tr('noActivePlans')}</p>
+      )}
+      {(compact ? current.slice(0, 1) : current).map(planCard)}
+      {history.length > 0 &&
+        (compact ? (
+          <Link className="text-xs text-primary underline" to="/paper-trading">
+            {tr('historyTitle', { count: history.length })}
+          </Link>
+        ) : (
+          <details
+            className="rounded-lg border p-3"
+            data-testid="paper-plan-history"
+          >
+            <summary className="cursor-pointer text-sm">
+              {tr('historyTitle', { count: history.length })}
+            </summary>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {tr('historyNote')}
+            </p>
+            <div className="mt-2 max-h-96 overflow-auto scrollbar space-y-3">
+              {history.map(planCard)}
             </div>
-          )}
-          {!compact && !!plan.events.length && (
-            <div className="max-h-48 overflow-auto scrollbar rounded border p-2 space-y-2 text-xs">
-              {plan.events.map((e, index) => (
-                <p key={index}>
-                  <code>{e.symbol}</code> ·{' '}
-                  {tr(
-                    e.side === 'buy' || e.side === 'sell' ? e.side : 'filter',
-                  )}{' '}
-                  · {tr('eventStates.' + e.status)} · {e.quantity}{' '}
-                  {e.reason && <>· {planError(e.reason, qlibT)}</>}
-                </p>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <Link
-              className="text-primary underline"
-              to={'/opportunities?market=CN&run=' + plan.run_id}
-            >
-              {tr('sourceOpportunity')}
-            </Link>
-            {compact && (
-              <Link className="text-primary underline" to="/paper-trading">
-                {tr('track')}
-              </Link>
-            )}
-            {plan.can_cancel && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={async () => {
-                  if (!(await confirmAction(tr('cancelNote')))) return
-                  setBusy(true)
-                  try {
-                    await qlibApi.cancelPlan(plan.id)
-                    await reload()
-                  } catch (cause) {
-                    setError(
-                      String(cause instanceof Error ? cause.message : cause),
-                    )
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                {tr('cancel')}
-              </Button>
-            )}
-          </div>
-        </article>
-      ))}
+          </details>
+        ))}
     </section>
   )
 }

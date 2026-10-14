@@ -3,7 +3,11 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { qlibApi, type QlibPlanPreview } from '@panwatch/api'
+import {
+  qlibApi,
+  type QlibPlanPreview,
+  type QlibPaperPlan,
+} from '@panwatch/api'
 import PaperPlanDialog from '@/components/paper-plan-dialog'
 import PaperPlanStatus from '@/components/paper-plan-status'
 import { ConfirmProvider } from '@panwatch/base-ui/components/ui/confirm-dialog'
@@ -87,6 +91,70 @@ beforeEach(async () => {
 })
 afterEach(cleanup)
 
+const statusPlan = (id: string, status: string): QlibPaperPlan => ({
+  id,
+  status,
+  run_id: preview.run_id,
+  model_id: preview.model_id,
+  asof_date: preview.asof_date,
+  execution_date: '2026-10-15',
+  research_mode: true,
+  cash_budget: 18000,
+  orders: preview.orders,
+  symbols: ['SH600000'],
+  filled: 0,
+  rejected: 0,
+  can_cancel: status === 'waiting_open' || status === 'paused',
+  events: [],
+})
+
+it('pending plans stay outside collapsed history and historical cancellations are preserved', async () => {
+  vi.mocked(qlibApi.paperPlans).mockResolvedValue({
+    items: [statusPlan('old', 'cancelled'), statusPlan('new', 'waiting_open')],
+    account_enabled: true,
+  })
+  view(<PaperPlanStatus />)
+  await screen.findByText('历史计划（1）')
+  const history = screen.getByTestId('paper-plan-history') as HTMLDetailsElement
+  expect(history.open).toBe(false)
+  expect(history.querySelector('[data-plan-state="cancelled"]')).toBeTruthy()
+  expect(history.querySelector('[data-plan-state="waiting_open"]')).toBeNull()
+  expect(
+    screen
+      .getByTestId('paper-plan-status')
+      .querySelector('[data-plan-state="waiting_open"]'),
+  ).toBeTruthy()
+  await userEvent.click(screen.getByText('历史计划（1）'))
+  expect(history.open).toBe(true)
+  expect(qlibApi.cancelPlan).not.toHaveBeenCalled()
+})
+
+it('compact opportunities show pending plans even if an older cancelled record comes first', async () => {
+  vi.mocked(qlibApi.paperPlans).mockResolvedValue({
+    items: [statusPlan('old', 'cancelled'), statusPlan('new', 'paused')],
+    account_enabled: false,
+  })
+  view(<PaperPlanStatus compact />)
+  await screen.findByText(/账户暂停，尚未执行/)
+  expect(screen.queryByText(/已取消，不会执行/)).toBeNull()
+  expect(
+    screen.getByRole('link', { name: '历史计划（1）' }).getAttribute('href'),
+  ).toBe('/paper-trading')
+})
+
+it('history-only state explains that starting does not restore old plans', async () => {
+  vi.mocked(qlibApi.paperPlans).mockResolvedValue({
+    items: [statusPlan('old', 'cancelled')],
+    account_enabled: true,
+  })
+  view(<PaperPlanStatus />)
+  expect(await screen.findByText(/目前没有待执行计划/)).toBeTruthy()
+  expect(
+    (screen.getByTestId('paper-plan-history') as HTMLDetailsElement).open,
+  ).toBe(false)
+  expect(qlibApi.confirmPlan).not.toHaveBeenCalled()
+})
+
 it('shows item cash caps and inspectable kept holdings and exclusion reasons', async () => {
   vi.mocked(qlibApi.previewPlan).mockResolvedValue({
     ...preview,
@@ -100,9 +168,7 @@ it('shows item cash caps and inspectable kept holdings and exclusion reasons', a
   expect(screen.getByText('11,000')).toBeTruthy()
   await userEvent.click(screen.getByText(/保留 1 个现有 Qlib 仓位/))
   expect(screen.getByText('SH600010')).toBeTruthy()
-  expect(
-    screen.getByText(/当前模拟成交仅支持普通非 ST A 股主板/),
-  ).toBeTruthy()
+  expect(screen.getByText(/当前模拟成交仅支持普通非 ST A 股主板/)).toBeTruthy()
   expect(qlibApi.confirmPlan).not.toHaveBeenCalled()
 })
 
