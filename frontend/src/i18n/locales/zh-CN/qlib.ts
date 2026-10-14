@@ -1,4 +1,106 @@
 export const qlib = {
+  universe: {
+    qualityWarning: '已剔除 {{count}} 条不符合契约的日线，不填造价格',
+    phases: {
+      queued: '排队中',
+      catalog: '获取完整目录',
+      catalog_complete: '目录完成',
+      history: '同步全部历史行情',
+      history_complete: '历史行情完成',
+      prediction: '全部就绪股票预测',
+    },
+    rebuild: '重建本市场行情',
+    rebuildConfirm:
+      '重建将接受上游历史修订并创建新的行情版本，不删除旧版本。旧模型不能使用变更后的训练历史；需重新训练、审核后才能切换排名。是否继续？',
+    exclusionReason: '不可预测原因',
+    issues: {
+      qlib_history_quality_insufficient:
+        '观察到的日线有效率低于 95%，不参与预测',
+      qlib_history_latest_bar_invalid: '最近已收盘日的价格字段无效，不能预测',
+      qlib_ohlc_invalid: '开高低收字段不满足行情契约',
+      qlib_history_insufficient: '有效历史少于 220 个交易日',
+      qlib_history_stale_or_suspended: '最近收盘日行情缺失，可能停牌或尚未更新',
+      qlib_source_currency_mismatch: '行情币种与交易所目录不一致',
+      qlib_history_revision_requires_review:
+        '价格/复权历史已修订，需重建行情及重新训练审核',
+      qlib_history_source_changed: '历史源改变，需重建并重新审核',
+      qlib_calendar_mismatch: '行情日期与本市场实际日历不一致',
+      qlib_history_fetch_failed: '历史行情请求失败，可继续同步',
+      qlib_source_history_unavailable: '上游未提供该证券历史',
+      qlib_adjustment_dates_mismatch: '原始价与复权快照日期不完整',
+      qlib_adjustment_ratio_inconsistent: '复权价格比例异常',
+      qlib_adjustment_unavailable: '缺少复权信息',
+      qlib_source_prices_invalid: '上游价格或成交量无效',
+    },
+    title: '全市场研究母池',
+    start: '初始化完整研究池',
+    configure: '研究池设置',
+    catalog: '刷新全部股票目录',
+    browse: '查看完整研究池',
+    history: '同步本市场全部日线',
+    train: '训练本市场候选',
+    review: '审核本市场模型',
+    predict: '预测全部就绪股票',
+    cancel: '取消任务',
+    resume: '继续未完成同步',
+    flow: '全部上市股票目录 → 分批同步历史行情 → 分市场训练与审批 → 全部就绪股票统一排名。关闭页面不会停止任务。',
+    total: '母池收录',
+    ready: '最新行情就绪',
+    predicted: '最近预测数量',
+    excluded: '暂不可预测',
+    pending: '待同步',
+    stale: '待更新',
+    all: '全部状态',
+    coverageNote:
+      '待同步 {{pending}} · 待更新 {{stale}} · 本市场最近收盘日 {{date}}。预测数量仅代表最近一次排名，不等于母池总数。',
+    currentOnly: '当前上市目录，非历史成分认证',
+    budgetNote: '训练样本预算 {{count}} 只，不限制预测池',
+    autoOn: '已开启分市场盘后同步',
+    autoOff: '自动同步未开启',
+    sourceDisabled:
+      '{{market}} 没有已启用的兼容日线源，请在现有 marketdata 中启用腾讯/东财（A股）或 Yahoo（港美股）。',
+    sources: '数据源设置',
+    working:
+      '{{market}} · {{phase}} · {{completed}} / {{total}}，任务可取消；行情下载可断点续传。',
+    training: '正在训练候选模型，完成后仍需人工审批。',
+    failed: '操作未完成，旧模型及排名保留：',
+    setup: '接入完整三市场研究池',
+    scope:
+      'A 股含主板、创业板、科创板、北交所；港交所股票；NASDAQ、NYSE、NYSE American 普通股、普通合伙权益及 ADR。不含 ETF、基金、权证、OTC 或退市证券。',
+    limitations:
+      '公共源无覆盖保证。短历史、缺失、停牌及币种不符单独列明。港美股 Yahoo 价格为供应商历史快照，可能已经拆股调整，不能认证为当时真实成交价；回测仅为研究代理，不用于模拟执行。当前成分与快照复权不是正式策略验证。',
+    budget: '训练样本预算（3–256）',
+    budgetHelp:
+      '按板块/交易所确定性分层取样，控制 Alpha158 训练内存；同一个已审批模型分批预测本市场全部就绪证券，不是只推荐这些训练股票。',
+    license: '数据使用依据',
+    consent:
+      '我确认有权下载及使用数据；公开接口可访问不等于商业使用或再分发许可。',
+    automatic:
+      '按各市场时区和已收盘交易日自动同步及预测；不自动训练、审批或下单。',
+    close: '关闭',
+    save: '保存并获取完整目录',
+    cancelConfirm:
+      '取消后台任务？已完成的行情会保留；下载任务可继续，旧排名不会被覆盖。',
+    reviewNotice:
+      '仅批准本市场研究排名，不切换其他市场模型，不生成模拟交易。当前上市池及快照复权存在幸存者偏差；港美股暂不接入模拟执行。',
+    metrics:
+      '测试 Rank IC {{ic}} · 研究回测最大回撤 {{drawdown}}（非收益保证）',
+    fullReport: '查看实验及滚动验证',
+    reason: '审核依据（至少 5 个字符）',
+    approve: '批准并预测本市场全部就绪股票',
+    memberNote:
+      '全部目录可分页搜索。保留尚未取得行情的证券，明确展示数据状态和错误原因；同一公司的港股双柜台按证券代码计数。',
+    search: '搜索名称或代码',
+    coverageFilter: '行情覆盖状态',
+    security: '证券',
+    board: '板块 / 交易所',
+    currency: '币种',
+    state: '数据状态',
+    loading: '加载中…',
+    page: '第 {{page}} 页 · 共 {{total}} 只',
+    previous: '上一页',
+    next: '下一页',
+  },
   dataPipeline: {
     title: '真实行情选股',
     start: '接入现有行情',
@@ -86,7 +188,9 @@ export const qlib = {
     rankOnly: '按完整研究池的原始排名筛选',
     dataDate: '数据截至',
     market: '市场',
-    cn: 'A 股 · 当前支持',
+    hk: '港股',
+    us: '美股',
+    cn: 'A 股',
     source: '来源',
     allSources: '全部研究池',
     myWatchlist: '我的关注',
@@ -119,7 +223,7 @@ export const qlib = {
     sampleNotice:
       '当前是合成样例，不代表真实公司或市场机会。关注只加入样例研究篮子，不会操作真实自选或持仓。',
     notice:
-      '排名表示同一研究池内的相对顺序，不是胜率或买入建议。可接入现有行情初始化固定 A 股研究池；真实行情不等于正式验证，尚不支持全市场历史成分选股。',
+      'A 股、港股、美股分别按已审批模型排名，不是胜率或买入建议。母池覆盖当前上市证券；短历史或缺失数据明确排除。当前目录不等于无幸存者偏差的历史成分，真实行情不等于正式验证。',
     candidate: '模型组合候选',
     observe: '待观察',
     rank: '第 {{rank}} / {{total}} 名',
@@ -286,6 +390,7 @@ export const qlib = {
   saveSchedule: '保存调度',
   tick: '检查一次调度',
   tickStates: {
+    universe_busy: '完整研究池任务正在执行，未重复创建任务。',
     idle: '当前未到启用的运行条件，没有创建任务。',
     data_stale: '数据过期：没有创建任务，请导入并选择最新已完成日的快照。',
     queued: '任务已入队，候选不会自动上线。',
@@ -312,7 +417,7 @@ export const qlib = {
   badFile: '文件必须是大小不超过 40MB 的有效 JSON。',
   hash: '内容哈希',
   noAutoData:
-    '可在机会页接入已启用的腾讯 / 东财 marketdata 源初始化真实固定研究池；以下 JSON 导入适用于其他已授权数据。不使用已停服的官方示例数据。',
+    '机会页支持完整 A / 港 / 美研究池，复用已启用的腾讯 / 东财 / Yahoo 源。以下 JSON 导入适用于其他已授权数据；港股需明确每股手数，港美股涨跌停为 null。',
   paperTitle: '冻结决策 → 执行事件 → 模拟账本',
   executionDate: '执行交易日',
   policy: '组合规则',

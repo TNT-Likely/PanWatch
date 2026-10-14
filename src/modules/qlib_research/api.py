@@ -3,12 +3,12 @@
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 from pydantic import Field, ValidationError
 
 from . import service
-from .contracts import DatasetInput, JobInput, MarketDataSourceInput, MarketDataSyncInput, PublishInput, ResearchConfig, ScheduleInput, StrictInput
+from .contracts import DatasetInput, JobInput, MarketDataSourceInput, MarketDataSyncInput, PublishInput, ResearchConfig, ScheduleInput, StrictInput, UniverseConfigInput, UniverseJobInput, RESEARCH_SYMBOL
 
 
 def current_actor():
@@ -35,7 +35,41 @@ def invoke(function, *args, **kwargs):
 
 @router.get("/health")
 def health():
-    return {**service.runtime_health(), "supported_markets": ["CN"], "monitor": service.monitor()}
+    return {**service.runtime_health(), "supported_markets": ["CN", "HK", "US"], "monitor": service.monitor()}
+
+
+@router.get("/universe")
+def universe_status():
+    from . import universe
+    return invoke(universe.status)
+
+
+@router.put("/universe")
+def configure_universe(body: UniverseConfigInput, actor=Depends(require_actor)):
+    from . import universe
+    return invoke(universe.configure,body,actor)
+
+
+@router.get("/universe/members")
+def universe_members(market: Literal["CN","HK","US"]="CN", page:int=Query(1,ge=1,le=10000), limit:int=Query(100,ge=1,le=200), search:str=Query("",max_length=120), status:Literal["","pending","ready","excluded","stale"]=""):
+    from . import universe
+    return invoke(universe.members,market,page=page,limit=limit,search=search,status_filter=status)
+
+
+@router.post("/universe/jobs/{kind}")
+def universe_job(kind:Literal["catalog","history","train","predict"],body:UniverseJobInput,actor=Depends(require_actor)):
+    from . import universe
+    if kind in ("train","predict") and not body.market:
+        raise HTTPException(422,"qlib_market_required")
+    if body.reinitialize and kind!="history":
+        raise HTTPException(422,"qlib_reinitialize_history_only")
+    return invoke(universe.enqueue,kind,body.request_key,actor,market=body.market,config=body.config.model_dump(),reinitialize=body.reinitialize)
+
+
+@router.post("/universe/jobs/{job_id}/{action}")
+def universe_job_action(job_id:str,action:Literal["cancel","resume"],actor=Depends(require_actor)):
+    from . import universe
+    return invoke(universe.cancel if action=="cancel" else universe.resume,job_id,actor)
 
 
 @router.get("/datasets")
@@ -107,8 +141,8 @@ def cancel(job_id: str, actor=Depends(require_actor)):
 
 
 @router.get("/records/{kind}")
-def records(kind: Literal["experiment", "model", "selection", "decision"]):
-    return {"items": service.list_records(kind)}
+def records(kind: Literal["experiment", "model", "selection", "decision"], metadata_only:bool=False, market:Literal["CN","HK","US"]|None=None):
+    return {"items": service.list_records(kind,metadata_only,market)}
 
 
 @router.get("/records/{kind}/{record_id}")
@@ -124,8 +158,10 @@ def export_experiment(record_id: str):
 
 
 @router.get("/opportunities")
-def opportunities():
-    return service.opportunities()
+def opportunities(market:Literal["CN","HK","US"]="CN",page:int=Query(1,ge=1,le=10000),limit:int|None=Query(None,ge=1,le=200),search:str=Query("",max_length=120),top:int=Query(0,ge=0,le=50),source:Literal["all","watched"]="all",holding:Literal["all","held","unheld"]="all",availability:Literal["all","tradable","blocked"]="all",run_id:str|None=Query(None,pattern=r"^[a-f0-9]{32}$")):
+    if top not in (0,10,20,50):
+        raise HTTPException(422,"qlib_rank_filter_invalid")
+    return invoke(service.opportunities,market,page,limit,search,top,source,holding,availability,run_id)
 
 
 class DecisionInput(StrictInput):
@@ -154,7 +190,7 @@ def basket():
 
 class BasketInput(StrictInput):
     run_id: str = Field(pattern=r"^[a-f0-9]{32}$")
-    symbol: str = Field(pattern=r"^(SH|SZ)[0-9]{6}$")
+    symbol: str = Field(pattern=RESEARCH_SYMBOL)
     included: bool
 
 

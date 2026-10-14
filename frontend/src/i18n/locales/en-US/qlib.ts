@@ -1,4 +1,113 @@
 export const qlib = {
+  universe: {
+    qualityWarning:
+      '{{count}} incompatible daily bars discarded; no invented prices',
+    phases: {
+      queued: 'Queued',
+      catalog: 'Fetching full directories',
+      catalog_complete: 'Directories complete',
+      history: 'Synchronizing all histories',
+      history_complete: 'Histories complete',
+      prediction: 'Predicting all ready securities',
+    },
+    rebuild: 'Rebuild market history',
+    rebuildConfirm:
+      'Accept upstream historical revisions into new versions without deleting old artifacts? Changed training history requires retraining and review before switching rankings.',
+    exclusionReason: 'Prediction exclusion reason',
+    issues: {
+      qlib_history_quality_insufficient:
+        'Less than 95% of observed bars satisfy the contract',
+      qlib_history_latest_bar_invalid:
+        'Invalid prices in latest completed session',
+      qlib_ohlc_invalid: 'OHLC fields violate the data contract',
+      qlib_history_insufficient: 'Fewer than 220 valid trading sessions',
+      qlib_history_stale_or_suspended:
+        'Latest completed session absent, suspended or awaiting update',
+      qlib_source_currency_mismatch: 'History currency differs from directory',
+      qlib_history_revision_requires_review:
+        'Revised price/adjustment history; rebuild, retrain and review',
+      qlib_history_source_changed:
+        'Source changed; rebuild and review required',
+      qlib_calendar_mismatch: 'Dates disagree with observed local sessions',
+      qlib_history_fetch_failed:
+        'History request failed; synchronization is resumable',
+      qlib_source_history_unavailable:
+        'Provider has no history for this security',
+      qlib_adjustment_dates_mismatch: 'Raw/adjusted date coverage differs',
+      qlib_adjustment_ratio_inconsistent: 'Invalid adjustment ratio',
+      qlib_adjustment_unavailable: 'Missing adjustment information',
+      qlib_source_prices_invalid: 'Invalid source price or volume',
+    },
+    title: 'Full-market research universe',
+    start: 'Initialize full universe',
+    configure: 'Universe settings',
+    catalog: 'Refresh complete directory',
+    browse: 'Browse full universe',
+    history: 'Sync all market histories',
+    train: 'Train market candidate',
+    review: 'Review market model',
+    predict: 'Predict all ready securities',
+    cancel: 'Cancel task',
+    resume: 'Resume synchronization',
+    flow: 'All listed equities → resumable history synchronization → per-market training and review → one ranking across all ready securities. Tasks continue after leaving the page.',
+    total: 'Catalog securities',
+    ready: 'Latest history ready',
+    predicted: 'Latest predictions',
+    excluded: 'Not predictable yet',
+    pending: 'Pending history',
+    stale: 'Needs update',
+    all: 'All statuses',
+    coverageNote:
+      'Pending {{pending}} · Needs update {{stale}} · Latest completed market session {{date}}. Latest predictions are not the catalog size.',
+    currentOnly: 'Current listings, not certified historical membership',
+    budgetNote:
+      'Training budget {{count}} securities; prediction universe is not capped',
+    autoOn: 'Per-market daily sync enabled',
+    autoOff: 'Automatic sync disabled',
+    sourceDisabled:
+      'No compatible enabled daily source for {{market}}. Enable Tencent/Eastmoney for CN or Yahoo for HK/US in existing marketdata settings.',
+    sources: 'Data sources',
+    working:
+      '{{market}} · {{phase}} · {{completed}} / {{total}}. Tasks can be cancelled; history sync is resumable.',
+    training: 'Training a candidate; human review is still required.',
+    failed: 'Action incomplete; previous models and rankings retained:',
+    setup: 'Connect all three research universes',
+    scope:
+      'CN main board, ChiNext, STAR and BSE; HKEX equities; NASDAQ, NYSE and NYSE American common shares/partnership units and ADRs. Excludes ETFs, funds, warrants, OTC and delisted securities.',
+    limitations:
+      'Public sources offer no coverage guarantee. Gaps, short histories, suspension and currency mismatches are explicit. Yahoo HK/US historical quotes may already be split-adjusted: provider snapshots, not certified raw execution prices. Backtests are research proxies, never paper execution or formal validation.',
+    budget: 'Training sample budget (3–256)',
+    budgetHelp:
+      'Deterministic board/exchange stratification bounds Alpha158 training memory. One approved model predicts every ready security in market-specific shards, not just the training cohort.',
+    license: 'Data-use basis',
+    consent:
+      'I have the right to download and use these data. Public availability does not grant commercial use or redistribution rights.',
+    automatic:
+      'Sync and predict after completed sessions in each market timezone; never auto-train, approve or place orders.',
+    close: 'Close',
+    save: 'Save and fetch complete directories',
+    cancelConfirm:
+      'Cancel the task? Completed histories remain resumable and previous rankings will not be overwritten.',
+    reviewNotice:
+      'Approves research ranking only in this market; other models remain unchanged. No paper orders. Current-listed universes and snapshot adjustment have survivorship limitations; HK/US execution is not supported.',
+    metrics:
+      'Test Rank IC {{ic}} · Research backtest drawdown {{drawdown}} (not a return guarantee)',
+    fullReport: 'View experiments and rolling validation',
+    reason: 'Review rationale (at least 5 characters)',
+    approve: 'Approve and predict every ready market security',
+    memberNote:
+      'Search and paginate the entire directory, including securities without price coverage, with explicit statuses and exclusion reasons. HK dual counters count as separate securities.',
+    search: 'Search name or ticker',
+    coverageFilter: 'History coverage',
+    security: 'Security',
+    board: 'Board / exchange',
+    currency: 'Currency',
+    state: 'Data status',
+    loading: 'Loading…',
+    page: 'Page {{page}} · {{total}} securities',
+    previous: 'Previous',
+    next: 'Next',
+  },
   dataPipeline: {
     title: 'Market-data selection',
     start: 'Connect existing data',
@@ -95,7 +204,9 @@ export const qlib = {
     rankOnly: 'Ranks refer to the full frozen universe',
     dataDate: 'Data through',
     market: 'Market',
-    cn: 'CN · supported',
+    hk: 'Hong Kong',
+    us: 'United States',
+    cn: 'China A-shares',
     source: 'Source',
     allSources: 'Full research universe',
     myWatchlist: 'My watchlist',
@@ -129,7 +240,7 @@ export const qlib = {
     sampleNotice:
       'Synthetic demo, not real companies or market opportunities. Following adds only to the demo research basket, never your real watchlist or holdings.',
     notice:
-      'Ranks are relative within one research universe, not win probabilities or buy advice. Connect existing history to initialize a fixed CN pool. Market data is not formal validation or whole-market historical membership.',
+      'CN/HK/US use independent reviewed models, not win probabilities or buy advice. Universes cover current listings with explicit short-history/data exclusions. Current directories are not survivorship-free historical membership; market data is not formal validation.',
     candidate: 'Model portfolio candidate',
     observe: 'Observe',
     rank: '#{{rank}} of {{total}}',
@@ -306,6 +417,7 @@ export const qlib = {
   saveSchedule: 'Save schedule',
   tick: 'Check schedule once',
   tickStates: {
+    universe_busy: 'Full-universe task is running; no duplicate task created.',
     idle: 'Scheduled conditions not met. No task created.',
     data_stale:
       'Stale input: no task created. Import and select a completed snapshot.',
@@ -334,7 +446,7 @@ export const qlib = {
   badFile: 'Choose valid JSON no larger than 40MB.',
   hash: 'Content hash',
   noAutoData:
-    'Connect enabled Tencent / Eastmoney marketdata on the opportunities page for a real fixed research pool. JSON import below supports other authorized data. Unavailable upstream sample data is not used.',
+    'Connect complete CN/HK/US universes on Opportunities using enabled Tencent/Eastmoney/Yahoo sources. JSON supports other authorized data; declare HK board lots and use null price limits for HK/US.',
   paperTitle: 'Frozen decision → execution events → paper ledger',
   executionDate: 'Execution session',
   policy: 'Portfolio policy',

@@ -28,66 +28,27 @@ isolation. Build tools stay out of the final Docker stage. See the
 [upstream release source](https://github.com/microsoft/qlib/tree/da920b7f954f48ab1bb64117c976710de198373e)
 and [distribution files](https://pypi.org/project/pyqlib/0.9.7/#files).
 
-## Data contract
+## Full current-listed research universes
 
-Upload **data-only JSON** from Opportunities → Data & runtime. Supply source,
-declared license and permission acknowledgement, data kind (`market` or
-`synthetic`), pool kind (`historical_membership` or `fixed_research`), adjustment
-semantics (`point_in_time` or `snapshot_adjusted`), an explicit sorted unique
-session `calendar`, membership intervals, and bars. Minimum: three instruments,
-220 sessions / bars per instrument. Maximum: 200 membership intervals,
-200,000 bars and 40 MB. No Python, YAML, model files or pickle upload.
+On Opportunities choose **Initialize full universe**, declare your data-use basis and consent, then fetch all directories. Scope: CN main board, ChiNext, STAR and BSE; HKEX equities (dual counters count separately); NASDAQ, NYSE and NYSE American common shares and ADRs. Excludes ETFs, funds, warrants, OTC and delisted securities. CN validates total counts and every page; HKEX parses actual XML rows despite understated spreadsheet dimensions; US validates both directory trailers and classifies using ETF/Test flags and security descriptions. Classification/unknown-symbol exclusions are recorded. No hand-picked fallback represents a complete market.
 
-Each membership has `symbol`, `start`, `end`, `price_limit: 0.1` and
-`special_treatment: false`. Supported codes: SH600/601/603/605 and SZ000/001/002.
-Each bar has `date`, `symbol`, unadjusted `open/high/low/close`, `volume` in shares
-and a positive `factor` where adjusted price = raw price × factor. Do not pass
-adjusted prices as raw execution prices. Membership changes and historically
-revised adjustment factors must be represented honestly, not inferred from
-today's index constituents. Historical sessions not in the bundled current-year
-calendar rely on the explicit provider calendar; its source is part of the manifest.
+Switch markets and **Sync all market histories**. This reuses enabled Tencent/Eastmoney CN sources and Yahoo HK/US sources, including the configured Yahoo proxy. Disabled sources stay disabled; enable them in existing data-source settings. Catalog, current-history-ready, latest-prediction and excluded counts are separate. Browse/search/paginate every directory member, including pending and unavailable histories with explicit reasons.
 
-Imports reject duplicates, nonfinite values, inconsistent OHLC, unsupported
-boards, incomplete/future sessions and membership violations. Versions are
-content-addressed. A later prediction snapshot may extend history but cannot
-revise training bars, calendars or historical membership.
+Per-security prices are content-addressed immutable files, not a gigantic JSON upload. Durable cursors support cancellation/resumption; interrupted processes remain explicitly interrupted. Resume validates source generation, catalog and completed-session identity. A sustained source failure stops with a recoverable cursor instead of marking the entire market excluded. Ready requires at least 220 bars and the latest completed session; short/stale/suspended histories, gaps, currency mismatches and revisions have explicit reasons. Frozen histories are append-only, never silently rewritten.
 
-### Initialize from existing marketdata (no hand-written JSON)
+**Train market candidate**, inspect held-out metrics/baseline/three rolling folds, then **Review market model** to approve research ranking and predict every ready member. The default 128-security budget (configurable 3–256) is a deterministic board/exchange-stratified **training budget, not a universe or prediction cap**. One approved model and its train-fitted processors infer all ready securities in 64-security shards, then rank globally within that market. Training-cohort results never masquerade as full-universe results. CN/HK/US models and reviews are independent; cross-market raw scores are not comparable.
 
-On Opportunities choose **Connect existing data**, confirm a fixed pool of 3–20
-regular CN main-board stocks and your existing data-use basis, then **Initialize
-history and train**. This reuses enabled Tencent / Eastmoney K-line sources; no
-new account is required. Edit the example pool or use your watchlist. Examples
-are neither recommendations nor historical index membership.
+CN uses a disclosed same-source hfq-close/raw-close snapshot ratio preserving raw intraday ratios. Tencent STAR volume is shares; other Tencent equities and Eastmoney histories use lots, normalized to shares. HK/US use adjclose/provider-quote-close snapshots and share volume. Calendars are observed local index sessions, with timezone/completed-session and known early-close checks. Current listings, lot/price-limit metadata and snapshot adjustments do not certify survivorship-free historical membership or PIT actions. STAR/BSE execution rules are conservative research approximations; HK backtests train on one primary currency, not mixed-currency capital.
 
-Only a complete validated pool creates an Alpha158 + LightGBM candidate. Download
-progress/cancellation is durable. **Review candidate** opens research approval;
-inspect the complete experiment, baseline and rolling validation, provide a
-reason, then explicitly approve to display real stock cards. Opening the page,
-ingestion and training never implicitly approve models or create orders.
+HK/US histories explicitly use `price_basis=provider_snapshot`. Yahoo quote close can already be split-adjusted; adjclose/quote-close is a provider snapshot ratio, not certified pre-split raw execution prices. Cash/lot/corporate-action backtests are research proxies, not historical fills or validated paper execution. Such prices are blocked from validated publication and paper decisions. The [upstream adapter's primary notes](https://github.com/ranaroussi/yfinance/blob/main/doc/source/advanced/price_repair.rst) identify split, currency and missing-adjustment anomalies; this pipeline never silently guesses repairs.
 
-The dedicated adapter requests raw OHLCV and same-source hfq snapshots, excludes
-unfinished sessions and converts regular main-board volume from lots to shares.
-The disclosed research factor is hfq close / raw close, preserving raw intraday
-ratios; it does not exactly reproduce vendor-adjusted OHLC or certify PIT actions.
-Sessions come from observed SSE index daily bars, not guessed weekdays. Current
-status checks cannot certify historical ST/delisting status or membership.
-Automatic imports are always `market / fixed_research / snapshot_adjusted` and
-cannot publish in validated mode.
+Opt-in automatic updating syncs/predicts per market's completed session; it never trains, approves or places orders automatically. Failures/cancellations require explicit recovery. Public endpoint access grants no commercial or redistribution license. Multi-market research does not imply multi-market execution: HK/US and unsupported CN securities cannot create the existing paper decisions; execution remains regular CN main-board only.
 
-**Update history & ranks** ingests the complete pool and replays the reviewed
-model, without retraining or changing it. Opt in to trading-day after-close
-ingestion/prediction (18:00 by default); retraining still produces candidates
-only. Short/stale/missing stocks, disabled sources or historical corrections
-retain the last complete version, never partial publication. Source/history
-changes require explicit reinitialization, retraining and review. Initialization
-tries at most two enabled sources in existing priority order, using one source
-for the entire pool; later updates pin that source.
+## Data-only JSON contract
 
-Public API access grants no commercial or redistribution rights. The confirmation
-records a user declaration, not independent legal verification. Other authorized
-snapshots can still use authenticated `POST /api/qlib/datasets`. Market history and
-research backtests are not evidence of alpha or guaranteed profitability.
+Advanced Data & runtime still accepts other authorized JSON: source, license/acknowledgement, market, data kind, membership/adjustment semantics, sorted unique session calendar, members and bars. Minimum three instruments, 220 sessions/bars each; maximum 512 membership intervals, 200,000 bars and 40 MB. No Python, YAML, model or pickle uploads.
+
+Canonical symbols: SH/SZ/BJ plus six digits, HK_ plus five digits, US_ plus ticker (e.g. US_BRK.B). Members declare start/end, price_limit, special_treatment, lot and currency. HK requires explicit exchange board lots; US defaults to one share. HK/US limits are null and do not inherit CN limit rules. Bars contain raw OHLC, share volume and a positive adjustment factor; adjusted price = raw price × factor. Imports reject duplicates, nonfinite/inconsistent OHLC, incomplete/future sessions, market mismatches and membership violations. Historical sessions outside the bundled calendar rely on the explicit provider calendar; declarations do not independently certify data rights or historical status.
 
 From a source checkout, this optional fixture creates **synthetic QA-only** data:
 
@@ -172,8 +133,9 @@ automatic reason to optimize or publish. Prediction reconstructs the model from
 frozen data/config; a replay fingerprint must match before accepting its output.
 
 Single-process API deployment is the supported execution topology. No distributed
-trainer, arbitrary code execution, GPU models, finance/event features, multi-market
-selection, automatic tuning or broker integrations are included.
+trainer, arbitrary code execution, GPU models, finance/event features,
+automatic tuning or broker integrations are included. CN/HK/US research is
+supported; multi-market paper execution is not.
 
 Forward monitoring separates current-model realized/unrealized net P&L from
 historical backtests. Qlib exposure includes holdings from all model versions,

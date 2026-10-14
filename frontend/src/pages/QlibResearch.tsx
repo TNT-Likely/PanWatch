@@ -127,8 +127,11 @@ export default function QlibResearch() {
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const tab: Tab = tabs.includes(requestedTab as Tab) ? requestedTab as Tab : 'research'
-  const setTab = (value: Tab) => setSearchParams({ tab: value }, { replace: true })
+  const tab: Tab = tabs.includes(requestedTab as Tab)
+    ? (requestedTab as Tab)
+    : 'research'
+  const setTab = (value: Tab) =>
+    setSearchParams({ tab: value }, { replace: true })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -156,7 +159,9 @@ export default function QlibResearch() {
     items: QlibModel[]
   } | null>(null)
   const [approval, setApproval] = useState<QlibModel | null>(null)
-  const [approvalAction, setApprovalAction] = useState<'publish' | 'retire'>('publish')
+  const [approvalAction, setApprovalAction] = useState<'publish' | 'retire'>(
+    'publish',
+  )
   const [mode, setMode] = useState<'research' | 'validated'>('research')
   const [reason, setReason] = useState('')
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
@@ -176,9 +181,13 @@ export default function QlibResearch() {
         qlibApi.jobs(),
         qlibApi.experiments(),
         qlibApi.governance(),
-        qlibApi.opportunities(),
+        qlibApi.opportunities({
+          market: 'CN',
+          limit: '100',
+          ...(history !== 'latest' ? { run_id: history } : {}),
+        }),
         qlibApi.templates(),
-        qlibApi.selections(),
+        qlibApi.selections('CN'),
         qlibApi.executions(),
         qlibApi.basket(),
       ])
@@ -203,7 +212,7 @@ export default function QlibResearch() {
     } finally {
       if (generation.current === current) setLoading(false)
     }
-  }, [qlibT])
+  }, [qlibT, history])
   useEffect(() => {
     void reload()
     return () => {
@@ -288,9 +297,14 @@ export default function QlibResearch() {
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     })
   const historical = runs.find((run) => run.id === history)
-  const activeRun = history === 'latest' ? opportunities?.run : historical
+  const activeRun =
+    opportunities?.total != null
+      ? opportunities.run
+      : history === 'latest'
+        ? opportunities?.run
+        : historical
   const items =
-    history === 'latest'
+    opportunities?.total != null || history === 'latest'
       ? (opportunities?.items ?? [])
       : (historical?.predictions ?? [])
   const selector = (
@@ -363,7 +377,10 @@ export default function QlibResearch() {
     <div className="min-w-0 space-y-4 pb-6" data-testid="qlib-workbench">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link to="/opportunities" className="mb-2 inline-block text-xs text-primary hover:underline">
+          <Link
+            to="/opportunities"
+            className="mb-2 inline-block text-xs text-primary hover:underline"
+          >
             {qlibT('opportunityPage.back')}
           </Link>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -469,7 +486,8 @@ export default function QlibResearch() {
                       disabled={
                         busy ||
                         history !== 'latest' ||
-                        opportunities?.status !== 'ready' || !health?.available
+                        opportunities?.status !== 'ready' ||
+                        !health?.available
                       }
                       onClick={async () => {
                         if (
@@ -773,7 +791,15 @@ export default function QlibResearch() {
                             variant="outline"
                             disabled={busy || !health?.available}
                             onClick={() =>
-                              job.model_id ? void act(() => qlibApi.predict(job.model_id!, job.dataset_id, key())) : void train(job.dataset_id, job.config)
+                              job.model_id
+                                ? void act(() =>
+                                    qlibApi.predict(
+                                      job.model_id!,
+                                      job.dataset_id,
+                                      key(),
+                                    ),
+                                  )
+                                : void train(job.dataset_id, job.config)
                             }
                           >
                             {qlibT('replay')}
@@ -823,7 +849,8 @@ export default function QlibResearch() {
                             }
                           />
                           <span className="break-all">
-                            {item.name} · {short(item.id)} ·{' '}
+                            {item.market ?? 'CN'} · {item.name} ·{' '}
+                            {short(item.id)} ·{' '}
                             {qlibT(`dataKind.${item.data_kind}`)}
                           </span>
                         </label>
@@ -865,7 +892,8 @@ export default function QlibResearch() {
                     <article key={item.id} className="rounded-lg border p-4">
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="text-sm">
-                          {item.name} · <code>{short(item.id)}</code> ·{' '}
+                          {item.market ?? 'CN'} · {item.name} ·{' '}
+                          <code>{short(item.id)}</code> ·{' '}
                           {qlibT(`modelStates.${item.state ?? 'candidate'}`)} ·{' '}
                           {qlibT(`dataKind.${item.data_kind}`)}
                         </div>
@@ -879,7 +907,11 @@ export default function QlibResearch() {
                           </Button>
                           <Button
                             size="sm"
-                            disabled={busy || item.state === 'champion' || item.state === 'retired'}
+                            disabled={
+                              busy ||
+                              item.state === 'champion' ||
+                              item.state === 'retired'
+                            }
                             onClick={() => {
                               setReason('')
                               setMode('research')
@@ -894,8 +926,20 @@ export default function QlibResearch() {
                                 : 'publish',
                             )}
                           </Button>
-                          <Button variant="outline" size="sm" disabled={busy || item.state === 'champion' || item.state === 'retired'}
-                            onClick={() => { setReason(''); setApprovalAction('retire'); setApproval(item) }}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              busy ||
+                              item.state === 'champion' ||
+                              item.state === 'retired'
+                            }
+                            onClick={() => {
+                              setReason('')
+                              setApprovalAction('retire')
+                              setApproval(item)
+                            }}
+                          >
                             {qlibT('retire')}
                           </Button>
                         </div>
@@ -906,13 +950,39 @@ export default function QlibResearch() {
                 </div>
               </Panel>
               <Panel title={qlibT('monitoring')}>
-                {health?.monitor.forward && <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-                  <Metric label={qlibT('forwardNet')} value={number(health.monitor.forward.champion_realized_net_pnl, 2)} />
-                  <Metric label={qlibT('forwardOpenNet')} value={number(health.monitor.forward.champion_unrealized_net_pnl, 2)} />
-                  <Metric label={qlibT('exposure')} value={percent(health.monitor.forward.qlib_equity_exposure)} />
-                  <Metric label={qlibT('maxWeight')} value={percent(health.monitor.forward.max_position_equity_weight)} />
-                </div>}
-                <p className="mb-3 text-xs text-muted-foreground">{qlibT('forwardMonitorNote')}</p>
+                {health?.monitor.forward && (
+                  <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    <Metric
+                      label={qlibT('forwardNet')}
+                      value={number(
+                        health.monitor.forward.champion_realized_net_pnl,
+                        2,
+                      )}
+                    />
+                    <Metric
+                      label={qlibT('forwardOpenNet')}
+                      value={number(
+                        health.monitor.forward.champion_unrealized_net_pnl,
+                        2,
+                      )}
+                    />
+                    <Metric
+                      label={qlibT('exposure')}
+                      value={percent(
+                        health.monitor.forward.qlib_equity_exposure,
+                      )}
+                    />
+                    <Metric
+                      label={qlibT('maxWeight')}
+                      value={percent(
+                        health.monitor.forward.max_position_equity_weight,
+                      )}
+                    />
+                  </div>
+                )}
+                <p className="mb-3 text-xs text-muted-foreground">
+                  {qlibT('forwardMonitorNote')}
+                </p>
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                   <Metric
                     label={qlibT('asof')}
@@ -1007,13 +1077,22 @@ export default function QlibResearch() {
                   <Button
                     variant="outline"
                     disabled={busy}
-                    onClick={() => void act(async () => { const result = await qlibApi.tick(); setTickStatus(result.status) })}
+                    onClick={() =>
+                      void act(async () => {
+                        const result = await qlibApi.tick()
+                        setTickStatus(result.status)
+                      })
+                    }
                   >
                     <Activity className="mr-2 h-4 w-4" />
                     {qlibT('tick')}
                   </Button>
                 </div>
-                {tickStatus && <p role="status" className="mt-3 text-sm">{qlibT(`tickStates.${tickStatus}`)}</p>}
+                {tickStatus && (
+                  <p role="status" className="mt-3 text-sm">
+                    {qlibT(`tickStates.${tickStatus}`)}
+                  </p>
+                )}
               </Panel>
               <Panel title={qlibT('audit')}>
                 <div className="max-h-72 overflow-y-auto scrollbar space-y-2">
@@ -1292,30 +1371,42 @@ export default function QlibResearch() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {qlibT(approvalAction === 'retire' ? 'retire' : approval?.state === 'previous' ? 'rollback' : 'publish')}
+              {qlibT(
+                approvalAction === 'retire'
+                  ? 'retire'
+                  : approval?.state === 'previous'
+                    ? 'rollback'
+                    : 'publish',
+              )}
             </DialogTitle>
-            <DialogDescription>{qlibT(approvalAction === 'retire' ? 'retireNote' : 'publishNote')}</DialogDescription>
+            <DialogDescription>
+              {qlibT(
+                approvalAction === 'retire' ? 'retireNote' : 'publishNote',
+              )}
+            </DialogDescription>
           </DialogHeader>
           <code className="break-all text-xs">{approval?.id}</code>
-          {approvalAction === 'publish' && <label className="space-y-1 text-sm">
-            <span>{qlibT('publishMode')}</span>
-            <Select
-              value={mode}
-              onValueChange={(value) => setMode(value as typeof mode)}
-            >
-              <SelectTrigger aria-label={qlibT('publishMode')}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="research">
-                  {qlibT('mode.research')}
-                </SelectItem>
-                <SelectItem value="validated">
-                  {qlibT('mode.validated')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </label>}
+          {approvalAction === 'publish' && (
+            <label className="space-y-1 text-sm">
+              <span>{qlibT('publishMode')}</span>
+              <Select
+                value={mode}
+                onValueChange={(value) => setMode(value as typeof mode)}
+              >
+                <SelectTrigger aria-label={qlibT('publishMode')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="research">
+                    {qlibT('mode.research')}
+                  </SelectItem>
+                  <SelectItem value="validated">
+                    {qlibT('mode.validated')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+          )}
           <label className="space-y-1 text-sm">
             <span>{qlibT('reason')}</span>
             <textarea
@@ -1335,14 +1426,20 @@ export default function QlibResearch() {
                 (await confirmAction(qlibT('confirmPublish')))
               )
                 await act(async () => {
-                  if (approvalAction === 'retire') await qlibApi.retire(approval.id, governance.revision, reason.trim())
-                  else await qlibApi.publish(
-                    approval.id,
-                    governance.revision,
-                    reason.trim(),
-                    mode,
-                    approval.state === 'previous',
-                  )
+                  if (approvalAction === 'retire')
+                    await qlibApi.retire(
+                      approval.id,
+                      governance.revision,
+                      reason.trim(),
+                    )
+                  else
+                    await qlibApi.publish(
+                      approval.id,
+                      governance.revision,
+                      reason.trim(),
+                      mode,
+                      approval.state === 'previous',
+                    )
                   setApproval(null)
                 })
             }}

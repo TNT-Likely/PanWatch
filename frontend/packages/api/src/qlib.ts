@@ -35,6 +35,9 @@ export const defaultQlibConfig: QlibConfig = {
 export interface QlibPrediction {
   symbol: string
   market: string
+  currency?: string
+  paper_eligible?: boolean
+  portfolio_candidate?: boolean
   rank: number
   rank_percentile: number
   raw_score: number
@@ -80,6 +83,8 @@ export interface QlibMetrics {
 export interface QlibModel {
   id: string
   name: string
+  market?: 'CN' | 'HK' | 'US'
+  universe_snapshot_id?: string | null
   created_at: string
   state?: 'champion' | 'previous' | 'candidate' | 'retired'
   dataset_id: string
@@ -101,6 +106,7 @@ export interface QlibModel {
   }[]
 }
 export interface QlibJob {
+  market?: QlibMarket
   id: string
   kind: string
   dataset_id: string
@@ -113,6 +119,12 @@ export interface QlibJob {
 }
 export interface QlibRun {
   id: string
+  market?: string
+  prediction_count?: number
+  watched_count?: number
+  catalog_count?: number
+  ready_stocks?: number
+  training_stocks?: number
   model_id: string
   dataset_id: string
   experiment_id: string
@@ -156,6 +168,8 @@ export interface QlibOpportunities {
   status: string
   run: QlibRun | null
   mode: string
+  total?: number
+  prediction_count?: number
 }
 export interface QlibSchedule {
   enabled: boolean
@@ -165,6 +179,7 @@ export interface QlibSchedule {
 }
 export interface QlibGovernance {
   champion_id: string | null
+  champions?: Record<string, string | null>
   revision: number
   settings: QlibSchedule
   models: QlibModel[]
@@ -250,9 +265,95 @@ export interface QlibBasketItem {
   symbol: string
   run_id: string
 }
+export type QlibMarket = 'CN' | 'HK' | 'US'
+export interface QlibUniverseConfig {
+  markets: QlibMarket[]
+  license: string
+  license_acknowledged: true
+  automatic: boolean
+  training_stocks: number
+}
+export interface QlibUniverseJob {
+  id: string
+  kind: string
+  market: QlibMarket | null
+  status: string
+  progress: {
+    phase: string
+    completed: number
+    total: number
+    symbol?: string
+    market?: string
+    errors?: Record<string, string>
+  }
+  error_code: string
+  resumable: boolean
+  result_id: string | null
+}
+export interface QlibUniverseMember {
+  quality_warnings?: Record<string,number>
+  symbol: string
+  name: string
+  code: string
+  market: QlibMarket
+  currency: string
+  board: string
+  lot: number
+  status: string
+  error_code: string
+  asof_date: string | null
+}
+export interface QlibUniverseStatus {
+  config: QlibUniverseConfig | null
+  markets: Record<
+    QlibMarket,
+    {
+      total: number
+      counts: Record<string, number>
+      reasons: Record<string, number>
+      vendors: string[]
+      champion_id: string | null
+      completed_day: string
+      predicted: number
+      prediction_date: string | null
+      catalog: {
+        source: string
+        source_date: string
+        total: number
+        raw_count: number
+        historical_membership: boolean
+      } | null
+    }
+  >
+  jobs: QlibUniverseJob[]
+}
 const post = <T>(path: string, body: unknown = {}) =>
   fetchAPI<T>(`/qlib/${path}`, { method: 'POST', body: JSON.stringify(body) })
 export const qlibApi = {
+  universe: () => fetchAPI<QlibUniverseStatus>('/qlib/universe'),
+  configureUniverse: (body: QlibUniverseConfig) =>
+    fetchAPI<QlibUniverseStatus>('/qlib/universe', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  universeJob: (
+    kind: 'catalog' | 'history' | 'train' | 'predict',
+    market: QlibMarket | null = null,
+    config = defaultQlibConfig,
+    reinitialize = false,
+  ) =>
+    post<QlibUniverseJob>(`universe/jobs/${kind}`, {
+      request_key: `universe-${crypto.randomUUID()}`,
+      market,
+      config,
+      reinitialize,
+    }),
+  universeJobAction: (id: string, action: 'cancel' | 'resume') =>
+    post<QlibUniverseJob>(`universe/jobs/${id}/${action}`),
+  universeMembers: (market: QlibMarket, page = 1, search = '', status = '') =>
+    fetchAPI<{ total: number; items: QlibUniverseMember[] }>(
+      `/qlib/universe/members?${new URLSearchParams({ market, page: String(page), limit: '100', search, status })}`,
+    ),
   dataSource: () => fetchAPI<QlibDataSourceStatus>('/qlib/data-source'),
   configureDataSource: (body: QlibMarketDataSource) =>
     fetchAPI<QlibDataSourceStatus>('/qlib/data-source', {
@@ -283,11 +384,17 @@ export const qlibApi = {
   predict: (model: string, dataset_id: string, request_key: string) =>
     post<QlibJob>(`models/${model}/predict`, { dataset_id, request_key }),
   cancel: (id: string) => post<QlibJob>(`jobs/${id}/cancel`),
-  opportunities: () => fetchAPI<QlibOpportunities>('/qlib/opportunities'),
+  opportunities: (query?: Record<string, string>) =>
+    fetchAPI<QlibOpportunities>(
+      `/qlib/opportunities${query ? `?${new URLSearchParams(query)}` : ''}`,
+    ),
   governance: () => fetchAPI<QlibGovernance>('/qlib/governance'),
   experiments: () =>
     fetchAPI<{ items: QlibModel[] }>('/qlib/records/experiment'),
-  selections: () => fetchAPI<{ items: QlibRun[] }>('/qlib/records/selection'),
+  selections: (market?: QlibMarket) =>
+    fetchAPI<{ items: QlibRun[] }>(
+      `/qlib/records/selection${market ? `?metadata_only=true&market=${market}` : ''}`,
+    ),
   export: (id: string) => fetchAPI<QlibModel>(`/qlib/experiments/${id}/export`),
   compare: (ids: string[]) =>
     post<{ comparable: boolean; reason: string; items: QlibModel[] }>(

@@ -60,6 +60,8 @@ def provider_from_panel(panel: dict, destination: Path):
         values = {field: bars[field] * normalized_factor for field in ("open", "high", "low", "close")}
         values["volume"] = bars["volume"] / normalized_factor
         values["factor"] = normalized_factor
+        limit = next((m.get("price_limit") for m in panel["members"] if m["symbol"] == symbol), None)
+        values["limit_rate"] = bars["close"].notna().astype(float) * (limit or 0)
         # Dataset completeness controls trading availability; no forward-filled bars.
         values["change"] = values["close"].pct_change(fill_method=None)
         directory = destination / "features" / symbol.lower()
@@ -118,11 +120,29 @@ def evaluate_signal(prediction, labels):
     })
 
 
-def portfolio_backtest(prediction, split, config):
+def portfolio_backtest(prediction, split, config, market="CN", members=None):
     """Real Qlib executor with next-bar open execution and long-only Top-K dropout."""
     from qlib.contrib.evaluate import backtest_daily
     from qlib.contrib.strategy import TopkDropoutStrategy
     import pandas as pd
+    from qlib.backtest.exchange import Exchange
+    lots = {m["symbol"]: m.get("lot", 100 if market == "CN" else 1) for m in (members or [])}
+    class SymbolLotExchange(Exchange):
+        # Qlib's strategy passes only factor to rounding after get_factor(code).
+        # Set the unit for that exact code and again for the executed order.
+        def get_factor(self, stock_id, *args, **kwargs):
+            self.trade_unit = lots.get(stock_id, 100 if market == "CN" else 1)
+            return super().get_factor(stock_id, *args, **kwargs)
+
+        def deal_order(self, order, *args, **kwargs):
+            self.trade_unit = lots.get(order.stock_id, 100 if market == "CN" else 1)
+            return super().deal_order(order, *args, **kwargs)
+
+    limit_expr = f"(Abs($open / Ref($close, 1) - 1) >= ($limit_rate - {max(0, 0.1-config['limit_threshold'])})) | ($volume <= 0)" if market == "CN" else "$volume <= 0"
+    exchange = SymbolLotExchange(freq="day", start_time=split["test"][0], end_time=split["test"][1],
+        codes=list(prediction.index.get_level_values("instrument").unique()), deal_price="open",
+        limit_threshold=(limit_expr, limit_expr), open_cost=config["open_cost"], close_cost=config["close_cost"],
+        min_cost=config["min_cost"], trade_unit=100 if market == "CN" else 1)
     strategy = TopkDropoutStrategy(
         signal=prediction, topk=config["topk"], n_drop=config["topk"],
         hold_thresh=1, only_tradable=True, risk_degree=0.9,
@@ -130,28 +150,24 @@ def portfolio_backtest(prediction, split, config):
     report, _ = backtest_daily(
         start_time=split["test"][0], end_time=split["test"][1], strategy=strategy,
         account=config["capital"], benchmark=pd.Series(0.0, index=pd.date_range(split["test"][0], split["test"][1])),
-        exchange_kwargs={
-            "codes": list(prediction.index.get_level_values("instrument").unique()),
-            "deal_price": "open", "limit_threshold": (f"(Abs($open / Ref($close, 1) - 1) >= {config['limit_threshold']}) | ($volume <= 0)", f"(Abs($open / Ref($close, 1) - 1) >= {config['limit_threshold']}) | ($volume <= 0)"),
-            "open_cost": config["open_cost"], "close_cost": config["close_cost"],
-            "min_cost": config["min_cost"], "trade_unit": 100,
-        },
+        exchange_kwargs={"exchange": exchange},
     )
     net = report["return"] - report["cost"]
     summary = metric_summary(net)
     summary["turnover_mean"] = float(report["turnover"].mean())
     equity = (1 + net).cumprod()
     summary["curve"] = [{"date": d.strftime("%Y-%m-%d"), "equity": float(v)} for d, v in equity.items()]
-    summary["policy"] = "topk_dropout_daily_next_open_90pct_cash; n_drop=topk; A-share lots; no short positions"
+    summary["policy"] = f"topk_dropout_daily_next_open_90pct_cash; market={market}; current_symbol_lots; no short positions; declared fees in local currency"
+    summary["market_rules_warning"] = "Current lot/limit metadata is a research assumption, not certified historical rules; CN STAR/BSE rules are conservative research approximations"
     summary["benchmark"] = "zero-return cash reference; not CSI300 excess return"
     return clean(summary)
 
 
-def run(task_path: Path):
+def run(task_path: Path, return_context=False):
     import numpy as np
     import pandas as pd
     import qlib
-    from qlib.config import REG_CN
+    from qlib.config import REG_CN, REG_US
     from qlib.contrib.data.handler import Alpha158
     from qlib.contrib.model.gbdt import LGBModel
     from qlib.contrib.model.linear import LinearModel
@@ -168,6 +184,7 @@ def run(task_path: Path):
     if not model_panel_path.is_relative_to(directory.parent.parent / "datasets"):
         raise ValueError("qlib_worker_dataset_path_invalid")
     model_panel = json.loads(model_panel_path.read_text())
+    market = model_panel.get("market", "CN")
     # A newer prediction snapshot may extend history, never revise training input.
     if task.get("training_dataset_path"):
         frozen = {(b["date"], b["symbol"]): b for b in model_panel["bars"]}
@@ -179,13 +196,15 @@ def run(task_path: Path):
             raise ValueError("qlib_training_history_changed")
         if panel["calendar"][:len(model_panel["calendar"])] != model_panel["calendar"]:
             raise ValueError("qlib_training_calendar_changed")
-        historical_members = [{**member, "end": min(member["end"], last_frozen)} for member in panel["members"] if member["start"] <= last_frozen]
-        if sorted(historical_members, key=str) != sorted([{**member, "end": min(member["end"], last_frozen)} for member in model_panel["members"]], key=str):
+        def comparable_members(members):
+            return sorted([{**member, "end": min(member["end"], last_frozen), "lot": member.get("lot", 100), "currency": member.get("currency") or {"CN":"CNY","HK":"HKD","US":"USD"}[market]} for member in members], key=str)
+        historical_members = [member for member in panel["members"] if member["start"] <= last_frozen]
+        if comparable_members(historical_members) != comparable_members(model_panel["members"]):
             raise ValueError("qlib_training_universe_changed")
     provider = directory / "provider"
     frame, calendar = provider_from_panel(panel, provider)
     qlib.init(
-        provider_uri=str(provider), region=REG_CN, kernels=1,
+        provider_uri=str(provider), region=REG_CN if market == "CN" else REG_US, kernels=1,
         expression_cache=None, dataset_cache=None,
         exp_manager={"class": "MLflowExpManager", "module_path": "qlib.workflow.expm", "kwargs": {"uri": (directory / "mlruns").as_uri(), "default_exp_name": "PanWatch"}},
     )
@@ -223,7 +242,7 @@ def run(task_path: Path):
     if task.get("replay_fingerprint") and task["replay_fingerprint"] != replay_fingerprint:
         raise ValueError("qlib_model_replay_changed")
     metrics = evaluate_signal(original, labels)
-    metrics["backtest"] = portfolio_backtest(original, split, config)
+    metrics["backtest"] = portfolio_backtest(original, split, config, market, model_panel["members"])
     features = dataset.prepare("test", col_set="feature", data_key="infer")
     latest_date = prediction.index.get_level_values("datetime").max()
     latest = prediction.xs(latest_date, level="datetime").sort_values(ascending=False, kind="stable")
@@ -233,9 +252,11 @@ def run(task_path: Path):
         bars = latest_bars.loc[symbol] if symbol in latest_bars.index else None
         input_row = features.loc[(latest_date, symbol)].replace([np.inf, -np.inf], np.nan).dropna()
         rows.append({
-            "symbol": symbol, "market": "CN", "raw_score": float(score), "rank": rank,
+            "symbol": symbol, "market": market, "raw_score": float(score), "rank": rank,
+            "currency": next((m.get("currency") for m in panel["members"] if m["symbol"] == symbol), None) or {"CN":"CNY","HK":"HKD","US":"USD"}[market],
             "rank_percentile": 100 * (1 - (rank - 1) / max(1, len(latest) - 1)),
             "tradable": bool(bars is not None and bars["volume"] > 0),
+            "paper_eligible": market == "CN" and symbol.startswith(("SH60", "SZ00")) and not any(m["special_treatment"] for m in panel["members"] if m["symbol"] == symbol),
             "reference_close": float(bars["close"]) if bars is not None else None,
             "factor_inputs": {str(k): float(v) for k, v in input_row.head(12).items()},
             "explanation_kind": "processed_model_inputs_not_causal_contributions",
@@ -247,7 +268,7 @@ def run(task_path: Path):
     momentum = raw_features.iloc[:, 0]
     momentum.index = momentum.index.reorder_levels(["datetime", "instrument"])
     baseline = evaluate_signal(momentum.reindex(original.index), base_labels)
-    baseline["backtest"] = portfolio_backtest(momentum.reindex(original.index).dropna(), split, config)
+    baseline["backtest"] = portfolio_backtest(momentum.reindex(original.index).dropna(), split, config, market, model_panel["members"])
     # Three expanding-window, independently fitted folds. Every fold's test
     # begins after validation labels have matured. Hyperparameters stay fixed.
     rolling = []
@@ -274,7 +295,7 @@ def run(task_path: Path):
         fold_prediction = fold_model.predict(fold_dataset, segment="test").replace([np.inf, -np.inf], np.nan).dropna()
         fold_labels = fold_dataset.prepare("test", col_set="label", data_key="raw").iloc[:, 0]
         fold_metrics = evaluate_signal(fold_prediction, fold_labels)
-        fold_metrics["backtest"] = portfolio_backtest(fold_prediction, fold, config)
+        fold_metrics["backtest"] = portfolio_backtest(fold_prediction, fold, config, market, model_panel["members"])
         rolling.append({"segments": fold, "model_available_after": fold["test"][0], "metrics": fold_metrics})
     asof = latest_date.strftime("%Y-%m-%d")
     eligible = {member["symbol"] for member in panel["members"] if member["start"] <= asof <= member["end"]}
@@ -284,6 +305,8 @@ def run(task_path: Path):
                "input_shift_warning": bool(latest_features.abs().mean().mean() > 3),
                "method": "Robust train-fitted z magnitude; diagnostic proxy, not a significance test"}
     output = clean({
+        "market": market,
+        "price_basis": panel.get("price_basis","raw_execution"),
         "runtime": runtime(), "segments": split, "feature_set": "Alpha158",
         "label": "future N trading days close / next trading day open - 1; cross-sectional standardized for training",
         "metrics": metrics, "baseline": baseline, "asof_date": latest_date.strftime("%Y-%m-%d"),
@@ -297,6 +320,9 @@ def run(task_path: Path):
     temporary = directory / "result.tmp"
     temporary.write_text(json.dumps(output, allow_nan=False, separators=(",", ":")))
     temporary.replace(directory / "result.json")
+    if return_context:
+        return {"model": model, "handler": handler, "panel": model_panel, "config": config,
+                "split": split, "directory": directory, "provider": provider, "output": output}
 
 
 if __name__ == "__main__":
@@ -307,6 +333,10 @@ if __name__ == "__main__":
     if arguments.health:
         print(json.dumps(runtime()))
     elif arguments.task:
-        run(arguments.task.resolve())
+        if json.loads(arguments.task.read_text()).get("universe_manifest"):
+            from universe_worker import run_universe
+            run_universe(arguments.task.resolve())
+        else:
+            run(arguments.task.resolve())
     else:
         parser.error("--task or --health required")

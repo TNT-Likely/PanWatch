@@ -63,6 +63,36 @@ class QlibSyncJob(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class QlibUniverseMember(Base):
+    """Current catalog plus a pointer to an immutable per-security price file."""
+    __tablename__ = "qlib_universe_members"
+    symbol = Column(String, primary_key=True)
+    market = Column(String, nullable=False, index=True)
+    catalog_id = Column(String, nullable=False, index=True)
+    metadata_ = Column("metadata", JSON, nullable=False)
+    status = Column(String, nullable=False, default="pending", index=True)
+    error_code = Column(String, nullable=False, default="")
+    history_id = Column(String, nullable=True)
+    asof_date = Column(String, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class QlibUniverseJob(Base):
+    __tablename__ = "qlib_universe_jobs"
+    id = Column(String, primary_key=True)
+    request_key = Column(String, nullable=False, unique=True)
+    kind = Column(String, nullable=False)
+    market = Column(String, nullable=True)
+    config = Column(JSON, nullable=False)
+    status = Column(String, nullable=False, default="queued", index=True)
+    progress = Column(JSON, nullable=False, default=dict)
+    cursor = Column(Integer, nullable=False, default=0)
+    result_id = Column(String, nullable=True)
+    error_code = Column(String, nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    finished_at = Column(DateTime, nullable=True)
+
+
 class QlibAudit(Base):
     __tablename__ = "qlib_audit"
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -149,21 +149,32 @@ class MarketData:
         resp = self._kline_engine.fetch(req, min_count=min_count, cache_ttl_sec=0)
         return resp.data or []
 
-    def research_sources(self) -> list[str]:
+    def research_sources(self, market: str = "CN") -> list[str]:
         """Reuse enabled kline sources without exposing provider credentials."""
-        return list(dict.fromkeys(source.vendor for source in self.config.sources_for("kline", "CN")
-                                  if source.enabled and source.vendor in {"tencent", "eastmoney"}))
+        compatible = {"CN": {"tencent", "eastmoney"}, "HK": {"yahoo"}, "US": {"yahoo"}}.get(market, set())
+        return list(dict.fromkeys(source.vendor for source in self.config.sources_for("kline", market)
+                                  if source.enabled and source.vendor in compatible))
 
-    def research_history(self, symbol: str, *, vendor: str, days: int = 800, completed_through: str | None = None):
-        from marketdata.research import fetch_history
-        if vendor not in self.research_sources():
+    def research_catalog(self, market: str):
+        from marketdata.equities import fetch_catalog
+        return fetch_catalog(market)
+
+    def research_history(self, symbol: str, *, vendor: str, days: int = 800, completed_through: str | None = None, market: str = "CN"):
+        from marketdata.research import fetch_history, fetch_overseas_history
+        if vendor not in self.research_sources(market):
             raise ValueError("qlib_research_source_disabled")
+        if market != "CN":
+            source = next(s for s in self.config.sources_for("kline", market) if s.enabled and s.vendor == vendor)
+            return fetch_overseas_history(symbol, market, days, completed_through, source.config.get("proxy"))
         return fetch_history(vendor, symbol, days, completed_through)
 
-    def research_calendar(self, *, vendor: str, days: int = 800) -> list[str]:
-        from marketdata.research import fetch_calendar
-        if vendor not in self.research_sources():
+    def research_calendar(self, *, vendor: str, days: int = 800, market: str = "CN") -> list[str]:
+        from marketdata.research import fetch_calendar, fetch_overseas_calendar
+        if vendor not in self.research_sources(market):
             raise ValueError("qlib_research_source_disabled")
+        if market != "CN":
+            source = next(s for s in self.config.sources_for("kline", market) if s.enabled and s.vendor == vendor)
+            return fetch_overseas_calendar(market, days, source.config.get("proxy"))
         return fetch_calendar(vendor, days)
 
     def quotes(self, symbols: list[str | Symbol], *, market: str | None = None) -> list[Quote]:

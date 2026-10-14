@@ -5,16 +5,20 @@ import math
 import uuid
 
 
-def panel(end=date(2026, 10, 12), days=360, symbols=8):
+def panel(end=date(2026, 10, 12), days=360, symbols=8, market="CN"):
     from src.platform.scheduling.trading_calendar import calendar_known, is_trading_day
     calendar = []
     day = end
     while len(calendar) < days:
-        if day.weekday() < 5 and (not calendar_known("CN", day) or is_trading_day("CN", day)):
+        if day.weekday() < 5 and (not calendar_known(market, day) or is_trading_day(market, day)):
             calendar.append(day.isoformat())
         day -= timedelta(days=1)
     calendar.reverse()
     codes = [f"SH{600000 + index:06d}" for index in range(symbols)]
+    if market == "HK":
+        codes = [f"HK_{index+1:05d}" for index in range(symbols)]
+    elif market == "US":
+        codes = [f"US_QA{index}" for index in range(symbols)]
     bars = []
     for index, symbol in enumerate(codes):
         price = 15 + index * 3
@@ -25,9 +29,9 @@ def panel(end=date(2026, 10, 12), days=360, symbols=8):
                          "high": max(opening, price) * 1.01, "low": min(opening, price) * 0.99,
                          "volume": 1_000_000 + 100_000 * math.sin(n * 0.1 + index), "factor": 1.0})
     return {"name": "Synthetic QA only", "source": "PanWatch deterministic synthetic fixture",
-            "license": "Synthetic test data, CC0", "license_acknowledged": True, "market": "CN",
+            "license": "Synthetic test data, CC0", "license_acknowledged": True, "market": market,
             "data_kind": "synthetic", "universe_kind": "fixed_research", "adjustment": "snapshot_adjusted",
-            "calendar": calendar, "members": [{"symbol": symbol, "start": calendar[0], "end": end.isoformat(), "price_limit": 0.1, "special_treatment": False} for symbol in codes], "bars": bars}
+            "calendar": calendar, "members": [{"symbol": symbol, "start": calendar[0], "end": end.isoformat(), "price_limit": 0.1 if market=="CN" else None, "special_treatment": False, **({"lot":100*(index+1) if market=="HK" else 1,"currency":"HKD" if market=="HK" else "USD"} if market!="CN" else {})} for index,symbol in enumerate(codes)], "bars": bars}
 
 
 def paper_decision(factory, asof="2026-10-08", symbols=("SH600000",), topk=1):

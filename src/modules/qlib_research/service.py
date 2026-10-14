@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -14,7 +15,7 @@ import threading
 import time
 import uuid
 
-from sqlalchemy import update
+from sqlalchemy import update, or_
 
 from src.platform.persistence.database import DB_PATH, SessionLocal
 from .contracts import DatasetInput, ResearchConfig, content_hash, valid_id
@@ -123,9 +124,24 @@ def serialize_job(item):
     return {"id": item.id, "kind": item.kind, "dataset_id": item.dataset_id, "model_id": item.model_id, "config": item.config, "status": item.status, "result_id": item.result_id, "error_code": item.error_code, "created_at": item.created_at.replace(tzinfo=timezone.utc).isoformat() if item.created_at else None}
 
 
-def list_records(kind):
+def list_records(kind, metadata_only=False, market=None):
     with transaction() as db:
-        return [serialize(item) for item in db.query(QlibRecord).filter_by(kind=kind).order_by(QlibRecord.created_at.desc(), QlibRecord.id.desc()).limit(100)]
+        output = []
+        query=db.query(QlibRecord).filter_by(kind=kind)
+        if market:
+            market_field=QlibRecord.payload["market"].as_string()
+            query=query.filter(or_(market_field==market,market_field.is_(None)) if market=="CN" else market_field==market)
+        for item in query.order_by(QlibRecord.created_at.desc(),QlibRecord.id.desc()).limit(100).yield_per(10):
+            payload = serialize(item)
+            if market and payload.get("market", "CN") != market:
+                continue
+            if metadata_only and kind == "selection":
+                payload = {k: v for k, v in payload.items() if k not in ("predictions", "names")}
+                payload["prediction_count"] = len(item.payload["predictions"])
+            output.append(payload)
+            if len(output) == 100:
+                break
+        return output
 
 
 def get_record(record_id, kind=None):
@@ -153,11 +169,16 @@ def import_dataset(data: DatasetInput, actor):
             "source": data.source, "license": data.license, "license_acknowledged": True,
             "market": data.market, "data_kind": data.data_kind, "universe_kind": data.universe_kind,
             "adjustment": data.adjustment, "content_hash": checksum, "rows": len(data.bars),
+            "price_basis": data.price_basis,
             "names": data.names, "provenance": data.provenance,
             "symbols": symbols, "dates": len(dates), "start_date": dates[0], "end_date": dates[-1],
             "warnings": [flag for flag, active in (("fixed_research_universe_not_historical_index", data.universe_kind == "fixed_research"), ("snapshot_adjustment_not_point_in_time", data.adjustment == "snapshot_adjusted"), ("synthetic_not_market_validation", data.data_kind == "synthetic"), ("hfq_close_ratio_proxy_preserves_raw_intraday_ratios", bool(data.provenance)), ("historical_ST_and_delisting_status_unverified", bool(data.provenance))) if active],
         })
         db.add(item)
+        if data.market!="CN":
+            item.payload={**item.payload,"warnings":[w for w in item.payload["warnings"] if w!="hfq_close_ratio_proxy_preserves_raw_intraday_ratios"]}
+        if data.price_basis=="provider_snapshot":
+            item.payload={**item.payload,"warnings":[*item.payload["warnings"],"provider_snapshot_prices_not_certified_raw_execution"]}
         db.add(QlibAudit(action="dataset_import", actor=actor, target_id=dataset_id, detail={"hash": checksum}))
         db.flush()
         return serialize(item)
@@ -212,6 +233,7 @@ def execute_job(job_id):
             dataset = record(db, data_id, "dataset")
             expected_hash = dataset.payload["content_hash"]
             dataset_names = dict(dataset.payload.get("names", {}))
+            universe_snapshot_id = dataset.payload.get("provenance", {}).get("universe_snapshot_id")
             task = {"dataset_path": str(dataset_path(data_id)), "config": config}
             if model_id:
                 model = record(db, model_id, "model")
@@ -254,6 +276,9 @@ def execute_job(job_id):
             experiment_id = identity()
             model_id = job.model_id or identity()
             model_payload = {"dataset_id": data_id, "config": config, "segments": output["segments"], "metrics": output["metrics"], "baseline": output["baseline"], "rolling": output["rolling"], "replay_fingerprint": output["replay_fingerprint"], "runtime": output["runtime"], "artifact_hash": hashlib.sha256(result_path.read_bytes()).hexdigest(), "data_kind": output["data_kind"], "universe_kind": output["universe_kind"], "adjustment": output["adjustment"], "experiment_id": experiment_id, "job_id": job_id}
+            model_payload["market"] = output.get("market", "CN")
+            model_payload["price_basis"] = output.get("price_basis","raw_execution")
+            model_payload["universe_snapshot_id"] = universe_snapshot_id
             db.add(QlibRecord(id=experiment_id, kind="experiment", parent_id=model_id, name=f"{config['algorithm']} · {output['asof_date']}", payload={**model_payload, "label": output["label"]}))
             if not job.model_id:
                 db.add(QlibRecord(id=model_id, kind="model", parent_id=experiment_id, name=f"Alpha158 + {config['algorithm']}", payload=model_payload))
@@ -261,7 +286,8 @@ def execute_job(job_id):
             prior = latest_selection(model_id, db)
             ranks = {row["symbol"]: row["rank"] for row in prior.payload["predictions"]} if prior else {}
             predictions = [{**row, "rank_change": ranks[row["symbol"]] - row["rank"] if row["symbol"] in ranks else None} for row in output["predictions"]]
-            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": "CN", "predictions": predictions, "monitor": output["monitor"], "feature_set": "Alpha158", "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config, "names": dataset_names}))
+            predictions = [{**row,"price_basis":output.get("price_basis","raw_execution")} for row in predictions]
+            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": output.get("market", "CN"), "predictions": predictions, "monitor": output["monitor"], "feature_set": "Alpha158", "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config, "names": dataset_names,"selection_scope":"training_cohort" if model_payload["universe_snapshot_id"] else "imported_dataset"}))
             job.status, job.result_id, job.finished_at = "succeeded", run_id, now()
             if job.kind == "train" and job.request_key.startswith("scheduled-"):
                 state = control(db)
@@ -281,7 +307,9 @@ def execute_job(job_id):
 
 def jobs():
     with transaction() as db:
-        return [serialize_job(item) for item in db.query(QlibJob).order_by(QlibJob.created_at.desc()).limit(100)]
+        items=db.query(QlibJob).order_by(QlibJob.created_at.desc()).limit(100).all()
+        datasets={r.id:r.payload for r in db.query(QlibRecord).filter(QlibRecord.id.in_([j.dataset_id for j in items]))}
+        return [{**serialize_job(item),"market":datasets.get(item.dataset_id,{}).get("market","CN")} for item in items]
 
 
 def cancel_job(job_id, actor):
@@ -306,6 +334,8 @@ def recover_jobs():
             db.add(QlibAudit(action="job_interrupted", actor="startup", target_id=job.id))
     from . import marketdata_sync
     marketdata_sync.recover()
+    from . import universe
+    universe.recover()
 
 
 def shutdown():
@@ -315,6 +345,16 @@ def shutdown():
                 process.terminate()
     from . import marketdata_sync
     marketdata_sync.recover()
+    from . import universe
+    universe.recover()
+
+
+def market_champion(state, market="CN"):
+    return state.settings.get("champions", {}).get(market, state.champion_id if market == "CN" else None)
+
+
+def market_mode(state, market="CN"):
+    return state.settings.get("champion_modes", {}).get(market, state.settings.get("champion_mode", "research") if market == "CN" else "research")
 
 
 def governance():
@@ -322,9 +362,10 @@ def governance():
         state = control(db)
         published = {row.target_id for row in db.query(QlibAudit).filter(QlibAudit.action.in_(("publish", "rollback"))).all()}
         retired = set(state.settings.get("retired_models", []))
-        models = [{**serialize(model), "state": "retired" if model.id in retired else "champion" if model.id == state.champion_id else "previous" if model.id in published else "candidate"} for model in db.query(QlibRecord).filter_by(kind="model").order_by(QlibRecord.created_at.desc()).limit(100)]
+        champions = {m: market_champion(state, m) for m in ("CN", "HK", "US")}
+        models = [{**serialize(model), "state": "retired" if model.id in retired else "champion" if model.id in champions.values() else "previous" if model.id in published else "candidate"} for model in db.query(QlibRecord).filter_by(kind="model").order_by(QlibRecord.created_at.desc()).limit(100)]
         audit = [{"id": row.id, "action": row.action, "actor": row.actor, "target_id": row.target_id, "detail": row.detail, "created_at": row.created_at.replace(tzinfo=timezone.utc).isoformat()} for row in db.query(QlibAudit).order_by(QlibAudit.id.desc()).limit(100)]
-        return {"champion_id": state.champion_id, "revision": state.revision, "settings": {**DEFAULT_SETTINGS, **state.settings}, "models": models, "audit": audit}
+        return {"champion_id": state.champion_id, "champions": champions, "revision": state.revision, "settings": {**DEFAULT_SETTINGS, **state.settings}, "models": models, "audit": audit}
 
 
 def publish(model_id, revision, reason, mode, actor, rollback=False):
@@ -338,8 +379,13 @@ def publish(model_id, revision, reason, mode, actor, rollback=False):
         if rollback and not db.query(QlibAudit).filter(QlibAudit.target_id == model_id, QlibAudit.action.in_(("publish", "rollback"))).first():
             raise ValueError("qlib_rollback_unpublished")
         payload = model.payload
+        market = payload.get("market", "CN")
         metrics, config = payload["metrics"], payload["config"]
         if mode == "validated":
+            if market != "CN":
+                raise ValueError("qlib_market_research_only")
+            if payload.get("price_basis","raw_execution")!="raw_execution":
+                raise ValueError("qlib_research_only_data")
             if payload["data_kind"] != "market" or payload["universe_kind"] != "historical_membership" or payload["adjustment"] != "point_in_time":
                 raise ValueError("qlib_research_only_data")
             ic, drawdown = metrics.get("rank_ic"), metrics["backtest"].get("max_drawdown")
@@ -351,8 +397,11 @@ def publish(model_id, revision, reason, mode, actor, rollback=False):
             folds = payload.get("rolling", [])
             if len(folds) < 3 or any(fold["metrics"]["ic_dates"] < config["min_test_days"] or fold["metrics"]["rank_ic"] is None or fold["metrics"]["rank_ic"] < config["min_ic"] or fold["metrics"]["backtest"]["max_drawdown"] is None or fold["metrics"]["backtest"]["max_drawdown"] > config["max_drawdown"] for fold in folds):
                 raise ValueError("qlib_rolling_gate_failed")
-        previous = state.champion_id
-        changed = db.execute(update(QlibControl).where(QlibControl.id == 1, QlibControl.revision == revision).values(champion_id=model_id, revision=revision + 1, settings={**DEFAULT_SETTINGS, **state.settings, "champion_mode": mode}, updated_at=now()))
+        previous = market_champion(state, market)
+        settings = {**DEFAULT_SETTINGS, **state.settings, "champions": {**state.settings.get("champions", {}), market: model_id}, "champion_modes": {**state.settings.get("champion_modes", {}), market: mode}}
+        if market == "CN":
+            settings["champion_mode"] = mode
+        changed = db.execute(update(QlibControl).where(QlibControl.id == 1, QlibControl.revision == revision).values(champion_id=model_id if market == "CN" else state.champion_id, revision=revision + 1, settings=settings, updated_at=now()))
         if changed.rowcount != 1:
             raise ValueError("qlib_revision_conflict")
         db.add(QlibAudit(action="rollback" if rollback else "publish", actor=actor, target_id=model_id, detail={"previous_model_id": previous, "reason": reason, "mode": mode, "revision": revision + 1}))
@@ -365,7 +414,7 @@ def retire(model_id, revision, reason, actor):
         state = control(db)
         if revision != state.revision:
             raise ValueError("qlib_revision_conflict")
-        if state.champion_id == model_id:
+        if model_id in {market_champion(state, m) for m in ("CN", "HK", "US")}:
             raise ValueError("qlib_retire_champion_forbidden")
         retired = sorted(set(state.settings.get("retired_models", [])) | {model_id})
         result = db.execute(update(QlibControl).where(QlibControl.id == 1, QlibControl.revision == revision).values(revision=revision + 1, settings={**state.settings, "retired_models": retired}, updated_at=now()))
@@ -379,31 +428,58 @@ def latest_selection(model_id, db):
     return db.query(QlibRecord).filter_by(kind="selection", parent_id=model_id).order_by(QlibRecord.created_at.desc(), QlibRecord.id.desc()).first()
 
 
-def freshness(asof_date):
-    from src.platform.scheduling.trading_calendar import is_trading_day
-    from zoneinfo import ZoneInfo
-    current = now().astimezone(ZoneInfo("Asia/Shanghai"))
-    latest = current.date()
-    if current.hour < 15 or not is_trading_day("CN", latest):
-        latest -= timedelta(days=1)
-    for _ in range(15):
-        if is_trading_day("CN", latest):
-            break
-        latest -= timedelta(days=1)
-    else:
+def freshness(asof_date, market="CN"):
+    from .universe import completed_day
+    try:
+        return asof_date == completed_day(market)
+    except ValueError:
         return False
-    return asof_date == latest.isoformat()
 
 
-def opportunities():
+def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all", holding="all", availability="all", run_id=None):
     with LOCK, transaction() as db:
         state = control(db)
-        selection = latest_selection(state.champion_id, db) if state.champion_id else None
+        champion = market_champion(state, market)
+        selection = record(db, run_id, "selection") if run_id else latest_selection(champion, db) if champion else None
         if not selection:
-            return {"items": [], "status": "no_champion" if not state.champion_id else "no_prediction", "run": None, "mode": state.settings.get("champion_mode", "research")}
+            return {"items": [], "total": 0, "prediction_count": 0, "status": "no_champion" if not champion else "no_prediction", "run": None, "mode": market_mode(state, market)}
         run = serialize(selection)
-        fresh = freshness(run["asof_date"])
-        return {"items": run["predictions"], "status": "ready" if fresh else "stale", "run": {key: value for key, value in run.items() if key != "predictions"}, "mode": state.settings.get("champion_mode", "research")}
+        if not run_id and run.get("selection_scope")=="training_cohort":
+            return {"items":[],"total":0,"prediction_count":0,"status":"no_prediction","run":None,"mode":market_mode(state,market)}
+        if run.get("market", "CN") != market:
+            raise ValueError("qlib_model_market_mismatch")
+        rows = run["predictions"]
+        count = len(rows)
+        from src.platform.persistence.models import Stock, Position
+        stocks = db.query(Stock).filter_by(market=market).all()
+        codes = {(s.symbol.zfill(5) if market=="HK" and s.symbol.isdigit() else s.symbol.upper()):s.id for s in stocks}
+        owned = {p.stock_id for p in db.query(Position).filter(Position.quantity>0)}
+        basket = {b["symbol"] for b in state.settings.get("basket",[])}
+        def watched(row):
+            return row["symbol"] in basket if run.get("data_kind")=="synthetic" else (row["symbol"][2:] if market=="CN" else row["symbol"][3:]) in codes
+        watched_count=sum(watched(r) for r in rows)
+        selected = set([r["symbol"] for r in sorted(rows,key=lambda r:r["rank"]) if r["tradable"]][:run.get("config",{}).get("topk",10)])
+        if source != "all" or holding != "all":
+            from src.platform.persistence.models import Stock, Position
+            stocks = db.query(Stock).filter_by(market=market).all()
+            codes = {(s.symbol.zfill(5) if market=="HK" and s.symbol.isdigit() else s.symbol.upper()): s.id for s in stocks}
+            owned = {p.stock_id for p in db.query(Position).filter(Position.quantity > 0)}
+            def code(symbol):
+                return symbol[2:] if market == "CN" else symbol[3:]
+            rows = [r for r in rows if (source != "watched" or code(r["symbol"]) in codes) and (holding == "all" or (codes.get(code(r["symbol"])) in owned) == (holding == "held"))]
+            if run.get("data_kind")=="synthetic":
+                basket={b["symbol"] for b in state.settings.get("basket",[])}
+                rows=[r for r in run["predictions"] if source!="watched" or r["symbol"] in basket]
+        rows = [r for r in rows if (not top or r["rank"] <= max(1, math.ceil(count * top / 100))) and (availability == "all" or bool(r["tradable"]) == (availability == "tradable")) and (not search or search.casefold() in f"{r['symbol']} {run.get('names',{}).get(r['symbol'],'')}".casefold())]
+        total = len(rows)
+        rows = [{**r,"portfolio_candidate":r["symbol"] in selected} for r in rows]
+        if limit is not None:
+            rows = rows[(page-1)*limit:page*limit]
+        names = run.get("names", {})
+        run["watched_count"] = watched_count
+        if limit is not None:
+            names = {r["symbol"]: names.get(r["symbol"], "") for r in rows}
+        return {"items": rows, "total": total, "prediction_count": count, "page": page, "limit": limit, "status": "history" if run_id else "ready" if freshness(run["asof_date"], market) else "stale", "run": {**{key: value for key, value in run.items() if key not in ("predictions", "names")}, "names": names}, "mode": market_mode(state, market)}
 
 
 def forward_monitor(db, champion_id):
@@ -455,6 +531,10 @@ def make_decision(run_id, actor, acknowledge_research=False):
         state = control(db)
         selection = record(db, run_id, "selection")
         payload = selection.payload
+        if payload.get("market", "CN") != "CN":
+            raise ValueError("qlib_market_execution_not_supported")
+        if any(r.get("price_basis","raw_execution")!="raw_execution" for r in payload.get("predictions",[])):
+            raise ValueError("qlib_unverified_execution_prices")
         if payload["model_id"] != state.champion_id:
             raise ValueError("qlib_model_not_champion")
         if not freshness(payload["asof_date"]):
@@ -467,6 +547,8 @@ def make_decision(run_id, actor, acknowledge_research=False):
         if existing:
             return serialize(existing)
         chosen = [row for row in payload["predictions"] if row["tradable"]][:payload["config"]["topk"]]
+        if any(not row.get("paper_eligible", True) for row in chosen):
+            raise ValueError("qlib_security_execution_not_supported")
         if not chosen:
             raise ValueError("qlib_no_tradable_predictions")
         decision = QlibRecord(id=identity(), kind="decision", parent_id=run_id, name=payload["asof_date"], payload={"run_id": run_id, "model_id": state.champion_id, "dataset_id": payload["dataset_id"], "asof_date": payload["asof_date"], "execution_date": execution_date(payload["asof_date"]), "market": "CN", "policy": POLICY, "risk_degree": 0.9, "symbols": [row["symbol"] for row in chosen], "target_weights": {row["symbol"]: 0.9 / len(chosen) for row in chosen}, "config": payload["config"], "research_mode": state.settings.get("champion_mode", "research") != "validated", "reference_prices": {row["symbol"]: row["reference_close"] for row in payload["predictions"]}})
@@ -519,7 +601,7 @@ def compare_experiments(ids):
     with transaction() as db:
         items = [serialize(record(db, item, "experiment")) for item in ids]
     def comparison_key(item):
-        return [item["dataset_id"], item["segments"], {key: value for key, value in item["config"].items() if key not in ("algorithm", "num_boost_round")}]
+        return [item.get("market","CN"), item["dataset_id"], item["segments"], {key: value for key, value in item["config"].items() if key not in ("algorithm", "num_boost_round")}]
     comparable = all(comparison_key(item) == comparison_key(items[0]) for item in items)
     return {"comparable": comparable, "reason": "same_cohort" if comparable else "qlib_comparison_cohort_differs", "items": items}
 
@@ -549,6 +631,10 @@ def scheduled_tick(current=None):
     from zoneinfo import ZoneInfo
     from src.platform.scheduling.trading_calendar import is_trading_day
     moment = (current or now()).astimezone(ZoneInfo("Asia/Shanghai"))
+    from . import universe
+    full_sync = universe.scheduled_tick()
+    if full_sync is not None:
+        return full_sync
     from . import marketdata_sync
     sync = marketdata_sync.scheduled_sync(moment)
     if sync is not None:

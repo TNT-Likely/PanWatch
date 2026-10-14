@@ -25,6 +25,7 @@ import {
   type QlibHealth,
   type QlibOpportunities,
   type QlibRun,
+  type QlibMarket,
   type StockItem,
 } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -47,7 +48,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useLocalStorage } from '@/lib/utils'
 import QlibDataPipeline from '@/components/qlib-data-pipeline'
 import {
-  cnSymbol,
+  securityCode,
   defaultOpportunityFilters,
   filterOpportunityCards,
   opportunityCards,
@@ -62,6 +63,8 @@ const StockInsightModal = lazy(
 )
 const format = (value: number | null | undefined, digits = 2) =>
   value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits)
+const cardsCount = (run: QlibRun | null | undefined, predictions: unknown[]) =>
+  run?.prediction_count ?? predictions.length
 
 export default function Opportunities() {
   const { t } = useTranslation('qlib')
@@ -86,6 +89,8 @@ export default function Opportunities() {
   const [stocks, setStocks] = useState<StockItem[] | null>(null)
   const [positions, setPositions] = useState<OpportunityPosition[] | null>(null)
   const [history, setHistory] = useState('latest')
+  const [market, setMarket] = useState<QlibMarket>('CN')
+  const [page, setPage] = useState(1)
   const [savedFilters, setFilters] = useLocalStorage<OpportunityFilters>(
     'panwatch_qlib_opportunity_filters_v1',
     defaultOpportunityFilters,
@@ -106,9 +111,19 @@ export default function Opportunities() {
     setLoading(true)
     try {
       const [o, h, r, b] = await Promise.all([
-        qlibApi.opportunities(),
+        qlibApi.opportunities({
+          market,
+          page: String(page),
+          limit: '50',
+          search: filters.search,
+          top: filters.top === 'all' ? '0' : filters.top,
+          source: filters.source,
+          holding: filters.holding,
+          availability: filters.availability,
+          ...(history !== 'latest' ? { run_id: history } : {}),
+        }),
         qlibApi.health(),
-        qlibApi.selections(),
+        qlibApi.selections(market),
         qlibApi.basket(),
       ])
       if (epoch !== generation.current) return
@@ -147,7 +162,7 @@ export default function Opportunities() {
       if (epoch === generation.current) setLoading(false)
     }
     // Keep language changes independent of network reloads.
-  }, [])
+  }, [market, page, filters, history])
   useEffect(() => {
     void reload()
     return () => {
@@ -155,13 +170,17 @@ export default function Opportunities() {
     }
   }, [reload])
   const run =
-    history === 'latest'
-      ? opportunities?.run
-      : runs.find((item) => item.id === history)
+    opportunities?.total != null
+      ? opportunities.run
+      : history === 'latest'
+        ? opportunities?.run
+        : runs.find((item) => item.id === history)
   const predictions =
-    history === 'latest'
+    opportunities?.total != null || history === 'latest'
       ? (opportunities?.items ?? [])
       : (run?.predictions ?? [])
+  const totalPredictions =
+    opportunities?.prediction_count ?? cardsCount(run, predictions)
   const synthetic = run?.data_kind === 'synthetic'
   const detailSynthetic = detailRun?.data_kind === 'synthetic'
   const cards = useMemo(
@@ -186,11 +205,13 @@ export default function Opportunities() {
   )
   const visible = useMemo(
     () =>
-      filterOpportunityCards(
-        cards,
-        synthetic ? { ...filters, holding: 'all' } : filters,
-      ),
-    [cards, filters, synthetic],
+      opportunities?.total != null
+        ? cards
+        : filterOpportunityCards(
+            cards,
+            synthetic ? { ...filters, holding: 'all' } : filters,
+          ),
+    [cards, filters, synthetic, opportunities?.total],
   )
   const metadataUnavailable =
     !synthetic && (stocks == null || positions == null)
@@ -230,15 +251,16 @@ export default function Opportunities() {
       } else {
         const stock = stocks?.find(
           (item) =>
-            item.market.toUpperCase() === 'CN' &&
-            cnSymbol(item.symbol) === card.symbol,
+            item.market.toUpperCase() === card.prediction.market &&
+            securityCode(item.symbol, item.market.toUpperCase()) ===
+              card.symbol,
         )
         if (stock) await stocksApi.remove(stock.id)
         else
           await stocksApi.create({
             symbol: card.symbol,
             name: card.name || card.symbol,
-            market: 'CN',
+            market: card.prediction.market,
             asset_type: 'stock',
           })
         await reload()
@@ -319,23 +341,26 @@ export default function Opportunities() {
           </Link>
         </div>
       </header>
-      <QlibDataPipeline onChange={reload} />
+      <QlibDataPipeline onChange={reload} market={market} />
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {summary(
           'candidates',
-          opportunities ? String(cards.length) : '—',
+          opportunities ? String(totalPredictions) : '—',
           tr('poolOnly'),
         )}
         {summary(
           synthetic ? 'sampleFollows' : 'watchedCandidates',
           !run || (!synthetic && stocks == null)
             ? '—'
-            : String(cards.filter((card) => card.watched).length),
+            : String(
+                run?.watched_count ??
+                  cards.filter((card) => card.watched).length,
+              ),
           tr(synthetic ? 'sampleFollowNote' : 'watchNote'),
         )}
         {summary(
           'results',
-          opportunities ? String(visible.length) : '—',
+          opportunities ? String(opportunities.total ?? visible.length) : '—',
           tr('rankOnly'),
         )}
         {summary('dataDate', run?.asof_date ?? '—', tr(`statuses.${status}`))}
@@ -388,10 +413,26 @@ export default function Opportunities() {
         onSubmit={(event) => {
           event.preventDefault()
           setFilters({ ...draft })
+          setPage(1)
         }}
       >
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
-          {select('market', 'CN', () => {}, [['CN', 'cn']], true)}
+          {select(
+            'market',
+            market,
+            (value) => {
+              setMarket(value as QlibMarket)
+              setPage(1)
+              setHistory('latest')
+              setDetail(null)
+              setOpportunities(null)
+            },
+            [
+              ['CN', 'cn'],
+              ['HK', 'hk'],
+              ['US', 'us'],
+            ],
+          )}
           {select(
             'source',
             draft.source,
@@ -440,6 +481,7 @@ export default function Opportunities() {
             onClick={() => {
               setDraft({ ...defaultOpportunityFilters })
               setFilters({ ...defaultOpportunityFilters })
+              setPage(1)
             }}
           >
             {tr('clear')}
@@ -461,6 +503,7 @@ export default function Opportunities() {
               value={history}
               onValueChange={(value) => {
                 setHistory(value)
+                setPage(1)
                 setDetail(null)
                 setTechnical(false)
               }}
@@ -491,6 +534,31 @@ export default function Opportunities() {
           {tr('loading')}
         </p>
       )}
+      {opportunities?.total != null && opportunities.total > 50 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span>
+            {qlibT('universe.page', { page, total: opportunities.total })}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading || page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              {qlibT('universe.previous')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading || page * 50 >= opportunities.total}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              {qlibT('universe.next')}
+            </Button>
+          </div>
+        </div>
+      )}
       <div
         data-tour="opportunity-signals"
         className="grid min-h-12 grid-cols-1 gap-3 md:grid-cols-2"
@@ -507,7 +575,7 @@ export default function Opportunities() {
               onClick={() => {
                 setDetail(card)
                 setDetailRun(run ?? null)
-                setDetailTotal(cards.length)
+                setDetailTotal(totalPredictions)
                 setTechnical(false)
               }}
               aria-label={tr('openDetail', {
@@ -524,7 +592,7 @@ export default function Opportunities() {
                       : card.name || card.symbol}
                   </h2>
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                    CN:{card.symbol}
+                    {card.prediction.market}:{card.symbol}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -534,7 +602,7 @@ export default function Opportunities() {
                   <p className="mt-1 text-xs font-semibold">
                     {tr('rank', {
                       rank: card.prediction.rank,
-                      total: cards.length,
+                      total: totalPredictions,
                     })}
                   </p>
                 </div>
@@ -549,6 +617,12 @@ export default function Opportunities() {
                   </dt>
                   <dd className="mt-0.5 font-mono">
                     {format(card.prediction.reference_close)}{' '}
+                    {card.prediction.currency ??
+                      (market === 'CN'
+                        ? 'CNY'
+                        : market === 'HK'
+                          ? 'HKD'
+                          : 'USD')}{' '}
                     <span className="text-muted-foreground">
                       {run?.asof_date}
                     </span>
@@ -659,7 +733,7 @@ export default function Opportunities() {
           <StockInsightModal
             open
             symbol={detail.symbol}
-            market="CN"
+            market={detail.prediction.market}
             stockName={detail.name ?? undefined}
             hasPosition={detail.held ?? undefined}
             onOpenChange={(open) => {

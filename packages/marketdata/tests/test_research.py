@@ -76,3 +76,9 @@ def test_incomplete_session_is_excluded_before_pair_validation(monkeypatch):
     assert len(research.fetch_history("tencent", "SH600000", completed_through="2026-10-13").bars) == 1
     with pytest.raises(ValueError, match="prices_invalid"):
         research.fetch_history("tencent", "SH600000")
+
+
+def test_missing_supplier_response_is_not_an_adjustment_mismatch(monkeypatch):
+    monkeypatch.setattr(research, "market_get", lambda *a, **kw: None)
+    with pytest.raises(ValueError, match="source_history_unavailable"):
+        research.fetch_history("tencent", "SH600000")

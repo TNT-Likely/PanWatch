@@ -56,8 +56,15 @@ export function cnSymbol(symbol: string) {
   return symbol
     .trim()
     .toUpperCase()
-    .replace(/^(SH|SZ)/, '')
-    .replace(/\.(SH|SZ)$/, '')
+    .replace(/^(SH|SZ|BJ)/, '')
+    .replace(/\.(SH|SZ|BJ)$/, '')
+}
+export function securityCode(symbol: string, market: string) {
+  const code =
+    market === 'CN'
+      ? cnSymbol(symbol)
+      : symbol.toUpperCase().replace(/^(HK|US)_/, '')
+  return market === 'HK' && /^\d+$/.test(code) ? code.padStart(5, '0') : code
 }
 export function opportunityCards(
   predictions: QlibPrediction[],
@@ -72,11 +79,13 @@ export function opportunityCards(
 ): OpportunityCard[] {
   const securities = new Map(
     (options.stocks ?? [])
-      .filter(
-        (stock) =>
-          stock.market.toUpperCase() === 'CN' && stock.asset_type !== 'etf',
-      )
-      .map((stock) => [cnSymbol(stock.symbol), stock]),
+      .filter((stock) => stock.asset_type !== 'etf')
+      .map((stock) => [
+        stock.market.toUpperCase() +
+          ':' +
+          securityCode(stock.symbol, stock.market.toUpperCase()),
+        stock,
+      ]),
   )
   const selected = new Set(
     predictions
@@ -90,8 +99,8 @@ export function opportunityCards(
     .slice()
     .sort((a, b) => a.rank - b.rank)
     .map((prediction) => {
-      const symbol = cnSymbol(prediction.symbol)
-      const stock = securities.get(symbol)
+      const symbol = securityCode(prediction.symbol, prediction.market)
+      const stock = securities.get(prediction.market + ':' + symbol)
       return {
         prediction,
         symbol,
@@ -111,7 +120,8 @@ export function opportunityCards(
               options.positions.some(
                 (item) => item.stock_id === stock.id && item.quantity > 0,
               ),
-        selected: selected.has(prediction.symbol),
+        selected:
+          prediction.portfolio_candidate ?? selected.has(prediction.symbol),
       }
     })
 }
