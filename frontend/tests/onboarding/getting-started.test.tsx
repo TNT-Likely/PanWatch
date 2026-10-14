@@ -29,7 +29,7 @@ function Controls() {
     <div data-tour-stock="1">股票报价</div>
     <button data-tour="add-alert">实际提醒入口</button>
     <section id="sec-ai">真实模型设置</section><section id="sec-notify">真实渠道设置</section>
-    <div role="tablist">实际研究导航</div><div data-testid="qlib-workbench">候选列表</div><button id="qlib-tab-research">研究回测入口</button>
+    <div data-tour="opportunity-filters">实际筛选栏</div><div data-tour="opportunity-signals">候选列表</div><a data-tour="opportunity-research" href="/research">量化研究入口</a>
     <Link to="/history">离开页面</Link><FirstAnalysis />
   </>
 }
@@ -194,7 +194,7 @@ describe('guide center', () => {
     await screen.findByRole('heading', { name: '引导中心' })
     expect(screen.getAllByRole('button', { name: '开始探索' })).toHaveLength(5)
     await userEvent.click(screen.getAllByRole('button', { name: '开始探索' })[0])
-    await screen.findByText('认识研究工作台')
+    await screen.findByText('筛选你想看的机会')
     expect(screen.getByTestId('path').textContent).toBe('/opportunities')
     expect(current.tour_step).toBe('done')
     expect(onboardingApi.analyze).not.toHaveBeenCalled()

@@ -10,6 +10,7 @@ describe('route page loaders', () => {
       'gettingStarted',
       'stocks',
       'opportunities',
+      'research',
       'paperTrading',
       'assistant',
       'alerts',
@@ -33,5 +34,10 @@ describe('route page loaders', () => {
 
   it('resolves the recoverable setup page', () => {
     expect(resolveRouteKey('/getting-started')).toBe('gettingStarted')
+  })
+
+  it('keeps research separate from the everyday opportunities route', () => {
+    expect(resolveRouteKey('/opportunities')).toBe('opportunities')
+    expect(resolveRouteKey('/research')).toBe('research')
   })
 })

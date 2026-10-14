@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { qlibApi } from '@panwatch/api'
-import Opportunities from '@/pages/Opportunities'
+import QlibResearch from '@/pages/QlibResearch'
 import { ConfirmProvider } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { ToastProvider } from '@panwatch/base-ui/components/ui/toast'
 import i18n from '@/i18n'
@@ -16,7 +16,7 @@ vi.mock('@panwatch/api', async (original) => ({
   ].map(name => [name, vi.fn()])),
 }))
 const settings = { enabled: false, dataset_id: null, daily_hour: 18, retrain_every_days: 30 }
-const view = () => render(<MemoryRouter><ConfirmProvider labels={{ title: '确认', cancel: '取消', confirm: '确认' }}><ToastProvider><Opportunities /></ToastProvider></ConfirmProvider></MemoryRouter>)
+const view = (path = '/research?tab=opportunities') => render(<MemoryRouter initialEntries={[path]}><ConfirmProvider labels={{ title: '确认', cancel: '取消', confirm: '确认' }}><ToastProvider><QlibResearch /></ToastProvider></ConfirmProvider></MemoryRouter>)
 beforeEach(async () => {
   vi.resetAllMocks()
   await i18n.changeLanguage('zh-CN')
@@ -32,6 +32,12 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 describe('Qlib research workbench', () => {
+  it('defaults the advanced route to research and links back to everyday opportunities', async () => {
+    view('/research')
+    expect(await screen.findByRole('tabpanel', { name: '研究与回测' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '← 返回机会页' }).getAttribute('href')).toBe('/opportunities')
+    expect(qlibApi.train).not.toHaveBeenCalled()
+  })
   it('never creates jobs or decisions merely by opening the page', async () => {
     view()
     expect(await screen.findByText('暂无已审批模型')).toBeTruthy()

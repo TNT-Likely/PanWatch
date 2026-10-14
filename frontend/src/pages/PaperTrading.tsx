@@ -394,7 +394,7 @@ export default function PaperTradingPage() {
 
       <div className="rounded-lg border bg-card p-3 text-sm space-y-2">
         <p>{qlibT('paperNote')}</p>
-        <Link className="text-primary underline" to="/opportunities">{qlibT('paperTitle')}</Link>
+        <Link className="text-primary underline" to="/research?tab=paper">{qlibT('paperTitle')}</Link>
       </div>
 
       {/* Market View Filter + 资金配置 */}

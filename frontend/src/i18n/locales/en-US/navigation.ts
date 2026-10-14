@@ -7,6 +7,7 @@ export const navigation = {
     home: 'Home',
     portfolio: 'Portfolio',
     opportunities: 'Opportunities',
+    research: 'Quant research',
     paperTrading: 'Paper trading',
     assistant: 'Assistant',
     alerts: 'Alerts',

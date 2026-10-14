@@ -14,7 +14,7 @@ bash scripts/setup_qlib.sh
 
 macOS 还需 `brew install libomp`。Docker 内置独立 `/opt/qlib` 环境与 `libgomp1`。自定义解释器使用绝对路径配置 `QLIB_WORKER_PYTHON`；环境缺失或版本不匹配时暂停新研究，不回退旧评分。
 
-机会页 → 数据与环境导入数据 JSON，必须包括来源、许可、许可确认、`data_kind`（market/synthetic）、`universe_kind`（historical_membership/fixed_research）、`adjustment`（point_in_time/snapshot_adjusted）、排序且唯一的 `calendar`、历史 `members` 和 `bars`。至少 3 个标的、每个标的 220 条行情及 220 个交易日；最多 200 个成分区间、200,000 行和 40MB。
+机会页 → 量化研究 → 数据与环境导入数据 JSON，必须包括来源、许可、许可确认、`data_kind`（market/synthetic）、`universe_kind`（historical_membership/fixed_research）、`adjustment`（point_in_time/snapshot_adjusted）、排序且唯一的 `calendar`、历史 `members` 和 `bars`。至少 3 个标的、每个标的 220 条行情及 220 个交易日；最多 200 个成分区间、200,000 行和 40MB。
 
 `members` 字段：symbol、start、end、price_limit=0.1、special_treatment=false。仅支持 SH600/601/603/605、SZ000/001/002 非 ST 主板股票。`bars` 字段：date、symbol、**未复权** open/high/low/close、股数单位的 volume、正数 factor；复权价格 = 未复权价格 × factor。不得把复权价当成执行原价，不得把今天的成分或修订值回填过去。当前年以外的历史交易日依赖提供者显式日历及其来源，平台不代为认证数据授权或时点声明。
 
@@ -37,6 +37,16 @@ Cython/NumPy/setuptools 并关闭构建隔离，不临时下载未锁定构建�
 和 [发布包清单](https://pypi.org/project/pyqlib/0.9.7/#files)。
 
 ## 用户流程
+
+日常入口 `/opportunities` 恢复概览、筛选和双列股票卡片。排名前 10%/20%
+按完整冻结研究池的名次计算，不是胜率；参考价格是对应日期的历史收盘价，不是实时价。
+正式数据可以按自选及真实持仓筛选，点击卡片打开共享个股详情；其行情和解读不参与 Qlib 排名。
+合成样例不关联真实公司或持仓，点击显示样例详情，关注只保存到研究篮子。
+“刷新”只回读结果，不隐式训练、预测或下单。没有结果时按提示进入高级设置。
+
+训练、数据、回测、审批和审计集中在 `/research`（量化研究），也可从导航的更多菜单进入。
+“查看模型组合”打开 `/research?tab=paper`，模拟决策仍需在高级模型机会中明确确认。
+真实与模拟持仓不混用。当前没有买入区间、止损或目标价输出，不用假字段补齐旧卡片。
 
 ```mermaid
 flowchart LR

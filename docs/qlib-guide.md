@@ -67,6 +67,21 @@ The destination must not exist. Never present its performance as market evidence
 
 ## Workflow and boundaries
 
+Everyday selection lives at `/opportunities`: overview cards, familiar filters,
+two-column stock cards and shared stock details. Top-10%/20% filters use positions
+in the entire frozen research universe, not win probabilities. Reference prices
+are dated historical closes, not live quotes. Market-data cards can join real
+watchlist/holdings metadata; independent stock quotes and analysis do not affect
+Qlib ranks. Synthetic cards never resolve to real companies or holdings; their
+follow action saves only a research-basket item.
+
+Refresh only rereads output; it never implicitly trains, predicts or creates an
+order. Training, data imports, backtests, governance and audits remain under
+`/research` (Quant research in the navigation's more menu). View model portfolio
+opens `/research?tab=paper`; paper decisions still require explicit confirmation
+in the advanced model-opportunities panel. Real and paper holdings remain separate.
+Entry ranges, stop losses and price targets are not generated or fabricated.
+
 ```mermaid
 flowchart LR
   D[Versioned data] --> J[Bounded worker tasks]

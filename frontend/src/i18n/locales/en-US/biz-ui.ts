@@ -107,19 +107,19 @@ export const bizUi = {
   "tracks": {
     "opportunities": {
       "title": "Discover and evaluate opportunities",
-      "description": "Explore Qlib data, backtests, reviewed publication and forward paper execution.",
+      "description": "Browse familiar filters and stock cards; enter advanced quant research only when needed.",
       "steps": {
         "filters": {
-          "title": "Explore the research workbench",
-          "description": "Switch between model ranks, research, governance, data/runtime and forward paper tabs. Import authorized data and train first if empty; the tour never imports, trains or publishes."
+          "title": "Filter the opportunities you want",
+          "description": "Filter watchlist, real holdings, within-pool ranks and historical trading states, then apply or clear. Ranks are not probabilities; demo data never links real holdings."
         },
         "signals": {
           "title": "Read frozen model ranks",
-          "description": "Check prediction dates, model identity, raw scores, ranks and coverage. Scores are not probabilities or buy advice. The research basket never changes model ranks or places orders."
+          "description": "Check names, symbols, ranks, dated reference closes and open a stock card for details. Synthetic cards open demo-only details. Following never places an order."
         },
         "evaluation": {
           "title": "Review out-of-sample and rolling backtests",
-          "description": "Open Research to inspect equity, Rank IC, momentum baseline, three rolling windows and frozen settings. Synthetic data validates engineering only; publication and paper decisions require explicit confirmation."
+          "description": "Use Quant research for backtests, data and model review. Everyday opportunities need no training parameters. Set up a model here if empty; the tour never trains, publishes or trades."
         }
       }
     },

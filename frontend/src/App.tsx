@@ -23,6 +23,7 @@ const {
   DashboardPage,
   GettingStartedPage,
   OpportunitiesPage,
+  QlibResearchPage,
   StocksPage,
   AgentsPage,
   SettingsPage,
@@ -41,6 +42,7 @@ const NAV_ITEMS: Array<{ to: string; icon: typeof LayoutDashboard; labelKey: Nav
   { to: '/assistant', icon: MessageCircle, labelKey: 'assistant' },
   { to: '/opportunities', icon: Sparkles, labelKey: 'opportunities' },
   { to: '/paper-trading', icon: Activity, labelKey: 'paperTrading' },
+  { to: '/research', icon: Sparkles, labelKey: 'research' },
   { to: '/alerts', icon: BellRing, labelKey: 'alerts' },
   { to: '/agents', icon: Bot, labelKey: 'agents' },
   { to: '/evaluations', icon: ClipboardCheck, labelKey: 'evaluations' },
@@ -304,6 +306,7 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/getting-started" element={<GettingStartedPage />} />
               <Route path="/opportunities" element={<OpportunitiesPage />} />
+              <Route path="/research" element={<QlibResearchPage />} />
               <Route path="/portfolio" element={<StocksPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/evaluations" element={<EvaluationsPage />} />
