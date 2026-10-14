@@ -68,11 +68,13 @@ watchlist/holdings metadata; independent stock quotes and analysis do not affect
 Qlib ranks. Synthetic cards never resolve to real companies or holdings; their
 follow action saves only a research-basket item.
 
-Refresh only rereads output; it never implicitly trains, predicts or creates an
-order. Training, data imports, backtests, governance and audits remain under
-`/research` (Quant research in the navigation's more menu). View model portfolio
-opens `/research?tab=paper`; paper decisions still require explicit confirmation
-in the advanced model-opportunities panel. Real and paper holdings remain separate.
+The default **Current highlights** view shows the model's top candidates; **All ranked stocks** retains the complete frozen ranking. Searches and watchlist/holding filters use the complete ranking. Optional dated context (20-observation adjusted return, relative share volume and drawdown from recent closing highs) is read from immutable input histories. It is descriptive evidence, not a model contribution, buy signal or independent live quote. Missing context remains explicitly missing.
+
+Use **Preview paper plan** to inspect the whole portfolio's proposed buys/sells, estimated shares/fees, per-item cash caps, retained positions and exclusions. Opening this dialog is read-only. A focused stock is not a single-stock order, and following a stock does not place an order. Explicit acknowledgement and confirmation freeze the server's preview hash. Changed cash, holdings, allocation, account state or selection requires a new preview; duplicate confirmation returns the same decision. Unfilled items cannot be replaced with unconfirmed stocks or donate their cash caps to other items.
+
+**Paper trading** shows waiting, paused, superseded, filled/partially filled, rejected, cancelled and expired plans, with source ranking and per-item execution/rejection details. A stopped account remains stopped after confirmation; enable it separately. Cancel before execution to stop that plan, not to restore an older one. Exit is by a newly confirmed rotation plan or manual paper close; automatic price targets and stop losses are not generated. HK/US and unsupported CN instruments remain research-only.
+
+Refresh only rereads output; it never implicitly trains, predicts or creates an order. Training, data imports, backtests, governance and audits remain under `/research` (Quant research in the navigation's more menu). View model portfolio opens `/paper-trading`. Real and paper holdings remain separate. The legacy decision-write endpoint now also requires a preview hash; clients must preview and confirm rather than submit blind decisions.
 Entry ranges, stop losses and price targets are not generated or fabricated.
 
 ```mermaid

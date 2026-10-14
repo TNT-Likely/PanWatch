@@ -44,6 +44,10 @@ vi.mock('@panwatch/api', async (original) => ({
       'train',
       'decision',
       'predict',
+      'paperPlans',
+      'previewPlan',
+      'confirmPlan',
+      'cancelPlan',
     ].map((name) => [name, vi.fn()]),
   ),
 }))
@@ -120,6 +124,10 @@ beforeEach(async () => {
     items: [{ ...run, predictions }],
   })
   vi.mocked(qlibApi.basket).mockResolvedValue({ items: [] })
+  vi.mocked(qlibApi.paperPlans).mockResolvedValue({
+    items: [],
+    account_enabled: true,
+  })
   vi.mocked(qlibApi.setBasket).mockResolvedValue({
     items: [{ symbol: 'SH600000', run_id: run.id }],
   })
@@ -171,7 +179,7 @@ describe('everyday opportunities page', () => {
     ).toBe('/research')
     expect(
       screen.getByRole('link', { name: '查看模型组合' }).getAttribute('href'),
-    ).toBe('/research?tab=paper')
+    ).toBe('/paper-trading')
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryByText('原始模型分')).toBeNull()
     expect(

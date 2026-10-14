@@ -7,7 +7,7 @@ import {
   lazy,
   Suspense,
 } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Bookmark,
   ChevronRight,
@@ -47,6 +47,8 @@ import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useLocalStorage } from '@/lib/utils'
 import QlibDataPipeline from '@/components/qlib-data-pipeline'
+import PaperPlanDialog, { planError } from '@/components/paper-plan-dialog'
+import PaperPlanStatus from '@/components/paper-plan-status'
 import {
   securityCode,
   defaultOpportunityFilters,
@@ -76,6 +78,7 @@ export default function Opportunities() {
     qlibT(`opportunityPage.${key}`, values)
   const confirmAction = useConfirm()
   const { toast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -88,8 +91,20 @@ export default function Opportunities() {
   const [basket, setBasket] = useState<QlibBasketItem[]>([])
   const [stocks, setStocks] = useState<StockItem[] | null>(null)
   const [positions, setPositions] = useState<OpportunityPosition[] | null>(null)
-  const [history, setHistory] = useState('latest')
-  const [market, setMarket] = useState<QlibMarket>('CN')
+  const [history, setHistory] = useState(() =>
+    /^[a-f0-9]{32}$/.test(searchParams.get('run') ?? '')
+      ? searchParams.get('run')!
+      : 'latest',
+  )
+  const [market, setMarket] = useState<QlibMarket>(() =>
+    ['CN', 'HK', 'US'].includes(searchParams.get('market') ?? '')
+      ? (searchParams.get('market') as QlibMarket)
+      : 'CN',
+  )
+  const [view, setView] = useState<'featured' | 'all'>('featured')
+  const [planOpen, setPlanOpen] = useState(false)
+  const [planFocus, setPlanFocus] = useState<string>()
+  const [planVersion, setPlanVersion] = useState(0)
   const [page, setPage] = useState(1)
   const [savedFilters, setFilters] = useLocalStorage<OpportunityFilters>(
     'panwatch_qlib_opportunity_filters_v1',
@@ -120,6 +135,7 @@ export default function Opportunities() {
           source: filters.source,
           holding: filters.holding,
           availability: filters.availability,
+          view,
           ...(history !== 'latest' ? { run_id: history } : {}),
         }),
         qlibApi.health(),
@@ -162,7 +178,15 @@ export default function Opportunities() {
       if (epoch === generation.current) setLoading(false)
     }
     // Keep language changes independent of network reloads.
-  }, [market, page, filters, history])
+  }, [market, page, filters, history, view])
+  useEffect(() => {
+    const requested = searchParams.get('run') ?? ''
+    setHistory(/^[a-f0-9]{32}$/.test(requested) ? requested : 'latest')
+    const requestedMarket = searchParams.get('market')
+    if (requestedMarket && ['CN', 'HK', 'US'].includes(requestedMarket))
+      setMarket(requestedMarket as QlibMarket)
+    setPage(1)
+  }, [searchParams])
   useEffect(() => {
     void reload()
     return () => {
@@ -339,9 +363,61 @@ export default function Opportunities() {
             <FlaskConical className="h-3.5 w-3.5" />
             {tr('research')}
           </Link>
+          <Button
+            size="sm"
+            disabled={!run || history !== 'latest' || loading}
+            onClick={() => {
+              setPlanFocus(undefined)
+              setPlanOpen(true)
+            }}
+          >
+            {t('plan.previewTitle')}
+          </Button>
         </div>
       </header>
-      <QlibDataPipeline onChange={reload} market={market} />
+      <div className="card mb-4 p-3 space-y-2 text-sm">
+        <p className="font-medium">{tr('journey')}</p>
+        <p className="text-xs text-muted-foreground">{tr('journeyNote')}</p>
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={tr('view')}
+        >
+          <Button
+            size="sm"
+            variant={view === 'featured' ? 'default' : 'outline'}
+            aria-pressed={view === 'featured'}
+            onClick={() => {
+              setView('featured')
+              setPage(1)
+            }}
+          >
+            {tr('featured')}
+          </Button>
+          <Button
+            size="sm"
+            variant={view === 'all' ? 'default' : 'outline'}
+            aria-pressed={view === 'all'}
+            onClick={() => {
+              setView('all')
+              setPage(1)
+            }}
+          >
+            {tr('fullPool')}
+          </Button>
+        </div>
+      </div>
+      <details className="mb-4" open={!loading && !run}>
+        <summary className="cursor-pointer text-sm text-primary">
+          {tr('advancedData')}
+        </summary>
+        <div className="mt-2">
+          <QlibDataPipeline onChange={reload} market={market} />
+        </div>
+      </details>
+      <div className="mb-4">
+        <PaperPlanStatus compact refreshKey={planVersion} />
+      </div>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {summary(
           'candidates',
@@ -379,7 +455,7 @@ export default function Opportunities() {
           )}
         </div>
         <Link
-          to="/research?tab=paper"
+          to="/paper-trading"
           className="inline-flex items-center gap-1 text-primary"
         >
           {tr('paper')}
@@ -413,6 +489,13 @@ export default function Opportunities() {
         onSubmit={(event) => {
           event.preventDefault()
           setFilters({ ...draft })
+          if (
+            draft.search.trim() ||
+            draft.top !== 'all' ||
+            draft.source !== 'all' ||
+            draft.holding !== 'all'
+          )
+            setView('all')
           setPage(1)
         }}
       >
@@ -422,6 +505,7 @@ export default function Opportunities() {
             market,
             (value) => {
               setMarket(value as QlibMarket)
+              setSearchParams({ market: value })
               setPage(1)
               setHistory('latest')
               setDetail(null)
@@ -503,6 +587,9 @@ export default function Opportunities() {
               value={history}
               onValueChange={(value) => {
                 setHistory(value)
+                setSearchParams(
+                  value === 'latest' ? { market } : { market, run: value },
+                )
                 setPage(1)
                 setDetail(null)
                 setTechnical(false)
@@ -610,6 +697,50 @@ export default function Opportunities() {
               <p className="mt-2 text-xs text-foreground">
                 {tr('cardHint', { days: run?.horizon ?? '—' })}
               </p>
+              <div className="mt-3 space-y-1 text-xs">
+                <p className="font-medium">{tr('observableEvidence')}</p>
+                {card.prediction.observed_context ? (
+                  <>
+                    <p>
+                      {tr('priceContext', {
+                        value: (
+                          card.prediction.observed_context
+                            .return_20_observations * 100
+                        ).toFixed(1),
+                      })}
+                    </p>
+                    <p>
+                      {tr('volumeContext', {
+                        value:
+                          card.prediction.observed_context.volume_ratio_20_observations?.toFixed(
+                            2,
+                          ) ?? '—',
+                      })}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {tr('drawdownContext', {
+                        value: (
+                          card.prediction.observed_context
+                            .drawdown_from_60_observation_high * 100
+                        ).toFixed(1),
+                      })}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">
+                    {tr('contextUnavailable')}
+                  </p>
+                )}
+                <p className="text-muted-foreground">{tr('evidenceNote')}</p>
+                <p>
+                  {tr('simulationState')}:{' '}
+                  {synthetic
+                    ? planError('qlib_synthetic_execution_not_supported', qlibT)
+                    : card.prediction.paper_block_reason
+                      ? planError(card.prediction.paper_block_reason, qlibT)
+                      : tr('planPreviewRequired')}
+                </p>
+              </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
                 <div>
                   <dt className="text-muted-foreground">
@@ -671,6 +802,17 @@ export default function Opportunities() {
               </span>
               <Button
                 size="sm"
+                variant="outline"
+                disabled={history !== 'latest' || loading}
+                onClick={() => {
+                  setPlanFocus(card.prediction.symbol)
+                  setPlanOpen(true)
+                }}
+              >
+                {t('plan.previewTitle')}
+              </Button>
+              <Button
+                size="sm"
                 variant="ghost"
                 className="h-7 gap-1 px-2 text-[11px]"
                 disabled={
@@ -728,6 +870,16 @@ export default function Opportunities() {
         <summary className="cursor-pointer">{tr('method')}</summary>
         <p className="mt-2 leading-relaxed">{tr('methodNote')}</p>
       </details>
+      <PaperPlanDialog
+        runId={run?.id ?? null}
+        focusSymbol={planFocus}
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        onConfirmed={() => {
+          setPlanVersion((v) => v + 1)
+          void reload()
+        }}
+      />
       {detail && !detailSynthetic && (
         <Suspense fallback={<p role="status">{tr('loading')}</p>}>
           <StockInsightModal

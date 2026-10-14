@@ -1,4 +1,135 @@
 export const qlib = {
+  plan: {
+    currency: 'CNY',
+    itemCashLimit: 'Item cash cap incl. fees',
+    keep: 'Keep holding',
+    exclusionLimit:
+      'Showing the first {{count}} exclusions; the total is shown above.',
+    checkResult:
+      'Plan check complete: {{opened}} buys, {{closed}} sells. Waiting or blocked plans remain visible below.',
+    previewTitle: 'Preview paper plan',
+    previewNote:
+      'This is the whole model portfolio, not a purchase of this one stock. Previewing creates no orders; only listed actions execute after confirmation.',
+    loading: 'Checking model, cash and holdings…',
+    dataAsOf: 'Data as of {{date}}',
+    scope: '{{ranked}} ranked / {{pool}} catalog stocks',
+    setupAccount: 'Set paper funds and initialize the account',
+    track: 'Track paper plans and execution',
+    notInOrders:
+      '{{symbol}} is not an action in this plan. Following or opening details never opens a position.',
+    availableCash: 'Available CN cash',
+    cashCeiling: 'Maximum buy budget including fees',
+    estimatedFees: 'Reference-price fee estimate',
+    executionDate: 'Planned execution window',
+    stock: 'Security',
+    action: 'Action',
+    reference: 'Reference close',
+    quantity: 'Estimated shares',
+    fee: 'Estimated fee',
+    buy: 'Buy',
+    sell: 'Sell',
+    filter: 'Validation',
+    estimatesNote:
+      'Shares and fees use the reference close, not guaranteed fills. Valid next-open quotes, 100-share lots and frozen budget constrain virtual fills; invalid quotes, price limits or insufficient cash reject actions without substituting other stocks.',
+    keptAndExcluded:
+      '{{kept}} existing Qlib positions retained; {{excluded}} securities excluded for scope, data or legacy-position conflicts.',
+    exitNote:
+      'Exit through a newly previewed and confirmed sell plan when ranks change, or close manually in paper trading subject to T+1. No automatic stop-loss, take-profit or invented target prices; legacy non-Qlib positions remain separate.',
+    pausedNote:
+      'The paper account is paused. Confirmation will not execute it; start the account in paper trading when ready.',
+    replaceNote:
+      'This confirmation replaces the prior pending plan execution priority. Old plans and audit remain; old plans do not execute automatically.',
+    ack: 'I confirm the whole action list and budget, understand that research has not validated effectiveness and estimated shares are not guaranteed fills.',
+    repreview: 'Preview again',
+    close: 'Close',
+    confirm: 'Confirm this paper plan',
+    confirming: 'Confirming…',
+    confirmed:
+      'Paper plan confirmed. Track waiting, paused or execution results in paper trading.',
+    statusTitle: 'Confirmed paper plans',
+    statusNote:
+      'Following is bookmarking; only confirmed plans enter paper execution. Execution is limited to the next known CN session at 09:30–09:35. Starting or checking does not buy immediately.',
+    refreshStatus: 'Refresh plan status',
+    emptyPlans:
+      'No confirmed paper plan. Preview a portfolio on Opportunities, review and confirm it. Rank updates never place orders automatically.',
+    resultCount: '{{filled}} actions filled · {{rejected}} rejected',
+    sourceDate: 'From {{date}} opportunity ranks',
+    estimatedShares: 'Estimate {{count}} shares',
+    sourceOpportunity: 'View source opportunity (read-only)',
+    cancel: 'Cancel pending plan',
+    cancelNote:
+      'Cancel this unexecuted plan? Rankings and audit remain; holdings are not cleared and no older plan is resumed automatically.',
+    checkPlans: 'Check pending plans',
+    checkPlansShort: 'Check plans',
+    states: {
+      waiting_open: 'Waiting for next open',
+      paused: 'Account paused; not executed',
+      expired: 'Execution window missed; new plan required',
+      cancelled: 'Cancelled; will not execute',
+      model_changed: 'Model changed; confirmation required',
+      superseded: 'Replaced by newer plan',
+      filled: 'Virtually filled',
+      rejected: 'All actions rejected',
+      partially_filled: 'Some actions filled; others rejected',
+      executed: 'Checked; no fill needed',
+    },
+    eventStates: { filled: 'Virtually filled', rejected: 'Rejected' },
+    errors: {
+      qlib_market_execution_not_supported:
+        'HK/US currently support research and observation only, not paper fills.',
+      qlib_unverified_execution_prices:
+        'Provider snapshots are not certified execution prices; research only.',
+      qlib_security_execution_not_supported:
+        'Paper fills currently support ordinary non-ST CN main-board stocks only.',
+      qlib_synthetic_execution_not_supported:
+        'Synthetic examples test engineering, never real-security paper positions.',
+      qlib_model_not_champion:
+        'This is no longer the approved model. View current opportunities.',
+      qlib_selection_not_latest:
+        'These are older frozen ranks for review only; preview current opportunities.',
+      qlib_prediction_stale:
+        'Ranking data is stale; update before creating a plan.',
+      qlib_prediction_coverage_insufficient:
+        'Prediction coverage is insufficient for a paper plan.',
+      qlib_training_cohort_not_full_prediction:
+        'These are training-cohort ranks; predict all ready securities first.',
+      qlib_execution_calendar_unknown:
+        'The next session calendar is unknown; no execution date can be promised.',
+      qlib_plan_expired:
+        'This ranking execution window has passed. Generate new ranks and a new plan.',
+      qlib_plan_already_confirmed:
+        'These ranks already have a confirmation. Track the existing plan; no duplicate entry.',
+      qlib_paper_account_required:
+        'Initialize a paper account and set its funds first.',
+      qlib_duplicate_managed_holdings:
+        'Duplicate Qlib holdings require ledger review before preview.',
+      qlib_no_changes_required:
+        'No portfolio change is needed. No orders are invented to create activity.',
+      insufficient_cash_or_lot:
+        'Available cash cannot cover a whole lot and fees; not filled.',
+      qlib_preview_changed_conflict:
+        'Model, ranks, cash or holdings changed. Preview again before confirming; the old preview cannot execute.',
+      qlib_research_ack_required:
+        'Research mode requires explicit risk acknowledgement.',
+      qlib_plan_preview_required:
+        'Preview the plan before submitting a confirmation bound to that preview.',
+      qlib_plan_already_executed_conflict:
+        'The plan has executed and cannot be cancelled; manage positions in paper trading.',
+      qlib_plan_holdings_changed:
+        'Holding size or ownership changed after confirmation; this action was rejected.',
+      legacy_position_not_managed:
+        'Conflicts with a legacy non-Qlib position; no automatic takeover.',
+      opening_quote_unavailable:
+        'Valid opening price or volume is missing; no fill.',
+      quote_stale_or_missing:
+        'Current-session quote is missing or stale; no fill.',
+      opening_price_limit:
+        'Opening price reaches the configured limit; no fill.',
+      paper_trading_t1_locked: 'CN T+1 has not unlocked; cannot sell.',
+      paper_trading_open_time_missing:
+        'Purchase time is missing; sellable shares cannot be verified.',
+    },
+  },
   universe: {
     qualityWarning:
       '{{count}} incompatible daily bars discarded; no invented prices',
@@ -186,6 +317,26 @@ export const qlib = {
       'Action incomplete. Previous data and reviewed rankings are retained:',
   },
   opportunityPage: {
+    journey:
+      'Inspect evidence → Preview portfolio → Confirm → Track paper execution',
+    journeyNote:
+      'Ranking is not a buy signal; following is not an order. The system previews a plan; only your confirmation schedules next-open paper execution.',
+    view: 'Opportunity view',
+    featured: 'Current highlights',
+    fullPool: 'All ranked stocks',
+    advancedData: 'Research settings and full catalog coverage (advanced)',
+    observableEvidence: 'Verifiable market context',
+    priceContext: 'Adjusted change over 20 valid observations: {{value}}%',
+    volumeContext:
+      'Latest volume / preceding 20-observation average: {{value}}×',
+    drawdownContext: 'From the last 60-observation close high: {{value}}%',
+    contextUnavailable:
+      'Verifiable market context is unavailable; no reasons are guessed from model scores.',
+    evidenceNote:
+      'Frozen market observations, not causal model explanations; adjustment or corporate-action anomalies may remain.',
+    simulationState: 'Paper boundary',
+    planPreviewRequired:
+      'Preview the whole plan to check funds and execution conditions',
     title: 'Opportunities',
     subtitle:
       'Find stocks to research, filter model ranks, and open familiar stock details.',

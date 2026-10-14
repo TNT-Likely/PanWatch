@@ -44,6 +44,7 @@ import {
 } from '@panwatch/base-ui/components/ui/dialog'
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
+import PaperPlanDialog from '@/components/paper-plan-dialog'
 
 const tabs = [
   'opportunities',
@@ -146,6 +147,7 @@ export default function QlibResearch() {
   const [templates, setTemplates] = useState<QlibTemplate[]>([])
   const [runs, setRuns] = useState<QlibRun[]>([])
   const [paper, setPaper] = useState<QlibPaper | null>(null)
+  const [planOpen, setPlanOpen] = useState(false)
   const [basket, setBasket] = useState<QlibBasketItem[]>([])
   const [dataset, setDataset] = useState('none')
   const [config, setConfig] = useState<QlibConfig>({ ...defaultQlibConfig })
@@ -489,19 +491,10 @@ export default function QlibResearch() {
                         opportunities?.status !== 'ready' ||
                         !health?.available
                       }
-                      onClick={async () => {
-                        if (
-                          activeRun &&
-                          (await confirmAction(qlibT('decisionConfirm')))
-                        )
-                          await act(
-                            () => qlibApi.decision(activeRun.id, true),
-                            qlibT('decisionSaved'),
-                          )
-                      }}
+                      onClick={() => setPlanOpen(true)}
                     >
                       <ArrowRight className="mr-2 h-4 w-4" />
-                      {qlibT('decision')}
+                      {qlibT('plan.previewTitle')}
                     </Button>
                   </div>
                 </div>
@@ -1264,6 +1257,12 @@ export default function QlibResearch() {
           )}
         </div>
       )}
+      <PaperPlanDialog
+        open={planOpen}
+        runId={activeRun?.id ?? null}
+        onOpenChange={setPlanOpen}
+        onConfirmed={() => void reload()}
+      />
       <Dialog
         open={detail !== null}
         onOpenChange={(open) => {

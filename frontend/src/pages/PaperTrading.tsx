@@ -20,6 +20,7 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { useMarketColors } from '@/hooks/use-market-colors'
 import { marketColorWithAlpha, marketDirection, marketSignTextClass } from '@/lib/market-colors'
+import PaperPlanStatus from '@/components/paper-plan-status'
 
 function formatCurrency(v: number, locale = 'zh-CN') {
   return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -214,7 +215,7 @@ export default function PaperTradingPage() {
     setScanning(true)
     try {
       const res = await paperTradingApi.scan()
-      toast(message('scanDone', { opened: res.opened ?? 0, closed: res.closed ?? 0 }), 'success')
+      toast(qlibT('plan.checkResult', { opened: res.opened ?? 0, closed: res.closed ?? 0 }), 'success')
       loadData()
     } catch {
       toast(message('scanFailed'), 'error')
@@ -374,8 +375,8 @@ export default function PaperTradingPage() {
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={handleScan} disabled={scanning}>
             <Play className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden sm:inline">{scanning ? tr('scanning') : tr('scanNow')}</span>
-            <span className="sm:hidden">{scanning ? tr('scanning') : tr('scanShort')}</span>
+            <span className="hidden sm:inline">{scanning ? tr('scanning') : qlibT('plan.checkPlans')}</span>
+            <span className="sm:hidden">{scanning ? tr('scanning') : qlibT('plan.checkPlansShort')}</span>
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={loadData} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -396,6 +397,7 @@ export default function PaperTradingPage() {
         <p>{qlibT('paperNote')}</p>
         <Link className="text-primary underline" to="/research?tab=paper">{qlibT('paperTitle')}</Link>
       </div>
+      <PaperPlanStatus refreshKey={refreshVersion} />
 
       {/* Market View Filter + 资金配置 */}
       {account && (

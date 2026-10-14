@@ -158,24 +158,57 @@ def export_experiment(record_id: str):
 
 
 @router.get("/opportunities")
-def opportunities(market:Literal["CN","HK","US"]="CN",page:int=Query(1,ge=1,le=10000),limit:int|None=Query(None,ge=1,le=200),search:str=Query("",max_length=120),top:int=Query(0,ge=0,le=50),source:Literal["all","watched"]="all",holding:Literal["all","held","unheld"]="all",availability:Literal["all","tradable","blocked"]="all",run_id:str|None=Query(None,pattern=r"^[a-f0-9]{32}$")):
+def opportunities(market:Literal["CN","HK","US"]="CN",page:int=Query(1,ge=1,le=10000),limit:int|None=Query(None,ge=1,le=200),search:str=Query("",max_length=120),top:int=Query(0,ge=0,le=50),source:Literal["all","watched"]="all",holding:Literal["all","held","unheld"]="all",availability:Literal["all","tradable","blocked"]="all",run_id:str|None=Query(None,pattern=r"^[a-f0-9]{32}$"),view:Literal["all","featured"]="all"):
     if top not in (0,10,20,50):
         raise HTTPException(422,"qlib_rank_filter_invalid")
-    return invoke(service.opportunities,market,page,limit,search,top,source,holding,availability,run_id)
+    return invoke(service.opportunities,market,page,limit,search,top,source,holding,availability,run_id,view)
 
 
 class DecisionInput(StrictInput):
     acknowledge_research: bool = False
+    preview_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 @router.post("/selections/{run_id}/decision")
 def decision(run_id: str, body: DecisionInput, actor=Depends(require_actor)):
-    return invoke(service.make_decision, run_id, actor, body.acknowledge_research)
+    if body.preview_hash is None:
+        raise HTTPException(422, "qlib_plan_preview_required")
+    from . import paper_plans
+    return invoke(paper_plans.confirm, run_id, actor, body.preview_hash, body.acknowledge_research)
 
 
 @router.get("/governance")
 def governance():
     return service.governance()
+
+
+@router.get("/selections/{run_id}/plan")
+def preview_plan(run_id: str):
+    from . import paper_plans
+    return invoke(paper_plans.preview, run_id)
+
+
+class ConfirmPlanInput(StrictInput):
+    preview_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    acknowledge_research: bool = False
+
+
+@router.post("/selections/{run_id}/plan")
+def confirm_plan(run_id: str, body: ConfirmPlanInput, actor=Depends(require_actor)):
+    from . import paper_plans
+    return invoke(paper_plans.confirm, run_id, actor, body.preview_hash, body.acknowledge_research)
+
+
+@router.get("/paper-plans")
+def paper_plans_status():
+    from . import paper_plans
+    return invoke(paper_plans.list_plans)
+
+
+@router.post("/paper-plans/{decision_id}/cancel")
+def cancel_plan(decision_id: str, actor=Depends(require_actor)):
+    from . import paper_plans
+    return invoke(paper_plans.cancel, decision_id, actor)
 
 
 @router.get("/executions")

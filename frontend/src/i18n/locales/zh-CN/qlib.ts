@@ -1,4 +1,120 @@
 export const qlib = {
+  plan: {
+    currency: 'CNY',
+    itemCashLimit: '逐项资金上限（含费）',
+    keep: '保留持仓',
+    exclusionLimit: '仅列出前 {{count}} 条排除原因，总数见上方。',
+    checkResult:
+      '计划检查完成：买入 {{opened}} 笔，卖出 {{closed}} 笔。尚未到开盘窗口或无法执行的计划仍在下方展示。',
+    previewTitle: '查看模拟计划',
+    previewNote:
+      '这是整组模型组合计划，不是买入当前单只股票。预览不会创建订单；确认后仅执行列出的交易项。',
+    loading: '正在核对模型、资金与持仓…',
+    dataAsOf: '数据截至 {{date}}',
+    scope: '排名 {{ranked}} / 母池 {{pool}} 只',
+    setupAccount: '前往模拟盘设置资金并初始化账户',
+    track: '查看模拟计划与执行状态',
+    notInOrders:
+      '{{symbol}} 不在本次交易项中；关注或打开详情不会让它自动建仓。',
+    availableCash: 'A 股当前可用资金',
+    cashCeiling: '本计划最高买入预算（含费用）',
+    estimatedFees: '参考价估计费用',
+    executionDate: '预计执行窗口',
+    stock: '证券',
+    action: '动作',
+    reference: '参考收盘价',
+    quantity: '估计股数',
+    fee: '估计费用',
+    buy: '买入',
+    sell: '卖出',
+    filter: '校验',
+    estimatesNote:
+      '数量和费用按参考收盘价估计，不是成交承诺。下一开盘按有效开盘价、100 股整数手和冻结预算虚拟成交；无效行情、涨跌停或资金不足会拒绝，不临时换入其他股票。',
+    keptAndExcluded:
+      '保留 {{kept}} 个现有 Qlib 仓位；{{excluded}} 只因证券范围、行情或旧仓位冲突不进入本计划。',
+    exitNote:
+      '退出方式：后续排名改变时重新预览并确认卖出计划，或在模拟盘手动平仓（遵守 T+1）。不会自动止盈止损，不生成目标价；旧非 Qlib 仓位不被接管。',
+    pausedNote:
+      '模拟账户当前暂停。确认后计划仍不会执行；你还需在模拟盘点击启动。',
+    replaceNote:
+      '确认此计划会替代上一份待执行计划的执行优先级；旧计划与审计保留，不自动执行旧计划。',
+    ack: '我确认以上整组买卖项和预算，理解研究结果未证明策略有效，参考数量不保证成交。',
+    repreview: '重新预览',
+    close: '关闭',
+    confirm: '确认这份模拟计划',
+    confirming: '正在确认…',
+    confirmed: '模拟计划已确认，请在模拟盘查看等待、暂停或执行结果。',
+    statusTitle: '已确认的模拟计划',
+    statusNote:
+      '关注是收藏，确认计划才会进入模拟执行。只有下一已知 A 股开盘 09:30–09:35 执行；启动或检查计划不会立即买入。',
+    refreshStatus: '刷新计划状态',
+    emptyPlans:
+      '还没有确认模拟计划。先在机会页预览组合，核对后确认；不会因排名更新自动下单。',
+    resultCount: '已成交 {{filled}} 项 · 拒绝 {{rejected}} 项',
+    sourceDate: '来自 {{date}} 的机会排名',
+    estimatedShares: '参考 {{count}} 股',
+    sourceOpportunity: '查看来源机会（只读）',
+    cancel: '取消待执行计划',
+    cancelNote:
+      '取消这份尚未执行的计划？保留排名与审计，不清空持仓，不自动恢复其他旧计划。',
+    checkPlans: '检查待执行计划',
+    checkPlansShort: '检查计划',
+    states: {
+      waiting_open: '等待下一开盘',
+      paused: '账户暂停，尚未执行',
+      expired: '已错过执行窗口，需要新计划',
+      cancelled: '已取消，不会执行',
+      model_changed: '模型已切换，需要重新确认',
+      superseded: '已被更新计划替代',
+      filled: '已虚拟成交',
+      rejected: '交易项全部拒绝',
+      partially_filled: '部分成交，部分拒绝',
+      executed: '已检查，无需成交',
+    },
+    eventStates: { filled: '已虚拟成交', rejected: '已拒绝' },
+    errors: {
+      qlib_market_execution_not_supported:
+        '港美股目前仅研究与观察，尚未接入模拟成交。',
+      qlib_unverified_execution_prices:
+        '供应商快照不是已认证执行价，只能研究，不能模拟成交。',
+      qlib_security_execution_not_supported:
+        '当前模拟成交仅支持普通非 ST A 股主板，其他证券只观察。',
+      qlib_synthetic_execution_not_supported:
+        '合成样例仅验收工程，不创建真实证券模拟仓位。',
+      qlib_model_not_champion: '该模型已不是当前审批模型，请查看最新机会。',
+      qlib_selection_not_latest:
+        '这是旧的冻结排名，仅作复盘；请使用最新机会预览。',
+      qlib_prediction_stale: '排名行情已过期，需要更新后才能创建计划。',
+      qlib_prediction_coverage_insufficient:
+        '本次预测覆盖不足，不能创建模拟计划。',
+      qlib_training_cohort_not_full_prediction:
+        '这是训练样本排名，需要先完成全体就绪股票预测。',
+      qlib_execution_calendar_unknown:
+        '下一交易日历尚不明确，暂不能约定执行日期。',
+      qlib_plan_expired: '本排名对应的执行窗口已经结束，请生成新的排名与计划。',
+      qlib_plan_already_confirmed:
+        '这份排名已有确认记录，请查看已有计划；不会重复建仓。',
+      qlib_paper_account_required: '模拟账户尚未初始化，请先设置模拟资金。',
+      qlib_duplicate_managed_holdings:
+        '存在重复 Qlib 仓位，需先核对账本再预览。',
+      qlib_no_changes_required: '当前持仓无需调仓；不会为凑交易而创建订单。',
+      insufficient_cash_or_lot: '可用资金不足以满足整数手及费用，未成交。',
+      qlib_preview_changed_conflict:
+        '模型、排名、资金或持仓已改变。请重新预览后确认，旧预览不会执行。',
+      qlib_research_ack_required: '研究模式需要明确确认风险。',
+      qlib_plan_preview_required: '请先预览计划，再提交与预览绑定的确认。',
+      qlib_plan_already_executed_conflict:
+        '计划已经执行，不能取消；需要处置持仓请到模拟盘。',
+      qlib_plan_holdings_changed:
+        '确认后的持仓数量或归属改变，这项交易已拒绝。',
+      legacy_position_not_managed: '与旧非 Qlib 仓位冲突，不自动接管。',
+      opening_quote_unavailable: '缺少有效开盘报价或成交量，不能成交。',
+      quote_stale_or_missing: '当前交易日报价缺失或过期，不能成交。',
+      opening_price_limit: '开盘触及价格限制，不能成交。',
+      paper_trading_t1_locked: 'A 股 T+1 未解锁，不能卖出。',
+      paper_trading_open_time_missing: '买入时间缺失，不能确认可卖数量。',
+    },
+  },
   universe: {
     qualityWarning: '已剔除 {{count}} 条不符合契约的日线，不填造价格',
     phases: {
@@ -171,6 +287,22 @@ export const qlib = {
     failed: '操作未完成，旧数据和已审批排名不会被替换：',
   },
   opportunityPage: {
+    journey: '先看机会依据 → 预览组合计划 → 你确认 → 模拟盘跟踪',
+    journeyNote:
+      '排名不是买入信号，关注不是下单。系统只生成预览；你确认后才会进入下一开盘模拟执行。',
+    view: '机会展示范围',
+    featured: '本次精选',
+    fullPool: '全部排名股票',
+    advancedData: '研究设置与完整母池覆盖（高级）',
+    observableEvidence: '可核对的行情上下文',
+    priceContext: '近 20 条有效日线复权涨跌：{{value}}%',
+    volumeContext: '最新成交量 / 前 20 条均量：{{value}} 倍',
+    drawdownContext: '距近 60 条有效收盘高点：{{value}}%',
+    contextUnavailable: '缺少可核验的行情上下文，不从模型分数猜测理由。',
+    evidenceNote:
+      '以上是冻结行情事实，不是模型因果解释；可能存在复权或公司行动异常。',
+    simulationState: '模拟边界',
+    planPreviewRequired: '需预览整组计划后才能判断资金和执行条件',
     title: '机会页',
     subtitle: '发现值得研究的股票，按模型排名筛选，点开查看个股详情。',
     back: '← 返回机会页',
@@ -228,7 +360,7 @@ export const qlib = {
     observe: '待观察',
     rank: '第 {{rank}} / {{total}} 名',
     cardHint: '观察未来 {{days}} 个交易日的相对表现；排名不等于可买入。',
-    referencePrice: '参考收盘价（元）',
+    referencePrice: '参考收盘价',
     rankChange: '排名变化',
     rankDelta: '{{delta}} 名（正值为上升）',
     openDetail: '查看 {{name}} 详情',
@@ -272,7 +404,7 @@ export const qlib = {
   },
   title: 'Qlib 研究工作台',
   subtitle:
-    '可追溯的模型排名、样本外回测与前向模拟。当前仅支持 A 股日频、非 ST 主板股票。',
+    '三市场可追溯排名与研究回测；前向模拟仅支持普通 A 股主板，需预览整组计划并确认。',
   tabs: {
     opportunities: '模型机会',
     research: '研究与回测',

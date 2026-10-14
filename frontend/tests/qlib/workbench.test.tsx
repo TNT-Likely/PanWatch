@@ -43,7 +43,7 @@ describe('Qlib research workbench', () => {
     expect(await screen.findByText('暂无已审批模型')).toBeTruthy()
     expect(qlibApi.train).not.toHaveBeenCalled()
     expect(qlibApi.decision).not.toHaveBeenCalled()
-    expect((screen.getByRole('button', { name: '创建下一开盘模拟决策' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '查看模拟计划' }) as HTMLButtonElement).disabled).toBe(true)
   })
   it('shows worker failure without reviving old scores', async () => {
     vi.mocked(qlibApi.health).mockResolvedValue({ available: false, error_code: 'qlib_worker_missing', runtime: null,

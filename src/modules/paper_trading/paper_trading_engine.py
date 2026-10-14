@@ -285,7 +285,8 @@ class PaperTradingEngine:
         """
         import hashlib
         from src.platform.persistence.qlib_models import QlibAudit, QlibControl, QlibExecution, QlibRecord
-        from src.modules.qlib_research.policy import dropout_plan, lot_quantity
+        from src.modules.qlib_research.policy import dropout_plan, lot_quantity, paper_security_supported
+        from src.modules.qlib_research.paper_plans import marker
         stamp = _utc_now().astimezone(ZoneInfo("Asia/Shanghai"))
         if not _is_trading_time("CN") or not (stamp.hour == 9 and 30 <= stamp.minute <= 35):
             return 0, [], []
@@ -299,7 +300,7 @@ class PaperTradingEngine:
         if payload["execution_date"] != stamp.date().isoformat():
             return 0, [], []
         marker_id = hashlib.sha256(("executed:" + decision.id).encode()).hexdigest()[:32]
-        if db.get(QlibRecord, marker_id):
+        if db.get(QlibRecord, marker_id) or db.get(QlibRecord, marker("cancelled", decision.id)):
             return 0, [], []
         selection = db.get(QlibRecord, payload["run_id"])
         if not selection:
@@ -308,15 +309,25 @@ class PaperTradingEngine:
         managed = {p.research_meta["instrument"]: p for p in positions if (p.research_meta or {}).get("instrument")}
         legacy = {p.stock_symbol for p in positions if not (p.research_meta or {}).get("instrument")}
         predictions = selection.payload["predictions"]
-        symbols = {row["symbol"] for row in predictions} | set(managed)
-        quotes = self._fetch_quotes_map([(symbol[2:], "CN") for symbol in sorted(symbols)])
+        frozen = payload.get("confirmation_kind") == "explicit_frozen_orders_v1"
+        frozen_orders = {o["symbol"]: o for o in payload.get("orders", [])}
+        symbols = set(frozen_orders) if frozen else {row["symbol"] for row in predictions} | set(managed)
+        by_symbol = {row["symbol"]: row for row in predictions}
+        supported = {s for s in symbols if paper_security_supported(by_symbol.get(s, {"symbol": s}))}
+        quotes = self._fetch_quotes_map([(symbol[2:], "CN") for symbol in sorted(supported)])
         eligible, reasons, prices = set(), {}, {}
         for symbol in symbols:
             quote = quotes.get(("CN", symbol[2:]))
             price = _safe_float(quote.get("open_price")) if quote else None
             previous = _safe_float(quote.get("prev_close")) if quote else None
             volume = _safe_float(quote.get("volume")) if quote else None
-            if symbol[2:] in legacy:
+            order = frozen_orders.get(symbol)
+            if symbol not in supported:
+                reasons[symbol] = "qlib_security_execution_not_supported"
+            elif frozen and ((order["side"] == "buy" and symbol in managed) or
+                             (order["side"] == "sell" and (symbol not in managed or managed[symbol].id != order["position_id"] or managed[symbol].quantity != order["estimated_quantity"]))):
+                reasons[symbol] = "qlib_plan_holdings_changed"
+            elif symbol[2:] in legacy:
                 reasons[symbol] = "legacy_position_not_managed"
             elif not quote or not quote.get("quote_date") or not quote_date_is_current("CN", quote):
                 reasons[symbol] = "quote_stale_or_missing"
@@ -329,7 +340,11 @@ class PaperTradingEngine:
             else:
                 eligible.add(symbol)
                 prices[symbol] = price
-        sell, buy = dropout_plan(predictions, managed, eligible, payload["config"]["topk"])
+        if frozen:
+            sell = [s for s, o in frozen_orders.items() if o["side"] == "sell" and s in eligible]
+            buy = [s for s, o in frozen_orders.items() if o["side"] == "buy" and s in eligible]
+        else:
+            sell, buy = dropout_plan(predictions, managed, eligible, payload["config"]["topk"])
         exits, entries = [], []
         costs = QlibCostModel(payload["config"])
         def event(symbol, side, status, quantity=0, price=None, reason="", position=None):
@@ -338,7 +353,7 @@ class PaperTradingEngine:
                 model_id=payload["model_id"], symbol=symbol, side=side, status=status,
                 quantity=quantity, price=price, reason=reason, position_id=position))
         for symbol, reason in reasons.items():
-            event(symbol, "filter", "rejected", reason=reason)
+            event(symbol, frozen_orders[symbol]["side"] if frozen else "filter", "rejected", reason=reason)
         for symbol in sell:
             position = managed[symbol]
             trade = self._close_position(db, account, position, prices[symbol], "qlib_dropout")
@@ -346,16 +361,18 @@ class PaperTradingEngine:
             event(symbol, "sell", "filled", position.quantity, prices[symbol], position=position.id)
             exits.append((position, trade))
         available = market_available_cash(db, account, "CN")
-        budget = available * 0.9 / len(buy) if buy else 0
+        budget = (min(available * 0.9, payload["cash_budget"]) / len(buy) if frozen and buy
+                  else available * 0.9 / len(buy) if buy else 0)
         for symbol in buy:
             price = prices[symbol]
-            quantity = lot_quantity(budget, price, available, costs)
+            symbol_budget = min(budget, frozen_orders[symbol]["cash_limit"]) if frozen else budget
+            quantity = lot_quantity(symbol_budget, price, min(available, symbol_budget) if frozen else available, costs)
             if quantity <= 0:
                 event(symbol, "buy", "rejected", reason="insufficient_cash_or_lot")
                 continue
             outlay = -costs.fill("buy", price, quantity).cash_delta
             position = PaperTradingPosition(stock_symbol=symbol[2:], stock_market="CN",
-                stock_name=symbol, quantity=quantity, entry_price=price, current_price=price,
+                stock_name=frozen_orders[symbol]["name"] if frozen else symbol, quantity=quantity, entry_price=price, current_price=price,
                 highest_price=price, status="open", strategy_code="qlib", opened_at=_utc_now(),
                 settlement_date=settlement_date("CN", _utc_now()),
                 research_meta={"instrument": symbol, "run_id": payload["run_id"], "model_id": payload["model_id"],

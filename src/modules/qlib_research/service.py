@@ -436,7 +436,7 @@ def freshness(asof_date, market="CN"):
         return False
 
 
-def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all", holding="all", availability="all", run_id=None):
+def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all", holding="all", availability="all", run_id=None, view="all"):
     with LOCK, transaction() as db:
         state = control(db)
         champion = market_champion(state, market)
@@ -471,10 +471,14 @@ def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all
                 basket={b["symbol"] for b in state.settings.get("basket",[])}
                 rows=[r for r in run["predictions"] if source!="watched" or r["symbol"] in basket]
         rows = [r for r in rows if (not top or r["rank"] <= max(1, math.ceil(count * top / 100))) and (availability == "all" or bool(r["tradable"]) == (availability == "tradable")) and (not search or search.casefold() in f"{r['symbol']} {run.get('names',{}).get(r['symbol'],'')}".casefold())]
+        if view == "featured":
+            rows = [r for r in rows if r["symbol"] in selected]
         total = len(rows)
         rows = [{**r,"portfolio_candidate":r["symbol"] in selected} for r in rows]
         if limit is not None:
             rows = rows[(page-1)*limit:page*limit]
+        from .opportunity_context import enrich
+        rows = enrich(run, rows)
         names = run.get("names", {})
         run["watched_count"] = watched_count
         if limit is not None:
@@ -527,35 +531,8 @@ def make_decision(run_id, actor, acknowledge_research=False):
     health = runtime_health()
     if not health["available"]:
         raise ValueError(health["error_code"])
-    with LOCK, transaction() as db:
-        state = control(db)
-        selection = record(db, run_id, "selection")
-        payload = selection.payload
-        if payload.get("market", "CN") != "CN":
-            raise ValueError("qlib_market_execution_not_supported")
-        if any(r.get("price_basis","raw_execution")!="raw_execution" for r in payload.get("predictions",[])):
-            raise ValueError("qlib_unverified_execution_prices")
-        if payload["model_id"] != state.champion_id:
-            raise ValueError("qlib_model_not_champion")
-        if not freshness(payload["asof_date"]):
-            raise ValueError("qlib_prediction_stale")
-        if payload.get("monitor", {}).get("fraction", 0) < 0.95:
-            raise ValueError("qlib_prediction_coverage_insufficient")
-        if state.settings.get("champion_mode", "research") != "validated" and not acknowledge_research:
-            raise ValueError("qlib_research_ack_required")
-        existing = db.query(QlibRecord).filter_by(kind="decision", parent_id=run_id).first()
-        if existing:
-            return serialize(existing)
-        chosen = [row for row in payload["predictions"] if row["tradable"]][:payload["config"]["topk"]]
-        if any(not row.get("paper_eligible", True) for row in chosen):
-            raise ValueError("qlib_security_execution_not_supported")
-        if not chosen:
-            raise ValueError("qlib_no_tradable_predictions")
-        decision = QlibRecord(id=identity(), kind="decision", parent_id=run_id, name=payload["asof_date"], payload={"run_id": run_id, "model_id": state.champion_id, "dataset_id": payload["dataset_id"], "asof_date": payload["asof_date"], "execution_date": execution_date(payload["asof_date"]), "market": "CN", "policy": POLICY, "risk_degree": 0.9, "symbols": [row["symbol"] for row in chosen], "target_weights": {row["symbol"]: 0.9 / len(chosen) for row in chosen}, "config": payload["config"], "research_mode": state.settings.get("champion_mode", "research") != "validated", "reference_prices": {row["symbol"]: row["reference_close"] for row in payload["predictions"]}})
-        db.add(decision)
-        db.add(QlibAudit(action="decision_created", actor=actor, target_id=decision.id, detail={"run_id": run_id, "research_acknowledged": acknowledge_research}))
-        db.flush()
-        return serialize(decision)
+    from .paper_plans import confirm
+    return confirm(run_id, actor, acknowledge_research=acknowledge_research)
 
 
 def templates():

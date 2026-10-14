@@ -5,11 +5,22 @@ equally to entrants. Target weights describe the intended pool, not fill promise
 """
 
 import math
+import re
 from datetime import date, timedelta
 from src.platform.scheduling.trading_calendar import calendar_known, is_trading_day
 
 
 POLICY = "topk_dropout_daily_next_open_90pct_cash"
+
+
+def paper_security_supported(row):
+    """Defense in depth: optional flags cannot grant unsupported securities."""
+    return (
+        row.get("market", "CN") == "CN"
+        and bool(re.fullmatch(r"(?:SH60|SZ00)\d{4}", row.get("symbol", "")))
+        and row.get("paper_eligible", True)
+        and row.get("price_basis", "raw_execution") == "raw_execution"
+    )
 
 
 def execution_date(asof):

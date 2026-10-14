@@ -46,6 +46,14 @@ export interface QlibPrediction {
   reference_close: number | null
   factor_inputs: Record<string, number>
   explanation_kind: string
+  paper_block_reason?: string
+  observed_context?: {
+    observations: number
+    return_20_observations: number
+    volume_ratio_20_observations: number | null
+    drawdown_from_60_observation_high: number
+    basis: string
+  } | null
 }
 export interface QlibDataset {
   id: string
@@ -232,6 +240,64 @@ export interface QlibDecision {
   target_weights: Record<string, number>
   research_mode: boolean
 }
+export interface QlibPlanOrder {
+  symbol: string
+  name: string
+  side: 'buy' | 'sell'
+  reference_price: number
+  estimated_quantity: number
+  estimated_fee: number
+  estimated_cash_delta: number
+  cash_limit: number | null
+  position_id: number | null
+}
+export interface QlibPlanPreview {
+  run_id: string
+  model_id: string
+  market: string
+  asof_date: string
+  execution_date: string | null
+  execution_window: string
+  research_mode: boolean
+  ready: boolean
+  blocking_reason: string
+  orders: QlibPlanOrder[]
+  kept: { symbol: string; quantity: number }[]
+  excluded: { symbol: string; reason: string }[]
+  excluded_count?: number
+  cash_budget: number
+  available_cash: number
+  estimated_fees: number
+  account_enabled: boolean
+  existing_decision_id: string | null
+  replaces_decision_id?: string | null
+  preview_hash: string | null
+  pool_count: number
+  ranked_count: number
+}
+export interface QlibPaperPlan {
+  id: string
+  run_id: string
+  model_id: string
+  asof_date: string
+  execution_date: string
+  status: string
+  research_mode: boolean
+  cash_budget: number | null
+  orders: QlibPlanOrder[]
+  symbols: string[]
+  filled: number
+  rejected: number
+  can_cancel: boolean
+  events: {
+    symbol: string
+    side: string
+    status: string
+    quantity: number
+    price: number | null
+    reason: string
+  }[]
+}
 export interface QlibExecution {
   id: string
   decision_id: string
@@ -291,7 +357,7 @@ export interface QlibUniverseJob {
   result_id: string | null
 }
 export interface QlibUniverseMember {
-  quality_warnings?: Record<string,number>
+  quality_warnings?: Record<string, number>
   symbol: string
   name: string
   code: string
@@ -417,6 +483,23 @@ export const qlibApi = {
     post<QlibGovernance>(`models/${id}/retire`, { revision, reason }),
   decision: (id: string, acknowledge_research: boolean) =>
     post<QlibDecision>(`selections/${id}/decision`, { acknowledge_research }),
+  previewPlan: (id: string) =>
+    fetchAPI<QlibPlanPreview>(`/qlib/selections/${id}/plan`),
+  confirmPlan: (
+    id: string,
+    preview_hash: string,
+    acknowledge_research: boolean,
+  ) =>
+    post<QlibDecision>(`selections/${id}/plan`, {
+      preview_hash,
+      acknowledge_research,
+    }),
+  paperPlans: () =>
+    fetchAPI<{ items: QlibPaperPlan[]; account_enabled: boolean }>(
+      `/qlib/paper-plans`,
+    ),
+  cancelPlan: (id: string) =>
+    post<{ id: string; status: string }>(`paper-plans/${id}/cancel`),
   templates: () => fetchAPI<{ items: QlibTemplate[] }>('/qlib/templates'),
   saveTemplate: (name: string, config: QlibConfig) =>
     post<QlibTemplate>('templates', { name, config }),
