@@ -45,6 +45,7 @@ import {
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useLocalStorage } from '@/lib/utils'
+import QlibDataPipeline from '@/components/qlib-data-pipeline'
 import {
   cnSymbol,
   defaultOpportunityFilters,
@@ -64,7 +65,10 @@ const format = (value: number | null | undefined, digits = 2) =>
 
 export default function Opportunities() {
   const { t } = useTranslation('qlib')
-  const qlibT = t as unknown as (key: string, values?: Record<string, unknown>) => string
+  const qlibT = t as unknown as (
+    key: string,
+    values?: Record<string, unknown>,
+  ) => string
   const tr = (key: string, values?: Record<string, unknown>) =>
     qlibT(`opportunityPage.${key}`, values)
   const confirmAction = useConfirm()
@@ -168,8 +172,17 @@ export default function Opportunities() {
         stocks,
         positions,
         basket,
+        names: run?.names,
       }),
-    [predictions, synthetic, run?.config.topk, stocks, positions, basket],
+    [
+      predictions,
+      synthetic,
+      run?.config.topk,
+      run?.names,
+      stocks,
+      positions,
+      basket,
+    ],
   )
   const visible = useMemo(
     () =>
@@ -306,6 +319,7 @@ export default function Opportunities() {
           </Link>
         </div>
       </header>
+      <QlibDataPipeline onChange={reload} />
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {summary(
           'candidates',

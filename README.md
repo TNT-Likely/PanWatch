@@ -65,7 +65,7 @@ The screenshots below use the English interface; Simplified Chinese is available
 | **AI research** | Follow technical, sentiment, news, and fundamentals analysis through debate, risk review, and a portfolio-manager decision. |
 | **Scheduled agents** | Run pre-market, intraday, and closing workflows on eligible exchange trading days using your configured schedules. |
 | **Price alerts** | Combine conditions with AND/OR logic and configure cooldowns, daily limits, expiration, and notification channels. |
-| **Opportunities / Qlib** | Import versioned data, train Alpha158 + LightGBM or Ridge, compare held-out and rolling backtests, review models and browse immutable ranks. |
+| **Opportunities / Qlib** | Initialize a fixed research pool from existing marketdata or import authorized snapshots, train Alpha158 + LightGBM or Ridge, review models and browse traceable stock ranks. |
 | **Paper trading** | Freeze a reviewed Qlib prediction into a CN next-open virtual decision, trace fills and rejections, and review the independent forward ledger. |
 | **Notifications** | Deliver reports and alerts through Telegram, WeCom, DingTalk, Feishu, Bark, or webhooks. |
 | **Mobile** | Install the PWA on your home screen and use the same workspace on your phone. |
@@ -74,7 +74,7 @@ Stock and listed ETF search, watchlists, holdings, price alerts, quotes and cand
 
 ETF deep analysis uses fund-specific context and does not substitute company financial statements. Fund holdings, NAV, fees and tracking error are not yet supplied as structured data. Qlib selection and new automatic paper orders currently support only non-ST CN main-board stocks; ETF/HK/US selection is unavailable. Existing paper positions remain available for manual handling.
 
-Qlib requires a separate pinned worker and user-provided, licensed historical data; unavailable sample data is not downloaded automatically. Synthetic examples validate engineering, not market alpha. See the [Qlib guide](docs/qlib-guide.md). Upgrading retires the old selection code and its derived tables, not account, holding or trade ledgers. Legacy paper positions stop following old selection rules; review them manually and back up your database before upgrading.
+Qlib requires a separate pinned worker and authorized data use. Existing Tencent / Eastmoney sources can initialize a 3–20-stock fixed research pool with opt-in daily updates; its snapshot-adjustment proxy and unverified historical status are research-only, not PIT or market-alpha validation. Unavailable official sample data is not downloaded automatically. See the [Qlib guide](docs/qlib-guide.md). Upgrading retires the old selection code and its derived tables, not account, holding or trade ledgers. Legacy paper positions stop following old selection rules; review them manually and back up your database before upgrading.
 
 ## Quick Start
 

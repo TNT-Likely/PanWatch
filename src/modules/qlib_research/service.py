@@ -153,8 +153,9 @@ def import_dataset(data: DatasetInput, actor):
             "source": data.source, "license": data.license, "license_acknowledged": True,
             "market": data.market, "data_kind": data.data_kind, "universe_kind": data.universe_kind,
             "adjustment": data.adjustment, "content_hash": checksum, "rows": len(data.bars),
+            "names": data.names, "provenance": data.provenance,
             "symbols": symbols, "dates": len(dates), "start_date": dates[0], "end_date": dates[-1],
-            "warnings": [flag for flag, active in (("fixed_research_universe_not_historical_index", data.universe_kind == "fixed_research"), ("snapshot_adjustment_not_point_in_time", data.adjustment == "snapshot_adjusted"), ("synthetic_not_market_validation", data.data_kind == "synthetic")) if active],
+            "warnings": [flag for flag, active in (("fixed_research_universe_not_historical_index", data.universe_kind == "fixed_research"), ("snapshot_adjustment_not_point_in_time", data.adjustment == "snapshot_adjusted"), ("synthetic_not_market_validation", data.data_kind == "synthetic"), ("hfq_close_ratio_proxy_preserves_raw_intraday_ratios", bool(data.provenance)), ("historical_ST_and_delisting_status_unverified", bool(data.provenance))) if active],
         })
         db.add(item)
         db.add(QlibAudit(action="dataset_import", actor=actor, target_id=dataset_id, detail={"hash": checksum}))
@@ -210,6 +211,7 @@ def execute_job(job_id):
             data_id, model_id = job.dataset_id, job.model_id
             dataset = record(db, data_id, "dataset")
             expected_hash = dataset.payload["content_hash"]
+            dataset_names = dict(dataset.payload.get("names", {}))
             task = {"dataset_path": str(dataset_path(data_id)), "config": config}
             if model_id:
                 model = record(db, model_id, "model")
@@ -259,7 +261,7 @@ def execute_job(job_id):
             prior = latest_selection(model_id, db)
             ranks = {row["symbol"]: row["rank"] for row in prior.payload["predictions"]} if prior else {}
             predictions = [{**row, "rank_change": ranks[row["symbol"]] - row["rank"] if row["symbol"] in ranks else None} for row in output["predictions"]]
-            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": "CN", "predictions": predictions, "monitor": output["monitor"], "feature_set": "Alpha158", "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config}))
+            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": "CN", "predictions": predictions, "monitor": output["monitor"], "feature_set": "Alpha158", "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config, "names": dataset_names}))
             job.status, job.result_id, job.finished_at = "succeeded", run_id, now()
             if job.kind == "train" and job.request_key.startswith("scheduled-"):
                 state = control(db)
@@ -302,6 +304,8 @@ def recover_jobs():
         for job in db.query(QlibJob).filter(QlibJob.status.in_(("running", "queued"))).all():
             job.status, job.error_code, job.finished_at = "failed", "qlib_job_interrupted", now()
             db.add(QlibAudit(action="job_interrupted", actor="startup", target_id=job.id))
+    from . import marketdata_sync
+    marketdata_sync.recover()
 
 
 def shutdown():
@@ -309,6 +313,8 @@ def shutdown():
         for process in PROCESSES.values():
             if process.poll() is None:
                 process.terminate()
+    from . import marketdata_sync
+    marketdata_sync.recover()
 
 
 def governance():
@@ -530,9 +536,9 @@ def save_schedule(settings, actor):
     with LOCK, transaction() as db:
         if settings.get("dataset_id"):
             record(db, settings["dataset_id"], "dataset")
-        if settings["enabled"] and not settings.get("dataset_id"):
-            raise ValueError("qlib_schedule_dataset_required")
         state = control(db)
+        if settings["enabled"] and not settings.get("dataset_id") and not state.settings.get("marketdata_source"):
+            raise ValueError("qlib_schedule_dataset_required")
         state.settings = {**DEFAULT_SETTINGS, **state.settings, **settings}
         db.add(QlibAudit(action="schedule_saved", actor=actor, detail=settings))
     return governance()
@@ -543,6 +549,10 @@ def scheduled_tick(current=None):
     from zoneinfo import ZoneInfo
     from src.platform.scheduling.trading_calendar import is_trading_day
     moment = (current or now()).astimezone(ZoneInfo("Asia/Shanghai"))
+    from . import marketdata_sync
+    sync = marketdata_sync.scheduled_sync(moment)
+    if sync is not None:
+        return sync
     with LOCK, transaction() as db:
         state = control(db)
         settings = {**DEFAULT_SETTINGS, **state.settings}

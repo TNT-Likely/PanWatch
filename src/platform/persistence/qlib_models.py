@@ -47,6 +47,22 @@ class QlibControl(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
+class QlibSyncJob(Base):
+    """Atomic whole-pool marketdata ingestion, separate from model workers."""
+    __tablename__ = "qlib_sync_jobs"
+    id = Column(String, primary_key=True)
+    request_key = Column(String, nullable=False, unique=True)
+    config = Column(JSON, nullable=False)
+    status = Column(String, nullable=False, default="queued", index=True)
+    progress = Column(JSON, nullable=False, default=dict)
+    dataset_id = Column(String, nullable=True)
+    train_job_id = Column(String, nullable=True)
+    predict_job_id = Column(String, nullable=True)
+    error_code = Column(String, nullable=False, default="")
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    finished_at = Column(DateTime, nullable=True)
+
+
 class QlibAudit(Base):
     __tablename__ = "qlib_audit"
     id = Column(Integer, primary_key=True, autoincrement=True)

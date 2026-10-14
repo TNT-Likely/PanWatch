@@ -16,6 +16,9 @@ import { ToastProvider } from '@panwatch/base-ui/components/ui/toast'
 import i18n from '@/i18n'
 
 const { insight } = vi.hoisted(() => ({ insight: vi.fn() }))
+vi.mock('@/components/qlib-data-pipeline', () => ({
+  default: () => <div data-testid="data-pipeline" />,
+}))
 vi.mock('@panwatch/biz-ui/components/stock-insight-modal', () => ({
   default: (props: { symbol: string; researchContext: React.ReactNode }) => {
     insight(props)
@@ -132,18 +135,28 @@ describe('everyday opportunities page', () => {
     localStorage.setItem('panwatch_qlib_opportunity_filters_v1', 'null')
     view()
     await screen.findByRole('button', { name: '查看 样例股票 600000 详情' })
-    expect(screen.getAllByRole('button', { name: /^查看 样例股票.*详情$/ })).toHaveLength(8)
+    expect(
+      screen.getAllByRole('button', { name: /^查看 样例股票.*详情$/ }),
+    ).toHaveLength(8)
   })
   it('requires confirmation to remove a real unheld watch and preserves it on cancel', async () => {
     market()
     vi.mocked(fetchAPI).mockResolvedValue([])
     view()
     await screen.findByRole('button', { name: '查看 测试证券 详情' })
-    await userEvent.click(screen.getByRole('button', { name: '取消关注 600000' }))
-    await userEvent.click(screen.getByRole('button', { name: '取消', exact: true }))
+    await userEvent.click(
+      screen.getByRole('button', { name: '取消关注 600000' }),
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: '取消', exact: true }),
+    )
     expect(stocksApi.remove).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole('button', { name: '取消关注 600000' }))
-    await userEvent.click(screen.getByRole('button', { name: '确认', exact: true }))
+    await userEvent.click(
+      screen.getByRole('button', { name: '取消关注 600000' }),
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: '确认', exact: true }),
+    )
     await waitFor(() => expect(stocksApi.remove).toHaveBeenCalledWith(1))
     expect(qlibApi.decision).not.toHaveBeenCalled()
   })

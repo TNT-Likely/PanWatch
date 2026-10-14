@@ -121,6 +121,35 @@ export interface QlibRun {
   data_kind: string
   config: QlibConfig
   predictions?: QlibPrediction[]
+  names?: Record<string, string>
+}
+export interface QlibMarketDataSource {
+  symbols: string[]
+  vendor: 'auto' | 'tencent' | 'eastmoney'
+  license: string
+  license_acknowledged: true
+  automatic: boolean
+}
+export interface QlibSyncJob {
+  id: string
+  status: string
+  progress: {
+    completed: number
+    total: number
+    phase: string
+    vendor?: string
+    symbol?: string
+  }
+  dataset_id: string | null
+  train_job_id: string | null
+  predict_job_id: string | null
+  error_code: string
+}
+export interface QlibDataSourceStatus {
+  source: QlibMarketDataSource | null
+  dataset_id: string | null
+  vendors: string[]
+  job: QlibSyncJob | null
 }
 export interface QlibOpportunities {
   items: QlibPrediction[]
@@ -224,6 +253,24 @@ export interface QlibBasketItem {
 const post = <T>(path: string, body: unknown = {}) =>
   fetchAPI<T>(`/qlib/${path}`, { method: 'POST', body: JSON.stringify(body) })
 export const qlibApi = {
+  dataSource: () => fetchAPI<QlibDataSourceStatus>('/qlib/data-source'),
+  configureDataSource: (body: QlibMarketDataSource) =>
+    fetchAPI<QlibDataSourceStatus>('/qlib/data-source', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  syncDataSource: (
+    request_key: string,
+    train_when_ready = false,
+    reinitialize = false,
+  ) =>
+    post<QlibSyncJob>('data-source/sync', {
+      request_key,
+      train_when_ready,
+      reinitialize,
+    }),
+  cancelDataSync: (id: string) =>
+    post<QlibSyncJob>(`data-source/jobs/${id}/cancel`),
   health: () => fetchAPI<QlibHealth>('/qlib/health'),
   datasets: () => fetchAPI<{ items: QlibDataset[] }>('/qlib/datasets'),
   importDataset: (data: unknown) => post<QlibDataset>('datasets', data),

@@ -149,6 +149,23 @@ class MarketData:
         resp = self._kline_engine.fetch(req, min_count=min_count, cache_ttl_sec=0)
         return resp.data or []
 
+    def research_sources(self) -> list[str]:
+        """Reuse enabled kline sources without exposing provider credentials."""
+        return list(dict.fromkeys(source.vendor for source in self.config.sources_for("kline", "CN")
+                                  if source.enabled and source.vendor in {"tencent", "eastmoney"}))
+
+    def research_history(self, symbol: str, *, vendor: str, days: int = 800, completed_through: str | None = None):
+        from marketdata.research import fetch_history
+        if vendor not in self.research_sources():
+            raise ValueError("qlib_research_source_disabled")
+        return fetch_history(vendor, symbol, days, completed_through)
+
+    def research_calendar(self, *, vendor: str, days: int = 800) -> list[str]:
+        from marketdata.research import fetch_calendar
+        if vendor not in self.research_sources():
+            raise ValueError("qlib_research_source_disabled")
+        return fetch_calendar(vendor, days)
+
     def quotes(self, symbols: list[str | Symbol], *, market: str | None = None) -> list[Quote]:
         """批量报价。symbols 可跨市场:未显式给 market 时按代码自动识别并分组。"""
         groups: dict[str, list[Symbol]] = {}

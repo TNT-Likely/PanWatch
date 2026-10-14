@@ -58,6 +58,8 @@ class DatasetInput(StrictInput):
     data_kind: Literal["market", "synthetic"]
     universe_kind: Literal["historical_membership", "fixed_research"]
     adjustment: Literal["point_in_time", "snapshot_adjusted"]
+    names: dict[str, str] = Field(default_factory=dict, max_length=20)
+    provenance: dict[str, str] = Field(default_factory=dict, max_length=8)
     calendar: list[date] = Field(min_length=220, max_length=10000)
     members: list[Membership] = Field(min_length=3, max_length=200)
     bars: list[Bar] = Field(min_length=660, max_length=200000)
@@ -85,6 +87,10 @@ class DatasetInput(StrictInput):
             if any(b.start <= a.end for a, b in zip(ordered, ordered[1:])):
                 raise ValueError("qlib_membership_overlap")
         counts: dict[str, int] = {}
+        if any(not re.fullmatch(r"(SH|SZ)[0-9]{6}", key) or len(value) > 120 for key, value in self.names.items()):
+            raise ValueError("qlib_names_invalid")
+        if any(len(key) > 60 or len(value) > 300 for key, value in self.provenance.items()):
+            raise ValueError("qlib_provenance_invalid")
         for bar in self.bars:
             key = (bar.date, bar.symbol)
             if key in seen:
@@ -142,6 +148,28 @@ class ScheduleInput(StrictInput):
     dataset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     daily_hour: int = Field(default=18, ge=16, le=23)
     retrain_every_days: int = Field(default=30, ge=7, le=365)
+
+
+class MarketDataSourceInput(StrictInput):
+    symbols: list[str] = Field(min_length=3, max_length=20)
+    vendor: Literal["auto", "tencent", "eastmoney"] = "auto"
+    license: str = Field(min_length=5, max_length=300)
+    license_acknowledged: Literal[True]
+    automatic: bool = False
+
+    @model_validator(mode="after")
+    def supported_pool(self):
+        if len(set(self.symbols)) != len(self.symbols) or any(not re.fullmatch(r"(SH(600|601|603|605)|SZ(000|001|002))[0-9]{3}", s) for s in self.symbols):
+            raise ValueError("qlib_research_pool_invalid")
+        self.symbols = sorted(self.symbols)
+        return self
+
+
+class MarketDataSyncInput(StrictInput):
+    request_key: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+    train_when_ready: bool = False
+    reinitialize: bool = False
+    predict_when_ready: bool = True
 
 
 def content_hash(data: dict) -> str:

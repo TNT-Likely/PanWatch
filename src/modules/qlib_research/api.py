@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import Field, ValidationError
 
 from . import service
-from .contracts import DatasetInput, JobInput, PublishInput, ResearchConfig, ScheduleInput, StrictInput
+from .contracts import DatasetInput, JobInput, MarketDataSourceInput, MarketDataSyncInput, PublishInput, ResearchConfig, ScheduleInput, StrictInput
 
 
 def current_actor():
@@ -60,6 +60,30 @@ async def upload_dataset(request: Request, actor=Depends(require_actor)):
 @router.get("/jobs")
 def jobs():
     return {"items": service.jobs()}
+
+
+@router.get("/data-source")
+def data_source():
+    from . import marketdata_sync
+    return marketdata_sync.status()
+
+
+@router.put("/data-source")
+def configure_data_source(body: MarketDataSourceInput, actor=Depends(require_actor)):
+    from . import marketdata_sync
+    return invoke(marketdata_sync.configure, body, actor)
+
+
+@router.post("/data-source/sync")
+def sync_data_source(body: MarketDataSyncInput, actor=Depends(require_actor)):
+    from . import marketdata_sync
+    return invoke(marketdata_sync.enqueue, body.request_key, actor, train_when_ready=body.train_when_ready, reinitialize=body.reinitialize, predict_when_ready=body.predict_when_ready)
+
+
+@router.post("/data-source/jobs/{job_id}/cancel")
+def cancel_data_sync(job_id: str, actor=Depends(require_actor)):
+    from . import marketdata_sync
+    return invoke(marketdata_sync.cancel, job_id, actor)
 
 
 @router.post("/jobs")

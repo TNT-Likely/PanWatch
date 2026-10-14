@@ -52,10 +52,42 @@ boards, incomplete/future sessions and membership violations. Versions are
 content-addressed. A later prediction snapshot may extend history but cannot
 revise training bars, calendars or historical membership.
 
-The application does **not** acquire or license a market-data feed. Daily updates
-must be imported manually or through authenticated `POST /api/qlib/datasets`, then
-selected in the schedule. Stale snapshots block scheduled work. Provider license
-and point-in-time declarations are not independently certified by PanWatch.
+### Initialize from existing marketdata (no hand-written JSON)
+
+On Opportunities choose **Connect existing data**, confirm a fixed pool of 3–20
+regular CN main-board stocks and your existing data-use basis, then **Initialize
+history and train**. This reuses enabled Tencent / Eastmoney K-line sources; no
+new account is required. Edit the example pool or use your watchlist. Examples
+are neither recommendations nor historical index membership.
+
+Only a complete validated pool creates an Alpha158 + LightGBM candidate. Download
+progress/cancellation is durable. **Review candidate** opens research approval;
+inspect the complete experiment, baseline and rolling validation, provide a
+reason, then explicitly approve to display real stock cards. Opening the page,
+ingestion and training never implicitly approve models or create orders.
+
+The dedicated adapter requests raw OHLCV and same-source hfq snapshots, excludes
+unfinished sessions and converts regular main-board volume from lots to shares.
+The disclosed research factor is hfq close / raw close, preserving raw intraday
+ratios; it does not exactly reproduce vendor-adjusted OHLC or certify PIT actions.
+Sessions come from observed SSE index daily bars, not guessed weekdays. Current
+status checks cannot certify historical ST/delisting status or membership.
+Automatic imports are always `market / fixed_research / snapshot_adjusted` and
+cannot publish in validated mode.
+
+**Update history & ranks** ingests the complete pool and replays the reviewed
+model, without retraining or changing it. Opt in to trading-day after-close
+ingestion/prediction (18:00 by default); retraining still produces candidates
+only. Short/stale/missing stocks, disabled sources or historical corrections
+retain the last complete version, never partial publication. Source/history
+changes require explicit reinitialization, retraining and review. Initialization
+tries at most two enabled sources in existing priority order, using one source
+for the entire pool; later updates pin that source.
+
+Public API access grants no commercial or redistribution rights. The confirmation
+records a user declaration, not independent legal verification. Other authorized
+snapshots can still use authenticated `POST /api/qlib/datasets`. Market history and
+research backtests are not evidence of alpha or guaranteed profitability.
 
 From a source checkout, this optional fixture creates **synthetic QA-only** data:
 

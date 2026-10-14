@@ -1,4 +1,81 @@
 export const qlib = {
+  dataPipeline: {
+    title: 'Market-data selection',
+    start: 'Connect existing data',
+    configure: 'Data settings',
+    sync: 'Update history & ranks',
+    train: 'Train candidate',
+    review: 'Review candidate',
+    flow: 'Existing marketdata → complete fixed pool → Qlib training → human review → stock rankings; opt-in updates after close.',
+    notConfigured:
+      'No real research pool initialized; this does not mean there are no market opportunities.',
+    dataReady:
+      'Market data ready. Rankings still use the reviewed model; new candidates need approval.',
+    candidateReady: 'Candidate trained. Review it before using its rankings.',
+    working:
+      'Processing {{completed}} / {{total}} stocks · {{phase}}. Closing this page does not stop the job.',
+    phases: {
+      prediction: 'Generating reviewed-model ranks',
+      calendar: 'Checking observed trading sessions',
+      queued: 'Queued',
+      quotes: 'Checking status',
+      history: 'Fetching raw prices and adjustment snapshots',
+      persist: 'Validating the complete pool',
+      training: 'Training candidate model',
+      complete: 'Data complete; checking model tasks',
+    },
+    poolStatus:
+      'Fixed pool: {{count}} stocks · source {{vendor}} · after-close updates {{automatic}}',
+    on: 'enabled',
+    off: 'disabled',
+    setupTitle: 'Connect existing marketdata',
+    limits:
+      'No new account. Reuses enabled Tencent / Eastmoney sources for 3–20 regular CN main-board stocks. Not historical index membership. Adjustment uses a disclosed hfq close-ratio proxy preserving raw intraday ratios, without historical ST/delisting certification. Research only.',
+    pool: 'Fixed pool (space- or comma-separated symbols)',
+    examples: 'Use example research pool',
+    watchlist: 'Use my watchlist',
+    poolCount: '{{count}} stocks (3–20 required)',
+    vendor: 'History source',
+    auto: 'Existing priority (one source for the whole pool)',
+    license: 'Existing data-use basis',
+    licensePlaceholder:
+      'Describe your authorization, agreement or personal research basis',
+    consent:
+      'I confirm authorization under this basis. Public API access does not grant commercial use or redistribution rights.',
+    automatic:
+      'Enable trading-day after-close ingestion and prediction (18:00 by default). Periodic training produces candidates only, without automatic approval or orders.',
+    invalidPool:
+      'Enter 3–20 unique regular SH/SZ main-board symbols. ETFs, ST, STAR, ChiNext and short-history IPOs are not supported.',
+    save: 'Save settings only',
+    initialize: 'Initialize history and train',
+    close: 'Cancel',
+    cancel: 'Cancel download',
+    cancelConfirm:
+      'Cancel ingestion? The previous complete dataset and rankings will be preserved.',
+    reinitializeConfirm:
+      'Reinitialization creates a new dataset and candidate. Existing models and rankings remain until another review. Continue?',
+    reviewNotice:
+      'Research-mode approval is not a profit guarantee or formal validation. Fixed membership, public-source snapshots, historical status and adjustment proxy have limitations. Approval switches rankings only, without trades or paper decisions.',
+    metrics:
+      'Test Rank IC {{ic}} · maximum drawdown {{drawdown}} (research backtest, not a return guarantee)',
+    fullReport: 'Inspect experiments, baseline and rolling validation',
+    reviewReason: 'Review basis (at least 5 characters)',
+    approve: 'Approve research model and show rankings',
+    sourceDisabled:
+      'No enabled compatible history source. Enable Tencent or Eastmoney K-lines in data-source settings.',
+    stale:
+      'History does not cover the latest completed session. Previous data retained; retry later.',
+    poolUnavailable:
+      'The pool contains unknown-status, ST, short-history or missing/suspended stocks. No partial update; check the pool.',
+    historyChanged:
+      'Source or frozen history changed. Append stopped. Reinitialize, retrain and review a new version.',
+    workerUnavailable:
+      'Qlib worker unavailable; inspect research runtime health.',
+    fetchFailed:
+      'Ingestion failed. Previous complete data and rankings retained; retry later.',
+    failed:
+      'Action incomplete. Previous data and reviewed rankings are retained:',
+  },
   opportunityPage: {
     title: 'Opportunities',
     subtitle:
@@ -52,7 +129,7 @@ export const qlib = {
     sampleNotice:
       'Synthetic demo, not real companies or market opportunities. Following adds only to the demo research basket, never your real watchlist or holdings.',
     notice:
-      'Ranks are relative within one research universe, not win probabilities or buy advice. CN daily imported data only; no data subscription is connected.',
+      'Ranks are relative within one research universe, not win probabilities or buy advice. Connect existing history to initialize a fixed CN pool. Market data is not formal validation or whole-market historical membership.',
     candidate: 'Model portfolio candidate',
     observe: 'Observe',
     rank: '#{{rank}} of {{total}}',
@@ -222,7 +299,7 @@ export const qlib = {
     'Approve this version? Historical predictions and fills remain unchanged.',
   schedule: 'Daily predictions & rolling training',
   scheduleHint:
-    'Off by default. Import completed snapshots manually or through an external process and select the new version. Stale inputs block work. Prediction and training use separate queues; challengers remain shadow-only until human review.',
+    'Off by default. Connect existing marketdata on the opportunities page for automatic after-close ingestion, or import complete snapshots. Stale/revised history blocks updates. Prediction and training use separate queues; challengers remain shadow-only until human review.',
   enabled: 'Enable schedule',
   dailyHour: 'After-close run hour',
   retrainDays: 'Retrain interval (days)',
@@ -235,6 +312,10 @@ export const qlib = {
     queued: 'Task queued; candidates never publish automatically.',
     failed: 'Daily failure retry limit reached. Review task records.',
     cancelled: 'Task cancelled; no automatic retry today.',
+    syncing:
+      'Ingesting the complete pool from existing marketdata before prediction.',
+    data_sync_failed:
+      'Ingestion incomplete. Previous data and rankings retained; check data status on the opportunities page.',
   },
   monitoring: 'New-pipeline health',
   coverage: 'Prediction coverage',
@@ -253,7 +334,7 @@ export const qlib = {
   badFile: 'Choose valid JSON no larger than 40MB.',
   hash: 'Content hash',
   noAutoData:
-    'No market-data subscription configured. Versioned snapshot import is the data entry point; unavailable upstream sample data is not used.',
+    'Connect enabled Tencent / Eastmoney marketdata on the opportunities page for a real fixed research pool. JSON import below supports other authorized data. Unavailable upstream sample data is not used.',
   paperTitle: 'Frozen decision → execution events → paper ledger',
   executionDate: 'Execution session',
   policy: 'Portfolio policy',

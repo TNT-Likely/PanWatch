@@ -67,6 +67,7 @@ export function opportunityCards(
     stocks: StockItem[] | null
     positions: OpportunityPosition[] | null
     basket: QlibBasketItem[]
+    names?: Record<string, string>
   },
 ): OpportunityCard[] {
   const securities = new Map(
@@ -94,7 +95,9 @@ export function opportunityCards(
       return {
         prediction,
         symbol,
-        name: options.synthetic ? null : (stock?.name ?? null),
+        name: options.synthetic
+          ? null
+          : (stock?.name ?? options.names?.[prediction.symbol] ?? null),
         watched: options.synthetic
           ? options.basket.some((item) => item.symbol === prediction.symbol)
           : options.stocks == null

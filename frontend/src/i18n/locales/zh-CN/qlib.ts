@@ -1,4 +1,73 @@
 export const qlib = {
+  dataPipeline: {
+    title: '真实行情选股',
+    start: '接入现有行情',
+    configure: '数据设置',
+    sync: '更新行情与排名',
+    train: '训练候选',
+    review: '审核候选模型',
+    flow: '现有 marketdata → 完整研究池 → Qlib 训练 → 人工审批 → 股票排名；审批后可自动盘后更新。',
+    notConfigured: '尚未初始化真实研究池，不是今天没有股票机会。',
+    dataReady: '真实数据已就绪；排名仍使用已审批模型，新的训练结果需审核。',
+    candidateReady: '候选模型已完成训练，审核后才能在机会页使用。',
+    working:
+      '处理中：{{completed}} / {{total}} 只 · {{phase}}。关闭页面不会停止后台任务。',
+    phases: {
+      prediction: '生成已审批模型排名',
+      calendar: '核对交易日历',
+      queued: '排队',
+      quotes: '检查股票状态',
+      history: '下载原始价与复权快照',
+      persist: '校验完整数据',
+      training: '训练候选模型',
+      complete: '数据完成，检查模型任务',
+    },
+    poolStatus:
+      '固定研究池 {{count}} 只 · 来源 {{vendor}} · 盘后更新{{automatic}}',
+    on: '已开启',
+    off: '未开启',
+    setupTitle: '接入现有 marketdata',
+    limits:
+      '不新增账户；复用已启用的腾讯 / 东财源。只支持 3–20 只普通 A 股主板。股票池不是历史指数成分；复权为后复权收盘价比值代理（保留原始日内比例），没有历史 ST / 退市认证，仅用于研究。',
+    pool: '固定研究池（代码用空格或逗号分隔）',
+    examples: '使用示例研究池',
+    watchlist: '使用我的关注',
+    poolCount: '{{count}} 只（要求 3–20 只）',
+    vendor: '历史行情来源',
+    auto: '按现有源优先级选择（整批同源）',
+    license: '已有数据使用依据',
+    licensePlaceholder: '填写授权、协议或个人研究使用依据',
+    consent:
+      '我确认有权按上述依据下载和使用数据；公开接口可访问不等于已获得商业使用或再分发许可。',
+    automatic:
+      '开启交易日盘后自动下载与预测（默认 18 点）；定期重训只产生候选，不自动审批或下单。',
+    invalidPool:
+      '请填写 3–20 个不重复的沪深普通主板代码；不支持 ETF、ST、科创板、创业板及新股短历史。',
+    save: '仅保存设置',
+    initialize: '初始化行情并训练',
+    close: '取消',
+    cancel: '取消下载',
+    cancelConfirm: '取消当前行情下载？上一完整数据和排名会保留。',
+    reinitializeConfirm:
+      '重新初始化会建立新的数据与候选模型，原模型和排名保留，只有重新审核才会切换。是否继续？',
+    reviewNotice:
+      '这是研究模式审批，不代表盈利或正式验证。固定股票池、近三年公开源快照、历史状态与复权代理均有局限。审批只切换排名，不创建交易或模拟决策。',
+    metrics:
+      '测试段 Rank IC {{ic}} · 最大回撤 {{drawdown}}（研究回测，非收益保证）',
+    fullReport: '查看完整实验、基线与滚动验证',
+    reviewReason: '审核依据（至少 5 个字符）',
+    approve: '批准研究模型并显示排名',
+    sourceDisabled:
+      '没有可用的已启用行情源，请先在数据源设置中启用腾讯或东财 K 线。',
+    stale: '行情未覆盖最近已收盘交易日，保留上一版数据；稍后重试。',
+    poolUnavailable:
+      '研究池存在状态未知、ST、历史不足或停牌缺失的股票；整批未更新，请检查研究池。',
+    historyChanged:
+      '数据源或冻结历史发生更正，已停止追加；请重新初始化、训练并审核新版本。',
+    workerUnavailable: 'Qlib 训练环境不可用；请检查量化研究运行状态。',
+    fetchFailed: '行情下载失败，保留上一完整数据和排名，可稍后重试。',
+    failed: '操作未完成，旧数据和已审批排名不会被替换：',
+  },
   opportunityPage: {
     title: '机会页',
     subtitle: '发现值得研究的股票，按模型排名筛选，点开查看个股详情。',
@@ -50,7 +119,7 @@ export const qlib = {
     sampleNotice:
       '当前是合成样例，不代表真实公司或市场机会。关注只加入样例研究篮子，不会操作真实自选或持仓。',
     notice:
-      '排名表示同一研究池内的相对顺序，不是胜率或买入建议。仅支持已导入的 A 股日频数据，尚未接通行情订阅。',
+      '排名表示同一研究池内的相对顺序，不是胜率或买入建议。可接入现有行情初始化固定 A 股研究池；真实行情不等于正式验证，尚不支持全市场历史成分选股。',
     candidate: '模型组合候选',
     observe: '待观察',
     rank: '第 {{rank}} / {{total}} 名',
@@ -210,7 +279,7 @@ export const qlib = {
   confirmPublish: '确认审批此版本？历史预测和成交不会被改写。',
   schedule: '日常预测与滚动训练',
   scheduleHint:
-    '默认关闭。数据必须人工/外部流程导入完整日频快照并更新选中版本；过期数据不训练、不预测。日常预测与训练使用独立计算队列，候选只做影子预测，发布须人工审批。',
+    '默认关闭。可在机会页接入现有 marketdata 并开启自动盘后下载；也可手工导入完整快照。过期或历史更正会阻止更新。日常预测与训练使用独立队列，候选只做影子预测，发布须人工审批。',
   enabled: '启用调度',
   dailyHour: '收盘后运行小时',
   retrainDays: '滚动重训间隔（天）',
@@ -222,6 +291,9 @@ export const qlib = {
     queued: '任务已入队，候选不会自动上线。',
     failed: '已达到本日失败重试上限，请查看任务记录。',
     cancelled: '任务已取消，本日不会自动重试此任务。',
+    syncing: '正在从现有 marketdata 下载完整研究池，完成后才执行预测。',
+    data_sync_failed:
+      '行情同步未完成，保留上一版数据与排名；请检查机会页数据状态。',
   },
   monitoring: '新链路健康',
   coverage: '预测覆盖率',
@@ -240,7 +312,7 @@ export const qlib = {
   badFile: '文件必须是大小不超过 40MB 的有效 JSON。',
   hash: '内容哈希',
   noAutoData:
-    '未配置行情订阅。版本化快照导入是本版本的数据入口，不使用已停服的官方示例数据。',
+    '可在机会页接入已启用的腾讯 / 东财 marketdata 源初始化真实固定研究池；以下 JSON 导入适用于其他已授权数据。不使用已停服的官方示例数据。',
   paperTitle: '冻结决策 → 执行事件 → 模拟账本',
   executionDate: '执行交易日',
   policy: '组合规则',
