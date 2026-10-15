@@ -276,6 +276,9 @@ export interface QlibPlanPreview {
   ranked_count: number
 }
 export interface QlibPaperPlan {
+  block_reason?: string
+  approval_origin?: 'manual' | 'automatic'
+  automation_grant_id?: string | null
   id: string
   run_id: string
   model_id: string
@@ -395,7 +398,25 @@ export interface QlibUniverseStatus {
 }
 const post = <T>(path: string, body: unknown = {}) =>
   fetchAPI<T>(`/qlib/${path}`, { method: 'POST', body: JSON.stringify(body) })
+export interface QlibAutomationStatus {
+  bound_model_id?: string | null
+  mode: 'automatic' | 'manual'
+  authorized: boolean
+  model_id: string | null
+  model_name: string | null
+  account_enabled: boolean
+  can_authorize: boolean
+  recommended_cash_limit: number
+  max_buy_cash: number | null
+  expires_at: string | null
+  grant_id: string | null
+  phase: string
+  reason: string
+  latest_decision_id: string | null
+}
 export const qlibApi = {
+  automationStatus: () => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation'),
+  configureAutomation: (body: { mode: 'automatic' | 'manual'; enabled?: boolean; request_key?: string; model_id?: string; max_buy_cash?: number; days?: number; acknowledge_research?: boolean }) => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation', { method: 'PUT', body: JSON.stringify(body) }),
   universe: () => fetchAPI<QlibUniverseStatus>('/qlib/universe'),
   configureUniverse: (body: QlibUniverseConfig) =>
     fetchAPI<QlibUniverseStatus>('/qlib/universe', {

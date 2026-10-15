@@ -40,7 +40,7 @@ def _number(value):
     return isinstance(value, (float, int)) and math.isfinite(value) and value > 0
 
 
-def _preview(db, selection):
+def _preview(db, selection, cash_ceiling=None):
     from src.modules.paper_trading.paper_trading_engine import (
         market_available_cash,
         sell_block_reason,
@@ -182,6 +182,8 @@ def _preview(db, selection):
         costs.fill("sell", prices[s], managed[s].quantity).cash_delta for s in sells
     )
     budget = projected_cash * 0.9
+    if cash_ceiling is not None:
+        budget = min(budget, cash_ceiling)
     per_symbol = budget / len(buys) if buys else 0
     for symbol in sells + buys:
         side = "sell" if symbol in sells else "buy"
@@ -262,15 +264,53 @@ def preview(run_id):
     from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
 
     with ACCOUNT_LOCK, service.LOCK, service.transaction() as db:
-        return _preview(db, service.record(db, run_id, "selection"))
+        result = _preview(db, service.record(db, run_id, "selection"))
+        from .automation import configuration
+
+        if configuration(db.get(QlibControl, 1)).get("grant_id") and result["ready"]:
+            result.update(
+                ready=False,
+                blocking_reason="qlib_manual_confirmation_disabled_automatic",
+            )
+        return result
 
 
-def confirm(run_id, actor, preview_hash=None, acknowledge_research=False):
+def confirm(
+    run_id,
+    actor,
+    preview_hash=None,
+    acknowledge_research=False,
+    *,
+    automation_grant_id=None,
+):
     from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
 
     with ACCOUNT_LOCK, service.LOCK, service.transaction() as db:
         selection = service.record(db, run_id, "selection")
         state = db.get(QlibControl, 1)
+        from .automation import configuration, grant_error
+
+        ceiling = None
+        if automation_grant_id:
+            error = grant_error(db, automation_grant_id)
+            if error:
+                raise ValueError(error)
+            grant = service.record(db, automation_grant_id, "paper_authorization")
+            ceiling = grant.payload["max_buy_cash"]
+            day = execution_date(selection.payload["asof_date"])
+            daily = (
+                db.query(QlibRecord)
+                .filter(
+                    QlibRecord.kind == "decision",
+                    QlibRecord.payload["approval_origin"].as_string() == "automatic",
+                    QlibRecord.payload["execution_date"].as_string() == day,
+                )
+                .first()
+            )
+            if daily:
+                return service.serialize(daily)
+        elif configuration(state).get("grant_id"):
+            raise ValueError("qlib_manual_confirmation_disabled_automatic")
         if (
             state
             and service.market_mode(state, selection.payload.get("market", "CN"))
@@ -286,9 +326,15 @@ def confirm(run_id, actor, preview_hash=None, acknowledge_research=False):
         health = service.runtime_health()
         if not health["available"]:
             raise ValueError(health["error_code"])
-        plan = _preview(db, selection)
+        plan = _preview(db, selection, ceiling)
         if not plan["ready"]:
             raise ValueError(plan["blocking_reason"])
+        if automation_grant_id:
+            from .automation import input_error
+
+            error = input_error(selection.payload, plan["orders"])
+            if error:
+                raise ValueError(error)
         if preview_hash is not None and preview_hash != plan["preview_hash"]:
             raise ValueError("qlib_preview_changed_conflict")
         payload = selection.payload
@@ -306,6 +352,8 @@ def confirm(run_id, actor, preview_hash=None, acknowledge_research=False):
                 "execution_date": plan["execution_date"],
                 "policy": POLICY,
                 "confirmation_kind": "explicit_frozen_orders_v1",
+                "approval_origin": "automatic" if automation_grant_id else "manual",
+                "automation_grant_id": automation_grant_id,
                 "risk_degree": 0.9,
                 "config": payload["config"],
                 "research_mode": plan["research_mode"],
@@ -333,7 +381,8 @@ def confirm(run_id, actor, preview_hash=None, acknowledge_research=False):
                 detail={
                     "run_id": run_id,
                     "preview_hash": plan["preview_hash"],
-                    "manual_confirmation": True,
+                    "manual_confirmation": not bool(automation_grant_id),
+                    "automation_grant_id": automation_grant_id,
                 },
             )
         )
@@ -438,6 +487,17 @@ def list_plans():
                     )
                 )
             )
+            block_reason = ""
+            if not batch and not cancelled and payload.get("automation_grant_id"):
+                from .automation import execution_error
+
+                block_reason = execution_error(db, decision)
+                if (
+                    block_reason
+                    and block_reason != "qlib_automation_account_paused"
+                    and phase not in ("expired", "superseded", "model_changed")
+                ):
+                    phase = "automation_blocked"
             items.append(
                 {
                     "id": decision.id,
@@ -447,6 +507,9 @@ def list_plans():
                     "execution_date": payload["execution_date"],
                     "status": phase,
                     "research_mode": payload.get("research_mode", True),
+                    "approval_origin": payload.get("approval_origin", "manual"),
+                    "block_reason": block_reason,
+                    "automation_grant_id": payload.get("automation_grant_id"),
                     "cash_budget": payload.get("cash_budget"),
                     "orders": payload.get("orders", []),
                     "symbols": payload.get("symbols", []),

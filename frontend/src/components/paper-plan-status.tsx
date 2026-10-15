@@ -38,11 +38,13 @@ export default function PaperPlanStatus({
     return () => window.clearInterval(timer)
   }, [reload, refreshKey])
   const current =
-    items?.filter((plan) => ['waiting_open', 'paused'].includes(plan.status)) ??
-    []
+    items?.filter((plan) =>
+      ['waiting_open', 'paused', 'automation_blocked'].includes(plan.status),
+    ) ?? []
   const history =
     items?.filter(
-      (plan) => !['waiting_open', 'paused'].includes(plan.status),
+      (plan) =>
+        !['waiting_open', 'paused', 'automation_blocked'].includes(plan.status),
     ) ?? []
   const planCard = (plan: QlibPaperPlan) => (
     <article
@@ -53,6 +55,16 @@ export default function PaperPlanStatus({
       <p className="font-medium">
         {tr('states.' + plan.status)} · {plan.execution_date} 09:30–09:35
       </p>
+      <p className="text-xs text-muted-foreground">
+        {tr(
+          plan.approval_origin === 'automatic'
+            ? 'automaticOrigin'
+            : 'manualOrigin',
+        )}
+      </p>
+      {plan.block_reason && (
+        <p className="text-xs">{planError(plan.block_reason, qlibT)}</p>
+      )}
       <p className="text-xs text-muted-foreground">
         {tr('resultCount', {
           filled: plan.filled,

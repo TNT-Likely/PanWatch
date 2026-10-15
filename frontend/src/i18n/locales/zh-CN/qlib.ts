@@ -1,5 +1,40 @@
 export const qlib = {
+  automation: {
+    title: '自动选股与模拟（默认模式）',
+    start: '启动自动选股与模拟',
+    renew: '调整 / 重新授权',
+    manual: '切换手动模式',
+    stop: '停用自动模式',
+    close: '取消',
+    authorize: '授权并启动自动模式',
+    flow: '更新行情 → 已审核模型自动选股 → 自动冻结组合计划 → 下一开盘模拟执行；日常只需看状态与结果。',
+    setup: '首次接入数据并审核模型',
+    account: '初始化模拟账户',
+    consentNote:
+      '一次授权后，无需每天确认计划。仅普通非 ST A 股主板模拟；港美股继续研究，不接实盘。',
+    model: '使用当前审核模型：{{model}}（{{id}}）',
+    cashLimit: '每日最高买入预算（CNY，含费用）',
+    risk: '授权有效期 30 天，锁定模型、初始资金及市场分配。启用已配置市场的盘后行情与排名更新，并取消旧待执行计划（保留历史和已有仓位）。模型/资金配置变化需重新授权；上游连续失败、数据陈旧或规则不符时停单，不自动训练或审批模型。程序须持续运行。',
+    ack: '我授权以上预算内的连续模拟交易，理解研究结果未验证收益，数据异常可能无法成交。',
+    bounds:
+      '授权模型 {{model}} · 每日买入上限 {{cap}} CNY（含费）· 到期 {{expires}}',
+    manualConfirm:
+      '切换手动模式并暂停账户？将取消所有尚未执行的计划，保留历史和持仓；以后需逐次确认。行情自动更新设置保留。',
+    stopConfirm:
+      '停用连续自动授权并暂停账户？未执行计划会取消，已有持仓不自动平仓。',
+    phases: {
+      needs_authorization: '默认自动模式，等待首次授权；未因升级而自动开启。',
+      manual: '手动模式：每份计划需要确认。',
+      paused: '自动模式已授权，但账户暂停。',
+      blocked: '自动执行已阻止，请处理下方原因。',
+      waiting_data: '等待有效行情与最新预测，不使用旧结果补单。',
+      ready: '已就绪，后台将自动冻结本期计划。',
+      planned: '本期计划已处理，请查看下方等待、成交或取消记录。',
+    },
+  },
   plan: {
+    automaticOrigin: '自动模式生成 · 受预算授权约束',
+    manualOrigin: '人工确认计划',
     activeTitle: '待执行的模拟计划',
     noActivePlans:
       '目前没有待执行计划。已结束的计划在下方历史中，不会因启动账户而恢复。',
@@ -39,7 +74,7 @@ export const qlib = {
     keptAndExcluded:
       '保留 {{kept}} 个现有 Qlib 仓位；{{excluded}} 只因证券范围、行情或旧仓位冲突不进入本计划。',
     exitNote:
-      '退出方式：后续排名改变时重新预览并确认卖出计划，或在模拟盘手动平仓（遵守 T+1）。不会自动止盈止损，不生成目标价；旧非 Qlib 仓位不被接管。',
+      '退出方式：自动模式按授权处理后续轮动；手动模式需重新预览确认卖出计划，也可手动平仓（遵守 T+1）。没有自动价格止盈止损或目标价；旧非 Qlib 仓位不接管。',
     pausedNote:
       '模拟账户当前暂停。确认后计划仍不会执行；你还需在模拟盘点击启动。',
     replaceNote:
@@ -52,10 +87,10 @@ export const qlib = {
     confirmed: '模拟计划已确认，请在模拟盘查看等待、暂停或执行结果。',
     statusTitle: '已确认的模拟计划',
     statusNote:
-      '关注是收藏，确认计划才会进入模拟执行。只有下一已知 A 股开盘 09:30–09:35 执行；启动或检查计划不会立即买入。',
+      '关注是收藏；自动模式按连续预算授权生成计划，手动模式逐份确认。仅下一已知 A 股开盘 09:30–09:35 执行；启动或检查不会立即买入。',
     refreshStatus: '刷新计划状态',
     emptyPlans:
-      '还没有确认模拟计划。先在机会页预览组合，核对后确认；不会因排名更新自动下单。',
+      '尚无可执行计划。默认自动模式需先完成首次授权并等有效数据；手动模式可逐份预览确认。仅有排名或关注不会下单。',
     resultCount: '已成交 {{filled}} 项 · 拒绝 {{rejected}} 项',
     sourceDate: '来自 {{date}} 的机会排名',
     estimatedShares: '参考 {{count}} 股',
@@ -66,6 +101,7 @@ export const qlib = {
     checkPlans: '检查待执行计划',
     checkPlansShort: '检查计划',
     states: {
+      automation_blocked: '自动执行已阻止，等待处理',
       waiting_open: '等待下一开盘',
       paused: '账户暂停，尚未执行',
       expired: '已错过执行窗口，需要新计划',
@@ -79,6 +115,37 @@ export const qlib = {
     },
     eventStates: { filled: '已虚拟成交', rejected: '已拒绝' },
     errors: {
+      qlib_automation_request_key_required:
+        '请重新打开授权窗口，取得本次授权标识。',
+      qlib_automation_authorization_conflict:
+        '授权标识已使用或已撤销，请重新打开授权窗口。',
+      qlib_automation_inputs_unverified:
+        '冻结输入历史缺失或校验不通过，自动模式停单。',
+      qlib_automation_input_anomaly:
+        '近 20 条冻结行情的复权涨跌超过保守异常阈值（100%），需核对公司行动或数据后再授权；不是收益机会。',
+      qlib_automation_authorization_required:
+        '连续自动授权已失效，请重新授权。',
+      qlib_automation_authorization_expired:
+        '连续自动授权已到期，停止新计划与自动成交。',
+      qlib_automation_account_paused: '模拟账户暂停，自动选股下单流程已暂停。',
+      qlib_automation_funds_changed:
+        '初始资金或市场分配已改变，请重新核对预算并授权。',
+      qlib_automation_model_changed:
+        '当前模型已改变，原授权不会自动切换模型，请重新授权。',
+      qlib_automation_source_failed:
+        '行情同步尚未成功（上游失败或任务中断），自动模式停单；恢复行情后才继续。',
+      qlib_automation_data_updating:
+        '行情正在同步，暂不冻结或执行新的自动交易。',
+      qlib_automation_prediction_required:
+        '等待已审核模型的新预测，不会自动训练或审批。',
+      qlib_automation_setup_required:
+        '请先完成一次有权使用的数据接入，并审核真实数据模型。',
+      qlib_automation_cash_limit_invalid:
+        '预算必须为正且不超过 A 股分配资金的 90%。',
+      qlib_manual_confirmation_disabled_automatic:
+        '已启用连续自动模式，无需手动确认；如需自行决定，请先切换手动模式。',
+      qlib_source_configuration_changed:
+        '数据源配置已改变，需要重新核对并授权。',
       qlib_market_execution_not_supported:
         '港美股目前仅研究与观察，尚未接入模拟成交。',
       qlib_unverified_execution_prices:
@@ -161,7 +228,7 @@ export const qlib = {
     },
     title: '全市场研究母池',
     dailyHelp:
-      '日常只需看精选、预览计划和到模拟盘跟踪。已有审核模型后，不必每天训练或重建；开启研究池设置中的“盘后自动同步”可自动更新行情与排名，但不会自动下单。',
+      '首次审核模型并授权自动模式后，日常只看选股与模拟结果，无需每天训练或确认计划。下方盘后同步开关仅更新行情与排名；连续模拟交易由上方自动模式的独立预算授权控制。',
     maintenance: '数据维护工具（设置、训练、重建）',
     maintenanceNote:
       '首次接入或更换模型才需要逐步设置、训练和审核。同步中断先续传；重建只用于确认过的历史修订，不用于普通网络错误。',
@@ -304,9 +371,9 @@ export const qlib = {
     failed: '操作未完成，旧数据和已审批排名不会被替换：',
   },
   opportunityPage: {
-    journey: '先看机会依据 → 预览组合计划 → 你确认 → 模拟盘跟踪',
+    journey: '自动更新与选股 → 自动生成模拟计划 → 下一开盘模拟执行 → 结果跟踪',
     journeyNote:
-      '排名不是买入信号，关注不是下单。系统只生成预览；你确认后才会进入下一开盘模拟执行。',
+      '首次审核模型并授权预算后，自动模式无需每日确认；异常数据会停单。也可切换手动模式逐份确认，关注始终只是收藏。',
     view: '机会展示范围',
     featured: '本次精选',
     fullPool: '全部排名股票',

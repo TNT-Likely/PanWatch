@@ -297,6 +297,10 @@ class PaperTradingEngine:
         if not decision or decision.payload["model_id"] != state.champion_id:
             return 0, [], []
         payload = decision.payload
+        if payload.get("automation_grant_id"):
+            from src.modules.qlib_research.automation import execution_error
+            if execution_error(db, decision):
+                return 0, [], []
         if payload["execution_date"] != stamp.date().isoformat():
             return 0, [], []
         marker_id = hashlib.sha256(("executed:" + decision.id).encode()).hexdigest()[:32]
@@ -376,6 +380,7 @@ class PaperTradingEngine:
                 highest_price=price, status="open", strategy_code="qlib", opened_at=_utc_now(),
                 settlement_date=settlement_date("CN", _utc_now()),
                 research_meta={"instrument": symbol, "run_id": payload["run_id"], "model_id": payload["model_id"],
+                    "automation_grant_id": payload.get("automation_grant_id"), "approval_origin": payload.get("approval_origin", "manual"),
                     "decision_id": decision.id, "policy": payload["policy"], "config": payload["config"],
                     "buy_outlay": outlay, "execution_kind": "virtual_next_open", "research_mode": payload["research_mode"]})
             db.add(position)
@@ -500,6 +505,8 @@ class PaperTradingEngine:
     @_account_mutation
     def _scan_sync(self) -> dict:
         """同步扫描（在线程中执行）。"""
+        from src.modules.qlib_research import automation
+        automation.tick(session_factory=SessionLocal)
         db = SessionLocal()
         try:
             account = self._get_or_create_account(db)

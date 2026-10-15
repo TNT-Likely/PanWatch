@@ -1,5 +1,44 @@
 export const qlib = {
+  automation: {
+    title: 'Automatic selection and paper trading (default)',
+    start: 'Start automatic selection and paper trading',
+    renew: 'Adjust / renew authorization',
+    manual: 'Switch to manual',
+    stop: 'Disable automatic mode',
+    close: 'Cancel',
+    authorize: 'Authorize and start automatic mode',
+    flow: 'Update data → reviewed model selects stocks → freeze portfolio plan automatically → simulate at next open; follow status and results.',
+    setup: 'Set up data and review a model once',
+    account: 'Initialize paper account',
+    consentNote:
+      'Standing authorization removes daily confirmation. Regular non-ST CN main-board paper trades only; HK/US remain research. No brokers.',
+    model: 'Current reviewed model: {{model}} ({{id}})',
+    cashLimit: 'Maximum daily buy budget (CNY, including fees)',
+    risk: 'Valid for 30 days, bound to model, initial funds and market allocations. Enables after-close data/ranking updates for configured markets and cancels pending plans, preserving history and holdings. Model/fund changes require new consent. Failed, stale or invalid data stops orders; no automatic model training/review. The app must remain running.',
+    ack: 'I authorize recurring paper trades within this budget, understand research returns are unverified, and data failures may prevent fills.',
+    bounds:
+      'Model {{model}} · daily buy cap {{cap}} CNY incl. fees · expires {{expires}}',
+    manualConfirm:
+      'Switch to manual and pause the account? Cancel pending plans, preserve history and holdings; future plans need individual confirmation. Data-update settings remain unchanged.',
+    stopConfirm:
+      'Revoke standing authorization and pause? Pending plans are cancelled; existing positions are not liquidated.',
+    phases: {
+      needs_authorization:
+        'Automatic is the default; first authorization is required. Upgrades do not silently activate it.',
+      manual: 'Manual mode: confirm each plan.',
+      paused: 'Authorized, but paper account is paused.',
+      blocked: 'Automatic execution blocked; address the reason below.',
+      waiting_data:
+        'Waiting for valid data and current predictions; no stale catch-up orders.',
+      ready:
+        'Ready; the background planner will freeze this period automatically.',
+      planned:
+        'This period has been handled; inspect the waiting, fill or cancellation records below.',
+    },
+  },
   plan: {
+    automaticOrigin: 'Generated automatically within standing authorization',
+    manualOrigin: 'Individually confirmed plan',
     activeTitle: 'Pending paper plans',
     noActivePlans:
       'No pending plan. Completed plans remain in history and will not resume when the account starts.',
@@ -40,7 +79,7 @@ export const qlib = {
     keptAndExcluded:
       '{{kept}} existing Qlib positions retained; {{excluded}} securities excluded for scope, data or legacy-position conflicts.',
     exitNote:
-      'Exit through a newly previewed and confirmed sell plan when ranks change, or close manually in paper trading subject to T+1. No automatic stop-loss, take-profit or invented target prices; legacy non-Qlib positions remain separate.',
+      'Automatic mode rotates within standing consent; manual mode requires a new confirmed sell plan. Manual close remains subject to T+1. No price stop-loss/take-profit or target prices; legacy holdings remain separate.',
     pausedNote:
       'The paper account is paused. Confirmation will not execute it; start the account in paper trading when ready.',
     replaceNote:
@@ -54,10 +93,10 @@ export const qlib = {
       'Paper plan confirmed. Track waiting, paused or execution results in paper trading.',
     statusTitle: 'Confirmed paper plans',
     statusNote:
-      'Following is bookmarking; only confirmed plans enter paper execution. Execution is limited to the next known CN session at 09:30–09:35. Starting or checking does not buy immediately.',
+      'Following is a bookmark. Automatic mode uses standing budget consent; manual mode confirms each plan. Execution is only the next known CN open, 09:30–09:35; starting/checking never buys immediately.',
     refreshStatus: 'Refresh plan status',
     emptyPlans:
-      'No confirmed paper plan. Preview a portfolio on Opportunities, review and confirm it. Rank updates never place orders automatically.',
+      'No executable plan yet. Authorize automatic mode once and wait for valid data, or switch to manual for per-plan confirmation. Ranks and bookmarks alone never authorize orders.',
     resultCount: '{{filled}} actions filled · {{rejected}} rejected',
     sourceDate: 'From {{date}} opportunity ranks',
     estimatedShares: 'Estimate {{count}} shares',
@@ -68,6 +107,7 @@ export const qlib = {
     checkPlans: 'Check pending plans',
     checkPlansShort: 'Check plans',
     states: {
+      automation_blocked: 'Automatic execution blocked; action required',
       waiting_open: 'Waiting for next open',
       paused: 'Account paused; not executed',
       expired: 'Execution window missed; new plan required',
@@ -81,6 +121,38 @@ export const qlib = {
     },
     eventStates: { filled: 'Virtually filled', rejected: 'Rejected' },
     errors: {
+      qlib_automation_request_key_required:
+        'Reopen the authorization dialog for a fresh request identity.',
+      qlib_automation_authorization_conflict:
+        'This request identity was used or revoked. Reopen the dialog.',
+      qlib_automation_inputs_unverified:
+        'Frozen histories are absent or fail verification; automatic orders stopped.',
+      qlib_automation_input_anomaly:
+        'Adjusted change across 20 frozen observations exceeds the conservative 100% anomaly threshold. Review corporate actions/data, not an apparent return opportunity.',
+      qlib_automation_authorization_required:
+        'Standing authorization is no longer valid. Authorize again.',
+      qlib_automation_authorization_expired:
+        'Authorization expired; no new plans or automatic fills.',
+      qlib_automation_account_paused:
+        'Paper account paused; automatic planning and execution stopped.',
+      qlib_automation_funds_changed:
+        'Initial funds or allocations changed. Review the budget and authorize again.',
+      qlib_automation_model_changed:
+        'The active model changed; authorization never silently switches models.',
+      qlib_automation_source_failed:
+        'History synchronization has not succeeded. Automatic orders stop until data recovery.',
+      qlib_automation_data_updating:
+        'History is updating; new automatic plans and fills are temporarily blocked.',
+      qlib_automation_prediction_required:
+        'Waiting for predictions from the reviewed model; no automatic training or review.',
+      qlib_automation_setup_required:
+        'Set up authorized market data and approve a real-data model first.',
+      qlib_automation_cash_limit_invalid:
+        'Budget must be positive and at most 90% of allocated CN capital.',
+      qlib_manual_confirmation_disabled_automatic:
+        'Standing automatic mode is active; individual confirmation is unnecessary. Switch to manual first to choose plans yourself.',
+      qlib_source_configuration_changed:
+        'Source configuration changed; review and authorize again.',
       qlib_market_execution_not_supported:
         'HK/US currently support research and observation only, not paper fills.',
       qlib_unverified_execution_prices:
@@ -183,7 +255,7 @@ export const qlib = {
     },
     title: 'Full-market research universe',
     dailyHelp:
-      'Daily use: highlights, plan preview, then paper tracking. An approved model does not need daily training or rebuilding. Enable after-close updating in universe settings for automatic data/ranking updates, not automatic orders.',
+      'After initial model review and standing authorization, follow selection and paper results without daily training or confirmations. After-close updating alone controls data/ranks; recurring trades require the separate bounded authorization above.',
     maintenance: 'Data maintenance (settings, training, rebuilding)',
     maintenanceNote:
       'Setup, training and review are for first use or model changes. Resume interrupted downloads; rebuild only reviewed historical revisions, not ordinary network failures.',
@@ -336,9 +408,9 @@ export const qlib = {
   },
   opportunityPage: {
     journey:
-      'Inspect evidence → Preview portfolio → Confirm → Track paper execution',
+      'Update and select automatically → Freeze paper plan → Execute next open → Track results',
     journeyNote:
-      'Ranking is not a buy signal; following is not an order. The system previews a plan; only your confirmation schedules next-open paper execution.',
+      'After initial model review and budget authorization, automatic mode needs no daily confirmation. Bad data stops orders. Manual mode remains available; following is always just a bookmark.',
     view: 'Opportunity view',
     featured: 'Current highlights',
     fullPool: 'All ranked stocks',

@@ -48,6 +48,8 @@ vi.mock('@panwatch/api', async (original) => ({
       'previewPlan',
       'confirmPlan',
       'cancelPlan',
+      'automationStatus',
+      'configureAutomation',
     ].map((name) => [name, vi.fn()]),
   ),
 }))
@@ -100,6 +102,14 @@ const market = () => {
 }
 beforeEach(async () => {
   vi.resetAllMocks()
+  vi.mocked(qlibApi.automationStatus).mockResolvedValue({
+    mode: 'automatic',
+    authorized: false,
+    can_authorize: false,
+    phase: 'needs_authorization',
+    reason: '',
+    account_enabled: false,
+  } as never)
   localStorage.clear()
   await i18n.changeLanguage('zh-CN')
   vi.mocked(qlibApi.health).mockResolvedValue({

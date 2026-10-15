@@ -60,11 +60,13 @@ The destination must not exist. Never present its performance as market evidence
 
 ## Workflow and boundaries
 
-Daily use does not require retraining: inspect highlights, preview and explicitly confirm the whole portfolio, then track it in paper trading. Pending plans are visible by default; completed/cancelled/superseded/expired records remain in collapsed history. Starting the account never restores them.
+Daily use does not require retraining. Default automatic mode selects stocks, freezes plans and simulates the next open after initial standing authorization; manual per-plan confirmation remains available. Pending plans are visible, completed/cancelled/superseded/expired records remain in collapsed history. Starting never restores cancelled plans.
 
 Training/rebuild controls live in collapsed data maintenance. Repeated upstream history failures stop synchronization while preserving data, models, ranks and the resume cursor. Resume later rather than retraining/rebuilding for network errors; accepting a resume request does not prove upstream recovery. Technical error codes remain expandable.
 
-With an approved model, opt into after-close updates in universe settings for per-market data and ranking updates. This never trains, approves or confirms paper plans automatically. Recurring automatic paper-plan confirmation is not implemented; starting the paper account is not continuing authorization for future daily plans.
+After authorized data setup and initial real-model review, Start automatic selection and paper trading binds a 30-day grant to the model, initial capital, allocations, source configuration and fee-inclusive daily buy ceiling. It enables configured-market after-close data/ranking updates and automatic CN next-open plans; HK/US remain research-only. The app must remain running. Opening/upgrading never silently grants authority.
+
+Changed/expired grants, failed/updating data, stale predictions, unverifiable frozen histories or conservative absolute 20-observation adjusted-return anomalies above 100% stop automatic orders. Daily plans are idempotent across grant renewals; cancellation never revives them. Execution rechecks grant/data; no stock substitutions or donated rejection budgets. Pause the account at any time. Disable/switch manual revokes standing consent, pauses and cancels pending plans without liquidating holdings; data updating remains configured. No automatic model training/review, implicit model switching or real brokers.
 
 Everyday selection lives at `/opportunities`: overview cards, familiar filters,
 two-column stock cards and shared stock details. Top-10%/20% filters use positions

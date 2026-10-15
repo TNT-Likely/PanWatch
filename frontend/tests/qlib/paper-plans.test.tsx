@@ -263,7 +263,7 @@ it('HK/US refusal explains an unsupported capability and cannot submit', async (
 
 it('no plans never suggests that watching or rank updates execute automatically', async () => {
   view(<PaperPlanStatus />)
-  expect(await screen.findByText(/还没有确认模拟计划/)).toBeTruthy()
+  expect(await screen.findByText(/尚无可执行计划/)).toBeTruthy()
   expect(screen.getByText(/关注是收藏/)).toBeTruthy()
   expect(qlibApi.confirmPlan).not.toHaveBeenCalled()
 })

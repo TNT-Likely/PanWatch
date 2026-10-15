@@ -205,6 +205,28 @@ def paper_plans_status():
     return invoke(paper_plans.list_plans)
 
 
+class AutomationInput(StrictInput):
+    enabled: bool = True
+    request_key: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{8,100}$")
+    mode: Literal["automatic", "manual"] = "automatic"
+    model_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    max_buy_cash: float | None = Field(default=None, gt=0, le=1_000_000_000, allow_inf_nan=False)
+    days: int = Field(default=30, ge=1, le=90)
+    acknowledge_research: bool = False
+
+
+@router.get("/paper-automation")
+def paper_automation_status():
+    from . import automation
+    return invoke(automation.status)
+
+
+@router.put("/paper-automation")
+def configure_paper_automation(body: AutomationInput, actor=Depends(require_actor)):
+    from . import automation
+    return invoke(automation.configure, body, actor)
+
+
 @router.post("/paper-plans/{decision_id}/cancel")
 def cancel_plan(decision_id: str, actor=Depends(require_actor)):
     from . import paper_plans

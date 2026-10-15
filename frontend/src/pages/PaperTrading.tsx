@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
   paperTradingApi,
+  type QlibAutomationStatus,
   type PaperTradingAccountResponse,
   type PaperTradingPositionItem,
   type PaperTradingTradeItem,
@@ -21,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { useMarketColors } from '@/hooks/use-market-colors'
 import { marketColorWithAlpha, marketDirection, marketSignTextClass } from '@/lib/market-colors'
 import PaperPlanStatus from '@/components/paper-plan-status'
+import PaperAutomation from '@/components/paper-automation'
 
 function formatCurrency(v: number, locale = 'zh-CN') {
   return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -119,6 +121,7 @@ export default function PaperTradingPage() {
   const message = (key: string, options?: Record<string, unknown>) => paperT(`p4.paperTrading.messages.${key}`, options)
   const formatAmount = (value: number) => formatCurrency(value, locale)
   const [account, setAccount] = useState<PaperTradingAccountResponse | null>(null)
+  const [automation, setAutomation] = useState<QlibAutomationStatus | null>(null)
   const [positions, setPositions] = useState<PaperTradingPositionItem[]>([])
   const [trades, setTrades] = useState<PaperTradingTradeItem[]>([])
   const [tradesTotal, setTradesTotal] = useState(0)
@@ -382,10 +385,10 @@ export default function PaperTradingPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline ml-1">{tr('refresh')}</span>
           </Button>
-          <Button data-tour="paper-controls" variant="outline" size="sm" className="h-8" onClick={handleToggle}>
+          {(account?.enabled || automation?.mode === 'manual' || automation?.authorized) && <Button data-tour="paper-controls" variant="outline" size="sm" className="h-8" onClick={handleToggle}>
             <Power className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{account?.enabled ? tr('pause') : tr('start')}</span>
-          </Button>
+          </Button>}
           <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" onClick={handleReset}>
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{tr('reset')}</span>
@@ -397,6 +400,7 @@ export default function PaperTradingPage() {
         <p>{qlibT('paperNote')}</p>
         <Link className="text-primary underline" to="/research?tab=paper">{qlibT('paperTitle')}</Link>
       </div>
+      <PaperAutomation onChange={loadData} onStatus={setAutomation} />
       <PaperPlanStatus refreshKey={refreshVersion} />
 
       {/* Market View Filter + 资金配置 */}

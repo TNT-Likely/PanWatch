@@ -49,6 +49,7 @@ import { useLocalStorage } from '@/lib/utils'
 import QlibDataPipeline from '@/components/qlib-data-pipeline'
 import PaperPlanDialog, { planError } from '@/components/paper-plan-dialog'
 import PaperPlanStatus from '@/components/paper-plan-status'
+import PaperAutomation from '@/components/paper-automation'
 import {
   securityCode,
   defaultOpportunityFilters,
@@ -375,6 +376,7 @@ export default function Opportunities() {
           </Button>
         </div>
       </header>
+      <PaperAutomation onChange={() => setPlanVersion(value => value + 1)} />
       <div className="card mb-4 p-3 space-y-2 text-sm">
         <p className="font-medium">{tr('journey')}</p>
         <p className="text-xs text-muted-foreground">{tr('journeyNote')}</p>
