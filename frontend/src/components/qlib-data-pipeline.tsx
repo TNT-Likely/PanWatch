@@ -364,6 +364,28 @@ export default function QlibDataPipeline({
           date: data?.completed_day ?? '—',
         })}
       </p>
+      {data && (
+        <div
+          className="mt-2 space-y-1 text-xs text-muted-foreground"
+          data-testid="coverage-diagnostics"
+        >
+          <p>
+            {tr('dateSeparation', {
+              latest: data.completed_day,
+              prediction: data.prediction_date ?? '—',
+              predicted: data.predicted,
+            })}
+          </p>
+          {Object.entries(data.reasons)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([code, count]) => (
+              <p key={code}>
+                {issue(code)} · {tr('affected', { count })}
+              </p>
+            ))}
+        </div>
+      )}
       {data?.catalog && (
         <p className="mt-1 break-words text-[11px] text-muted-foreground">
           {data.catalog.source} · {data.catalog.source_date} ·{' '}

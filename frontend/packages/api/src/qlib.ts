@@ -72,6 +72,8 @@ export interface QlibDataset {
   warnings: string[]
 }
 export interface QlibBacktest {
+  allocation_policy?: string
+  paper_aligned?: boolean
   days: number
   return: number | null
   max_drawdown: number | null
@@ -126,6 +128,7 @@ export interface QlibJob {
   created_at: string
 }
 export interface QlibRun {
+  assessment?: QlibAssessment
   id: string
   market?: string
   prediction_count?: number
@@ -142,6 +145,19 @@ export interface QlibRun {
   config: QlibConfig
   predictions?: QlibPrediction[]
   names?: Record<string, string>
+}
+export interface QlibAssessment {
+  status: 'eligible' | 'failed' | 'research_only'
+  eligible: boolean
+  reasons: string[]
+  policy_aligned: boolean
+  rank_ic: number | null
+  net_return: number | null
+  max_drawdown: number | null
+  test_days: number | null
+  paper_policy: string
+  horizon: number
+  topk: number
 }
 export interface QlibMarketDataSource {
   symbols: string[]
@@ -402,6 +418,7 @@ export interface QlibUniverseStatus {
 const post = <T>(path: string, body: unknown = {}) =>
   fetchAPI<T>(`/qlib/${path}`, { method: 'POST', body: JSON.stringify(body) })
 export interface QlibAutomationStatus {
+  assessment?: QlibAssessment
   bound_model_id?: string | null
   mode: 'automatic' | 'manual'
   authorized: boolean
@@ -409,7 +426,15 @@ export interface QlibAutomationStatus {
   model_name: string | null
   account_enabled: boolean
   can_authorize: boolean
-  capital: { account_id: number; initial_capital: number; allocations: Record<string, number>; market_principal: number; target_ratio: number; capital_policy: string; capital_config_hash: string } | null
+  capital: {
+    account_id: number
+    initial_capital: number
+    allocations: Record<string, number>
+    market_principal: number
+    target_ratio: number
+    capital_policy: string
+    capital_config_hash: string
+  } | null
   bound_market_principal: number | null
   expires_at: string | null
   grant_id: string | null
@@ -418,8 +443,21 @@ export interface QlibAutomationStatus {
   latest_decision_id: string | null
 }
 export const qlibApi = {
-  automationStatus: () => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation'),
-  configureAutomation: (body: { mode: 'automatic' | 'manual'; enabled?: boolean; request_key?: string; model_id?: string; capital_config_hash?: string; days?: number; acknowledge_research?: boolean }) => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation', { method: 'PUT', body: JSON.stringify(body) }),
+  automationStatus: () =>
+    fetchAPI<QlibAutomationStatus>('/qlib/paper-automation'),
+  configureAutomation: (body: {
+    mode: 'automatic' | 'manual'
+    enabled?: boolean
+    request_key?: string
+    model_id?: string
+    capital_config_hash?: string
+    days?: number
+    acknowledge_research?: boolean
+  }) =>
+    fetchAPI<QlibAutomationStatus>('/qlib/paper-automation', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   universe: () => fetchAPI<QlibUniverseStatus>('/qlib/universe'),
   configureUniverse: (body: QlibUniverseConfig) =>
     fetchAPI<QlibUniverseStatus>('/qlib/universe', {

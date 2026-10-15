@@ -27,6 +27,23 @@ export const defaultOpportunityFilters: OpportunityFilters = {
   search: '',
 }
 
+export function pricePortrait(context: QlibPrediction['observed_context']) {
+  if (
+    !context ||
+    !Number.isFinite(context.return_20_observations) ||
+    !Number.isFinite(context.drawdown_from_60_observation_high)
+  )
+    return 'portraitUnknown'
+  if (Math.abs(context.return_20_observations) > 1) return 'portraitAnomaly'
+  if (context.return_20_observations <= -0.15) return 'portraitWeak'
+  if (
+    context.return_20_observations > 0 &&
+    context.drawdown_from_60_observation_high >= -0.05
+  )
+    return 'portraitStrong'
+  return 'portraitMixed'
+}
+
 export function savedOpportunityFilters(value: unknown): OpportunityFilters {
   if (!value || typeof value !== 'object')
     return { ...defaultOpportunityFilters }

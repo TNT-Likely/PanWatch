@@ -42,6 +42,7 @@ def ready(storage, monkeypatch):
             **state.settings,
             "universe_generation": "controlled-generation",
             "universe_config": {"license_acknowledged": True, "automatic": False},
+            "champion_modes": {"CN": "validated"},
         }
         model_id = state.champion_id
         db.commit()

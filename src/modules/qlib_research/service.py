@@ -397,6 +397,10 @@ def publish(model_id, revision, reason, mode, actor, rollback=False):
             folds = payload.get("rolling", [])
             if len(folds) < 3 or any(fold["metrics"]["ic_dates"] < config["min_test_days"] or fold["metrics"]["rank_ic"] is None or fold["metrics"]["rank_ic"] < config["min_ic"] or fold["metrics"]["backtest"]["max_drawdown"] is None or fold["metrics"]["backtest"]["max_drawdown"] > config["max_drawdown"] for fold in folds):
                 raise ValueError("qlib_rolling_gate_failed")
+            from .assessment import assess
+            release = assess(payload, "validated")
+            if not release["eligible"]:
+                raise ValueError(release["reasons"][0])
         previous = market_champion(state, market)
         settings = {**DEFAULT_SETTINGS, **state.settings, "champions": {**state.settings.get("champions", {}), market: model_id}, "champion_modes": {**state.settings.get("champion_modes", {}), market: mode}}
         if market == "CN":
@@ -479,6 +483,9 @@ def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all
             rows = rows[(page-1)*limit:page*limit]
         from .opportunity_context import enrich
         rows = enrich(run, rows)
+        from .assessment import assess
+        model = db.get(QlibRecord, run["model_id"])
+        run["assessment"] = assess(model.payload if model else None, market_mode(state, market) if run["model_id"] == champion else "research")
         names = run.get("names", {})
         run["watched_count"] = watched_count
         if limit is not None:

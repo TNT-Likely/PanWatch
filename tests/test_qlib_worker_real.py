@@ -38,6 +38,9 @@ def test_real_train_backtest_rolling_and_replay(tmp_path, algorithm):
         assert len(output["predictions"]) == 8
         assert output["metrics"]["ic_dates"] >= 20
         assert len(output["metrics"]["backtest"]["curve"]) >= 20
+        assert output["metrics"]["backtest"]["paper_aligned"]
+        assert output["metrics"]["backtest"]["generated_orders"] > 0
+        assert output["metrics"]["backtest"]["allocation_policy"] == "topk_dropout_next_open_market_pool_target_v2"
         assert len(output["rolling"]) == 3
         assert all(fold["segments"]["valid"][1] < fold["segments"]["test"][0] for fold in output["rolling"])
         assert output["monitor"]["fraction"] == 1

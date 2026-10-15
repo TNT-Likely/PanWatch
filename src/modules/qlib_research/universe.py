@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
+from itertools import zip_longest
 import hashlib
 import json
 import math
@@ -517,6 +518,7 @@ def fetch_member(job_id, symbol, md, day_by_market, calendars, config):
         sources = [old["vendor"]] if old else md.research_sources(market)
         payload = None
         error = ""
+        errors = []
         for vendor in sources:
             checkpoint(job_id)
             try:
@@ -554,7 +556,16 @@ def fetch_member(job_id, symbol, md, day_by_market, calendars, config):
                 break
             except Exception as exc:
                 error = history_error(exc)
+                errors.append(error)
         if payload is None:
+            # Empty histories and failed quality checks do not prove a global
+            # outage. Preserve a substantive response from any enabled source
+            # instead of letting the last failed backup disguise it as one.
+            substantive = [code for code in errors if code not in (
+                "qlib_source_transport_unavailable", "qlib_history_fetch_failed"
+            )]
+            if substantive:
+                error = substantive[0]
             raise ValueError(error or "qlib_history_unavailable")
         if old:
             payload = append_history(old, payload)
@@ -590,8 +601,7 @@ def history_calendars(md, markets, days, cursor, previous_days, frozen, cached):
         if not sources:
             raise ValueError(f"qlib_research_source_disabled_{market}")
         if (
-            cursor
-            and previous_days == days
+            previous_days == days
             and valid_calendar(frozen.get(market), days[market])
         ):
             calendars[market] = frozen[market]
@@ -651,6 +661,21 @@ def execute_history(job_id, config, market_only):
             .filter_by(market=market, catalog_id=catalogs.get(market, ""))
             .order_by(QlibUniverseMember.symbol)
         ]
+        order = job.config.get("history_order")
+        if order is None:
+            # Preserve legacy nonzero cursors; new scans and legacy rewound
+            # cursor-zero retries must not treat ten adjacent BJ symbols as
+            # evidence that SH/SZ/the entire supplier is unavailable.
+            order = "striped_exchange_board_v2" if not cursor else "lexical_v1"
+            job.config = {**job.config, "history_order": order}
+        if order == "striped_exchange_board_v2":
+            lanes = {}
+            for symbol in symbols:
+                key = symbol[:4] if symbol.startswith(("SH", "SZ")) else symbol[:3]
+                lanes.setdefault(key, []).append(symbol)
+            symbols = [symbol for group in zip_longest(
+                *lanes.values()
+            ) for symbol in group if symbol is not None]
     if not symbols:
         raise ValueError("qlib_catalog_required")
     day_by_market = days
@@ -718,7 +743,7 @@ def execute_history(job_id, config, market_only):
             failures = (
                 failures + 1
                 if error
-                in ("qlib_history_fetch_failed", "qlib_source_history_unavailable")
+                in ("qlib_history_fetch_failed", "qlib_source_transport_unavailable")
                 else 0
             )
             if failures >= 10 or error == "qlib_research_source_disabled":

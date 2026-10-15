@@ -267,6 +267,15 @@ def test_same_session_resume_uses_observed_calendar_when_upstream_is_offline(fro
         md.research_calendar.assert_not_called()
 
 
+def test_rewound_cursor_zero_reuses_only_its_frozen_same_session_calendar():
+    dates = panel(end=date(2026, 10, 13))["calendar"]
+    md = SimpleNamespace(research_sources=lambda m: ["tencent"], research_calendar=Mock(side_effect=ConnectionError()))
+    result, origins = universe.history_calendars(md, ["CN"], {"CN": dates[-1]}, 0,
+        {"CN": dates[-1]}, {"CN": dates}, {})
+    assert result["CN"] == dates and origins["CN"] == "job_frozen_observed_calendar"
+    md.research_calendar.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "case", ["new_job", "new_session", "stale", "unsorted", "disabled"]
 )
@@ -364,3 +373,50 @@ def test_parallel_history_commits_only_a_contiguous_durable_prefix(
         assert job.cursor < 9 if cancelled else job.cursor == 9
         if not cancelled:
             assert job.progress["completed"] == job.progress["total"] == 9
+
+
+@pytest.mark.parametrize("failure", ["empty_with_backup_offline", "transport"])
+def test_partial_board_failure_is_not_a_global_outage_and_resume_is_durable(storage, monkeypatch, failure):
+    data = panel(end=date(2026, 10, 13))
+    codes = [f"BJ9200{i:02d}" for i in range(12)] + [f"SH6000{i:02d}" for i in range(12)]
+    recovered = [False]
+    calls = []
+    template = [b for b in data["bars"] if b["symbol"] == data["members"][0]["symbol"]]
+    def history(symbol, *, vendor, **kwargs):
+        calls.append((symbol, vendor))
+        if not recovered[0] and (failure == "transport" or symbol.startswith("BJ")):
+            raise ValueError("qlib_source_transport_unavailable" if vendor == "eastmoney" or failure == "transport" else "qlib_source_history_unavailable")
+        return ResearchHistory(vendor=vendor, bars=[{**b, "symbol": symbol} for b in template], calendar=[], currency="CNY")
+    md = SimpleNamespace(research_sources=lambda m: ["tencent", "eastmoney"], research_calendar=lambda **kw: data["calendar"], research_history=history)
+    monkeypatch.setattr(universe, "get_market_data", lambda: md)
+    monkeypatch.setattr(universe, "EXECUTOR", SimpleNamespace(submit=Mock()))
+    universe.configure(UniverseConfigInput(markets=["CN"], license="CC0 controlled", license_acknowledged=True), "test")
+    with storage() as db:
+        db.add(QlibRecord(id="a" * 32, kind="catalog", name="controlled", payload={"market": "CN", "total": len(codes)}))
+        for symbol in codes:
+            db.add(QlibUniverseMember(symbol=symbol, market="CN", catalog_id="a" * 32, status="pending",
+                metadata_={"market": "CN", "currency": "CNY", "name": "QA", "lot": 100, "price_limit": .1, "special_treatment": False}))
+        state = service.control(db)
+        state.settings = {**state.settings, "universe_catalogs": {"CN": "a" * 32}}
+        db.commit()
+    ident = universe.enqueue("history", "bounded-board-recovery", "test", market="CN")["id"]
+    universe.execute(ident)
+    with storage() as db:
+        job = db.get(QlibUniverseJob, ident)
+        assert job.config["history_order"] == "striped_exchange_board_v2"
+        if failure == "empty_with_backup_offline":
+            assert job.status == "succeeded" and job.cursor == len(codes)
+            assert db.query(QlibUniverseMember).filter_by(status="ready").count() == 12
+            assert db.query(QlibUniverseMember).filter_by(error_code="qlib_source_history_unavailable").count() == 12
+        else:
+            assert job.status == "failed" and job.cursor == 0
+            assert job.error_code == "qlib_source_unavailable_resume_sync"
+    assert {s[:2] for s, _ in calls[:4]} == {"BJ", "SH"}
+    if failure == "transport":
+        recovered[0] = True
+        universe.resume(ident, "test")
+        universe.execute(ident)
+        with storage() as db:
+            job = db.get(QlibUniverseJob, ident)
+            assert job.status == "succeeded" and job.cursor == len(codes)
+            assert db.query(QlibUniverseMember).filter_by(status="ready").count() == len(codes)

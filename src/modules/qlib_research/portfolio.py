@@ -3,23 +3,13 @@
 import math
 
 from . import service
-from .costs import QlibCostModel
-from .policy import lot_quantity
-
-CAPITAL_POLICY = "market_pool_target_v2"
-PAPER_POLICY = "topk_dropout_next_open_market_pool_target_v2"
-TARGET_RATIO = 0.9
-
-
-def target_membership(rows, managed, eligible, topk):
-    # Do not sell a higher-ranked keeper merely to manufacture daily turnover.
-    locked = set(managed) - eligible
-    ranked = sorted(
-        (r for r in rows if r["symbol"] in eligible),
-        key=lambda r: (r["rank"], r["symbol"]),
-    )
-    targets = {r["symbol"] for r in ranked[: max(0, topk - len(locked))]}
-    return sorted(set(managed) & eligible - targets), sorted(targets - set(managed))
+from .allocation import (
+    CAPITAL_POLICY,
+    PAPER_POLICY,
+    TARGET_RATIO,
+    allocate_targets,
+    target_membership,
+)
 
 
 def capital_config(account):
@@ -90,98 +80,41 @@ def target_plan(
     db, account, positions, managed, prices, sells, buys, eligible, names, config
 ):
     pool = pool_values(db, account, positions, prices)
-    costs = QlibCostModel(config)
-    # Locked/ineligible and legacy positions consume exposure but are never taken over.
-    targets = (set(managed) - set(sells)) | set(buys)
-    adjustable = targets & eligible
-    fixed = sum(
-        pool["values"][p.id]
-        for p in positions
-        if p.stock_market == "CN"
-        and ((p.research_meta or {}).get("instrument") not in adjustable | set(sells))
-    )
-    per_target = max(0.0, pool["target_exposure"] - fixed) / max(1, len(adjustable))
-    target_qty = {s: int(per_target / prices[s]) // 100 * 100 for s in adjustable}
-    target_qty.update({s: 0 for s in sells})
-    orders, remaining_exposure, proceeds, sell_fees = [], pool["exposure"], 0.0, 0.0
-    for symbol in sorted(target_qty):
-        p = managed.get(symbol)
-        current = p.quantity if p else 0
-        delta = target_qty[symbol] - current
-        if delta >= 0:
+    holdings = {}
+    for p in positions:
+        if p.stock_market != "CN" or p.status != "open":
             continue
-        quantity = current if target_qty[symbol] == 0 else (-delta) // 100 * 100
-        if not quantity:
-            continue
-        fill = costs.fill("sell", prices[symbol], quantity)
-        proceeds += fill.cash_delta
-        sell_fees += fill.explicit_fees
-        remaining_exposure -= quantity * prices[symbol]
-        orders.append(
-            {
-                "symbol": symbol,
-                "name": names.get(symbol, symbol),
-                "side": "sell",
-                "reference_price": prices[symbol],
-                "estimated_quantity": quantity,
-                "estimated_fee": fill.explicit_fees,
-                "estimated_cash_delta": fill.cash_delta,
-                "cash_limit": None,
-                "position_id": p.id,
-                "held_quantity": current,
-                "target_quantity": target_qty[symbol],
-            }
+        symbol = (p.research_meta or {}).get("instrument") or (
+            ("SH" if p.stock_symbol.startswith("6") else "SZ") + p.stock_symbol
         )
-    budget = max(
-        0.0,
-        min(
-            pool["cash"] + proceeds,
-            (pool["equity"] - sell_fees) * TARGET_RATIO - remaining_exposure,
-        ),
+        holdings[symbol] = holdings.get(symbol, 0) + p.quantity
+    plan = allocate_targets(
+        pool["equity"] - pool["exposure"],
+        holdings,
+        managed,
+        prices,
+        sells,
+        buys,
+        eligible,
+        config,
     )
-    gaps = {
-        s: (q - (managed[s].quantity if s in managed else 0)) * prices[s]
-        for s, q in target_qty.items()
-        if q > (managed[s].quantity if s in managed else 0)
-    }
-    total_gap = sum(gaps.values())
-    for symbol, gap in sorted(gaps.items()):
-        ceiling = gap * min(1, budget / total_gap) if total_gap else 0
-        quantity = lot_quantity(ceiling, prices[symbol], ceiling, costs)
-        if not quantity:
-            continue
-        p = managed.get(symbol)
-        fill = costs.fill("buy", prices[symbol], quantity)
-        orders.append(
-            {
-                "symbol": symbol,
-                "name": names.get(symbol, symbol),
-                "side": "buy",
-                "reference_price": prices[symbol],
-                "estimated_quantity": quantity,
-                "estimated_fee": fill.explicit_fees,
-                "estimated_cash_delta": fill.cash_delta,
-                "cash_limit": ceiling,
-                "position_id": p.id if p else None,
-                "held_quantity": p.quantity if p else 0,
-                "target_quantity": target_qty[symbol],
-                "target_weight": (
-                    per_target / pool["equity"] if pool["equity"] > 0 else 0
-                ),
-            }
-        )
+    orders = [
+        {
+            **order,
+            "name": names.get(order["symbol"], order["symbol"]),
+            "position_id": managed[order["symbol"]].id
+            if order["symbol"] in managed
+            else None,
+        }
+        for order in plan["orders"]
+    ]
     return {
         "orders": orders,
-        "cash_budget": sum(o["cash_limit"] or 0 for o in orders),
+        **{k: v for k, v in plan.items() if k != "orders"},
         "capital_policy": CAPITAL_POLICY,
         "capital": capital_config(account),
         "market_equity": pool["equity"],
         "current_exposure": pool["exposure"],
         "target_exposure": pool["target_exposure"],
         "market_holdings": holding_state(positions),
-        "target_weights": (
-            {s: per_target / pool["equity"] for s in adjustable}
-            if pool["equity"] > 0
-            else {}
-        ),
     }

@@ -5,6 +5,7 @@ import {
   defaultOpportunityFilters,
   filterOpportunityCards,
   opportunityCards,
+  pricePortrait,
   savedOpportunityFilters,
 } from '@/lib/opportunity-view'
 
@@ -33,6 +34,25 @@ const options = {
   basket: [],
 }
 describe('opportunity display adapter', () => {
+  it('never labels extreme adjusted moves as a bullish opportunity', () => {
+    const context = {
+      observations: 60,
+      return_20_observations: 8.127,
+      volume_ratio_20_observations: 1.31,
+      drawdown_from_60_observation_high: 0,
+      basis: 'frozen',
+    }
+    expect(pricePortrait(context)).toBe('portraitAnomaly')
+    expect(pricePortrait({ ...context, return_20_observations: 0.1 })).toBe(
+      'portraitStrong',
+    )
+    expect(pricePortrait({ ...context, return_20_observations: -0.217 })).toBe(
+      'portraitWeak',
+    )
+    expect(pricePortrait({ ...context, return_20_observations: NaN })).toBe(
+      'portraitUnknown',
+    )
+  })
   it('recovers invalid persisted filters without reviving old score thresholds', () => {
     expect(savedOpportunityFilters(null)).toEqual(defaultOpportunityFilters)
     expect(

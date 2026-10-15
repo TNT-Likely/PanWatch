@@ -41,6 +41,8 @@ def _prices(vendor: str, symbol: str, days: int, adjusted: bool) -> list[Bar]:
             log_label="Qlib research kline",
             symbol=symbol,
         )
+        if payload is None:
+            raise ValueError("qlib_source_transport_unavailable")
         stock = (payload or {}).get("data", {}).get(symbol.lower(), {})
         # Never silently substitute qfq or unadjusted rows for an hfq request.
         rows = stock.get("hfqday" if adjusted else "day", [])
@@ -81,6 +83,8 @@ def _prices(vendor: str, symbol: str, days: int, adjusted: bool) -> list[Bar]:
             log_label="Qlib research kline",
             symbol=symbol,
         )
+        if payload is None:
+            raise ValueError("qlib_source_transport_unavailable")
         rows = ((payload or {}).get("data") or {}).get("klines", [])
         result = []
         for row in rows:
@@ -123,6 +127,13 @@ def fetch_history(
     lookup = {bar.date: bar for bar in adjusted}
     if not raw or not adjusted:
         raise ValueError("qlib_source_history_unavailable")
+    # Suppliers can return 801 raw rows for an 800-row request, but only 800
+    # adjusted rows. Align the leading window boundary, never intersect away an
+    # internal missing session or a different latest date.
+    common_start = max(raw[0].date, adjusted[0].date)
+    raw = [bar for bar in raw if bar.date >= common_start]
+    adjusted = [bar for bar in adjusted if bar.date >= common_start]
+    lookup = {bar.date: bar for bar in adjusted}
     if set(lookup) != {bar.date for bar in raw}:
         raise ValueError("qlib_adjustment_dates_mismatch")
     bars = []

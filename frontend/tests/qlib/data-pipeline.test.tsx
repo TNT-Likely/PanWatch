@@ -73,6 +73,34 @@ beforeEach(async () => {
   vi.mocked(qlibApi.jobs).mockResolvedValue({ items: [] })
 })
 afterEach(cleanup)
+it('separates stale ranks, latest coverage, transport errors and adjustment quality', async () => {
+  vi.mocked(qlibApi.universe).mockResolvedValue({
+    config: null,
+    jobs: [],
+    markets: {
+      ...markets,
+      HK: {
+        ...markets.HK,
+        total: 2000,
+        counts: { stale: 444 },
+        predicted: 235,
+        prediction_date: '2026-10-12',
+        reasons: {
+          qlib_adjustment_dates_mismatch: 636,
+          qlib_source_transport_unavailable: 10,
+        },
+      },
+    },
+  })
+  view()
+  const diagnostics = await screen.findByTestId('coverage-diagnostics')
+  expect(diagnostics.textContent).toContain('2026-10-13')
+  expect(diagnostics.textContent).toContain('2026-10-12')
+  expect(diagnostics.textContent).toContain('235')
+  expect(diagnostics.textContent).toContain('636 只')
+  expect(diagnostics.textContent).toContain('不是个股价格缺失')
+  expect(qlibApi.universeJob).not.toHaveBeenCalled()
+})
 it('opening full universe setup never syncs, trains, approves or changes source settings', async () => {
   view()
   await userEvent.click(

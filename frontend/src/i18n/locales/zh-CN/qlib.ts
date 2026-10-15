@@ -1,4 +1,25 @@
 export const qlib = {
+  strategy: {
+    rankNotice: '模型研究排名，非买入推荐；前往机会页核对验证结果与数据日期。',
+    rules: '完整验证条件与选股／退出规则',
+    title: 'AI 价量组合 · {{days}} 日观察 · Top {{topk}} 轮动',
+    eligible: '已通过发布门槛，可申请自动模拟（不保证收益）',
+    observationOnly: '暂无合格自动策略：以下仅供研究观察，不是买入推荐',
+    report: '查看研究报告与验证条件',
+    netReturn: '历史研究收益（成本后）',
+    drawdown: '历史最大回撤',
+    days: '研究回测交易日',
+    alignment: '回测与模拟组合规则',
+    aligned: '共用目标仓位计算',
+    notAligned: '旧规则，不能证明当前模拟效果',
+    selection:
+      '如何入选：Alpha158 价量特征＋已审核模型排序；排名不是胜率，也不要求股票是热股。',
+    allocation:
+      '如何模拟：合格策略按前列股票构建组合，使用市场子池净资产的 90%，已有仓位计入，下一开盘执行冻结差额。',
+    exit: '如何退出：排名移出目标组合时减仓／退出；不提供自动止盈止损，暂停不会自动卖出持仓。',
+    limits:
+      '历史数据、样本覆盖和公司行动可能存在研究偏差。行情画像不是模型选中原因；没有合格策略时不自动交易。',
+  },
   automation: {
     title: '自动选股与模拟（默认模式）',
     start: '启动自动选股与模拟',
@@ -13,8 +34,10 @@ export const qlib = {
     consentNote:
       '一次授权后，无需每天确认计划。仅普通非 ST A 股主板模拟；港美股继续研究，不接实盘。',
     model: '使用当前审核模型：{{model}}（{{id}}）',
-    capitalSummary: '模拟盘总资金 {{total}} CNY · A 股 {{ratio}}% · 分配本金 {{capital}} CNY',
-    capitalNote: '资金只在模拟盘配置，不设每日追加预算。以 A 股子池净资产的 90% 为目标，已有仓位占用额度，余下保留现金；费用、整数手和交易限制可能使仓位偏离。港美额度不挪用，旧非 Qlib 仓位不接管。',
+    capitalSummary:
+      '模拟盘总资金 {{total}} CNY · A 股 {{ratio}}% · 分配本金 {{capital}} CNY',
+    capitalNote:
+      '资金只在模拟盘配置，不设每日追加预算。以 A 股子池净资产的 90% 为目标，已有仓位占用额度，余下保留现金；费用、整数手和交易限制可能使仓位偏离。港美额度不挪用，旧非 Qlib 仓位不接管。',
     capitalSettings: '前往模拟盘调整资金配置',
     risk: '授权有效期 30 天，锁定模型、初始资金及市场分配。启用已配置市场的盘后行情与排名更新，并取消旧待执行计划（保留历史和已有仓位）。模型/资金配置变化需重新授权；上游连续失败、数据陈旧或规则不符时停单，不自动训练或审批模型。程序须持续运行。',
     ack: '我授权按以上模拟盘资金配置连续调仓，理解研究结果未验证收益，数据异常可能无法成交。',
@@ -119,6 +142,19 @@ export const qlib = {
     },
     eventStates: { filled: '已虚拟成交', rejected: '已拒绝' },
     errors: {
+      qlib_strategy_backtest_mismatch:
+        '这份回测使用旧组合规则，尚未验证当前模拟策略，不能启用自动模拟。',
+      qlib_strategy_evidence_insufficient:
+        '样本外验证数据不足，暂不具备自动模拟条件。',
+      qlib_strategy_performance_failed:
+        '历史收益、排序能力或回撤未通过最低门槛，不作为自动推荐策略。',
+      qlib_strategy_baseline_unverified:
+        '缺少同口径基线对照，不能验证策略表现。',
+      qlib_strategy_baseline_not_beaten:
+        '尚未同时通过收益与排序能力的基线对照。',
+      qlib_strategy_rolling_unverified: '三个滚动窗口尚未全部通过同口径验证。',
+      qlib_strategy_research_only:
+        '当前模型仅获研究模式审核，数据与正式发布条件尚未验证。',
       qlib_automation_request_key_required:
         '请重新打开授权窗口，取得本次授权标识。',
       qlib_automation_authorization_conflict:
@@ -144,10 +180,14 @@ export const qlib = {
         '等待已审核模型的新预测，不会自动训练或审批。',
       qlib_automation_setup_required:
         '请先完成一次有权使用的数据接入，并审核真实数据模型。',
-      qlib_automation_market_unallocated: 'A 股未分配资金，请先在模拟盘调整市场比例。',
-      qlib_automation_capital_policy_changed: '旧的每日预算授权不会自动扩大为资金池授权，请核对模拟盘资金配置后重新授权。',
-      qlib_portfolio_valuation_unavailable: '已有 A 股仓位缺少可核对价格，无法计算子池净资产，暂停调仓。',
-      qlib_portfolio_state_changed: '冻结计划后的资金配置或已有仓位已变化，本计划不再执行，请查看新计划。',
+      qlib_automation_market_unallocated:
+        'A 股未分配资金，请先在模拟盘调整市场比例。',
+      qlib_automation_capital_policy_changed:
+        '旧的每日预算授权不会自动扩大为资金池授权，请核对模拟盘资金配置后重新授权。',
+      qlib_portfolio_valuation_unavailable:
+        '已有 A 股仓位缺少可核对价格，无法计算子池净资产，暂停调仓。',
+      qlib_portfolio_state_changed:
+        '冻结计划后的资金配置或已有仓位已变化，本计划不再执行，请查看新计划。',
       qlib_manual_confirmation_disabled_automatic:
         '已启用连续自动模式，无需手动确认；如需自行决定，请先切换手动模式。',
       qlib_source_configuration_changed:
@@ -195,6 +235,9 @@ export const qlib = {
     },
   },
   universe: {
+    dateSeparation:
+      '最新收盘日 {{latest}}；最近排名来自 {{prediction}}（{{predicted}} 只）。旧排名保留不代表行情已更新。',
+    affected: '{{count}} 只',
     qualityWarning: '已剔除 {{count}} 条不符合契约的日线，不填造价格',
     phases: {
       queued: '排队中',
@@ -209,6 +252,8 @@ export const qlib = {
       '重建将接受上游历史修订并创建新的行情版本，不删除旧版本。旧模型不能使用变更后的训练历史；需重新训练、审核后才能切换排名。是否继续？',
     exclusionReason: '不可预测原因',
     issues: {
+      qlib_source_transport_unavailable:
+        '行情请求断开或超时，等待上游恢复；不是个股价格缺失',
       qlib_source_unavailable_resume_sync:
         '上游行情连续不可用，本轮同步已停止。已完成数据、模型和排名保留；稍后点击“继续未完成同步”重试，不需要重新训练或重建。',
       qlib_universe_status_unavailable:
@@ -377,6 +422,13 @@ export const qlib = {
     failed: '操作未完成，旧数据和已审批排名不会被替换：',
   },
   opportunityPage: {
+    researchObserve: '研究观察 · 非推荐',
+    pricePortrait: '行情画像（非入选原因）',
+    portraitUnknown: '数据不足，无法判断',
+    portraitAnomaly: '疑似复权／公司行动异常，暂不判断形态',
+    portraitWeak: '近期明显走弱，尚不能认定反转',
+    portraitStrong: '近阶段上涨、接近近期高点',
+    portraitMixed: '尚未识别明显强势形态',
     journey: '自动更新与选股 → 自动生成模拟计划 → 下一开盘模拟执行 → 结果跟踪',
     journeyNote:
       '首次审核模型并授权模拟盘资金配置后，自动模式无需每日确认；异常数据会停单。也可切换手动模式逐份确认，关注始终只是收藏。',

@@ -705,6 +705,7 @@ export default function DashboardPage() {
               {dashboardT('dashboard.opportunitiesPage')}
             </button>
           </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">{qlibT('strategy.rankNotice')}</p>
           {opportunities.length === 0 ? (
             <div className="py-6 text-center text-[12px] text-muted-foreground">{opportunitiesLoading ? dashboardT('dashboard.loading') : qlibT('empty')}</div>
           ) : (

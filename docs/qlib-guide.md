@@ -66,7 +66,11 @@ Training/rebuild controls live in collapsed data maintenance. Repeated upstream 
 
 After authorized data setup and initial real-model review, Start automatic selection and paper trading binds a 30-day grant to the model, initial capital, market allocations and source configuration. Paper trading is the only funds editor: no separate daily budget. The readonly consent summary is hashed so changed funds require a new preview/authorization; old daily-budget grants never silently expand into pool authority. It enables configured-market after-close data/ranking updates and automatic CN next-open plans; HK/US remain research-only. The app must remain running. Opening/upgrading never silently grants authority.
 
-New paper plans target 90% of current CN subpool equity (allocated principal plus realized gains/losses and marked open holdings), not 90% of each day's remaining cash. Existing and unmanaged CN holdings consume exposure; legacy positions are never traded, and HK/US allocations are never borrowed. Rank-based Top-K membership retains higher-ranked keepers rather than forcing daily replacement, with target-size reductions/top-ups of managed positions. Frozen quantities and fee-inclusive item caps bound next-open execution; rejected sales do not release capital, missing held valuations block buys, and price moves/lots/fees may leave target drift. Partial reductions preserve proportional cost basis and settlement. A top-up conservatively locks the aggregate position until the next CN day. Research backtests retain their original pinned Qlib cash-allocation/dropout policy; they are not a replay of this target-sizing paper policy. Previously frozen v1 decisions remain immutable and use their original rules.
+New paper plans target 90% of current CN subpool equity (allocated principal plus realized gains/losses and marked open holdings), not 90% of each day's remaining cash. Existing and unmanaged CN holdings consume exposure; legacy positions are never traded, and HK/US allocations are never borrowed. Rank-based Top-K membership retains higher-ranked keepers rather than forcing daily replacement, with target-size reductions/top-ups of managed positions. Frozen quantities and fee-inclusive item caps bound next-open execution; rejected sales do not release capital, missing held valuations block buys, and price moves/lots/fees may leave target drift. Partial reductions preserve proportional cost basis and settlement. A top-up conservatively locks the aggregate position until the next CN day. New CN research backtests use the same pure target allocator through a Qlib adapter: quantities and item caps freeze at prior close and replay at next open. Stored legacy backtests and v1 decisions retain their original policy, never relabeled as aligned evidence.
+
+Automatic paper authorization now requires validated release mode, aligned main/baseline/three rolling-window reports and minimum historical performance checks. Research-only approval, losses, nonpositive rank skill, excessive drawdown, missing evidence and legacy allocation policies block authorization and execution, including direct API calls. The opportunity page exposes research return, drawdown, sample days and failure reasons. No eligible strategy means research observations/manual engineering trials only, not an automatic buy recommendation. These historical gates do not guarantee returns.
+
+New history scans interleave exchange/board segments and freeze their order; existing nonzero legacy cursors retain lexical order. Valid empty supplier responses and quality errors no longer count as global transport outages, even when a backup disconnects. Only the leading raw/adjusted window boundary may be trimmed; internal or latest-session gaps still fail. Resume at a rewound zero cursor may reuse its own verified, same-session frozen calendar, never an unrelated cached session. The page separates source errors, exclusions, latest-session coverage and older ranking dates.
 
 Changed/expired grants, failed/updating data, stale predictions, unverifiable frozen histories or conservative absolute 20-observation adjusted-return anomalies above 100% stop automatic orders. Daily plans are idempotent across grant renewals; cancellation never revives them. Execution rechecks grant/data; no stock substitutions or donated rejection budgets. Pause the account at any time. Disable/switch manual revokes standing consent, pauses and cancels pending plans without liquidating holdings; data updating remains configured. No automatic model training/review, implicit model switching or real brokers.
 
@@ -126,11 +130,11 @@ flowchart LR
    fills. One decision executes at most once. Quotes with only a source date cannot
    establish tick-level timeliness; no order-book matching or impact model is claimed.
 
-TopkDropout uses `n_drop=topk`, keeps eligible winners and distributes 90% of
-available cash across entrants; it does not resize surviving holdings daily.
-Indicative weights are not fill promises. Backtest and forward execution share
-the policy and aggregate fees, but historical daily-bar availability, opening-window
-quote delivery, funding allocations and manual exits can produce differences.
+New CN backtests and paper previews share target membership, sizing, lots and fees,
+restricted to ordinary non-ST main-board stocks. HK/US retain separate legacy
+TopkDropout research policies and are not paper-executable. A shared allocator
+does not certify identical fills: daily-bar availability, opening-window quote
+delivery, corporate actions, settlement, funding and manual exits can differ.
 Cash is the backtest reference, not index excess return. Historical and forward
 equity are never spliced together. Broker live trading is not supported.
 

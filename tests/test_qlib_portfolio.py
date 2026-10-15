@@ -146,6 +146,16 @@ def test_missing_held_valuation_blocks_whole_target_plan(storage):
     )
 
 
+def test_allocator_does_not_clamp_negative_input_cash_into_new_equity():
+    from src.modules.qlib_research.allocation import allocate_targets
+    from src.modules.qlib_research.contracts import ResearchConfig
+    plan = allocate_targets(-1000, {"SH600000": 9000}, {"SH600000"}, {"SH600000": 10},
+        [], [], {"SH600000"}, ResearchConfig().model_dump())
+    assert plan["market_equity"] == 89000
+    assert plan["target_exposure"] == 80100
+    assert any(order["side"] == "sell" for order in plan["orders"])
+
+
 def test_legacy_exposure_consumes_pool_but_no_takeover(storage):
     ident = selection(storage)
     with storage() as db:

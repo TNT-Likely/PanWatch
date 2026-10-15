@@ -17,6 +17,7 @@ from src.platform.persistence.qlib_models import (
 from . import service
 from .policy import execution_date
 from .portfolio import CAPITAL_POLICY, capital_config
+from .assessment import assess
 
 KEY = "paper_automation"
 
@@ -80,6 +81,10 @@ def grant_error(db, grant_id, *, check_source=True):
         return "qlib_automation_funds_changed"
     if state.champion_id != data["model_id"]:
         return "qlib_automation_model_changed"
+    model = db.get(QlibRecord, state.champion_id)
+    assessment = assess(model.payload if model else None, service.market_mode(state))
+    if not assessment["eligible"]:
+        return assessment["reasons"][0]
     if state.settings.get("universe_generation") != data["source_generation"]:
         return "qlib_source_configuration_changed"
     if check_source:
@@ -110,12 +115,14 @@ def _status(db):
         db.get(QlibRecord, state.champion_id) if state and state.champion_id else None
     )
     source = (state.settings or {}).get("universe_config") if state else None
+    assessment = assess(model.payload if model else None, service.market_mode(state) if state else "research")
     available = bool(
         account
         and model
         and model.payload.get("data_kind") == "market"
         and source
         and source.get("license_acknowledged")
+        and assessment["eligible"]
     )
     result = {
         "mode": config.get("mode", "automatic"),
@@ -124,6 +131,7 @@ def _status(db):
         "model_name": model.name if model else None,
         "account_enabled": bool(account and account.enabled),
         "can_authorize": available,
+        "assessment": assessment,
         "capital": capital_config(account) if account else None,
         "bound_market_principal": (
             (
@@ -147,6 +155,7 @@ def _status(db):
         result["reason"] = (
             "qlib_paper_account_required"
             if not account
+            else assessment["reasons"][0] if model and not assessment["eligible"]
             else "qlib_automation_setup_required" if not available else ""
         )
         return result
@@ -247,6 +256,9 @@ def configure(body, actor):
                 raise ValueError("qlib_automation_funds_changed")
             if capital["market_principal"] <= 0:
                 raise ValueError("qlib_automation_market_unallocated")
+            assessment = assess(model.payload, service.market_mode(state))
+            if not assessment["eligible"]:
+                raise ValueError(assessment["reasons"][0])
         # Switching authorization never restores prior pending plans.
         for decision in db.query(QlibRecord).filter_by(kind="decision"):
             if not db.get(QlibRecord, marker("executed", decision.id)) and not db.get(

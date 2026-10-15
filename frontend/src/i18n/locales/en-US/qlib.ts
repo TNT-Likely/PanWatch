@@ -1,4 +1,29 @@
 export const qlib = {
+  strategy: {
+    rankNotice:
+      'Model research ranks, not buy recommendations. Check release evidence and data dates on Opportunities.',
+    rules: 'All release checks and selection / exit rules',
+    title:
+      'AI price-volume portfolio · {{days}}-session horizon · Top {{topk}} rotation',
+    eligible:
+      'Release checks passed; eligible for paper authorization, not a return guarantee',
+    observationOnly:
+      'No eligible automatic strategy: research observations below are not buy recommendations',
+    report: 'View research report and release checks',
+    netReturn: 'Historical research return, net of costs',
+    drawdown: 'Historical maximum drawdown',
+    days: 'Backtest trading sessions',
+    alignment: 'Backtest and paper allocation',
+    aligned: 'Shared target allocator',
+    notAligned: 'Legacy policy; not evidence for current paper policy',
+    selection:
+      'Selection: Alpha158 price-volume features and reviewed model ranks. Ranks are not win probabilities or popularity measures.',
+    allocation:
+      'Paper behavior: eligible strategies target 90% of market-pool equity in leading names, counting existing holdings; frozen differences execute next open.',
+    exit: 'Exit: reduce or close positions leaving the target portfolio. No automatic stop loss/take profit; pausing does not liquidate holdings.',
+    limits:
+      'Historical data, coverage and corporate actions have research limitations. Price descriptions are not model attribution. No eligible strategy means no automatic trades.',
+  },
   automation: {
     title: 'Automatic selection and paper trading (default)',
     start: 'Start automatic selection and paper trading',
@@ -13,8 +38,10 @@ export const qlib = {
     consentNote:
       'Standing authorization removes daily confirmation. Regular non-ST CN main-board paper trades only; HK/US remain research. No brokers.',
     model: 'Current reviewed model: {{model}} ({{id}})',
-    capitalSummary: 'Paper capital {{total}} CNY · CN {{ratio}}% · allocated principal {{capital}} CNY',
-    capitalNote: 'Configure funds only in paper trading; no daily top-up budget. Target 90% of CN pool equity, counting existing holdings and retaining cash. Fees, lots and trading constraints may cause drift. No HK/US borrowing or legacy-position takeover.',
+    capitalSummary:
+      'Paper capital {{total}} CNY · CN {{ratio}}% · allocated principal {{capital}} CNY',
+    capitalNote:
+      'Configure funds only in paper trading; no daily top-up budget. Target 90% of CN pool equity, counting existing holdings and retaining cash. Fees, lots and trading constraints may cause drift. No HK/US borrowing or legacy-position takeover.',
     capitalSettings: 'Edit funds in paper trading',
     risk: 'Valid for 30 days, bound to model, initial funds and market allocations. Enables after-close data/ranking updates for configured markets and cancels pending plans, preserving history and holdings. Model/fund changes require new consent. Failed, stale or invalid data stops orders; no automatic model training/review. The app must remain running.',
     ack: 'I authorize recurring rebalancing under this paper-account fund configuration, understand research returns are unverified, and data failures may prevent fills.',
@@ -67,7 +94,8 @@ export const qlib = {
     availableCash: 'Available CN cash',
     cashCeiling: 'Rebalance buy allowance incl. fees, not new principal',
     targetExposure: 'CN target holdings value (90% of pool equity)',
-    currentExposure: 'Existing CN holdings value, including unmanaged positions',
+    currentExposure:
+      'Existing CN holdings value, including unmanaged positions',
     estimatedFees: 'Reference-price fee estimate',
     executionDate: 'Planned execution window',
     stock: 'Security',
@@ -125,6 +153,20 @@ export const qlib = {
     },
     eventStates: { filled: 'Virtually filled', rejected: 'Rejected' },
     errors: {
+      qlib_strategy_backtest_mismatch:
+        'This backtest uses a legacy portfolio policy and cannot authorize the current automatic paper strategy.',
+      qlib_strategy_evidence_insufficient:
+        'Insufficient held-out evidence for automatic paper authorization.',
+      qlib_strategy_performance_failed:
+        'Historical return, rank skill or drawdown failed minimum checks; not an automatic recommendation.',
+      qlib_strategy_baseline_unverified:
+        'A comparable baseline has not been verified.',
+      qlib_strategy_baseline_not_beaten:
+        'Return and rank skill have not both passed the baseline comparison.',
+      qlib_strategy_rolling_unverified:
+        'Three rolling windows have not all passed aligned checks.',
+      qlib_strategy_research_only:
+        'Research approval only; data and validated release requirements remain unverified.',
       qlib_automation_request_key_required:
         'Reopen the authorization dialog for a fresh request identity.',
       qlib_automation_authorization_conflict:
@@ -151,10 +193,14 @@ export const qlib = {
         'Waiting for predictions from the reviewed model; no automatic training or review.',
       qlib_automation_setup_required:
         'Set up authorized market data and approve a real-data model first.',
-      qlib_automation_market_unallocated: 'No CN funds allocated. Adjust market ratios in paper trading first.',
-      qlib_automation_capital_policy_changed: 'A daily-budget grant does not silently become a pool grant. Review paper funds and authorize again.',
-      qlib_portfolio_valuation_unavailable: 'Existing CN holdings lack verifiable prices; pool equity cannot be calculated. Rebalancing stopped.',
-      qlib_portfolio_state_changed: 'Funds or holdings changed after freezing this plan; it will not execute. Inspect a new plan.',
+      qlib_automation_market_unallocated:
+        'No CN funds allocated. Adjust market ratios in paper trading first.',
+      qlib_automation_capital_policy_changed:
+        'A daily-budget grant does not silently become a pool grant. Review paper funds and authorize again.',
+      qlib_portfolio_valuation_unavailable:
+        'Existing CN holdings lack verifiable prices; pool equity cannot be calculated. Rebalancing stopped.',
+      qlib_portfolio_state_changed:
+        'Funds or holdings changed after freezing this plan; it will not execute. Inspect a new plan.',
       qlib_manual_confirmation_disabled_automatic:
         'Standing automatic mode is active; individual confirmation is unnecessary. Switch to manual first to choose plans yourself.',
       qlib_source_configuration_changed:
@@ -215,6 +261,9 @@ export const qlib = {
     },
   },
   universe: {
+    dateSeparation:
+      'Latest completed session {{latest}}; last ranking {{prediction}} ({{predicted}} securities). Preserved ranks do not imply updated histories.',
+    affected: '{{count}} securities',
     qualityWarning:
       '{{count}} incompatible daily bars discarded; no invented prices',
     phases: {
@@ -230,6 +279,8 @@ export const qlib = {
       'Accept upstream historical revisions into new versions without deleting old artifacts? Changed training history requires retraining and review before switching rankings.',
     exclusionReason: 'Prediction exclusion reason',
     issues: {
+      qlib_source_transport_unavailable:
+        'History request disconnected or timed out; awaiting upstream recovery, not a missing security price',
       qlib_source_unavailable_resume_sync:
         'Upstream histories were repeatedly unavailable, so synchronization stopped. Completed data, models and ranks are preserved. Retry Resume unfinished sync later; no retraining or rebuild is needed.',
       qlib_universe_status_unavailable:
@@ -413,6 +464,14 @@ export const qlib = {
       'Action incomplete. Previous data and reviewed rankings are retained:',
   },
   opportunityPage: {
+    researchObserve: 'Research only · not a recommendation',
+    pricePortrait: 'Price description, not selection attribution',
+    portraitUnknown: 'Insufficient data',
+    portraitAnomaly:
+      'Possible adjustment / corporate-action anomaly; no pattern classified',
+    portraitWeak: 'Recent material weakness; reversal not established',
+    portraitStrong: 'Recent advance, near the recent high',
+    portraitMixed: 'No clear strength pattern identified',
     journey:
       'Update and select automatically → Freeze paper plan → Execute next open → Track results',
     journeyNote:

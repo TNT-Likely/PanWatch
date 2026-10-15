@@ -80,5 +80,26 @@ def test_incomplete_session_is_excluded_before_pair_validation(monkeypatch):
 
 def test_missing_supplier_response_is_not_an_adjustment_mismatch(monkeypatch):
     monkeypatch.setattr(research, "market_get", lambda *a, **kw: None)
-    with pytest.raises(ValueError, match="source_history_unavailable"):
+    with pytest.raises(ValueError, match="source_transport_unavailable"):
         research.fetch_history("tencent", "SH600000")
+
+
+def test_empty_history_is_not_a_network_failure(monkeypatch):
+    monkeypatch.setattr(research, "market_get", lambda *a, **kw: {"data": {}})
+    with pytest.raises(ValueError, match="source_history_unavailable"):
+        research.fetch_history("tencent", "BJ920000")
+
+
+@pytest.mark.parametrize("missing", ["leading", "internal", "latest"])
+def test_pair_window_alignment_only_trims_leading_boundary(monkeypatch, missing):
+    from marketdata.types import Bar
+    raw = [Bar(f"2026-10-{day:02d}", 10, 10, 11, 9, 200) for day in (12, 13, 14)]
+    index = {"leading": 0, "internal": 1, "latest": 2}[missing]
+    adjusted = [bar for i, bar in enumerate(raw) if i != index]
+    monkeypatch.setattr(research, "_prices", lambda vendor, symbol, days, adjusted_: adjusted if adjusted_ else raw)
+    if missing == "leading":
+        result = research.fetch_history("tencent", "SH600000")
+        assert [b["date"] for b in result.bars] == ["2026-10-13", "2026-10-14"]
+    else:
+        with pytest.raises(ValueError, match="adjustment_dates_mismatch"):
+            research.fetch_history("tencent", "SH600000")

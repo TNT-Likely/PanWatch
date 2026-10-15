@@ -50,11 +50,13 @@ import QlibDataPipeline from '@/components/qlib-data-pipeline'
 import PaperPlanDialog, { planError } from '@/components/paper-plan-dialog'
 import PaperPlanStatus from '@/components/paper-plan-status'
 import PaperAutomation from '@/components/paper-automation'
+import StrategySummary from '@/components/strategy-summary'
 import {
   securityCode,
   defaultOpportunityFilters,
   filterOpportunityCards,
   opportunityCards,
+  pricePortrait,
   savedOpportunityFilters,
   type OpportunityCard,
   type OpportunityFilters,
@@ -376,10 +378,15 @@ export default function Opportunities() {
           </Button>
         </div>
       </header>
-      <PaperAutomation onChange={() => setPlanVersion(value => value + 1)} />
+      {run && <StrategySummary assessment={run.assessment} />}
+      <PaperAutomation onChange={() => setPlanVersion((value) => value + 1)} />
       <div className="card mb-4 p-3 space-y-2 text-sm">
-        <p className="font-medium">{tr('journey')}</p>
-        <p className="text-xs text-muted-foreground">{tr('journeyNote')}</p>
+        {!run && (
+          <>
+            <p className="font-medium">{tr('journey')}</p>
+            <p className="text-xs text-muted-foreground">{tr('journeyNote')}</p>
+          </>
+        )}
         <div
           className="flex flex-wrap gap-2"
           role="group"
@@ -686,7 +693,11 @@ export default function Opportunities() {
                 </div>
                 <div className="shrink-0 text-right">
                   <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-                    {tr(card.selected ? 'candidate' : 'observe')}
+                    {tr(
+                      card.selected && run?.assessment?.eligible
+                        ? 'candidate'
+                        : 'researchObserve',
+                    )}
                   </span>
                   <p className="mt-1 text-xs font-semibold">
                     {tr('rank', {
@@ -698,6 +709,10 @@ export default function Opportunities() {
               </div>
               <p className="mt-2 text-xs text-foreground">
                 {tr('cardHint', { days: run?.horizon ?? '—' })}
+              </p>
+              <p className="mt-2 text-xs font-medium">
+                {tr('pricePortrait')}:{' '}
+                {tr(pricePortrait(card.prediction.observed_context))}
               </p>
               <div className="mt-3 space-y-1 text-xs">
                 <p className="font-medium">{tr('observableEvidence')}</p>

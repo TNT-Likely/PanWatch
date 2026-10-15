@@ -120,7 +120,7 @@ def evaluate_signal(prediction, labels):
     })
 
 
-def portfolio_backtest(prediction, split, config, market="CN", members=None):
+def portfolio_backtest(prediction, split, config, market="CN", members=None, panel=None):
     """Real Qlib executor with next-bar open execution and long-only Top-K dropout."""
     from qlib.contrib.evaluate import backtest_daily
     from qlib.contrib.strategy import TopkDropoutStrategy
@@ -143,10 +143,21 @@ def portfolio_backtest(prediction, split, config, market="CN", members=None):
         codes=list(prediction.index.get_level_values("instrument").unique()), deal_price="open",
         limit_threshold=(limit_expr, limit_expr), open_cost=config["open_cost"], close_cost=config["close_cost"],
         min_cost=config["min_cost"], trade_unit=100 if market == "CN" else 1)
-    strategy = TopkDropoutStrategy(
-        signal=prediction, topk=config["topk"], n_drop=config["topk"],
-        hold_thresh=1, only_tradable=True, risk_degree=0.9,
-    )
+    if market == "CN" and panel is not None:
+        if __package__:
+            from .target_backtest import strategy_for
+            from .allocation import PAPER_POLICY
+        else:
+            from target_backtest import strategy_for
+            from allocation import PAPER_POLICY
+        strategy = strategy_for(prediction, config, panel)
+        policy = PAPER_POLICY
+    else:
+        strategy = TopkDropoutStrategy(
+            signal=prediction, topk=config["topk"], n_drop=config["topk"],
+            hold_thresh=1, only_tradable=True, risk_degree=0.9,
+        )
+        policy = "topk_dropout_daily_next_open_90pct_cash"
     report, _ = backtest_daily(
         start_time=split["test"][0], end_time=split["test"][1], strategy=strategy,
         account=config["capital"], benchmark=pd.Series(0.0, index=pd.date_range(split["test"][0], split["test"][1])),
@@ -157,7 +168,13 @@ def portfolio_backtest(prediction, split, config, market="CN", members=None):
     summary["turnover_mean"] = float(report["turnover"].mean())
     equity = (1 + net).cumprod()
     summary["curve"] = [{"date": d.strftime("%Y-%m-%d"), "equity": float(v)} for d, v in equity.items()]
-    summary["policy"] = f"topk_dropout_daily_next_open_90pct_cash; market={market}; current_symbol_lots; no short positions; declared fees in local currency"
+    summary["policy"] = f"{policy}; market={market}; current_symbol_lots; no short positions; declared fees in local currency"
+    summary["allocation_policy"] = policy
+    summary["paper_aligned"] = market == "CN" and panel is not None
+    if summary["paper_aligned"]:
+        summary["generated_orders"] = strategy.order_count
+        summary["rejected_orders"] = strategy.rejected_count
+    summary["execution_assumptions"] = "Prior-close frozen caps and quantities, next-open daily-bar replay; not opening quote, liquidity, settlement or corporate-action certification"
     summary["market_rules_warning"] = "Current lot/limit metadata is a research assumption, not certified historical rules; CN STAR/BSE rules are conservative research approximations"
     summary["benchmark"] = "zero-return cash reference; not CSI300 excess return"
     return clean(summary)
@@ -242,7 +259,7 @@ def run(task_path: Path, return_context=False):
     if task.get("replay_fingerprint") and task["replay_fingerprint"] != replay_fingerprint:
         raise ValueError("qlib_model_replay_changed")
     metrics = evaluate_signal(original, labels)
-    metrics["backtest"] = portfolio_backtest(original, split, config, market, model_panel["members"])
+    metrics["backtest"] = portfolio_backtest(original, split, config, market, model_panel["members"], model_panel)
     features = dataset.prepare("test", col_set="feature", data_key="infer")
     latest_date = prediction.index.get_level_values("datetime").max()
     latest = prediction.xs(latest_date, level="datetime").sort_values(ascending=False, kind="stable")
@@ -268,7 +285,7 @@ def run(task_path: Path, return_context=False):
     momentum = raw_features.iloc[:, 0]
     momentum.index = momentum.index.reorder_levels(["datetime", "instrument"])
     baseline = evaluate_signal(momentum.reindex(original.index), base_labels)
-    baseline["backtest"] = portfolio_backtest(momentum.reindex(original.index).dropna(), split, config, market, model_panel["members"])
+    baseline["backtest"] = portfolio_backtest(momentum.reindex(original.index).dropna(), split, config, market, model_panel["members"], model_panel)
     # Three expanding-window, independently fitted folds. Every fold's test
     # begins after validation labels have matured. Hyperparameters stay fixed.
     rolling = []
@@ -295,7 +312,7 @@ def run(task_path: Path, return_context=False):
         fold_prediction = fold_model.predict(fold_dataset, segment="test").replace([np.inf, -np.inf], np.nan).dropna()
         fold_labels = fold_dataset.prepare("test", col_set="label", data_key="raw").iloc[:, 0]
         fold_metrics = evaluate_signal(fold_prediction, fold_labels)
-        fold_metrics["backtest"] = portfolio_backtest(fold_prediction, fold, config, market, model_panel["members"])
+        fold_metrics["backtest"] = portfolio_backtest(fold_prediction, fold, config, market, model_panel["members"], model_panel)
         rolling.append({"segments": fold, "model_available_after": fold["test"][0], "metrics": fold_metrics})
     asof = latest_date.strftime("%Y-%m-%d")
     eligible = {member["symbol"] for member in panel["members"] if member["start"] <= asof <= member["end"]}

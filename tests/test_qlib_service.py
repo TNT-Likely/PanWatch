@@ -38,11 +38,12 @@ def storage(tmp_path, monkeypatch):
 
 def model(storage, *, data_kind="synthetic", config=None):
     ident = uuid.uuid4().hex
-    metrics = {"rank_ic": .2, "ic_dates": 30, "backtest": {"max_drawdown": .1}}
+    from src.modules.qlib_research.allocation import PAPER_POLICY
+    metrics = {"rank_ic": .2, "ic_dates": 30, "backtest": {"days": 30, "return": .1, "max_drawdown": .1, "allocation_policy": PAPER_POLICY, "paper_aligned": True}}
     with storage() as db:
         db.add(QlibRecord(id=ident, kind="model", name="controlled model", payload={
             "dataset_id": uuid.uuid4().hex, "config": config or ResearchConfig().model_dump(),
-            "metrics": metrics, "baseline": {"rank_ic": .1}, "rolling": [{"metrics": metrics}] * 3,
+            "metrics": metrics, "baseline": {"rank_ic": .1, "backtest": {"return": .05, "allocation_policy": PAPER_POLICY, "paper_aligned": True}}, "rolling": [{"metrics": metrics}] * 3,
             "data_kind": data_kind, "universe_kind": "historical_membership", "adjustment": "point_in_time"}))
         db.commit()
     return ident
