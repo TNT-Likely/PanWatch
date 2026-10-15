@@ -252,6 +252,9 @@ export interface QlibPlanOrder {
   position_id: number | null
 }
 export interface QlibPlanPreview {
+  market_equity?: number
+  current_exposure?: number
+  target_exposure?: number
   run_id: string
   model_id: string
   market: string
@@ -406,8 +409,8 @@ export interface QlibAutomationStatus {
   model_name: string | null
   account_enabled: boolean
   can_authorize: boolean
-  recommended_cash_limit: number
-  max_buy_cash: number | null
+  capital: { account_id: number; initial_capital: number; allocations: Record<string, number>; market_principal: number; target_ratio: number; capital_policy: string; capital_config_hash: string } | null
+  bound_market_principal: number | null
   expires_at: string | null
   grant_id: string | null
   phase: string
@@ -416,7 +419,7 @@ export interface QlibAutomationStatus {
 }
 export const qlibApi = {
   automationStatus: () => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation'),
-  configureAutomation: (body: { mode: 'automatic' | 'manual'; enabled?: boolean; request_key?: string; model_id?: string; max_buy_cash?: number; days?: number; acknowledge_research?: boolean }) => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation', { method: 'PUT', body: JSON.stringify(body) }),
+  configureAutomation: (body: { mode: 'automatic' | 'manual'; enabled?: boolean; request_key?: string; model_id?: string; capital_config_hash?: string; days?: number; acknowledge_research?: boolean }) => fetchAPI<QlibAutomationStatus>('/qlib/paper-automation', { method: 'PUT', body: JSON.stringify(body) }),
   universe: () => fetchAPI<QlibUniverseStatus>('/qlib/universe'),
   configureUniverse: (body: QlibUniverseConfig) =>
     fetchAPI<QlibUniverseStatus>('/qlib/universe', {

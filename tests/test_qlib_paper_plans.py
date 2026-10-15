@@ -150,7 +150,14 @@ def test_changed_account_preview_cannot_be_confirmed(storage, change):
                 )
             )
         db.commit()
-    with pytest.raises(ValueError, match="preview_changed_conflict"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "portfolio_valuation_unavailable"
+            if change == "holding"
+            else "preview_changed_conflict"
+        ),
+    ):
         paper_plans.confirm(ident, "qa", before["preview_hash"], True)
     assert service.list_records("decision") == []
 
@@ -165,7 +172,7 @@ def test_manual_confirmation_idempotency_cancellation_and_restart_read(storage):
         paper_plans.confirm(ident, "qa", before["preview_hash"], True)["id"]
         == first["id"]
     )
-    assert first["confirmation_kind"] == "explicit_frozen_orders_v1"
+    assert first["confirmation_kind"] == "frozen_target_orders_v2"
     assert paper_plans.list_plans()["items"][0]["status"] == "waiting_open"
     original = copy.deepcopy(service.get_record(first["id"], "decision"))
     paper_plans.cancel(first["id"], "qa")

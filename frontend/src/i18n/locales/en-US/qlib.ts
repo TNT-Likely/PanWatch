@@ -13,11 +13,13 @@ export const qlib = {
     consentNote:
       'Standing authorization removes daily confirmation. Regular non-ST CN main-board paper trades only; HK/US remain research. No brokers.',
     model: 'Current reviewed model: {{model}} ({{id}})',
-    cashLimit: 'Maximum daily buy budget (CNY, including fees)',
+    capitalSummary: 'Paper capital {{total}} CNY · CN {{ratio}}% · allocated principal {{capital}} CNY',
+    capitalNote: 'Configure funds only in paper trading; no daily top-up budget. Target 90% of CN pool equity, counting existing holdings and retaining cash. Fees, lots and trading constraints may cause drift. No HK/US borrowing or legacy-position takeover.',
+    capitalSettings: 'Edit funds in paper trading',
     risk: 'Valid for 30 days, bound to model, initial funds and market allocations. Enables after-close data/ranking updates for configured markets and cancels pending plans, preserving history and holdings. Model/fund changes require new consent. Failed, stale or invalid data stops orders; no automatic model training/review. The app must remain running.',
-    ack: 'I authorize recurring paper trades within this budget, understand research returns are unverified, and data failures may prevent fills.',
+    ack: 'I authorize recurring rebalancing under this paper-account fund configuration, understand research returns are unverified, and data failures may prevent fills.',
     bounds:
-      'Model {{model}} · daily buy cap {{cap}} CNY incl. fees · expires {{expires}}',
+      'Model {{model}} · allocated CN principal {{capital}} CNY · expires {{expires}}',
     manualConfirm:
       'Switch to manual and pause the account? Cancel pending plans, preserve history and holdings; future plans need individual confirmation. Data-update settings remain unchanged.',
     stopConfirm:
@@ -37,7 +39,7 @@ export const qlib = {
     },
   },
   plan: {
-    automaticOrigin: 'Generated automatically within standing authorization',
+    automaticOrigin: 'Generated automatically using paper-account funds',
     manualOrigin: 'Individually confirmed plan',
     activeTitle: 'Pending paper plans',
     noActivePlans:
@@ -63,7 +65,9 @@ export const qlib = {
     notInOrders:
       '{{symbol}} is not an action in this plan. Following or opening details never opens a position.',
     availableCash: 'Available CN cash',
-    cashCeiling: 'Maximum buy budget including fees',
+    cashCeiling: 'Rebalance buy allowance incl. fees, not new principal',
+    targetExposure: 'CN target holdings value (90% of pool equity)',
+    currentExposure: 'Existing CN holdings value, including unmanaged positions',
     estimatedFees: 'Reference-price fee estimate',
     executionDate: 'Planned execution window',
     stock: 'Security',
@@ -93,7 +97,7 @@ export const qlib = {
       'Paper plan confirmed. Track waiting, paused or execution results in paper trading.',
     statusTitle: 'Confirmed paper plans',
     statusNote:
-      'Following is a bookmark. Automatic mode uses standing budget consent; manual mode confirms each plan. Execution is only the next known CN open, 09:30–09:35; starting/checking never buys immediately.',
+      'Following is a bookmark. Automatic mode uses paper-account funds; manual mode confirms each plan. Execution is only the next known CN open, 09:30–09:35; starting/checking never buys immediately.',
     refreshStatus: 'Refresh plan status',
     emptyPlans:
       'No executable plan yet. Authorize automatic mode once and wait for valid data, or switch to manual for per-plan confirmation. Ranks and bookmarks alone never authorize orders.',
@@ -136,7 +140,7 @@ export const qlib = {
       qlib_automation_account_paused:
         'Paper account paused; automatic planning and execution stopped.',
       qlib_automation_funds_changed:
-        'Initial funds or allocations changed. Review the budget and authorize again.',
+        'Paper capital or market allocations changed. Review the fund configuration and authorize again.',
       qlib_automation_model_changed:
         'The active model changed; authorization never silently switches models.',
       qlib_automation_source_failed:
@@ -147,8 +151,10 @@ export const qlib = {
         'Waiting for predictions from the reviewed model; no automatic training or review.',
       qlib_automation_setup_required:
         'Set up authorized market data and approve a real-data model first.',
-      qlib_automation_cash_limit_invalid:
-        'Budget must be positive and at most 90% of allocated CN capital.',
+      qlib_automation_market_unallocated: 'No CN funds allocated. Adjust market ratios in paper trading first.',
+      qlib_automation_capital_policy_changed: 'A daily-budget grant does not silently become a pool grant. Review paper funds and authorize again.',
+      qlib_portfolio_valuation_unavailable: 'Existing CN holdings lack verifiable prices; pool equity cannot be calculated. Rebalancing stopped.',
+      qlib_portfolio_state_changed: 'Funds or holdings changed after freezing this plan; it will not execute. Inspect a new plan.',
       qlib_manual_confirmation_disabled_automatic:
         'Standing automatic mode is active; individual confirmation is unnecessary. Switch to manual first to choose plans yourself.',
       qlib_source_configuration_changed:
@@ -410,7 +416,7 @@ export const qlib = {
     journey:
       'Update and select automatically → Freeze paper plan → Execute next open → Track results',
     journeyNote:
-      'After initial model review and budget authorization, automatic mode needs no daily confirmation. Bad data stops orders. Manual mode remains available; following is always just a bookmark.',
+      'After model review and paper-fund authorization, automatic mode needs no daily confirmation. Bad data stops orders. Manual mode remains available; following is always just a bookmark.',
     view: 'Opportunity view',
     featured: 'Current highlights',
     fullPool: 'All ranked stocks',

@@ -60,7 +60,7 @@ def authorize(model_id, **overrides):
     return api.AutomationInput(
         mode="automatic",
         model_id=model_id,
-        max_buy_cash=20000,
+        capital_config_hash=automation.status()["capital"]["capital_config_hash"],
         acknowledge_research=True,
         request_key=uuid.uuid4().hex,
         **overrides
@@ -107,8 +107,8 @@ def test_one_time_grant_is_idempotent_and_creates_one_bounded_daily_plan(
         decision["approval_origin"] == "automatic"
         and decision["automation_grant_id"] == first["grant_id"]
     )
-    assert decision["cash_budget"] == 20000
-    assert sum(o["cash_limit"] for o in decision["orders"]) == 20000
+    assert decision["cash_budget"] == 90000
+    assert sum(o["cash_limit"] for o in decision["orders"]) == 90000
     with pytest.raises(ValueError, match="manual_confirmation_disabled"):
         paper_plans.confirm(ident, "qa", acknowledge_research=True)
     with storage() as db:
@@ -238,7 +238,7 @@ def test_automatic_actual_engine_replay_fills_only_frozen_orders_and_budget(
         position = db.query(PaperTradingPosition).one()
         assert position.stock_symbol == "600001"
         assert position.research_meta["approval_origin"] == "automatic"
-        assert position.research_meta["buy_outlay"] <= 10000
+        assert position.research_meta["buy_outlay"] <= 45000
     assert engine._scan_sync()["opened"] == 0
     assert paper_plans.list_plans()["items"][0]["status"] == "partially_filled"
 
@@ -277,7 +277,7 @@ def test_actual_authorization_protocol_auth_budget_and_consent(storage, ready):
         )
         assert (
             client.put(
-                "/qlib/paper-automation", json={**body, "max_buy_cash": 100001}
+                "/qlib/paper-automation", json={**body, "capital_config_hash": "f" * 64}
             ).status_code
             == 422
         )

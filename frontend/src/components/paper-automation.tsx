@@ -33,7 +33,8 @@ export default function PaperAutomation({
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
   const [ack, setAck] = useState(false)
-  const [cash, setCash] = useState('')
+  const [authorizedCapital, setAuthorizedCapital] =
+    useState<QlibAutomationStatus['capital']>(null)
   const [requestKey, setRequestKey] = useState('')
   const [busy, setBusy] = useState(false)
   const reload = useCallback(async () => {
@@ -42,6 +43,7 @@ export default function PaperAutomation({
       setStatus(next)
       onStatus?.(next)
       setError('')
+      return next
     } catch (cause) {
       setError(String(cause instanceof Error ? cause.message : cause))
     }
@@ -77,12 +79,19 @@ export default function PaperAutomation({
           <Button
             size="sm"
             disabled={busy || !status?.can_authorize}
-            onClick={() => {
-              setRequestKey(crypto.randomUUID())
-              setCash(String(status?.recommended_cash_limit ?? 0))
-              setAck(false)
-              setError('')
-              setOpen(true)
+            onClick={async () => {
+              setBusy(true)
+              try {
+                const next = await reload()
+                if (!next) return
+                setRequestKey(crypto.randomUUID())
+                setAuthorizedCapital(next.capital)
+                setAck(false)
+                setError('')
+                setOpen(true)
+              } finally {
+                setBusy(false)
+              }
             }}
           >
             {tr(status?.authorized ? 'renew' : 'start')}
@@ -120,7 +129,7 @@ export default function PaperAutomation({
             <p className="text-xs text-muted-foreground">
               {tr('bounds', {
                 model: status.bound_model_id?.slice(0, 8),
-                cap: status.max_buy_cash?.toLocaleString(),
+                capital: status.bound_market_principal?.toLocaleString(),
                 expires: formatDateTime(status.expires_at),
               })}
             </p>
@@ -168,19 +177,25 @@ export default function PaperAutomation({
               id: status?.model_id?.slice(0, 8),
             })}
           </p>
-          <label className="block text-sm space-y-1">
-            <span>{tr('cashLimit')}</span>
-            <input
-              aria-label={tr('cashLimit')}
-              type="number"
-              min="1"
-              max={status?.recommended_cash_limit}
-              value={cash}
-              onChange={(event) => setCash(event.target.value)}
-              className="w-full rounded-md border bg-background p-2"
-              disabled={busy}
-            />
-          </label>
+          <div className="rounded-md border p-3 text-sm space-y-2">
+            <p>
+              {tr('capitalSummary', {
+                total: authorizedCapital?.initial_capital.toLocaleString(),
+                ratio: Math.round(
+                  (authorizedCapital?.allocations.CN ?? 0) * 100,
+                ),
+                capital: authorizedCapital?.market_principal.toLocaleString(),
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">{tr('capitalNote')}</p>
+            <Link
+              className="text-primary underline"
+              to="/paper-trading"
+              onClick={() => setOpen(false)}
+            >
+              {tr('capitalSettings')}
+            </Link>
+          </div>
           <p className="text-xs text-muted-foreground">{tr('risk')}</p>
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -208,16 +223,15 @@ export default function PaperAutomation({
               disabled={
                 busy ||
                 !ack ||
-                !Number.isFinite(Number(cash)) ||
-                Number(cash) <= 0 ||
-                Number(cash) > (status?.recommended_cash_limit ?? 0)
+                !authorizedCapital ||
+                authorizedCapital.market_principal <= 0
               }
               onClick={() =>
                 void update({
                   mode: 'automatic',
                   request_key: requestKey,
                   model_id: status?.model_id ?? undefined,
-                  max_buy_cash: Number(cash),
+                  capital_config_hash: authorizedCapital?.capital_config_hash,
                   days: 30,
                   acknowledge_research: true,
                 })

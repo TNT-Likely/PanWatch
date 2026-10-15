@@ -16,6 +16,7 @@ from src.platform.persistence.qlib_models import (
 )
 from . import service
 from .policy import execution_date
+from .portfolio import CAPITAL_POLICY, capital_config
 
 KEY = "paper_automation"
 
@@ -64,6 +65,8 @@ def grant_error(db, grant_id, *, check_source=True):
     if not grant or grant.kind != "paper_authorization":
         return "qlib_automation_authorization_required"
     data = grant.payload
+    if data.get("capital_policy") != CAPITAL_POLICY:
+        return "qlib_automation_capital_policy_changed"
     if service.now() >= datetime.fromisoformat(data["expires_at"]):
         return "qlib_automation_authorization_expired"
     account = db.query(PaperTradingAccount).first()
@@ -121,17 +124,15 @@ def _status(db):
         "model_name": model.name if model else None,
         "account_enabled": bool(account and account.enabled),
         "can_authorize": available,
-        "recommended_cash_limit": (
-            round(
-                account.initial_capital
-                * market_allocations_or_default(account).get("CN", 0)
-                * 0.9,
-                2,
+        "capital": capital_config(account) if account else None,
+        "bound_market_principal": (
+            (
+                grant.payload["initial_capital"]
+                * grant.payload["allocations"].get("CN", 0)
             )
-            if account
-            else 0
+            if grant
+            else None
         ),
-        "max_buy_cash": grant.payload["max_buy_cash"] if grant else None,
         "expires_at": grant.payload["expires_at"] if grant else None,
         "grant_id": grant.id if grant else None,
         "reason": "",
@@ -177,7 +178,7 @@ def _status(db):
     if decision and decision.payload["asof_date"] == selection.payload["asof_date"]:
         result.update(phase="planned", latest_decision_id=decision.id)
         return result
-    plan = paper_plans._preview(db, selection, grant.payload["max_buy_cash"])
+    plan = paper_plans._preview(db, selection)
     result.update(
         phase="ready" if plan["ready"] else "waiting_data",
         reason=plan["blocking_reason"],
@@ -219,7 +220,7 @@ def configure(body, actor):
                     for k, value in {
                         "actor": actor,
                         "model_id": body.model_id,
-                        "max_buy_cash": body.max_buy_cash,
+                        "capital_config_hash": body.capital_config_hash,
                         "days": body.days,
                     }.items()
                 ):
@@ -241,13 +242,11 @@ def configure(body, actor):
                 raise ValueError("qlib_automation_setup_required")
             if not service.runtime_health()["available"]:
                 raise ValueError("qlib_worker_unavailable")
-            cap = (
-                account.initial_capital
-                * market_allocations_or_default(account).get("CN", 0)
-                * 0.9
-            )
-            if not body.max_buy_cash or body.max_buy_cash > cap:
-                raise ValueError("qlib_automation_cash_limit_invalid")
+            capital = capital_config(account)
+            if body.capital_config_hash != capital["capital_config_hash"]:
+                raise ValueError("qlib_automation_funds_changed")
+            if capital["market_principal"] <= 0:
+                raise ValueError("qlib_automation_market_unallocated")
         # Switching authorization never restores prior pending plans.
         for decision in db.query(QlibRecord).filter_by(kind="decision"):
             if not db.get(QlibRecord, marker("executed", decision.id)) and not db.get(
@@ -290,7 +289,8 @@ def configure(body, actor):
                     "account_id": account.id,
                     "initial_capital": account.initial_capital,
                     "allocations": market_allocations_or_default(account),
-                    "max_buy_cash": body.max_buy_cash,
+                    "capital_policy": CAPITAL_POLICY,
+                    "capital_config_hash": capital["capital_config_hash"],
                     "source_generation": state.settings.get("universe_generation"),
                     "expires_at": (
                         service.now() + timedelta(days=body.days)

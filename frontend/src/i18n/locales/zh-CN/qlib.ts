@@ -13,11 +13,13 @@ export const qlib = {
     consentNote:
       '一次授权后，无需每天确认计划。仅普通非 ST A 股主板模拟；港美股继续研究，不接实盘。',
     model: '使用当前审核模型：{{model}}（{{id}}）',
-    cashLimit: '每日最高买入预算（CNY，含费用）',
+    capitalSummary: '模拟盘总资金 {{total}} CNY · A 股 {{ratio}}% · 分配本金 {{capital}} CNY',
+    capitalNote: '资金只在模拟盘配置，不设每日追加预算。以 A 股子池净资产的 90% 为目标，已有仓位占用额度，余下保留现金；费用、整数手和交易限制可能使仓位偏离。港美额度不挪用，旧非 Qlib 仓位不接管。',
+    capitalSettings: '前往模拟盘调整资金配置',
     risk: '授权有效期 30 天，锁定模型、初始资金及市场分配。启用已配置市场的盘后行情与排名更新，并取消旧待执行计划（保留历史和已有仓位）。模型/资金配置变化需重新授权；上游连续失败、数据陈旧或规则不符时停单，不自动训练或审批模型。程序须持续运行。',
-    ack: '我授权以上预算内的连续模拟交易，理解研究结果未验证收益，数据异常可能无法成交。',
+    ack: '我授权按以上模拟盘资金配置连续调仓，理解研究结果未验证收益，数据异常可能无法成交。',
     bounds:
-      '授权模型 {{model}} · 每日买入上限 {{cap}} CNY（含费）· 到期 {{expires}}',
+      '授权模型 {{model}} · A 股分配本金 {{capital}} CNY · 到期 {{expires}}',
     manualConfirm:
       '切换手动模式并暂停账户？将取消所有尚未执行的计划，保留历史和持仓；以后需逐次确认。行情自动更新设置保留。',
     stopConfirm:
@@ -33,7 +35,7 @@ export const qlib = {
     },
   },
   plan: {
-    automaticOrigin: '自动模式生成 · 受预算授权约束',
+    automaticOrigin: '自动模式生成 · 沿用模拟盘资金配置',
     manualOrigin: '人工确认计划',
     activeTitle: '待执行的模拟计划',
     noActivePlans:
@@ -58,7 +60,9 @@ export const qlib = {
     notInOrders:
       '{{symbol}} 不在本次交易项中；关注或打开详情不会让它自动建仓。',
     availableCash: 'A 股当前可用资金',
-    cashCeiling: '本计划最高买入预算（含费用）',
+    cashCeiling: '本轮买入额度（含费，非新增本金）',
+    targetExposure: 'A 股目标持仓市值（子池净资产的 90%）',
+    currentExposure: 'A 股已有持仓市值（含非接管仓位）',
     estimatedFees: '参考价估计费用',
     executionDate: '预计执行窗口',
     stock: '证券',
@@ -87,7 +91,7 @@ export const qlib = {
     confirmed: '模拟计划已确认，请在模拟盘查看等待、暂停或执行结果。',
     statusTitle: '已确认的模拟计划',
     statusNote:
-      '关注是收藏；自动模式按连续预算授权生成计划，手动模式逐份确认。仅下一已知 A 股开盘 09:30–09:35 执行；启动或检查不会立即买入。',
+      '关注是收藏；自动模式沿用模拟盘资金配置生成调仓计划，手动模式逐份确认。仅下一已知 A 股开盘 09:30–09:35 执行；启动或检查不会立即买入。',
     refreshStatus: '刷新计划状态',
     emptyPlans:
       '尚无可执行计划。默认自动模式需先完成首次授权并等有效数据；手动模式可逐份预览确认。仅有排名或关注不会下单。',
@@ -129,7 +133,7 @@ export const qlib = {
         '连续自动授权已到期，停止新计划与自动成交。',
       qlib_automation_account_paused: '模拟账户暂停，自动选股下单流程已暂停。',
       qlib_automation_funds_changed:
-        '初始资金或市场分配已改变，请重新核对预算并授权。',
+        '模拟盘总资金或市场分配已改变，请重新核对资金配置并授权。',
       qlib_automation_model_changed:
         '当前模型已改变，原授权不会自动切换模型，请重新授权。',
       qlib_automation_source_failed:
@@ -140,8 +144,10 @@ export const qlib = {
         '等待已审核模型的新预测，不会自动训练或审批。',
       qlib_automation_setup_required:
         '请先完成一次有权使用的数据接入，并审核真实数据模型。',
-      qlib_automation_cash_limit_invalid:
-        '预算必须为正且不超过 A 股分配资金的 90%。',
+      qlib_automation_market_unallocated: 'A 股未分配资金，请先在模拟盘调整市场比例。',
+      qlib_automation_capital_policy_changed: '旧的每日预算授权不会自动扩大为资金池授权，请核对模拟盘资金配置后重新授权。',
+      qlib_portfolio_valuation_unavailable: '已有 A 股仓位缺少可核对价格，无法计算子池净资产，暂停调仓。',
+      qlib_portfolio_state_changed: '冻结计划后的资金配置或已有仓位已变化，本计划不再执行，请查看新计划。',
       qlib_manual_confirmation_disabled_automatic:
         '已启用连续自动模式，无需手动确认；如需自行决定，请先切换手动模式。',
       qlib_source_configuration_changed:
@@ -373,7 +379,7 @@ export const qlib = {
   opportunityPage: {
     journey: '自动更新与选股 → 自动生成模拟计划 → 下一开盘模拟执行 → 结果跟踪',
     journeyNote:
-      '首次审核模型并授权预算后，自动模式无需每日确认；异常数据会停单。也可切换手动模式逐份确认，关注始终只是收藏。',
+      '首次审核模型并授权模拟盘资金配置后，自动模式无需每日确认；异常数据会停单。也可切换手动模式逐份确认，关注始终只是收藏。',
     view: '机会展示范围',
     featured: '本次精选',
     fullPool: '全部排名股票',

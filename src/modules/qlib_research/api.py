@@ -210,7 +210,7 @@ class AutomationInput(StrictInput):
     request_key: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{8,100}$")
     mode: Literal["automatic", "manual"] = "automatic"
     model_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
-    max_buy_cash: float | None = Field(default=None, gt=0, le=1_000_000_000, allow_inf_nan=False)
+    capital_config_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     days: int = Field(default=30, ge=1, le=90)
     acknowledge_research: bool = False
 

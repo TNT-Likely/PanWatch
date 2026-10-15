@@ -137,6 +137,23 @@ export default function PaperPlanDialog({
             {!!preview.orders.length && (
               <>
                 <div className="grid grid-cols-2 gap-3 text-sm">
+                  {preview.target_exposure !== undefined && (
+                    <>
+                      <div>
+                        {tr('currentExposure')}
+                        <p className="font-medium">
+                          {money(preview.current_exposure ?? 0)}{' '}
+                          {tr('currency')}
+                        </p>
+                      </div>
+                      <div>
+                        {tr('targetExposure')}
+                        <p className="font-medium">
+                          {money(preview.target_exposure)} {tr('currency')}
+                        </p>
+                      </div>
+                    </>
+                  )}
                   <div>
                     {tr('availableCash')}
                     <p className="font-medium">

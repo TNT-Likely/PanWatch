@@ -18,8 +18,16 @@ const status: QlibAutomationStatus = {
   model_name: 'QA model',
   account_enabled: false,
   can_authorize: true,
-  recommended_cash_limit: 450000,
-  max_buy_cash: null,
+  capital: {
+    account_id: 1,
+    initial_capital: 1000000,
+    allocations: { CN: 0.5, HK: 0.3, US: 0.2 },
+    market_principal: 500000,
+    target_ratio: 0.9,
+    capital_policy: 'market_pool_target_v2',
+    capital_config_hash: 'c'.repeat(64),
+  },
+  bound_market_principal: null,
   expires_at: null,
   grant_id: null,
   phase: 'needs_authorization',
@@ -42,6 +50,26 @@ beforeEach(async () => {
   vi.mocked(qlibApi.automationStatus).mockResolvedValue(status)
 })
 afterEach(cleanup)
+
+it('rereads account funds on opening consent instead of waiting for polling', async () => {
+  vi.mocked(qlibApi.automationStatus)
+    .mockResolvedValueOnce(status)
+    .mockResolvedValue({
+      ...status,
+      capital: {
+        ...status.capital!,
+        allocations: { CN: 0.6, HK: 0.2, US: 0.2 },
+        market_principal: 600000,
+        capital_config_hash: 'd'.repeat(64),
+      },
+    })
+  view()
+  await userEvent.click(
+    await screen.findByRole('button', { name: '启动自动选股与模拟' }),
+  )
+  expect(await screen.findByText(/分配本金 600,000/)).toBeTruthy()
+  expect(screen.queryByText(/分配本金 500,000/)).toBeNull()
+})
 
 it('stop revokes consent while preserving automatic as the preferred mode', async () => {
   vi.mocked(qlibApi.automationStatus).mockResolvedValue({
@@ -86,10 +114,10 @@ it('explicit standing consent sends model budget lease and stable request key', 
   await userEvent.click(
     await screen.findByRole('button', { name: '启动自动选股与模拟' }),
   )
-  await userEvent.clear(screen.getByRole('spinbutton'))
-  await userEvent.type(screen.getByRole('spinbutton'), '20000')
+  expect(screen.queryByRole('spinbutton')).toBeNull()
+  expect(screen.getByText(/分配本金 500,000/)).toBeTruthy()
   await userEvent.click(
-    screen.getByRole('checkbox', { name: /我授权以上预算/ }),
+    screen.getByRole('checkbox', { name: /我授权按以上模拟盘资金配置/ }),
   )
   vi.mocked(qlibApi.configureAutomation).mockResolvedValue({
     ...status,
@@ -107,21 +135,33 @@ it('explicit standing consent sends model budget lease and stable request key', 
     mode: 'automatic',
     request_key: expect.any(String),
     model_id: status.model_id,
-    max_buy_cash: 20000,
+    capital_config_hash: status.capital!.capital_config_hash,
     days: 30,
     acknowledge_research: true,
   })
   expect(await screen.findByText(/行情同步尚未成功/)).toBeTruthy()
 })
-it('excess budget and unchecked consent cannot activate', async () => {
+it('unallocated market cannot activate and funds have only one editing entry', async () => {
+  vi.mocked(qlibApi.automationStatus).mockResolvedValue({
+    ...status,
+    capital: {
+      ...status.capital!,
+      market_principal: 0,
+      allocations: { CN: 0, HK: 0.5, US: 0.5 },
+    },
+  })
   view()
   await userEvent.click(
     await screen.findByRole('button', { name: '启动自动选股与模拟' }),
   )
-  await userEvent.clear(screen.getByRole('spinbutton'))
-  await userEvent.type(screen.getByRole('spinbutton'), '999999')
+  expect(screen.queryByRole('spinbutton')).toBeNull()
+  expect(
+    screen
+      .getByRole('link', { name: '前往模拟盘调整资金配置' })
+      .getAttribute('href'),
+  ).toBe('/paper-trading')
   await userEvent.click(
-    screen.getByRole('checkbox', { name: /我授权以上预算/ }),
+    screen.getByRole('checkbox', { name: /我授权按以上模拟盘资金配置/ }),
   )
   expect(
     (

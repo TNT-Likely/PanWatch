@@ -22,12 +22,9 @@ from src.platform.persistence.qlib_models import (
 )
 from . import service
 from .contracts import content_hash
-from .costs import QlibCostModel
+from .portfolio import PAPER_POLICY as POLICY
 from .policy import (
-    POLICY,
-    dropout_plan,
     execution_date,
-    lot_quantity,
     paper_security_supported,
 )
 
@@ -40,7 +37,7 @@ def _number(value):
     return isinstance(value, (float, int)) and math.isfinite(value) and value > 0
 
 
-def _preview(db, selection, cash_ceiling=None):
+def _preview(db, selection):
     from src.modules.paper_trading.paper_trading_engine import (
         market_available_cash,
         sell_block_reason,
@@ -175,45 +172,41 @@ def _preview(db, selection, cash_ceiling=None):
         else:
             eligible.add(symbol)
     config = payload["config"]
-    sells, buys = dropout_plan(rows, managed, eligible, config["topk"])
-    costs = QlibCostModel(config)
+    from .portfolio import target_membership
+
+    sells, buys = target_membership(rows, managed, eligible, config["topk"])
     cash = max(0.0, market_available_cash(db, account, "CN"))
-    projected_cash = cash + sum(
-        costs.fill("sell", prices[s], managed[s].quantity).cash_delta for s in sells
-    )
-    budget = projected_cash * 0.9
-    if cash_ceiling is not None:
-        budget = min(budget, cash_ceiling)
-    per_symbol = budget / len(buys) if buys else 0
-    for symbol in sells + buys:
-        side = "sell" if symbol in sells else "buy"
-        quantity = (
-            managed[symbol].quantity
-            if side == "sell"
-            else lot_quantity(per_symbol, prices[symbol], per_symbol, costs)
+    from .portfolio import target_plan
+
+    try:
+        result.update(
+            target_plan(
+                db,
+                account,
+                positions,
+                managed,
+                prices,
+                sells,
+                buys,
+                eligible,
+                names,
+                config,
+            )
         )
-        fill = costs.fill(side, prices[symbol], quantity) if quantity else None
-        result["orders"].append(
-            {
-                "symbol": symbol,
-                "name": names.get(symbol, symbol),
-                "side": side,
-                "reference_price": prices[symbol],
-                "estimated_quantity": quantity,
-                "estimated_fee": fill.explicit_fees if fill else 0,
-                "estimated_cash_delta": fill.cash_delta if fill else 0,
-                "cash_limit": per_symbol if side == "buy" else None,
-                "position_id": managed[symbol].id if side == "sell" else None,
-            }
-        )
+    except ValueError as error:
+        return blocked(str(error))
+    reductions = {
+        o["symbol"]: o["estimated_quantity"]
+        for o in result["orders"]
+        if o["side"] == "sell"
+    }
     result["kept"] = [
-        {"symbol": symbol, "quantity": p.quantity}
+        {"symbol": symbol, "quantity": p.quantity - reductions.get(symbol, 0)}
         for symbol, p in managed.items()
-        if symbol not in sells
+        if p.quantity > reductions.get(symbol, 0)
     ]
     result.update(
         available_cash=cash,
-        cash_budget=budget,
         estimated_fees=sum(o["estimated_fee"] for o in result["orders"]),
     )
     if not result["orders"]:
@@ -290,13 +283,10 @@ def confirm(
         state = db.get(QlibControl, 1)
         from .automation import configuration, grant_error
 
-        ceiling = None
         if automation_grant_id:
             error = grant_error(db, automation_grant_id)
             if error:
                 raise ValueError(error)
-            grant = service.record(db, automation_grant_id, "paper_authorization")
-            ceiling = grant.payload["max_buy_cash"]
             day = execution_date(selection.payload["asof_date"])
             daily = (
                 db.query(QlibRecord)
@@ -326,7 +316,7 @@ def confirm(
         health = service.runtime_health()
         if not health["available"]:
             raise ValueError(health["error_code"])
-        plan = _preview(db, selection, ceiling)
+        plan = _preview(db, selection)
         if not plan["ready"]:
             raise ValueError(plan["blocking_reason"])
         if automation_grant_id:
@@ -351,7 +341,7 @@ def confirm(
                 "asof_date": payload["asof_date"],
                 "execution_date": plan["execution_date"],
                 "policy": POLICY,
-                "confirmation_kind": "explicit_frozen_orders_v1",
+                "confirmation_kind": "frozen_target_orders_v2",
                 "approval_origin": "automatic" if automation_grant_id else "manual",
                 "automation_grant_id": automation_grant_id,
                 "risk_degree": 0.9,
@@ -360,16 +350,16 @@ def confirm(
                 "symbols": [o["symbol"] for o in plan["orders"]],
                 "orders": plan["orders"],
                 "cash_budget": plan["cash_budget"],
+                "capital_policy": plan["capital_policy"],
+                "capital": plan["capital"],
+                "market_equity": plan["market_equity"],
+                "target_exposure": plan["target_exposure"],
+                "market_holdings": plan["market_holdings"],
                 "preview_hash": plan["preview_hash"],
                 "reference_prices": {
                     o["symbol"]: o["reference_price"] for o in plan["orders"]
                 },
-                "target_weights": {
-                    o["symbol"]: 0.9
-                    / max(1, sum(x["side"] == "buy" for x in plan["orders"]))
-                    for o in plan["orders"]
-                    if o["side"] == "buy"
-                },
+                "target_weights": plan["target_weights"],
             },
         )
         db.add(decision)

@@ -313,12 +313,22 @@ class PaperTradingEngine:
         managed = {p.research_meta["instrument"]: p for p in positions if (p.research_meta or {}).get("instrument")}
         legacy = {p.stock_symbol for p in positions if not (p.research_meta or {}).get("instrument")}
         predictions = selection.payload["predictions"]
-        frozen = payload.get("confirmation_kind") == "explicit_frozen_orders_v1"
+        target_pool = payload.get("confirmation_kind") == "frozen_target_orders_v2"
+        frozen = target_pool or payload.get("confirmation_kind") == "explicit_frozen_orders_v1"
         frozen_orders = {o["symbol"]: o for o in payload.get("orders", [])}
         symbols = set(frozen_orders) if frozen else {row["symbol"] for row in predictions} | set(managed)
         by_symbol = {row["symbol"]: row for row in predictions}
         supported = {s for s in symbols if paper_security_supported(by_symbol.get(s, {"symbol": s}))}
-        quotes = self._fetch_quotes_map([(symbol[2:], "CN") for symbol in sorted(supported)])
+        from src.modules.qlib_research.portfolio import capital_config, holding_state, pool_values
+        valuation_symbols = {(p.research_meta or {}).get("instrument") or
+                             (("SH" if p.stock_symbol.startswith("6") else "SZ") + p.stock_symbol)
+                             for p in positions} if target_pool else set()
+        quotes = self._fetch_quotes_map([(symbol[2:], "CN") for symbol in sorted(supported | valuation_symbols)])
+        valuation_prices = {s: _safe_float(quotes[("CN", s[2:])].get("open_price"))
+                            for s in valuation_symbols if ("CN", s[2:]) in quotes
+                            and quote_date_is_current("CN", quotes[("CN", s[2:])])}
+        capital_changed = target_pool and (payload["capital"]["capital_config_hash"] != capital_config(account)["capital_config_hash"]
+                                           or payload["market_holdings"] != holding_state(positions))
         eligible, reasons, prices = set(), {}, {}
         for symbol in symbols:
             quote = quotes.get(("CN", symbol[2:]))
@@ -326,9 +336,14 @@ class PaperTradingEngine:
             previous = _safe_float(quote.get("prev_close")) if quote else None
             volume = _safe_float(quote.get("volume")) if quote else None
             order = frozen_orders.get(symbol)
-            if symbol not in supported:
+            if capital_changed:
+                reasons[symbol] = "qlib_portfolio_state_changed"
+            elif symbol not in supported:
                 reasons[symbol] = "qlib_security_execution_not_supported"
-            elif frozen and ((order["side"] == "buy" and symbol in managed) or
+            elif target_pool and ((managed[symbol].quantity if symbol in managed else 0) != order["held_quantity"] or
+                                  (managed[symbol].id if symbol in managed else None) != order["position_id"]):
+                reasons[symbol] = "qlib_plan_holdings_changed"
+            elif frozen and not target_pool and ((order["side"] == "buy" and symbol in managed) or
                              (order["side"] == "sell" and (symbol not in managed or managed[symbol].id != order["position_id"] or managed[symbol].quantity != order["estimated_quantity"]))):
                 reasons[symbol] = "qlib_plan_holdings_changed"
             elif symbol[2:] in legacy:
@@ -360,9 +375,10 @@ class PaperTradingEngine:
             event(symbol, frozen_orders[symbol]["side"] if frozen else "filter", "rejected", reason=reason)
         for symbol in sell:
             position = managed[symbol]
-            trade = self._close_position(db, account, position, prices[symbol], "qlib_dropout")
+            trade = self._close_position(db, account, position, prices[symbol], "qlib_dropout",
+                                         quantity=frozen_orders[symbol]["estimated_quantity"] if target_pool else None)
             trade.meta = {**(trade.meta or {}), "exit_decision_id": decision.id}
-            event(symbol, "sell", "filled", position.quantity, prices[symbol], position=position.id)
+            event(symbol, "sell", "filled", trade.quantity, prices[symbol], position=position.id)
             exits.append((position, trade))
         available = market_available_cash(db, account, "CN")
         budget = (min(available * 0.9, payload["cash_budget"]) / len(buy) if frozen and buy
@@ -370,12 +386,38 @@ class PaperTradingEngine:
         for symbol in buy:
             price = prices[symbol]
             symbol_budget = min(budget, frozen_orders[symbol]["cash_limit"]) if frozen else budget
+            if target_pool:
+                # A rejected sale does not release its capital; each frozen cap remains its own.
+                try:
+                    pool = pool_values(db, account, positions, {**valuation_prices, **prices})
+                    held_value = managed[symbol].quantity * price if symbol in managed else 0
+                    symbol_budget = max(0.0, min(available, frozen_orders[symbol]["cash_limit"],
+                                                pool["target_exposure"] - pool["exposure"],
+                                                frozen_orders[symbol]["target_weight"] * pool["equity"] - held_value))
+                except ValueError:
+                    event(symbol, "buy", "rejected", reason="qlib_portfolio_valuation_unavailable")
+                    continue
             quantity = lot_quantity(symbol_budget, price, min(available, symbol_budget) if frozen else available, costs)
+            if target_pool:
+                quantity = min(quantity, frozen_orders[symbol]["estimated_quantity"])
             if quantity <= 0:
                 event(symbol, "buy", "rejected", reason="insufficient_cash_or_lot")
                 continue
             outlay = -costs.fill("buy", price, quantity).cash_delta
-            position = PaperTradingPosition(stock_symbol=symbol[2:], stock_market="CN",
+            prior = managed.get(symbol) if target_pool else None
+            if prior:
+                previous_outlay = position_buy_cost(prior)
+                total_quantity = prior.quantity + quantity
+                prior.entry_price = (prior.entry_price * prior.quantity + price * quantity) / total_quantity
+                prior.quantity = total_quantity
+                # Conservative aggregate T+1: a top-up locks the whole position until next day.
+                prior.opened_at = _utc_now()
+                prior.current_price = price
+                prior.research_meta = {**prior.research_meta, "buy_outlay": previous_outlay + outlay,
+                                       "entry_decisions": [*prior.research_meta.get("entry_decisions", [prior.research_meta["decision_id"]]), decision.id]}
+                position = prior
+            else:
+                position = PaperTradingPosition(stock_symbol=symbol[2:], stock_market="CN",
                 stock_name=frozen_orders[symbol]["name"] if frozen else symbol, quantity=quantity, entry_price=price, current_price=price,
                 highest_price=price, status="open", strategy_code="qlib", opened_at=_utc_now(),
                 settlement_date=settlement_date("CN", _utc_now()),
@@ -385,6 +427,9 @@ class PaperTradingEngine:
                     "buy_outlay": outlay, "execution_kind": "virtual_next_open", "research_mode": payload["research_mode"]})
             db.add(position)
             db.flush()
+            if target_pool and not prior:
+                positions.append(position)
+                managed[symbol] = position
             account.current_capital -= outlay
             consume_cn_proceeds(db, outlay, now=_utc_now())
             available -= outlay
@@ -404,6 +449,8 @@ class PaperTradingEngine:
         pos: PaperTradingPosition,
         exit_price: float,
         exit_reason: str,
+        *,
+        quantity: int | None = None,
     ) -> PaperTradingTrade:
         """平仓单个持仓，返回交易记录。"""
         now = _utc_now()
@@ -411,8 +458,12 @@ class PaperTradingEngine:
         if block:
             raise ValueError(block)
         # 含交易成本的净盈亏:卖出净回收 − 建仓含费投入(与建仓口径一致,资金守恒)
-        buy_cost = position_buy_cost(pos)
-        sell_fill = position_cost_model(pos).fill("sell", exit_price, pos.quantity)
+        sold_quantity = pos.quantity if quantity is None else quantity
+        if sold_quantity <= 0 or sold_quantity > pos.quantity:
+            raise ValueError("qlib_plan_holdings_changed")
+        full_buy_cost = position_buy_cost(pos)
+        buy_cost = full_buy_cost * sold_quantity / pos.quantity
+        sell_fill = position_cost_model(pos).fill("sell", exit_price, sold_quantity)
         sell_proceeds = sell_fill.cash_delta
         pnl = round(sell_proceeds - buy_cost, 4)
         pnl_pct = (pnl / buy_cost * 100) if buy_cost > 0 else 0.0
@@ -428,7 +479,7 @@ class PaperTradingEngine:
             stock_symbol=pos.stock_symbol,
             stock_market=pos.stock_market,
             stock_name=pos.stock_name or "",
-            quantity=pos.quantity,
+            quantity=sold_quantity,
             entry_price=pos.entry_price,
             exit_price=exit_price,
             pnl=pnl,
@@ -440,14 +491,19 @@ class PaperTradingEngine:
             holding_days=holding_days,
             opened_at=pos.opened_at,
             closed_at=now,
-            meta={"research": pos.research_meta or {}},
+            meta={"research": {**(pos.research_meta or {}), "buy_outlay": buy_cost}},
         )
         db.add(trade)
 
-        pos.status = "closed"
-        pos.closed_at = now
+        if sold_quantity == pos.quantity:
+            pos.status = "closed"
+            pos.closed_at = now
+        else:
+            pos.quantity -= sold_quantity
+            pos.research_meta = {**(pos.research_meta or {}), "buy_outlay": full_buy_cost - buy_cost}
         pos.current_price = exit_price
-        pos.unrealized_pnl = pnl
+        pos.unrealized_pnl = (pnl if pos.status == "closed" else
+                              position_cost_model(pos).fill("sell", exit_price, pos.quantity).cash_delta - position_buy_cost(pos))
 
         # 回收资金(卖出净回收,已扣卖出费)
         account.current_capital += sell_proceeds
