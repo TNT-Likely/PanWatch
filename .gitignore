@@ -31,3 +31,6 @@ CLAUDE.md
 docs/superpowers/
 .superpowers/
 .worktrees/
+
+# Generated local dependency manifest (contains selected public source)
+.requirements-*.txt

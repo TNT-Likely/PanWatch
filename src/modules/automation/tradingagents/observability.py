@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # 数据库生命周期由 agent_runs 负责，回调仅记录运行进度与实际用量。
 __all__ = [
     "STAGES_ORDER",
+    "PanWatchCancellationHandler",
     "PanWatchProgressHandler",
     "aggregate_progress",
     "get_today_cache_key",
@@ -76,6 +77,37 @@ except ImportError:  # tradingagents 未装时仍允许 import 本模块,测试�
     class _LCBaseCallbackHandler:  # type: ignore[no-redef]
         """Fallback stub when langchain_core 未安装。"""
         pass
+
+
+class PanWatchCancellationHandler(_LCBaseCallbackHandler):
+    """Stop a canceled graph at real LangChain execution boundaries.
+
+    A thread cannot interrupt an in-flight provider call. Check again when it
+    returns, before another node/model/tool or graph finalization can start.
+    Keep this separate from best-effort progress logging: LangChain must
+    propagate this callback's exceptions instead of logging and ignoring them.
+    Error callbacks remain untouched so upstream cleanup can finish normally.
+    """
+
+    raise_error = True
+    run_inline = True
+
+    def __init__(self, cancel_event: threading.Event):
+        self.cancel_event = cancel_event
+
+    def _check(self, *args, **kwargs):
+        if self.cancel_event.is_set():
+            from .toolkit_adapter import TradingAgentsCancelled
+
+            raise TradingAgentsCancelled("TradingAgents task cancelled")
+
+    on_chat_model_start = _check
+    on_llm_start = _check
+    on_llm_end = _check
+    on_chain_start = _check
+    on_chain_end = _check
+    on_tool_start = _check
+    on_tool_end = _check
 
 
 class PanWatchProgressHandler(_LCBaseCallbackHandler):

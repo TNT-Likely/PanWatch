@@ -14,6 +14,7 @@ def test_tradingagents_adapter_has_compact_target_modules():
         "toolkit_adapter.py",
         "data_context.py",
         "runtime_support.py",
+        "upstream_compat.py",
         "observability.py",
         "decision.py",
         "operations.py",

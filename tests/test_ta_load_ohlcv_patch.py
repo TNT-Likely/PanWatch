@@ -49,7 +49,7 @@ def test_build_df_reuses_injected_klines_before_fetching_again(monkeypatch):
         raise AssertionError("should reuse PanWatch K-lines already in context")
 
     monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
-    stock = type("Stock", (), {"symbol": "601238"})()
+    stock = type("Stock", (), {"symbol": "601238", "market": "CN"})()
     with ta.panwatch_data_context({"stock": stock, "klines": cached}):
         df = ta._build_panwatch_ohlcv_df("601238", "2026-04-20")
 
@@ -65,7 +65,7 @@ def test_build_df_reuses_empty_injected_klines_without_retrying(monkeypatch):
         raise AssertionError("known empty snapshot must not trigger another fetch")
 
     monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
-    stock = type("Stock", (), {"symbol": "601238"})()
+    stock = type("Stock", (), {"symbol": "601238", "market": "CN"})()
     with ta.panwatch_data_context({"stock": stock, "klines": []}):
         assert ta._build_panwatch_ohlcv_df("601238", "2026-04-20") is None
 
@@ -83,7 +83,7 @@ def test_build_df_does_not_reuse_klines_for_another_symbol(monkeypatch):
         return fetched
 
     monkeypatch.setattr(KlineCollector, "get_klines", fetch)
-    stock = type("Stock", (), {"symbol": "601238"})()
+    stock = type("Stock", (), {"symbol": "601238", "market": "CN"})()
     with ta.panwatch_data_context({"stock": stock, "klines": cached}):
         df = ta._build_panwatch_ohlcv_df("300624", "2026-04-20")
 
@@ -100,7 +100,7 @@ def test_cancelled_ta_context_does_not_fetch_another_symbol(monkeypatch):
         raise AssertionError("cancelled task must not fetch another symbol")
 
     monkeypatch.setattr(KlineCollector, "get_klines", unexpected_fetch)
-    stock = type("Stock", (), {"symbol": "300624"})()
+    stock = type("Stock", (), {"symbol": "300624", "market": "CN"})()
     cancel_event = threading.Event()
     cancel_event.set()
 
@@ -215,7 +215,10 @@ def test_verified_snapshot_preserves_indicators_argument_when_degraded(monkeypat
 
 def test_install_load_ohlcv_patch_updates_yfinance_indicator_import(monkeypatch):
     """技术指标工具持有的 load_ohlcv 引用也必须接入同一个 US fallback。"""
-    from tradingagents.dataflows import market_data_validator, stockstats_utils, y_finance
+    from src.modules.automation.tradingagents.upstream_compat import snapshot_module, ohlcv_module, upstream_module
+    market_data_validator = snapshot_module()
+    stockstats_utils = ohlcv_module()
+    y_finance = upstream_module("tradingagents.dataflows.y_finance", "tradingagents.dataflows.vendors.yahoo.market")
 
     def upstream_load_ohlcv(*args, **kwargs):
         return pd.DataFrame()
@@ -253,7 +256,7 @@ def test_load_ohlcv_a_share_no_klines_raises_not_fallback(monkeypatch):
 
 def test_route_to_vendor_keeps_numeric_requested_symbol(monkeypatch):
     """数字股票代码也是合法 ticker，不能因全是数字而复用缓存标的。"""
-    stock = type("Stock", (), {"symbol": "300624"})()
+    stock = type("Stock", (), {"symbol": "300624", "market": "CN"})()
     monkeypatch.setattr(
         ta,
         "_serve_from_panwatch",
@@ -268,7 +271,7 @@ def test_route_to_vendor_keeps_numeric_requested_symbol(monkeypatch):
 
 def test_route_to_vendor_rejects_cached_snapshot_for_different_numeric_symbol(monkeypatch):
     """缓存快照与请求标的不一致时，不能静默把万兴科技数据当成其它股票。"""
-    stock = type("Stock", (), {"symbol": "601238"})()
+    stock = type("Stock", (), {"symbol": "601238", "market": "CN"})()
     monkeypatch.setattr(
         ta,
         "_serve_from_panwatch",
