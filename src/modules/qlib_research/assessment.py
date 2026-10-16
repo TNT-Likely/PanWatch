@@ -104,4 +104,46 @@ def assess(model, mode="research"):
         paper_policy=PAPER_POLICY,
         horizon=config.get("horizon", 5),
         topk=config.get("topk", 10),
+        experiment_eligible=experiment_error(model) == "",
+        rule_algorithm=config.get("algorithm") if model.get("rule_version") else None,
     )
+
+
+def experiment_error(model):
+    """Paper experimentation is separate from a validated strategy release.
+
+    A loss is an experiment result, not a reason to hide/ban the experiment.
+    This never changes validated eligibility or permits synthetic execution.
+    """
+    from .rules import VERSION, is_rule
+
+    if (
+        not is_rule(model.get("config", {}))
+        or model.get("rule_version") != VERSION
+        or model.get("feature_set") != VERSION
+    ):
+        return "qlib_rule_version_unverified"
+    if (
+        model.get("data_kind") != "market"
+        or model.get("market", "CN") != "CN"
+        or model.get("price_basis", "raw_execution") != "raw_execution"
+    ):
+        return "qlib_rule_execution_data_required"
+    reports = [model.get("metrics", {}), model.get("baseline", {})] + [
+        fold.get("metrics", {}) for fold in model.get("rolling", [])
+    ]
+    if len(reports) != 5 or model.get("runtime", {}).get("pyqlib") != "0.9.7":
+        return "qlib_rule_replay_required"
+    for report in reports:
+        bt = report.get("backtest", {})
+        if (
+            bt.get("allocation_policy") != PAPER_POLICY
+            or bt.get("paper_aligned") is not True
+            or not number(bt.get("days"))
+            or bt["days"] < 20
+            or not number(bt.get("return"))
+            or not number(bt.get("max_drawdown"))
+            or not 0 <= bt["max_drawdown"] <= 1
+        ):
+            return "qlib_rule_replay_required"
+    return ""

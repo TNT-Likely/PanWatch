@@ -138,12 +138,26 @@ def portfolio_backtest(prediction, split, config, market="CN", members=None, pan
             self.trade_unit = lots.get(order.stock_id, 100 if market == "CN" else 1)
             return super().deal_order(order, *args, **kwargs)
 
+        def round_amount_by_trade_unit(self, deal_amount, factor=None, stock_id=None, start_time=None, end_time=None):
+            if not self.trade_w_adj_price and self.trade_unit is not None:
+                if __package__:
+                    from .target_backtest import bounded_lot_amount
+                else:
+                    from target_backtest import bounded_lot_amount
+                factor = self._get_factor_or_raise_error(factor=factor, stock_id=stock_id, start_time=start_time, end_time=end_time)
+                return bounded_lot_amount(deal_amount, factor, self.trade_unit)
+            return deal_amount
+
     limit_expr = f"(Abs($open / Ref($close, 1) - 1) >= ($limit_rate - {max(0, 0.1-config['limit_threshold'])})) | ($volume <= 0)" if market == "CN" else "$volume <= 0"
     exchange = SymbolLotExchange(freq="day", start_time=split["test"][0], end_time=split["test"][1],
         codes=list(prediction.index.get_level_values("instrument").unique()), deal_price="open",
         limit_threshold=(limit_expr, limit_expr), open_cost=config["open_cost"], close_cost=config["close_cost"],
         min_cost=config["min_cost"], trade_unit=100 if market == "CN" else 1)
-    if market == "CN" and panel is not None:
+    if __package__:
+        from .rules import is_rule
+    else:
+        from rules import is_rule
+    if panel is not None and (market == "CN" or is_rule(config)):
         if __package__:
             from .target_backtest import strategy_for
             from .allocation import PAPER_POLICY
@@ -174,6 +188,10 @@ def portfolio_backtest(prediction, split, config, market="CN", members=None, pan
     if summary["paper_aligned"]:
         summary["generated_orders"] = strategy.order_count
         summary["rejected_orders"] = strategy.rejected_count
+    if hasattr(strategy, "fills"):
+        summary["fill_count"] = len(strategy.fills)
+        summary["fills"] = strategy.fills[-500:]
+        summary["fills_truncated"] = len(strategy.fills) > 500
     summary["execution_assumptions"] = "Prior-close frozen caps and quantities, next-open daily-bar replay; not opening quote, liquidity, settlement or corporate-action certification"
     summary["market_rules_warning"] = "Current lot/limit metadata is a research assumption, not certified historical rules; CN STAR/BSE rules are conservative research approximations"
     summary["benchmark"] = "zero-return cash reference; not CSI300 excess return"
@@ -227,6 +245,15 @@ def run(task_path: Path, return_context=False):
     )
     training_dates = pd.DatetimeIndex(pd.to_datetime(model_panel["calendar"]))
     split = task.get("segments") or segments(training_dates, config)
+    if __package__:
+        from .rules import is_rule
+        from .rule_worker import run_rules
+    else:
+        from rules import is_rule
+        from rule_worker import run_rules
+    if is_rule(config):
+        context = run_rules(task, panel, model_panel, config, frame, calendar, split, directory)
+        return context if return_context else None
     learning_split = {**split, "test": (split["test"][0], calendar[-1].strftime("%Y-%m-%d"))}
     # Membership intervals are enforced by Qlib's named instrument provider.
     instruments = "all"

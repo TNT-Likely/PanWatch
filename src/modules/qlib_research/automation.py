@@ -17,9 +17,16 @@ from src.platform.persistence.qlib_models import (
 from . import service
 from .policy import execution_date
 from .portfolio import CAPITAL_POLICY, capital_config
-from .assessment import assess
+from .assessment import assess, experiment_error
 
 KEY = "paper_automation"
+
+
+def authority_error(model, mode, kind):
+    if kind == "paper_experiment":
+        return experiment_error(model or {})
+    release = assess(model, mode)
+    return "" if release["eligible"] else release["reasons"][0]
 
 
 def input_error(selection, orders):
@@ -34,6 +41,8 @@ def input_error(selection, orders):
         return "qlib_automation_inputs_unverified"
     if any(abs(r["observed_context"]["return_20_observations"]) > 1 for r in rows):
         return "qlib_automation_input_anomaly"
+    if any(r.get("rule_evidence", {}).get("issue") for r in rows):
+        return "qlib_automation_inputs_unverified"
     return ""
 
 
@@ -82,12 +91,16 @@ def grant_error(db, grant_id, *, check_source=True):
     if state.champion_id != data["model_id"]:
         return "qlib_automation_model_changed"
     model = db.get(QlibRecord, state.champion_id)
-    assessment = assess(model.payload if model else None, service.market_mode(state))
-    if not assessment["eligible"]:
-        return assessment["reasons"][0]
+    error = authority_error(
+        model.payload if model else None,
+        service.market_mode(state),
+        data.get("authorization_kind", "validated"),
+    )
+    if error:
+        return error
     if state.settings.get("universe_generation") != data["source_generation"]:
         return "qlib_source_configuration_changed"
-    if check_source:
+    if check_source and data.get("authorization_kind") != "paper_experiment":
         history = (
             db.query(QlibUniverseJob)
             .filter_by(kind="history", market="CN")
@@ -115,14 +128,17 @@ def _status(db):
         db.get(QlibRecord, state.champion_id) if state and state.champion_id else None
     )
     source = (state.settings or {}).get("universe_config") if state else None
-    assessment = assess(model.payload if model else None, service.market_mode(state) if state else "research")
+    assessment = assess(
+        model.payload if model else None,
+        service.market_mode(state) if state else "research",
+    )
     available = bool(
         account
         and model
         and model.payload.get("data_kind") == "market"
         and source
         and source.get("license_acknowledged")
-        and assessment["eligible"]
+        and (assessment["eligible"] or assessment["experiment_eligible"])
     )
     result = {
         "mode": config.get("mode", "automatic"),
@@ -132,6 +148,11 @@ def _status(db):
         "account_enabled": bool(account and account.enabled),
         "can_authorize": available,
         "assessment": assessment,
+        "authorization_kind": grant.payload.get("authorization_kind", "validated")
+        if grant
+        else "paper_experiment"
+        if assessment["experiment_eligible"]
+        else "validated",
         "capital": capital_config(account) if account else None,
         "bound_market_principal": (
             (
@@ -155,8 +176,12 @@ def _status(db):
         result["reason"] = (
             "qlib_paper_account_required"
             if not account
-            else assessment["reasons"][0] if model and not assessment["eligible"]
-            else "qlib_automation_setup_required" if not available else ""
+            else assessment["reasons"][0]
+            if model
+            and not (assessment["eligible"] or assessment["experiment_eligible"])
+            else "qlib_automation_setup_required"
+            if not available
+            else ""
         )
         return result
     error = grant_error(db, grant.id)
@@ -189,7 +214,13 @@ def _status(db):
         return result
     plan = paper_plans._preview(db, selection)
     result.update(
-        phase="ready" if plan["ready"] else "waiting_data",
+        phase="ready"
+        if plan["ready"]
+        else "observing"
+        if plan["blocking_reason"] == "qlib_no_changes_required"
+        else "waiting_close"
+        if plan["blocking_reason"] == "qlib_plan_expired"
+        else "waiting_data",
         reason=plan["blocking_reason"],
     )
     if plan["ready"]:
@@ -231,6 +262,7 @@ def configure(body, actor):
                         "model_id": body.model_id,
                         "capital_config_hash": body.capital_config_hash,
                         "days": body.days,
+                        "authorization_kind": body.authorization_kind,
                     }.items()
                 ):
                     raise ValueError("qlib_automation_authorization_conflict")
@@ -256,9 +288,16 @@ def configure(body, actor):
                 raise ValueError("qlib_automation_funds_changed")
             if capital["market_principal"] <= 0:
                 raise ValueError("qlib_automation_market_unallocated")
-            assessment = assess(model.payload, service.market_mode(state))
-            if not assessment["eligible"]:
-                raise ValueError(assessment["reasons"][0])
+            if (
+                body.authorization_kind == "paper_experiment"
+                and not body.acknowledge_experiment
+            ):
+                raise ValueError("qlib_rule_experiment_ack_required")
+            error = authority_error(
+                model.payload, service.market_mode(state), body.authorization_kind
+            )
+            if error:
+                raise ValueError(error)
         # Switching authorization never restores prior pending plans.
         for decision in db.query(QlibRecord).filter_by(kind="decision"):
             if not db.get(QlibRecord, marker("executed", decision.id)) and not db.get(
@@ -309,6 +348,7 @@ def configure(body, actor):
                     ).isoformat(),
                     "actor": actor,
                     "days": body.days,
+                    "authorization_kind": body.authorization_kind,
                 },
             )
             db.add(grant)
@@ -332,7 +372,7 @@ def configure(body, actor):
 
 
 def tick(session_factory=None):
-    """No training/review. Failed data stops orders; no unbounded resume loop."""
+    """No training/review. Fixed rules use verified ready inputs, not scan status."""
     from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
     from . import paper_plans, universe
 
@@ -347,6 +387,20 @@ def tick(session_factory=None):
                 return {"phase": "blocked", "reason": reason}
         # Durable daily job keys prevent repeated downloads/implicit retraining.
         universe.scheduled_tick()
+        with (session_factory or service.SessionLocal)() as db:
+            state = db.get(QlibControl, 1)
+            current = db.get(QlibRecord, state.champion_id)
+            from .rules import is_rule
+
+            fixed_rule = current and is_rule(current.payload.get("config", {}))
+            model_id = state.champion_id
+        if fixed_rule:
+            from . import strategies
+
+            try:
+                strategies.refresh(model_id, "automatic_paper")
+            except ValueError as error:
+                return {"phase": "waiting_data", "reason": str(error)}
         with (session_factory or service.SessionLocal)() as db:
             reason = grant_error(db, config["grant_id"])
             if reason:
@@ -368,4 +422,11 @@ def tick(session_factory=None):
             )
             return {"phase": "planned", "decision_id": decision["id"]}
         except ValueError as error:
-            return {"phase": "waiting_data", "reason": str(error)}
+            return {
+                "phase": "observing"
+                if str(error) == "qlib_no_changes_required"
+                else "waiting_close"
+                if str(error) == "qlib_plan_expired"
+                else "waiting_data",
+                "reason": str(error),
+            }

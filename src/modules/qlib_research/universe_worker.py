@@ -21,7 +21,7 @@ def run_universe(task_path: Path):
 
     task = json.loads(task_path.read_text())
     context = run(task_path, return_context=True)
-    directory, provider = context["directory"], context["provider"]
+    directory = context["directory"]
     owned_root = directory.parent.parent
     manifest_path = Path(task["universe_manifest"]).resolve()
     if not manifest_path.is_relative_to(owned_root / "snapshots"):
@@ -32,6 +32,11 @@ def run_universe(task_path: Path):
     market = snapshot["market"]
     if market != context["panel"].get("market", "CN"):
         raise ValueError("qlib_model_market_mismatch")
+    from rules import is_rule
+    if is_rule(context["config"]):
+        from rule_worker import forward_rules
+        return forward_rules(context, snapshot, owned_root)
+    provider = context["provider"]
     frozen_calendar = context["panel"]["calendar"]
     calendar = frozen_calendar + [
         d for d in snapshot["calendar"] if d > frozen_calendar[-1]

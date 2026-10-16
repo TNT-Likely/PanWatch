@@ -213,6 +213,41 @@ class AutomationInput(StrictInput):
     capital_config_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     days: int = Field(default=30, ge=1, le=90)
     acknowledge_research: bool = False
+    authorization_kind: Literal["validated", "paper_experiment"] = "validated"
+    acknowledge_experiment: bool = False
+
+
+class RulePrepareInput(StrictInput):
+    algorithm: Literal["trend_breakout", "strength_continuation", "oversold_repair"] = "trend_breakout"
+    market: Literal["CN", "HK", "US"] = "CN"
+    request_key: str = Field(pattern=r"^[a-zA-Z0-9_-]{8,100}$")
+
+
+@router.get("/strategies")
+def strategy_catalog(market: Literal["CN", "HK", "US"] = "CN"):
+    from . import strategies
+    return invoke(strategies.catalog, market)
+
+
+@router.post("/strategies/prepare")
+def prepare_strategy(body: RulePrepareInput, actor=Depends(require_actor)):
+    from . import universe
+    config = ResearchConfig(algorithm=body.algorithm).model_dump()
+    return invoke(universe.enqueue, "train", body.request_key, actor, market=body.market, config=config)
+
+
+@router.post("/strategies/{model_id}/activate")
+def activate_strategy(model_id: str, body: PublishInput, actor=Depends(require_actor)):
+    if body.mode != "research":
+        raise HTTPException(422, "qlib_rule_not_validated")
+    from . import strategies
+    return invoke(strategies.activate, model_id, body.revision, actor)
+
+
+@router.post("/strategies/{model_id}/refresh")
+def refresh_strategy(model_id: str, actor=Depends(require_actor)):
+    from . import strategies
+    return invoke(strategies.refresh, model_id, actor)
 
 
 @router.get("/paper-automation")

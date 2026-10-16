@@ -131,7 +131,7 @@ class DatasetInput(StrictInput):
 
 
 class ResearchConfig(StrictInput):
-    algorithm: Literal["lightgbm", "ridge"] = "lightgbm"
+    algorithm: Literal["lightgbm", "ridge", "trend_breakout", "strength_continuation", "oversold_repair"] = "lightgbm"
     horizon: int = Field(default=5, ge=1, le=20)
     topk: int = Field(default=10, ge=1, le=50)
     train_fraction: float = Field(default=0.6, ge=0.4, le=0.7, allow_inf_nan=False)

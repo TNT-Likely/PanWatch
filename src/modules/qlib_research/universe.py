@@ -65,6 +65,8 @@ def job_dict(job):
         "resumable": job.kind in ("catalog", "history")
         and job.status in ("interrupted", "cancelled", "failed"),
         "created_at": job.created_at.isoformat(),
+        "retry_at": job.progress.get("retry_at"),
+        "automatic_retries": job.config.get("automatic_retries", 0),
     }
 
 
@@ -146,7 +148,7 @@ def members(market, *, page=1, limit=100, search="", status_filter=""):
             rows = [
                 r
                 for r in rows
-                if text in f"{r.symbol} {r.metadata_.get('name','')}".casefold()
+                if text in f"{r.symbol} {r.metadata_.get('name', '')}".casefold()
             ]
         return {
             "total": len(rows),
@@ -236,11 +238,20 @@ def enqueue(kind, request_key, actor, market=None, config=None, reinitialize=Fal
             .all()
         )
         if any(
-            kind == "catalog"
-            or j.kind == "catalog"
-            or market is None
-            or j.market is None
-            or j.market == market
+            (
+                kind == "catalog"
+                or j.kind == "catalog"
+                or market is None
+                or j.market is None
+                or j.market == market
+            )
+            and not (
+                kind == "train"
+                and (config or {}).get("algorithm")
+                in ("trend_breakout", "strength_continuation", "oversold_repair")
+                and j.kind == "history"
+                and j.market == market
+            )
             for j in active_jobs
         ):
             raise ValueError("qlib_universe_busy")
@@ -290,7 +301,7 @@ def cancel(job_id, actor):
         return job_dict(job)
 
 
-def resume(job_id, actor):
+def resume(job_id, actor, *, automatic=False):
     with service.LOCK, service.transaction() as db:
         job = db.get(QlibUniverseJob, valid_id(job_id))
         if (
@@ -317,6 +328,13 @@ def resume(job_id, actor):
             for j in active
         ):
             raise ValueError("qlib_universe_busy")
+        if automatic:
+            if job.status != "failed" or job.config.get("automatic_retries", 0) >= 3:
+                raise ValueError("qlib_resume_not_available")
+            job.config = {
+                **job.config,
+                "automatic_retries": job.config.get("automatic_retries", 0) + 1,
+            }
         job.status = "queued"
         job.error_code = ""
         job.finished_at = None
@@ -561,9 +579,15 @@ def fetch_member(job_id, symbol, md, day_by_market, calendars, config):
             # Empty histories and failed quality checks do not prove a global
             # outage. Preserve a substantive response from any enabled source
             # instead of letting the last failed backup disguise it as one.
-            substantive = [code for code in errors if code not in (
-                "qlib_source_transport_unavailable", "qlib_history_fetch_failed"
-            )]
+            substantive = [
+                code
+                for code in errors
+                if code
+                not in (
+                    "qlib_source_transport_unavailable",
+                    "qlib_history_fetch_failed",
+                )
+            ]
             if substantive:
                 error = substantive[0]
             raise ValueError(error or "qlib_history_unavailable")
@@ -600,10 +624,7 @@ def history_calendars(md, markets, days, cursor, previous_days, frozen, cached):
         sources = md.research_sources(market)
         if not sources:
             raise ValueError(f"qlib_research_source_disabled_{market}")
-        if (
-            previous_days == days
-            and valid_calendar(frozen.get(market), days[market])
-        ):
+        if previous_days == days and valid_calendar(frozen.get(market), days[market]):
             calendars[market] = frozen[market]
             origins[market] = "job_frozen_observed_calendar"
             continue
@@ -673,9 +694,12 @@ def execute_history(job_id, config, market_only):
             for symbol in symbols:
                 key = symbol[:4] if symbol.startswith(("SH", "SZ")) else symbol[:3]
                 lanes.setdefault(key, []).append(symbol)
-            symbols = [symbol for group in zip_longest(
-                *lanes.values()
-            ) for symbol in group if symbol is not None]
+            symbols = [
+                symbol
+                for group in zip_longest(*lanes.values())
+                for symbol in group
+                if symbol is not None
+            ]
     if not symbols:
         raise ValueError("qlib_catalog_required")
     day_by_market = days
@@ -896,6 +920,7 @@ def training_dataset(snapshot, budget):
 
 
 def execute(job_id):
+    kind, market, config = None, None, {}
     try:
         with service.LOCK, service.transaction() as db:
             changed = db.execute(
@@ -935,10 +960,20 @@ def execute(job_id):
                 job.result_id = result_id
                 job.finished_at = service.now()
         if kind == "history" and config["source"].get("automatic"):
-            for target in ([market] if market else config["source"]["markets"]):
+            for target in [market] if market else config["source"]["markets"]:
                 with service.transaction() as db:
                     champion = service.market_champion(service.control(db), target)
                 if champion:
+                    from .rules import is_rule
+
+                    with service.transaction() as db:
+                        model = db.get(QlibRecord, champion)
+                        fixed = model and is_rule(model.payload.get("config", {}))
+                    if fixed:
+                        from . import strategies
+
+                        strategies.refresh(champion, "scheduler-ready-rules")
+                        continue
                     enqueue(
                         "predict",
                         f"universe-daily-predict-{job_id}-{target}-{champion}",
@@ -956,6 +991,39 @@ def execute(job_id):
                     if isinstance(exc, ValueError) and str(exc).startswith("qlib_")
                     else "qlib_universe_job_failed"
                 )
+                if (
+                    kind == "history"
+                    and config["source"].get("automatic")
+                    and transient_history_error(job.error_code)
+                    and job.config.get("automatic_retries", 0) < 3
+                ):
+                    delay = 60 * (2 ** job.config.get("automatic_retries", 0))
+                    job.progress = {
+                        **job.progress,
+                        "retry_at": (
+                            service.now() + timedelta(seconds=delay)
+                        ).isoformat(),
+                    }
+        if kind == "history" and config.get("source", {}).get("automatic"):
+            from .rules import is_rule
+            from . import strategies
+
+            for target in [market] if market else config["source"]["markets"]:
+                with service.transaction() as db:
+                    champion = service.market_champion(service.control(db), target)
+                    model = db.get(QlibRecord, champion) if champion else None
+                    fixed = model and is_rule(model.payload.get("config", {}))
+                if fixed:
+                    try:
+                        strategies.refresh(champion, "scheduler-partial-ready-rules")
+                    except (ValueError, OSError):
+                        pass  # Original error is retained; stale/missing inputs still block orders.
+
+
+def transient_history_error(code):
+    return code == "qlib_source_unavailable_resume_sync" or code.startswith(
+        "qlib_calendar_unavailable_"
+    )
 
 
 def execute_prediction(job_id, model_id, snapshot, path):
@@ -1029,8 +1097,11 @@ def execute_prediction(job_id, model_id, snapshot, path):
             raise ValueError("qlib_result_invalid")
         symbols = {r["symbol"] for r in snapshot["members"]}
         rows = result["predictions"]
+        from .rules import VERSION, is_rule
+
+        feature_set = VERSION if is_rule(model["config"]) else "Alpha158"
         if (
-            result.get("feature_set") != "Alpha158"
+            result.get("feature_set") != feature_set
             or len(rows) != len(symbols)
             or result.get("runtime", {}).get("pyqlib") != "0.9.7"
             or len({r["symbol"] for r in rows}) != len(rows)
@@ -1073,7 +1144,8 @@ def execute_prediction(job_id, model_id, snapshot, path):
                     "asof_date": snapshot["asof_date"],
                     "data_kind": "market",
                     "config": model["config"],
-                    "feature_set": "Alpha158",
+                    "feature_set": feature_set,
+                    "rule_version": result.get("rule_version"),
                     "horizon": model["config"]["horizon"],
                     "predictions": predictions,
                     "monitor": result["monitor"],
@@ -1143,8 +1215,41 @@ def scheduled_tick():
         key = f"universe-daily-history-{generation}-{market}-{completed_day(market)}"
         with service.transaction() as db:
             existing = db.query(QlibUniverseJob).filter_by(request_key=key).first()
+            if not existing:
+                # A user's same-day scan is the daily scan too. Do not create
+                # another key to bypass its cancellation/cooldown/retry budget.
+                recent = (
+                    db.query(QlibUniverseJob)
+                    .filter_by(kind="history", market=market)
+                    .order_by(QlibUniverseJob.created_at.desc())
+                    .first()
+                )
+                if (
+                    recent
+                    and recent.config.get("generation") == generation
+                    and recent.config.get("session_days", {}).get(market)
+                    == completed_day(market)
+                ):
+                    existing = recent
             if existing:
-                continue  # Failure/cancellation requires explicit resume.
+                retry_at = existing.progress.get("retry_at")
+                if (
+                    existing.status == "failed"
+                    and transient_history_error(existing.error_code)
+                    and retry_at
+                    and service.now() >= datetime.fromisoformat(retry_at)
+                    and existing.config.get("automatic_retries", 0) < 3
+                ):
+                    retry_id = existing.id
+                else:
+                    continue  # User cancellation and nontransport failures stay stopped.
+            else:
+                retry_id = None
+        if retry_id:
+            return {
+                "status": "queued",
+                "job": resume(retry_id, "scheduler-bounded-retry", automatic=True),
+            }
         return {
             "status": "queued",
             "job": enqueue("history", key, "scheduler", market=market),

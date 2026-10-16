@@ -17,8 +17,9 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("market", ["CN", "HK", "US"])
+@pytest.mark.parametrize("algorithm", ["lightgbm", "strength_continuation"])
 def test_same_frozen_model_predicts_entire_pool_beyond_training_cohort(
-    tmp_path, market
+    tmp_path, market, algorithm
 ):
     root = tmp_path / "qlib"
     for name in ("datasets", "history", "snapshots"):
@@ -26,7 +27,9 @@ def test_same_frozen_model_predicts_entire_pool_beyond_training_cohort(
     cohort = panel(market=market, symbols=8)
     training_path = root / "datasets" / "synthetic.json"
     training_path.write_text(json.dumps(cohort))
-    config = ResearchConfig(topk=3, num_boost_round=10).model_dump()
+    config = ResearchConfig(
+        algorithm=algorithm, topk=3, num_boost_round=10
+    ).model_dump()
     entrypoint = (
         Path(__file__).resolve().parents[1] / "src/modules/qlib_research/worker.py"
     )

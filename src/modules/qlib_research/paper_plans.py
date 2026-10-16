@@ -344,6 +344,11 @@ def confirm(
                 "confirmation_kind": "frozen_target_orders_v2",
                 "approval_origin": "automatic" if automation_grant_id else "manual",
                 "automation_grant_id": automation_grant_id,
+                "authorization_kind": db.get(
+                    QlibRecord, automation_grant_id
+                ).payload.get("authorization_kind", "validated")
+                if automation_grant_id
+                else "manual",
                 "risk_degree": 0.9,
                 "config": payload["config"],
                 "research_mode": plan["research_mode"],
@@ -497,6 +502,8 @@ def list_plans():
                     "execution_date": payload["execution_date"],
                     "status": phase,
                     "research_mode": payload.get("research_mode", True),
+                    "strategy": payload.get("config", {}).get("algorithm"),
+                    "authorization_kind": payload.get("authorization_kind"),
                     "approval_origin": payload.get("approval_origin", "manual"),
                     "block_reason": block_reason,
                     "automation_grant_id": payload.get("automation_grant_id"),

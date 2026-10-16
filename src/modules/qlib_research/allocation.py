@@ -21,7 +21,7 @@ def fee_amount(side, price, quantity, config):
 def target_membership(rows, managed, eligible, topk):
     locked = set(managed) - eligible
     ranked = sorted(
-        (r for r in rows if r["symbol"] in eligible),
+        (r for r in rows if r["symbol"] in eligible and r.get("signal_active", True)),
         key=lambda r: (r["rank"], r["symbol"]),
     )
     targets = {r["symbol"] for r in ranked[: max(0, topk - len(locked))]}

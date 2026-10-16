@@ -271,7 +271,9 @@ def execute_job(job_id):
             if not result_path.is_file() or result_path.stat().st_size > 10000000:
                 raise ValueError("qlib_result_invalid")
             output = json.loads(result_path.read_text(), parse_constant=lambda value: (_ for _ in ()).throw(ValueError("qlib_nonfinite_result")))
-            if not output.get("predictions") or output.get("feature_set") != "Alpha158" or output.get("runtime", {}).get("pyqlib") != "0.9.7":
+            from .rules import VERSION, is_rule
+            feature_set = VERSION if is_rule(config) else "Alpha158"
+            if not output.get("predictions") or output.get("feature_set") != feature_set or output.get("runtime", {}).get("pyqlib") != "0.9.7":
                 raise ValueError("qlib_result_invalid")
             experiment_id = identity()
             model_id = job.model_id or identity()
@@ -279,15 +281,17 @@ def execute_job(job_id):
             model_payload["market"] = output.get("market", "CN")
             model_payload["price_basis"] = output.get("price_basis","raw_execution")
             model_payload["universe_snapshot_id"] = universe_snapshot_id
+            model_payload["feature_set"] = feature_set
+            model_payload["rule_version"] = output.get("rule_version")
             db.add(QlibRecord(id=experiment_id, kind="experiment", parent_id=model_id, name=f"{config['algorithm']} · {output['asof_date']}", payload={**model_payload, "label": output["label"]}))
             if not job.model_id:
-                db.add(QlibRecord(id=model_id, kind="model", parent_id=experiment_id, name=f"Alpha158 + {config['algorithm']}", payload=model_payload))
+                db.add(QlibRecord(id=model_id, kind="model", parent_id=experiment_id, name=f"{feature_set} + {config['algorithm']}", payload=model_payload))
             run_id = identity()
             prior = latest_selection(model_id, db)
             ranks = {row["symbol"]: row["rank"] for row in prior.payload["predictions"]} if prior else {}
             predictions = [{**row, "rank_change": ranks[row["symbol"]] - row["rank"] if row["symbol"] in ranks else None} for row in output["predictions"]]
             predictions = [{**row,"price_basis":output.get("price_basis","raw_execution")} for row in predictions]
-            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": output.get("market", "CN"), "predictions": predictions, "monitor": output["monitor"], "feature_set": "Alpha158", "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config, "names": dataset_names,"selection_scope":"training_cohort" if model_payload["universe_snapshot_id"] else "imported_dataset"}))
+            db.add(QlibRecord(id=run_id, kind="selection", parent_id=model_id, name=output["asof_date"], payload={"model_id": model_id, "dataset_id": data_id, "experiment_id": experiment_id, "asof_date": output["asof_date"], "market": output.get("market", "CN"), "price_basis": output.get("price_basis", "raw_execution"), "predictions": predictions, "monitor": output["monitor"], "feature_set": feature_set, "rule_version": output.get("rule_version"), "horizon": config["horizon"], "prediction_scale": output["prediction_scale"], "data_kind": output["data_kind"], "config": config, "names": dataset_names,"selection_scope":"training_cohort" if model_payload["universe_snapshot_id"] else "imported_dataset"}))
             job.status, job.result_id, job.finished_at = "succeeded", run_id, now()
             if job.kind == "train" and job.request_key.startswith("scheduled-"):
                 state = control(db)
@@ -462,7 +466,7 @@ def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all
         def watched(row):
             return row["symbol"] in basket if run.get("data_kind")=="synthetic" else (row["symbol"][2:] if market=="CN" else row["symbol"][3:]) in codes
         watched_count=sum(watched(r) for r in rows)
-        selected = set([r["symbol"] for r in sorted(rows,key=lambda r:r["rank"]) if r["tradable"]][:run.get("config",{}).get("topk",10)])
+        selected = set([r["symbol"] for r in sorted(rows,key=lambda r:r["rank"]) if r["tradable"] and r.get("signal_active", True)][:run.get("config",{}).get("topk",10)])
         if source != "all" or holding != "all":
             from src.platform.persistence.models import Stock, Position
             stocks = db.query(Stock).filter_by(market=market).all()
@@ -488,6 +492,8 @@ def opportunities(market="CN", page=1, limit=None, search="", top=0, source="all
         run["assessment"] = assess(model.payload if model else None, market_mode(state, market) if run["model_id"] == champion else "research")
         names = run.get("names", {})
         run["watched_count"] = watched_count
+        if run.get("rule_version"):
+            run["match_count"] = sum(bool(r.get("signal_active")) for r in run["predictions"])
         if limit is not None:
             names = {r["symbol"]: names.get(r["symbol"], "") for r in rows}
         return {"items": rows, "total": total, "prediction_count": count, "page": page, "limit": limit, "status": "history" if run_id else "ready" if freshness(run["asof_date"], market) else "stale", "run": {**{key: value for key, value in run.items() if key not in ("predictions", "names")}, "names": names}, "mode": market_mode(state, market)}

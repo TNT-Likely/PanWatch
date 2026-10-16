@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 from datetime import date
+from datetime import timedelta
 import time
 import uuid
 import json
@@ -19,6 +20,36 @@ from src.platform.persistence.qlib_models import (
 from tests.test_qlib_service import storage, model
 from tests.qlib_fixture import panel
 from marketdata.research import ResearchHistory
+
+
+def test_automatic_transport_retry_is_bounded_and_never_resumes_user_cancel(storage, monkeypatch):
+    from src.platform.persistence.qlib_models import QlibControl
+    moment = service.now()
+    monkeypatch.setattr(service, "now", lambda: moment)
+    monkeypatch.setattr(universe, "completed_day", lambda market: "2026-10-15")
+    dispatched = []
+    monkeypatch.setattr(universe.EXECUTOR, "submit", lambda fn, ident: dispatched.append(ident))
+    generation = "bounded-retry"
+    with storage() as db:
+        state = service.control(db)
+        state.settings = {**state.settings, "universe_config":{"markets":["CN"],"automatic":True}, "universe_generation":generation, "universe_catalogs":{"CN":"c"*32}}
+        job = QlibUniverseJob(id="a"*32, kind="history", market="CN", request_key=f"universe-daily-history-{generation}-CN-2026-10-15", status="failed", error_code="qlib_source_unavailable_resume_sync", config={"generation":generation,"automatic_retries":0}, progress={"retry_at":(moment-timedelta(seconds=1)).isoformat()})
+        db.add(job)
+        db.commit()
+    assert universe.scheduled_tick()["job"]["automatic_retries"] == 1
+    assert dispatched == ["a"*32]
+    with storage() as db:
+        job = db.get(QlibUniverseJob, "a"*32)
+        job.status = "cancelled"
+        db.commit()
+    assert universe.scheduled_tick()["status"] == "idle"
+    with storage() as db:
+        job = db.get(QlibUniverseJob, "a"*32)
+        job.status = "failed"
+        job.config = {**job.config,"automatic_retries":3}
+        db.commit()
+    assert universe.scheduled_tick()["status"] == "idle"
+    assert len(dispatched) == 1
 
 
 @pytest.mark.parametrize("market", ["CN", "HK", "US"])

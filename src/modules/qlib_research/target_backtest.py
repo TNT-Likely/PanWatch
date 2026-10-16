@@ -9,6 +9,16 @@ import copy
 import math
 import re
 
+
+def bounded_lot_amount(amount, factor, lot):
+    """Round down without Qlib's 0.1-raw-share upward tolerance.
+
+    Adjusted holdings can have fractional raw shares as snapshot factors vary.
+    Never round a partial sale above the available position (or a buy cap).
+    """
+    return min(amount, math.floor(amount * factor / lot + 1e-10) * lot / factor)
+
+
 if __package__:
     from .allocation import (
         TARGET_RATIO,
@@ -38,6 +48,25 @@ def strategy_for(signal, config, panel):
             super().__init__(signal=signal, risk_degree=TARGET_RATIO)
             self.order_count = 0
             self.rejected_count = 0
+            self.fills = []
+
+        def post_exe_step(self, execute_result):
+            for order, value, fee, price in execute_result or []:
+                factor = self.trade_exchange.get_factor(
+                    order.stock_id, order.start_time, order.end_time
+                )
+                if order.deal_amount > 0 and factor:
+                    self.fills.append(
+                        dict(
+                            date=order.start_time.strftime("%Y-%m-%d"),
+                            symbol=order.stock_id,
+                            side="buy" if order.direction == Order.BUY else "sell",
+                            quantity=round(float(order.deal_amount * factor)),
+                            price=float(price / factor),
+                            fee=float(fee),
+                            value=float(value),
+                        )
+                    )
 
         def generate_trade_decision(self, execute_result=None):
             step = self.trade_calendar.get_trade_step()
@@ -57,7 +86,18 @@ def strategy_for(signal, config, panel):
                 ),
                 key=lambda item: (-item[1], item[0]),
             )
-            rows = [dict(symbol=s, rank=i + 1) for i, (s, _) in enumerate(scores)]
+            if __package__:
+                from .rules import is_rule
+            else:
+                from rules import is_rule
+            rows = [
+                dict(
+                    symbol=s,
+                    rank=i + 1,
+                    signal_active=(v > 0 if is_rule(config) else True),
+                )
+                for i, (s, v) in enumerate(scores)
+            ]
             held = self.trade_position.get_stock_list()
             candidates = set(held) | {r["symbol"] for r in rows}
             factors = {
@@ -82,7 +122,10 @@ def strategy_for(signal, config, panel):
             eligible = {
                 s
                 for s in candidates
-                if re.fullmatch(r"(?:SH60|SZ00)\d{4}", s)
+                if (
+                    panel.get("market", "CN") != "CN"
+                    or re.fullmatch(r"(?:SH60|SZ00)\d{4}", s)
+                )
                 and not meta.get(s, {}).get("special_treatment")
                 and (prior, s) in bars
                 and bars[(prior, s)]["volume"] > 0
@@ -102,6 +145,7 @@ def strategy_for(signal, config, panel):
                     buys,
                     eligible,
                     config,
+                    lots={s: meta.get(s, {}).get("lot", 100) for s in candidates},
                 )
             except ValueError:
                 self.rejected_count += 1
@@ -130,7 +174,10 @@ def strategy_for(signal, config, panel):
                     or not math.isfinite(factor)
                     or not price
                     or bar["volume"] <= 0
-                    or abs(price / prices[symbol] - 1) >= config["limit_threshold"]
+                    or (
+                        panel.get("market", "CN") == "CN"
+                        and abs(price / prices[symbol] - 1) >= config["limit_threshold"]
+                    )
                 ):
                     self.rejected_count += 1
                     continue
@@ -159,7 +206,13 @@ def strategy_for(signal, config, panel):
                             frozen["target_weight"] * equity - values.get(symbol, 0),
                         ),
                     )
-                    quantity = buy_quantity(budget, price, config, maximum=quantity)
+                    quantity = buy_quantity(
+                        budget,
+                        price,
+                        config,
+                        lot=meta.get(symbol, {}).get("lot", 100),
+                        maximum=quantity,
+                    )
                 if quantity <= 0:
                     self.rejected_count += 1
                     continue
