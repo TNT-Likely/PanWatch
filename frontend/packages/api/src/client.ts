@@ -1,6 +1,8 @@
 import { interfaceText, isEnglishInterface } from './locale'
 
-const API_BASE = '/api'
+import { publicUrl } from './base-path'
+
+const API_BASE = publicUrl('/api')
 const DEFAULT_TIMEOUT_MS = 20000
 
 export interface ApiResponse<T> {
@@ -150,7 +152,7 @@ export function getToken(): string | null {
 export function logout() {
   localStorage.removeItem('token')
   localStorage.removeItem('token_expires')
-  window.location.href = '/login'
+  window.location.href = publicUrl('/login')
 }
 
 export function isAuthenticated(): boolean {

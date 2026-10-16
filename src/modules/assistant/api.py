@@ -25,6 +25,7 @@ from src.platform.persistence.database import get_db
 from src.platform.tasking.contracts import TaskStatus
 from src.web.datetime import as_utc
 from src.web.errors import api_error
+from src.web.public_path import public_path
 
 from .context_schemas import (
     AssistantConfigDTO,
@@ -379,8 +380,8 @@ async def create_assistant_task(
             return {
                 "task_id": task.id,
                 "status": task.status,
-                "event_url": f"/api/assistant/tasks/{task.id}/events",
-                "snapshot_url": f"/api/assistant/tasks/{task.id}",
+                "event_url": public_path(f"/api/assistant/tasks/{task.id}/events"),
+                "snapshot_url": public_path(f"/api/assistant/tasks/{task.id}"),
                 "created_at": task.created_at,
             }
 

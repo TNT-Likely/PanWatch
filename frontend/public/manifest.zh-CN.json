@@ -2,25 +2,29 @@
   "name": "盯盘侠 PanWatch",
   "short_name": "盯盘侠",
   "description": "AI 驱动的股票监控助手",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#4f46e5",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "categories": ["finance", "productivity"],
-  "lang": "zh-CN"
+  "categories": [
+    "finance",
+    "productivity"
+  ],
+  "lang": "zh-CN",
+  "scope": "./"
 }

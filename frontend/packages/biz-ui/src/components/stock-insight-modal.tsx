@@ -1,6 +1,7 @@
+import { publicUrl } from '@panwatch/api/base-path'
 import { AnalysisMetadata } from './analysis-metadata'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import Markdown from '@panwatch/base-ui/components/markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
   insightApi,
@@ -1681,7 +1682,7 @@ export default function StockInsightModal(props: {
                     )}
                     <div className="rounded-lg bg-accent/10 p-3">
                       <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 break-words">
-                        <ReactMarkdown>{activeReport.content || tr('cards.noReportContent')}</ReactMarkdown>
+                        <Markdown>{activeReport.content || tr('cards.noReportContent')}</Markdown>
                       </div>
                     </div>
                     {(activeReport.prompt_context || activeReport.context_payload || activeReport.news_debug) && (
@@ -1728,7 +1729,7 @@ export default function StockInsightModal(props: {
                       className="h-8 px-2.5"
                       onClick={() =>
                         window.open(
-                          `/analysis/${symbol}/${deepResult.timestamp ? String(deepResult.timestamp).slice(0, 10) : new Date().toISOString().slice(0, 10)}`,
+                          publicUrl(`/analysis/${encodeURIComponent(symbol)}/${deepResult.timestamp ? String(deepResult.timestamp).slice(0, 10) : new Date().toISOString().slice(0, 10)}`),
                           '_blank',
                         )
                       }
@@ -1972,7 +1973,7 @@ function DeepAnalysisSection({
       {result?.content && (
         <div className="rounded-lg border border-border/50 p-4">
           <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <ReactMarkdown>{result.content}</ReactMarkdown>
+            <Markdown>{result.content}</Markdown>
           </div>
         </div>
       )}

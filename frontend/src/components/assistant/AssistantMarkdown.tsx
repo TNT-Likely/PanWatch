@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import ReactMarkdown from 'react-markdown'
+import Markdown from '@panwatch/base-ui/components/markdown'
 import remarkGfm from 'remark-gfm'
 
 const REMARK_PLUGINS = [remarkGfm]
@@ -12,10 +12,10 @@ export function safeStreamMarkdown(text: string): string {
 }
 
 /** Keep immutable history out of the live token and task-status render path. */
-export const AssistantMarkdown = memo(function AssistantMarkdown({ content, streaming = false }: { content: string; streaming?: boolean }) {
+export const AssistantMarkdown = memo(function AssistantMarkdown({ content, streaming = false, documentId }: { content: string; streaming?: boolean; documentId?: string }) {
   return (
     <div className={MARKDOWN_CLASS}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{streaming ? safeStreamMarkdown(content) : content}</ReactMarkdown>
+      <Markdown documentId={documentId} remarkPlugins={REMARK_PLUGINS}>{streaming ? safeStreamMarkdown(content) : content}</Markdown>
     </div>
   )
 })

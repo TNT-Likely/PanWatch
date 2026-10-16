@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Bot, Loader2 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown from '@panwatch/base-ui/components/markdown'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from 'react-i18next'
 import { onboardingApi } from '@panwatch/api/onboarding'
@@ -44,7 +44,7 @@ export default function FirstAnalysis() {
           {run?.status === 'failed' && <p role="alert" className="text-sm text-destructive">{localizedApiError({ code: 500, data: null, message: run.error_message, error_code: run.error_code }, 500)}</p>}
           {run?.status === 'success' && <>
             <p className="text-xs text-muted-foreground">{run.model_label} · {new Date(run.created_at).toLocaleString(i18n.language)}</p>
-            <article className="prose prose-sm max-w-none break-words dark:prose-invert [&_pre]:overflow-x-auto [&_pre]:scrollbar"><ReactMarkdown remarkPlugins={[remarkGfm]}>{run.content}</ReactMarkdown></article>
+            <article className="prose prose-sm max-w-none break-words dark:prose-invert [&_pre]:overflow-x-auto [&_pre]:scrollbar"><ReactMarkdown documentId={`onboarding-analysis-${run.id}`} remarkPlugins={[remarkGfm]}>{run.content}</ReactMarkdown></article>
           </>}
         </div>
       </DialogContent>

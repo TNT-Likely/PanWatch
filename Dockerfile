@@ -120,7 +120,7 @@ EXPOSE 8000
 
 # 健康检查（使用 Python）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
+    CMD python -c "import urllib.request; from src.platform.runtime.config import Settings; s=Settings(); prefix=s.panwatch_base_path if s.panwatch_proxy_mode == 'preserve' else ''; urllib.request.urlopen('http://localhost:8000' + prefix + '/api/health')" || exit 1
 
 # 启动命令
 CMD ["python", "server.py"]

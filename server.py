@@ -1605,23 +1605,16 @@ app.router.lifespan_context = lifespan
 # 生产环境静态文件服务
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
+    from src.web.spa import install_spa
 
-    # SPA 路由：所有非 API 请求返回 index.html
-    @app.get("/{path:path}")
-    async def serve_spa(path: str):
-        file_path = os.path.join(static_dir, path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(static_dir, "index.html"))
+    install_spa(app, static_dir, app.state.public_base_path)
 
     logger.info(f"静态文件服务已启用: {static_dir}")
 
 
 if __name__ == "__main__":
-    print("盯盘侠启动: http://127.0.0.1:8000")
-    print("API 文档: http://127.0.0.1:8000/docs")
+    print(f"盯盘侠启动: http://127.0.0.1:8000{app.state.public_base_path}/")
+    print(f"API 文档: http://127.0.0.1:8000{app.state.public_base_path}/docs")
     # 生产(Docker `python server.py`)不应开 reload:uvicorn 文件监听会多起一个 reloader
     # 子进程、浪费资源,且监听 data/ 写入易误触发重启。本地热重载用 `make dev-api`
     # (uvicorn --reload),或显式设 DEV_RELOAD=1。

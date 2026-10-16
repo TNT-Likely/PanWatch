@@ -1,68 +1,52 @@
-// PanWatch Service Worker
-const CACHE_NAME = 'panwatch-v2';
+// PanWatch Service Worker. Each deployment owns only its own scope and caches.
+const BASE_URL = new URL(self.registration.scope);
+const BASE_PATH = BASE_URL.pathname;
+const CACHE_PREFIX = `panwatch:${BASE_PATH}:`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const STATIC_ASSETS = ['', 'manifest.json', 'manifest.zh-CN.json', 'icon-192.png', 'icon-512.png']
+  .map(path => new URL(path, BASE_URL).href);
 
-// 需要缓存的静态资源
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/manifest.zh-CN.json',
-  '/icon-192.png',
-  '/icon-512.png',
-];
-
-// 安装时缓存静态资源
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
-  );
-  // 立即激活
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)));
   self.skipWaiting();
 });
 
-// 激活时清理旧缓存
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      );
-    })
+    caches.keys().then(names => Promise.all(
+      names.filter(name => (name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+        || (BASE_PATH === '/' && name === 'panwatch-v2'))
+        .map(name => caches.delete(name))
+    ))
   );
-  // 立即接管所有客户端
   self.clients.claim();
 });
 
-// 网络优先策略（适合实时数据应用）
 self.addEventListener('fetch', (event) => {
-  // 只处理同源请求
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return;
-  }
-
-  // API 请求不缓存，直接走网络
-  if (event.request.url.includes('/api/')) {
-    return;
-  }
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET' || url.origin !== BASE_URL.origin || !url.pathname.startsWith(BASE_PATH)) return;
+  const localPath = url.pathname.slice(BASE_PATH.length);
+  // Never cache API, realtime, authentication, or protocol responses.
+  if (localPath.split('/').some(segment => ['api', 'mcp', '.well-known', 'docs', 'redoc', 'openapi.json'].includes(segment))) return;
+  // A root-scoped worker may temporarily control a nested installation. Cache
+  // only this installation's known public files and bundled assets, never an
+  // arbitrary navigation or another app's authenticated response.
+  const isBundledAsset = /^assets\/[^/]+$/.test(localPath);
+  if (!STATIC_ASSETS.includes(url.origin + url.pathname) && !isBundledAsset) return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // 成功获取网络响应，更新缓存
-        if (response.ok) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // 网络失败，尝试从缓存获取
-        return caches.match(event.request);
-      })
+    fetch(event.request).then(response => {
+      const isHtml = (response.headers.get('content-type') || '').toLowerCase().includes('text/html');
+      // The known root shell is public HTML; an asset URL returning HTML may
+      // belong to a nested application, even when its prefix looks like a file.
+      if (response.ok && !response.redirected && !(isBundledAsset && isHtml)) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)));
+      }
+      return response;
+    }).catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      return await cache.match(event.request) || Response.error();
+    })
   );
 });

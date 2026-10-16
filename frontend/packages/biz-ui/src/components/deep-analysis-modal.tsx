@@ -7,7 +7,8 @@
  * 3. 完成 — 顶层摘要 + Markdown 推理 + 可展开 4 分析师报告 + 辩论
  */
 import { useEffect, useState, useCallback, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { publicUrl } from '@panwatch/api/base-path'
+import Markdown from '@panwatch/base-ui/components/markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
 import { AnalysisMetadata, AnalysisUsage, analysisDateForResult } from './analysis-metadata'
@@ -729,7 +730,7 @@ function DoneView({
           size="sm"
           className="h-7 text-[11px] ml-auto"
           disabled={!analysisDate}
-          onClick={() => window.open(`/analysis/${stockSymbol}/${analysisDate}`, '_blank')}
+          onClick={() => window.open(publicUrl(`/analysis/${encodeURIComponent(stockSymbol)}/${analysisDate}`), '_blank')}
         >
           {tr('done.details')}
         </Button>
@@ -770,7 +771,7 @@ function AnalysisTabs({ sections }: { sections: AnalysisSection[] }) {
         {sections.map((s) => (
           <TabsContent key={s.id} value={s.id}>
             <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-table:my-3 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:text-[12px] prose-strong:text-foreground">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.markdown}</ReactMarkdown>
+              <Markdown remarkPlugins={[remarkGfm]}>{s.markdown}</Markdown>
             </div>
           </TabsContent>
         ))}

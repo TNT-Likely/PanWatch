@@ -10,7 +10,8 @@ pydantic-settings>=2.0.0
 pyyaml>=6.0
 certifi
 tenacity>=8.2.0
-fastapi>=0.104.0
+# Canonical path + root_path routing (Starlette >=0.37.2).
+fastapi>=0.110.1
 uvicorn>=0.24.0
 sqlalchemy>=2.0.0
 playwright==1.57.0

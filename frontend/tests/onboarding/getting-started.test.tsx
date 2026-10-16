@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useLocation, Link } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, Route, Routes, useLocation, Link } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GettingStartedPage from '@/pages/GettingStarted'
 import { GuidedTourProvider, useGuidedTour, resumeStep, tourSteps } from '@/components/onboarding/GuidedTour'
@@ -229,5 +229,93 @@ describe('guide center', () => {
     await screen.findByText('阅读信号，再决定是否关注')
     expect(onboardingApi.update).toHaveBeenCalledWith({ track: 'opportunities', restart: false, deferred: false })
     expect(current.tour_step).toBe('ai')
+  })
+})
+
+
+describe.each(['', '/panwatch', '/apps/panwatch'])('guide navigation at public base "%s"', prefix => {
+  let base: HTMLBaseElement
+  const renderBrowserTour = (path = '/getting-started') => {
+    window.history.replaceState(null, '', `${prefix}${path}`)
+    return render(<BrowserRouter basename={prefix || '/'}><GuidedTourProvider><Routes>
+      <Route path="/getting-started" element={<GettingStartedPage />} /><Route path="*" element={<Controls />} />
+    </Routes></GuidedTourProvider></BrowserRouter>)
+  }
+  beforeEach(() => {
+    base = document.createElement('base')
+    base.href = `${prefix}/`
+    document.head.append(base)
+  })
+  afterEach(() => { base.remove(); window.history.replaceState(null, '', '/') })
+
+  it('keeps first-use redirect, main navigation, browser Back/Forward and pause inside the prefix', async () => {
+    renderBrowserTour('/history')
+    await screen.findByRole('dialog')
+    expect(window.location.pathname).toBe(`${prefix}/getting-started`)
+    await userEvent.click(screen.getAllByRole('button', { name: '开始操作引导' }).at(-1)!)
+    await screen.findByText('先添加一只自选')
+    expect(window.location.pathname).toBe(`${prefix}/portfolio`)
+    expect(screen.getByRole('link', { name: '离开页面' }).getAttribute('href')).toBe(`${prefix}/history`)
+    await act(async () => window.history.back())
+    await waitFor(() => expect(window.location.pathname).toBe(`${prefix}/getting-started`))
+    await screen.findByText('你已离开当前引导页面。进度已保存。')
+    await act(async () => window.history.forward())
+    await screen.findByText('先添加一只自选')
+    expect(window.location.pathname).toBe(`${prefix}/portfolio`)
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(current.deferred).toBe(true))
+    expect(window.location.pathname).toBe(`${prefix}/portfolio`)
+    expect(current.tour_step).toBe('stock')
+    expect(onboardingApi.quote).not.toHaveBeenCalled()
+    expect(onboardingApi.analyze).not.toHaveBeenCalled()
+  })
+
+  it('keeps optional-track navigation and return-to-center inside the prefix', async () => {
+    current = state({ started: true, deferred: true, tour_step: 'done', completed: true })
+    renderBrowserTour()
+    const card = await screen.findByRole('region', { name: '发现与评估机会' })
+    await userEvent.click(within(card).getByRole('button', { name: '开始探索' }))
+    await screen.findByText('筛选你关心的机会')
+    expect(window.location.pathname).toBe(`${prefix}/opportunities`)
+    await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
+    await screen.findByText('阅读信号，再决定是否关注')
+    await userEvent.click(screen.getByRole('button', { name: '我已了解，继续' }))
+    await screen.findByText('回看建议的后续表现')
+    expect(window.location.pathname).toBe(`${prefix}/evaluations`)
+    await userEvent.click(screen.getByRole('button', { name: '完成并返回中心' }))
+    await screen.findByRole('heading', { name: '引导中心' })
+    expect(window.location.pathname).toBe(`${prefix}/getting-started`)
+    expect(current.tour_step).toBe('done')
+    expect(onboardingApi.analyze).not.toHaveBeenCalled()
+  })
+
+  it('keeps generated first-analysis footnotes on the current document with stable identities', async () => {
+    current = state({ started: true, deferred: true, tour_step: 'analysis', selected_stock: stock, quote, models: [model],
+      analysis: { id: 7, trace_id: 'qa', status: 'success', content: 'A claim.[^source]\n\n[Details](#details)\n\n[^source]: A supporting source.', error_code: '', error_message: '', model_label: 'QA', created_at: '2026-10-10T00:00:00Z' } })
+    const view = renderBrowserTour('/portfolio?tab=watchlist')
+    await userEvent.click(await screen.findByRole('button', { name: '打开首次分析' }))
+    const ref = document.querySelector<HTMLAnchorElement>('a[data-footnote-ref]')!
+    const back = document.querySelector<HTMLAnchorElement>('a[data-footnote-backref]')!
+    const documentUrl = `${window.location.origin}${prefix}/portfolio?tab=watchlist`
+    expect(ref.id).toMatch(/^user-content-.+-fnref-source$/)
+    expect(ref.href).toBe(`${documentUrl}#${back.id || back.closest('li')!.id}`)
+    expect(back.href).toBe(`${documentUrl}#${ref.id}`)
+    expect(screen.getByRole('link', { name: 'Details' }).getAttribute('href')).toBe(`${documentUrl}#details`)
+    await userEvent.click(ref)
+    await waitFor(() => expect(window.location.href).toBe(ref.href))
+    await userEvent.click(back)
+    await waitFor(() => expect(window.location.href).toBe(back.href))
+    const id = ref.id
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(document.querySelector<HTMLAnchorElement>('a[data-footnote-ref]')!.id).toBe(id)
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(window.location.pathname).toBe(`${prefix}/portfolio`)
+    expect(window.location.search).toBe('?tab=watchlist')
+    view.unmount()
+    renderBrowserTour(`/portfolio?tab=watchlist#${id}`)
+    await userEvent.click(await screen.findByRole('button', { name: '打开首次分析' }))
+    expect(document.querySelector<HTMLAnchorElement>('a[data-footnote-ref]')!.id).toBe(id)
+    expect(document.getElementById(window.location.hash.slice(1))).toBeTruthy()
   })
 })

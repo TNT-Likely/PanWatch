@@ -1,3 +1,4 @@
+import { publicUrl } from '@panwatch/api/base-path'
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -2765,7 +2766,7 @@ export default function StocksPage() {
                       <div className="px-3.5 pb-3.5 pt-0">
                         <p className="text-[11px] text-muted-foreground">
                           {stockT('stocksPage.messages.agentConfigHint')}
-                          <a href="/agents" className="text-primary hover:underline">{stockT('stocksPage.messages.configureAgent')}</a>
+                          <a href={publicUrl('/agents')} className="text-primary hover:underline">{stockT('stocksPage.messages.configureAgent')}</a>
                         </p>
                       </div>
                     )}
