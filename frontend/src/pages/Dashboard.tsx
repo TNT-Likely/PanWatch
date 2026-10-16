@@ -5,7 +5,6 @@ import { RefreshCw, AlertTriangle, Sparkles, Activity, ShieldAlert, Newspaper, S
 import {
   dashboardApi,
   portfolioApi,
-  recommendationsApi,
   homeApi,
   type DashboardMarketIndex,
   type DashboardMarketStatus,
@@ -14,7 +13,6 @@ import {
   type DashboardPortfolioSummary,
   type PortfolioDiagnostics,
   type PortfolioBenchmark,
-  type StrategySignalItem,
   type AlertHitToday,
   type PortfolioTodo,
   type CurateCandidate,
@@ -94,6 +92,7 @@ const INDEX_TRANSLATION_KEYS: Record<string, string> = {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { t } = useTranslation('configuration')
+  const { t: qlibT } = useTranslation('qlib')
   const dashboardT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const [loading, setLoading] = useState(true)
   const [holdingsLoading, setHoldingsLoading] = useState(true)
@@ -106,7 +105,6 @@ export default function DashboardPage() {
   const [diag, setDiag] = useState<PortfolioDiagnostics | null>(null)
   const [bench, setBench] = useState<PortfolioBenchmark | null>(null)
   const [benchState, setBenchState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
-  const [oppFallback, setOppFallback] = useState<StrategySignalItem[]>([])
   const [alertHits, setAlertHits] = useState<AlertHitToday[]>([])
   const [todos, setTodos] = useState<PortfolioTodo[]>([])
   const [curated, setCurated] = useState<{ key: string; items: CuratedItem[] }>({ key: '', items: [] })
@@ -175,15 +173,7 @@ export default function DashboardPage() {
         const value = await dashboardApi.overview({ market: 'ALL', action_limit: 6, risk_limit: 6 })
         if (!current()) return
         setOverview(value)
-        if (value.action_center?.opportunities?.length) {
-          setOppFallback([])
-          return
-        }
-      } catch { /* 保留原有策略机会兜底。 */ }
-      if (current()) await publish(
-        recommendationsApi.listStrategySignals({ status: 'active', limit: 5 }),
-        (value) => setOppFallback(value.items || []),
-      )
+      } catch { /* Selection is unavailable; never substitute legacy scores. */ }
     })().finally(() => { if (current()) setOpportunitiesLoading(false) })
 
     await Promise.allSettled([
@@ -232,10 +222,7 @@ export default function DashboardPage() {
     return items.sort((a, b) => weight(b) - weight(a)).slice(0, 8)
   }, [monitorSnapshot])
 
-  const opportunities = useMemo(() => {
-    const list = overview?.action_center?.opportunities?.length ? overview.action_center.opportunities : oppFallback
-    return list.slice(0, 5)
-  }, [overview, oppFallback])
+  const opportunities = useMemo(() => (overview?.selection.items ?? []).slice(0, 5), [overview])
 
   const localizedDiagnosticAlerts = useMemo(() => {
     if (!diag) return []
@@ -276,12 +263,7 @@ export default function DashboardPage() {
     return todo.message
   }
 
-  const opportunityActionLabel = (action: string, fallback: string): string => {
-    if (!action) return fallback
-    const key = `dashboardRuntime.actions.${action.toLowerCase()}`
-    const translated = dashboardT(key)
-    return translated === key ? fallback : translated
-  }
+
 
   const briefLabel = brief?.type
     ? dashboardT(`dashboardRuntime.briefTypes.${brief.type}`, { defaultValue: brief.agent_label })
@@ -305,7 +287,7 @@ export default function DashboardPage() {
     }
     for (const a of localizedDiagnosticAlerts) out.push({ type: 'risk', name: dashboardT('dashboard.health'), market: '', signal: a })
     for (const o of opportunities.slice(0, 3)) {
-      out.push({ type: 'opportunity', symbol: o.stock_symbol, name: o.stock_name || o.stock_symbol, market: o.stock_market, signal: o.signal || o.reason || o.action_label || '' })
+      out.push({ type: 'opportunity', symbol: o.symbol.slice(2), name: o.symbol, market: o.market, signal: qlibT('notice') })
     }
     return out
   }, [alertHits, urgent, localizedDiagnosticAlerts, opportunities])
@@ -723,33 +705,22 @@ export default function DashboardPage() {
               {dashboardT('dashboard.opportunitiesPage')}
             </button>
           </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">{qlibT('strategy.rankNotice')}</p>
           {opportunities.length === 0 ? (
-            <div className="py-6 text-center text-[12px] text-muted-foreground">{opportunitiesLoading ? dashboardT('dashboard.loading') : dashboardT('dashboard.noOpportunities')}</div>
+            <div className="py-6 text-center text-[12px] text-muted-foreground">{opportunitiesLoading ? dashboardT('dashboard.loading') : qlibT('empty')}</div>
           ) : (
             <div className="divide-y divide-border/40">
               {opportunities.slice(0, 3).map((o) => {
-                const score = Math.max(0, Math.min(100, o.rank_score ?? o.score ?? 0))
                 return (
-                  <div
-                    key={`${o.stock_market}:${o.stock_symbol}`}
-                    className="flex cursor-pointer items-center gap-2 py-2 hover:bg-accent/30"
-                    onClick={() => openStock(o.stock_symbol, o.stock_market, o.stock_name || o.stock_symbol)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[13px] font-medium">{o.stock_name || o.stock_symbol}</span>
-                        {o.action_label && <span className="rounded bg-primary/10 px-1 text-[9px] text-primary">{opportunityActionLabel(o.action, o.action_label)}</span>}
-                      </div>
-                      {(o.signal || o.reason) && <div className="truncate text-[11px] text-muted-foreground">{o.signal || o.reason}</div>}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="font-mono text-[13px] text-foreground">{score.toFixed(0)}</div>
-                      <div className="text-[9px] text-muted-foreground">{dashboardT('dashboard.score')}</div>
-                      <div className="mt-1 h-[3px] w-10 rounded bg-accent/40">
-                        <div className="h-[3px] rounded bg-primary/70" style={{ width: `${score}%` }} />
-                      </div>
-                    </div>
-                  </div>
+                  <button type="button" key={o.symbol}
+                    className="flex w-full items-center justify-between gap-2 py-3 text-left hover:bg-accent/30"
+                    onClick={() => navigate('/opportunities')}>
+                    <span className="min-w-0 truncate text-sm">{o.symbol}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-mono text-sm">#{o.rank}</span>
+                      <span className="text-xs text-muted-foreground">{qlibT('rawScore')}: {o.raw_score.toFixed(4)}</span>
+                    </span>
+                  </button>
                 )
               })}
             </div>

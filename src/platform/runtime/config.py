@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # SSL 证书（企业环境）
     ca_cert_file: str = ""
+    qlib_worker_python: str = ""  # Dedicated pinned interpreter; never the API environment.
 
     # 调度
     # day_of_week 使用 POSIX cron 语义(1-5=周一到周五)

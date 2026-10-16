@@ -32,7 +32,7 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 it('uses buying power rather than the cash balance and shows the settlement schedule', async () => {
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   const label = await screen.findByText('购买力')
   expect(within(label.closest('.card')!).getByText('1,000.00')).toBeTruthy()
   expect(screen.getByText('现金余额')).toBeTruthy()
@@ -44,7 +44,7 @@ it('uses buying power rather than the cash balance and shows the settlement sche
 })
 
 it('explains CN reuse and updates funding after refresh', async () => {
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   await screen.findByText('购买力')
   await userEvent.click(screen.getByRole('button', { name: 'A股 50%' }))
   expect(await screen.findByText(/A 股卖出款当日可用于买入/)).toBeTruthy()
@@ -59,7 +59,7 @@ it('explains CN reuse and updates funding after refresh', async () => {
 it('shows unknown dates without guessing a weekday', async () => {
   vi.mocked(paperTradingApi.getAccount).mockResolvedValue({ ...account,
     pending_settlements: [{ ...account.pending_settlements[0], settlement_date: null, status: 'unknown' }] } as never)
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   expect(await screen.findByText('待更新交收日历')).toBeTruthy()
 })
 
@@ -71,7 +71,7 @@ it('shows English settlement details in trade history', async () => {
     exit_reason: 'manual', strategy_code: 'trend_follow', holding_days: 0,
     closed_at: '2026-10-09', settlement_date: '2026-10-13', settlement_status: 'pending',
   }] } as never)
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   expect(await screen.findByText('Settled available cash')).toBeTruthy()
   await userEvent.click(await screen.findByRole('button', { name: /^Closed trades/ }))
   const dialog = screen.getByRole('dialog')
@@ -79,3 +79,4 @@ it('shows English settlement details in trade history', async () => {
   expect(within(dialog).getByText('Pending')).toBeTruthy()
   expect(within(dialog).getByText('2026-10-13')).toBeTruthy()
 })
+import { MemoryRouter } from 'react-router-dom'

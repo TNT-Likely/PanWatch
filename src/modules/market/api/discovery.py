@@ -9,7 +9,7 @@ from src.platform.runtime.config import Settings
 from src.platform.notifications.notifier import get_global_proxy
 from src.platform.marketdata.collectors.discovery_collector import EastMoneyDiscoveryCollector
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import MarketScanSnapshot, Stock
+from src.platform.persistence.models import Stock
 from src.web.errors import api_error
 
 
@@ -72,41 +72,7 @@ def _normalize_market(market: str) -> str:
     return m if m in ("CN", "HK", "US") else "CN"
 
 
-def _latest_snapshot_stocks(db: Session, market: str, limit: int = 120) -> list[dict]:
-    mkt = _normalize_market(market)
-    latest = (
-        db.query(MarketScanSnapshot.snapshot_date)
-        .filter(MarketScanSnapshot.stock_market == mkt)
-        .order_by(MarketScanSnapshot.snapshot_date.desc())
-        .first()
-    )
-    if not latest:
-        return []
-    rows = (
-        db.query(MarketScanSnapshot)
-        .filter(
-            MarketScanSnapshot.stock_market == mkt,
-            MarketScanSnapshot.snapshot_date == latest[0],
-        )
-        .order_by(MarketScanSnapshot.score_seed.desc(), MarketScanSnapshot.updated_at.desc())
-        .limit(max(20, min(int(limit), 300)))
-        .all()
-    )
-    out: list[dict] = []
-    for row in rows:
-        quote = row.quote if isinstance(row.quote, dict) else {}
-        out.append(
-            {
-                "symbol": row.stock_symbol,
-                "market": row.stock_market,
-                "name": row.stock_name or row.stock_symbol,
-                "price": _pick_num(quote, ["price", "current_price", "last", "close"]),
-                "change_pct": _pick_num(quote, ["change_pct", "pct_change", "chg_pct"]),
-                "turnover": _pick_num(quote, ["turnover", "amount", "turnover_value"]),
-                "volume": _pick_num(quote, ["volume", "vol"]),
-            }
-        )
-    return out
+
 
 
 async def _hot_stocks_live_or_snapshot(
@@ -137,7 +103,7 @@ async def _hot_stocks_live_or_snapshot(
     except Exception as e:
         logger.warning(f"discovery stocks live failed ({mkt}/{mode}): {type(e).__name__}: {e!r}")
     # Snapshot fallback: ensures UI is still usable when live source timeout/unavailable.
-    return _latest_snapshot_stocks(db, mkt, limit=max(limit, 40))
+    return []
 
 
 def _watchlist_symbols(db: Session, market: str) -> set[str]:

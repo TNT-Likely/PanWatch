@@ -4,6 +4,7 @@ export const navigation = {
     home: '首页',
     portfolio: '持仓',
     opportunities: '机会',
+    research: '量化研究',
     paperTrading: '模拟盘',
     assistant: '助手',
     alerts: '提醒',

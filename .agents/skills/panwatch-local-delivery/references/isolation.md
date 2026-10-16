@@ -1,5 +1,7 @@
 # PanWatch 隔离与运行
 
+Qlib 研究验收可在 `prepare` 时显式传入 `--qlib-python /absolute/worker/venv/bin/python`。解释器仅作为只读依赖复用，记录在 manifest 并检查可执行性；不继承父进程的 Qlib 环境变量。worker 源码来自 QA 导出，数据与任务产物落在该 run 的 `source/data/qlib`，模型缓存、MLflow 与临时文件落在任务私有目录。`.venv-qlib` 不导出；运行前核对实际 worker 版本和任务文件路径。
+
 真实验收前读取。以下映射来自当前源码，配置或写入路径变化时重新核对，并更新工具检查后再运行。
 
 ## 项目入口与保护资源

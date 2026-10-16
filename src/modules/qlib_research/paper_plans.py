@@ -1,0 +1,536 @@
+"""Read-only portfolio previews and explicitly confirmed immutable paper plans.
+
+Reference-close estimates are not orders or fill promises. The confirmation
+token binds the user's preview to current account, holdings and model state.
+"""
+
+from datetime import datetime, timezone
+import hashlib
+import math
+from zoneinfo import ZoneInfo
+
+from src.platform.persistence.models import (
+    PaperTradingAccount,
+    PaperTradingPosition,
+    PaperTradingSettlement,
+)
+from src.platform.persistence.qlib_models import (
+    QlibRecord,
+    QlibControl,
+    QlibAudit,
+    QlibExecution,
+)
+from . import service
+from .contracts import content_hash
+from .portfolio import PAPER_POLICY as POLICY
+from .policy import (
+    execution_date,
+    paper_security_supported,
+)
+
+
+def marker(kind, ident):
+    return hashlib.sha256(f"{kind}:{ident}".encode()).hexdigest()[:32]
+
+
+def _number(value):
+    return isinstance(value, (float, int)) and math.isfinite(value) and value > 0
+
+
+def _preview(db, selection):
+    from src.modules.paper_trading.paper_trading_engine import (
+        market_available_cash,
+        sell_block_reason,
+    )
+
+    payload = selection.payload
+    state = db.get(QlibControl, 1)
+    market = payload.get("market", "CN")
+    account = db.query(PaperTradingAccount).first()
+    result = {
+        "run_id": selection.id,
+        "model_id": payload["model_id"],
+        "market": market,
+        "asof_date": payload.get("asof_date", ""),
+        "execution_date": None,
+        "execution_window": "09:30–09:35 Asia/Shanghai",
+        "policy": POLICY,
+        "research_mode": not state or service.market_mode(state, market) != "validated",
+        "ready": False,
+        "blocking_reason": "",
+        "orders": [],
+        "kept": [],
+        "excluded": [],
+        "cash_budget": 0.0,
+        "available_cash": 0.0,
+        "estimated_fees": 0.0,
+        "account_enabled": bool(account and account.enabled),
+        "existing_decision_id": None,
+        "preview_hash": None,
+        "pool_count": payload.get("catalog_count", len(payload.get("predictions", []))),
+        "ranked_count": len(payload.get("predictions", [])),
+    }
+
+    def blocked(code):
+        result["blocking_reason"] = code
+        return result
+
+    if market != "CN":
+        return blocked("qlib_market_execution_not_supported")
+    if payload.get("price_basis", "raw_execution") != "raw_execution":
+        return blocked("qlib_unverified_execution_prices")
+    if not state or state.champion_id != payload["model_id"]:
+        return blocked("qlib_model_not_champion")
+    latest_selection = service.latest_selection(state.champion_id, db)
+    if latest_selection and latest_selection.id != selection.id:
+        return blocked("qlib_selection_not_latest")
+    if not service.freshness(payload["asof_date"]):
+        return blocked("qlib_prediction_stale")
+    if payload.get("monitor", {}).get("fraction", 0) < 0.95:
+        return blocked("qlib_prediction_coverage_insufficient")
+    if payload.get("data_kind") == "synthetic":
+        return blocked("qlib_synthetic_execution_not_supported")
+    if payload.get("selection_scope") == "training_cohort":
+        return blocked("qlib_training_cohort_not_full_prediction")
+    try:
+        result["execution_date"] = execution_date(payload["asof_date"])
+    except ValueError as error:
+        return blocked(str(error))
+    end = datetime.fromisoformat(result["execution_date"] + "T09:35:59").replace(
+        tzinfo=ZoneInfo("Asia/Shanghai")
+    )
+    if service.now() > end:
+        return blocked("qlib_plan_expired")
+    previous = (
+        db.query(QlibRecord).filter_by(kind="decision", parent_id=selection.id).first()
+    )
+    if previous:
+        result["existing_decision_id"] = previous.id
+        return blocked("qlib_plan_already_confirmed")
+    latest = (
+        db.query(QlibRecord)
+        .filter_by(kind="decision")
+        .order_by(QlibRecord.created_at.desc(), QlibRecord.id.desc())
+        .first()
+    )
+    result["replaces_decision_id"] = (
+        latest.id
+        if latest and latest.payload["execution_date"] == result["execution_date"]
+        else None
+    )
+    if not account:
+        return blocked("qlib_paper_account_required")
+    positions = (
+        db.query(PaperTradingPosition)
+        .filter_by(status="open")
+        .order_by(PaperTradingPosition.id)
+        .all()
+    )
+    managed = {
+        p.research_meta["instrument"]: p
+        for p in positions
+        if p.stock_market == "CN" and (p.research_meta or {}).get("instrument")
+    }
+    if len(managed) != sum(
+        p.stock_market == "CN" and bool((p.research_meta or {}).get("instrument"))
+        for p in positions
+    ):
+        return blocked("qlib_duplicate_managed_holdings")
+    legacy = {
+        p.stock_symbol
+        for p in positions
+        if p.stock_market == "CN" and not (p.research_meta or {}).get("instrument")
+    }
+    rows = sorted(
+        payload.get("predictions", []), key=lambda r: (r["rank"], r["symbol"])
+    )
+    prices = {r["symbol"]: r.get("reference_close") for r in rows}
+    names = payload.get("names", {})
+    eligible = set()
+    prospective = end.replace(minute=31)
+    for row in rows:
+        symbol = row["symbol"]
+        reason = (
+            "qlib_security_execution_not_supported"
+            if not paper_security_supported(row)
+            else (
+                "legacy_position_not_managed"
+                if symbol[2:] in legacy
+                else (
+                    "opening_quote_unavailable"
+                    if not row.get("tradable") or not _number(prices[symbol])
+                    else (
+                        sell_block_reason(managed[symbol], now=prospective)
+                        if symbol in managed
+                        else None
+                    )
+                )
+            )
+        )
+        if reason:
+            result["excluded"].append({"symbol": symbol, "reason": reason})
+        else:
+            eligible.add(symbol)
+    config = payload["config"]
+    from .portfolio import target_membership
+
+    sells, buys = target_membership(rows, managed, eligible, config["topk"])
+    cash = max(0.0, market_available_cash(db, account, "CN"))
+    from .portfolio import target_plan
+
+    try:
+        result.update(
+            target_plan(
+                db,
+                account,
+                positions,
+                managed,
+                prices,
+                sells,
+                buys,
+                eligible,
+                names,
+                config,
+            )
+        )
+    except ValueError as error:
+        return blocked(str(error))
+    reductions = {
+        o["symbol"]: o["estimated_quantity"]
+        for o in result["orders"]
+        if o["side"] == "sell"
+    }
+    result["kept"] = [
+        {"symbol": symbol, "quantity": p.quantity - reductions.get(symbol, 0)}
+        for symbol, p in managed.items()
+        if p.quantity > reductions.get(symbol, 0)
+    ]
+    result.update(
+        available_cash=cash,
+        estimated_fees=sum(o["estimated_fee"] for o in result["orders"]),
+    )
+    if not result["orders"]:
+        return blocked("qlib_no_changes_required")
+    if not sells and not any(o["estimated_quantity"] for o in result["orders"]):
+        return blocked("insufficient_cash_or_lot")
+    account_state = {
+        "id": account.id,
+        "cash": account.current_capital,
+        "initial": account.initial_capital,
+        "allocations": account.market_allocations,
+        "enabled": account.enabled,
+        "holdings": [
+            {
+                "id": p.id,
+                "market": p.stock_market,
+                "symbol": p.stock_symbol,
+                "quantity": p.quantity,
+                "entry": p.entry_price,
+                "opened": p.opened_at.isoformat() if p.opened_at else None,
+                "research": p.research_meta,
+            }
+            for p in positions
+        ],
+        "settlements": [
+            {"id": r.id, "remaining": r.remaining_amount, "status": r.status}
+            for r in db.query(PaperTradingSettlement).order_by(
+                PaperTradingSettlement.id
+            )
+        ],
+    }
+    result["ready"] = True
+    result["preview_hash"] = content_hash(
+        {
+            "preview": result,
+            "account": account_state,
+            "revision": state.revision,
+            "date": service.now().date().isoformat(),
+        }
+    )
+    # Exclusion detail is bounded; the count remains explicit for large pools.
+    result["excluded_count"] = len(result["excluded"])
+    result["excluded"] = result["excluded"][:50]
+    return result
+
+
+def preview(run_id):
+    from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
+
+    with ACCOUNT_LOCK, service.LOCK, service.transaction() as db:
+        result = _preview(db, service.record(db, run_id, "selection"))
+        from .automation import configuration
+
+        if configuration(db.get(QlibControl, 1)).get("grant_id") and result["ready"]:
+            result.update(
+                ready=False,
+                blocking_reason="qlib_manual_confirmation_disabled_automatic",
+            )
+        return result
+
+
+def confirm(
+    run_id,
+    actor,
+    preview_hash=None,
+    acknowledge_research=False,
+    *,
+    automation_grant_id=None,
+):
+    from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
+
+    with ACCOUNT_LOCK, service.LOCK, service.transaction() as db:
+        selection = service.record(db, run_id, "selection")
+        state = db.get(QlibControl, 1)
+        from .automation import configuration, grant_error
+
+        if automation_grant_id:
+            error = grant_error(db, automation_grant_id)
+            if error:
+                raise ValueError(error)
+            day = execution_date(selection.payload["asof_date"])
+            daily = (
+                db.query(QlibRecord)
+                .filter(
+                    QlibRecord.kind == "decision",
+                    QlibRecord.payload["approval_origin"].as_string() == "automatic",
+                    QlibRecord.payload["execution_date"].as_string() == day,
+                )
+                .first()
+            )
+            if daily:
+                return service.serialize(daily)
+        elif configuration(state).get("grant_id"):
+            raise ValueError("qlib_manual_confirmation_disabled_automatic")
+        if (
+            state
+            and service.market_mode(state, selection.payload.get("market", "CN"))
+            != "validated"
+            and not acknowledge_research
+        ):
+            raise ValueError("qlib_research_ack_required")
+        existing = (
+            db.query(QlibRecord).filter_by(kind="decision", parent_id=run_id).first()
+        )
+        if existing:
+            return service.serialize(existing)
+        health = service.runtime_health()
+        if not health["available"]:
+            raise ValueError(health["error_code"])
+        plan = _preview(db, selection)
+        if not plan["ready"]:
+            raise ValueError(plan["blocking_reason"])
+        if automation_grant_id:
+            from .automation import input_error
+
+            error = input_error(selection.payload, plan["orders"])
+            if error:
+                raise ValueError(error)
+        if preview_hash is not None and preview_hash != plan["preview_hash"]:
+            raise ValueError("qlib_preview_changed_conflict")
+        payload = selection.payload
+        decision = QlibRecord(
+            id=service.identity(),
+            kind="decision",
+            parent_id=run_id,
+            name=payload["asof_date"],
+            payload={
+                "run_id": run_id,
+                "model_id": payload["model_id"],
+                "dataset_id": payload["dataset_id"],
+                "market": "CN",
+                "asof_date": payload["asof_date"],
+                "execution_date": plan["execution_date"],
+                "policy": POLICY,
+                "confirmation_kind": "frozen_target_orders_v2",
+                "approval_origin": "automatic" if automation_grant_id else "manual",
+                "automation_grant_id": automation_grant_id,
+                "authorization_kind": db.get(
+                    QlibRecord, automation_grant_id
+                ).payload.get("authorization_kind", "validated")
+                if automation_grant_id
+                else "manual",
+                "risk_degree": 0.9,
+                "config": payload["config"],
+                "research_mode": plan["research_mode"],
+                "symbols": [o["symbol"] for o in plan["orders"]],
+                "orders": plan["orders"],
+                "cash_budget": plan["cash_budget"],
+                "capital_policy": plan["capital_policy"],
+                "capital": plan["capital"],
+                "market_equity": plan["market_equity"],
+                "target_exposure": plan["target_exposure"],
+                "market_holdings": plan["market_holdings"],
+                "preview_hash": plan["preview_hash"],
+                "reference_prices": {
+                    o["symbol"]: o["reference_price"] for o in plan["orders"]
+                },
+                "target_weights": plan["target_weights"],
+            },
+        )
+        db.add(decision)
+        db.add(
+            QlibAudit(
+                action="decision_created",
+                actor=actor,
+                target_id=decision.id,
+                detail={
+                    "run_id": run_id,
+                    "preview_hash": plan["preview_hash"],
+                    "manual_confirmation": not bool(automation_grant_id),
+                    "automation_grant_id": automation_grant_id,
+                },
+            )
+        )
+        db.flush()
+        return service.serialize(decision)
+
+
+def cancel(decision_id, actor):
+    from src.modules.paper_trading.paper_trading_engine import ACCOUNT_LOCK
+
+    with ACCOUNT_LOCK, service.LOCK, service.transaction() as db:
+        decision = service.record(db, decision_id, "decision")
+        if db.get(QlibRecord, marker("executed", decision_id)):
+            raise ValueError("qlib_plan_already_executed_conflict")
+        ident = marker("cancelled", decision_id)
+        if not db.get(QlibRecord, ident):
+            db.add(
+                QlibRecord(
+                    id=ident,
+                    kind="decision_cancel",
+                    parent_id=decision_id,
+                    name=decision.name,
+                    payload={"decision_id": decision_id},
+                )
+            )
+            db.add(
+                QlibAudit(
+                    action="decision_cancelled",
+                    actor=actor,
+                    target_id=decision_id,
+                    detail={},
+                )
+            )
+        return {"id": decision_id, "status": "cancelled"}
+
+
+def list_plans():
+    with service.transaction() as db:
+        state = db.get(QlibControl, 1)
+        account = db.query(PaperTradingAccount).first()
+        rows = (
+            db.query(QlibRecord)
+            .filter_by(kind="decision")
+            .order_by(QlibRecord.created_at.desc(), QlibRecord.id.desc())
+            .limit(25)
+            .all()
+        )
+        items = []
+        stamp = service.now().astimezone(ZoneInfo("Asia/Shanghai"))
+        for decision in rows:
+            payload = decision.payload
+            events = (
+                db.query(QlibExecution)
+                .filter_by(decision_id=decision.id)
+                .order_by(QlibExecution.id)
+                .all()
+            )
+            orders = [e for e in events if e.side in ("buy", "sell")]
+            batch = db.get(QlibRecord, marker("executed", decision.id))
+            cancelled = db.get(QlibRecord, marker("cancelled", decision.id))
+            filled = sum(e.status == "filled" for e in orders)
+            rejected = sum(e.status == "rejected" for e in orders)
+            end = payload["execution_date"] + "T09:35:59"
+            phase = (
+                "cancelled"
+                if cancelled
+                else (
+                    "partially_filled"
+                    if batch and filled and rejected
+                    else (
+                        "filled"
+                        if batch and filled
+                        else (
+                            "rejected"
+                            if batch and rejected
+                            else (
+                                "executed"
+                                if batch
+                                else (
+                                    "model_changed"
+                                    if not state
+                                    or state.champion_id != payload["model_id"]
+                                    else (
+                                        "expired"
+                                        if stamp
+                                        > datetime.fromisoformat(end).replace(
+                                            tzinfo=stamp.tzinfo
+                                        )
+                                        else (
+                                            "superseded"
+                                            if rows and decision.id != rows[0].id
+                                            else (
+                                                "paused"
+                                                if not account or not account.enabled
+                                                else "waiting_open"
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            block_reason = ""
+            if not batch and not cancelled and payload.get("automation_grant_id"):
+                from .automation import execution_error
+
+                block_reason = execution_error(db, decision)
+                if (
+                    block_reason
+                    and block_reason != "qlib_automation_account_paused"
+                    and phase not in ("expired", "superseded", "model_changed")
+                ):
+                    phase = "automation_blocked"
+            items.append(
+                {
+                    "id": decision.id,
+                    "run_id": payload["run_id"],
+                    "model_id": payload["model_id"],
+                    "asof_date": payload["asof_date"],
+                    "execution_date": payload["execution_date"],
+                    "status": phase,
+                    "research_mode": payload.get("research_mode", True),
+                    "strategy": payload.get("config", {}).get("algorithm"),
+                    "authorization_kind": payload.get("authorization_kind"),
+                    "approval_origin": payload.get("approval_origin", "manual"),
+                    "block_reason": block_reason,
+                    "automation_grant_id": payload.get("automation_grant_id"),
+                    "cash_budget": payload.get("cash_budget"),
+                    "orders": payload.get("orders", []),
+                    "symbols": payload.get("symbols", []),
+                    "filled": filled,
+                    "rejected": rejected,
+                    "can_cancel": not cancelled
+                    and not batch
+                    and phase not in ("expired", "model_changed", "superseded"),
+                    "events": [
+                        {
+                            "symbol": e.symbol,
+                            "side": e.side,
+                            "status": e.status,
+                            "quantity": e.quantity,
+                            "price": e.price,
+                            "reason": e.reason,
+                        }
+                        for e in events[:100]
+                    ],
+                }
+            )
+        return {
+            "items": items,
+            "account_enabled": bool(account and account.enabled),
+            "execution_market": "CN",
+            "execution_window": "09:30–09:35 Asia/Shanghai",
+        }

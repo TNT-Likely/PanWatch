@@ -42,9 +42,9 @@ from src.modules.research.api import (
     context,
     evaluations,
     insights,
-    recommendations,
 )
-from src.modules.strategy.api import factors
+from src.modules.qlib_research import api as qlib_api
+from src.modules.qlib_research import service as qlib_service
 from src.web.response import ResponseWrapperMiddleware
 
 app = FastAPI(
@@ -54,6 +54,7 @@ app = FastAPI(
 )
 
 app.add_middleware(ResponseWrapperMiddleware)
+app.dependency_overrides[qlib_api.current_actor] = get_current_user
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -150,21 +151,15 @@ app.include_router(
     dependencies=protected,
 )
 app.include_router(
-    recommendations.router,
-    prefix="/api/recommendations",
-    tags=["recommendations"],
+    qlib_api.router,
+    prefix="/api/qlib",
+    tags=["qlib"],
     dependencies=protected,
 )
 app.include_router(
     dashboard.router,
     prefix="/api/dashboard",
     tags=["dashboard"],
-    dependencies=protected,
-)
-app.include_router(
-    factors.router,
-    prefix="/api/factors",
-    tags=["factors"],
     dependencies=protected,
 )
 app.include_router(
@@ -191,6 +186,8 @@ app.include_router(notifications_api.router, prefix="/api/notifications", tags=[
 
 app.router.on_startup.append(assistant_task_runner.recover_pending)
 app.router.on_startup.append(context_export_runner.recover_pending)
+app.router.on_startup.append(qlib_service.recover_jobs)
+app.router.on_shutdown.append(qlib_service.shutdown)
 app.router.on_shutdown.append(context_export_runner.shutdown)
 # PAT 管理(需登录):创建/列出/吊销 MCP 用的个人访问令牌
 app.include_router(

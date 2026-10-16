@@ -22,7 +22,7 @@ import uuid
 
 OWNER = "panwatch-isolated-qa-v1"
 SKILL_PATH = Path(".agents/skills/panwatch-local-delivery")
-EXCLUDED = {".git", ".docs", ".venv", "venv", ".claude", ".cursor", ".gemini", ".codex", ".pytest_cache", ".worktrees", ".superpowers", "__pycache__", "node_modules", "dist", "build", "static", "data", ".vite"}
+EXCLUDED = {".git", ".docs", ".venv", ".venv-qlib", "venv", ".claude", ".cursor", ".gemini", ".codex", ".pytest_cache", ".worktrees", ".superpowers", "__pycache__", "node_modules", "dist", "build", "static", "data", ".vite"}
 LOCAL_MODULES = ("marketdata", "pan_agent", "pan_agent_token_meter", "pan_agent_tool_research")
 
 
@@ -138,7 +138,7 @@ def tree_inventory(root: Path) -> dict[str, str]:
     return result
 
 
-def prepare(repo: Path, parent: Path | None, python: Path, port: int | None = None) -> Path:
+def prepare(repo: Path, parent: Path | None, python: Path, port: int | None = None, qlib_python: Path | None = None) -> Path:
     repo = repo.resolve()
     if Path(git(repo, "rev-parse", "--show-toplevel")).resolve() != repo:
         raise IsolationError("--repo must be the repository root")
@@ -182,7 +182,8 @@ def prepare(repo: Path, parent: Path | None, python: Path, port: int | None = No
         "source_files": files, "source_hash": content_hash(files),
         "skill_version": re.search(r'^\s+version:\s*[\"\x27]?([\w.-]+)', (source / SKILL_PATH / "SKILL.md").read_text(), re.M)[1],
         "skill_hash": content_hash({name: sha for name, sha in files.items() if name.startswith(f"{SKILL_PATH}/")}),
-        "python": str(python), "port": port, "origin": f"http://127.0.0.1:{port}",
+        "python": str(python), "qlib_python": str(qlib_python.absolute()) if qlib_python else None,
+        "port": port, "origin": f"http://127.0.0.1:{port}",
         "credentials_hash": digest((run / "private/credentials.json").read_bytes()),
         "paths": {"cwd": "source", "database": "source/data/panwatch.db", "stock_cache": "source/data/stock_list_cache.json", "data": "source/data", "static": "source/static", "config": "source/.env", "private": "private", "tmp": "tmp", "cache": "cache", "evidence": "evidence", "report": "report"},
     }
@@ -210,6 +211,10 @@ def load_run(run: Path) -> tuple[Path, dict]:
 
 def preflight(run: Path, *, check_source: bool = False, require_frontend: bool = False) -> dict:
     run, manifest = load_run(run)
+    if manifest.get("qlib_python"):
+        worker = Path(manifest["qlib_python"])
+        if not worker.is_absolute() or not worker.is_file() or not os.access(worker, os.X_OK):
+            raise IsolationError("Recorded Qlib Python executable is unavailable")
     for relative in manifest["paths"].values():
         value = Path(relative)
         if value.is_absolute() or ".." in value.parts:
@@ -269,6 +274,9 @@ def child_environment(run: Path) -> dict[str, str]:
     credentials = json.loads((run / "private/credentials.json").read_text())
     env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR") if key in os.environ}
     env.update({"TZ": "Asia/Shanghai", "DATA_DIR": str(run / "source/data"), "TMPDIR": str(run / "tmp"), "TMP": str(run / "tmp"), "TEMP": str(run / "tmp"), "XDG_CACHE_HOME": str(run / "cache"), "PLAYWRIGHT_BROWSERS_PATH": str(run / "cache/playwright"), "PLAYWRIGHT_SKIP_BROWSER_INSTALL": "1", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1", "DEV_RELOAD": "0", "NO_PROXY": "localhost,127.0.0.1,::1", "AUTH_USERNAME": credentials["username"], "AUTH_PASSWORD": credentials["password"], "JWT_SECRET": credentials["jwt_secret"]})
+    manifest = json.loads((run / "manifest.json").read_text())
+    if manifest.get("qlib_python"):
+        env["QLIB_WORKER_PYTHON"] = manifest["qlib_python"]
     return env
 
 
@@ -337,6 +345,7 @@ def main() -> int:
     prepare_parser.add_argument("--repo", type=Path, default=Path.cwd())
     prepare_parser.add_argument("--parent", type=Path)
     prepare_parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    prepare_parser.add_argument("--qlib-python", type=Path)
     prepare_parser.add_argument("--port", type=int)
     for command in ("preflight", "seal-frontend", "serve"):
         sub = commands.add_parser(command)
@@ -350,7 +359,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "prepare":
-            run = prepare(args.repo, args.parent, args.python, args.port)
+            run = prepare(args.repo, args.parent, args.python, args.port, args.qlib_python)
             print(f"Private QA run: {run}\nCredentials remain in private/credentials.json; no service was started.")
         elif args.command == "preflight":
             result = preflight(args.run, check_source=args.check_source, require_frontend=args.require_frontend)

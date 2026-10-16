@@ -1,9 +1,11 @@
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
+import { Link } from 'react-router-dom'
 import { localDateForInstant } from '@panwatch/base-ui'
 import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, Power, RotateCcw, X, TrendingUp, TrendingDown, Trophy, BarChart3, Wallet, Activity, Play, Bell, SlidersHorizontal } from 'lucide-react'
 import {
   paperTradingApi,
+  type QlibAutomationStatus,
   type PaperTradingAccountResponse,
   type PaperTradingPositionItem,
   type PaperTradingTradeItem,
@@ -19,6 +21,8 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { useMarketColors } from '@/hooks/use-market-colors'
 import { marketColorWithAlpha, marketDirection, marketSignTextClass } from '@/lib/market-colors'
+import PaperPlanStatus from '@/components/paper-plan-status'
+import PaperAutomation from '@/components/paper-automation'
 
 function formatCurrency(v: number, locale = 'zh-CN') {
   return v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -109,6 +113,7 @@ function EquityChart({ data }: { data: EquityCurvePoint[] }) {
 export default function PaperTradingPage() {
   const { toast } = useToast()
   const { t, i18n } = useTranslation('configuration')
+  const { t: qlibT } = useTranslation('qlib')
   const confirmAction = useConfirm()
   const paperT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const locale = i18n.resolvedLanguage === 'en-US' ? 'en-US' : 'zh-CN'
@@ -116,6 +121,7 @@ export default function PaperTradingPage() {
   const message = (key: string, options?: Record<string, unknown>) => paperT(`p4.paperTrading.messages.${key}`, options)
   const formatAmount = (value: number) => formatCurrency(value, locale)
   const [account, setAccount] = useState<PaperTradingAccountResponse | null>(null)
+  const [automation, setAutomation] = useState<QlibAutomationStatus | null>(null)
   const [positions, setPositions] = useState<PaperTradingPositionItem[]>([])
   const [trades, setTrades] = useState<PaperTradingTradeItem[]>([])
   const [tradesTotal, setTradesTotal] = useState(0)
@@ -212,7 +218,7 @@ export default function PaperTradingPage() {
     setScanning(true)
     try {
       const res = await paperTradingApi.scan()
-      toast(message('scanDone', { opened: res.opened ?? 0, closed: res.closed ?? 0 }), 'success')
+      toast(qlibT('plan.checkResult', { opened: res.opened ?? 0, closed: res.closed ?? 0 }), 'success')
       loadData()
     } catch {
       toast(message('scanFailed'), 'error')
@@ -372,23 +378,30 @@ export default function PaperTradingPage() {
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={handleScan} disabled={scanning}>
             <Play className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden sm:inline">{scanning ? tr('scanning') : tr('scanNow')}</span>
-            <span className="sm:hidden">{scanning ? tr('scanning') : tr('scanShort')}</span>
+            <span className="hidden sm:inline">{scanning ? tr('scanning') : qlibT('plan.checkPlans')}</span>
+            <span className="sm:hidden">{scanning ? tr('scanning') : qlibT('plan.checkPlansShort')}</span>
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={loadData} disabled={loading}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline ml-1">{tr('refresh')}</span>
           </Button>
-          <Button data-tour="paper-controls" variant="outline" size="sm" className="h-8" onClick={handleToggle}>
+          {(account?.enabled || automation?.mode === 'manual' || automation?.authorized) && <Button data-tour="paper-controls" variant="outline" size="sm" className="h-8" onClick={handleToggle}>
             <Power className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{account?.enabled ? tr('pause') : tr('start')}</span>
-          </Button>
+          </Button>}
           <Button variant="outline" size="sm" className="h-8 text-destructive hover:text-destructive" onClick={handleReset}>
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline ml-1">{tr('reset')}</span>
           </Button>
         </div>
       </div>
+
+      <div className="rounded-lg border bg-card p-3 text-sm space-y-2">
+        <p>{qlibT('paperNote')}</p>
+        <Link className="text-primary underline" to="/research?tab=paper">{qlibT('paperTitle')}</Link>
+      </div>
+      <PaperAutomation onChange={loadData} onStatus={setAutomation} />
+      <PaperPlanStatus refreshKey={refreshVersion} />
 
       {/* Market View Filter + 资金配置 */}
       {account && (
@@ -583,6 +596,7 @@ export default function PaperTradingPage() {
                     <td className="py-2 pr-3">
                       <div className="font-medium">{p.stock_name || p.stock_symbol}</div>
                       <div className="text-xs text-muted-foreground">{p.stock_symbol} · {p.stock_market}</div>
+                      {p.research?.model_id && <div className="mt-1 break-all text-xs text-muted-foreground" title={JSON.stringify(p.research)}>{qlibT('lineage')}: {p.research.run_id?.slice(0, 8)} / {p.research.model_id.slice(0, 8)} / {p.research.decision_id?.slice(0, 8)}</div>}
                     </td>
                     <td className="text-right py-2 px-2">{p.entry_price.toFixed(2)}</td>
                     <td className="text-right py-2 px-2">{p.current_price?.toFixed(2) ?? '-'}</td>
@@ -656,6 +670,7 @@ export default function PaperTradingPage() {
                         <td className="py-2 pr-3">
                           <div className="font-medium">{t.stock_name || t.stock_symbol}</div>
                           <div className="text-xs text-muted-foreground">{t.stock_symbol} · {t.stock_market}</div>
+                          {t.research?.model_id && <div className="mt-1 break-all text-xs text-muted-foreground" title={JSON.stringify(t.research)}>{qlibT('lineage')}: {t.research.run_id?.slice(0, 8)} / {t.research.model_id.slice(0, 8)} / {t.research.decision_id?.slice(0, 8)}</div>}
                         </td>
                         <td className="text-right py-2 px-2">{t.entry_price.toFixed(2)}</td>
                         <td className="text-right py-2 px-2">{t.exit_price.toFixed(2)}</td>

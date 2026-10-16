@@ -6,11 +6,9 @@ from unittest.mock import MagicMock
 
 from src.modules.paper_trading.paper_trading_engine import (
     _serialize_position,
-    _serialize_signal,
     _serialize_trade,
 )
 from src.modules.paper_trading.paper_trading_notifier import (
-    _dedup_signals,
     _format_entry_message,
     _format_exit_message,
     _format_premarket_plan,
@@ -20,26 +18,7 @@ from src.modules.paper_trading.paper_trading_notifier import (
 from src.modules.administration.stock_link import stock_url
 
 
-def _make_signal(**kwargs):
-    """创建模拟 StrategySignalRun ORM 对象。"""
-    defaults = {
-        "id": 1,
-        "stock_symbol": "002837",
-        "stock_market": "CN",
-        "stock_name": "英维克",
-        "strategy_code": "trend_follow",
-        "rank_score": 100.0,
-        "entry_low": 112.01,
-        "entry_high": 114.27,
-        "action": "buy",
-        "stop_loss": 108.0,
-        "target_price": 125.0,
-        "status": "active",
-        "snapshot_date": "2026-04-16",
-        "created_at": None,
-    }
-    defaults.update(kwargs)
-    return SimpleNamespace(**defaults)
+
 
 
 def _make_position(**kwargs):
@@ -107,66 +86,16 @@ def _make_account(**kwargs):
 # ---------------------------------------------------------------------------
 
 
-class TestPremarketDedup(unittest.TestCase):
-    def test_dedup_same_stock_multiple_strategies(self):
-        """盘前去重 — 同股票4策略合并为1条"""
-        signals = [
-            _make_signal(id=1, strategy_code="trend_follow", rank_score=100.0),
-            _make_signal(id=2, strategy_code="macd_golden", rank_score=90.0),
-            _make_signal(id=3, strategy_code="momentum", rank_score=80.0),
-            _make_signal(id=4, strategy_code="market_scan", rank_score=70.0),
-        ]
-        deduped = _dedup_signals(signals)
-        self.assertEqual(len(deduped), 1)
-        sig, count = deduped[0]
-        self.assertEqual(count, 4)
-        self.assertEqual(sig.strategy_code, "trend_follow")  # highest rank_score
-        self.assertEqual(sig.rank_score, 100.0)
-
-    def test_dedup_different_stocks(self):
-        """盘前去重 — 不同股票各自保留"""
-        signals = [
-            _make_signal(id=1, stock_symbol="002837", rank_score=100.0),
-            _make_signal(id=2, stock_symbol="000001", stock_name="平安银行", rank_score=95.0),
-            _make_signal(id=3, stock_symbol="002837", strategy_code="macd_golden", rank_score=80.0),
-        ]
-        deduped = _dedup_signals(signals)
-        self.assertEqual(len(deduped), 2)
-        # 002837 has 2 strategies
-        self.assertEqual(deduped[0][1], 2)
-        # 000001 has 1 strategy
-        self.assertEqual(deduped[1][1], 1)
-
-    def test_premarket_plan_format_with_dedup(self):
-        """盘前计划 — 去重后格式化含策略数和链接"""
-        signals = [
-            _make_signal(id=1, strategy_code="trend_follow", rank_score=100.0),
-            _make_signal(id=2, strategy_code="macd_golden", rank_score=90.0),
-            _make_signal(id=3, strategy_code="momentum", rank_score=80.0),
-            _make_signal(id=4, strategy_code="market_scan", rank_score=70.0),
-        ]
-        account = _make_account()
-        title, body = _format_premarket_plan(signals, account)
-
-        self.assertIn("盘前计划", title)
-        # 股票只出现 1 次（symbol 出现在 "002837.CN" 和 URL 中）
-        lines_with_stock = [l for l in body.split("\n") if "002837" in l]
-        self.assertEqual(len(lines_with_stock), 1)
-        # 显示中文策略名 + 数量
-        self.assertIn("趋势延续 等4个策略", body)
-        # 包含雪球链接
-        self.assertIn("xueqiu.com", body)
-
-    def test_premarket_plan_no_signals(self):
-        """盘前计划 — 空信号显示无候选"""
-        account = _make_account()
-        title, body = _format_premarket_plan([], account)
-        self.assertIn("无候选", body)
-
-
-# ---------------------------------------------------------------------------
-# 消息格式化测试（dict 输入）
-# ---------------------------------------------------------------------------
+class TestQlibPremarket(unittest.TestCase):
+    def test_frozen_decision_displays_execution_date_and_lineage(self):
+        decision = SimpleNamespace(payload={"execution_date": "2026-10-14", "run_id": "frozen-run",
+            "model_id": "reviewed-model", "symbols": ["SH600000"]})
+        title, body = _format_premarket_plan([decision], _make_account(), english=True)
+        self.assertIn("Qlib", title)
+        self.assertIn("2026-10-14", body)
+        self.assertIn("frozen-run", body)
+        self.assertIn("reviewed-model", body)
+        self.assertNotIn("Score", body)
 
 
 class TestMessageFormat(unittest.TestCase):
@@ -204,7 +133,7 @@ class TestMessageFormat(unittest.TestCase):
         self.assertIn("113.00", body)
         self.assertIn("104.00", body)
         self.assertIn("130.00", body)
-        self.assertIn("100.0", body)  # rank_score
+        self.assertNotIn("评分", body)
         self.assertIn("趋势延续", body)  # 中文策略名
         self.assertIn("xueqiu.com", body)  # 股票链接
 
@@ -298,13 +227,7 @@ class TestSerialize(unittest.TestCase):
         self.assertEqual(d["pnl"], 700.0)
         self.assertEqual(d["exit_reason"], "target_price")
 
-    def test_serialize_signal(self):
-        """序列化 — 策略信号转 dict"""
-        sig = _make_signal()
-        d = _serialize_signal(sig)
-        self.assertEqual(d["stock_symbol"], "002837")
-        self.assertEqual(d["rank_score"], 100.0)
-        self.assertEqual(d["strategy_code"], "trend_follow")
+
 
 
 class TestHelpers(unittest.TestCase):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -34,11 +35,13 @@ class PaperTradingScheduler:
         if self._running:
             logger.debug("[模拟盘] 上轮扫描仍在执行，跳过本轮")
             return
-        if not _any_market_trading():
-            logger.debug("[模拟盘] 全市场休市,跳过本轮扫描")
-            return
         self._running = True
         try:
+            # Planning and data discovery must also run after exchanges close.
+            from src.modules.qlib_research import automation
+            await asyncio.to_thread(automation.tick)
+            if not _any_market_trading():
+                return
             result = await ENGINE.scan_once()
             opened = result.get("opened", 0)
             closed = result.get("closed", 0)

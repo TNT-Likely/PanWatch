@@ -21,9 +21,20 @@ COPY frontend/ ./
 RUN pnpm build
 
 
-# ===== Stage 2: Python 依赖构建 =====
+# ===== Isolated Qlib runtime =====
+FROM python:3.12-slim-bookworm AS qlib-builder
+RUN apt-get update && apt-get install -y --no-install-recommends g++ libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements-qlib.txt /tmp/requirements-qlib.txt
+COPY requirements-qlib-arm64.txt /tmp/requirements-qlib-arm64.txt
+RUN --mount=type=cache,target=/root/.cache/pip python -m venv /opt/qlib \
+    && /opt/qlib/bin/pip install --timeout 120 --retries 5 --disable-pip-version-check --no-compile --require-hashes -r /tmp/requirements-qlib.txt \
+    && if [ "$(uname -m)" = "aarch64" ]; then \
+       /opt/qlib/bin/pip install --timeout 120 --retries 5 --disable-pip-version-check --no-deps --no-build-isolation --require-hashes -r /tmp/requirements-qlib-arm64.txt; fi
+
+# ===== Stage 2: Python API dependencies =====
 # 构建与运行使用相同的 Python / Debian 版本，保证原生 wheel 的 ABI 一致。
-FROM python:3.11-slim-bookworm AS python-builder
+FROM python:3.12-slim-bookworm AS python-builder
 
 WORKDIR /app
 
@@ -41,7 +52,7 @@ RUN sed 's/^-e //' requirements-runtime.txt > /tmp/requirements-runtime.txt \
 
 
 # ===== Stage 3: Python 运行环境 =====
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
@@ -54,6 +65,7 @@ WORKDIR /app
 # 不额外安装 GTK / EGL，截图使用 Chromium 自带的软件渲染。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
+    libgomp1 \
     # 中文字体
     fonts-noto-cjk \
     # PDF 导出所需的字体排版库
@@ -87,6 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 仅复制安装产物，构建工具和本地包测试留在 builder 中。
 COPY --from=python-builder /install/ /usr/local/
+COPY --from=qlib-builder /opt/qlib/ /opt/qlib/
 
 # 注意: Playwright 浏览器将在首次启动时自动安装到 data 目录
 # 这样可以减小镜像体积，并支持跨版本持久化
@@ -111,6 +124,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV DATA_DIR=/app/data
 ENV DOCKER=1
+ENV QLIB_WORKER_PYTHON=/opt/qlib/bin/python
 
 # 默认时区（可在 docker run 时用 -e TZ=... 覆盖）
 ENV TZ=Asia/Shanghai

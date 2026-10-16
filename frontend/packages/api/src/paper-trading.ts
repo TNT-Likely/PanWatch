@@ -41,6 +41,7 @@ export type MarketView = 'ALL' | 'CN' | 'HK' | 'US'
 export type SettlementStatus = 'pending' | 'settled' | 'unknown' | 'legacy'
 
 export interface PaperTradingPositionItem {
+  research?: { model_id?: string; run_id?: string; decision_id?: string; policy?: string }
   id: number
   stock_symbol: string
   stock_market: string
@@ -69,6 +70,7 @@ export interface PaperTradingPositionItem {
 }
 
 export interface PaperTradingTradeItem {
+  research?: { model_id?: string; run_id?: string; decision_id?: string; policy?: string }
   id: number
   stock_symbol: string
   stock_market: string

@@ -9,11 +9,10 @@ def test_automation_module_owns_legacy_agent_implementations():
     assert premarket_outlook.__file__.replace("\\", "/").endswith("/src/modules/automation/premarket_outlook.py")
 
 
-def test_strategy_module_owns_strategy_engine_and_candidates():
-    from src.modules.strategy import entry_candidates, strategy_engine
-
-    assert entry_candidates.__file__.replace("\\", "/").endswith("/src/modules/strategy/entry_candidates.py")
-    assert strategy_engine.__file__.replace("\\", "/").endswith("/src/modules/strategy/strategy_engine.py")
+def test_qlib_module_owns_selection_and_governance():
+    from src.modules.qlib_research import service, worker
+    assert service.__file__.endswith("/src/modules/qlib_research/service.py")
+    assert worker.__file__.endswith("/src/modules/qlib_research/worker.py")
 
 
 def test_paper_trading_module_owns_execution_engine():
@@ -78,9 +77,9 @@ def test_assistant_and_automation_own_planning_and_suggestions():
 
 
 def test_research_module_owns_evaluation_and_explanation_services():
-    from src.modules.research import analysis_link, context_scheduler, prediction_outcome, signal_explain
+    from src.modules.research import analysis_link, context_scheduler, prediction_outcome
 
-    for module in (analysis_link, context_scheduler, prediction_outcome, signal_explain):
+    for module in (analysis_link, context_scheduler, prediction_outcome):
         assert "/src/modules/research/" in module.__file__.replace("\\", "/")
 
 

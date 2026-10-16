@@ -90,7 +90,7 @@ repository import.
 | `market` | symbols, collection orchestration, news, candlestick context, price alerts | market and alert services |
 | `portfolio` | accounts, positions, diagnosis, benchmark performance | `PortfolioService` |
 | `research` | analysis history, context, evidence, evaluation results, signals | research and context services |
-| `strategy` | factors, signals, candidate stocks, calibration, backtests | strategy service |
+| `qlib_research` | frozen data, Qlib experiments, reviewed models, ranks and paper decisions | Qlib service / policy |
 | `paper_trading` | simulated execution, ledger, allocation, notifications | paper-trading service |
 | `reporting` | report and PDF rendering | render and export functions |
 | `administration` | health checks, settings, PATs, upgrade checks | administration service |
@@ -121,7 +121,7 @@ Database models and migrations live in `platform/persistence/`. Do not restore
 | `market` | `modules/market/api/` | symbols, quotes, candlesticks, news, discovery, price alerts |
 | `portfolio` | `modules/portfolio/api/` | accounts, position history, dashboard |
 | `research` | `modules/research/api/` | context, insights, evaluation, suggestions |
-| `strategy` | `modules/strategy/api/` | factor endpoints |
+| `qlib_research` | `modules/qlib_research/api.py` | data, experiments, model review, ranks and decisions |
 | `paper_trading` | `modules/paper_trading/api/` | simulated-trading endpoints |
 
 ### API errors and localization
@@ -164,8 +164,8 @@ handling.
 
 The TradingAgents integration prepares PanWatch market and portfolio context,
 checks the cache, invokes the upstream multi-agent graph, then
-maps its decision to PanWatch recommendations and optional paper-trading
-signals. The full user-facing flow is documented in
+maps its decision to PanWatch research recommendations. It cannot emit orders
+into the Qlib paper ledger. The full user-facing flow is documented in
 [the English flowchart](../docs/tradingagents-flow.en.md) and
 [the Simplified Chinese flowchart](../docs/tradingagents-flow.md).
 

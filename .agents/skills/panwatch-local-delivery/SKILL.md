@@ -2,7 +2,7 @@
 name: panwatch-local-delivery
 description: "为 PanWatch 的功能开发或修复完成本地隔离验收、证据报告、自动创建或更新 PR 并附上测试报告，以及人工验收交接。用户要求完整交付、本地真实 UI 验收或验收报告时使用；按本次需求生成业务用例。"
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # PanWatch 本地验收与交付

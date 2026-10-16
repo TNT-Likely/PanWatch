@@ -1,847 +1,1030 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
-  recommendationsApi,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  lazy,
+  Suspense,
+} from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  Bookmark,
+  ChevronRight,
+  FlaskConical,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  fetchAPI,
+  qlibApi,
   stocksApi,
-  type EntryCandidateItem,
-  type StrategyCatalogItem,
-  type StrategySignalItem,
-  type StrategyStatsResponse,
-} from '@panwatch/api'
-import { Button } from '@panwatch/base-ui/components/ui/button'
-import { useTranslation } from 'react-i18next'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
-import { useLocalStorage } from '@/lib/utils'
-import StockInsightModal from '@panwatch/biz-ui/components/stock-insight-modal'
-import FactorWeightsPanel from '@/components/FactorWeightsPanel'
-import SignalScoreShareCard from '@/components/SignalScoreShareCard'
+  type QlibBasketItem,
+  type QlibHealth,
+  type QlibOpportunities,
+  type QlibRun,
+  type QlibMarket,
+  type StockItem,
+} from "@panwatch/api";
+import { Button } from "@panwatch/base-ui/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@panwatch/base-ui/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@panwatch/base-ui/components/ui/dialog";
+import { useConfirm } from "@panwatch/base-ui/components/ui/confirm-dialog";
+import { useToast } from "@panwatch/base-ui/components/ui/toast";
+import { useLocalStorage } from "@/lib/utils";
+import QlibDataPipeline from "@/components/qlib-data-pipeline";
+import PaperPlanDialog, { planError } from "@/components/paper-plan-dialog";
+import PaperPlanStatus from "@/components/paper-plan-status";
+import PaperAutomation from "@/components/paper-automation";
+import StrategySummary from "@/components/strategy-summary";
+import RuleStrategies from "@/components/rule-strategies";
+import RuleEvidence from "@/components/rule-evidence";
+import {
+  securityCode,
+  defaultOpportunityFilters,
+  filterOpportunityCards,
+  opportunityCards,
+  pricePortrait,
+  savedOpportunityFilters,
+  type OpportunityCard,
+  type OpportunityFilters,
+  type OpportunityPosition,
+} from "@/lib/opportunity-view";
 
-type SourceFilter = 'all' | 'market_scan' | 'watchlist' | 'mixed'
-type HoldingFilter = 'all' | 'held' | 'unheld'
-type RiskFilter = 'all' | 'low' | 'medium' | 'high'
+const StockInsightModal = lazy(
+  () => import("@panwatch/biz-ui/components/stock-insight-modal"),
+);
+const format = (value: number | null | undefined, digits = 2) =>
+  value == null || !Number.isFinite(value) ? "—" : value.toFixed(digits);
+const cardsCount = (run: QlibRun | null | undefined, predictions: unknown[]) =>
+  run?.prediction_count ?? predictions.length;
 
-type GroupedSignal = {
-  key: string
-  primary: StrategySignalItem
-  members: StrategySignalItem[]
-  strategyNames: string[]
-  sourceAgents: string[]
-  hasMarketScan: boolean
-  topScore: number
-}
+export default function Opportunities() {
+  const { t } = useTranslation("qlib");
+  const qlibT = t as unknown as (
+    key: string,
+    values?: Record<string, unknown>,
+  ) => string;
+  const tr = (key: string, values?: Record<string, unknown>) =>
+    qlibT(`opportunityPage.${key}`, values);
+  const confirmAction = useConfirm();
+  const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [metadataError, setMetadataError] = useState(false);
+  const [opportunities, setOpportunities] = useState<QlibOpportunities | null>(
+    null,
+  );
+  const [health, setHealth] = useState<QlibHealth | null>(null);
+  const [runs, setRuns] = useState<QlibRun[]>([]);
+  const [basket, setBasket] = useState<QlibBasketItem[]>([]);
+  const [stocks, setStocks] = useState<StockItem[] | null>(null);
+  const [positions, setPositions] = useState<OpportunityPosition[] | null>(
+    null,
+  );
+  const [history, setHistory] = useState(() =>
+    /^[a-f0-9]{32}$/.test(searchParams.get("run") ?? "")
+      ? searchParams.get("run")!
+      : "latest",
+  );
+  const [market, setMarket] = useState<QlibMarket>(() =>
+    ["CN", "HK", "US"].includes(searchParams.get("market") ?? "")
+      ? (searchParams.get("market") as QlibMarket)
+      : "CN",
+  );
+  const [view, setView] = useState<"featured" | "all">("featured");
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planFocus, setPlanFocus] = useState<string>();
+  const [planVersion, setPlanVersion] = useState(0);
+  const [page, setPage] = useState(1);
+  const [savedFilters, setFilters] = useLocalStorage<OpportunityFilters>(
+    "panwatch_qlib_opportunity_filters_v1",
+    defaultOpportunityFilters,
+  );
+  const filters = useMemo(
+    () => savedOpportunityFilters(savedFilters),
+    [savedFilters],
+  );
+  const [draft, setDraft] = useState<OpportunityFilters>(filters);
+  const [detail, setDetail] = useState<OpportunityCard | null>(null);
+  const [detailRun, setDetailRun] = useState<QlibRun | null>(null);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [technical, setTechnical] = useState(false);
+  const generation = useRef(0);
 
-type Translate = (key: string, options?: Record<string, unknown>) => string
-
-const sourceAgentLabel = (agent: string | undefined, tr: Translate) => {
-  const key = (agent || '').trim()
-  if (!key) return '--'
-  return tr(`opportunities.agents.${key}`, { defaultValue: key })
-}
-
-const formatPlanPrice = (value: number | null | undefined) => {
-  if (value == null || Number.isNaN(value)) return '--'
-  const abs = Math.abs(value)
-  const fixed = abs >= 100 ? 2 : abs >= 1 ? 3 : 4
-  return Number(value).toFixed(fixed).replace(/\.?0+$/, '')
-}
-
-const toNumberOrNull = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim() !== '') {
-    const num = Number(value)
-    if (Number.isFinite(num)) return num
-  }
-  return null
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => {
-  window.setTimeout(resolve, ms)
-})
-
-const formatMetric = (value: unknown, digits = 1) => {
-  const n = toNumberOrNull(value)
-  if (n == null) return '--'
-  return n.toFixed(digits)
-}
-
-const DEFAULT_FILTERS = {
-  market: 'ALL' as const,
-  source: 'all' as const,
-  holding: 'unheld' as const,
-  strategy: 'all',
-  risk: 'all' as const,
-  minScore: '70',
-}
-
-const toneClass = (item: StrategySignalItem) => {
-  const action = (item.action || '').toLowerCase()
-  const score = Number(item.rank_score || item.score || 0)
-  if (action === 'buy') {
-    return 'border-market-up/35 bg-market-up/10'
-  }
-  if (action === 'add') {
-    return 'border-market-up/35 bg-market-up/10'
-  }
-  if (score >= 85) {
-    return 'border-primary/35 bg-[linear-gradient(140deg,hsl(var(--primary)/0.12),hsl(var(--card)/0.96),hsl(var(--card)/0.98))]'
-  }
-  return 'border-border/60 bg-card'
-}
-
-const actionBadgeClass = (action?: string) => {
-  const key = (action || '').toLowerCase()
-  if (key === 'buy' || key === 'add') return 'bg-market-up/15 text-market-up border border-market-up/35'
-  if (key === 'hold') return 'bg-blue-500/15 text-blue-400 border border-blue-500/35'
-  return 'bg-accent text-muted-foreground border border-border/50'
-}
-
-const displayActionLabel = (item: StrategySignalItem, tr: Translate) => {
-  const action = (item.action || '').toLowerCase()
-  if (!item.is_holding_snapshot && action === 'hold') return tr('opportunities.actionCodes.hold')
-  if (!item.is_holding_snapshot && action === 'add') return tr('opportunities.actionCodes.add')
-  return tr(`opportunities.actionCodes.${action}`, { defaultValue: item.action || '--' })
-}
-
-const scoreOf = (item: StrategySignalItem) => Number(item.rank_score || item.score || 0)
-
-const actionPriority = (item: StrategySignalItem) => {
-  const key = (item.action || '').toLowerCase()
-  if (key === 'buy') return 4
-  if (key === 'add') return 3
-  if (key === 'hold') return item.is_holding_snapshot ? 2 : 1
-  return 0
-}
-
-const hasEntryPlan = (item: StrategySignalItem) => {
-  const breakdown = item.score_breakdown || {}
-  if (typeof breakdown.has_entry_plan === 'boolean') return breakdown.has_entry_plan
-  return toNumberOrNull(item.entry_low) != null || toNumberOrNull(item.entry_high) != null
-}
-
-const itemTimestamp = (item: StrategySignalItem) => {
-  const t = Date.parse(item.updated_at || item.created_at || '')
-  return Number.isFinite(t) ? t : 0
-}
-
-const shouldReplacePrimary = (next: StrategySignalItem, current: StrategySignalItem) => {
-  const activeDelta = Number((next.status || '').toLowerCase() === 'active') - Number((current.status || '').toLowerCase() === 'active')
-  if (activeDelta !== 0) return activeDelta > 0
-  const actionDelta = actionPriority(next) - actionPriority(current)
-  if (actionDelta !== 0) return actionDelta > 0
-  const entryDelta = Number(hasEntryPlan(next)) - Number(hasEntryPlan(current))
-  if (entryDelta !== 0) return entryDelta > 0
-  const scoreDelta = scoreOf(next) - scoreOf(current)
-  if (Math.abs(scoreDelta) > 0.001) return scoreDelta > 0
-  return itemTimestamp(next) > itemTimestamp(current)
-}
-
-const toSignalFromCandidate = (row: EntryCandidateItem): StrategySignalItem => {
-  const source = row.candidate_source || 'watchlist'
-  const riskLevel: 'low' | 'medium' | 'high' = Number(row.score || 0) >= 85 ? 'high' : Number(row.score || 0) >= 70 ? 'medium' : 'low'
-  return {
-    id: Number(row.id || 0),
-    snapshot_date: row.snapshot_date || '',
-    stock_symbol: row.stock_symbol,
-    stock_market: row.stock_market || 'CN',
-    stock_name: row.stock_name || row.stock_symbol,
-    strategy_code: (row.strategy_tags && row.strategy_tags[0]) || 'watchlist_agent',
-    strategy_name: (row.strategy_labels && row.strategy_labels[0]) || '',
-    strategy_version: 'v1',
-    risk_level: riskLevel,
-    risk_level_label: '',
-    source_pool: source,
-    source_pool_label: '',
-    score: Number(row.score || 0),
-    rank_score: Number(row.score || 0),
-    confidence: row.confidence ?? null,
-    status: row.status || 'inactive',
-    action: row.action || 'watch',
-    action_label: row.action_label || '',
-    signal: row.signal || '',
-    reason: row.reason || '',
-    evidence: row.evidence || [],
-    holding_days: 3,
-    entry_low: row.entry_low ?? null,
-    entry_high: row.entry_high ?? null,
-    stop_loss: row.stop_loss ?? null,
-    target_price: row.target_price ?? null,
-    invalidation: row.invalidation || '',
-    plan_quality: row.plan_quality ?? 0,
-    source_agent: row.source_agent || '',
-    source_suggestion_id: row.source_suggestion_id ?? null,
-    source_candidate_id: row.id ?? null,
-    trace_id: '',
-    is_holding_snapshot: !!row.is_holding_snapshot,
-    context_quality_score: null,
-    score_breakdown: {
-      weighted_score: Number(row.score || 0),
-      has_entry_plan: !!(row.entry_low != null || row.entry_high != null),
-    },
-    market_regime: {},
-    cross_feature: {},
-    news_metric: {},
-    constrained: false,
-    constraint_reasons: [],
-    payload: {
-      source_meta: {
-        plan: row.plan || {},
-      },
-    },
-    created_at: row.created_at || '',
-    updated_at: row.updated_at || row.created_at || '',
-  }
-}
-
-const formatEntryDisplay = (action: string | undefined, entryLow: number | null, entryHigh: number | null, tr: Translate) => {
-  if (entryLow != null || entryHigh != null) {
-    return `${formatPlanPrice(entryLow)} ~ ${formatPlanPrice(entryHigh)}`
-  }
-  const key = (action || '').toLowerCase()
-  if (key === 'buy' || key === 'add') return tr('opportunities.actions.entryMissing')
-  return tr('opportunities.actions.noEntry')
-}
-
-const regimeToneClass = (regime?: string) => {
-  if (regime === 'bullish') return 'bg-market-up/15 text-market-up border border-market-up/30'
-  if (regime === 'bearish') return 'bg-market-down/15 text-market-down border border-market-down/30'
-  return 'bg-amber-500/12 text-amber-300 border border-amber-500/25'
-}
-
-export default function OpportunitiesPage() {
-  const { t } = useTranslation('configuration')
-  const oppT = t as unknown as (key: string, options?: Record<string, unknown>) => string
-  const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState('')
-  const [items, setItems] = useState<StrategySignalItem[]>([])
-  const [stats, setStats] = useState<StrategyStatsResponse | null>(null)
-  const [strategyCatalog, setStrategyCatalog] = useState<StrategyCatalogItem[]>([])
-  const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
-
-  const [market, setMarket] = useLocalStorage<'ALL' | 'CN' | 'HK' | 'US'>('panwatch_opportunities_market_v3', DEFAULT_FILTERS.market)
-  const [source, setSource] = useLocalStorage<SourceFilter>('panwatch_opportunities_source_v3', DEFAULT_FILTERS.source)
-  const [holding, setHolding] = useLocalStorage<HoldingFilter>('panwatch_opportunities_holding_v3', DEFAULT_FILTERS.holding)
-  const [strategy, setStrategy] = useLocalStorage('panwatch_opportunities_strategy_v3', DEFAULT_FILTERS.strategy)
-  const [risk, setRisk] = useLocalStorage<RiskFilter>('panwatch_opportunities_risk_v3', DEFAULT_FILTERS.risk)
-  const [minScore, setMinScore] = useLocalStorage('panwatch_opportunities_min_score_v3', DEFAULT_FILTERS.minScore)
-  const [snapshotDate, setSnapshotDate] = useState('')
-
-  const [insightOpen, setInsightOpen] = useState(false)
-  const [insightSymbol, setInsightSymbol] = useState('')
-  const [insightMarket, setInsightMarket] = useState('CN')
-  const [insightName, setInsightName] = useState<string | undefined>(undefined)
-  const [insightHasPosition, setInsightHasPosition] = useState(false)
-
-  // 个股 AI 评分分享卡:当前分享的信号
-  const [shareSignal, setShareSignal] = useState<StrategySignalItem | null>(null)
-
-  const openInsight = useCallback((item: StrategySignalItem) => {
-    setInsightSymbol(item.stock_symbol)
-    setInsightMarket(item.stock_market || 'CN')
-    setInsightName(item.stock_name)
-    setInsightHasPosition(!!item.is_holding_snapshot)
-    setInsightOpen(true)
-  }, [])
-
-  const loadWatchlist = useCallback(async () => {
+  const reload = useCallback(async () => {
+    const epoch = ++generation.current;
+    setLoading(true);
     try {
-      const rows = await stocksApi.list()
-      const set = new Set<string>((rows || []).map((s) => `${s.market}:${s.symbol}`))
-      setWatchlist(set)
-    } catch {
-      setWatchlist(new Set())
-    }
-  }, [])
-
-  const loadStats = useCallback(async () => {
-    try {
-      const s = await recommendationsApi.getStrategyStats(45)
-      setStats(s)
-    } catch {
-      setStats(null)
-    }
-  }, [])
-
-  const loadCatalog = useCallback(async () => {
-    try {
-      const res = await recommendationsApi.listStrategyCatalog(true)
-      setStrategyCatalog(res.items || [])
-    } catch {
-      setStrategyCatalog([])
-    }
-  }, [])
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const req = {
-        status: 'active' as const,
-        source_pool: source,
-        holding,
-        market: market === 'ALL' ? '' : market,
-        strategy_code: strategy === 'all' ? '' : strategy,
-        risk_level: risk,
-        min_score: Number(minScore) || 0,
-        limit: 120,
-        include_payload: false,
-      }
-      let data: Awaited<ReturnType<typeof recommendationsApi.listStrategySignals>>
-      try {
-        data = await recommendationsApi.listStrategySignals({
-          ...req,
-          timeoutMs: 45000,
-        })
-      } catch (firstErr) {
-        const msg = firstErr instanceof Error ? firstErr.message : ''
-        if (!/(timeout|timed out)/i.test(msg)) throw firstErr
-        try {
-          // Retry once for transient DB lock/contention.
-          data = await recommendationsApi.listStrategySignals({
-            ...req,
-            timeoutMs: 90000,
-          })
-        } catch (secondErr) {
-          const secondMsg = secondErr instanceof Error ? secondErr.message : ''
-          if (!/(timeout|timed out)/i.test(secondMsg)) throw secondErr
-          const fallback = await recommendationsApi.listEntryCandidates({
-            market: req.market,
-            status: 'active',
-            min_score: req.min_score,
-            limit: req.limit,
-            snapshot_date: '',
-            source: source === 'all' ? 'all' : source,
-            holding: req.holding,
-            timeoutMs: 90000,
-          })
-          data = {
-            snapshot_date: fallback.snapshot_date || '',
-            count: fallback.count || 0,
-            items: (fallback.items || []).map(toSignalFromCandidate),
-          }
-          setError(oppT('opportunities.errors.timeout'))
-        }
-      }
-      if ((!data.items || data.items.length === 0) && market !== 'ALL') {
-        const fallback = await recommendationsApi.listStrategySignals({
-          ...req,
-          market: '',
-          timeoutMs: 45000,
-        })
-        if (fallback.items && fallback.items.length > 0) {
-          setError(oppT('opportunities.errors.noMarket', { market: oppT(`opportunities.markets.${market}`) }))
-          data = fallback
-        }
-      }
-      setItems(data.items || [])
-      setSnapshotDate(data.snapshot_date || '')
-      if (!data.snapshot_date) {
-        setError(oppT('opportunities.errors.noSnapshot'))
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : oppT('opportunities.errors.loadFailed'))
-      setItems([])
-    } finally {
-      setLoading(false)
-    }
-  }, [holding, market, minScore, risk, source, strategy])
-
-  useEffect(() => {
-    load()
-    loadStats()
-    loadCatalog()
-    loadWatchlist()
-  }, [load, loadCatalog, loadStats, loadWatchlist])
-
-  const pollRefreshCompletion = useCallback(async () => {
-    const maxPolls = 20
-    for (let i = 0; i < maxPolls; i += 1) {
-      try {
-        const state = await recommendationsApi.getStrategyRefreshStatus()
-        if (!state.running) {
-          if (state.last_error) {
-            setError(oppT('opportunities.errors.refreshBackground', { message: state.last_error }))
-          } else {
-            setError('')
-          }
-          await Promise.all([load(), loadStats()])
-          return
-        }
-      } catch {
-        // Ignore transient polling error and continue.
-      }
-      await sleep(3000)
-    }
-    await Promise.all([load(), loadStats()])
-    setError((prev) => prev || oppT('opportunities.errors.stillRunning'))
-  }, [load, loadStats])
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    setError('')
-    try {
-      const resp = await recommendationsApi.refreshStrategySignals({
-        rebuild_candidates: true,
-        max_inputs: 500,
-        market_scan_limit: 80,
-        max_kline_symbols: 60,
-        limit_candidates: 2000,
-        wait: false,
-      })
-      if (resp.queued) {
-        setError(resp.accepted ? oppT('opportunities.errors.submitted') : oppT('opportunities.errors.running'))
-        void pollRefreshCompletion()
-        return
-      }
-      await Promise.all([load(), loadStats()])
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : oppT('opportunities.errors.refreshFailed')
-      if (/(timeout|timed out)/i.test(msg)) {
-        setError(oppT('opportunities.errors.slow'))
-        await load()
+      const [o, h, r, b] = await Promise.all([
+        qlibApi.opportunities({
+          market,
+          page: String(page),
+          limit: "50",
+          search: filters.search,
+          top: filters.top === "all" ? "0" : filters.top,
+          source: filters.source,
+          holding: filters.holding,
+          availability: filters.availability,
+          view,
+          ...(history !== "latest" ? { run_id: history } : {}),
+        }),
+        qlibApi.health(),
+        qlibApi.selections(market),
+        qlibApi.basket(),
+      ]);
+      if (epoch !== generation.current) return;
+      setOpportunities(o);
+      setHealth(h);
+      setRuns(r.items);
+      setBasket(b.items);
+      setError("");
+      const needsMetadata =
+        o.run?.data_kind === "market" ||
+        r.items.some((item) => item.data_kind === "market");
+      if (needsMetadata) {
+        const [s, p] = await Promise.allSettled([
+          stocksApi.list(),
+          fetchAPI<OpportunityPosition[]>("/positions"),
+        ]);
+        if (epoch !== generation.current) return;
+        setStocks(s.status === "fulfilled" ? s.value : null);
+        setPositions(p.status === "fulfilled" ? p.value : null);
+        setMetadataError(s.status === "rejected" || p.status === "rejected");
       } else {
-        setError(msg)
+        setStocks(null);
+        setPositions(null);
+        setMetadataError(false);
+      }
+    } catch (cause) {
+      if (epoch === generation.current) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "qlib_opportunities_unavailable",
+        );
+        setHealth(null);
       }
     } finally {
-      setRefreshing(false)
+      if (epoch === generation.current) setLoading(false);
     }
-  }
+    // Keep language changes independent of network reloads.
+  }, [market, page, filters, history, view]);
+  useEffect(() => {
+    const requested = searchParams.get("run") ?? "";
+    setHistory(/^[a-f0-9]{32}$/.test(requested) ? requested : "latest");
+    const requestedMarket = searchParams.get("market");
+    if (requestedMarket && ["CN", "HK", "US"].includes(requestedMarket))
+      setMarket(requestedMarket as QlibMarket);
+    setPage(1);
+  }, [searchParams]);
+  useEffect(() => {
+    void reload();
+    return () => {
+      generation.current += 1;
+    };
+  }, [reload]);
+  const run =
+    opportunities?.total != null
+      ? opportunities.run
+      : history === "latest"
+        ? opportunities?.run
+        : runs.find((item) => item.id === history);
+  const predictions =
+    opportunities?.total != null || history === "latest"
+      ? (opportunities?.items ?? [])
+      : (run?.predictions ?? []);
+  const totalPredictions =
+    opportunities?.prediction_count ?? cardsCount(run, predictions);
+  const synthetic = run?.data_kind === "synthetic";
+  const detailSynthetic = detailRun?.data_kind === "synthetic";
+  const cards = useMemo(
+    () =>
+      opportunityCards(predictions, {
+        synthetic,
+        topk: run?.config.topk ?? 0,
+        stocks,
+        positions,
+        basket,
+        names: run?.names,
+      }),
+    [
+      predictions,
+      synthetic,
+      run?.config.topk,
+      run?.names,
+      stocks,
+      positions,
+      basket,
+    ],
+  );
+  const visible = useMemo(
+    () =>
+      opportunities?.total != null
+        ? cards
+        : filterOpportunityCards(
+            cards,
+            synthetic ? { ...filters, holding: "all" } : filters,
+          ),
+    [cards, filters, synthetic, opportunities?.total],
+  );
+  const metadataUnavailable =
+    !synthetic && (stocks == null || positions == null);
+  const filteredMetadataUnavailable =
+    !synthetic &&
+    ((filters.source === "watched" && stocks == null) ||
+      (filters.holding !== "all" && metadataUnavailable));
+  const status =
+    history !== "latest"
+      ? "history"
+      : error
+        ? "failed"
+        : (opportunities?.status ?? "no_champion");
 
-  const resetFilters = useCallback(() => {
-    setMarket(DEFAULT_FILTERS.market)
-    setSource(DEFAULT_FILTERS.source)
-    setHolding(DEFAULT_FILTERS.holding)
-    setStrategy(DEFAULT_FILTERS.strategy)
-    setRisk(DEFAULT_FILTERS.risk)
-    setMinScore(DEFAULT_FILTERS.minScore)
-  }, [setHolding, setMarket, setMinScore, setRisk, setSource, setStrategy])
-
-  const strategyOptions = useMemo(() => {
-    return strategyCatalog.map((row) => ({ value: row.code, label: oppT(`opportunities.strategies.${row.code}`, { defaultValue: row.name || row.code }) }))
-  }, [strategyCatalog, t])
-
-  const groupedItems = useMemo<GroupedSignal[]>(() => {
-    const grouped = new Map<string, { primary: StrategySignalItem; members: StrategySignalItem[] }>()
-    for (const row of items) {
-      const key = `${row.stock_market || 'CN'}:${row.stock_symbol}`
-      const prev = grouped.get(key)
-      if (!prev) {
-        grouped.set(key, { primary: row, members: [row] })
-        continue
+  const follow = async (card: OpportunityCard) => {
+    if (!run || busy) return;
+    if (!synthetic && card.watched == null) return;
+    if (!synthetic && card.watched && (card.held == null || card.held)) return;
+    if (
+      !synthetic &&
+      card.watched &&
+      !(await confirmAction(
+        tr("unfollowConfirm", { name: card.name || card.symbol }),
+        { destructive: true },
+      ))
+    )
+      return;
+    setBusy(true);
+    try {
+      if (synthetic) {
+        const result = await qlibApi.setBasket(
+          run.id,
+          card.prediction.symbol,
+          !card.watched,
+        );
+        setBasket(result.items);
+      } else {
+        const stock = stocks?.find(
+          (item) =>
+            item.market.toUpperCase() === card.prediction.market &&
+            securityCode(item.symbol, item.market.toUpperCase()) ===
+              card.symbol,
+        );
+        if (stock) await stocksApi.remove(stock.id);
+        else
+          await stocksApi.create({
+            symbol: card.symbol,
+            name: card.name || card.symbol,
+            market: card.prediction.market,
+            asset_type: "stock",
+          });
+        await reload();
       }
-      prev.members.push(row)
-      if (shouldReplacePrimary(row, prev.primary)) {
-        prev.primary = row
-      }
+      toast(tr("followSaved"), "success");
+    } catch (cause) {
+      toast(cause instanceof Error ? cause.message : tr("loadFailed"), "error");
+    } finally {
+      setBusy(false);
     }
-
-    const out: GroupedSignal[] = []
-    for (const [key, val] of grouped.entries()) {
-      const strategyNames = Array.from(new Set(val.members.map((x) => oppT(`opportunities.strategies.${x.strategy_code}`, { defaultValue: x.strategy_name || x.strategy_code })).filter(Boolean)))
-      const sourceAgents = Array.from(new Set(val.members.map((x) => sourceAgentLabel(x.source_agent, oppT)).filter((x) => x && x !== '--')))
-      const hasMarketScan = val.members.some((x) => x.source_pool === 'market_scan' || x.source_pool === 'mixed')
-      const topScore = Math.max(...val.members.map(scoreOf))
-      out.push({
-        key,
-        primary: val.primary,
-        members: val.members,
-        strategyNames,
-        sourceAgents,
-        hasMarketScan,
-        topScore,
-      })
-    }
-    out.sort((a, b) => {
-      const sourceDelta = Number(b.hasMarketScan) - Number(a.hasMarketScan)
-      if (sourceDelta !== 0) return sourceDelta
-      const scoreDelta = b.topScore - a.topScore
-      if (Math.abs(scoreDelta) > 0.001) return scoreDelta
-      return actionPriority(b.primary) - actionPriority(a.primary)
-    })
-    return out
-  }, [items, t])
-
-  const filteredSummary = useMemo(() => {
-    const total = groupedItems.length
-    const unheld = groupedItems.filter((x) => !x.primary.is_holding_snapshot).length
-    const marketPool = groupedItems.filter((x) => x.hasMarketScan).length
-    return { total, unheld, marketPool }
-  }, [groupedItems])
-
-  const globalCoverage = stats?.coverage || null
-  const factorStats = stats?.factor_stats || null
-  const constraintStats = stats?.constraints || null
-
-  const outcome3d = useMemo(() => {
-    const rows = (stats?.by_strategy || []).filter((x) => Number(x.horizon_days) === 3)
-    if (!rows.length) return null
-    let sample = 0
-    let wins = 0
-    for (const r of rows) {
-      sample += Number(r.sample_size || 0)
-      wins += Number(r.wins || 0)
-    }
-    if (!sample) return null
-    return {
-      total: sample,
-      win_rate: (wins / sample) * 100,
-    }
-  }, [stats])
-
-  const regimeSummary = useMemo(() => {
-    return (stats?.regimes || []).map((r) => ({
-      market: r.market,
-      label: oppT(`opportunities.regimes.${r.regime || 'neutral'}`, { defaultValue: r.regime || 'neutral' }),
-      regime: r.regime || 'neutral',
-      confidence: Number(r.confidence || 0),
-      score: Number(r.regime_score || 0),
-    }))
-  }, [stats, t])
-
-  const riskSummary = useMemo(() => {
-    return (stats?.portfolio_risk || []).map((r) => ({
-      market: r.market,
-      riskLevel: r.risk_level || 'medium',
-      concentration: Number(r.concentration_top5 || 0),
-      highRiskRatio: Number(r.high_risk_ratio || 0),
-    }))
-  }, [stats])
+  };
+  const select = (
+    label: string,
+    value: string,
+    change: (value: string) => void,
+    options: [string, string][],
+    disabled = false,
+  ) => (
+    <Select value={value} onValueChange={change} disabled={disabled}>
+      <SelectTrigger className="h-8 text-xs" aria-label={tr(label)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(([key, text]) => (
+          <SelectItem key={key} value={key}>
+            {tr(text)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  const setFilter = (key: keyof OpportunityFilters, value: string) =>
+    setDraft((previous) => ({ ...previous, [key]: value }));
+  const summary = (label: string, value: string, note: string) => (
+    <div className="card p-3">
+      <div className="text-[11px] text-muted-foreground">{tr(label)}</div>
+      <div className="mt-1 text-lg font-bold">{value}</div>
+      <div className="mt-1 text-[10px] text-muted-foreground">{note}</div>
+    </div>
+  );
 
   return (
-    <div className="page-container pb-10">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
+    <div
+      className="page-container min-w-0 pb-10"
+      data-testid="opportunities-page"
+    >
+      <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-[20px] md:text-[22px] font-bold text-foreground tracking-tight flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            {oppT('opportunities.title')}
+          <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight md:text-[22px]">
+            <Sparkles className="h-5 w-5 text-primary" />
+            {tr("title")}
           </h1>
-          <p className="text-[12px] text-muted-foreground mt-1">
-            {oppT('opportunities.subtitle')}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{tr("subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">{snapshotDate || oppT('opportunities.latestSnapshot')}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {run?.asof_date ?? "—"}
+          </span>
           <Button
-            variant="secondary"
             size="sm"
-            className="h-8 text-[12px]"
-            onClick={handleRefresh}
-            disabled={refreshing}
+            variant="secondary"
+            className="h-8 text-xs"
+            disabled={loading || busy}
+            onClick={() => void reload()}
           >
-            {refreshing ? <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
-            {oppT('opportunities.refresh')}
+            <RefreshCw
+              className={`mr-1 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            {tr("refresh")}
+          </Button>
+          <Link
+            to="/research"
+            data-tour="opportunity-research"
+            className="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            {tr("research")}
+          </Link>
+          <Button
+            size="sm"
+            disabled={!run || history !== "latest" || loading}
+            onClick={() => {
+              setPlanFocus(undefined);
+              setPlanOpen(true);
+            }}
+          >
+            {t("plan.previewTitle")}
+          </Button>
+        </div>
+      </header>
+      <RuleStrategies market={market} onChange={reload} />
+      {run && <StrategySummary assessment={run.assessment} />}
+      <PaperAutomation
+        key={run?.model_id}
+        onChange={() => setPlanVersion((value) => value + 1)}
+      />
+      {run?.match_count === 0 && (
+        <p role="status" className="card mb-4 p-3 text-sm">
+          {qlibT("ruleStrategies.noMatches")}
+        </p>
+      )}
+      <div className="card mb-4 p-3 space-y-2 text-sm">
+        {!run && (
+          <>
+            <p className="font-medium">{tr("journey")}</p>
+            <p className="text-xs text-muted-foreground">{tr("journeyNote")}</p>
+          </>
+        )}
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label={tr("view")}
+        >
+          <Button
+            size="sm"
+            variant={view === "featured" ? "default" : "outline"}
+            aria-pressed={view === "featured"}
+            onClick={() => {
+              setView("featured");
+              setPage(1);
+            }}
+          >
+            {tr("featured")}
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "all" ? "default" : "outline"}
+            aria-pressed={view === "all"}
+            onClick={() => {
+              setView("all");
+              setPage(1);
+            }}
+          >
+            {tr("fullPool")}
           </Button>
         </div>
       </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <div className="card p-3">
-          <div className="text-[11px] text-muted-foreground">{oppT('opportunities.currentCandidates')}</div>
-          <div className="text-[18px] font-bold mt-1">{globalCoverage?.total_signals ?? '--'}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {oppT('opportunities.actionable')}: {globalCoverage?.active_signals ?? '--'} · {oppT('opportunities.watching')}: {(globalCoverage?.total_signals != null && globalCoverage?.active_signals != null) ? Math.max(0, globalCoverage.total_signals - globalCoverage.active_signals) : '--'}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-[11px] text-muted-foreground">{oppT('opportunities.marketPoolRatio')}</div>
-          <div className="text-[18px] font-bold mt-1">{globalCoverage?.market_scan_share_pct != null ? `${globalCoverage.market_scan_share_pct.toFixed(1)}%` : '--'}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {oppT('opportunities.marketPool')}: {globalCoverage?.market_scan_signals ?? '--'} · {oppT('opportunities.watchPool')}: {globalCoverage?.watchlist_signals ?? '--'} · {oppT('opportunities.mixedPool')}: {globalCoverage?.mixed_signals ?? '--'}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-[11px] text-muted-foreground">{oppT('opportunities.filteredResult')}</div>
-          <div className="text-[18px] font-bold mt-1">{filteredSummary.total}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {oppT('opportunities.unheld')}: {filteredSummary.unheld} · {oppT('opportunities.marketPool')}: {filteredSummary.marketPool}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-[11px] text-muted-foreground">{oppT('opportunities.winRate3d')}</div>
-          <div className="text-[18px] font-bold mt-1">{outcome3d ? `${outcome3d.win_rate.toFixed(1)}%` : '--'}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {oppT('opportunities.autoSamples')}: {outcome3d ? `${outcome3d.total}` : '--'}
-          </div>
-        </div>
-      </div>
-
-      {(factorStats || constraintStats) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="card p-3">
-            <div className="text-[11px] text-muted-foreground">{oppT('opportunities.avgAlpha')}</div>
-            <div className="text-[18px] font-bold mt-1">{factorStats ? factorStats.avg_alpha_score.toFixed(1) : '--'}</div>
-            <div className="text-[10px] text-muted-foreground mt-1">{oppT('opportunities.sample')} {factorStats?.sample_size ?? '--'}</div>
-          </div>
-          <div className="card p-3">
-            <div className="text-[11px] text-muted-foreground">{oppT('opportunities.avgCatalyst')}</div>
-            <div className="text-[18px] font-bold mt-1">{factorStats ? factorStats.avg_catalyst_score.toFixed(1) : '--'}</div>
-            <div className="text-[10px] text-muted-foreground mt-1">
-              {oppT('opportunities.crowdPenalty')} {factorStats ? factorStats.avg_crowd_penalty.toFixed(1) : '--'}
-            </div>
-          </div>
-          <div className="card p-3">
-            <div className="text-[11px] text-muted-foreground">{oppT('opportunities.avgQualityRisk')}</div>
-            <div className="text-[18px] font-bold mt-1">
-              {factorStats ? `${factorStats.avg_quality_score.toFixed(1)} / ${factorStats.avg_risk_penalty.toFixed(1)}` : '--'}
-            </div>
-            <div className="text-[10px] text-muted-foreground mt-1">{oppT('opportunities.qualityHint')}</div>
-          </div>
-          <div className="card p-3">
-            <div className="text-[11px] text-muted-foreground">{oppT('opportunities.constraintDowngrade')}</div>
-            <div className="text-[18px] font-bold mt-1">{constraintStats?.constrained_top20 ?? 0}</div>
-            <div className="text-[10px] text-muted-foreground mt-1">{oppT('opportunities.constraintHint')}</div>
-          </div>
-        </div>
-      )}
-
-      {(regimeSummary.length > 0 || riskSummary.length > 0) && (
-        <div className="card p-3 mb-4">
-          <div className="text-[11px] text-muted-foreground mb-2">{oppT('opportunities.marketRisk')}</div>
-          <div className="flex flex-wrap gap-2">
-            {regimeSummary.map((r) => (
-              <span key={`regime-${r.market}`} className={`text-[11px] px-2.5 py-1 rounded ${regimeToneClass(r.regime)}`}>
-                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}: {oppT(`opportunities.regimes.${r.regime}`, { defaultValue: r.regime })} · {oppT('opportunities.confidence')} {Math.round(r.confidence * 100)}%
-              </span>
-            ))}
-            {riskSummary.map((r) => (
-              <span key={`risk-${r.market}`} className="text-[11px] px-2.5 py-1 rounded bg-accent/70 text-muted-foreground border border-border/60">
-                {oppT(`opportunities.markets.${r.market}`, { defaultValue: r.market })}{oppT('opportunities.risk')}: {oppT(`opportunities.riskLevels.${r.riskLevel}`, { defaultValue: r.riskLevel })} · {oppT('opportunities.concentration')}{(r.concentration * 100).toFixed(0)}% · {oppT('opportunities.highRiskRatio')}{(r.highRiskRatio * 100).toFixed(0)}%
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div data-tour="opportunity-filters" className="card p-3 md:p-4 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
-          <Select value={market} onValueChange={(v) => setMarket(v as 'ALL' | 'CN' | 'HK' | 'US')}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">{oppT('opportunities.markets.ALL')}</SelectItem>
-              <SelectItem value="CN">{oppT('opportunities.markets.CN')}</SelectItem>
-              <SelectItem value="HK">{oppT('opportunities.markets.HK')}</SelectItem>
-              <SelectItem value="US">{oppT('opportunities.markets.US')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={source} onValueChange={(v) => setSource(v as SourceFilter)}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{oppT('opportunities.filters.allSources')}</SelectItem>
-              <SelectItem value="market_scan">{oppT('opportunities.filters.marketScan')}</SelectItem>
-              <SelectItem value="mixed">{oppT('opportunities.filters.mixed')}</SelectItem>
-              <SelectItem value="watchlist">{oppT('opportunities.filters.watchlist')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={holding} onValueChange={(v) => setHolding(v as HoldingFilter)}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{oppT('opportunities.filters.allHolding')}</SelectItem>
-              <SelectItem value="unheld">{oppT('opportunities.filters.onlyUnheld')}</SelectItem>
-              <SelectItem value="held">{oppT('opportunities.filters.onlyHeld')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={strategy} onValueChange={setStrategy}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{oppT('opportunities.filters.allStrategies')}</SelectItem>
-              {strategyOptions.map((op) => (
-                <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={risk} onValueChange={(v) => setRisk(v as RiskFilter)}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{oppT('opportunities.filters.allRisks')}</SelectItem>
-              <SelectItem value="low">{oppT('opportunities.riskLevels.low')}</SelectItem>
-              <SelectItem value="medium">{oppT('opportunities.riskLevels.medium')}</SelectItem>
-              <SelectItem value="high">{oppT('opportunities.riskLevels.high')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={minScore} onValueChange={setMinScore}>
-            <SelectTrigger className="h-8 text-[12px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="90">{oppT('opportunities.filters.score90')}</SelectItem>
-              <SelectItem value="80">{oppT('opportunities.filters.score80')}</SelectItem>
-              <SelectItem value="70">{oppT('opportunities.filters.score70')}</SelectItem>
-              <SelectItem value="60">{oppT('opportunities.filters.score60')}</SelectItem>
-              <SelectItem value="50">{oppT('opportunities.filters.score50')}</SelectItem>
-              <SelectItem value="0">{oppT('opportunities.filters.scoreAny')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button size="sm" className="h-8 text-[12px]" onClick={load} disabled={loading}>
-            {loading ? oppT('opportunities.loading') : oppT('opportunities.apply')}
-          </Button>
-          <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={resetFilters}>
-            {oppT('opportunities.clear')}
-          </Button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="card p-3 mb-4 text-[12px] text-amber-500 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          {error}
-        </div>
-      )}
-
-      <div data-tour="opportunity-signals" className="grid min-h-12 grid-cols-1 md:grid-cols-2 gap-3">
-        {groupedItems.map((group) => {
-          const item = group.primary
-          const payload = item.payload && typeof item.payload === 'object' ? item.payload as Record<string, unknown> : {}
-          const sourceMeta = payload.source_meta && typeof payload.source_meta === 'object' ? payload.source_meta as Record<string, unknown> : {}
-          const sourcePlan = sourceMeta.plan && typeof sourceMeta.plan === 'object' ? sourceMeta.plan as Record<string, unknown> : {}
-          const entryLow = toNumberOrNull(item.entry_low) ?? toNumberOrNull(sourcePlan.entry_low)
-          const entryHigh = toNumberOrNull(item.entry_high) ?? toNumberOrNull(sourcePlan.entry_high)
-          const stopLoss = toNumberOrNull(item.stop_loss) ?? toNumberOrNull(sourcePlan.stop_loss)
-          const targetPrice = toNumberOrNull(item.target_price) ?? toNumberOrNull(sourcePlan.target_price)
-          const stateKey = `${item.snapshot_date}:${group.key}`
-          const inWatchlist = watchlist.has(group.key)
-          const breakdown = item.score_breakdown || {}
-          const marketRegime = item.market_regime || {}
-          const crossFeature = item.cross_feature || {}
-          const newsMetric = item.news_metric || {}
-          const strategyHead = group.strategyNames.slice(0, 2).join(' / ') || (item.strategy_name || item.strategy_code)
-          const strategyTailCount = Math.max(0, group.strategyNames.length - 2)
-          const sourceAgentHead = group.sourceAgents[0] || sourceAgentLabel(item.source_agent, oppT)
-          const sourceAgentTailCount = Math.max(0, group.sourceAgents.length - 1)
-          const eventScore = toNumberOrNull(newsMetric.event_score)
-          const eventCount = Number(newsMetric.news_count || 0)
-          const sourceFlags: string[] = []
-          if (group.hasMarketScan) sourceFlags.push(oppT('opportunities.marketCandidate'))
-          if (inWatchlist) sourceFlags.push(oppT('opportunities.watchedStock'))
-          if (sourceFlags.length <= 0) sourceFlags.push(oppT('opportunities.watchPoolShort'))
-          const sourcePoolLabel = group.hasMarketScan
-            ? (group.members.some((x) => x.source_pool === 'mixed') ? oppT('opportunities.marketPlusWatch') : oppT('opportunities.marketPoolShort'))
-            : oppT(`opportunities.sourcePools.${item.source_pool || 'watchlist'}`, { defaultValue: oppT('opportunities.watchPoolShort') })
-          return (
-            <div key={stateKey} className={`card p-4 transition-colors ${toneClass(item)}`}>
-              <button className="w-full text-left" onClick={() => openInsight(item)}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[15px] font-semibold truncate">{item.stock_name || item.stock_symbol}</div>
-                    <div className="text-[11px] text-muted-foreground font-mono">{item.stock_market}:{item.stock_symbol}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[12px]">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${actionBadgeClass(item.action)}`}>
-                        {displayActionLabel(item, oppT)}
-                      </span>
-                    </div>
-                    <div className={`text-[12px] font-mono mt-1 ${Number(item.rank_score || item.score || 0) >= 80 ? 'text-primary' : 'text-muted-foreground'}`}>
-                      {oppT('opportunities.score')} {Math.round(item.rank_score || item.score || 0)}
-                    </div>
-                    {item.ai_score != null && (
-                      <div className="mt-1 flex items-center justify-end gap-1">
-                        <span className="text-[10px] text-muted-foreground">AI</span>
-                        <span className={`inline-flex items-center justify-center min-w-[18px] px-1.5 py-0.5 rounded text-[11px] font-semibold ${item.ai_score >= 8 ? 'bg-green-500/20 text-green-400' : item.ai_score >= 6 ? 'bg-primary/20 text-primary' : item.ai_score >= 4 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
-                          {item.ai_score}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-2 text-[12px] text-foreground line-clamp-2">{item.signal || item.reason || '--'}</div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                  <div>{oppT('opportunities.entry')}: {formatEntryDisplay(item.action, entryLow, entryHigh, oppT)}</div>
-                  <div>{oppT('opportunities.stopLoss')}: {formatPlanPrice(stopLoss)}</div>
-                  <div>{oppT('opportunities.target')}: {formatPlanPrice(targetPrice)}</div>
-                  <div>{oppT('opportunities.invalidation')}: {item.invalidation || '--'}</div>
-                  <div>
-                    {oppT('opportunities.strategy')}: {strategyHead}
-                    {strategyTailCount > 0 ? ` +${strategyTailCount}` : ''}
-                  </div>
-                  <div>{oppT('opportunities.sourcePool')}: {sourcePoolLabel}</div>
-                  <div>
-                    {oppT('opportunities.sourceAgent')}: {sourceAgentHead}
-                    {sourceAgentTailCount > 0 ? ` +${sourceAgentTailCount}` : ''}
-                  </div>
-                  <div>{oppT('opportunities.risk')}: {oppT(`opportunities.riskLevels.${item.risk_level || 'medium'}`, { defaultValue: item.risk_level || '--' })}</div>
-                  <div>{oppT('opportunities.regime')}: {oppT(`opportunities.regimes.${String(marketRegime.regime || 'neutral')}`, { defaultValue: String(marketRegime.regime || '--') })}</div>
-                  <div>{oppT('opportunities.holding')}: {item.is_holding_snapshot ? oppT('opportunities.held') : oppT('opportunities.unheldStatus')}</div>
-                  <div>{oppT('opportunities.market')}: {oppT(`opportunities.markets.${item.stock_market}`, { defaultValue: item.stock_market })}</div>
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
-                  <div>Alpha: {formatMetric(breakdown.alpha_score)}</div>
-                  <div>{oppT('opportunities.catalyst')}: {formatMetric(breakdown.catalyst_score)}</div>
-                  <div>{oppT('opportunities.quality')}: {formatMetric(breakdown.quality_score)}</div>
-                  <div>{oppT('opportunities.riskPenalty')}: {formatMetric(breakdown.risk_penalty)}</div>
-                  <div>{oppT('opportunities.relativeStrength')}: {crossFeature.relative_strength_pct != null ? `${Number(crossFeature.relative_strength_pct).toFixed(0)}${oppT('opportunities.sample')}` : '--'}</div>
-                  <div>{oppT('opportunities.eventCatalyst')}: {eventScore != null ? eventScore.toFixed(1) : '--'}{eventCount > 0 ? ` (${eventCount})` : ''}</div>
-                </div>
-                {item.factor_explain && (((item.factor_explain.positive?.length ?? 0) > 0) || ((item.factor_explain.negative?.length ?? 0) > 0)) && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {(item.factor_explain.positive ?? []).map((f) => (
-                      <span key={`p-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-market-up/15 text-market-up">
-                        {oppT(`opportunities.factors.${f.factor}`, { defaultValue: f.label || f.factor })} +{Math.abs(f.contribution).toFixed(1)}
-                      </span>
-                    ))}
-                    {(item.factor_explain.negative ?? []).map((f) => (
-                      <span key={`n-${f.factor}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-market-down/15 text-market-down">
-                        {oppT(`opportunities.factors.${f.factor}`, { defaultValue: f.label || f.factor })} {f.contribution.toFixed(1)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {item.constrained && (
-                  <div className="mt-2 text-[10px] text-amber-400">
-                    {oppT('opportunities.constraint')}: {(item.constraint_reasons || []).join('; ') || oppT('opportunities.autoDowngraded')}
-                  </div>
-                )}
-              </button>
-
-              <div className="mt-3 flex items-center justify-between">
-                <div className="text-[10px] text-muted-foreground">
-                  {oppT('opportunities.source')}: {sourceFlags.join(' + ')}
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShareSignal(item)}
-                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-primary"
-                    title={oppT('opportunities.share')}
-                  >
-                    <Share2 className="h-3 w-3" />
-                    {oppT('opportunities.share')}
-                  </button>
-                  <div className="text-[10px] text-muted-foreground">{oppT('opportunities.autoEvaluation')}</div>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {!loading && groupedItems.length === 0 && (
-        <div className="card p-8 text-center text-[12px] text-muted-foreground mt-4">{oppT('opportunities.empty')}</div>
-      )}
-
-      <details className="mt-6 group">
-        <summary className="cursor-pointer list-none flex items-center gap-2 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors">
-          <span className="text-[11px] opacity-60 transition-transform group-open:rotate-90">▶</span>
-          {oppT('opportunities.factorWeights')}
+      <details className="mb-4" open={!loading && !run}>
+        <summary className="cursor-pointer text-sm text-primary">
+          {tr("advancedData")}
         </summary>
-        <div className="mt-3">
-          <FactorWeightsPanel />
+        <div className="mt-2">
+          <QlibDataPipeline onChange={reload} market={market} />
         </div>
       </details>
-
-      <StockInsightModal
-        open={insightOpen}
-        onOpenChange={setInsightOpen}
-        symbol={insightSymbol}
-        market={insightMarket}
-        stockName={insightName}
-        hasPosition={insightHasPosition}
-      />
-
-      {shareSignal && (
-        <SignalScoreShareCard
-          open={!!shareSignal}
-          onClose={() => setShareSignal(null)}
-          item={shareSignal}
-        />
+      <div className="mb-4">
+        <PaperPlanStatus compact refreshKey={planVersion} />
+      </div>
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {summary(
+          "candidates",
+          opportunities ? String(totalPredictions) : "—",
+          tr("poolOnly"),
+        )}
+        {summary(
+          synthetic ? "sampleFollows" : "watchedCandidates",
+          !run || (!synthetic && stocks == null)
+            ? "—"
+            : String(
+                run?.watched_count ??
+                  cards.filter((card) => card.watched).length,
+              ),
+          tr(synthetic ? "sampleFollowNote" : "watchNote"),
+        )}
+        {summary(
+          "results",
+          opportunities ? String(opportunities.total ?? visible.length) : "—",
+          tr("rankOnly"),
+        )}
+        {summary("dataDate", run?.asof_date ?? "—", tr(`statuses.${status}`))}
+      </div>
+      <div
+        role="status"
+        className="card mb-4 flex flex-wrap items-center justify-between gap-2 p-3 text-xs"
+      >
+        <div className="min-w-0">
+          <span className="font-medium">{tr(`statuses.${status}`)}</span>
+          {run && (
+            <span className="ml-2 text-muted-foreground">
+              {tr("horizon", { days: run.horizon })} ·{" "}
+              {tr(synthetic ? "sample" : "marketData")}
+            </span>
+          )}
+        </div>
+        <Link
+          to="/paper-trading"
+          className="inline-flex items-center gap-1 text-primary"
+        >
+          {tr("paper")}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+        <p className="w-full text-[11px] text-muted-foreground">
+          {tr(synthetic ? "sampleNotice" : "notice")}
+        </p>
+      </div>
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs break-words"
+        >
+          {tr("loadFailed")}: {error}
+        </div>
       )}
+      {!health?.available && !loading && (
+        <p role="status" className="card mb-4 p-3 text-xs">
+          {tr("workerUnavailable")}
+        </p>
+      )}
+      {metadataError && (
+        <p role="status" className="card mb-4 p-3 text-xs">
+          {tr("metadataUnavailable")}
+        </p>
+      )}
+      <form
+        data-tour="opportunity-filters"
+        className="card mb-4 p-3 md:p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFilters({ ...draft });
+          if (
+            draft.search.trim() ||
+            draft.top !== "all" ||
+            draft.source !== "all" ||
+            draft.holding !== "all"
+          )
+            setView("all");
+          setPage(1);
+        }}
+      >
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
+          {select(
+            "market",
+            market,
+            (value) => {
+              setMarket(value as QlibMarket);
+              setSearchParams({ market: value });
+              setPage(1);
+              setHistory("latest");
+              setDetail(null);
+              setOpportunities(null);
+            },
+            [
+              ["CN", "cn"],
+              ["HK", "hk"],
+              ["US", "us"],
+            ],
+          )}
+          {select(
+            "source",
+            draft.source,
+            (value) => setFilter("source", value),
+            [
+              ["all", "allSources"],
+              ["watched", synthetic ? "sampleFollows" : "myWatchlist"],
+            ],
+            !synthetic && stocks == null,
+          )}
+          {select(
+            "holding",
+            synthetic ? "all" : draft.holding,
+            (value) => setFilter("holding", value),
+            [
+              ["all", synthetic ? "sampleHolding" : "allHolding"],
+              ["unheld", "unheld"],
+              ["held", "held"],
+            ],
+            synthetic || metadataUnavailable,
+          )}
+          {select("rankFilter", draft.top, (value) => setFilter("top", value), [
+            ["all", "allRanks"],
+            ["10", "top10"],
+            ["20", "top20"],
+            ["50", "top50"],
+          ])}
+          {select(
+            "availability",
+            draft.availability,
+            (value) => setFilter("availability", value),
+            [
+              ["all", "allAvailability"],
+              ["tradable", "tradable"],
+              ["blocked", "blocked"],
+            ],
+          )}
+          <Button type="submit" size="sm" className="h-8 text-xs">
+            {tr("apply")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            onClick={() => {
+              setDraft({ ...defaultOpportunityFilters });
+              setFilters({ ...defaultOpportunityFilters });
+              setPage(1);
+            }}
+          >
+            {tr("clear")}
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-xs">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              value={draft.search}
+              onChange={(event) => setFilter("search", event.target.value)}
+              aria-label={tr("search")}
+              placeholder={tr("search")}
+              className="w-full min-w-0 bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
+          <div className="w-full sm:w-64">
+            <Select
+              value={history}
+              onValueChange={(value) => {
+                setHistory(value);
+                setSearchParams(
+                  value === "latest" ? { market } : { market, run: value },
+                );
+                setPage(1);
+                setDetail(null);
+                setTechnical(false);
+              }}
+            >
+              <SelectTrigger className="h-8 text-xs" aria-label={tr("history")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">{tr("latest")}</SelectItem>
+                {runs.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.asof_date} · {item.model_id.slice(0, 8)} ·{" "}
+                    {item.id.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {history !== "latest" && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {tr("historyNotice")}
+          </p>
+        )}
+      </form>
+      {loading && (
+        <p role="status" className="py-3 text-xs text-muted-foreground">
+          {tr("loading")}
+        </p>
+      )}
+      {opportunities?.total != null && opportunities.total > 50 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span>
+            {qlibT("universe.page", { page, total: opportunities.total })}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading || page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              {qlibT("universe.previous")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading || page * 50 >= opportunities.total}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              {qlibT("universe.next")}
+            </Button>
+          </div>
+        </div>
+      )}
+      <div
+        data-tour="opportunity-signals"
+        className="grid min-h-12 grid-cols-1 gap-3 md:grid-cols-2"
+        aria-busy={loading}
+      >
+        {visible.map((card) => (
+          <article
+            key={card.prediction.symbol}
+            className={`card p-4 transition-colors ${card.selected ? "border-primary/30" : ""}`}
+          >
+            <button
+              type="button"
+              className="w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              onClick={() => {
+                setDetail(card);
+                setDetailRun(run ?? null);
+                setDetailTotal(totalPredictions);
+                setTechnical(false);
+              }}
+              aria-label={tr("openDetail", {
+                name: synthetic
+                  ? tr("sampleName", { code: card.symbol })
+                  : card.name || card.symbol,
+              })}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="truncate text-[15px] font-semibold">
+                    {synthetic
+                      ? tr("sampleName", { code: card.symbol })
+                      : card.name || card.symbol}
+                  </h2>
+                  <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                    {card.prediction.market}:{card.symbol}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+                    {tr(
+                      card.selected && run?.assessment?.eligible
+                        ? "candidate"
+                        : "researchObserve",
+                    )}
+                  </span>
+                  <p className="mt-1 text-xs font-semibold">
+                    {tr("rank", {
+                      rank: card.prediction.rank,
+                      total: totalPredictions,
+                    })}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-foreground">
+                {tr("cardHint", { days: run?.horizon ?? "—" })}
+              </p>
+              {card.prediction.rule_evidence && (
+                <RuleEvidence evidence={card.prediction.rule_evidence} />
+              )}
+              <p className="mt-2 text-xs font-medium">
+                {tr("pricePortrait")}:{" "}
+                {tr(pricePortrait(card.prediction.observed_context))}
+              </p>
+              <div className="mt-3 space-y-1 text-xs">
+                <p className="font-medium">{tr("observableEvidence")}</p>
+                {card.prediction.observed_context ? (
+                  <>
+                    <p>
+                      {tr("priceContext", {
+                        value: (
+                          card.prediction.observed_context
+                            .return_20_observations * 100
+                        ).toFixed(1),
+                      })}
+                    </p>
+                    <p>
+                      {tr("volumeContext", {
+                        value:
+                          card.prediction.observed_context.volume_ratio_20_observations?.toFixed(
+                            2,
+                          ) ?? "—",
+                      })}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {tr("drawdownContext", {
+                        value: (
+                          card.prediction.observed_context
+                            .drawdown_from_60_observation_high * 100
+                        ).toFixed(1),
+                      })}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">
+                    {tr("contextUnavailable")}
+                  </p>
+                )}
+                <p className="text-muted-foreground">{tr("evidenceNote")}</p>
+                <p>
+                  {tr("simulationState")}:{" "}
+                  {synthetic
+                    ? planError("qlib_synthetic_execution_not_supported", qlibT)
+                    : card.prediction.paper_block_reason
+                      ? planError(card.prediction.paper_block_reason, qlibT)
+                      : tr("planPreviewRequired")}
+                </p>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                <div>
+                  <dt className="text-muted-foreground">
+                    {tr("referencePrice")}
+                  </dt>
+                  <dd className="mt-0.5 font-mono">
+                    {format(card.prediction.reference_close)}{" "}
+                    {card.prediction.currency ??
+                      (market === "CN"
+                        ? "CNY"
+                        : market === "HK"
+                          ? "HKD"
+                          : "USD")}{" "}
+                    <span className="text-muted-foreground">
+                      {run?.asof_date}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{tr("rankChange")}</dt>
+                  <dd className="mt-0.5">
+                    {card.prediction.rank_change == null
+                      ? "—"
+                      : tr("rankDelta", {
+                          delta:
+                            card.prediction.rank_change > 0
+                              ? `+${card.prediction.rank_change}`
+                              : card.prediction.rank_change,
+                        })}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">{tr("holding")}</dt>
+                  <dd className="mt-0.5">
+                    {tr(
+                      synthetic
+                        ? "sampleHolding"
+                        : card.held == null
+                          ? "unknown"
+                          : card.held
+                            ? "held"
+                            : "unheld",
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">
+                    {tr("availability")}
+                  </dt>
+                  <dd className="mt-0.5">
+                    {tr(card.prediction.tradable ? "tradable" : "blocked")}
+                  </dd>
+                </div>
+              </dl>
+            </button>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-3">
+              <span className="text-[10px] text-muted-foreground">
+                {tr(synthetic ? "sample" : "poolOnly")} · {tr("engine")}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={history !== "latest" || loading}
+                onClick={() => {
+                  setPlanFocus(card.prediction.symbol);
+                  setPlanOpen(true);
+                }}
+              >
+                {t("plan.previewTitle")}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-[11px]"
+                disabled={
+                  busy ||
+                  (!synthetic &&
+                    (card.watched == null ||
+                      (!!card.watched && (card.held == null || !!card.held))))
+                }
+                onClick={() => void follow(card)}
+                aria-label={tr(card.watched ? "unfollowLabel" : "followLabel", {
+                  code: card.symbol,
+                })}
+              >
+                <Bookmark
+                  className={`h-3.5 w-3.5 ${card.watched ? "fill-primary text-primary" : ""}`}
+                />
+                {tr(
+                  synthetic
+                    ? card.watched
+                      ? "sampleFollowed"
+                      : "sampleFollow"
+                    : card.held && card.watched
+                      ? "held"
+                      : card.watched
+                        ? "followed"
+                        : "follow",
+                )}
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {!loading && !visible.length && (
+        <div className="card mt-4 p-8 text-center text-xs text-muted-foreground">
+          <p>
+            {tr(
+              filteredMetadataUnavailable
+                ? "metadataUnavailable"
+                : cards.length
+                  ? "emptyFiltered"
+                  : `empty.${status}`,
+            )}
+          </p>
+          {!cards.length && (
+            <Link
+              className="mt-3 inline-block text-primary hover:underline"
+              to="/research?tab=data"
+            >
+              {tr("setup")}
+            </Link>
+          )}
+        </div>
+      )}
+      <details className="mt-5 text-xs text-muted-foreground">
+        <summary className="cursor-pointer">{tr("method")}</summary>
+        <p className="mt-2 leading-relaxed">{tr("methodNote")}</p>
+      </details>
+      <PaperPlanDialog
+        runId={run?.id ?? null}
+        focusSymbol={planFocus}
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        onConfirmed={() => {
+          setPlanVersion((v) => v + 1);
+          void reload();
+        }}
+      />
+      {detail && !detailSynthetic && (
+        <Suspense fallback={<p role="status">{tr("loading")}</p>}>
+          <StockInsightModal
+            open
+            symbol={detail.symbol}
+            market={detail.prediction.market}
+            stockName={detail.name ?? undefined}
+            hasPosition={detail.held ?? undefined}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDetail(null);
+                void reload();
+              }
+            }}
+            researchContext={
+              <div className="mb-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                <p>
+                  {tr("rank", {
+                    rank: detail.prediction.rank,
+                    total: detailTotal,
+                  })}{" "}
+                  · {detailRun?.asof_date} ·{" "}
+                  {tr("horizon", { days: detailRun?.horizon })}
+                </p>
+                <p className="mt-1 text-muted-foreground">{tr("detailNote")}</p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-7 px-0 text-xs"
+                  onClick={() => setTechnical(true)}
+                >
+                  {tr("technical")}
+                </Button>
+              </div>
+            }
+          />
+        </Suspense>
+      )}
+      <Dialog
+        open={!!detail && (detailSynthetic || technical)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTechnical(false);
+            if (detailSynthetic) setDetail(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[92vw] max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {detailSynthetic
+                ? tr("sampleName", { code: detail?.symbol })
+                : detail?.name || detail?.symbol}
+            </DialogTitle>
+            <DialogDescription>
+              {tr(detailSynthetic ? "sampleNotice" : "detailNote")}
+            </DialogDescription>
+          </DialogHeader>
+          {detail && (
+            <>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  {tr("rank", {
+                    rank: detail.prediction.rank,
+                    total: detailTotal,
+                  })}
+                </div>
+                <div>
+                  {tr("referencePrice")}:{" "}
+                  {format(detail.prediction.reference_close)}
+                </div>
+                <div>
+                  {tr("dataDate")}: {detailRun?.asof_date}
+                </div>
+                <div>{tr("horizon", { days: detailRun?.horizon })}</div>
+              </div>
+              <details className="mt-3 text-xs" open={technical}>
+                <summary className="cursor-pointer text-primary">
+                  {tr("technical")}
+                </summary>
+                <p className="mt-2 text-muted-foreground">{t("inputNote")}</p>
+                <p className="mt-2">
+                  {t("rawScore")}: {format(detail.prediction.raw_score, 5)} ·{" "}
+                  {t("model")}:{" "}
+                  <code className="break-all">{detailRun?.model_id}</code>
+                </p>
+                <div className="mt-3 max-h-56 overflow-y-auto scrollbar rounded border p-2">
+                  <dl className="space-y-1">
+                    {Object.entries(detail.prediction.factor_inputs).map(
+                      ([name, value]) => (
+                        <div
+                          key={name}
+                          className="flex justify-between gap-3 font-mono"
+                        >
+                          <dt>{name}</dt>
+                          <dd>{format(value, 4)}</dd>
+                        </div>
+                      ),
+                    )}
+                  </dl>
+                </div>
+              </details>
+              <Link
+                to="/research"
+                className="mt-3 text-xs text-primary hover:underline"
+              >
+                {tr("research")}
+              </Link>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
-  )
+  );
 }

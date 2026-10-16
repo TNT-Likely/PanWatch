@@ -1,5 +1,5 @@
 import { AnalysisMetadata } from './analysis-metadata'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Copy, Download, ExternalLink, RefreshCw, Share2, Sparkles } from 'lucide-react'
 import {
@@ -339,6 +339,7 @@ export default function StockInsightModal(props: {
   market: string
   stockName?: string
   hasPosition?: boolean
+  researchContext?: ReactNode
 }) {
   const { toast } = useToast()
   const { palette } = useMarketColors()
@@ -1359,6 +1360,8 @@ export default function StockInsightModal(props: {
               </Button>
             </div>
           </DialogHeader>
+
+          {props.researchContext}
 
           <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
             <div className="flex items-center gap-1 flex-wrap">

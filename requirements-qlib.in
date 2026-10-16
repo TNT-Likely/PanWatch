@@ -1,0 +1,32 @@
+# Qlib runs in a separate Python 3.12 worker. Never install into the API environment.
+pyqlib==0.9.7; sys_platform != 'linux' or platform_machine != 'aarch64'
+# Fixed build prerequisites for the separately hashed upstream ARM64 source.
+cython==3.0.12
+setuptools==80.9.0
+wheel==0.45.1
+pandas==2.2.3
+numpy==2.2.6
+lightgbm==4.6.0
+scikit-learn==1.7.2
+mlflow==2.22.0
+# Mirror the direct dependencies of the fixed upstream v0.9.7 pyproject.
+# The ARM64 source is installed separately; its dependencies must still be
+# resolved unconditionally rather than inheriting the non-ARM wheel marker.
+pyyaml
+filelock>=3.16.0
+redis
+dill
+fire
+ruamel.yaml>=0.17.38
+python-redis-lock
+tqdm
+pymongo
+loguru
+gym
+cvxpy
+joblib
+matplotlib
+jupyter
+nbconvert
+pyarrow
+pydantic-settings

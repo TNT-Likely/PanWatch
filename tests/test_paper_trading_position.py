@@ -1,56 +1,43 @@
-"""模拟盘仓位管理(Phase 1)单元测试 —— 纯函数,不触发 DB/网络。"""
-
-from src.modules.strategy.backtest.cost_model import CostModel
-from src.modules.paper_trading.paper_trading_engine import _compute_quantity, _position_weight
-
-
-def test_position_weight_tiers():
-    """信号强度越高,单笔资金占比越大(分档)。"""
-    assert _position_weight(90) == 0.25
-    assert _position_weight(80) == 0.18
-    assert _position_weight(70) == 0.12
-    assert _position_weight(50) == 0.08
-    assert _position_weight(90) > _position_weight(50)
+"""Qlib positions use explicit cash allocation, never legacy-score tiers."""
+from src.modules.qlib_research.contracts import ResearchConfig
+from src.modules.qlib_research.costs import QlibCostModel
+from src.modules.qlib_research.policy import dropout_plan, lot_quantity
+import pytest
+from src.modules.paper_trading.paper_trading_engine import _safe_float
 
 
-def test_compute_quantity_respects_budget():
-    """按市场预算 × 强度比例分配,买入 100 股整数倍且不超预算对应股数。"""
-    cm = CostModel()
-    qty = _compute_quantity(
-        rank_score=90, market_budget=1_000_000, price=10.0,
-        available_cash=1_000_000, cost_model=cm,
-    )
-    assert qty > 0 and qty % 100 == 0
-    assert qty <= 25000  # 25% 预算 / 10 元
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), "NaN", "Infinity", None, "bad"])
+def test_nonfinite_quotes_never_become_execution_inputs(value):
+    assert _safe_float(value) is None
 
 
-def test_compute_quantity_respects_cash():
-    """可用现金不足时回退到买得起的手数,买入含费不超现金。"""
-    cm = CostModel()
-    qty = _compute_quantity(
-        rank_score=90, market_budget=1_000_000, price=10.0,
-        available_cash=3000, cost_model=cm,
-    )
-    assert qty % 100 == 0
-    if qty > 0:
-        outlay = -cm.fill("buy", 10.0, qty).cash_delta
-        assert outlay <= 3000
+def test_budget_cash_and_lot_limits_include_same_qlib_fees():
+    costs = QlibCostModel(ResearchConfig().model_dump())
+    quantity = lot_quantity(250000, 10, 3000, costs)
+    assert quantity % 100 == 0
+    assert -costs.fill("buy", 10, quantity).cash_delta <= 3000
+    assert lot_quantity(500, 100, 500, costs) == 0
+    assert lot_quantity(50, 10, 100000, costs) == 0
 
 
-def test_compute_quantity_insufficient_cash_returns_zero():
-    """现金连最小一手都买不起时返回 0(应跳过建仓)。"""
-    cm = CostModel()
-    qty = _compute_quantity(
-        rank_score=90, market_budget=1_000_000, price=100.0,
-        available_cash=500, cost_model=cm,
-    )
-    assert qty == 0
+def test_dropout_keeps_winners_and_replaces_bottom_ranked_holdings():
+    predictions = [{"symbol": "A", "raw_score": -0.1}, {"symbol": "B", "raw_score": -0.2}, {"symbol": "C", "raw_score": -0.3}]
+    sell, buy = dropout_plan(predictions, {"A", "C"}, {"A", "B", "C"}, topk=2)
+    assert sell == ["C"] and buy == ["B"]
+    # The absolute scale and sign of model outputs do not drive position sizing.
+    scaled = [{**row, "raw_score": row["raw_score"] * 10000} for row in predictions]
+    assert dropout_plan(scaled, {"A", "C"}, {"A", "B", "C"}, 2) == (sell, buy)
 
 
-def test_engine_imports_ok():
-    """改造后 paper_trading_engine 可正常导入(无语法/循环 import 错),关键符号在位。"""
-    import src.modules.paper_trading.paper_trading_engine as e
+def test_untradable_holdings_do_not_force_replacement_beyond_topk():
+    predictions = [{"symbol": "A", "raw_score": 3}, {"symbol": "B", "raw_score": 2}, {"symbol": "C", "raw_score": 1}]
+    sell, buy = dropout_plan(predictions, {"A", "C"}, {"A", "B"}, 2)
+    assert "C" not in sell
+    assert len({"A", "C"} - set(sell) | set(buy)) <= 2
 
-    assert hasattr(e, "ENGINE")
-    assert hasattr(e, "COST_MODEL")
-    assert hasattr(e, "_compute_quantity")
+
+def test_aggregate_fees_and_cash_conservation_are_explicit():
+    costs = QlibCostModel(ResearchConfig().model_dump())
+    assert costs.fill("buy", 10, 100).explicit_fees == 5
+    assert costs.fill("sell", 100, 1000).explicit_fees == 80
+    assert costs.fill("buy", 100, 1000).slippage_cost == 0

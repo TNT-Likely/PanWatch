@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-qlib/
 venv/
 data/*.db
 data/*.json

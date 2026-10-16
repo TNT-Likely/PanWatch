@@ -4,12 +4,14 @@ import { configuration as enConfiguration } from './locales/en-US/configuration'
 import { navigation as enNavigation } from './locales/en-US/navigation'
 import { settings as enSettings } from './locales/en-US/settings'
 import { bizUi as enBizUi } from './locales/en-US/biz-ui'
+import { qlib as enQlib } from './locales/en-US/qlib'
 import { auth as zhAuth } from './locales/zh-CN/auth'
 import { common as zhCommon } from './locales/zh-CN/common'
 import { configuration as zhConfiguration } from './locales/zh-CN/configuration'
 import { navigation as zhNavigation } from './locales/zh-CN/navigation'
 import { settings as zhSettings } from './locales/zh-CN/settings'
 import { bizUi as zhBizUi } from './locales/zh-CN/biz-ui'
+import { qlib as zhQlib } from './locales/zh-CN/qlib'
 import type { TranslationShape } from './resource-types'
 
 export const zhCN = {
@@ -19,6 +21,7 @@ export const zhCN = {
   navigation: zhNavigation,
   settings: zhSettings,
   bizUi: zhBizUi,
+  qlib: zhQlib,
 } as const
 
 export const enUS = {
@@ -28,6 +31,7 @@ export const enUS = {
   navigation: enNavigation,
   settings: enSettings,
   bizUi: enBizUi,
+  qlib: enQlib,
 } as const satisfies TranslationShape<typeof zhCN>
 
 export const resources = {

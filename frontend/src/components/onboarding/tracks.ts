@@ -7,7 +7,7 @@ export const trackSteps: Record<FeatureTrack, FeatureStep[]> = {
   opportunities: [
     { key: 'filters', path: '/opportunities', selector: '[data-tour="opportunity-filters"]' },
     { key: 'signals', path: '/opportunities', selector: '[data-tour="opportunity-signals"]' },
-    { key: 'evaluation', path: '/evaluations', selector: '[data-tour="evaluations"]' },
+    { key: 'evaluation', path: '/opportunities', selector: '[data-tour="opportunity-research"]' },
   ],
   paper: [
     { key: 'capital', path: '/paper-trading', selector: '[data-tour="paper-capital"]', dialog: '[data-tour="paper-config-dialog"]' },

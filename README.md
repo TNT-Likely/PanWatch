@@ -38,9 +38,9 @@
 
 The screenshots below use the English interface; Simplified Chinese is available throughout the same product surfaces.
 
-| Portfolio · Multi-account overview | Opportunities · AI-scored ideas |
+| Portfolio · Multi-account overview | Opportunities · Qlib research |
 |:---:|:---:|
-| ![Portfolio management](./docs/screenshots/portfolio.png) | ![AI-scored opportunities](./docs/screenshots/opportunities.png) |
+| ![Portfolio management](./docs/screenshots/portfolio.png) | [Qlib workbench setup and workflow](./docs/qlib-guide.md) |
 | **Paper trading · Equity curve and performance** | **Deep stock analysis** |
 | ![Paper trading](./docs/screenshots/papertrading.png) | ![Stock details](./docs/screenshots/stock-detail.png) |
 | **Technical confluence · MACD/RSI/KDJ at a glance** | **Price alerts · Combined conditions** |
@@ -65,14 +65,16 @@ The screenshots below use the English interface; Simplified Chinese is available
 | **AI research** | Follow technical, sentiment, news, and fundamentals analysis through debate, risk review, and a portfolio-manager decision. |
 | **Scheduled agents** | Run pre-market, intraday, and closing workflows on eligible exchange trading days using your configured schedules. |
 | **Price alerts** | Combine conditions with AND/OR logic and configure cooldowns, daily limits, expiration, and notification channels. |
-| **Opportunities** | Review ranked candidates with entry levels, targets, and risk context. |
-| **Paper trading** | Simulate signal-based entries and exits, then track equity and performance. |
+| **Opportunities / Qlib** | Initialize a fixed research pool from existing marketdata or import authorized snapshots, train Alpha158 + LightGBM or Ridge, review models and browse traceable stock ranks. |
+| **Paper trading** | Freeze a reviewed Qlib prediction into a CN next-open virtual decision, trace fills and rejections, and review the independent forward ledger. |
 | **Notifications** | Deliver reports and alerts through Telegram, WeCom, DingTalk, Feishu, Bark, or webhooks. |
 | **Mobile** | Install the PWA on your home screen and use the same workspace on your phone. |
 
 Stock and listed ETF search, watchlists, holdings, price alerts, quotes and candlesticks share the same workflow across mainland China, Hong Kong and US markets. Search by code or name (for example, `510300`, `159915`, `02800` or `SPY`). The asset type is saved with each instrument; select **ETF** for funds whose provider name does not identify them as ETFs.
 
-ETF deep analysis uses fund-specific context and does not substitute company financial statements. Fund holdings, NAV, fees and tracking error are not yet supplied as structured data. Paper trading continues to use its existing market rules and cost model; ETF-specific T+0 exceptions and fee schedules are not modeled.
+ETF deep analysis uses fund-specific context and does not substitute company financial statements. Fund holdings, NAV, fees and tracking error are not yet supplied as structured data. Qlib selection and new automatic paper orders currently support only non-ST CN main-board stocks; ETF/HK/US selection is unavailable. Existing paper positions remain available for manual handling.
+
+Qlib requires a separate pinned worker and authorized data use. Existing Tencent / Eastmoney sources can initialize a 3–20-stock fixed research pool with opt-in daily updates; its snapshot-adjustment proxy and unverified historical status are research-only, not PIT or market-alpha validation. Unavailable official sample data is not downloaded automatically. See the [Qlib guide](docs/qlib-guide.md). Upgrading retires the old selection code and its derived tables, not account, holding or trade ledgers. Legacy paper positions stop following old selection rules; review them manually and back up your database before upgrading.
 
 ## Quick Start
 

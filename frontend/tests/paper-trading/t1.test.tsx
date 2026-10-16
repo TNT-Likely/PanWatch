@@ -36,7 +36,7 @@ beforeEach(async () => {
 afterEach(cleanup)
 
 it('explains the lock and prevents same-day UI sells while allowing settled sells', async () => {
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   const row = (await screen.findByText('今日买入')).closest('tr')!
   const button = within(row).getByRole('button', { name: '平仓' }) as HTMLButtonElement
   expect(button.disabled).toBe(true)
@@ -49,7 +49,7 @@ it('explains the lock and prevents same-day UI sells while allowing settled sell
 })
 
 it('refreshes settlement availability from the server on a new trading date', async () => {
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   await screen.findByText('今日买入')
   vi.mocked(paperTradingApi.listPositions).mockResolvedValue([{ ...locked, sellable_quantity: 100, sell_block_reason: null }])
   await userEvent.click(screen.getByRole('button', { name: '刷新' }))
@@ -60,7 +60,7 @@ it('refreshes settlement availability from the server on a new trading date', as
 
 it('shows the specific server error if settlement changes before the close request', async () => {
   vi.mocked(paperTradingApi.closePosition).mockRejectedValue(new Error('A 股实行 T+1'))
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   const row = (await screen.findByText('昨日买入')).closest('tr')!
   await userEvent.click(within(row).getByRole('button', { name: '平仓' }))
   expect(toast).toHaveBeenCalledWith('A 股实行 T+1', 'error')
@@ -68,6 +68,7 @@ it('shows the specific server error if settlement changes before the close reque
 
 it('explains the lock in English', async () => {
   await i18n.changeLanguage('en-US')
-  render(<MarketColorProvider><PaperTradingPage /></MarketColorProvider>)
+  render(<MemoryRouter><MarketColorProvider><PaperTradingPage /></MarketColorProvider></MemoryRouter>)
   expect(await screen.findByText('T+1: bought today; sell from the next trading day')).toBeTruthy()
 })
+import { MemoryRouter } from 'react-router-dom'
