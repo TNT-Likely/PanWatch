@@ -383,6 +383,15 @@ def import_template(
     if mode not in ("merge", "replace"):
         raise api_error(400, "template_mode_invalid", "mode 仅支持 merge/replace")
     selected = _selected_modules(modules, payload)
+    # Validate the new channel before any import changes (including replace).
+    if "notifications" in selected:
+        from src.platform.notifications.custom_rest import validate_config
+        for channel_data in payload.notify_channels or []:
+            if channel_data.type == "custom_rest":
+                try:
+                    validate_config(channel_data.config or {})
+                except ValueError as exc:
+                    raise api_error(400, "channel_config_invalid", str(exc)) from None
 
     updated_settings = 0
     created_ai_services = 0

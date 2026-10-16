@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from datetime import datetime
 
 import apprise
 import asyncio
@@ -67,6 +68,10 @@ def sanitize_for_telegram(content: str) -> str:
 
 # 渠道类型定义 (label + 表单字段)
 CHANNEL_TYPES = {
+    "custom_rest": {
+        "label": "Custom Webhook / REST",
+        "fields": ["endpoint_url", "token_env", "tls_ca_env", "timeout_seconds"],
+    },
     "telegram": {
         "label": "Telegram",
         "fields": ["bot_token", "chat_id", "proxy"],
@@ -114,7 +119,7 @@ CHANNEL_TYPES = {
 _APPRISE_TYPES = {"telegram", "bark", "dingtalk", "lark", "discord", "pushover"}
 
 # 自定义实现的渠道类型（带代理或特殊需求）
-_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus"}
+_CUSTOM_IMPL_TYPES = {"wecom", "serverchan", "pushplus", "custom_rest"}
 
 # 支持 Markdown 的渠道（不需要 sanitize）
 _MARKDOWN_CHANNELS = {"wecom", "serverchan", "pushplus", "dingtalk", "lark", "discord"}
@@ -210,6 +215,9 @@ class NotifierManager:
 
     def add_channel(self, channel_type: str, config: dict):
         """添加通知渠道"""
+        if channel_type == "custom_rest":
+            from src.platform.notifications.custom_rest import validate_config
+            validate_config(config)
         try:
             if channel_type in _APPRISE_TYPES:
                 url = build_apprise_url(channel_type, config)
@@ -245,6 +253,9 @@ class NotifierManager:
         images: list[str] | None = None,
         *,
         bypass_quiet_hours: bool = False,
+        message_id: str | None = None,
+        occurred_at: datetime | None = None,
+        managed_delivery: bool = False,
     ) -> dict:
         """向所有已注册渠道发送通知，返回结果"""
         if self._channel_count == 0:
@@ -323,29 +334,56 @@ class NotifierManager:
             if not apprise_ok:
                 errors.append(last_err or "Apprise 通知发送失败")
 
+        # One logical event; each destination gets its own stable delivery identity.
+        envelope = None
+        rest_failure = {}
+
         # 自定义渠道（根据渠道类型自动选择格式）
         for ch_type, config in self._custom_channels:
             ch_ok = False
             last_err = ""
-            for attempt in range(0, retry_attempts + 1):
+            delivery = None
+            channel_retries = (0 if managed_delivery else min(retry_attempts, 2)) if ch_type == "custom_rest" else retry_attempts
+            for attempt in range(0, channel_retries + 1):
+                retry_after = 0.0
                 try:
                     # 支持 Markdown 的渠道使用原始内容，否则使用纯文本
                     ch_content = (
                         content if ch_type in _MARKDOWN_CHANNELS else plain_content
                     )
-                    await self._send_custom(ch_type, config, title, ch_content)
+                    if ch_type == "custom_rest":
+                        from src.platform.notifications.custom_rest import destination_envelope, notification_envelope, publish_notification
+                        if envelope is None:
+                            envelope = notification_envelope(title, content, message_id=message_id, occurred_at=occurred_at)
+                        if delivery is None:
+                            # The durable outbox already persisted a per-channel
+                            # ID. Keep it even if an operator repairs the config.
+                            delivery = envelope if managed_delivery else destination_envelope(envelope, config)
+                        await publish_notification(config, delivery)
+                    else:
+                        await self._send_custom(ch_type, config, title, ch_content)
                     ch_ok = True
                     break
                 except Exception as e:
                     last_err = f"{ch_type} 发送失败: {e}"
                     logger.error(last_err)
-                if attempt < retry_attempts:
-                    await _sleep_retry(attempt + 1)
+                    if ch_type == "custom_rest":
+                        from src.platform.notifications.custom_rest import PublishError
+                        retryable = isinstance(e, PublishError) and e.retryable
+                        retry_after = e.retry_after if isinstance(e, PublishError) else 0
+                        rest_failure = {"retryable": retryable, "retry_after": retry_after}
+                        if not retryable:
+                            break
+                if attempt < channel_retries:
+                    if ch_type == "custom_rest":
+                        await asyncio.sleep(max(retry_after, min(max(backoff, 0), 2) * (2 ** attempt)))
+                    else:
+                        await _sleep_retry(attempt + 1)
             if not ch_ok:
                 errors.append(last_err or f"{ch_type} 发送失败")
 
         if errors:
-            return {"success": False, "error": "; ".join(errors)}
+            return {"success": False, "error": "; ".join(errors), **(rest_failure if self._channel_count == 1 else {})}
         return {"success": True}
 
     async def _send_custom(self, ch_type: str, config: dict, title: str, content: str):
