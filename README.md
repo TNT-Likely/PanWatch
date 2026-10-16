@@ -351,3 +351,7 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 ## License
 
 [MIT](LICENSE)
+
+### Global market overview
+
+The homepage shows CSI 300, ChiNext, Hang Seng, Nasdaq Composite and S&P 500 by default. All 29 indicative observations across nine market groups remain available in Customize; saved layouts are preserved, and Reset restores the five-index default. See [coverage, freshness, licensing and fork-sync notes](docs/features/global-overview.md). Public feeds are delayed/daily reference data; redistribution permissions must be reviewed before public or commercial use.

@@ -1,0 +1,55 @@
+name: global overview
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/global-overview.yml'
+      - 'src/platform/marketdata/collectors/global_overview.py'
+      - 'src/modules/market/api/market.py'
+      - 'tests/test_global_overview*.py'
+      - 'tests/fixtures/yahoo_corn*.json'
+      - 'frontend/src/components/GlobalMarketOverview.tsx'
+      - 'frontend/src/pages/Dashboard.tsx'
+      - 'frontend/src/i18n/locales/**/configuration.ts'
+      - 'frontend/packages/api/src/dashboard.ts'
+      - 'frontend/tests/dashboard/**'
+      - 'frontend/tests/api/global-overview.test.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: global-overview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ./packages/marketdata 'fastapi>=0.104.0'
+      - name: Offline overview contract and parser tests
+        run: python -m unittest discover -s tests -p 'test_global_overview*.py' -v
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm exec vitest run tests/dashboard tests/api/global-overview.test.ts
+      - run: pnpm check:i18n
+      - run: pnpm check:market-colors
+      - run: pnpm build

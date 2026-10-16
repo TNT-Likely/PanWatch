@@ -27,6 +27,25 @@ export interface DashboardMarketIndex {
   spark?: number[]
 }
 
+export interface DashboardOverviewInstrument extends DashboardMarketIndex {
+  id: string
+  group: string
+  name_key: string
+  instrument_type: 'index' | 'futures' | 'crypto' | 'yield'
+  currency: string | null
+  unit: string
+  provider: string
+  provider_symbol: string
+  provider_name?: string
+  as_of: string | null
+  history_as_of: string | null
+  timezone: string
+  status: 'delayed' | 'daily' | 'stale' | 'unavailable'
+  change_bps: number | null
+  tenor?: string
+  country?: string
+}
+
 export interface DashboardMarketStatus {
   code: string
   name: string
@@ -226,6 +245,9 @@ export interface DashboardOverviewResponse {
 
 export const dashboardApi = {
   indices: () => fetchAPI<DashboardMarketIndex[]>('/market/indices'),
+  // Cold global refresh fans out to independent public sources; keep its budget
+  // separate from the application's default 20-second request timeout.
+  marketOverview: () => fetchAPI<DashboardOverviewInstrument[]>('/market/overview', { timeoutMs: 60000 }),
 
   marketStatus: () => fetchAPI<DashboardMarketStatus[]>('/stocks/markets/status'),
 
