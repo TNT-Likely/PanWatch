@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.modules.administration.api import (
     auth,
+    oidc,
     channels,
     datasources,
     health,
@@ -21,6 +22,7 @@ from src.modules.administration.api import (
     settings,
 )
 from src.modules.administration.api.auth import get_current_user
+from src.modules.administration.oidc import get_config as get_oidc_config
 from src.modules.administration.api.settings import get_app_version
 from src.modules.notifications import api as notifications_api
 from src.modules.assistant import api as assistant_api
@@ -46,6 +48,8 @@ from src.modules.research.api import (
 )
 from src.modules.strategy.api import factors
 from src.web.response import ResponseWrapperMiddleware
+from src.web.auth_headers import AuthResponseHeadersMiddleware
+from src.web.oidc_streams import OIDCStreamSessionMiddleware
 
 app = FastAPI(
     title="PanWatch API",
@@ -54,9 +58,11 @@ app = FastAPI(
 )
 
 app.add_middleware(ResponseWrapperMiddleware)
+app.add_middleware(AuthResponseHeadersMiddleware)
+app.add_middleware(OIDCStreamSessionMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[get_oidc_config().origin] if get_oidc_config() else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,6 +70,7 @@ app.add_middleware(
 
 # 认证路由（无需登录）
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(oidc.router, prefix="/api/auth/oidc", tags=["auth"])
 # 市场指数（公共数据，无需登录）
 app.include_router(market.router, prefix="/api/market", tags=["market"])
 

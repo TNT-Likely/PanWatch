@@ -267,6 +267,8 @@ def test_export_http_submission_is_202_and_validates_history_and_missing_jobs(co
         assert response.status_code == 202 and response.json()['status'] == 'queued'
         job_id = response.json()['id']; start.assert_called_once_with(job_id)
         assert client.get(f'/assistant/exports/{job_id}').json()['id'] == job_id
+        # Polling a queued export must not restart AI work.
+        start.assert_called_once_with(job_id)
         assert client.get('/assistant/exports', params={'conversation_id': conversation.id}).json()['items'][0]['id'] == job_id
         assert client.get('/assistant/exports', params={'ids': [job_id], 'limit': 50}).status_code == 200
         for params in ({'limit': 51}, {'before_id': 0}, {'ids': [0]}, {'ids': list(range(1, 52))}):
@@ -277,3 +279,55 @@ def test_export_http_submission_is_202_and_validates_history_and_missing_jobs(co
         empty = repo.create_conversation(stock_symbol=None, stock_market=None, initial_context=None)
         assert client.post(f'/assistant/conversations/{empty.id}/export', json={}).status_code == 422
         assert client.post('/assistant/conversations/999999/export', json={}).status_code == 404
+
+
+@pytest.mark.parametrize('status', ['queued', 'running', 'completed', 'failed'])
+def test_export_get_and_head_never_start_work_or_change_saved_state(context, monkeypatch, status):
+    from src.modules.assistant.api import router, get_assistant_service, context_export_runner
+    _, db, repo, conversation = context
+    job = ExportJobRepository(db).create(conversation.id, 'zh-CN')
+    job.status = status
+    job.attempt = 2
+    job.processed_chars = 12
+    job.completed_parts = 1
+    db.commit()
+    before = ExportJobRepository.dto(job).model_dump()
+    start = Mock()
+    monkeypatch.setattr(context_export_runner, 'start', start)
+    app = FastAPI()
+    app.include_router(router, prefix='/assistant')
+    app.dependency_overrides[get_assistant_service] = lambda: AssistantService(repo)
+    with TestClient(app) as client:
+        for _ in range(2):
+            response = client.get(f'/assistant/exports/{job.id}')
+            assert response.status_code == 200
+            assert response.json()['status'] == status
+        for path in (f'/assistant/exports/{job.id}', f'/assistant/exports/{job.id}/retry',
+                     f'/assistant/conversations/{conversation.id}/export'):
+            assert client.head(path).status_code == 405
+    start.assert_not_called()
+    db.refresh(job)
+    assert ExportJobRepository.dto(job).model_dump() == before
+    assert job.attempt == 2 and db.query(NotificationEvent).count() == 0
+
+
+def test_export_retry_post_starts_queued_job(context, monkeypatch):
+    from src.modules.assistant.api import router, get_assistant_service, context_export_runner
+    _, db, repo, conversation = context
+    job = ExportJobRepository(db).create(conversation.id, 'zh-CN')
+    job.status = 'failed'
+    job.error_code = 'assistant_export_timeout'
+    db.commit()
+    start = Mock()
+    monkeypatch.setattr(context_export_runner, 'start', start)
+    app = FastAPI()
+    app.include_router(router, prefix='/assistant')
+    app.dependency_overrides[get_assistant_service] = lambda: AssistantService(repo)
+    with TestClient(app) as client:
+        assert client.get(f'/assistant/exports/{job.id}/retry').status_code == 405
+        start.assert_not_called()
+        response = client.post(f'/assistant/exports/{job.id}/retry')
+        assert response.status_code == 202 and response.json()['status'] == 'queued'
+        start.assert_called_once_with(job.id)
+        assert client.get(f'/assistant/exports/{job.id}').json()['status'] == 'queued'
+        start.assert_called_once_with(job.id)

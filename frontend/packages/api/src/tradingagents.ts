@@ -1,9 +1,10 @@
+import { publicUrl } from './base-path'
 /**
  * TradingAgents 深度分析 API。
  * 复用现有 /api/stocks/:id/agents/:name/trigger,只是 agent_name = "tradingagents"。
  * 进度走新增的 /api/agents/runs/:trace_id/progress。
  */
-import { fetchAPI, getToken } from './client'
+import { fetchAPI, authHeaders, captureAuthRequest, handleUnauthorized } from './client'
 import { interfaceText } from './locale'
 
 export interface TradingAgentsTriggerResult {
@@ -196,11 +197,14 @@ export const tradingAgentsApi = {
 
   /** 把某次深度分析报告导出为 PDF 文件并触发下载(后台直出,不走打印对话框)。 */
   async downloadAnalysisPdf(symbol: string, date: string): Promise<void> {
-    const token = getToken()
     const qs = new URLSearchParams({ stock_symbol: symbol, analysis_date: date })
-    const resp = await fetch(`/api/agents/tradingagents/analysis/pdf?${qs.toString()}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const headers = authHeaders()
+    const sentAuth = captureAuthRequest(headers)
+    const resp = await fetch(publicUrl(`/api/agents/tradingagents/analysis/pdf?${qs.toString()}`), {
+      credentials: 'same-origin',
+      headers,
     })
+    await handleUnauthorized('/agents/tradingagents/analysis/pdf', resp.status, sentAuth)
     if (!resp.ok) {
       let msg = interfaceText(`导出失败 (${resp.status})`, `Export failed (${resp.status})`)
       try {

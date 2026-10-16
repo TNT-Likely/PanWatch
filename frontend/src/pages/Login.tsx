@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { TrendingUp, Lock, Eye, EyeOff, User, Languages } from 'lucide-react'
-import { authApi } from '@panwatch/api'
+import { authApi, rememberPasswordLogin } from '@panwatch/api/auth'
+import { useAuthStatus } from '@/hooks/use-auth-status'
+import AuthStatusFeedback from '@/components/AuthStatusFeedback'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
@@ -19,22 +21,39 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [isSetup, setIsSetup] = useState(false)
-  const [checking, setChecking] = useState(true)
+  const { checking, status, error, retry } = useAuthStatus()
+  const isSetup = !!status?.password_enabled && !status.initialized
+  const [searchParams] = useSearchParams()
+  const oidcError = searchParams.has('oidc_error')
+  const busy = useRef(false)
+  const mounted = useRef(false)
 
   useEffect(() => {
-    // 检查认证状态
-    authApi.status()
-      .then(data => {
-        setIsSetup(!data.initialized)
-        setChecking(false)
-      })
-      .catch(() => setChecking(false))
+    mounted.current = true
+    // Returning with browser Back must leave the SSO button usable again.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) { busy.current = false; setLoading(false) }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => { mounted.current = false; window.removeEventListener('pageshow', onPageShow) }
   }, [])
+
+  const handleOidcLogin = () => {
+    if (busy.current || !status?.oidc_enabled || !status.oidc_login_url) return
+    busy.current = true
+    setLoading(true)
+    try {
+      authApi.startOidcLogin(status.oidc_login_url)
+    } catch {
+      busy.current = false
+      setLoading(false)
+      toast(t('auth:messages.oidcFailed'), 'error')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!username || !password) return
+    if (busy.current || !status?.password_enabled || !username || !password) return
 
     if (isSetup) {
       if (password !== confirmPassword) {
@@ -47,32 +66,28 @@ export default function LoginPage() {
       }
     }
 
+    busy.current = true
     setLoading(true)
     try {
       const data = isSetup
         ? await authApi.setup({ username, password })
         : await authApi.login({ username, password })
 
-      // 保存 token
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('token_expires', data.expires_at)
+      if (!mounted.current) return
+      rememberPasswordLogin(data)
 
       toast(isSetup ? t('auth:messages.setupSuccess') : t('auth:messages.loginSuccess'), 'success')
       navigate('/')
     } catch (e) {
-      toast(e instanceof Error ? e.message : t('auth:messages.operationFailed'), 'error')
+      if (mounted.current) toast(e instanceof Error ? e.message : t('auth:messages.operationFailed'), 'error')
     } finally {
-      setLoading(false)
+      busy.current = false
+      if (mounted.current) setLoading(false)
     }
   }
 
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <span className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-      </div>
-    )
-  }
+  if (checking || error || !status) return <AuthStatusFeedback checking={checking} retry={retry} />
+  if (status.authenticated) return <Navigate to="/" replace />
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -112,7 +127,19 @@ export default function LoginPage() {
             </p>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {oidcError && <p role="alert" className="mb-4 text-sm text-destructive">{t('auth:messages.oidcFailed')}</p>}
+
+          {status.oidc_enabled && (
+            <div className="space-y-3 mb-4">
+              <p className="text-sm text-muted-foreground">{t('auth:oidcHint')}</p>
+              <Button type="button" className="w-full" disabled={loading || !status.oidc_login_url} onClick={handleOidcLogin}>
+                {loading ? t('auth:actions.continuing') : t('auth:actions.oidcLogin')}
+              </Button>
+              {status.password_enabled && <p className="text-center text-xs text-muted-foreground">{t('auth:passwordFallback')}</p>}
+            </div>
+          )}
+
+          {status.password_enabled && <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="login-username">{t('auth:fields.username')}</Label>
               <div className="relative">
@@ -176,7 +203,7 @@ export default function LoginPage() {
                 t('auth:actions.login')
               )}
             </Button>
-          </form>
+          </form>}
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">

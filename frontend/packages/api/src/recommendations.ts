@@ -345,7 +345,6 @@ export const recommendationsApi = {
     status?: 'active' | 'inactive' | 'all'
     min_score?: number
     limit?: number
-    refresh?: boolean
     snapshot_date?: string
     source?: 'market_scan' | 'watchlist' | 'mixed' | 'all'
     holding?: 'held' | 'unheld' | 'all'
@@ -357,7 +356,6 @@ export const recommendationsApi = {
     if (params?.status) q.set('status', params.status)
     if (typeof params?.min_score === 'number') q.set('min_score', String(params.min_score))
     if (typeof params?.limit === 'number') q.set('limit', String(params.limit))
-    if (typeof params?.refresh === 'boolean') q.set('refresh', String(params.refresh))
     if (params?.snapshot_date) q.set('snapshot_date', params.snapshot_date)
     if (params?.source) q.set('source', params.source)
     if (params?.holding) q.set('holding', params.holding)

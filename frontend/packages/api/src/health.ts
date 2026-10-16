@@ -32,7 +32,7 @@ export interface SelfCheckResult {
 export const healthApi = {
   /** 系统自检(数据源/AI/通知连通性)。notifySend=true 会真实发送测试通知。 */
   selfcheck: (notifySend = false) =>
-    fetchAPI<SelfCheckResult>('/health/selfcheck?notify_send=' + notifySend, { timeoutMs: 60000 }),
+    fetchAPI<SelfCheckResult>('/health/selfcheck?notify_send=' + notifySend, { method: 'POST', timeoutMs: 60000 }),
 
   /** 只取可自检项清单(不探测,秒回),用于先渲染再逐项检查。 */
   selfcheckList: () =>
@@ -47,6 +47,6 @@ export const healthApi = {
         encodeURIComponent(keys.join(',')) +
         '&notify_send=' +
         notifySend,
-      { timeoutMs: 30000 },
+      { method: 'POST', timeoutMs: 30000 },
     ),
 }

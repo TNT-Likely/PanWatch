@@ -28,6 +28,7 @@ from src.modules.strategy.factor_eval import evaluate_factor_ic
 from src.modules.research.signal_explain import enrich_signal
 from src.platform.persistence.database import SessionLocal
 from src.platform.persistence.models import StrategySignalRun
+from src.web.errors import api_error
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -136,14 +137,22 @@ def get_entry_candidates(
     status: str = Query("active", description="状态: active/inactive/all"),
     min_score: float = Query(0, ge=0, le=100),
     limit: int = Query(20, ge=1, le=500),
-    refresh: bool = Query(False, description="是否先刷新候选再返回"),
+    refresh: bool = Query(
+        False,
+        deprecated=True,
+        description="仅兼容 false；刷新请使用 POST /api/recommendations/entry-candidates/refresh",
+    ),
     snapshot_date: str = Query("", description="快照日期 YYYY-MM-DD，默认最新"),
     source: str = Query("", description="来源: market_scan/watchlist/mixed/all"),
     holding: str = Query("", description="持仓过滤: held/unheld/all"),
     strategy: str = Query("", description="策略标签过滤"),
 ):
     if refresh:
-        refresh_entry_candidates()
+        raise api_error(
+            400,
+            "entry_candidates_refresh_requires_post",
+            "刷新候选请使用 POST /api/recommendations/entry-candidates/refresh",
+        )
     return list_entry_candidates(
         market=market,
         status=status,
