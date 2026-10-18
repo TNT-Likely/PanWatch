@@ -76,19 +76,19 @@ for _code, _name in [(MarketCode.TSX, "TSX"), (MarketCode.TSXV, "TSX Venture")]:
 
 @dataclass
 class StockData:
-    """标准化行情数据"""
+    """标准化行情数据；None 表示供应商未提供该字段，不等同于零。"""
     symbol: str
     name: str
     market: MarketCode
-    current_price: float
-    change_pct: float       # 涨跌幅 %
-    change_amount: float    # 涨跌额
-    volume: float           # 成交量（手）
-    turnover: float         # 成交额（元）
-    open_price: float
-    high_price: float
-    low_price: float
-    prev_close: float
+    current_price: float | None
+    change_pct: float | None       # 涨跌幅 %
+    change_amount: float | None    # 涨跌额
+    volume: float | None           # 成交量（手）
+    turnover: float | None         # 成交额（元）
+    open_price: float | None
+    high_price: float | None
+    low_price: float | None
+    prev_close: float | None
     timestamp: datetime = field(default_factory=datetime.now)
     currency: str | None = None
     security_type: str | None = None

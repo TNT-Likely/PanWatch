@@ -6,14 +6,14 @@ from pydantic import BaseModel, Field
 
 from src.platform.marketdata.collectors.kline_collector import KlineCollector
 from src.platform.marketdata.models import MarketCode
-from src.web.errors import api_error
+from src.modules.market.api.identity import parse_identity
 
 router = APIRouter()
 
 
 class KlineItem(BaseModel):
     symbol: str = Field(..., description="股票代码")
-    market: str = Field(..., description="市场: CN/HK/US")
+    market: str = Field(..., description="市场: CN/HK/US/TSX/TSXV")
     days: int | None = Field(default=60, description="K线天数")
     interval: str | None = Field(default="1d", description="周期: 1d/1w/1m")
 
@@ -24,18 +24,11 @@ class KlineBatchRequest(BaseModel):
 
 class KlineSummaryItem(BaseModel):
     symbol: str = Field(..., description="股票代码")
-    market: str = Field(..., description="市场: CN/HK/US")
+    market: str = Field(..., description="市场: CN/HK/US/TSX/TSXV")
 
 
 class KlineSummaryBatchRequest(BaseModel):
     items: list[KlineSummaryItem]
-
-
-def _parse_market(market: str) -> MarketCode:
-    try:
-        return MarketCode(market)
-    except ValueError:
-        raise api_error(400, "market_unsupported", f"不支持的市场: {market}")
 
 
 def _serialize_klines(klines) -> list[dict]:
@@ -104,9 +97,9 @@ def _aggregate_klines(klines, interval: str) -> list:
 @router.get("/{symbol}")
 def get_klines(symbol: str, market: str = "CN", days: int = 60, interval: str = "1d"):
     """获取单只股票K线数据"""
-    market_code = _parse_market(market)
+    market_code, canonical = parse_identity(symbol, market)
     collector = KlineCollector(market_code)
-    klines = collector.get_klines(symbol, days=days)
+    klines = collector.get_klines(canonical, days=days)
     klines = _aggregate_klines(klines, interval)
     return {
         "symbol": symbol,
@@ -123,8 +116,9 @@ def get_klines_batch(payload: KlineBatchRequest):
     if not payload.items:
         return []
 
-    keys = [(item.symbol, _parse_market(item.market), item.days or 60, item.interval or "1d")
-            for item in payload.items]
+    identities = [parse_identity(item.symbol, item.market) for item in payload.items]
+    keys = [(canonical, market, item.days or 60, item.interval or "1d")
+            for item, (market, canonical) in zip(payload.items, identities)]
     def load_one(key):
         symbol, market, days, interval = key
         klines = KlineCollector(market).get_klines(symbol, days=days)
@@ -135,15 +129,16 @@ def get_klines_batch(payload: KlineBatchRequest):
     unique = list(dict.fromkeys(keys))
     with ThreadPoolExecutor(max_workers=min(5, len(unique))) as pool:
         rows = dict(zip(unique, pool.map(load_one, unique)))
-    return [rows[key] for key in keys]
+    return [{**rows[key], "symbol": item.symbol}
+            for item, key in zip(payload.items, keys)]
 
 
 @router.get("/{symbol}/summary")
 def get_kline_summary(symbol: str, market: str = "CN"):
     """获取单只股票K线摘要"""
-    market_code = _parse_market(market)
+    market_code, canonical = parse_identity(symbol, market)
     collector = KlineCollector(market_code)
-    summary = collector.get_kline_summary(symbol)
+    summary = collector.get_kline_summary(canonical)
     return {
         "symbol": symbol,
         "market": market_code.value,
@@ -157,7 +152,7 @@ def get_kline_summary_batch(payload: KlineSummaryBatchRequest):
     if not payload.items:
         return []
 
-    market_codes = [_parse_market(item.market) for item in payload.items]
+    identities = [parse_identity(item.symbol, item.market) for item in payload.items]
 
     def load_one(symbol: str, market_code: MarketCode):
         try:
@@ -171,8 +166,9 @@ def get_kline_summary_batch(payload: KlineSummaryBatchRequest):
         }
 
     # 与前端原先的并发上限保持一致，减少批量接口对数据源的瞬时压力。
-    keys = [(item.symbol, market) for item, market in zip(payload.items, market_codes)]
+    keys = [(canonical, market) for market, canonical in identities]
     unique_keys = list(dict.fromkeys(keys))
     with ThreadPoolExecutor(max_workers=min(5, len(unique_keys))) as executor:
         futures = {key: executor.submit(load_one, *key) for key in unique_keys}
-        return [futures[key].result() for key in keys]
+        return [{**futures[key].result(), "symbol": item.symbol}
+                for item, key in zip(payload.items, keys)]

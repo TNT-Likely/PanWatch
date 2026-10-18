@@ -148,6 +148,9 @@ class DailyReportAgent(BaseAgent):
         def safe_num(value, default=0):
             return value if value is not None else default
 
+        def format_quote(value, fmt=".2f", suffix=""):
+            return "不可用" if value is None else f"{value:{fmt}}{suffix}"
+
         # 构建用户输入：结构化的市场数据
         lines = []
         lines.append(f"## 日期：{datetime.now().strftime('%Y-%m-%d')}\n")
@@ -195,28 +198,29 @@ class DailyReportAgent(BaseAgent):
 
             # 基本行情
             if quote:
-                change_pct = safe_num(quote.change_pct)
-                direction = "↑" if change_pct > 0 else "↓" if change_pct < 0 else "→"
+                change_pct = quote.change_pct
+                direction = "" if change_pct is None else "↑" if change_pct > 0 else "↓" if change_pct < 0 else "→"
 
-                current_price = safe_num(quote.current_price)
-                high_price = safe_num(quote.high_price)
-                low_price = safe_num(quote.low_price)
-                prev_close = safe_num(quote.prev_close, 1)  # 避免除零
-                turnover = safe_num(quote.turnover)
+                current_price = quote.current_price
+                high_price = quote.high_price
+                low_price = quote.low_price
+                prev_close = quote.prev_close
+                turnover = quote.turnover
 
                 lines.append(
-                    f"- 今日：{current_price:.2f} {direction} {change_pct:+.2f}%"
+                    f"- 今日：{format_quote(current_price)} {direction} {format_quote(change_pct, '+.2f', '%')}"
                 )
                 amplitude = (
-                    (high_price - low_price) / prev_close * 100 if prev_close > 0 else 0
+                    (high_price - low_price) / prev_close * 100
+                    if high_price is not None and low_price is not None and prev_close is not None and prev_close > 0
+                    else None
                 )
                 lines.append(
-                    f"- 振幅：{amplitude:.1f}%  最高{high_price:.2f} 最低{low_price:.2f}"
+                    f"- 振幅：{format_quote(amplitude, '.1f', '%')}  最高{format_quote(high_price)} 最低{format_quote(low_price)}"
                 )
-                if w.market.value not in CANADIAN_MARKETS or turnover > 0:
-                    lines.append(f"- 成交额：{turnover / 1e8:.2f}亿")
+                lines.append(f"- 成交额：{format_quote(turnover / 1e8 if turnover is not None else None, '.2f', '亿')}")
             else:
-                current_price = 0
+                current_price = None
                 lines.append("- 今日：行情数据缺失")
 
             # 技术指标
@@ -356,16 +360,18 @@ class DailyReportAgent(BaseAgent):
 
             if position:
                 total_qty = position.get("total_quantity")
-                avg_cost = safe_num(position.get("avg_cost"), 1)
+                avg_cost = position.get("avg_cost")
                 pnl_pct = (
-                    (current_price - avg_cost) / avg_cost * 100 if avg_cost > 0 else 0
+                    (current_price - avg_cost) / avg_cost * 100
+                    if current_price is not None and avg_cost is not None and avg_cost > 0
+                    else None
                 )
                 style_labels = {"short": "短线", "swing": "波段", "long": "长线"}
                 style = style_labels.get(position.get("trading_style", "swing"), "波段")
                 if total_qty is not None:
-                    pnl_text = "不可用（行情缺失）" if w.market.value in CANADIAN_MARKETS and not quote else f"{pnl_pct:+.1f}%"
+                    pnl_text = "不可用（行情或成本缺失）" if pnl_pct is None else f"{pnl_pct:+.1f}%"
                     lines.append(
-                        f"- 持仓：{total_qty}股 成本{avg_cost:.2f} 浮盈{pnl_text}（{style}）"
+                        f"- 持仓：{total_qty}股 成本{format_quote(avg_cost)} 浮盈{pnl_text}（{style}）"
                     )
 
             kline_history = stock_ctx.get("kline_history") or {}

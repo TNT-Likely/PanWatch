@@ -928,15 +928,15 @@ async def intraday_snapshot(db: Session = Depends(get_db)):
         for market, quote in batch:
             positions = portfolio.get_positions_for_stock(quote.symbol, market)
             cost = positions[0].cost_price if positions else None
-            change = quote.change_pct or 0
+            change = quote.change_pct
             rows.append({
                 "symbol": quote.symbol, "name": quote.name, "market": market.value,
                 "current_price": quote.current_price, "change_pct": change,
                 "open_price": quote.open_price, "high_price": quote.high_price, "low_price": quote.low_price,
                 "volume": quote.volume, "turnover": quote.turnover,
-                "alert_type": ("急涨" if change > 0 else "急跌") if abs(change) >= threshold else None,
+                "alert_type": ("急涨" if change > 0 else "急跌") if change is not None and abs(change) >= threshold else None,
                 "has_position": bool(positions), "cost_price": cost,
-                "pnl_pct": (quote.current_price - cost) / cost * 100 if cost and quote.current_price else None,
+                "pnl_pct": (quote.current_price - cost) / cost * 100 if cost and quote.current_price is not None else None,
                 "trading_style": positions[0].trading_style if positions else None,
             })
     payload = {"stocks": rows, "available_funds": portfolio.total_available_funds}

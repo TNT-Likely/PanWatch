@@ -206,6 +206,9 @@ class IntradayMonitorAgent(BaseAgent):
                 return "N/A"
             return f"{value:.{precision}f}"
 
+        def format_quote(value, fmt=".2f", suffix=""):
+            return "不可用" if value is None else f"{value:{fmt}}{suffix}"
+
         stock: StockData | None = data.get("stock_data")
         if not stock:
             return system_prompt, "无股票数据"
@@ -218,32 +221,25 @@ class IntradayMonitorAgent(BaseAgent):
         lines.append(f"## 时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
 
         # 股票行情
-        current_price = safe_num(stock.current_price)
-        change_pct = safe_num(stock.change_pct)
-        change_amount = safe_num(stock.change_amount)
-        open_price = safe_num(stock.open_price)
-        high_price = safe_num(stock.high_price)
-        low_price = safe_num(stock.low_price)
-        prev_close = safe_num(stock.prev_close)
-        volume = safe_num(stock.volume)
-        turnover = safe_num(stock.turnover)
+        current_price = stock.current_price
+        change_pct = stock.change_pct
+        volume = stock.volume
+        turnover = stock.turnover
 
         lines.append("## 股票行情")
         lines.append(f"- 股票：{stock.name}（{stock.symbol}）")
         if stock.market.value in CANADIAN_MARKETS:
             lines.append(canadian_quote_note(stock.market, stock.symbol, stock))
-        lines.append(f"- 现价：{current_price:.2f}")
-        lines.append(f"- 涨跌幅：{change_pct:+.2f}%")
-        lines.append(f"- 涨跌额：{change_amount:+.2f}")
-        lines.append(f"- 今开：{open_price:.2f}")
-        lines.append(f"- 最高：{high_price:.2f}")
-        lines.append(f"- 最低：{low_price:.2f}")
-        lines.append(f"- 昨收：{prev_close:.2f}")
-        if volume > 0:
-            volume_unit = "股" if stock.market.value in CANADIAN_MARKETS else "手"
-            lines.append(f"- 成交量：{volume:.0f} {volume_unit}")
-        if turnover > 0:
-            lines.append(f"- 成交额：{turnover / 10000:.0f} 万")
+        lines.append(f"- 现价：{format_quote(current_price)}")
+        lines.append(f"- 涨跌幅：{format_quote(change_pct, '+.2f', '%')}")
+        lines.append(f"- 涨跌额：{format_quote(stock.change_amount, '+.2f')}")
+        lines.append(f"- 今开：{format_quote(stock.open_price)}")
+        lines.append(f"- 最高：{format_quote(stock.high_price)}")
+        lines.append(f"- 最低：{format_quote(stock.low_price)}")
+        lines.append(f"- 昨收：{format_quote(stock.prev_close)}")
+        volume_unit = "股" if stock.market.value in CANADIAN_MARKETS else "手"
+        lines.append(f"- 成交量：{format_quote(volume, '.0f', ' ' + volume_unit)}")
+        lines.append(f"- 成交额：{format_quote(turnover / 10000 if turnover is not None else None, '.0f', ' 万')}")
 
         # 系统阈值（帮助 AI 做出更稳定的“提醒/不提醒”判断）
         # 价格异动改为相对个股自身波动率(ATR%)的自适应阈值,固定阈值作为下限/兜底。
@@ -274,7 +270,7 @@ class IntradayMonitorAgent(BaseAgent):
         lines.append(f"- 量能异动：量比 ≥ {self.volume_alert_ratio:.1f}")
         lines.append(f"- 止损预警：浮亏 ≤ {self.stop_loss_warning:.1f}%")
         lines.append(f"- 止盈提醒：浮盈 ≥ {self.take_profit_warning:.1f}%")
-        price_hit = (
+        price_hit = "无法判断（涨跌幅缺失）" if change_pct is None else (
             "触发"
             if is_abnormal_move(
                 change_pct,
@@ -284,7 +280,7 @@ class IntradayMonitorAgent(BaseAgent):
             )
             else "未触发"
         )
-        lines.append(f"- 当前涨跌幅：{change_pct:+.2f}%（{price_hit}）")
+        lines.append(f"- 当前涨跌幅：{format_quote(change_pct, '+.2f', '%')}（{price_hit}）")
 
         symbol_ctx = data.get("symbol_context") or {}
         quality = (symbol_ctx.get("data_quality") or {})
@@ -386,15 +382,18 @@ class IntradayMonitorAgent(BaseAgent):
             atr_pct_val = kline.get("atr_pct")
             if atr_pct_val is not None:
                 atr_line = f"波动率：ATR={format_num(atr_val)}（ATR%={format_num(atr_pct_val)}%）"
-                atr_line += (
-                    f"，今日涨跌幅{change_pct:+.2f}% "
-                    + (
-                        "超出"
-                        if abs(change_pct) >= adaptive_threshold
-                        else "处于"
+                if change_pct is None:
+                    atr_line += "，今日涨跌幅不可用，无法判断是否触发异动阈值"
+                else:
+                    atr_line += (
+                        f"，今日涨跌幅{change_pct:+.2f}% "
+                        + (
+                            "超出"
+                            if abs(change_pct) >= adaptive_threshold
+                            else "处于"
+                        )
+                        + f"自适应异动阈值{adaptive_threshold:.2f}%"
                     )
-                    + f"自适应异动阈值{adaptive_threshold:.2f}%"
-                )
                 lines.append(f"- {atr_line}")
 
             # 均线
@@ -475,14 +474,14 @@ class IntradayMonitorAgent(BaseAgent):
         if positions:
             lines.append(f"\n## 持仓情况（共 {len(positions)} 个账户）")
             for i, pos in enumerate(positions, 1):
-                cost_price = safe_num(pos.cost_price, 1)
+                cost_price = pos.cost_price
                 pnl_pct = (
                     (current_price - cost_price) / cost_price * 100
-                    if cost_price > 0
-                    else 0
+                    if current_price is not None and cost_price is not None and cost_price > 0
+                    else None
                 )
                 style_label = style_labels.get(pos.trading_style, "波段")
-                market_value = current_price * pos.quantity
+                market_value = current_price * pos.quantity if current_price is not None else None
                 # 找到对应账户的可用资金
                 acc_funds = 0
                 for acc in context.portfolio.accounts:
@@ -492,18 +491,20 @@ class IntradayMonitorAgent(BaseAgent):
 
                 lines.append(f"\n### 持仓 {i}：{pos.account_name}")
                 lines.append(f"- 交易风格：{style_label}")
-                lines.append(f"- 成本价：{cost_price:.2f}")
+                lines.append(f"- 成本价：{format_quote(cost_price)}")
                 lines.append(f"- 持仓量：{pos.quantity} 股")
                 if stock.market.value in CANADIAN_MARKETS:
                     lines.append(f"- 持仓市值：{amount_text(market_value, quote_currency(stock.market, stock))}")
                 else:
-                    lines.append(f"- 持仓市值：{market_value:.0f} 元")
+                    lines.append(f"- 持仓市值：{format_quote(market_value, '.0f', ' 元')}")
                 pnl_note = ""
-                if pnl_pct <= self.stop_loss_warning:
+                if pnl_pct is None:
+                    pnl_note = "（行情或成本缺失，无法判断止损止盈）"
+                elif pnl_pct <= self.stop_loss_warning:
                     pnl_note = "（触发止损预警）"
                 elif pnl_pct >= self.take_profit_warning:
                     pnl_note = "（触发止盈提醒）"
-                lines.append(f"- 浮动盈亏：{pnl_pct:+.1f}%{pnl_note}")
+                lines.append(f"- 浮动盈亏：{format_quote(pnl_pct, '+.1f', '%')}{pnl_note}")
                 lines.append(f"- 账户可用：{acc_funds:.0f} 元")
         else:
             lines.append("\n## 未持仓（仅关注）")
@@ -743,9 +744,9 @@ class IntradayMonitorAgent(BaseAgent):
             suggestion.get("risks") if isinstance(suggestion.get("risks"), list) else []
         )
         price = (
-            f"{stock.current_price:.2f}" if getattr(stock, "current_price", None) else "N/A"
+            f"{stock.current_price:.2f}" if stock.current_price is not None else "N/A"
         )
-        chg = f"{(stock.change_pct or 0):+.2f}%"
+        chg = f"{stock.change_pct:+.2f}%" if stock.change_pct is not None else "N/A"
         lines = (
             [
                 f"{stock.name} ({stock.symbol})",
@@ -911,10 +912,11 @@ class IntradayMonitorAgent(BaseAgent):
         )
 
         # 构建标题
+        change_text = f"{stock.change_pct:+.2f}%" if stock.change_pct is not None else "N/A"
         title = (
-            f"[Intraday monitor] {stock.name} {stock.change_pct:+.2f}%"
+            f"[Intraday monitor] {stock.name} {change_text}"
             if context.report_language == "en-US"
-            else f"【{self.display_name}】{stock.name} {stock.change_pct:+.2f}%"
+            else f"【{self.display_name}】{stock.name} {change_text}"
         )
 
         # 附 AI 模型信息

@@ -127,3 +127,20 @@ def test_manual_scan_routes_are_removed():
     assert "/intraday/scan" not in paths
     assert "/intraday/analysis" not in paths
     assert "/intraday/snapshot" in paths
+
+
+@pytest.mark.parametrize('price,change,expected_pnl', [(None, None, None), (0.0, 0.0, -100.0)])
+def test_snapshot_preserves_missing_values_and_real_zero(
+    db, snapshot_setup, monkeypatch, price, change, expected_pnl,
+):
+    from src.platform.marketdata import marketdata_client
+
+    quote = SimpleNamespace(symbol='600519', name='Test', current_price=price,
+                            change_pct=change, open_price=None, high_price=None,
+                            low_price=None, volume=None, turnover=None)
+    monkeypatch.setattr(marketdata_client, 'md_stock_data', lambda *_: [quote])
+    row = asyncio.run(agents.intraday_snapshot(db=db))['stocks'][0]
+    assert row['current_price'] == price
+    assert row['change_pct'] == change
+    assert row['pnl_pct'] == expected_pnl
+    assert row['alert_type'] is None

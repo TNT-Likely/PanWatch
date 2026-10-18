@@ -167,9 +167,9 @@ def md_stock_data(symbols: list[str], market: str) -> list:
     quotes = get_market_data().quotes(syms, market=market)
     return [StockData(
         symbol=q.symbol, name=q.name or "", market=MarketCode(q.market),
-        current_price=q.current_price or 0.0, change_pct=q.change_pct or 0.0,
-        change_amount=q.change_amount or 0.0, volume=q.volume or 0.0,
-        turnover=q.turnover or 0.0, open_price=q.open_price or 0.0,
-        high_price=q.high_price or 0.0, low_price=q.low_price or 0.0,
-        prev_close=q.prev_close or 0.0, currency=q.currency, security_type=q.security_type,
+        current_price=q.current_price, change_pct=q.change_pct,
+        change_amount=q.change_amount, volume=q.volume,
+        turnover=q.turnover, open_price=q.open_price,
+        high_price=q.high_price, low_price=q.low_price,
+        prev_close=q.prev_close, currency=q.currency, security_type=q.security_type,
         source_timestamp=q.source_timestamp, source=q.source, delayed=q.delayed) for q in quotes]

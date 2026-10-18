@@ -144,7 +144,8 @@ class MarketData:
     def klines(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> list:
         """按 priority 主备取日K(不足则试下一个,全不足取最长)。返回 list[Bar]。
         不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""
-        req = Request(symbols=(symbol,), market=market, timeframe="day", limit=days,
+        canonical = Symbol.parse(symbol, market)
+        req = Request(symbols=(canonical.code,), market=canonical.market.value, timeframe="day", limit=days,
                       extra=(("days", days),))
         resp = self._kline_engine.fetch(req, min_count=min_count, cache_ttl_sec=0)
         return resp.data or []

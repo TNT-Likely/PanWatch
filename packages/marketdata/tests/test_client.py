@@ -36,3 +36,27 @@ def test_health_after_fetch():
     md = _md()
     md.quotes(["600519"], market="CN")
     assert md.health()["fake"]["success_rate"] == 1.0
+
+
+def test_klines_normalizes_before_provider_request():
+    from types import SimpleNamespace
+    from marketdata.symbol import Market, Symbol
+    md = _md()
+    requests = []
+    md._kline_engine = SimpleNamespace(fetch=lambda req, **kw: (
+        requests.append(req), SimpleNamespace(data=[])
+    )[1])
+    for raw, market, expected in [('RY.TO', 'TSX', 'RY.TO'), ('rck.v', 'TSXV', 'RCK.V')]:
+        assert md.klines(raw, market=market, days=30) == []
+        req = requests[-1]
+        assert Symbol(Market(req.market), req.symbols[0]).to_yfinance() == expected
+        assert req.limit == 30
+
+
+def test_klines_rejects_conflicting_market_before_fetch():
+    import pytest
+    from types import SimpleNamespace
+    md = _md()
+    md._kline_engine = SimpleNamespace(fetch=lambda *a, **kw: pytest.fail('must not fetch'))
+    with pytest.raises(ValueError, match='conflicts'):
+        md.klines('RY.TO', market='US')
