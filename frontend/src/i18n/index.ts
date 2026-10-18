@@ -1,3 +1,4 @@
+import { publicUrl } from '@panwatch/api/base-path'
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
@@ -46,7 +47,7 @@ function applyLocale(locale: string) {
     document.title = metadata.pageTitle
     document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', metadata.description)
     document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', metadata.shortTitle)
-    document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', normalized === 'zh-CN' ? '/manifest.zh-CN.json' : '/manifest.json')
+    document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', publicUrl(normalized === 'zh-CN' ? '/manifest.zh-CN.json' : '/manifest.json'))
   }
   if (typeof window !== 'undefined') window.localStorage.setItem(LOCALE_STORAGE_KEY, normalized)
 }

@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  // Resolve bundled assets against the runtime <base>, including deep links.
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {

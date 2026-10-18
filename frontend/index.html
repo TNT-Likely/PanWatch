@@ -2,16 +2,18 @@
 <html lang="en-US">
   <head>
     <meta charset="UTF-8" />
+    <base href="/" data-panwatch-base>
+    <meta name="panwatch-base-path" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>PanWatch | AI stock monitoring</title>
 
     <!-- PWA -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PanWatch" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
 
     <!-- Meta -->
     <meta name="description" content="Self-hosted AI stock monitoring for A-shares, Hong Kong, and U.S. markets with TradingAgents." />
@@ -28,7 +30,7 @@
       // 注册 Service Worker
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register(new URL('sw.js', document.baseURI), { scope: new URL('./', document.baseURI).pathname })
             .then((reg) => console.log('SW registered:', reg.scope))
             .catch((err) => console.log('SW registration failed:', err));
         });

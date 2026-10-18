@@ -1,7 +1,7 @@
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import Markdown from '@panwatch/base-ui/components/markdown'
 import remarkGfm from 'remark-gfm'
 import {
   ArrowLeft,
@@ -112,7 +112,8 @@ export default function AnalysisDetailPage() {
   const analysisT = t as unknown as (key: string, options?: Record<string, unknown>) => string
   const { symbol = '', date = '' } = useParams()
   const navigate = useNavigate()
-  const [result, setResult] = useState<DeepAnalysisResult | null>(null)
+  const [loadedReport, setLoadedReport] = useState<{ result: DeepAnalysisResult; symbol: string; date: string } | null>(null)
+  const result = loadedReport?.result ?? null
   const [history, setHistory] = useState<HistoryComparisonResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeId, setActiveId] = useState('')
@@ -143,8 +144,8 @@ export default function AnalysisDetailPage() {
     setLoading(true)
     tradingAgentsApi
       .getAnalysisByDate(symbol, date)
-      .then(setResult)
-      .catch(() => setResult(null))
+      .then(result => setLoadedReport(result ? { result, symbol, date } : null))
+      .catch(() => setLoadedReport(null))
       .finally(() => setLoading(false))
     tradingAgentsApi
       .getHistoryComparison(symbol, inferMarket(symbol), 90)
@@ -231,10 +232,9 @@ export default function AnalysisDetailPage() {
   // markdown 标题渲染:挂上与目录一致的锚点 id + 顶部留白(避开吸顶导航)
   const headingComponents = (sectionId: string) => {
     const make = (Tag: 'h2' | 'h3' | 'h4') =>
-      function Heading({ children }: { children?: ReactNode }) {
-        const id = `h-${sectionId}-${slugify(nodeText(children))}`
+      function Heading({ children, id, className, node: _node, ...props }: ComponentPropsWithoutRef<'h2'> & { node?: unknown }) {
         return (
-          <Tag id={id} className="scroll-mt-24">
+          <Tag {...props} id={id ?? `h-${sectionId}-${slugify(nodeText(children))}`} className={['scroll-mt-24', className].filter(Boolean).join(' ')}>
             {children}
           </Tag>
         )
@@ -365,9 +365,9 @@ export default function AnalysisDetailPage() {
                   {s.title}
                 </h2>
                 <div className="prose prose-base dark:prose-invert max-w-none leading-relaxed prose-headings:mt-6 prose-headings:mb-2 prose-h2:text-[16px] prose-h3:text-[15px] prose-h4:text-[14px] prose-h2:font-semibold prose-h3:font-semibold prose-p:my-3 prose-p:text-foreground/90 prose-li:my-1 prose-table:my-4 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-strong:text-foreground">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={headingComponents(s.id)}>
+                  <Markdown documentId={JSON.stringify(['analysis', loadedReport?.symbol, loadedReport?.date, s.id])} remarkPlugins={[remarkGfm]} components={headingComponents(s.id)}>
                     {s.markdown}
-                  </ReactMarkdown>
+                  </Markdown>
                 </div>
               </section>
             )

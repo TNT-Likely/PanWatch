@@ -1,3 +1,4 @@
+import { publicUrl } from '@panwatch/api/base-path'
 import { useEffect, useState } from 'react'
 import { Copy, Plus, Trash2, KeyRound } from 'lucide-react'
 import { patsApi, type PatItem } from '@panwatch/api'
@@ -78,7 +79,7 @@ export default function PatSection({ className = 'lg:col-span-12' }: { className
             <KeyRound className="w-3.5 h-3.5" /> {t('configuration:pat.title')}
           </h3>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {t('configuration:pat.descriptionBeforeEndpoint')}<span className="font-mono">/mcp</span>{t('configuration:pat.descriptionAfterEndpoint')}
+            {t('configuration:pat.descriptionBeforeEndpoint')}<span className="font-mono">{publicUrl('/mcp')}</span>{t('configuration:pat.descriptionAfterEndpoint')}
           </p>
         </div>
       </div>

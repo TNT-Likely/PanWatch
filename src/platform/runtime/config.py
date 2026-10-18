@@ -4,7 +4,8 @@
 """
 
 from dataclasses import dataclass, field
-from pydantic import AliasChoices, Field, model_validator
+from typing import Literal
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from src.platform.marketdata.models import MarketCode
@@ -13,6 +14,17 @@ from src.platform.marketdata.instruments import infer_asset_type
 
 class Settings(BaseSettings):
     """环境变量配置"""
+
+    # Public URL path. One build supports root or a nested reverse-proxy prefix.
+    panwatch_base_path: str = ""
+    panwatch_proxy_mode: Literal["preserve", "strip"] = "preserve"
+
+    @field_validator("panwatch_base_path")
+    @classmethod
+    def validate_base_path(cls, value: str) -> str:
+        from src.web.public_path import normalize_base_path
+
+        return normalize_base_path(value)
 
     # AI
     ai_base_url: str = "https://open.bigmodel.cn/api/paas/v4"

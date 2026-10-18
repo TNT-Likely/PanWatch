@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import Markdown from '@panwatch/base-ui/components/markdown'
 import { insightApi, type AddPositionEvalResult } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -284,7 +284,7 @@ export default function AddPositionCalculator({
                 <span className="text-[10px] text-muted-foreground">{tr('aiResult')}</span>
               </div>
               <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[12px] leading-relaxed [&_p]:my-1 [&_ul]:my-1">
-                <ReactMarkdown>{aiResult.content}</ReactMarkdown>
+                <Markdown>{aiResult.content}</Markdown>
               </div>
             </div>
           )}
