@@ -9,7 +9,7 @@ import { onboardingApi, type SetupStatus } from '@panwatch/api/onboarding'
 
 vi.mock('@panwatch/api', () => ({
   dashboardApi: {
-    indices: vi.fn(), intradaySnapshot: vi.fn(), overview: vi.fn(), portfolioSummary: vi.fn(),
+    indices: vi.fn(), marketOverview: vi.fn(), intradaySnapshot: vi.fn(), overview: vi.fn(), portfolioSummary: vi.fn(),
     marketStatus: vi.fn(), brief: vi.fn(), curate: vi.fn(),
   },
   portfolioApi: { diagnostics: vi.fn(), benchmark: vi.fn(), attribution: vi.fn() },
