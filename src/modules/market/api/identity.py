@@ -20,5 +20,3 @@ def parse_identity(symbol: str, market: str) -> tuple[MarketCode, str]:
     except ValueError as exc:
         raise api_error(400, "stock_symbol_invalid", "股票代码格式无效或与市场不匹配") from exc
     return market_code, canonical
-
-
