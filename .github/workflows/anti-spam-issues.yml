@@ -8,9 +8,11 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
-concurrency:
-  group: anti-spam-issues
-  cancel-in-progress: false
+# No concurrency group on purpose: a shared group cancels the pending run
+# when a newer issue event arrives, which dropped triage for issues opened
+# in rapid succession (#238 was skipped while #239/#240 were handled).
+# Parallel runs are safe — each triages a distinct issue, and close/lock
+# races are tolerated by the script.
 
 permissions:
   issues: write

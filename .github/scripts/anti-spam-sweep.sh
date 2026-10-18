@@ -146,10 +146,17 @@ triage_issue() {
     if [[ "$DRY_RUN" == "1" ]]; then
       log_summary "  would comment, close and lock"
     else
-      gh issue comment "$n" --repo "$REPO" --body "$WARN_COMMENT" >/dev/null
-      gh issue close "$n" --repo "$REPO" --reason "not planned" >/dev/null
-      gh issue lock "$n" --repo "$REPO" --reason spam >/dev/null
-      log_summary "  commented, closed, locked"
+      gh issue comment "$n" --repo "$REPO" --body "$WARN_COMMENT" >/dev/null 2>&1 \
+        || log_summary "  ⚠️ warning comment failed (already present or race)"
+      if gh issue close "$n" --repo "$REPO" --reason "not planned" >/dev/null 2>&1; then
+        if gh issue lock "$n" --repo "$REPO" --reason spam >/dev/null 2>&1; then
+          log_summary "  commented, closed, locked"
+        else
+          log_summary "  closed; lock skipped (already locked or race)"
+        fi
+      else
+        log_summary "  close skipped (already handled by a parallel run)"
+      fi
     fi
   else
     log_summary "  already $state/locked — triage skipped"
