@@ -1,0 +1,38 @@
+name: Anti-spam issues
+
+on:
+  issues:
+    types: [opened, reopened]
+  schedule:
+    # Fallback sweep for issues opened while workflows were unavailable.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: anti-spam-issues
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Triage malware spam issues
+        env:
+          # SPAM_PAT: classic PAT with `user` scope, enables blocking authors
+          # and minimizing comments. Falls back to GITHUB_TOKEN (close/lock only).
+          GH_TOKEN: ${{ secrets.SPAM_PAT || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ "${{ github.event_name }}" == "issues" ]]; then
+            bash .github/scripts/anti-spam-sweep.sh --issue "${{ github.event.issue.number }}"
+          else
+            bash .github/scripts/anti-spam-sweep.sh --sweep
+          fi
