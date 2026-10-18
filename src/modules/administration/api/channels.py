@@ -7,6 +7,15 @@ from src.platform.persistence.models import NotifyChannel
 from src.platform.notifications.notifier import NotifierManager, CHANNEL_TYPES
 from src.web.errors import api_error
 
+def validate_channel_config(channel_type: str, config: dict):
+    if channel_type == "custom_rest":
+        from src.platform.notifications.custom_rest import validate_config
+        try:
+            validate_config(config)
+        except ValueError as exc:
+            raise api_error(400, "channel_config_invalid", str(exc)) from None
+
+
 router = APIRouter()
 
 
@@ -51,6 +60,7 @@ def list_channel_types():
 
 @router.post("", response_model=ChannelResponse)
 def create_channel(body: ChannelCreate, db: Session = Depends(get_db)):
+    validate_channel_config(body.type, body.config)
     if body.is_default:
         db.query(NotifyChannel).update({"is_default": False})
     channel = NotifyChannel(**body.model_dump())
@@ -67,6 +77,7 @@ def update_channel(channel_id: int, body: ChannelUpdate, db: Session = Depends(g
         raise api_error(404, "channel_not_found", "通知渠道不存在")
 
     data = body.model_dump(exclude_unset=True)
+    validate_channel_config(data.get("type", channel.type), data.get("config", channel.config) or {})
     if data.get("is_default"):
         db.query(NotifyChannel).update({"is_default": False})
 

@@ -107,11 +107,24 @@ interface ChannelFieldDef {
   placeholderKey: string
   secret?: boolean
   required?: boolean
+  inputType?: 'url' | 'number'
+  min?: number
+  max?: number
 }
 
 interface ChannelTypeDef { labelKey: string; fields: ChannelFieldDef[] }
 
 const CHANNEL_TYPE_FIELDS: Record<string, ChannelTypeDef> = {
+  custom_rest: {
+    labelKey: 'customRest',
+    fields: [
+      { key: 'endpoint_url', labelKey: 'restEndpoint', placeholderKey: 'restEndpoint', required: true, inputType: 'url' },
+      { key: 'token_env', labelKey: 'restTokenEnv', placeholderKey: 'restTokenEnv' },
+      { key: 'tls_ca_env', labelKey: 'restCaEnv', placeholderKey: 'restCaEnv' },
+      { key: 'timeout_seconds', labelKey: 'restTimeout', placeholderKey: 'restTimeout', inputType: 'number', min: 1, max: 10 },
+    ],
+  },
+
   telegram: {
     labelKey: 'telegram',
     fields: [
@@ -605,6 +618,10 @@ export default function SettingsPage() {
     if (!channelForm.name) return false
     const typeDef = CHANNEL_TYPE_FIELDS[channelForm.type]
     if (!typeDef) return false
+    if (channelForm.type === 'custom_rest' && channelForm.config.timeout_seconds?.trim()) {
+      const timeout = Number(channelForm.config.timeout_seconds)
+      if (!Number.isFinite(timeout) || timeout < 1 || timeout > 10) return false
+    }
     return typeDef.fields
       .filter(f => f.required)
       .every(f => !!channelForm.config[f.key]?.trim())
@@ -1381,20 +1398,21 @@ export default function SettingsPage() {
           <div data-tour-instructions />
           <div className="space-y-4 mt-2">
             <div>
-              <Label>{configT('configuration:settingsPage.dialogs.channelName')}</Label>
+              <Label htmlFor="channel-name">{configT('configuration:settingsPage.dialogs.channelName')}</Label>
               <Input
+                id="channel-name"
                 value={channelForm.name}
                 onChange={e => setChannelForm({ ...channelForm, name: e.target.value })}
                 placeholder={configT('configuration:settingsPage.channels.channelNamePlaceholder')}
               />
             </div>
             <div>
-              <Label>{configT('configuration:settingsPage.dialogs.channelType')}</Label>
+              <Label htmlFor="channel-type">{configT('configuration:settingsPage.dialogs.channelType')}</Label>
               <Select
                 value={channelForm.type}
                 onValueChange={val => setChannelForm({ ...channelForm, type: val, config: {} })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="channel-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1404,12 +1422,20 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {channelForm.type === 'custom_rest' && (
+              <p className="text-sm text-muted-foreground">{configT('configuration:settingsPage.channels.customRestHint')}</p>
+            )}
             {CHANNEL_TYPE_FIELDS[channelForm.type]?.fields.map(field => (
               <div key={field.key}>
-                <Label>{configT(`configuration:settingsPage.channels.fields.${field.labelKey}`)}{!field.required && <span className="text-muted-foreground font-normal"> ({configT('configuration:settingsPage.dialogs.optional')})</span>}</Label>
+                <Label htmlFor={`channel-${field.key}`}>{configT(`configuration:settingsPage.channels.fields.${field.labelKey}`)}{!field.required && <span className="text-muted-foreground font-normal"> ({configT('configuration:settingsPage.dialogs.optional')})</span>}</Label>
                 <div className="relative">
                   <Input
-                    type={field.secret && !channelKeyVisible ? 'password' : 'text'}
+                    id={`channel-${field.key}`}
+                    type={field.secret && !channelKeyVisible ? 'password' : field.inputType || 'text'}
+                    min={field.min}
+                    max={field.max}
+                    step={field.inputType === 'number' ? 'any' : undefined}
+                    required={field.required}
                     value={channelForm.config[field.key] || ''}
                     onChange={e => setChannelForm({
                       ...channelForm,

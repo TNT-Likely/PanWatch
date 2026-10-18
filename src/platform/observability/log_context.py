@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
@@ -82,6 +83,31 @@ def bind_log_context(**kwargs) -> None:
         _tags_var.set(kwargs["tags"] if isinstance(kwargs["tags"], dict) else {})
 
 
+_redact_http_logs_var: ContextVar[bool] = ContextVar("redact_http_logs", default=False)
+# Retain only known transport phases, never values, URLs, exception messages,
+# response headers or reason phrases supplied by a remote peer.
+_SAFE_HTTP_PHASE = re.compile(
+    r"^(connect_tcp|connect_unix_socket|start_tls|send_request_headers|send_request_body|"
+    r"receive_response_headers|receive_response_body|response_closed|close)"
+    r"\.(started|complete|failed)(?: |$)"
+)
+
+
+@contextmanager
+def redact_http_logs():
+    """Redact this task's HTTP diagnostics at record creation, for every sink.
+
+    ContextVars isolate concurrent providers and reset on errors/cancellation;
+    logger levels, filters and propagation remain untouched.
+    """
+    install_log_record_factory()
+    token = _redact_http_logs_var.set(True)
+    try:
+        yield
+    finally:
+        _redact_http_logs_var.reset(token)
+
+
 _factory_installed = False
 
 
@@ -95,6 +121,14 @@ def install_log_record_factory() -> None:
 
     def record_factory(*args, **kwargs):
         record = old_factory(*args, **kwargs)
+        if _redact_http_logs_var.get() and (
+            record.name in {"httpx", "httpcore"}
+            or record.name.startswith(("httpx.", "httpcore."))
+        ):
+            phase = _SAFE_HTTP_PHASE.match(record.msg) if isinstance(record.msg, str) else None
+            record.msg = "HTTP transport " + (phase.group(0).strip() if phase else "diagnostic") + " (details redacted)"
+            record.args = ()
+            record.exc_info = record.exc_text = record.stack_info = None
         ctx = get_log_context()
         record.trace_id = ctx["trace_id"]
         record.run_id = ctx["run_id"]

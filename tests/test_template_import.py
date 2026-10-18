@@ -418,3 +418,33 @@ def test_import_only_applies_selected_modules(monkeypatch):
     assert db.query(AIService).count() == 0
     assert db.query(Account).filter_by(name="Only account").count() == 1
     assert result["modules"] == ["portfolio"]
+
+
+def test_rest_template_rejects_raw_secrets_before_mutating_any_rows():
+    db = _session()
+    db.add(NotifyChannel(name="Keep", type="wecom", config={"webhook_key": "existing"}))
+    db.commit()
+    payload = TemplatePayload(version=2, notify_channels=[{
+        "name": "Bus", "type": "custom_rest",
+        "config": {"endpoint_url": "https://raw-secret@gateway.example/events", "token": "raw-secret"},
+    }])
+    with pytest.raises(HTTPException) as exc:
+        import_template(payload, mode="replace", modules="notifications", db=db)
+    assert exc.value.status_code == 400
+    assert "raw-secret" not in str(exc.value)
+    assert db.query(NotifyChannel).count() == 1
+    assert db.query(NotifyChannel).one().name == "Keep"
+    db.close()
+
+
+def test_rest_template_preserves_only_environment_references(monkeypatch):
+    monkeypatch.setenv("PANWATCH_REST_TOKEN", "never-export-this-secret")
+    db = _session()
+    config = {"endpoint_url": "https://gateway.example/events", "token_env": "PANWATCH_REST_TOKEN"}
+    payload = TemplatePayload(version=2, notify_channels=[{"name": "Bus", "type": "custom_rest", "config": config}])
+    import_template(payload, mode="merge", modules="notifications", db=db)
+    assert db.query(NotifyChannel).one().config == config
+    exported = export_template(include_internal=False, modules="notifications", db=db)
+    assert exported["notify_channels"][0]["config"] == config
+    assert "never-export-this-secret" not in str(exported)
+    db.close()
