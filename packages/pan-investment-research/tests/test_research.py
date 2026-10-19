@@ -233,3 +233,16 @@ def test_roles_only_receive_schema_fields_they_can_author():
             assert ("accepted_claim_ids" in schema["properties"]) == (role == "manager")
             return await super().complete(role=role, **kwargs)
     assert run(SchemaChecking()).status == "ready"
+
+
+def test_expert_data_limitations_can_be_adjudicated_without_blocking_the_graph():
+    class LimitedFlow(Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == "flow":
+                report = json.loads(reply.content)
+                report["issues"] = [{"stock_key": "CN:600519", "domain": "flow", "question": "Daily flow detail unavailable"}]
+                reply.content = json.dumps(report)
+            return reply
+    result = run(LimitedFlow())
+    assert result.status == "ready" and result.usage["feedback"] == 0

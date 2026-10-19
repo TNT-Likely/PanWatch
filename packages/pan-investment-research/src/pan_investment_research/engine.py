@@ -117,7 +117,8 @@ class InvestmentResearch:
                   "Tools only expose longer versions of captured documents; do not query for data explicitly marked missing. "
                   "Manager produces accepted_claim_ids for the claims supporting its ruling and a verdict. Strategy/decision produce recommendations. "
                   "Omit fields absent from the schema. accepted_claim_ids must copy exact canonical claim IDs from reports. "
-                  "Issues are unresolved blocking questions; ready/pass must have no issues. "
+                  "Specialist issues describe data limitations for the manager to adjudicate. "
+                  "Manager/strategy/risk/decision ready/pass must have no unresolved blocking issues. "
                   + json.dumps(schema, ensure_ascii=False))
         messages = messages or [{"role": "system", "content": prompt},
                                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
@@ -163,7 +164,7 @@ class InvestmentResearch:
             raise ValueError("issue outside research scope")
         if role not in {"strategy", "decision"} and report.recommendations:
             raise ValueError("role cannot issue a trading plan")
-        if report.verdict in {"ready", "pass"} and report.issues:
+        if role in {"manager", "strategy", "risk", "decision"} and report.verdict in {"ready", "pass"} and report.issues:
             raise ValueError("ready/pass cannot leave unresolved issues")
 
     async def _report(self, role, payload, deps, prepared=None):
