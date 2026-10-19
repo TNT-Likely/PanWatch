@@ -383,6 +383,11 @@ class InvestmentResearch:
                        "accepted_claims": [c for a in active.values() for c in a["report"]["claims"]
                            if c["id"] in {i for r in rulings.values() for i in r["report"]["accepted_claim_ids"]}],
                        "plan": state.get("plan", []), "issues": state.get("issues", [])}
+            if role == "risk":
+                requested = {i for r in state.get("plan", []) for i in r["evidence_ids"]}
+                sources = {e.id: e for e in deps.prepared.evidence}
+                sources.update({e.id: e for a in deps.artifacts.values() for e in a.evidence})
+                payload["cited_evidence"] = [sources[i].model_dump(mode="json") for i in sorted(requested)]
             report, model = await self._report(role, payload, deps)
             update = self._store(state, role, report, model, deps)
             if role in {"strategy", "decision"}:

@@ -266,3 +266,15 @@ def test_deadline_review_always_explains_why_research_stopped():
     result = run(Slow(), policy=ResearchPolicy(deadline_seconds=.01, specialists=["technical"], debate=False))
     assert result.status == "review" and "deadline" in result.reason.lower()
     assert all(r.reason and r.review_required for r in result.recommendations)
+
+
+def test_risk_can_verify_only_plan_citations_without_truncated_source_facts():
+    data, model = prepared(), Model()
+    data.evidence[0].content = {"document": "x" * 1000, "verified_level": 123.45}
+    result = run(model, data)
+    assert result.status == "ready"
+    payload = next(p for role, p in model.payloads if role == "risk")
+    assert len(payload["cited_evidence"]) == 1
+    assert payload["cited_evidence"][0]["id"] == data.evidence[0].id
+    assert payload["cited_evidence"][0]["content"]["verified_level"] == 123.45
+    assert payload["cited_evidence"][0]["content"]["document"] == "x" * 1000
