@@ -24,6 +24,8 @@ class ResearchModelGateway:
                 kwargs = {"model": client.model, "messages": messages, "max_tokens": max_output_tokens}
                 if client.model.startswith("glm-5.3"):
                     kwargs["reasoning_effort"] = "low"
+                    if not tools:
+                        kwargs["response_format"] = {"type": "json_object"}
                 if tools:
                     kwargs["tools"] = tools
                 reply = await client.client.with_options(max_retries=0, timeout=remaining).chat.completions.create(**kwargs)

@@ -295,7 +295,11 @@ def test_roles_only_receive_schema_fields_they_can_author():
             assert ("recommendations" in schema["properties"]) == (role in {"strategy", "decision"})
             assert ("accepted_claim_ids" in schema["properties"]) == (role == "manager")
             for name in ("Claim", "Issue", "Recommendation"):
-                assert schema["$defs"][name]["properties"]["stock_key"]["enum"] == ["CN:600519"]
+                if name in schema["$defs"]:
+                    expected = ["CN:600519", "*"] if name == "Issue" else ["CN:600519"]
+                    assert schema["$defs"][name]["properties"]["stock_key"]["enum"] == expected
+            assert ("Recommendation" in schema["$defs"]) == (role in {"strategy", "decision"})
+            assert ("Claim" in schema["$defs"]) == (role in {"technical", "flow", "events", "bull", "bear"})
             return await super().complete(role=role, **kwargs)
     assert run(SchemaChecking()).status == "ready"
 
@@ -323,6 +327,23 @@ def test_expert_data_limitations_can_be_adjudicated_without_blocking_the_graph()
             return reply
     result = run(LimitedFlow())
     assert result.status == "ready" and result.usage["feedback"] == 0
+
+
+def test_group_wide_issue_can_request_evidence_without_expanding_target_scope():
+    class GroupIssue(Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == "risk" and self.calls[role] == 1:
+                body = json.loads(reply.content)
+                body["issues"][0]["stock_key"] = "*"
+                reply.content = json.dumps(body)
+            return reply
+    data = prepared(("CN:600519", "CN:002594", "CN:300750"))
+    model = GroupIssue(risk_feedback="evidence_needed")
+    result = run(model, data, ResearchPolicy(max_attempts=25, max_total_tokens=750000))
+    assert result.completion == "complete", result.reason
+    assert {r.stock_key for r in result.recommendations} == {s.key for s in data.securities}
+    assert model.calls["events"] == model.calls["manager"] == 2
 
 
 def test_unknown_position_cannot_authorize_a_sell_direction():

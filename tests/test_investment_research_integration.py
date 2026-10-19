@@ -235,7 +235,8 @@ def test_cancellation_marks_run_without_business_writes(host, monkeypatch):
         assert not db.scalars(select(ResearchDelivery)).all()
 
 
-def test_gateway_meters_each_fallback_and_disables_sdk_retries():
+@pytest.mark.parametrize("with_tools", [False, True])
+def test_gateway_meters_each_fallback_and_disables_sdk_retries(with_tools):
     from src.modules.research.orchestration.gateway import ResearchModelGateway
     options, sent = [], []
     failed = AsyncMock(side_effect=RuntimeError("controlled transport failure"))
@@ -252,10 +253,11 @@ def test_gateway_meters_each_fallback_and_disables_sdk_retries():
     client = SimpleNamespace(_iter_candidates=lambda: [(primary, "qa-primary"), (secondary, "qa-secondary")])
     async def permit():
         sent.append("permit")
-    reply = asyncio.run(ResearchModelGateway(client).complete(role="technical", messages=[], tools=[], schema={},
+    reply = asyncio.run(ResearchModelGateway(client).complete(role="technical", messages=[], tools=[{"type": "function"}] if with_tools else [], schema={},
         max_output_tokens=4096, timeout=10, before_attempt=permit))
     assert len(sent) == 2 and all(o["max_retries"] == 0 for o in options)
     assert succeeded.call_args.kwargs["reasoning_effort"] == "low"
+    assert succeeded.call_args.kwargs.get("response_format") == (None if with_tools else {"type": "json_object"})
     assert reply.model == "actual-model" and reply.usage == {"input_tokens": 12, "output_tokens": 4}
 
 
