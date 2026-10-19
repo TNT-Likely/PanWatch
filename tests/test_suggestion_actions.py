@@ -104,6 +104,17 @@ def test_review_never_contributes_to_ta_hit_rates():
     assert stats['avg_return_20d_pct'] == 1
 
 
+def test_separated_research_keeps_direction_and_limits_without_changing_legacy_review(pool):
+    common = dict(stock_symbol='601238', stock_name='QA', agent_name='daily_report')
+    assert suggestion_pool.save_suggestion(**common, action='buy', action_label='买入', suggestion_state={
+        'outlook': 'bullish', 'confidence': .75, 'execution_status': 'blocked',
+        'execution_constraints': ['insufficient_funds'], 'review_required': True})
+    latest = suggestion_pool.get_latest_suggestions(['601238'])['CN:601238']
+    assert latest['action'] == 'buy' and latest['outlook'] == 'bullish'
+    assert latest['review_required'] and latest['execution_constraints'] == ['insufficient_funds']
+    assert normalize_suggestion({'action': 'buy', 'review_required': True})['action'] == 'watch'
+
+
 @pytest.mark.parametrize('state', [{'review_required': True}, {'attention_required': True}])
 def test_attention_only_or_review_predictions_are_not_flat_hits(state):
     row = SimpleNamespace(id=1, agent_name='intraday_monitor', stock_symbol='601238', stock_market='CN',

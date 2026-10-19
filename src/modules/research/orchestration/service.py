@@ -10,7 +10,7 @@ import time
 from pan_investment_research import InvestmentResearch, ResearchPolicy
 
 from src.modules.automation.base import AnalysisResult
-from src.modules.research.signals.actions import normalize_suggestion
+from src.modules.research.signals.actions import normalize_suggestion, ACTION_LABELS, ACTION_LABELS_EN
 from src.platform.observability.log_context import get_log_context
 from . import repository
 from .evidence import prepare
@@ -119,11 +119,35 @@ def present(agent, context, prepared, research):
     english = context.report_language == "en-US"
     title = f"【{agent.display_name}】" + ", ".join(s.name or s.key for s in prepared.securities)
     lines = ["## Research conclusions" if english else "## 投研结论"]
+    completion = {"complete": ("研究完成", "Complete"), "timeout": ("研究超时", "Timed out"),
+        "budget_exhausted": ("研究预算耗尽", "Budget exhausted"), "validation_failed": ("结论校验未通过", "Validation failed"),
+        "risk_rejected": ("风控未通过", "Risk rejected")}[research.completion][english]
+    lines.append(("Research status: " if english else "研究状态：") + completion)
+    if research.completion != "complete":
+        lines.append("Draft only; no formal recommendation or prediction was published." if english else "研究未完成；以下仅为草案，未发布正式建议或预测。")
+    if research.reason:
+        lines.append(("Reason: " if english else "原因：") + research.reason)
+    if not research.recommendations:
+        lines.append("No research conclusion available." if english else "尚无有效投研结论。")
+    constraints = {"buying_power_unverified": ("币种与结算购买力未核实", "Currency and settled buying power unverified"),
+        "account_missing": ("未配置交易账户", "No trading account configured"), "insufficient_funds": ("账户可用资金不足", "Insufficient available funds"),
+        "sellable_quantity_unverified": ("可卖数量未核实", "Sellable quantity unverified"),
+        "quote_unavailable_or_expired": ("报价缺失或已过期", "Quote unavailable or expired"),
+        "review_required": ("需人工复核", "Human review required"), "research_incomplete": ("研究尚未完成", "Research incomplete")}
     suggestions = {}
     for rec in research.recommendations:
         suggestion = normalize_suggestion(rec.model_dump(), agent_name=agent.name)
-        suggestions[rec.stock_key] = suggestion
-        lines += [f"### {rec.stock_key} · {rec.action}", rec.reason]
+        if research.completion == "complete":
+            suggestions[rec.stock_key] = suggestion
+        outlook = {"bullish": ("看多", "Bullish"), "neutral": ("中性", "Neutral"), "bearish": ("看空", "Bearish")}[rec.outlook][english]
+        execution = {"conditional": ("待条件确认", "Conditional"), "blocked": ("执行受限", "Blocked"), "not_applicable": ("无交易动作", "No trade action")}[rec.execution_status][english]
+        action = (ACTION_LABELS_EN if english else ACTION_LABELS)[rec.action]
+        lines += [f"### {rec.stock_key}",
+            (f"Market outlook: {outlook} · confidence {rec.confidence:.0%}" if english else f"投研观点：{outlook} · 置信度 {rec.confidence:.0%}"),
+            (f"Conditional portfolio suggestion: {action}" if english else f"组合建议（条件性）：{action}"),
+            (f"Execution status: {execution}" if english else f"执行状态：{execution}"), rec.reason]
+        if rec.execution_constraints:
+            lines.append(("Execution constraints: " if english else "执行限制：") + "; ".join(constraints.get(c, (c, c))[english] for c in rec.execution_constraints))
         for label, items in (("Triggers" if english else "成立条件", rec.triggers),
                              ("Invalidations" if english else "失效条件", rec.invalidations), ("Risks" if english else "风险", rec.risks)):
             if items:
@@ -134,7 +158,9 @@ def present(agent, context, prepared, research):
     lines += [f"- {e.id} · {e.source} · {e.available_at.isoformat()}" for e in prepared.evidence]
     lines.append(f"\nModels: {', '.join(sorted({a.model for a in research.artifacts if a.model}))}\nUsage: {json.dumps(research.usage)}")
     raw = {"engine": "langgraph", "research_run_id": prepared.run_id, "result_status": research.status,
+        "completion": research.completion, "research_reason": research.reason,
+        "drafts": [r.model_dump() for r in research.recommendations] if research.completion != "complete" else [],
         "suggestions": suggestions, "symbols": [s.key.split(":", 1)[1] for s in prepared.securities],
         "scope": [s.key for s in prepared.securities], "analysis_date": datetime.now().date().isoformat(),
-        "usage": research.usage, "should_alert": any(s["should_alert"] for s in suggestions.values())}
+        "usage": research.usage, "should_alert": research.completion != "complete" or any(s["should_alert"] for s in suggestions.values())}
     return AnalysisResult(agent_name=agent.name, title=title, content="\n\n".join(lines), raw_data=raw)

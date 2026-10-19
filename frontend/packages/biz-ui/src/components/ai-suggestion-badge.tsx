@@ -25,10 +25,13 @@ export function AiSuggestionBadge({
   title,
   onClick,
   status, review_required, attention_required, rating_raw, meta, action_label,
+  outlook, confidence, execution_status, execution_constraints,
 }: AiSuggestionBadgeProps) {
   const { t } = useTranslation('bizUi')
-  const view = suggestionPresentation({ action, action_label: action_label || actionLabel, status, review_required, attention_required, rating_raw, meta })
-  const label = (t as unknown as (key: string) => string)(view.labelKey)
+  const view = suggestionPresentation({ action, action_label: action_label || actionLabel, status, review_required, attention_required, rating_raw, meta,
+    outlook, confidence, execution_status, execution_constraints })
+  const tr = t as unknown as (key: string) => string
+  const label = tr(view.labelKey) + (view.stateLabelKey ? ` · ${tr(view.stateLabelKey)}` : '')
   const colorClass = view.colorClass
   return (
     <BadgeChip

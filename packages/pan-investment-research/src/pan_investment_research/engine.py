@@ -21,10 +21,10 @@ ROLES = {
     "events": "Verify announcement/news timing, novelty, causal impact and counterevidence.",
     "bull": "Present the strongest evidence-backed supporting case and its necessary conditions.",
     "bear": "Challenge the supporting case with counterevidence and failure scenarios.",
-    "manager": "Adjudicate claims by evidence. Exclude unsupported claims and state limitations. Missing data need not block a conditional watch conclusion. Request evidence or a rebuttal only if the dispute prevents any bounded conclusion.",
-    "strategy": "Build a conditional portfolio plan covering EVERY target security. Do not invent buying power.",
+    "manager": "Adjudicate market claims independently of account cash. Exclude unsupported claims and state limitations. Request evidence or a rebuttal only if the dispute prevents any bounded conclusion.",
+    "strategy": "For EVERY target, assess market outlook (bullish/neutral/bearish) and confidence (0-1) from evidence, then propose a conditional portfolio action. Zero or unverified cash restricts execution, not outlook or a supported buy opportunity. Use hold/add/reduce/sell only for an existing position; otherwise use buy/watch/avoid. Do not invent buying power or quantities.",
     "risk": "Challenge this exact plan. Return pass, revise, evidence_needed or reject. Never relax hard constraints.",
-    "decision": "Finalize the approved plan. Preserve actions, quantities, evidence, triggers, invalidations and risks exactly.",
+    "decision": "Copy every approved plan field EXACTLY, including outlook, confidence, execution state, flags and lists. Only reason may be reworded. Do not append risks or conditions.",
 }
 
 
@@ -85,6 +85,7 @@ class Dependencies:
     events: ResearchEvents | None
     budget: Budget
     artifacts: dict = field(default_factory=dict)
+    plan: list = field(default_factory=list)
     repaired: bool = False
 
     async def emit(self, role, status, **details):
@@ -116,6 +117,7 @@ class InvestmentResearch:
                   f"Analysis cutoff: {deps.prepared.as_of.isoformat()}; session: {deps.policy.profile}. "
                   "Future price confirmation is a plan condition, never a request for unavailable future evidence. "
                   "Specialists/bull/bear produce claims, not recommendations. "
+                  "Market outlook and confidence depend on market evidence, not account cash. Account limitations belong in execution_constraints. review_required does not change the investment direction. "
                   "Tools only expose longer versions of captured documents; do not query for data explicitly marked missing. "
                   "Manager produces accepted_claim_ids for the claims supporting its ruling and a verdict. Strategy/decision produce recommendations. "
                   "Omit fields absent from the schema. accepted_claim_ids must copy exact canonical claim IDs from reports. "
@@ -160,8 +162,8 @@ class InvestmentResearch:
                 raise ValueError("recommendation has invalid references")
             if any(ids[i].stock_key not in {item.stock_key, "*"} for i in item.evidence_ids):
                 raise ValueError("recommendation cites another security")
-            if item.action not in {"watch", "avoid"} and not item.evidence_ids:
-                raise ValueError("directional recommendation needs evidence")
+            if not item.evidence_ids:
+                raise ValueError("market outlook needs cited evidence")
         if any(issue.stock_key not in keys for issue in report.issues):
             raise ValueError("issue outside research scope")
         if role not in {"strategy", "decision"} and report.recommendations:
@@ -204,6 +206,7 @@ class InvestmentResearch:
             deps = runtime.context
             prepared = ResearchInput.model_validate(state["prepared"])
             role = state["role"]
+            prepared.portfolio = {}  # Market specialists do not assess account execution.
             prepared.evidence = [e for e in prepared.evidence if e.domain in {role, "portfolio", "market"}]
             payload = {"input": prepared.model_dump(mode="json"), "issues": state.get("issues", [])}
             reply, messages = await self._model(role, payload, deps, messages=state.get("messages"),
@@ -389,14 +392,19 @@ class InvestmentResearch:
                 sources.update({e.id: e for a in deps.artifacts.values() for e in a.evidence})
                 payload["cited_evidence"] = [sources[i].model_dump(mode="json") for i in sorted(requested)]
             report, model = await self._report(role, payload, deps)
-            update = self._store(state, role, report, model, deps)
             if role in {"strategy", "decision"}:
-                update["plan"] = [r.model_dump(mode="json") for r in report.recommendations]
                 reasons = validate_plan(deps.prepared, report.recommendations)
                 if reasons:
                     raise ValueError("; ".join(reasons))
-                if role == "decision" and trade_fingerprint(state["plan"]) != trade_fingerprint(update["plan"]):
+                if role == "decision" and trade_fingerprint(state["plan"]) != trade_fingerprint([r.model_dump(mode="json") for r in report.recommendations]):
                     raise ValueError("final decision changed the approved plan")
+                report.recommendations = constrain_execution(deps.prepared, report.recommendations)
+                plan = [r.model_dump(mode="json") for r in report.recommendations]
+                if role == "strategy":
+                    deps.plan = report.recommendations
+            update = self._store(state, role, report, model, deps)
+            if role in {"strategy", "decision"}:
+                update["plan"] = plan
             if role == "risk":
                 update.update(verdict=report.verdict, issues=[i.model_dump() for i in report.issues])
             return update
@@ -468,13 +476,45 @@ class InvestmentResearch:
         except (ValueError, BudgetExceeded, TimeoutError) as exc:
             reason = str(exc) or ("Research deadline exhausted" if isinstance(exc, TimeoutError) else "Research could not complete")
             await deps.emit("run", "review", reason=reason)
-            return ResearchResult(run_id=prepared.run_id, status="review", reason=reason,
-                recommendations=[Recommendation(stock_key=s.key, action="watch", reason=reason, review_required=True) for s in prepared.securities],
+            completion = "timeout" if isinstance(exc, TimeoutError) else "budget_exhausted" if isinstance(exc, BudgetExceeded) else "risk_rejected" if reason == "risk review rejected the plan" else "validation_failed"
+            drafts = [r.model_copy(update={"review_required": True, "quantity": None, "execution_status": "blocked",
+                      "execution_constraints": list(dict.fromkeys([*r.execution_constraints, "research_incomplete"]))}, deep=True) for r in deps.plan]
+            return ResearchResult(run_id=prepared.run_id, status="review", completion=completion, reason=reason,
+                recommendations=drafts,
                 artifacts=list(deps.artifacts.values()), usage=deps.budget.snapshot())
 
 
 def trade_fingerprint(plan):
     return sorted((r["stock_key"], json.dumps({k: v for k, v in r.items() if k != "reason"}, sort_keys=True)) for r in plan)
+
+
+def constrain_execution(prepared, recommendations):
+    """Account and quote limits constrain execution without rewriting research."""
+    stocks = {s.key: s for s in prepared.securities}
+    result = []
+    for rec in recommendations:
+        stock = stocks[rec.stock_key]
+        limits = list(rec.execution_constraints)
+        if rec.review_required:
+            limits.append("review_required")
+        if rec.action in {"buy", "add", "reduce", "sell"}:
+            if not stock.price or not stock.quote_expires_at or stock.quote_expires_at < max(prepared.as_of, datetime.now(timezone.utc)):
+                limits.append("quote_unavailable_or_expired")
+            if rec.action in {"buy", "add"}:
+                if prepared.portfolio.get("buying_power_verified") is not True:
+                    limits.append("buying_power_unverified")
+                accounts = prepared.portfolio.get("accounts")
+                if accounts is not None and not accounts:
+                    limits.append("account_missing")
+                elif accounts and all(isinstance(a.get("available_funds"), (int, float)) and a["available_funds"] <= 0 for a in accounts):
+                    limits.append("insufficient_funds")
+            elif stock.sellable_quantity is None:
+                limits.append("sellable_quantity_unverified")
+        limits = list(dict.fromkeys(limits))
+        status = "blocked" if limits or rec.execution_status == "blocked" else "conditional" if rec.action in {"buy", "add", "reduce", "sell"} else "not_applicable"
+        result.append(rec.model_copy(update={"execution_constraints": limits, "execution_status": status,
+                                            "quantity": None if status == "blocked" else rec.quantity}, deep=True))
+    return result
 
 
 def validate_plan(prepared, recommendations):
@@ -486,8 +526,6 @@ def validate_plan(prepared, recommendations):
     for item in recommendations:
         stock = stocks[item.stock_key]
         if item.action in {"buy", "add", "reduce", "sell"}:
-            if not stock.price or not stock.quote_expires_at or stock.quote_expires_at < max(prepared.as_of, datetime.now(timezone.utc)):
-                errors.append(f"{stock.key}: executable direction needs a valid quote")
             if not item.triggers or not item.invalidations:
                 errors.append(f"{stock.key}: action requires trigger and invalidation conditions")
         if item.action in {"sell", "reduce"} and (stock.held_quantity or 0) <= 0:

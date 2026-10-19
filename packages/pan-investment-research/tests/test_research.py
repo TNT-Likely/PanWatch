@@ -58,7 +58,7 @@ class Model:
                     "stock_key": "CN:600519", "domain": "events", "question": "Is this catalyst already stale?"}])
         if role in {"strategy", "decision"}:
             report["recommendations"] = payload["plan"] if role == "decision" else [
-                {"stock_key": s["key"], "action": "watch", "reason": "Wait for confirmation",
+                {"stock_key": s["key"], "outlook": "neutral", "confidence": .5, "action": "watch", "reason": "Wait for confirmation",
                  "evidence_ids": [e["id"] for e in payload["input"]["evidence"] if e["stock_key"] == s["key"]][:1]}
                 for s in payload["input"]["securities"]]
             if self.mutate and role == "decision":
@@ -83,6 +83,25 @@ class Tools:
     async def execute(self, name, arguments, *, stock_keys):
         self.calls += 1
         return [e for e in self.data.evidence if e.domain == "events" and e.stock_key in stock_keys]
+
+
+class DirectionalModel(Model):
+    def __init__(self, outlook="bullish", action="buy", review=False, reject=False):
+        super().__init__()
+        self.outlook, self.action, self.review, self.reject = outlook, action, review, reject
+
+    async def complete(self, *, role, **kwargs):
+        reply = await super().complete(role=role, **kwargs)
+        report = json.loads(reply.content)
+        if role == "strategy":
+            for rec in report["recommendations"]:
+                rec.update(outlook=self.outlook, confidence=.8, action=self.action, review_required=self.review,
+                    reason="Market evidence supports this conditional view", triggers=["Confirm price and volume"],
+                    invalidations=["Trend breaks"])
+        if role == "risk" and self.reject:
+            report["verdict"] = "reject"
+        reply.content = json.dumps(report)
+        return reply
 
 
 def run(model=None, data=None, policy=None, tools=None):
@@ -136,7 +155,8 @@ def test_decision_cannot_override_approved_risk_boundaries():
     result = run(Model(mutate=True))
     assert result.status == "review"
     assert "approved plan" in result.reason
-    assert all(r.action == "watch" and r.review_required for r in result.recommendations)
+    assert result.completion == "validation_failed"
+    assert all(r.review_required and r.execution_status == "blocked" for r in result.recommendations)
 
 
 def test_format_repair_is_metered_once():
@@ -253,7 +273,7 @@ def test_unknown_position_cannot_authorize_a_sell_direction():
     from pan_investment_research.engine import validate_plan
     data = prepared()
     data.securities[0].held_quantity = None
-    plan = [Recommendation(stock_key="CN:600519", action="sell", reason="unverified", evidence_ids=[data.evidence[0].id],
+    plan = [Recommendation(stock_key="CN:600519", outlook="bearish", confidence=.7, action="sell", reason="unverified", evidence_ids=[data.evidence[0].id],
         triggers=["confirmed"], invalidations=["failed"])]
     assert "absent position" in ";".join(validate_plan(data, plan))
 
@@ -278,3 +298,92 @@ def test_risk_can_verify_only_plan_citations_without_truncated_source_facts():
     assert payload["cited_evidence"][0]["id"] == data.evidence[0].id
     assert payload["cited_evidence"][0]["content"]["verified_level"] == 123.45
     assert payload["cited_evidence"][0]["content"]["document"] == "x" * 1000
+
+
+@pytest.mark.parametrize(("outlook", "action"), [
+    ("bullish", "buy"), ("bullish", "add"), ("bullish", "hold"),
+    ("bearish", "reduce"), ("bearish", "sell"), ("bearish", "avoid"), ("neutral", "watch"),
+])
+def test_market_views_and_all_seven_actions_survive_zero_cash(outlook, action):
+    data = prepared()
+    data.portfolio = {"accounts": [{"available_funds": 0}]}
+    if action in {"add", "hold", "reduce", "sell"}:
+        data.securities[0].held_quantity = 100
+    result = run(DirectionalModel(outlook, action), data)
+    assert result.completion == "complete", result.reason
+    rec = result.recommendations[0]
+    assert (rec.outlook, rec.action, rec.confidence) == (outlook, action, .8)
+    if action in {"buy", "add"}:
+        assert rec.execution_status == "blocked" and "insufficient_funds" in rec.execution_constraints
+    if action in {"reduce", "sell"}:
+        assert "sellable_quantity_unverified" in rec.execution_constraints
+    assert rec.quantity is None
+
+
+def test_review_and_stale_quote_block_execution_without_overwriting_bullish_buy():
+    data = prepared()
+    data.securities[0].quote_expires_at = data.as_of - timedelta(seconds=1)
+    result = run(DirectionalModel(review=True), data)
+    rec = result.recommendations[0]
+    assert result.status == "review" and result.completion == "complete"
+    assert rec.outlook == "bullish" and rec.action == "buy"
+    assert {"review_required", "quote_unavailable_or_expired"} <= set(rec.execution_constraints)
+    assert rec.execution_status == "blocked" and rec.quantity is None
+
+
+def test_verified_buying_power_changes_execution_only_and_specialists_never_receive_accounts():
+    data = prepared()
+    model = DirectionalModel()
+    limited = run(model, data)
+    assert all(not p["input"]["portfolio"] for role, p in model.payloads if role in {"technical", "flow", "events"})
+    data.portfolio = {"accounts": [{"available_funds": 100000}], "buying_power_verified": True}
+    funded = run(DirectionalModel(), data)
+    assert limited.recommendations[0].outlook == funded.recommendations[0].outlook == "bullish"
+    assert limited.recommendations[0].action == funded.recommendations[0].action == "buy"
+    assert limited.recommendations[0].execution_status == "blocked"
+    assert funded.recommendations[0].execution_status == "conditional"
+
+
+def test_risk_rejection_retains_only_a_blocked_unapproved_draft():
+    result = run(DirectionalModel(reject=True))
+    assert result.completion == "risk_rejected" and result.status == "review"
+    rec = result.recommendations[0]
+    assert rec.outlook == "bullish" and rec.action == "buy"
+    assert rec.review_required and "research_incomplete" in rec.execution_constraints
+
+
+def test_timeout_after_strategy_keeps_its_view_but_cannot_publish_a_plan():
+    class SlowRisk(DirectionalModel):
+        async def complete(self, *, role, **kwargs):
+            if role == "risk":
+                await asyncio.sleep(.2)
+            return await super().complete(role=role, **kwargs)
+    result = run(SlowRisk(), policy=ResearchPolicy(deadline_seconds=.05))
+    assert result.completion == "timeout" and result.status == "review"
+    assert result.recommendations[0].action == "buy"
+    assert result.recommendations[0].execution_status == "blocked"
+    early = run(policy=ResearchPolicy(max_attempts=1))
+    assert early.completion == "budget_exhausted" and early.recommendations == []
+
+
+def test_confidence_must_be_finite_and_blocked_results_never_authorize_quantities():
+    from pan_investment_research import Recommendation
+    for values in ({"confidence": 1.1}, {"confidence": float("nan")}, {"confidence": .8, "quantity": 10, "execution_status": "blocked"}):
+        with pytest.raises(ValueError):
+            Recommendation(stock_key="CN:600519", outlook="bullish", action="buy", reason="test", **values)
+
+
+def test_quote_expiring_during_risk_tightens_execution_without_losing_research():
+    class DelayedRisk(DirectionalModel):
+        async def complete(self, *, role, **kwargs):
+            if role == "risk":
+                await asyncio.sleep(.08)
+            return await super().complete(role=role, **kwargs)
+    data = prepared()
+    data.securities[0].quote_expires_at = data.as_of + timedelta(seconds=.04)
+    data.portfolio = {"buying_power_verified": True}
+    result = run(DelayedRisk(), data)
+    assert result.completion == "complete", result.reason
+    assert result.recommendations[0].action == "buy"
+    assert result.recommendations[0].execution_status == "blocked"
+    assert "quote_unavailable_or_expired" in result.recommendations[0].execution_constraints

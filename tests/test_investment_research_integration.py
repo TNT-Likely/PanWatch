@@ -257,3 +257,62 @@ def test_gateway_meters_each_fallback_and_disables_sdk_retries():
     assert len(sent) == 2 and all(o["max_retries"] == 0 for o in options)
     assert succeeded.call_args.kwargs["reasoning_effort"] == "low"
     assert reply.model == "actual-model" and reply.usage == {"input_tokens": 12, "output_tokens": 4}
+
+
+def test_bullish_buy_survives_review_and_zero_cash_through_storage_and_readback(host, monkeypatch):
+    from src.modules.automation import suggestion_pool
+    from sqlalchemy.orm import sessionmaker
+    engine, _ = host
+    monkeypatch.setattr(suggestion_pool, "SessionLocal", sessionmaker(bind=engine))
+    monkeypatch.setattr(service, "ResearchModelGateway", lambda client: scripts.DirectionalModel(review=True))
+    agent = DailyReportAgent()
+    configure(engine, agent.name)
+    monkeypatch.setattr(agent, "collect", collected)
+    result = asyncio.run(agent.run(make_context()))
+    assert result.raw_data["completion"] == "complete" and result.raw_data["result_status"] == "review"
+    assert "投研观点：看多" in result.content and "组合建议（条件性）：买入" in result.content
+    assert "执行受限" in result.content and "未配置交易账户" in result.content
+    latest = suggestion_pool.get_latest_suggestions(["600519"])["CN:600519"]
+    assert latest["action"] == "buy" and latest["outlook"] == "bullish"
+    assert latest["review_required"] and latest["execution_status"] == "blocked"
+    assert latest["confidence"] == .8
+    with Session(engine) as db:
+        predictions = db.scalars(select(AgentPredictionOutcome)).all()
+        assert len(predictions) == 2 and all(p.action == "buy" and p.confidence == .8 for p in predictions)
+
+
+@pytest.mark.parametrize("after_strategy", [False, True])
+def test_incomplete_research_keeps_history_but_never_publishes_fake_watch_predictions(host, monkeypatch, after_strategy):
+    engine, _ = host
+    agent = DailyReportAgent()
+    configure(engine, agent.name, **({} if after_strategy else {"max_attempts": 1}))
+    monkeypatch.setattr(agent, "collect", collected)
+    monkeypatch.setattr(service, "ResearchModelGateway", lambda client: scripts.DirectionalModel(reject=after_strategy))
+    result = asyncio.run(agent.run(make_context()))
+    assert result.raw_data["completion"] == ("risk_rejected" if after_strategy else "budget_exhausted")
+    assert not result.raw_data["suggestions"]
+    assert "研究未完成" in result.content
+    if after_strategy:
+        assert result.raw_data["drafts"][0]["outlook"] == "bullish"
+    else:
+        assert result.raw_data["drafts"] == []
+        assert "尚无有效投研结论" in result.content
+    with Session(engine) as db:
+        assert not db.scalars(select(StockSuggestion)).all()
+        assert not db.scalars(select(AgentPredictionOutcome)).all()
+        assert len(db.scalars(select(AnalysisHistory)).all()) == 1
+        assert db.scalars(select(ResearchRun)).one().payload["completion"] != "complete"
+
+
+def test_english_report_distinguishes_market_view_from_account_execution(host, monkeypatch):
+    engine, _ = host
+    agent = DailyReportAgent()
+    configure(engine, agent.name)
+    monkeypatch.setattr(agent, "collect", collected)
+    monkeypatch.setattr(service, "ResearchModelGateway", lambda client: scripts.DirectionalModel())
+    context = make_context()
+    context.report_language = "en-US"
+    result = asyncio.run(agent.run(context))
+    assert "Market outlook: Bullish" in result.content
+    assert "Conditional portfolio suggestion: Buy" in result.content
+    assert "Execution status: Blocked" in result.content

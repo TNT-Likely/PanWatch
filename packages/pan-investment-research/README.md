@@ -62,10 +62,28 @@ tokens are conservative preflight accounting, not measured billing.
 not a promise of profitability, complete exchange-rule validation or executable
 buying power. Missing settlement/currency facts cannot authorize quantities.
 The final decision cannot change the risk-approved plan. An unresolved objection
-or exhausted budget returns `review` with explicit, non-actionable watch results.
+or exhausted budget returns `review` with a distinct `completion` reason. No watch
+recommendation is invented: validated strategy views remain blocked drafts, or the
+recommendation list is empty if no strategy finished.
 Infrastructure exceptions propagate to the host; cancellation is not swallowed.
 
 The host owns fresh account/market constraints, persistence, idempotent delivery,
 notification policy and durable recovery. Checkpoint recovery is not enabled by
 default. Package tests use scripted models and replay evidence; they do not
 demonstrate live model quality or trading returns.
+
+## Research and execution are separate
+
+Each recommendation carries an evidence-based `outlook` (`bullish`, `neutral`,
+`bearish`), model confidence from 0 to 1, a conditional portfolio `action`, and
+`execution_status` / `execution_constraints`. Confidence is not calibrated return
+probability. Zero cash, unverified buying power, stale quotes and human review
+block execution without rewriting a supported outlook or buy opportunity to watch.
+Market specialists do not receive account snapshots. Verified account limits are
+applied deterministically before risk review and finalization.
+
+`completion=complete` distinguishes a finished graph from timeout, budget exhaustion,
+validation failure and risk rejection. A complete graph may still require human
+review. Drafts from incomplete graphs must not enter formal suggestions or prediction
+statistics. Version 0.2 requires outlook and confidence; older stored reports remain
+readable in the host without fabricating missing fields. No result authorizes an order.

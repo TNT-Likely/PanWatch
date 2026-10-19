@@ -50,4 +50,16 @@ describe('suggestion badges', () => {
     expect(suggestionPresentation({ action: 'sell', rating_raw: 'underweight' }).action).toBe('reduce')
     expect(suggestionPresentation({ action: 'hold', meta: { suggestion_state: { review_required: true } } }).review).toBe(true)
   })
+  it('keeps a research buy visible alongside its execution restriction in both languages', async () => {
+    const research = { ...suggestion, action: 'buy', action_label: '买入', attention_required: false,
+      review_required: true, outlook: 'bullish' as const, confidence: .8, execution_status: 'blocked' as const }
+    await i18n.changeLanguage('zh-CN')
+    const { rerender } = render(<SuggestionBadge suggestion={research} showTechnicalCompanion={false} />)
+    expect(screen.getByRole('button', { name: '买入 · 执行受限 AI' })).toBeTruthy()
+    expect(suggestionPresentation(research).action).toBe('buy')
+    expect(screen.queryByRole('button', { name: '观望 AI' })).toBeNull()
+    await i18n.changeLanguage('en-US')
+    rerender(<SuggestionBadge suggestion={research} showTechnicalCompanion={false} />)
+    expect(screen.getByRole('button', { name: 'Buy · Execution blocked AI' })).toBeTruthy()
+  })
 })

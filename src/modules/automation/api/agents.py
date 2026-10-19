@@ -674,6 +674,7 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
             status = "stale"
         ended = _as_utc(research.finished_at) or datetime.now(timezone.utc)
         return {"trace_id": trace_id, "engine": research.engine, "status": status,
+                "completion": (research.payload or {}).get("completion"), "research_reason": (research.payload or {}).get("reason"),
                 "result_status": (research.payload or {}).get("status"), "current_stage": active[-1] if active and status == "running" else "completed",
                 "stages": stages, "completed_stages": [s["name"] for s in stages if s["status"] == "done"],
                 "usage": (research.payload or {}).get("usage") or next((e["usage"] for e in reversed(list(progress.values())) if e.get("usage")), {}), "run": {"status": status, "result": lifecycle.result if lifecycle else "", "error": lifecycle.error if lifecycle else ""},

@@ -83,7 +83,7 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
             return "stale"
         day = result.raw_data["analysis_date"]
         names = {s.key: s.name for s in prepared.securities}
-        for rec in research.recommendations:
+        for rec in research.recommendations if research.completion == "complete" else []:
             market, symbol = rec.stock_key.split(":", 1)
             suggestion = normalize_suggestion(rec.model_dump(), agent_name=agent.name)
             save_suggestion(symbol, names[rec.stock_key], rec.action, suggestion["action_label"], agent.name,
@@ -94,7 +94,8 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
             for horizon in (1, 5):
                 save_agent_prediction_outcome(agent_name=agent.name, stock_symbol=symbol, stock_market=market,
                     prediction_date=day, horizon_days=horizon, action=rec.action, action_label=suggestion["action_label"],
-                    prediction_group_id=prediction_id, meta={"run_id": run_id, "suggestion_state": suggestion}, db_session=db)
+                    prediction_group_id=prediction_id, confidence=rec.confidence,
+                    meta={"run_id": run_id, "suggestion_state": suggestion}, db_session=db)
         save_agent_context_run(agent_name=agent.name, stock_symbol="*", analysis_date=day,
             context_payload={"run_id": run_id, "symbols": snapshots}, db_session=db)
         save_analysis(agent.name, "*", result.content, result.title, raw_data=result.raw_data,

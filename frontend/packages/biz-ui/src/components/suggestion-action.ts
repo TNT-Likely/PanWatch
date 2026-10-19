@@ -60,6 +60,10 @@ export interface SuggestionStateInput {
   status?: string
   review_required?: boolean
   attention_required?: boolean
+  outlook?: 'bullish' | 'neutral' | 'bearish'
+  confidence?: number
+  execution_status?: 'conditional' | 'blocked' | 'not_applicable'
+  execution_constraints?: string[]
   meta?: Record<string, any>
 }
 
@@ -67,13 +71,16 @@ export function suggestionPresentation(suggestion: SuggestionStateInput) {
   const state = { ...suggestion.meta?.suggestion_state, ...Object.fromEntries(Object.entries(suggestion).filter(([, value]) => value !== undefined)) } as SuggestionStateInput
   const review = state.review_required === true || state.status === 'review' ||
     state.action === 'review' || state.rating_raw === 'review' || /待.*复核|review required/i.test(state.action_label || '')
-  const action = review ? 'watch' : resolveSuggestionAction(state.rating_raw || state.action, state.action_label)
+  const separated = !!state.outlook && !!state.execution_status
+  const blocked = separated && state.execution_status === 'blocked'
+  const action = review && !separated ? 'watch' : resolveSuggestionAction(state.rating_raw || state.action, state.action_label)
   const attention = state.attention_required === true || action === 'alert'
   return {
     action: action === 'alert' ? 'watch' as const : action,
     review,
     attention,
-    labelKey: review ? 'suggestionBadge.review' : `kline.actions.${attention && (action === 'alert' || action === 'watch') ? 'alert' : action}`,
-    colorClass: review ? 'bg-orange-500 text-white' : suggestionActionColors[attention && action === 'watch' ? 'alert' : action],
+    labelKey: review && !separated ? 'suggestionBadge.review' : `kline.actions.${attention && (action === 'alert' || action === 'watch') ? 'alert' : action}`,
+    stateLabelKey: blocked ? 'suggestionBadge.blocked' : separated && review ? 'suggestionBadge.review' : null,
+    colorClass: review || blocked ? 'bg-orange-500 text-white' : suggestionActionColors[attention && action === 'watch' ? 'alert' : action],
   }
 }

@@ -73,6 +73,8 @@ class Issue(Contract):
 
 class Recommendation(Contract):
     stock_key: str
+    outlook: Literal["bullish", "neutral", "bearish"]
+    confidence: FiniteFloat = Field(ge=0, le=1)
     action: Action
     reason: str
     evidence_ids: list[str] = Field(default_factory=list)
@@ -82,11 +84,13 @@ class Recommendation(Contract):
     quantity: int | None = Field(default=None, gt=0)
     review_required: bool = False
     attention_required: bool = False
+    execution_status: Literal["conditional", "blocked", "not_applicable"] = "conditional"
+    execution_constraints: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def review_is_not_a_trade(self):
-        if self.review_required and (self.action != "watch" or self.quantity is not None):
-            raise ValueError("a review result must be non-actionable watch without quantity")
+        if (self.review_required or self.execution_status == "blocked") and self.quantity is not None:
+            raise ValueError("review or blocked recommendations cannot authorize quantity")
         return self
 
 
@@ -111,6 +115,7 @@ class Artifact(Contract):
 class ResearchResult(Contract):
     run_id: str
     status: Literal["ready", "review"]
+    completion: Literal["complete", "timeout", "budget_exhausted", "validation_failed", "risk_rejected"] = "complete"
     recommendations: list[Recommendation]
     artifacts: list[Artifact]
     reason: str = ""
