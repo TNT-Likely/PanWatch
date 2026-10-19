@@ -107,6 +107,10 @@ class InvestmentResearch:
         schema = RoleReport.model_json_schema()
         if role not in {"strategy", "decision"}:
             schema["properties"].pop("recommendations")
+        else:
+            size = len(deps.prepared.securities)
+            schema["properties"]["recommendations"].update(minItems=size, maxItems=size)
+            schema["required"].append("recommendations")
         if role != "manager":
             schema["properties"].pop("accepted_claim_ids")
         prompt = (f"You are the {role} research agent. {ROLES[role]} "
@@ -168,6 +172,10 @@ class InvestmentResearch:
             raise ValueError("issue outside research scope")
         if role not in {"strategy", "decision"} and report.recommendations:
             raise ValueError("role cannot issue a trading plan")
+        if role in {"strategy", "decision"}:
+            errors = validate_plan(prepared, report.recommendations)
+            if errors:
+                raise ValueError("; ".join(errors))
         if role in {"manager", "strategy", "risk", "decision"} and report.verdict in {"ready", "pass"} and report.issues:
             raise ValueError("ready/pass cannot leave unresolved issues")
 
@@ -178,6 +186,10 @@ class InvestmentResearch:
                 report = RoleReport.model_validate_json(reply.content)
                 evidence = (prepared or deps.prepared).evidence + [e for a in deps.artifacts.values() for e in a.evidence]
                 self._validate(report, prepared or deps.prepared, evidence, role)
+                if role == "decision" and trade_fingerprint(payload["plan"]) != trade_fingerprint(
+                    [r.model_dump(mode="json") for r in report.recommendations]
+                ):
+                    raise ValueError("final decision changed the approved plan")
                 return report, reply.model
             except ValueError as exc:
                 if attempt or deps.repaired:
@@ -393,11 +405,6 @@ class InvestmentResearch:
                 payload["cited_evidence"] = [sources[i].model_dump(mode="json") for i in sorted(requested)]
             report, model = await self._report(role, payload, deps)
             if role in {"strategy", "decision"}:
-                reasons = validate_plan(deps.prepared, report.recommendations)
-                if reasons:
-                    raise ValueError("; ".join(reasons))
-                if role == "decision" and trade_fingerprint(state["plan"]) != trade_fingerprint([r.model_dump(mode="json") for r in report.recommendations]):
-                    raise ValueError("final decision changed the approved plan")
                 report.recommendations = constrain_execution(deps.prepared, report.recommendations)
                 plan = [r.model_dump(mode="json") for r in report.recommendations]
                 if role == "strategy":
@@ -522,7 +529,7 @@ def validate_plan(prepared, recommendations):
     stocks = {s.key: s for s in prepared.securities}
     errors = []
     if len(keys) != len(set(keys)) or set(keys) != set(stocks):
-        return ["plan must cover every target exactly once"]
+        return [f"plan must cover every target exactly once; expected={sorted(stocks)}; actual={keys}"]
     for item in recommendations:
         stock = stocks[item.stock_key]
         if item.action in {"buy", "add", "reduce", "sell"}:

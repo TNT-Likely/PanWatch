@@ -165,6 +165,28 @@ def test_format_repair_is_metered_once():
     assert result.usage["attempts"] == 10
 
 
+@pytest.mark.parametrize("persistent", [False, True])
+def test_multi_stock_coverage_uses_one_bounded_repair_without_publishing_a_partial_plan(persistent):
+    class MissingTarget(Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == "strategy" and (persistent or self.calls[role] == 1):
+                body = json.loads(reply.content)
+                body["recommendations"].pop()
+                reply.content = json.dumps(body)
+            return reply
+
+    model = MissingTarget()
+    result = run(model, prepared(("CN:600519", "CN:002594", "CN:300750")))
+    assert model.calls["strategy"] == 2
+    if persistent:
+        assert result.completion == "validation_failed" and not result.recommendations
+        assert "exactly once" in result.reason and model.calls["risk"] == 0
+    else:
+        assert result.completion == "complete" and len(result.recommendations) == 3
+        assert model.calls["risk"] == model.calls["decision"] == 1
+
+
 def test_exhausted_budget_never_turns_unreviewed_plan_into_ready():
     result = run(policy=ResearchPolicy(max_attempts=5))
     assert result.status == "review"
