@@ -35,6 +35,20 @@ def validate_config(config, agent_name):
     return mode, ResearchPolicy.model_validate({**defaults, **config})
 
 
+def scope_policy(policy, config, targets):
+    """Size default capacities for target coverage, retaining explicit global caps."""
+    groups = (targets + policy.max_group_size - 1) // policy.max_group_size
+    updates = {"max_attempts": min(100, policy.max_attempts + 6 * (groups - 1))}
+    defaults = {
+        "max_tools": min(30, policy.max_tools * groups),
+        "max_total_tokens": min(1000000, policy.max_total_tokens * targets),
+        "max_input_chars": min(250000, policy.max_input_chars + 12000 * (targets - 1)),
+        "max_output_tokens": min(8000, policy.max_output_tokens + 768 * (targets - 1)),
+    }
+    updates.update({key: value for key, value in defaults.items() if key not in config})
+    return ResearchPolicy.model_validate({**policy.model_dump(), **updates})
+
+
 class Events:
     def __init__(self, run_id):
         self.run_id = run_id
@@ -64,10 +78,7 @@ async def execute(agent, context, config):
             await repository.fail(run_id, "No eligible targets")
             return None if mode == "shadow" else AnalysisResult(agent.name, agent.display_name, "No eligible targets", raw_data={"skipped": True})
         # Input groups get an explicit run budget, preserving every target.
-        groups = (len(prepared.securities) + policy.max_group_size - 1) // policy.max_group_size
-        if groups > 1:
-            policy = policy.model_copy(update={"max_attempts": min(100, policy.max_attempts + 6 * (groups - 1)),
-                "max_total_tokens": min(1000000, policy.max_total_tokens * groups)})
+        policy = scope_policy(policy, config, len(prepared.securities))
         remaining = policy.deadline_seconds - (time.monotonic() - started)
         if remaining <= 0:
             raise TimeoutError("Research preparation exhausted the deadline")

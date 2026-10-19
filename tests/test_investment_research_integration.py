@@ -316,3 +316,63 @@ def test_english_report_distinguishes_market_view_from_account_execution(host, m
     assert "Market outlook: Bullish" in result.content
     assert "Conditional portfolio suggestion: Buy" in result.content
     assert "Execution status: Blocked" in result.content
+
+
+@pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, DailyReportAgent])
+def test_batch_research_reads_all_targets_with_three_tools_and_one_portfolio_decision(host, monkeypatch, agent_cls):
+    import json
+    from pan_investment_research import ModelReply
+    engine, _ = host
+
+    class BatchModel(scripts.Model):
+        async def complete(self, *, role, messages, before_attempt, **kwargs):
+            if role in {"technical", "flow", "events"} and not self.calls[role]:
+                await before_attempt()
+                self.calls[role] += 1
+                keys = [s["key"] for s in json.loads(messages[1]["content"])["input"]["securities"]]
+                return ModelReply("", "script", tool_calls=[{"id": role, "type": "function", "function": {
+                    "name": f"read_{role}_details", "arguments": json.dumps({"stock_keys": keys})}}])
+            return await super().complete(role=role, messages=messages, before_attempt=before_attempt, **kwargs)
+
+    model, agent = BatchModel(), agent_cls()
+    monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
+    configure(engine, agent.name)
+    monkeypatch.setattr(agent, "collect", collected)
+    context = make_context(keys=tuple((MarketCode.CN, key) for key in ("600519", "002594", "300750")))
+    result = asyncio.run(agent.run(context))
+    assert result.raw_data["completion"] == "complete", result.content
+    assert set(result.raw_data["suggestions"]) == {"CN:600519", "CN:002594", "CN:300750"}
+    assert result.raw_data["usage"]["tools"] == 3
+    assert model.calls["strategy"] == model.calls["risk"] == model.calls["decision"] == 1
+    with Session(engine) as db:
+        assert len(db.scalars(select(StockSuggestion)).all()) == 3
+        assert len(db.scalars(select(AgentPredictionOutcome)).all()) == 6
+        assert len(db.scalars(select(AnalysisHistory)).all()) == 1
+
+
+def test_batch_details_rejects_an_entire_mixed_scope_request():
+    from src.modules.research.orchestration.gateway import EvidenceTools
+    data = scripts.prepared(("CN:600519", "US:600519"))
+    tools = EvidenceTools(data.evidence)
+    found = asyncio.run(tools.execute("read_technical_details", {"stock_keys": ["CN:600519", "US:600519"]},
+        stock_keys=["CN:600519", "US:600519"]))
+    assert {e.stock_key for e in found} == {"CN:600519", "US:600519"}
+    assert all(e.domain == "technical" for e in found)
+    for keys in ([], ["CN:600519", "US:600519"], ["CN:600519"] * 2, "CN:600519", [None]):
+        with pytest.raises(ValueError, match="scope"):
+            asyncio.run(tools.execute("read_technical_details", {"stock_keys": keys}, stock_keys=["CN:600519"]))
+
+
+def test_multi_target_default_capacities_preserve_explicit_global_limits():
+    _, default = service.validate_config({}, "daily_report")
+    sized = service.scope_policy(default, {}, 3)
+    assert sized.max_attempts == default.max_attempts  # Share roles within the group.
+    assert sized.max_tools == default.max_tools  # Batch reads, not a per-stock tool loop.
+    assert sized.max_output_tokens > default.max_output_tokens
+    assert sized.max_input_chars > default.max_input_chars
+    assert sized.max_total_tokens > default.max_total_tokens
+    caps = {"max_total_tokens": 9000, "max_input_chars": 1000, "max_output_tokens": 128, "max_tools": 0}
+    _, explicit = service.validate_config(caps, "daily_report")
+    scoped = service.scope_policy(explicit, caps, 30)
+    assert all(getattr(scoped, key) == value for key, value in caps.items())
+    assert service.scope_policy(default, {}, 30).max_total_tokens <= 1000000

@@ -48,14 +48,20 @@ class EvidenceTools:
         if role not in {"technical", "flow", "events"}:
             return []
         return [{"type": "function", "function": {
-            "name": f"read_{role}_details", "description": "Read complete captured source details for a target security; read-only, no new market time.",
-            "parameters": {"type": "object", "properties": {"stock_key": {"type": "string"}},
-                           "required": ["stock_key"], "additionalProperties": False}}}]
+            "name": f"read_{role}_details", "description": "Read complete captured source details in ONE batch. Include all required target securities in stock_keys instead of separate calls. Read-only, no new market time.",
+            "parameters": {"type": "object", "properties": {"stock_keys": {
+                "type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": True}},
+                           "required": ["stock_keys"], "additionalProperties": False}}}]
 
     async def execute(self, name, arguments, *, stock_keys):
-        if set(arguments) != {"stock_key"} or arguments["stock_key"] not in stock_keys:
+        # Accept the previous single-target shape for in-flight model responses.
+        requested = arguments.get("stock_keys") if set(arguments) == {"stock_keys"} else (
+            [arguments["stock_key"]] if set(arguments) == {"stock_key"} else None)
+        if not isinstance(requested, list) or not requested or any(
+            not isinstance(key, str) or key not in stock_keys for key in requested
+        ) or len(requested) != len(set(requested)):
             raise ValueError("detail query outside research scope")
         domain = name.removeprefix("read_").removesuffix("_details")
         if name != f"read_{domain}_details" or domain not in {"technical", "flow", "events"}:
             raise ValueError("unsupported research tool")
-        return [e for e in self.details if e.stock_key == arguments["stock_key"] and e.domain == domain]
+        return [e for e in self.details if e.stock_key in requested and e.domain == domain]
