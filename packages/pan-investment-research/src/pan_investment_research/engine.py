@@ -105,6 +105,9 @@ class InvestmentResearch:
     async def _model(self, role, payload, deps, *, messages=None, tools=None):
         reserve = {"manager": 3, "strategy": 2, "risk": 1, "decision": 0}.get(role, 4)
         schema = RoleReport.model_json_schema()
+        keys = [s["key"] for s in payload.get("input", {}).get("securities", [])] or [s.key for s in deps.prepared.securities]
+        for name in ("Claim", "Issue", "Recommendation"):
+            schema["$defs"][name]["properties"]["stock_key"]["enum"] = keys
         if role not in {"strategy", "decision"}:
             schema["properties"].pop("recommendations")
         else:
@@ -441,7 +444,8 @@ class InvestmentResearch:
 
         async def revise(state, runtime: Runtime[Dependencies]):
             deps = runtime.context
-            await deps.budget.use_feedback(reserve=5)
+            # A plan-only revision needs strategy, risk and decision, without new experts.
+            await deps.budget.use_feedback(reserve=5 if state["verdict"] == "evidence_needed" else 2)
             if state["verdict"] == "evidence_needed":
                 # A patch re-runs only the responsible expert and its research manager.
                 if not state["issues"]:

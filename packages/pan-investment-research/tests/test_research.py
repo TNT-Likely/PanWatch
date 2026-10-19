@@ -294,8 +294,22 @@ def test_roles_only_receive_schema_fields_they_can_author():
         async def complete(self, *, role, schema, **kwargs):
             assert ("recommendations" in schema["properties"]) == (role in {"strategy", "decision"})
             assert ("accepted_claim_ids" in schema["properties"]) == (role == "manager")
+            for name in ("Claim", "Issue", "Recommendation"):
+                assert schema["$defs"][name]["properties"]["stock_key"]["enum"] == ["CN:600519"]
             return await super().complete(role=role, **kwargs)
     assert run(SchemaChecking()).status == "ready"
+
+
+def test_intraday_plan_revision_reserves_only_its_three_remaining_model_calls():
+    model = Model(tools=True, risk_feedback="revise")
+    policy = ResearchPolicy(profile="intraday", specialists=["technical", "events"],
+        debate=True, max_attempts=12, max_feedback=1)
+    data = prepared()
+    result = run(model, data, policy, Tools(data))
+    assert result.completion == "complete", result.reason
+    assert result.usage["feedback"] == 1 and result.usage["attempts"] == 11
+    assert model.calls["strategy"] == model.calls["risk"] == 2
+    assert model.calls["decision"] == 1
 
 
 def test_expert_data_limitations_can_be_adjudicated_without_blocking_the_graph():
