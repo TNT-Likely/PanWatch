@@ -256,3 +256,13 @@ def test_unknown_position_cannot_authorize_a_sell_direction():
     plan = [Recommendation(stock_key="CN:600519", action="sell", reason="unverified", evidence_ids=[data.evidence[0].id],
         triggers=["confirmed"], invalidations=["failed"])]
     assert "absent position" in ";".join(validate_plan(data, plan))
+
+
+def test_deadline_review_always_explains_why_research_stopped():
+    class Slow(Model):
+        async def complete(self, *, before_attempt, **kwargs):
+            await before_attempt()
+            await asyncio.sleep(.1)
+    result = run(Slow(), policy=ResearchPolicy(deadline_seconds=.01, specialists=["technical"], debate=False))
+    assert result.status == "review" and "deadline" in result.reason.lower()
+    assert all(r.reason and r.review_required for r in result.recommendations)
