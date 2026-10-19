@@ -47,13 +47,18 @@ class EvidenceTools:
     def schemas(self, role):
         if role not in {"technical", "flow", "events"}:
             return []
+        keys = sorted({e.stock_key for e in self.details if e.domain == role})
+        if not keys:
+            return []
         return [{"type": "function", "function": {
             "name": f"read_{role}_details", "description": "Read complete captured source details in ONE batch. Include all required target securities in stock_keys instead of separate calls. Read-only, no new market time.",
             "parameters": {"type": "object", "properties": {"stock_keys": {
-                "type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": True}},
+                "type": "array", "items": {"type": "string", "enum": keys}, "minItems": 1, "uniqueItems": True}},
                            "required": ["stock_keys"], "additionalProperties": False}}}]
 
     async def execute(self, name, arguments, *, stock_keys):
+        if not isinstance(arguments, dict):
+            raise ValueError("detail query arguments must be an object")
         # Accept the previous single-target shape for in-flight model responses.
         requested = arguments.get("stock_keys") if set(arguments) == {"stock_keys"} else (
             [arguments["stock_key"]] if set(arguments) == {"stock_key"} else None)

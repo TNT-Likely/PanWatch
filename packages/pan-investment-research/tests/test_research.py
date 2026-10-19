@@ -127,6 +127,27 @@ def test_tool_loop_waits_for_terminal_expert_before_manager():
     assert model.calls["manager"] == 1 and result.usage["attempts"] == 10
 
 
+def test_rejected_tool_arguments_use_one_shared_repair_and_cannot_read_more_evidence():
+    class RejectedTools(Tools):
+        async def execute(self, name, arguments, *, stock_keys):
+            self.calls += 1
+            raise ValueError("out-of-scope target")
+
+    class CheckingModel(Model):
+        async def complete(self, *, role, tools, **kwargs):
+            if role == "events" and self.calls[role]:
+                assert tools == []
+                assert "no evidence retrieved" in kwargs["messages"][-1]["content"]
+            return await super().complete(role=role, **kwargs)
+
+    data, model = prepared(), CheckingModel(tools=True)
+    tools = RejectedTools(data)
+    result = run(model, data, tools=tools)
+    assert result.completion == "complete", result.reason
+    assert tools.calls == 1 and model.calls["events"] == 2
+    assert result.usage["tools"] == 1 and result.usage["attempts"] == 10
+
+
 def test_targeted_counterevidence_replaces_stale_claims():
     model = Model(manager_feedback=True)
     result = run(model)
