@@ -23,7 +23,7 @@ import uuid
 OWNER = "panwatch-isolated-qa-v1"
 SKILL_PATH = Path(".agents/skills/panwatch-local-delivery")
 EXCLUDED = {".git", ".docs", ".venv", "venv", ".claude", ".cursor", ".gemini", ".codex", ".pytest_cache", ".worktrees", ".superpowers", "__pycache__", "node_modules", "dist", "build", "static", "data", ".vite"}
-LOCAL_MODULES = ("marketdata", "pan_agent", "pan_agent_token_meter", "pan_agent_tool_research")
+LOCAL_MODULES = ("marketdata", "pan_agent", "pan_agent_token_meter", "pan_agent_tool_research", "pan_investment_research")
 
 
 class IsolationError(ValueError):
@@ -280,7 +280,7 @@ run = pathlib.Path(sys.argv[1]).resolve()
 source = run / "source"
 sys.path[:0] = [str(source)] + [str(p) for p in sorted((source / "packages").glob("*/src"))]
 origins = {}
-for name in ("marketdata", "pan_agent", "pan_agent_token_meter", "pan_agent_tool_research"):
+for name in ("marketdata", "pan_agent", "pan_agent_token_meter", "pan_agent_tool_research", "pan_investment_research"):
     spec = importlib.util.find_spec(name)
     if spec is None or spec.origin is None or not pathlib.Path(spec.origin).resolve().is_relative_to(source):
         raise SystemExit("QA module origin rejected: " + name)

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pan-investment-research"
+version = "0.1.0"
+description = "Host-independent LangGraph investment research with bounded agent collaboration"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.0", "langgraph>=1.2.12,<2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pan_investment_research"]
