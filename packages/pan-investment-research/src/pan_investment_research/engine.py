@@ -482,7 +482,7 @@ def validate_plan(prepared, recommendations):
                 errors.append(f"{stock.key}: executable direction needs a valid quote")
             if not item.triggers or not item.invalidations:
                 errors.append(f"{stock.key}: action requires trigger and invalidation conditions")
-        if item.action in {"sell", "reduce"} and stock.held_quantity == 0:
+        if item.action in {"sell", "reduce"} and (stock.held_quantity or 0) <= 0:
             errors.append(f"{stock.key}: cannot sell an absent position")
         if item.quantity is not None:
             # Buying power/currency and settlement are host facts, never inferred.

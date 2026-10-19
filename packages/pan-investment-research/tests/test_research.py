@@ -246,3 +246,13 @@ def test_expert_data_limitations_can_be_adjudicated_without_blocking_the_graph()
             return reply
     result = run(LimitedFlow())
     assert result.status == "ready" and result.usage["feedback"] == 0
+
+
+def test_unknown_position_cannot_authorize_a_sell_direction():
+    from pan_investment_research import Recommendation
+    from pan_investment_research.engine import validate_plan
+    data = prepared()
+    data.securities[0].held_quantity = None
+    plan = [Recommendation(stock_key="CN:600519", action="sell", reason="unverified", evidence_ids=[data.evidence[0].id],
+        triggers=["confirmed"], invalidations=["failed"])]
+    assert "absent position" in ";".join(validate_plan(data, plan))
