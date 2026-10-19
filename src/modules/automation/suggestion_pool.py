@@ -59,6 +59,7 @@ def save_suggestion(
     stock_market: str = "CN",
     meta: dict | None = None,
     suggestion_state: dict | None = None,
+    db_session=None,
 ) -> bool:
     """
     保存 Agent 建议到建议池
@@ -84,7 +85,7 @@ def save_suggestion(
     }, agent_name=agent_name)
     action, action_label = normalized["action"], normalized["action_label"]
     meta = {**(meta or {}), "suggestion_state": extract_suggestion_state(normalized)}
-    db = SessionLocal()
+    db = db_session if db_session is not None else SessionLocal()
     try:
         market = (stock_market or "CN").strip().upper() or "CN"
 
@@ -132,13 +133,15 @@ def save_suggestion(
                         latest.expires_at = expires_at
                     if not (latest.stock_name or "") and stock_name:
                         latest.stock_name = stock_name
-                    db.commit()
+                    db.flush() if db_session is not None else db.commit()
                     logger.info(
                         f"建议去重: {stock_symbol} {action_label} (来源: {agent_label})"
                     )
                     return True
 
         except Exception:
+            if db_session is not None:
+                raise
             # Best-effort only; never block saving.
             db.rollback()
 
@@ -159,17 +162,20 @@ def save_suggestion(
             meta=to_jsonable(meta or {}),
         )
         db.add(suggestion)
-        db.commit()
+        db.flush() if db_session is not None else db.commit()
 
         logger.info(f"保存建议: {stock_symbol} {action_label} (来源: {agent_label})")
         return True
 
     except Exception as e:
+        if db_session is not None:
+            raise
         logger.error(f"保存建议失败: {e}")
         db.rollback()
         return False
     finally:
-        db.close()
+        if db_session is None:
+            db.close()
 
 
 def get_suggestions_for_stock(

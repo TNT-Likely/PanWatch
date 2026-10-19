@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { localizeAgentDescription, localizeAgentName } from '@/i18n/agent-labels'
 import { getCurrentLocale } from '@/i18n'
 import { browserTimezone } from '@panwatch/base-ui'
+import ResearchConfigDialog from '@/components/ResearchConfigDialog'
 
 interface AgentConfig {
   id: number
@@ -185,6 +186,7 @@ export default function AgentsPage() {
   const [scheduleDialogAgent, setScheduleDialogAgent] = useState<AgentConfig | null>(null)
   // TradingAgents 深度配置弹窗(双模型 / 预算 / 超时 / 模拟盘对接)
   const [taConfigAgent, setTaConfigAgent] = useState<AgentConfig | null>(null)
+  const [researchAgent, setResearchAgent] = useState<AgentConfig | null>(null)
   const [taConfigForm, setTaConfigForm] = useState<Record<string, unknown>>({})
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({ type: 'daily', time: '15:30' })
   const [schedulePreview, setSchedulePreview] = useState<SchedulePreview | { error: string } | null>(null)
@@ -600,6 +602,9 @@ export default function AgentsPage() {
                         <span className="text-[12px]">{configT('deepConfig')}</span>
                         </button>
                       )}
+                      {['daily_report', 'premarket_outlook', 'intraday_monitor'].includes(agent.name) && <Button variant="ghost" size="sm" onClick={() => setResearchAgent(agent)}>
+                        <Settings2 className="h-3.5 w-3.5" />{configT('research.title')}
+                      </Button>}
                     </div>
 
                     {/* 未来触发时间（按调度时区） */}
@@ -950,6 +955,7 @@ export default function AgentsPage() {
       </Dialog>
 
       {/* TradingAgents 深度配置弹窗 */}
+      <ResearchConfigDialog agent={researchAgent} onClose={() => setResearchAgent(null)} onSaved={() => { void load() }} />
       <Dialog open={!!taConfigAgent} onOpenChange={open => !open && setTaConfigAgent(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>

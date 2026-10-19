@@ -351,3 +351,11 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 ## License
 
 [MIT](LICENSE)
+
+### LangGraph investment research
+
+The premarket, intraday and postmarket workflows have an opt-in **Research orchestration** dialog on the Agents page. Choose the existing workflow, shadow evaluation, or multi-agent research; configure the request-attempt budget and total collection/research deadline. Existing installations keep the legacy engine. Shadow mode records graph audit artifacts while the existing workflow owns business output.
+
+The repository-local [Pan Investment Research package](packages/pan-investment-research/README.md) is independently installable and has no PanWatch imports. It provides specialist research, supporting/opposing arguments, manager adjudication, portfolio strategy, risk challenge and final decisions through three LangGraph graphs. Intraday starts with a shorter path; captured event evidence adds event research and bounded debate. Premarket can run without a previous postmarket report.
+
+Model candidates and read-only evidence tools share explicit attempt, token, concurrency and time limits. Unresolved objections or exhausted budgets produce a review-required watch result. Graph outputs, normalized suggestions, prediction tracking and delivery claims are persisted transactionally. Notification acknowledgements that are unknown are recorded without blind automatic replay. Cross-process graph resumption and automatic outbox recovery are not enabled. This research output does not place orders or establish verified buying power.

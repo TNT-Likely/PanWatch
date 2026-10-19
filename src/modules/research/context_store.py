@@ -171,8 +171,9 @@ def save_agent_context_run(
     analysis_date: str,
     context_payload: dict,
     quality: dict | None = None,
+    db_session=None,
 ) -> bool:
-    db = SessionLocal()
+    db = db_session if db_session is not None else SessionLocal()
     try:
         payload_safe = to_jsonable(context_payload or {})
         quality_safe = to_jsonable(quality or {})
@@ -185,14 +186,17 @@ def save_agent_context_run(
                 quality=quality_safe,
             )
         )
-        db.commit()
+        db.flush() if db_session is not None else db.commit()
         return True
     except Exception as e:
+        if db_session is not None:
+            raise
         logger.warning(f"保存 agent context run 失败: {e}")
         db.rollback()
         return False
     finally:
-        db.close()
+        if db_session is None:
+            db.close()
 
 
 def list_recent_agent_context_runs(
@@ -230,8 +234,9 @@ def save_agent_prediction_outcome(
     confidence: float | None = None,
     trigger_price: float | None = None,
     meta: dict | None = None,
+    db_session=None,
 ) -> bool:
-    db = SessionLocal()
+    db = db_session if db_session is not None else SessionLocal()
     try:
         meta_safe = to_jsonable(meta or {})
         db.add(
@@ -251,14 +256,17 @@ def save_agent_prediction_outcome(
                 meta=meta_safe,
             )
         )
-        db.commit()
+        db.flush() if db_session is not None else db.commit()
         return True
     except Exception as e:
+        if db_session is not None:
+            raise
         logger.warning(f"保存 prediction outcome 失败: {e}")
         db.rollback()
         return False
     finally:
-        db.close()
+        if db_session is None:
+            db.close()
 
 
 def mark_agent_prediction_outcome(

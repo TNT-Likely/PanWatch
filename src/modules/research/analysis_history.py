@@ -83,6 +83,7 @@ def save_analysis(
     title: str = "",
     raw_data: dict | None = None,
     analysis_date: date | None = None,
+    db_session=None,
 ) -> bool:
     """
     保存分析结果
@@ -106,7 +107,7 @@ def save_analysis(
 
     date_str = analysis_date.strftime("%Y-%m-%d")
 
-    db = SessionLocal()
+    db = db_session if db_session is not None else SessionLocal()
     try:
         payload = to_jsonable(raw_data or {})
         agent_kind = infer_agent_kind(agent_name)
@@ -139,15 +140,18 @@ def save_analysis(
             db.add(record)
             logger.info(f"新增分析记录: {agent_name}/{stock_symbol}/{date_str}")
 
-        db.commit()
+        db.flush() if db_session is not None else db.commit()
         return True
 
     except Exception as e:
+        if db_session is not None:
+            raise
         logger.error(f"保存分析记录失败: {e}")
         db.rollback()
         return False
     finally:
-        db.close()
+        if db_session is None:
+            db.close()
 
 
 def get_analysis(

@@ -1,6 +1,10 @@
 import logging
 import os
 import re
+from copy import deepcopy
+from dataclasses import replace
+import hashlib
+import json
 
 import apprise
 import asyncio
@@ -204,12 +208,14 @@ class NotifierManager:
         self._ap = apprise.Apprise()
         self._custom_channels: list[tuple[str, dict]] = []
         self._channel_count = 0
+        self._channel_specs: list[tuple[str, dict]] = []
         # 钉钉关键字（可选）：若群机器人启用“关键字”安全校验，则自动附加
         self._dingtalk_keywords: set[str] = set()
         self.policy = policy
 
     def add_channel(self, channel_type: str, config: dict):
         """添加通知渠道"""
+        previous_count = self._channel_count
         try:
             if channel_type in _APPRISE_TYPES:
                 url = build_apprise_url(channel_type, config)
@@ -233,6 +239,19 @@ class NotifierManager:
                 logger.info(f"注册自定义通知渠道: {channel_type}")
         except ValueError as e:
             logger.error(f"注册通知渠道失败: {e}")
+        if self._channel_count > previous_count:
+            self._channel_specs.append((channel_type, deepcopy(config)))
+
+    def delivery_targets(self):
+        """Single-channel senders without hidden retries; secrets stay in memory."""
+        targets = []
+        for kind, config in self._channel_specs:
+            key = hashlib.sha256(json.dumps([kind, config], sort_keys=True).encode()).hexdigest()
+            sender = NotifierManager(replace(self.policy, retry_attempts=0) if self.policy else None)
+            sender.add_channel(kind, config)
+            if key not in {target[0] for target in targets}:
+                targets.append((key, sender))
+        return targets
 
     async def notify(self, title: str, content: str, images: list[str] | None = None):
         """向所有已注册渠道发送通知（忽略错误）"""

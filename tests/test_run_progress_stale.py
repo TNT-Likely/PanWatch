@@ -5,6 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+def _progress_queries(db, log_query, run_query):
+    from src.modules.research.orchestration.models import ResearchRun
+    from src.platform.persistence.models import AgentRun, LogEntry
+    research_query = MagicMock()
+    research_query.filter.return_value.order_by.return_value.first.return_value = None
+    db.query.side_effect = lambda model: {ResearchRun: research_query, LogEntry: log_query, AgentRun: run_query}[model]
+
+
 
 def _fake_log(timestamp, message="stage:market_analyst", tags=None):
     le = MagicMock()
@@ -32,7 +40,7 @@ def test_recent_log_status_running():
     # query(AgentRun) 链 → first() 返回 None
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = None
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch("src.modules.automation.tradingagents.observability.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
@@ -51,7 +59,7 @@ def test_old_log_status_stale():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [old]
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = None
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch("src.modules.automation.tradingagents.observability.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
@@ -67,7 +75,7 @@ def test_no_logs_status_not_found():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = None
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch("src.modules.automation.tradingagents.observability.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)
@@ -95,7 +103,7 @@ def test_run_completed_overrides_log_status():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [old_log]
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = fake_run
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch("src.modules.automation.tradingagents.observability.aggregate_progress", return_value={"stages": []}):
         result = get_run_progress("trace-stale-test", db)

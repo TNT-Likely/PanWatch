@@ -338,6 +338,7 @@ export const configuration = {
     },
   },
   agentsPage: {
+    research: { title: 'Research orchestration', description: 'Choose the analysis engine. Shadow runs record research without publishing suggestions or notifications. Budgets apply to provider attempts, including fallbacks.', engine: 'Analysis engine', legacy: 'Current analysis', shadow: 'Shadow evaluation', langgraph: 'Multi-agent research', attempts: 'Provider attempt budget per research group', deadline: 'Collection and research deadline (seconds)', cancel: 'Cancel', save: 'Save', saved: 'Research configuration saved', failed: 'Unable to save research configuration' },
     pageTitle: 'Agents',
     runStatuses: { running: 'Running', success: 'Succeeded', failed: 'Failed' },
     catalog: {

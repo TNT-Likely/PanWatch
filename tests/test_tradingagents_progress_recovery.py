@@ -5,6 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+def _progress_queries(db, log_query, run_query):
+    from src.modules.research.orchestration.models import ResearchRun
+    from src.platform.persistence.models import AgentRun, LogEntry
+    research_query = MagicMock()
+    research_query.filter.return_value.order_by.return_value.first.return_value = None
+    db.query.side_effect = lambda model: {ResearchRun: research_query, LogEntry: log_query, AgentRun: run_query}[model]
+
+
 
 def _query_chain(value):
     query = MagicMock()
@@ -52,7 +60,7 @@ def test_progress_uses_running_agent_run_when_logs_are_empty():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = run
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch(
         "src.modules.automation.tradingagents.observability.aggregate_progress",
@@ -82,7 +90,7 @@ def test_progress_preserves_the_full_bounded_provider_diagnostic():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = run
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch(
         "src.modules.automation.tradingagents.observability.aggregate_progress",
@@ -110,7 +118,7 @@ def test_progress_marks_expired_running_agent_run_stale():
     log_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
     run_query = MagicMock()
     run_query.filter.return_value.order_by.return_value.first.return_value = run
-    db.query.side_effect = [log_query, run_query]
+    _progress_queries(db, log_query, run_query)
 
     with patch(
         "src.modules.automation.tradingagents.observability.aggregate_progress",

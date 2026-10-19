@@ -88,6 +88,7 @@ class IntradayMonitorAgent(BaseAgent):
         volume_alert_ratio: float = 2.0,
         stop_loss_warning: float = -5.0,
         take_profit_warning: float = 10.0,
+        research_graph=None,
     ):
         """
         Args:
@@ -107,6 +108,11 @@ class IntradayMonitorAgent(BaseAgent):
         self.volume_alert_ratio = volume_alert_ratio
         self.stop_loss_warning = stop_loss_warning
         self.take_profit_warning = take_profit_warning
+
+    async def run(self, context: AgentContext) -> AnalysisResult:
+        from src.modules.research.orchestration.entry import maybe_run_research
+        result = await maybe_run_research(self, context)
+        return result if result is not None else await super().run(context)
 
     async def collect(self, context: AgentContext) -> dict:
         """采集实时行情 + K线 + 历史分析"""
@@ -156,7 +162,7 @@ class IntradayMonitorAgent(BaseAgent):
             extended_hours=24,
             history_days=7,
             kline_days=60,
-            persist_snapshot=True,
+            persist_snapshot=not getattr(context, "_research_collect", False),
         )
         symbol_context = (context_pack.get("symbols", {}) or {}).get(symbol, {})
         quality_overview = context_pack.get("quality_overview", {}) or {}
@@ -1043,6 +1049,17 @@ class IntradayMonitorAgent(BaseAgent):
 
         用于实时监控场景，每只股票独立分析和通知
         """
+        from src.modules.automation.scheduling_policy import scoped_context
+        from src.modules.research.orchestration.entry import maybe_run_research
+        targets = [s for s in context.watchlist if s.symbol == stock_symbol]
+        if len({s.market for s in targets}) > 1:
+            raise ValueError("run_single requires an unambiguous market-scoped symbol")
+        if not targets:
+            return None
+        scoped = scoped_context(context, targets)
+        result = await maybe_run_research(self, scoped)
+        if result is not None:
+            return result
         # 过滤只保留指定股票
         original_watchlist = context.config.watchlist
         context.config.watchlist = [

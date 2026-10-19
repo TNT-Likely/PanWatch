@@ -50,6 +50,14 @@ class PremarketOutlookAgent(BaseAgent):
     display_name = "盘前分析"
     description = "开盘前结合行情、技术状态和隔夜资讯，独立生成今日交易展望"
 
+    def __init__(self, research_graph=None):
+        pass
+
+    async def run(self, context: AgentContext) -> AnalysisResult:
+        from src.modules.research.orchestration.entry import maybe_run_research
+        result = await maybe_run_research(self, context)
+        return result if result is not None else await super().run(context)
+
     async def collect(self, context: AgentContext) -> dict:
         """采集盘前数据"""
         trace_id = (
@@ -128,7 +136,7 @@ class PremarketOutlookAgent(BaseAgent):
             extended_hours=72,
             history_days=30,
             kline_days=120,
-            persist_snapshot=True,
+            persist_snapshot=not getattr(context, "_research_collect", False),
         )
         symbol_contexts = context_pack.get("symbols", {}) or {}
         quality_overview = context_pack.get("quality_overview", {}) or {}

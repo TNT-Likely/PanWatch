@@ -56,6 +56,14 @@ class DailyReportAgent(BaseAgent):
     display_name = "收盘复盘"
     description = "每日收盘后生成自选股日报，包含大盘概览、个股分析和明日关注"
 
+    def __init__(self, research_graph=None):
+        pass
+
+    async def run(self, context: AgentContext) -> AnalysisResult:
+        from src.modules.research.orchestration.entry import maybe_run_research
+        result = await maybe_run_research(self, context)
+        return result if result is not None else await super().run(context)
+
     async def _fetch_index_for_market(self, market_code: MarketCode) -> list[IndexData]:
         """按 market 取大盘指数。
 
@@ -120,7 +128,7 @@ class DailyReportAgent(BaseAgent):
             extended_hours=72,
             history_days=30,
             kline_days=120,
-            persist_snapshot=True,
+            persist_snapshot=not getattr(context, "_research_collect", False),
         )
 
         if not all_indices and not any(p.quote for p in packs.values()):

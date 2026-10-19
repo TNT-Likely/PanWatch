@@ -335,6 +335,7 @@ export const configuration = {
     },
   },
   agentsPage: {
+    research: { title: '投研编排', description: '选择分析引擎。影子评估只记录研究，不发布正式建议或通知。请求预算包含模型降级等实际尝试。', engine: '分析引擎', legacy: '现有分析', shadow: '影子评估', langgraph: '多 Agent 投研', attempts: '单研究组模型尝试预算', deadline: '采集与研究时限（秒）', cancel: '取消', save: '保存', saved: '投研配置已保存', failed: '投研配置保存失败' },
     pageTitle: 'Agent',
     runStatuses: { running: '运行中', success: '成功', failed: '失败' },
     catalog: {
