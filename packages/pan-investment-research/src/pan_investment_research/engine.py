@@ -113,6 +113,8 @@ class InvestmentResearch:
                   "Use only supplied evidence IDs; distinguish facts from inference. "
                   "Return one JSON object matching this schema. No Markdown fences. "
                   f"Write human-readable fields in {deps.prepared.language}. "
+                  f"Analysis cutoff: {deps.prepared.as_of.isoformat()}; session: {deps.policy.profile}. "
+                  "Future price confirmation is a plan condition, never a request for unavailable future evidence. "
                   "Specialists/bull/bear produce claims, not recommendations. "
                   "Tools only expose longer versions of captured documents; do not query for data explicitly marked missing. "
                   "Manager produces accepted_claim_ids for the claims supporting its ruling and a verdict. Strategy/decision produce recommendations. "
