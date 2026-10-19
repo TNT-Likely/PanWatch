@@ -459,9 +459,10 @@ class InvestmentResearch:
             return ResearchResult(run_id=prepared.run_id, status=status, recommendations=state["plan"],
                                   artifacts=list(deps.artifacts.values()), usage=deps.budget.snapshot())
         except (ValueError, BudgetExceeded, TimeoutError) as exc:
-            await deps.emit("run", "review", reason=str(exc))
-            return ResearchResult(run_id=prepared.run_id, status="review", reason=str(exc),
-                recommendations=[Recommendation(stock_key=s.key, action="watch", reason=str(exc), review_required=True) for s in prepared.securities],
+            reason = str(exc) or ("Research deadline exhausted" if isinstance(exc, TimeoutError) else "Research could not complete")
+            await deps.emit("run", "review", reason=reason)
+            return ResearchResult(run_id=prepared.run_id, status="review", reason=reason,
+                recommendations=[Recommendation(stock_key=s.key, action="watch", reason=reason, review_required=True) for s in prepared.securities],
                 artifacts=list(deps.artifacts.values()), usage=deps.budget.snapshot())
 
 
