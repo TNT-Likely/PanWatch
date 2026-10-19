@@ -61,7 +61,7 @@ export interface SuggestionStateInput {
   review_required?: boolean
   attention_required?: boolean
   outlook?: 'bullish' | 'neutral' | 'bearish'
-  confidence?: number
+  confidence?: number | null
   execution_status?: 'conditional' | 'blocked' | 'not_applicable'
   execution_constraints?: string[]
   meta?: Record<string, any>
