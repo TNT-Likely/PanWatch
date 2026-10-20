@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from src.modules.research.signals.actions import ACTION_LABELS, ACTION_LABELS_EN
 
 
-def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), as_of="", language="zh-CN", timezone="Asia/Shanghai"):
+def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), as_of="", language="zh-CN", timezone="Asia/Shanghai", elapsed_seconds=None):
     en = language == "en-US"
     def tr(zh, english):
         return english if en else zh
@@ -138,7 +138,11 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
     def group_label(a):
         group = a["id"].split("/")[0]
         return tr("跨股组合", "Portfolio") if group == "portfolio" else tr("研究组 ", "Research group ") + str(int(group) + 1)
-    process = [{"title": f"{roles[a['role']]} · {group_label(a)} · {tr('轮次', 'Round')} {a['epoch'] + 1}", "content": a["report"]["summary"]}
+    active_ids = {v["id"] for v in latest.values()}
+    process = [{"id": a["id"], "role": a["role"], "group": a["id"].split("/")[0], "epoch": a["epoch"],
+                "verdict": a["report"].get("verdict", "ready"), "active": a["id"] in active_ids,
+                "feedback_roles": list(dict.fromkeys(i.get("respondent") or i["domain"] for i in a["report"].get("issues", []))),
+                "title": f"{roles[a['role']]} · {group_label(a)} · {tr('轮次', 'Round')} {a['epoch'] + 1}", "content": a["report"]["summary"]}
                for a in sorted(artifacts, key=lambda a: (a["epoch"], list(roles).index(a["role"]), a["id"]))]
     evidence_rows = []
     snapshots = {}
@@ -168,7 +172,14 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             content.append(f"- {link} · {text(item.get('source'))} · {text(item.get('time'))}")
         if not body.get("items"):
             content += ["- " + c for c in claims(e["stock_key"], e["domain"])]
+        preview = "\n\n".join(content[1:]) if not body.get("items") else tr(f"已采集 {len(body['items'])} 条新闻与公告", f"{len(body['items'])} news and announcement items captured")
         content += [f"`{e['id']}`"]
-        evidence_rows.append({"title": f"{name(e['stock_key'])} · {domains[e['domain']]} · {text(', '.join(providers) or e['source'])}", "content": "\n\n".join(content)})
-    return {"version": 1, "content": "\n\n".join(lines), "process": process, "evidence": evidence_rows,
+        evidence_rows.append({"id": e["id"], "stock_key": e["stock_key"], "stock_name": names.get(e["stock_key"], e["stock_key"]),
+            "domain": e["domain"], "domain_label": domains[e["domain"]], "providers": providers or [e["source"]],
+            "captured_at": stamp(e["available_at"]), "summary": preview,
+            "items": [{"title": str(item.get("title") or ""), "source": str(item.get("source") or ""), "time": str(item.get("time") or ""),
+                       "url": item.get("url") if urlsplit(item.get("url") or "").scheme in {"https", "http"} else ""} for item in body.get("items") or []],
+            "title": f"{name(e['stock_key'])} · {domains[e['domain']]} · {text(', '.join(providers) or e['source'])}", "content": "\n\n".join(content)})
+    return {"version": 2, "content": "\n\n".join(lines), "process": process, "evidence": evidence_rows,
+            "runtime": {"completion": completion, "as_of": stamp(as_of), "stock_count": len(keys), "elapsed_seconds": elapsed_seconds},
             "models": sorted({a["model"] for a in artifacts if a.get("model")}), "usage": research.get("usage", {})}

@@ -113,3 +113,50 @@ def test_zero_artifact_budget_failure_also_gets_a_readable_draft_report():
         assert result.research_report and "未发布正式建议或预测" in result.content
         assert "尚无有效投研结论" in result.content and not result.research_report["process"]
     engine.dispose()
+
+
+def test_graph_metadata_and_evidence_previews_preserve_rounds_and_safe_links(sample):
+    keys, research = sample
+    old = deepcopy(research['artifacts'][0])
+    research['artifacts'][0].update(id='0/1/technical', epoch=1)
+    research['artifacts'].append(old)
+    research['artifacts'][1]['report'].update(verdict='evidence_needed', issues=[{'domain': 'technical'}])
+    research['artifacts'][0]['evidence'].append({'id': keys[0] + '/news', 'stock_key': keys[0], 'domain': 'events',
+        'source': 'fixture', 'available_at': '2026-10-19T10:00:00Z', 'content': {'items': [
+            {'title': 'Safe source', 'source': 'fixture', 'url': 'https://example.com/news'},
+            {'title': 'Unsafe URL', 'url': 'javascript:alert(1)'},
+        ]}})
+    report = build_report('daily_report', research, scope=keys, elapsed_seconds=82.4)
+    assert report['version'] == 2 and report['runtime']['elapsed_seconds'] == 82.4
+    assert report['runtime']['stock_count'] == 2
+    technical = [p for p in report['process'] if p['role'] == 'technical']
+    assert [p['active'] for p in technical] == [False, True]
+    assert next(p for p in report['process'] if p['role'] == 'manager')['feedback_roles'] == ['technical']
+    news = next(e for e in report['evidence'] if e['domain'] == 'events')
+    assert news['stock_key'] == keys[0] and news['providers'] == ['fixture']
+    assert '2 条新闻与公告' in news['summary']
+    assert news['items'][0]['url'] == 'https://example.com/news' and news['items'][1]['url'] == ''
+    assert 'javascript:' not in news['content']
+
+
+def test_cached_v1_report_gets_graph_metadata_without_rewriting_its_text(sample):
+    keys, research = sample
+    engine = create_engine('sqlite://')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        cached = {'version': 1, 'content': '## Market overview\nOriginal reader report', 'process': [], 'evidence': [], 'models': [], 'usage': {}}
+        raw = {'engine': 'langgraph', 'research_run_id': 'cached-run', 'scope': keys, 'research_report': cached}
+        row = AnalysisHistory(agent_name='daily_report', stock_symbol='*', analysis_date='2026-10-19', content=cached['content'], raw_data=raw)
+        db.add(ResearchRun(id='cached-run', trace_id='trace', agent_name='daily_report', scope_hash='scope',
+            engine='langgraph', as_of='2026-10-19T10:00:00Z', payload=research,
+            created_at=datetime(2026, 10, 19, 10, 0), finished_at=datetime(2026, 10, 19, 10, 1, 22)))
+        db.add(row); db.commit()
+        result = get_history_detail(row.id, db)
+        assert result.research_report['version'] == 2 and result.research_report['content'] == cached['content']
+        assert result.research_report['runtime']['elapsed_seconds'] == 82
+        assert result.research_report['process'][0]['role'] == 'technical'
+        db.expire_all()
+        assert db.get(AnalysisHistory, row.id).raw_data == raw
+        db.query(ResearchRun).delete(); db.commit()
+        assert get_history_detail(row.id, db).research_report == cached
+    engine.dispose()

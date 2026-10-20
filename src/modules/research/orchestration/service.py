@@ -91,7 +91,7 @@ async def execute(agent, context, config):
             policy = policy.model_copy(update={"debate": True})
         research = await InvestmentResearch().run(prepared, model=ResearchModelGateway(context.ai_client),
             tools=EvidenceTools(details), events=Events(run_id), policy=policy)
-        result = present(agent, context, prepared, research)
+        result = present(agent, context, prepared, research, elapsed_seconds=time.monotonic() - started)
         agent.localize_result_title(result, context)
         targets = context.notifier.delivery_targets() if hasattr(context.notifier, "delivery_targets") else [("configured", context.notifier)]
         notify = not getattr(context, "suppress_notify", False)
@@ -127,12 +127,12 @@ async def execute(agent, context, config):
         raise
 
 
-def present(agent, context, prepared, research):
+def present(agent, context, prepared, research, *, elapsed_seconds=None):
     title = f"【{agent.display_name}】" + ", ".join(s.name or s.key for s in prepared.securities)
     report = build_report(agent.name, research.model_dump(mode="json"),
         securities=[s.model_dump(mode="json") for s in prepared.securities],
         evidence=[e.model_dump(mode="json") for e in prepared.evidence], as_of=prepared.as_of.isoformat(),
-        language=context.report_language, timezone=context.config.settings.app_timezone)
+        language=context.report_language, timezone=context.config.settings.app_timezone, elapsed_seconds=elapsed_seconds)
     suggestions = {rec.stock_key: normalize_suggestion(rec.model_dump(), agent_name=agent.name)
                    for rec in research.recommendations} if research.completion == "complete" else {}
     raw = {"engine": "langgraph", "research_run_id": prepared.run_id, "result_status": research.status,

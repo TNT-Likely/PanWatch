@@ -1,16 +1,57 @@
 import ReactMarkdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
+import { Clock, Cpu, Wrench, ArrowDown, ArrowUp, RotateCcw } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@panwatch/base-ui/components/ui/tabs'
+import { ResearchProcessGraph } from './ResearchProcessGraph'
+import { ResearchEvidenceBoard } from './ResearchEvidenceBoard'
+
+export interface ProcessItem {
+  id?: string; role?: string; group?: string; epoch?: number; verdict?: string; active?: boolean
+  feedback_roles?: string[]; title: string; content: string
+}
+export interface EvidenceItem {
+  id?: string; stock_key?: string; stock_name?: string; domain?: string; domain_label?: string
+  providers?: string[]; captured_at?: string; summary?: string; title: string; content: string
+  items?: { title: string; source: string; time: string; url: string }[]
+}
 
 export interface ResearchReportData {
   version: number
   content: string
-  process: { title: string; content: string }[]
-  evidence: { title: string; content: string }[]
+  process: ProcessItem[]
+  evidence: EvidenceItem[]
   models: string[]
-  usage: { attempts?: number; tools?: number; input_tokens?: number; output_tokens?: number }
+  usage: { attempts?: number; tools?: number; input_tokens?: number; output_tokens?: number; feedback?: number; unknown_usage?: number }
+  runtime?: { completion: string; as_of: string; stock_count: number; elapsed_seconds: number | null }
 }
 
-const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] md:text-sm [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:mt-5 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-2 [&_p]:leading-6 [&_li]:my-1 [&_li]:leading-6 [&_ul]:my-2 [&_code]:break-all'
+export const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] md:text-sm [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:mt-5 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-2 [&_p]:leading-6 [&_li]:my-1 [&_li]:leading-6 [&_ul]:my-2 [&_code]:break-all'
+
+function RunOverview({ report }: { report: ResearchReportData }) {
+  const { t, i18n } = useTranslation('configuration')
+  const format = (value?: number | null) => value == null ? '—' : new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(value)
+  const unknown = (report.usage.unknown_usage ?? 0) > 0
+  const metrics = [
+    [Cpu, t('p4.history.modelCalls'), format(report.usage.attempts)],
+    [Wrench, t('p4.history.toolReads'), format(report.usage.tools)],
+    [ArrowDown, t('p4.history.inputTokens'), unknown && !report.usage.input_tokens ? '—' : format(report.usage.input_tokens)],
+    [ArrowUp, t('p4.history.outputTokens'), unknown && !report.usage.output_tokens ? '—' : format(report.usage.output_tokens)],
+    [Clock, t('p4.history.elapsed'), report.runtime?.elapsed_seconds == null ? '—' : t('p4.history.seconds', { value: format(report.runtime.elapsed_seconds) })],
+    [RotateCcw, t('p4.history.feedback'), format(report.usage.feedback)],
+  ] as const
+  return <section className="space-y-4" aria-label={t('p4.history.runInformation')}>
+    <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+      <p className="font-medium">{report.runtime ? t(`p4.history.completion.${report.runtime.completion}`, { defaultValue: report.runtime.completion }) : t('p4.history.recordedRun')}</p>
+      {report.runtime && <p className="mt-1 text-xs text-muted-foreground">{report.runtime.as_of} · {t('p4.history.coveredStocks', { count: report.runtime.stock_count })}</p>}
+      <div className="mt-3 flex flex-wrap gap-2">{report.models.map(model => <span key={model} className="rounded-md bg-accent px-2 py-1 text-xs break-all">{model}</span>)}</div>
+    </div>
+    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-3">{metrics.map(([Icon, label, value]) => <div key={label} className="min-w-0 rounded-xl border border-border/60 bg-background/60 p-3">
+      <dt className="flex items-center gap-1.5 text-xs text-muted-foreground"><Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />{label}</dt>
+      <dd className="mt-2 break-words text-xl font-semibold tabular-nums">{value}</dd>
+    </div>)}</dl>
+    <p className="text-xs text-muted-foreground">{t(unknown ? 'p4.history.partialUsage' : 'p4.history.usageNote', { count: report.usage.unknown_usage ?? 0 })}</p>
+  </section>
+}
 
 export function ResearchReport({ content, report }: { content: string; report?: ResearchReportData | null }) {
   const { t } = useTranslation('configuration')
@@ -18,32 +59,16 @@ export function ResearchReport({ content, report }: { content: string; report?: 
     <div className="min-w-0 space-y-4" data-testid="research-report">
       <div className={`${markdownClass} [&>p:first-child]:text-xs [&>p:first-child]:text-muted-foreground`}><ReactMarkdown>{report?.content || content}</ReactMarkdown></div>
       {report && (
-        <div className="not-prose space-y-2 border-t border-border/50 pt-4 text-sm">
-          {(['process', 'evidence'] as const).map(section => (
-            <details key={section} className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <summary className="cursor-pointer rounded font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-                {section === 'process' ? t('p4.history.researchProcess', { count: report.process.length }) : t('p4.history.evidenceSources', { count: report.evidence.length })}
-              </summary>
-              <div className="mt-3 space-y-2">
-                {report[section].map((item, index) => (
-                  <details key={index} className="rounded-md border border-border/50 p-3">
-                    <summary className="cursor-pointer break-words text-[13px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">{item.title}</summary>
-                    <div className={`mt-2 ${markdownClass}`}><ReactMarkdown>{item.content}</ReactMarkdown></div>
-                  </details>
-                ))}
-              </div>
-            </details>
-          ))}
-          <details className="rounded-lg border border-border/60 bg-background/60 p-3">
-            <summary className="cursor-pointer rounded font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">{t('p4.history.runInformation')}</summary>
-            <dl className="mt-3 grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-              <div><dt>{t('p4.history.models')}</dt><dd className="break-words">{report.models.join(', ') || '—'}</dd></div>
-              <div><dt>{t('p4.history.modelCalls')}</dt><dd>{report.usage.attempts ?? '—'}</dd></div>
-              <div><dt>{t('p4.history.toolReads')}</dt><dd>{report.usage.tools ?? '—'}</dd></div>
-              <div><dt>{t('p4.history.tokenUsage')}</dt><dd>{report.usage.input_tokens ?? '—'} / {report.usage.output_tokens ?? '—'}</dd></div>
-            </dl>
-          </details>
-        </div>
+        <Tabs defaultValue="process" className="not-prose min-w-0 border-t border-border/50 pt-4 text-sm">
+          <TabsList className="grid h-auto w-full grid-cols-3">
+            <TabsTrigger value="process" className="px-1 text-xs">{t('p4.history.processTab')}</TabsTrigger>
+            <TabsTrigger value="evidence" className="px-1 text-xs">{t('p4.history.evidenceTab')}</TabsTrigger>
+            <TabsTrigger value="runtime" className="px-1 text-xs">{t('p4.history.runInformation')}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="process"><ResearchProcessGraph items={report.process} /></TabsContent>
+          <TabsContent value="evidence"><ResearchEvidenceBoard items={report.evidence} /></TabsContent>
+          <TabsContent value="runtime"><RunOverview report={report} /></TabsContent>
+        </Tabs>
       )}
     </div>
   )
