@@ -272,7 +272,7 @@ def test_bullish_buy_survives_review_and_zero_cash_through_storage_and_readback(
     monkeypatch.setattr(agent, "collect", collected)
     result = asyncio.run(agent.run(make_context()))
     assert result.raw_data["completion"] == "complete" and result.raw_data["result_status"] == "review"
-    assert "投研观点：看多" in result.content and "组合建议（条件性）：买入" in result.content
+    assert "**最终结论：** 看多" in result.content and "条件性建议：买入" in result.content
     assert "执行受限" in result.content and "未配置交易账户" in result.content
     latest = suggestion_pool.get_latest_suggestions(["600519"])["CN:600519"]
     assert latest["action"] == "buy" and latest["outlook"] == "bullish"
@@ -315,9 +315,9 @@ def test_english_report_distinguishes_market_view_from_account_execution(host, m
     context = make_context()
     context.report_language = "en-US"
     result = asyncio.run(agent.run(context))
-    assert "Market outlook: Bullish" in result.content
-    assert "Conditional portfolio suggestion: Buy" in result.content
-    assert "Execution status: Blocked" in result.content
+    assert "**Conclusion：** Bullish" in result.content
+    assert "Conditional action：Buy" in result.content
+    assert "**Execution：** Blocked" in result.content
 
 
 @pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, DailyReportAgent])

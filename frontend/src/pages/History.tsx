@@ -2,7 +2,7 @@ import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Trash2, FileText, ArrowLeft } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { ResearchReport, type ResearchReportData } from '@/components/ResearchReport'
 import { fetchAPI } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Badge } from '@panwatch/base-ui/components/ui/badge'
@@ -19,6 +19,7 @@ interface HistoryRecord {
   analysis_date: string
   title: string
   content: string
+  research_report?: ResearchReportData | null
   context_payload?: Record<string, unknown> | null
   prompt_context?: string | null
   prompt_stats?: Record<string, unknown> | null
@@ -231,7 +232,7 @@ export default function HistoryPage() {
           </div>
 
           {/* List */}
-          <div className={`md:col-span-5 card overflow-hidden ${mobileView === 'reader' ? 'hidden md:block' : ''}`}>
+          <div className={`md:col-span-4 min-w-0 card overflow-hidden ${mobileView === 'reader' ? 'hidden md:block' : ''}`}>
             <div className="px-4 py-3 bg-accent/20 border-b border-border/50 text-[12px] text-muted-foreground">
               {tr('tocHint')}
             </div>
@@ -261,7 +262,7 @@ export default function HistoryPage() {
           </div>
 
           {/* Reader */}
-          <div className={`md:col-span-7 card p-4 md:p-6 ${mobileView === 'list' ? 'hidden md:block' : ''}`}>
+          <div className={`md:col-span-8 min-w-0 card p-4 md:p-6 ${mobileView === 'list' ? 'hidden md:block' : ''}`}>
             {selectedRecord ? (
               <div>
                 <div className="flex items-start justify-between gap-3">
@@ -277,9 +278,9 @@ export default function HistoryPage() {
                         {tr('toc')}
                       </Button>
                       <Badge variant="outline" className="text-[10px]">{agentLabel(selectedRecord.agent_name)}</Badge>
-                      <span className="text-[11px] text-muted-foreground font-mono">{formatDateTime(displayTime(selectedRecord))}</span>
+                      <span className="text-[11px] text-muted-foreground">{selectedRecord.analysis_date} {formatTimeShort(displayTime(selectedRecord))}</span>
                     </div>
-                    <div className="mt-1 text-[15px] md:text-[16px] font-semibold text-foreground truncate">
+                    <div className="mt-1 text-[15px] md:text-[16px] font-semibold text-foreground break-words">
                       {formatTitle(selectedRecord)}
                     </div>
                   </div>
@@ -310,8 +311,8 @@ export default function HistoryPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-accent/20 rounded-xl prose prose-sm dark:prose-invert max-w-none max-h-[62vh] md:max-h-[62vh] overflow-y-auto scrollbar">
-                  <ReactMarkdown>{selectedRecord.content}</ReactMarkdown>
+                <div key={selectedRecord.id} className="mt-4 max-h-[68vh] overflow-y-auto scrollbar overscroll-contain rounded-xl bg-accent/20 p-3 md:p-5">
+                  <ResearchReport content={selectedRecord.content} report={selectedRecord.research_report} />
                 </div>
               </div>
             ) : (
@@ -334,8 +335,8 @@ export default function HistoryPage() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-4 p-4 bg-accent/20 rounded-lg prose prose-sm dark:prose-invert max-w-none">
-            {detailRecord && <ReactMarkdown>{detailRecord.content}</ReactMarkdown>}
+          <div className="mt-4 p-4 bg-accent/20 rounded-lg">
+            {detailRecord && <ResearchReport key={detailRecord.id} content={detailRecord.content} report={detailRecord.research_report} />}
           </div>
           {detailRecord?.prompt_stats ? (
             <div className="mt-3 rounded-lg border border-border/50 p-3">
