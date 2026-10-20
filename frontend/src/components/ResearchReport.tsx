@@ -10,13 +10,13 @@ export interface ResearchReportData {
   usage: { attempts?: number; tools?: number; input_tokens?: number; output_tokens?: number }
 }
 
-const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h3]:text-base [&_p]:leading-7 [&_li]:leading-7 [&_code]:break-all'
+const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] md:text-sm [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:mt-5 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-2 [&_p]:leading-6 [&_li]:my-1 [&_li]:leading-6 [&_ul]:my-2 [&_code]:break-all'
 
 export function ResearchReport({ content, report }: { content: string; report?: ResearchReportData | null }) {
   const { t } = useTranslation('configuration')
   return (
     <div className="min-w-0 space-y-4" data-testid="research-report">
-      <div className={markdownClass}><ReactMarkdown>{report?.content || content}</ReactMarkdown></div>
+      <div className={`${markdownClass} [&>p:first-child]:text-xs [&>p:first-child]:text-muted-foreground`}><ReactMarkdown>{report?.content || content}</ReactMarkdown></div>
       {report && (
         <div className="not-prose space-y-2 border-t border-border/50 pt-4 text-sm">
           {(['process', 'evidence'] as const).map(section => (

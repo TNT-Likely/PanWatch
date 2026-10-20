@@ -85,7 +85,7 @@ def _research_reports(records, db):
         report = raw.get("research_report")
         if isinstance(report, dict) and report.get("version") == 1:
             reports[record.id] = report
-        elif (run := runs.get(raw.get("research_run_id"))) and run.agent_name == record.agent_name and run.payload.get("artifacts"):
+        elif (run := runs.get(raw.get("research_run_id"))) and run.agent_name == record.agent_name and isinstance(run.payload, dict) and "completion" in run.payload:
             try:
                 reports[record.id] = build_report(record.agent_name, run.payload, scope=raw.get("scope", []), as_of=run.as_of,
                     language="en-US" if "## Research conclusions" in record.content else "zh-CN", timezone=Settings().app_timezone)

@@ -98,3 +98,18 @@ def test_old_graph_history_is_projected_consistently_without_database_writes(sam
         assert db.get(AnalysisHistory, row.id).content == "## 投研结论\nold immutable text"
         assert db.get(AnalysisHistory, row.id).raw_data == raw
     engine.dispose()
+
+
+def test_zero_artifact_budget_failure_also_gets_a_readable_draft_report():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(ResearchRun(id="budget-run", trace_id="trace", agent_name="daily_report", scope_hash="scope",
+            engine="langgraph", as_of="2026-10-19T10:00:00Z", payload={"completion": "budget_exhausted", "artifacts": [], "recommendations": []}))
+        row = AnalysisHistory(agent_name="daily_report", stock_symbol="*", analysis_date="2026-10-19", content="## 投研结论",
+            raw_data={"engine": "langgraph", "research_run_id": "budget-run", "scope": ["CN:600519"]})
+        db.add(row); db.commit()
+        result = get_history_detail(row.id, db)
+        assert result.research_report and "未发布正式建议或预测" in result.content
+        assert "尚无有效投研结论" in result.content and not result.research_report["process"]
+    engine.dispose()

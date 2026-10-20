@@ -59,7 +59,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
     states = {"complete": tr("研究完成", "Complete"), "timeout": tr("研究超时", "Timed out"),
         "budget_exhausted": tr("研究预算耗尽", "Budget exhausted"), "validation_failed": tr("结论校验未通过", "Validation failed"),
         "risk_rejected": tr("风控未通过", "Risk rejected")}
-    lines = [f"> {states.get(completion, completion)} · {tr('数据截至', 'Data as of')} {stamp(as_of)}"]
+    lines = [f"{states.get(completion, completion)} · {tr('数据截至', 'Data as of')} {stamp(as_of)}"]
     if completion != "complete":
         lines += [tr("**研究未完成：以下仅为草案，未发布正式建议或预测。**", "**Incomplete research: drafts only; no formal recommendations or predictions published.**")]
         if research.get("reason"):
@@ -74,7 +74,8 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         line = f"- **{text(idx.get('name') or idx.get('symbol'))}** {number(idx.get('current_price', idx.get('current')))} · {number(idx.get('change_pct'), signed=True)}%"
         if idx.get("turnover") is not None:
             amount = idx["turnover"] / (1e9 if en else 1e8)
-            line += tr(" · 成交额 ", " · Turnover ") + number(amount) + tr(" 亿（当地货币）", " bn (local currency)")
+            units = {"CN": tr(" 亿元", " bn CNY"), "HK": tr(" 亿港元", " bn HKD"), "US": tr(" 亿美元", " bn USD")}
+            line += tr(" · 成交额 ", " · Turnover ") + number(amount) + units.get(idx.get("market"), tr(" 亿（当地货币）", " bn (local currency)"))
         lines.append(line)
     if not indices:
         lines.append(tr("本次未采集大盘指数，暂不判断整体市场。", "No index snapshot was captured; no broad-market assessment is available."))

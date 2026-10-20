@@ -278,10 +278,7 @@ export default function HistoryPage() {
                         {tr('toc')}
                       </Button>
                       <Badge variant="outline" className="text-[10px]">{agentLabel(selectedRecord.agent_name)}</Badge>
-                      <span className="text-[11px] text-muted-foreground">{selectedRecord.analysis_date} {formatTimeShort(displayTime(selectedRecord))}</span>
-                    </div>
-                    <div className="mt-1 text-[15px] md:text-[16px] font-semibold text-foreground break-words">
-                      {formatTitle(selectedRecord)}
+                      <span className="text-[11px] text-muted-foreground" title={formatDateTime(displayTime(selectedRecord))}>{formatTimeShort(displayTime(selectedRecord))}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -309,6 +306,10 @@ export default function HistoryPage() {
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
+                </div>
+
+                <div className="mt-2 text-[15px] md:text-[16px] font-semibold text-foreground break-words">
+                  {formatTitle(selectedRecord)}
                 </div>
 
                 <div key={selectedRecord.id} className="mt-4 max-h-[68vh] overflow-y-auto scrollbar overscroll-contain rounded-xl bg-accent/20 p-3 md:p-5">
