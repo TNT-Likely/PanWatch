@@ -2181,9 +2181,47 @@ def _m137_stock_asset_type(conn: Connection) -> None:
 
 
 def _m138_investment_research(conn: Connection) -> None:
-    from src.modules.research.orchestration.models import ResearchRun, ResearchArtifact, ResearchDelivery, ResearchOutbox
-    for model in (ResearchRun, ResearchArtifact, ResearchDelivery, ResearchOutbox):
-        model.__table__.create(bind=conn, checkfirst=True)
+    # Freeze this migration's schema without importing mutable business models.
+    statements = (
+        """CREATE TABLE IF NOT EXISTS research_runs (
+            id VARCHAR NOT NULL PRIMARY KEY,
+            trace_id VARCHAR NOT NULL,
+            agent_name VARCHAR NOT NULL,
+            scope_hash VARCHAR NOT NULL,
+            engine VARCHAR NOT NULL,
+            as_of VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            payload JSON,
+            progress JSON,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            finished_at DATETIME
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_research_runs_trace_id ON research_runs (trace_id)",
+        """CREATE TABLE IF NOT EXISTS research_artifacts (
+            run_id VARCHAR NOT NULL,
+            artifact_id VARCHAR NOT NULL,
+            payload JSON NOT NULL,
+            PRIMARY KEY (run_id, artifact_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS research_deliveries (
+            run_id VARCHAR NOT NULL PRIMARY KEY,
+            payload_hash VARCHAR NOT NULL,
+            payload JSON NOT NULL,
+            status VARCHAR NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS research_notification_outbox (
+            run_id VARCHAR NOT NULL,
+            channel_key VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            policy_scope VARCHAR NOT NULL,
+            ttl_minutes INTEGER NOT NULL,
+            error VARCHAR,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (run_id, channel_key)
+        )""",
+    )
+    for statement in statements:
+        conn.execute(text(statement))
 
 
 MIGRATIONS: tuple[Migration, ...] = (
