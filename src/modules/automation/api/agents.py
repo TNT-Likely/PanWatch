@@ -272,6 +272,15 @@ def list_capabilities(db: Session = Depends(get_db)):
     return [_agent_to_response(a) for a in rows]
 
 
+@router.get("/research-templates")
+def research_templates(agent_name: str):
+    from src.modules.research.orchestration.policies import templates_for
+    try:
+        return templates_for(agent_name)
+    except ValueError as exc:
+        raise api_error(400, "research_config_invalid", str(exc)) from exc
+
+
 @router.put("/{agent_name}", response_model=AgentConfigResponse)
 def update_agent(
     agent_name: str, update: AgentConfigUpdate, db: Session = Depends(get_db)

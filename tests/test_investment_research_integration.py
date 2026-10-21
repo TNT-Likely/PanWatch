@@ -51,7 +51,7 @@ def make_context(trace="test-host", keys=((MarketCode.CN, "600519"),)):
 def configure(engine, name, mode="langgraph", **policy):
     with Session(engine) as db, db.begin():
         db.add(AgentConfig(name=name, display_name=name, enabled=False, config={"research_graph": {
-            "engine": mode, "specialists": ["technical", "flow", "events"], "max_attempts": 25,
+            "engine": mode, "template": "custom_research", "specialists": ["technical", "flow", "events"], "max_attempts": 25,
             "max_total_tokens": 250000, **policy}}))
 
 
@@ -174,10 +174,10 @@ def test_migration_can_create_research_schema_twice(tmp_path):
 def test_event_evidence_escalates_to_bounded_debate(host, agent_cls, monkeypatch):
     engine, model = host
     agent = agent_cls(event_only=False) if agent_cls is IntradayMonitorAgent else agent_cls()
-    configure(engine, agent.name, max_feedback=0)
+    configure(engine, agent.name, max_feedback=0, debate=True, debate_on="material")
     async def with_events(context):
         data = await collected(context)
-        data["signal_pack"].news.items = [{"title": "QA material announcement", "source": "fixture"}]
+        data["signal_pack"].news.items = [{"title": "QA material announcement", "source": "fixture", "importance": 2}]
         return data
     monkeypatch.setattr(agent, "collect", with_events)
     result = asyncio.run(agent.run(make_context()))

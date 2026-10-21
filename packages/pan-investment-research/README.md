@@ -14,8 +14,8 @@ a database, select credentials, send notifications or place orders. The host
 supplies a model port, optional read-only tools and an event sink. It receives
 typed recommendations and immutable, versioned research artifacts.
 
-Three compiled graphs separate investment decisions, group research and expert
-tool loops. Specialists run concurrently; each worker returns only after its
+Four compiled graphs separate full investment decisions, group research, expert
+tool loops and fast intraday decisions. Specialists run concurrently; each worker returns only after its
 child graph finishes. A material dispute can request targeted evidence or a
 rebuttal. Risk can return a plan for revision. All feedback shares one quota.
 
@@ -43,6 +43,7 @@ flowchart LR
     subgraph PACKAGE["pan_investment_research"]
         INPUT["ResearchInput"]
         RUN["Investment run graph"]
+        FAST["Intraday fast graph"]
         GROUP["Research group graph"]
         EXPERT["Expert tool graph"]
         POLICY["ResearchPolicy and shared Budget"]
@@ -53,6 +54,12 @@ flowchart LR
     end
     PROVIDER["Configured model providers"]
     COL --> INPUT --> RUN
+    INPUT --> FAST
+    FAST --> EXPERT
+    FAST --> MODEL
+    FAST --> EVENTS
+    FAST --> RESULT
+    POLICY -.-> FAST
     POLICY -.-> RUN
     POLICY -.-> GROUP
     POLICY -.-> EXPERT
@@ -125,7 +132,7 @@ flowchart TD
     TECH --> POSITIONS
     FLOW --> POSITIONS
     EVENT --> POSITIONS
-    POSITIONS{"positions: debate enabled?"}
+    POSITIONS{"positions: debate enabled and triggered and triggered?"}
     POSITIONS -->|"yes; concurrent"| BULL["bull: supporting case"]
     POSITIONS -->|"yes; concurrent"| BEAR["bear: counterevidence"]
     BULL --> MANAGER["manager: ruling and accepted claim IDs"]
@@ -174,54 +181,106 @@ are bounded; a tool cannot expand the scope or invent fresh evidence. JSON
 repair consumes model attempts and the single run-wide repair allowance,
 separately from the feedback counter. Failed validation exits to the run wrapper.
 
-### Session profiles and efficiency
+### 4. Fast intraday graph: changes, scoped experts and one decision
 
-PanWatch chooses these defaults in its adapter. Setting `profile` alone in the
-standalone package does not automatically apply these presets.
+![Fast intraday graph](docs/diagrams/intraday-fast.en.svg)
 
-| Host session | Initial specialists | Debate | Attempt / time defaults | Extra defaults |
+<details>
+<summary>Mermaid source (editable control-flow specification)</summary>
+
+```mermaid
+flowchart TD
+    START(["Captured snapshots and typed change signals"]) --> GATE["gate: deterministic signal and enabled-domain checks"]
+    GATE -->|"No signals"| SKIP(["skipped: zero model calls; keep previous formal advice"])
+    GATE -->|"Changed stocks only"| DISPATCH["dispatch: group active stocks by expert"]
+    DISPATCH -->|"Technical change"| TECH["technical: shared expert tool graph"]
+    DISPATCH -->|"New captured event"| EVENT["events: shared expert tool graph"]
+    TECH --> STRATEGY["strategy: one compact conditional portfolio decision"]
+    EVENT --> STRATEGY
+    STRATEGY --> RULES["rules: coverage, citations, holdings and execution constraints"]
+    RULES --> DONE(["Complete; publish only validated recommendations"])
+    GUARD["Shared attempt, token, tool and deadline limits"]
+    GUARD -.-> REVIEW(["Review on timeout, budget or validation failure"])
+```
+
+</details>
+
+The host captures quotes/news and detects ATR/volume/technical-state/position-risk
+changes and new dated events. It persists a market-scoped baseline only after a
+successful or skipped run; failed research can retry the same change. Quiet runs
+still collect data but skip expensive historical enrichment and all model calls.
+Only changed stocks and the corresponding enabled specialists reach the model.
+The final rule node is mandatory and makes no model call. This template omits the
+research manager, bull/bear and model risk committee, so it offers less independent
+challenge than the complete graph. Missing data is not classified as unchanged.
+
+### Session templates and efficiency
+
+PanWatch selects these presets; setting `profile` alone in the standalone package
+does not apply host templates.
+
+| Host template | Specialists | Bull/bear | Attempt / deadline defaults | Other defaults |
 | --- | --- | --- | --- | --- |
-| Postmarket | technical, flow, events | On | 18 / 180s | Package defaults |
-| Premarket | technical, flow, events | Off; on when captured event items exist | 14 / 90s | Explicit configuration supported |
-| Intraday | technical; add events when captured event items exist | Off; on when event items exist | 10 / 45s | No feedback; 2 tool calls; concurrency 2 |
+| `postmarket_deep` | technical, flow, events | Material event or expert request | 18 / 180s | Full graph, bounded feedback |
+| `premarket_balanced` | technical, flow, events | Material event or expert request | 14 / 90s | Full graph, 4 tools, 3072 output tokens |
+| `intraday_fast` | Triggered technical/events only | Omitted | 6 / 45s | 2 tools, concurrency 2, no feedback, 1536 output tokens |
+| `custom_research` | Selected specialists | Off, material-only or always | Session defaults | Complete graph retained for comparison |
 
-Explicit specialist/debate configuration overrides automatic selection. Host
-scope sizing can raise default attempt/token/tool/output capacity for larger
-inputs, but does not automatically extend the deadline. These limits are not
-latency guarantees or proof that a given provider can finish in time.
+The agent research dialog discovers templates from the backend and configures
+specialists, debate/trigger policy, attempts, deadline and advanced token/tool/
+concurrency/feedback limits. Switching templates restores its defaults. Backend
+validation rejects unsupported specialists, arbitrary nodes/edges, fast debate
+and feedback. Required rule checks cannot be disabled. `changes` is the normal
+fast trigger; `always` explicitly reviews every selected target and expert.
 
-Without tools, repairs or feedback, logical model calls are
-`G × (S + 2 × D + 1) + 3`: group count `G`, specialist count `S`, and `D=1`
-when debate is enabled, otherwise `0`. A full default single-group run needs
-9 calls. Parallel specialists and bull/bear, optional debate, batched detail
-tools, compact downstream inputs and targeted revisions reduce repeated work.
-More roles do not by themselves prove better conclusions; source/model quality,
-latency and cost need separate evaluation.
+Legacy engine selection remains explicit (`legacy`, `shadow`, `langgraph`);
+no existing deployment is silently switched. Older intraday configurations that
+explicitly requested flow, debate or feedback retain the complete graph. Host
+scope sizing can raise omitted default capacities for larger portfolios; explicit
+caps apply to the entire run and are never raised. Deadlines are not extended.
 
-### Prompt ownership and legacy compatibility
+Without tools, retries, repair or feedback, the full graph uses
+`G × (S + 1) + 2 × B + 3` model calls: `G` groups, `S` specialists per group,
+`B` groups that actually debate. A single group with three experts takes seven
+calls, or nine with debate. The fast graph uses one call per active expert/group
+plus one combined decision: zero when quiet, two for one domain in one group,
+three for both domains in one group. More groups, detail tools and repair add
+calls. These counts are not latency or cost guarantees.
 
-| PanWatch mode | Prompts used | Published session output |
+### Prompt ownership and migrated rules
+
+| PanWatch mode | Prompts used | Published output |
 | --- | --- | --- |
-| `legacy` (default) | Existing `prompts/daily_report.txt`, `premarket_outlook.txt`, `intraday_monitor.txt` | Existing agent analyze/render path |
-| `shadow` | Role prompts for shadow research, then existing prompts for the legacy run | Legacy output; shadow artifacts kept for inspection |
-| `langgraph` | `ROLES`, common instructions and per-role schema in `engine.py` | Structured graph result rendered by the host |
+| `legacy` (default) | Existing session prompt files | Existing agent path |
+| `shadow` | New role instructions, then legacy prompts | Legacy output plus shadow audit artifacts |
+| `langgraph` | `prompts.py` role/session guidance and role schemas | Typed graph result rendered by the host |
 
-The graph reuses host collection, not legacy `build_prompt()` or its complete
-input narrative. Legacy ATR/abnormal-move rules, trading-style guidance, relative
-strength and previous deep-research instructions are **not automatically
-inherited**. Useful business semantics need explicit migration into evidence,
-contracts, role instructions or deterministic checks, followed by validation.
-Report headings and layout belong to the host renderer. The standalone package
-does not read PanWatch prompt files or currently offer runtime prompt-template
-injection. Mode selection is explicit; graph failure is not an automatic legacy
-retry.
+The graph reuses collectors, not the old `build_prompt()` narrative. Useful rules
+are explicitly migrated, rather than copying a whole single-agent prompt:
+
+| Business rule | New location |
+| --- | --- |
+| ATR threshold and volume/technical changes | Host deterministic signal gate and technical evidence |
+| Trading style, stop-loss/take-profit warnings | Position-scoped gate rules and strategy context |
+| Relative strength and dated prior research | Captured technical context; historical hypotheses, not current facts |
+| RSI/KDJ/Bollinger, flow divergence, event timing | Domain instructions in `prompts.py` |
+| Premarket scenarios, postmarket review, intraday changes | Session instructions in `prompts.py` |
+| Evidence references, holding/action consistency, buying power | Mandatory validation and execution constraints |
+| Market/stocks/risks/next-session focus sections | Host report renderer |
+
+The package never reads old PanWatch prompt files. There is no arbitrary runtime
+prompt injection or graph editor. Legacy stays available for controlled comparison;
+graph failure does not automatically retry it. Scripted replay verifies contracts
+and call reductions, not improved investment accuracy or profitability.
 
 ### Source map
 
 | File | Responsibility |
 | --- | --- |
 | [contracts.py](src/pan_investment_research/contracts.py) | Inputs, evidence, reports, recommendations, policy and results |
-| [engine.py](src/pan_investment_research/engine.py) | Three graphs, role prompts, feedback, validation and execution constraints |
+| [engine.py](src/pan_investment_research/engine.py) | Full graphs, feedback, validation and execution constraints |
+| [fast.py](src/pan_investment_research/fast.py) | Fast signal gate, scoped experts, one proposal and mandatory rules |
+| [prompts.py](src/pan_investment_research/prompts.py) | Shared role instructions and migrated session guidance |
 | [budget.py](src/pan_investment_research/budget.py) | Shared attempt/token/tool/feedback accounting and concurrency |
 | [ports.py](src/pan_investment_research/ports.py) | Model, optional read-only tool and optional event protocols |
 | [tests/test_research.py](tests/test_research.py) | Scripted-model contract and graph regression scenarios |
@@ -234,7 +293,7 @@ python -m pytest packages/pan-investment-research/tests -q
 ```
 
 ```python
-from pan_investment_research import InvestmentResearch, ResearchInput, ResearchPolicy
+from pan_investment_research import InvestmentResearch, ResearchInput, ResearchPolicy, ResearchSignal
 
 result = await InvestmentResearch().run(
     ResearchInput.model_validate(prepared_input),
@@ -243,6 +302,18 @@ result = await InvestmentResearch().run(
     events=my_event_sink,
     policy=ResearchPolicy(),
 )
+```
+
+For a host-prepared intraday input with `ResearchSignal` entries:
+
+```python
+policy = ResearchPolicy(
+    profile="intraday", graph="intraday_fast", specialists=["technical", "events"],
+    debate=False, max_feedback=0, max_attempts=6, max_tools=2, deadline_seconds=45,
+)
+# prepared.signals = [ResearchSignal(stock_key="CN:600519", domain="technical",
+#     reasons=["atr_price_change"], observed_at=prepared.as_of)]
+result = await InvestmentResearch().run(prepared, model=my_model_adapter, policy=policy)
 ```
 
 See `ResearchModel`, `ResearchTools` and `ResearchEvents` in `ports.py`.
@@ -259,8 +330,8 @@ Documents are treated as data, never as agent instructions.
 
 ## Limits and results
 
-One complete research group needs nine logical calls before tools, repair and
-feedback. Multiple groups need separate budgets; strategy/risk/decision run once
+One full research group with three experts and debate needs nine logical calls
+before tools, repair and feedback (seven without debate). Multiple groups need separate budgets; strategy/risk/decision run once
 for the combined portfolio. Request attempts, estimated token reservations,
 tool calls, feedback, concurrency, output size and time are bounded. Estimated
 tokens are conservative preflight accounting, not measured billing.
@@ -288,6 +359,10 @@ probability. Zero cash, unverified buying power, stale quotes and human review
 block execution without rewriting a supported outlook or buy opportunity to watch.
 Market specialists do not receive account snapshots. Verified account limits are
 applied deterministically before risk review and finalization.
+
+`completion=skipped` means no enabled change triggered fast research: no formal
+advice, predictions or notification should be written, and previous advice stays.
+The audit includes a deterministic gate artifact and zero attempts.
 
 `completion=complete` distinguishes a finished graph from timeout, budget exhaustion,
 validation failure and risk rejection. A complete graph may still require human

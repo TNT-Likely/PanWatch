@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
 import { markdownClass, type ProcessItem } from './ResearchReport'
 
-const LAYERS = [['technical', 'flow', 'events'], ['bull', 'bear'], ['manager'], ['strategy'], ['risk'], ['decision']]
+const LAYERS = [['gate'], ['technical', 'flow', 'events'], ['bull', 'bear'], ['manager'], ['strategy'], ['risk'], ['decision']]
 
 export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
   const { t } = useTranslation('configuration')
@@ -25,8 +25,8 @@ export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
       if (item.role && positions[to]) edges.push({ from: item.role, to, feedback: true })
     }
   }
-  const active = groups[selected]?.length ? selected : layers[layers.length - 1]?.[0]
-  const label = (role: string) => t(`p4.history.graphRoles.${role}`, { defaultValue: role })
+  const active = groups[selected]?.length ? selected : (groups.strategy?.length ? 'strategy' : layers[layers.length - 1]?.[0])
+  const label = (role: string) => role === 'strategy' && groups.gate?.length ? t('p4.history.intradayDecision') : role === 'risk' && groups[role]?.every(item => item.kind === 'rule') ? t('p4.history.ruleChecks') : t(`p4.history.graphRoles.${role}`, { defaultValue: role })
   const height = layers.length * 92
   const selectedItems = active ? groups[active] || [] : items
   return <section className="space-y-3" aria-label={t('p4.history.processTab')}>
@@ -49,7 +49,7 @@ export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
     {edges.some(edge => edge.feedback) && <p className="text-xs text-muted-foreground">{t('p4.history.feedbackLegend')}</p>}
     {active && <h3 className="text-sm font-semibold">{label(active)}</h3>}
     {selectedItems.map((item, index) => <article key={item.id || index} className="rounded-xl border border-border/60 bg-background/60 p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{item.title}</span>{item.verdict && <span className="rounded bg-accent px-1.5 py-0.5">{t(`p4.history.verdict.${item.verdict}`, { defaultValue: item.verdict })}</span>}{item.active === false && <span>{t('p4.history.previousRound')}</span>}</div>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{item.title}</span>{item.kind === 'rule' && <span className="rounded bg-accent px-1.5 py-0.5">{t('p4.history.ruleNode')}</span>}{item.verdict && <span className="rounded bg-accent px-1.5 py-0.5">{t(`p4.history.verdict.${item.verdict}`, { defaultValue: item.verdict })}</span>}{item.active === false && <span>{t('p4.history.previousRound')}</span>}</div>
       <div className={markdownClass}><ReactMarkdown>{item.content}</ReactMarkdown></div>
     </article>)}
     {!items.length && <p className="py-6 text-center text-muted-foreground">{t('p4.history.noProcess')}</p>}

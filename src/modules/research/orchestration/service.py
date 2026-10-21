@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 import time
+import logging
 
 from pan_investment_research import InvestmentResearch, ResearchPolicy
 
@@ -17,29 +18,17 @@ from .evidence import prepare
 from .reporting import build_report
 from .gateway import EvidenceTools, ResearchModelGateway
 
-PROFILES = {"daily_report": "postmarket", "premarket_outlook": "premarket", "intraday_monitor": "intraday"}
+from .policies import PROFILES, validate_config
 
-
-def validate_config(config, agent_name):
-    config = dict(config or {})
-    mode = config.pop("engine", "legacy")
-    if mode not in {"legacy", "shadow", "langgraph"}:
-        raise ValueError("invalid research engine")
-    profile = PROFILES[agent_name]
-    defaults = {"profile": profile}
-    if profile != "postmarket":
-        defaults.update(debate=False, max_attempts=14 if profile == "premarket" else 10,
-            deadline_seconds=90 if profile == "premarket" else 45)
-    if profile == "intraday":
-        defaults.update(specialists=["technical"], max_feedback=0, max_tools=2, concurrency=2)
-    config.pop("profile", None)
-    return mode, ResearchPolicy.model_validate({**defaults, **config})
+logger = logging.getLogger(__name__)
 
 
 def scope_policy(policy, config, targets):
     """Size default capacities for target coverage, retaining explicit global caps."""
     groups = (targets + policy.max_group_size - 1) // policy.max_group_size
-    updates = {"max_attempts": min(100, policy.max_attempts + 6 * (groups - 1))}
+    updates = {}
+    if "max_attempts" not in config:
+        updates["max_attempts"] = min(100, policy.max_attempts + 6 * (groups - 1))
     defaults = {
         "max_tools": min(30, policy.max_tools * groups),
         "max_total_tokens": min(1000000, policy.max_total_tokens * targets),
@@ -74,6 +63,9 @@ async def execute(agent, context, config):
         context = copy(context)
         context.config, context.portfolio = deepcopy(context.config), deepcopy(context.portfolio)
         context._research_shadow = mode == "shadow"
+        context._research_fast = policy.graph == "intraday_fast"
+        context._research_specialists = policy.specialists
+        context._research_force = policy.trigger_mode == "always"
         prepared, details, snapshots = await asyncio.wait_for(prepare(agent, context, run_id), policy.deadline_seconds)
         if prepared is None:
             await repository.fail(run_id, "No eligible targets")
@@ -85,16 +77,12 @@ async def execute(agent, context, config):
             raise TimeoutError("Research preparation exhausted the deadline")
         policy = policy.model_copy(update={"deadline_seconds": remaining})
         events = any(e.domain == "events" and e.content.get("items") for e in prepared.evidence)
-        if agent.name == "intraday_monitor" and "specialists" not in config:
-            policy = policy.model_copy(update={"specialists": ["technical", "events"] if events else ["technical"]})
-        if policy.profile != "postmarket" and events and "debate" not in config:
-            policy = policy.model_copy(update={"debate": True})
         research = await InvestmentResearch().run(prepared, model=ResearchModelGateway(context.ai_client),
             tools=EvidenceTools(details), events=Events(run_id), policy=policy)
         result = present(agent, context, prepared, research, elapsed_seconds=time.monotonic() - started)
         agent.localize_result_title(result, context)
         targets = context.notifier.delivery_targets() if hasattr(context.notifier, "delivery_targets") else [("configured", context.notifier)]
-        notify = not getattr(context, "suppress_notify", False)
+        notify = research.completion != "skipped" and not getattr(context, "suppress_notify", False)
         if context.notify_policy and context.notify_policy.is_quiet_now():
             notify = False
         if agent.name == "intraday_monitor":
@@ -102,6 +90,14 @@ async def execute(agent, context, config):
         ttl = (0 if getattr(agent, "bypass_throttle", False) else agent.throttle_minutes) if agent.name == "intraday_monitor" else agent._notify_dedupe_ttl_minutes(context)
         status = await repository.commit(run_id, agent, prepared, research, result, snapshots,
                                         [key for key, _ in targets], notify, ttl)
+        if mode != "shadow" and status != "stale" and research.completion in {"complete", "skipped"}:
+            from .signals import acknowledge
+            try:
+                await asyncio.to_thread(acknowledge, getattr(context, "_research_gate_observations", {}))
+            except OSError:
+                # Delivery is already committed; a cache failure must not erase its audit result.
+                logger.warning("Intraday change baseline could not be saved; next run may reanalyse")
+                await repository.progress(run_id, {"role": "gate", "status": "warning", "baseline_saved": False})
         result.raw_data["notified"] = False
         if mode == "shadow":
             return None
@@ -136,9 +132,9 @@ def present(agent, context, prepared, research, *, elapsed_seconds=None):
     suggestions = {rec.stock_key: normalize_suggestion(rec.model_dump(), agent_name=agent.name)
                    for rec in research.recommendations} if research.completion == "complete" else {}
     raw = {"engine": "langgraph", "research_run_id": prepared.run_id, "result_status": research.status,
-        "completion": research.completion, "research_reason": research.reason, "research_report": report,
+        "completion": research.completion, "graph": research.graph, "skipped": research.completion == "skipped", "research_reason": research.reason, "research_report": report,
         "drafts": [r.model_dump() for r in research.recommendations] if research.completion != "complete" else [],
         "suggestions": suggestions, "symbols": [s.key.split(":", 1)[1] for s in prepared.securities],
         "scope": [s.key for s in prepared.securities], "analysis_date": datetime.now().date().isoformat(),
-        "usage": research.usage, "should_alert": research.completion != "complete" or any(s["should_alert"] for s in suggestions.values())}
+        "usage": research.usage, "should_alert": research.completion not in {"complete", "skipped"} or any(s["should_alert"] for s in suggestions.values())}
     return AnalysisResult(agent_name=agent.name, title=title, content=report["content"], raw_data=raw)

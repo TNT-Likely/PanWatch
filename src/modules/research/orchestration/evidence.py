@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 
-from pan_investment_research import Evidence, ResearchInput, Security
+from pan_investment_research import Evidence, ResearchInput, ResearchSignal, Security
+from .signals import inspect_changes, published, material
 
 from src.modules.automation.scheduling_policy import scoped_context
 from src.platform.persistence.json_safe import to_jsonable
@@ -16,7 +17,8 @@ async def prepare(agent, context, run_id):
     for stock in context.watchlist:
         key = (stock.market, stock.symbol if agent.name == "intraday_monitor" else "*")
         groups.setdefault(key, []).append(stock)
-    securities, evidence, details, snapshots = [], [], [], {}
+    securities, evidence, details, snapshots, signals = [], [], [], {}, []
+    context._research_gate_observations = {}
     for stocks in groups.values():
         scoped = scoped_context(context, stocks)
         scoped.config = deepcopy(scoped.config)
@@ -43,16 +45,41 @@ async def prepare(agent, context, run_id):
                 quote_expires_at=expiry if quote else None,
                 held_quantity=sum(p.quantity for p in positions)))
             symbol_context = (data.get("symbol_contexts") or {}).get(stock.symbol) or data.get("symbol_context") or {}
+            from src.modules.strategy.intraday_event_gate import adaptive_price_threshold
+            rule_context = {"atr_pct": (pack.technical or {}).get("atr_pct"),
+                "adaptive_price_threshold": adaptive_price_threshold((pack.technical or {}).get("atr_pct"), getattr(agent, "price_alert_threshold", 3)),
+                "stop_loss_warning": getattr(agent, "stop_loss_warning", -5), "take_profit_warning": getattr(agent, "take_profit_warning", 10)}
+            if getattr(context, "_research_fast", False):
+                found, observation, rule_context = inspect_changes(stock_key, pack, positions, observed, agent,
+                    event_only=not getattr(context, "_research_force", False))
+                found = [s for s in found if s.domain in getattr(context, "_research_specialists", ["technical", "events"])]
+                signals.extend(found)
+                context._research_gate_observations[stock_key] = observation
+                if found and not symbol_context:
+                    from src.modules.research.context_builder import ContextBuilder
+                    enriched = await ContextBuilder().build_symbol_contexts(agent_name=agent.name, context=scoped,
+                        packs={stock.symbol: pack}, realtime_hours=6, extended_hours=24, history_days=7,
+                        kline_days=60, persist_snapshot=False)
+                    symbol_context = enriched.get("symbols", {}).get(stock.symbol) or {}
             snapshots[stock_key] = to_jsonable(symbol_context)
             news = (pack.news.items if pack.news else []) + (pack.events.items if pack.events else [])
+            # Preserve useful legacy input semantics without importing its formatting prompt.
+            analysis_context = {k: symbol_context.get(k) for k in ("relative_strength", "ta_verdict") if symbol_context.get(k)}
+            analysis_context["trading_styles"] = sorted({p.trading_style for p in positions})
+            analysis_context["volatility_rules"] = {k: v for k, v in rule_context.items() if k != "position_warnings"}
+            enriched_events = {item.get("url"): item for item in (symbol_context.get("events") or []) if isinstance(item, dict) and item.get("url")}
+            news = [{**item, **enriched_events.get(item.get("url"), {})} for item in news]
+            news = [item for item in news if (t := published(item, observed, stock.market.value)) is None or t <= observed]
+            if not getattr(context, "_research_fast", False) and any(material(item) for item in news):
+                signals.append(ResearchSignal(stock_key=stock_key, domain="events", reasons=["material_captured_event"], observed_at=observed, material=True))
             domains = {
-                "technical": {"quote": quote, "indicators": pack.technical, "missing": pack.missing},
+                "technical": {"quote": quote, "indicators": pack.technical, "missing": pack.missing, "analysis_context": analysis_context},
                 "flow": {"capital_flow": pack.capital_flow, "indices": data.get("indices") or data.get("us_indices"),
                          "unsupported_or_missing": pack.capital_flow is None},
                 "events": {"items": news, "historical_context": {
-                    "daily": data.get("daily_analysis"), "premarket": data.get("premarket_analysis")}},
+                    "daily": None if getattr(context, "_research_fast", False) else data.get("daily_analysis"), "premarket": None if getattr(context, "_research_fast", False) else data.get("premarket_analysis")}},
             }
-            if agent.name == "intraday_monitor" and agent.event_only and pack.quote and not getattr(context, "_research_shadow", False):
+            if agent.name == "intraday_monitor" and not getattr(context, "_research_fast", False) and agent.event_only and pack.quote and not getattr(context, "_research_shadow", False):
                 from src.modules.strategy.intraday_event_gate import check_and_update
                 gate = check_and_update(symbol=stock_key, change_pct=pack.quote.change_pct,
                     volume_ratio=(pack.technical or {}).get("volume_ratio"), kline_summary=pack.technical,
@@ -71,9 +98,10 @@ async def prepare(agent, context, run_id):
     if not securities:
         return None, details, snapshots
     portfolio = to_jsonable(context.portfolio)
+    portfolio["research_rules"] = {"stop_loss_warning": getattr(agent, "stop_loss_warning", -5), "take_profit_warning": getattr(agent, "take_profit_warning", 10)}
     portfolio["validation_scope"] = "Provided account snapshot only; currency and settlement buying power unverified"
     prepared = ResearchInput(run_id=run_id, as_of=datetime.now(timezone.utc), securities=securities,
-                             evidence=evidence, portfolio=portfolio, language=context.report_language)
+                             evidence=evidence, portfolio=portfolio, signals=signals, language=context.report_language)
     return prepared, details, snapshots
 
 

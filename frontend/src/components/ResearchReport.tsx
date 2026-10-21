@@ -9,7 +9,7 @@ import type { SuggestionStateInput } from '@panwatch/biz-ui/components/suggestio
 
 export interface ProcessItem {
   id?: string; role?: string; group?: string; epoch?: number; verdict?: string; active?: boolean
-  feedback_roles?: string[]; title: string; content: string
+  kind?: 'model' | 'rule'; feedback_roles?: string[]; title: string; content: string
 }
 export interface EvidenceItem {
   id?: string; stock_key?: string; stock_name?: string; domain?: string; domain_label?: string
@@ -26,7 +26,7 @@ export interface ResearchReportData {
   evidence: EvidenceItem[]
   models: string[]
   usage: { attempts?: number; tools?: number; input_tokens?: number; output_tokens?: number; feedback?: number; unknown_usage?: number }
-  runtime?: { completion: string; as_of: string; stock_count: number; elapsed_seconds: number | null }
+  runtime?: { graph?: string; completion: string; as_of: string; stock_count: number; elapsed_seconds: number | null }
 }
 
 export const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] md:text-sm [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:mt-5 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-2 [&_p]:leading-6 [&_li]:my-1 [&_li]:leading-6 [&_ul]:my-2 [&_code]:break-all'

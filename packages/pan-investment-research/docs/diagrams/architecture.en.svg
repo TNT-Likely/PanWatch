@@ -16,8 +16,8 @@
 </g>
 <g id="clust2" class="cluster">
 <title>cluster_PACKAGE</title>
-<polygon fill="white" stroke="#c6d4e3" points="8,-121 8,-363 798.97,-363 798.97,-121 8,-121"/>
-<text xml:space="preserve" text-anchor="middle" x="403.48" y="-345.5" font-family="Arial" font-size="15.00">pan_investment_research</text>
+<polygon fill="white" stroke="#c6d4e3" points="8,-86 8,-376 798.97,-376 798.97,-86 8,-86"/>
+<text xml:space="preserve" text-anchor="middle" x="403.48" y="-358.5" font-family="Arial" font-size="15.00">pan_investment_research</text>
 </g>
 <!-- COL -->
 <g id="node1" class="node">
@@ -29,14 +29,14 @@
 <!-- INPUT -->
 <g id="node7" class="node">
 <title>INPUT</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M117.98,-214C117.98,-214 42.34,-214 42.34,-214 36.34,-214 30.34,-208 30.34,-202 30.34,-202 30.34,-190 30.34,-190 30.34,-184 36.34,-178 42.34,-178 42.34,-178 117.98,-178 117.98,-178 123.98,-178 129.98,-184 129.98,-190 129.98,-190 129.98,-202 129.98,-202 129.98,-208 123.98,-214 117.98,-214"/>
-<text xml:space="preserve" text-anchor="middle" x="80.16" y="-192.4" font-family="Arial" font-size="12.00">ResearchInput</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M117.98,-178C117.98,-178 42.34,-178 42.34,-178 36.34,-178 30.34,-172 30.34,-166 30.34,-166 30.34,-154 30.34,-154 30.34,-148 36.34,-142 42.34,-142 42.34,-142 117.98,-142 117.98,-142 123.98,-142 129.98,-148 129.98,-154 129.98,-154 129.98,-166 129.98,-166 129.98,-172 123.98,-178 117.98,-178"/>
+<text xml:space="preserve" text-anchor="middle" x="80.16" y="-156.4" font-family="Arial" font-size="12.00">ResearchInput</text>
 </g>
 <!-- COL&#45;&gt;INPUT -->
 <g id="edge1" class="edge">
 <title>COL&#45;&gt;INPUT</title>
-<path fill="none" stroke="#506983" d="M828.42,-75.94C732.99,-78.59 573.82,-83 573.82,-83 412.82,-83 412.82,-83 412.82,-83 412.82,-83 233.09,-144.24 138.25,-176.55"/>
-<polygon fill="#506983" stroke="#506983" points="137.72,-174.14 131.89,-178.72 139.31,-178.78 137.72,-174.14"/>
+<path fill="none" stroke="#506983" d="M828.42,-70.98C732.99,-66.86 573.82,-60 573.82,-60 412.82,-60 412.82,-60 412.82,-60 412.82,-60 176.32,-131 176.32,-131 176.32,-131 158.64,-136.39 138.52,-142.52"/>
+<polygon fill="#506983" stroke="#506983" points="137.84,-140.16 131.86,-144.55 139.27,-144.85 137.84,-140.16"/>
 </g>
 <!-- GATEWAY -->
 <g id="node2" class="node">
@@ -45,13 +45,13 @@
 <text xml:space="preserve" text-anchor="middle" x="899.47" y="-255.4" font-family="Arial" font-size="12.00">ResearchModelGateway</text>
 </g>
 <!-- PROVIDER -->
-<g id="node16" class="node">
+<g id="node17" class="node">
 <title>PROVIDER</title>
 <path fill="#edf4fb" stroke="#b7c8dc" d="M1164.98,-36C1164.98,-36 1019.97,-36 1019.97,-36 1013.97,-36 1007.97,-30 1007.97,-24 1007.97,-24 1007.97,-12 1007.97,-12 1007.97,-6 1013.97,0 1019.97,0 1019.97,0 1164.98,0 1164.98,0 1170.98,0 1176.98,-6 1176.98,-12 1176.98,-12 1176.98,-24 1176.98,-24 1176.98,-30 1170.98,-36 1164.98,-36"/>
 <text xml:space="preserve" text-anchor="middle" x="1092.47" y="-14.4" font-family="Arial" font-size="12.00">Configured model providers</text>
 </g>
 <!-- GATEWAY&#45;&gt;PROVIDER -->
-<g id="edge12" class="edge">
+<g id="edge18" class="edge">
 <title>GATEWAY&#45;&gt;PROVIDER</title>
 <path fill="none" stroke="#506983" d="M948.28,-240.63C963.26,-234.88 975.97,-230 975.97,-230 975.97,-230 1007.97,-40 1007.97,-40 1007.97,-40 1010.07,-39.45 1013.61,-38.51"/>
 <polygon fill="#506983" stroke="#506983" points="1013.77,-41 1019.92,-36.85 1012.52,-36.27 1013.77,-41"/>
@@ -84,7 +84,7 @@
 <text xml:space="preserve" text-anchor="middle" x="1092.47" y="-128.2" font-family="Arial" font-size="12.00">notifications</text>
 </g>
 <!-- SAVE&#45;&gt;VIEW -->
-<g id="edge19" class="edge">
+<g id="edge25" class="edge">
 <title>SAVE&#45;&gt;VIEW</title>
 <path fill="none" stroke="#506983" d="M959.33,-139C982.08,-139 1008.09,-139 1030.99,-139"/>
 <polygon fill="#506983" stroke="#506983" points="1030.76,-141.45 1037.76,-139 1030.76,-136.55 1030.76,-141.45"/>
@@ -92,147 +92,189 @@
 <!-- RUN -->
 <g id="node8" class="node">
 <title>RUN</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M299.32,-243C299.32,-243 188.32,-243 188.32,-243 182.32,-243 176.32,-237 176.32,-231 176.32,-231 176.32,-219 176.32,-219 176.32,-213 182.32,-207 188.32,-207 188.32,-207 299.32,-207 299.32,-207 305.32,-207 311.32,-213 311.32,-219 311.32,-219 311.32,-231 311.32,-231 311.32,-237 305.32,-243 299.32,-243"/>
-<text xml:space="preserve" text-anchor="middle" x="243.82" y="-221.4" font-family="Arial" font-size="12.00">Investment run graph</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M299.32,-259C299.32,-259 188.32,-259 188.32,-259 182.32,-259 176.32,-253 176.32,-247 176.32,-247 176.32,-235 176.32,-235 176.32,-229 182.32,-223 188.32,-223 188.32,-223 299.32,-223 299.32,-223 305.32,-223 311.32,-229 311.32,-235 311.32,-235 311.32,-247 311.32,-247 311.32,-253 305.32,-259 299.32,-259"/>
+<text xml:space="preserve" text-anchor="middle" x="243.82" y="-237.4" font-family="Arial" font-size="12.00">Investment run graph</text>
 </g>
 <!-- INPUT&#45;&gt;RUN -->
 <g id="edge2" class="edge">
 <title>INPUT&#45;&gt;RUN</title>
-<path fill="none" stroke="#506983" d="M130.1,-204.78C141.92,-206.9 154.82,-209.21 167.53,-211.49"/>
-<polygon fill="#506983" stroke="#506983" points="167.04,-213.89 174.36,-212.72 167.9,-209.07 167.04,-213.89"/>
+<path fill="none" stroke="#506983" d="M117.84,-178.38C141.84,-190.4 173.32,-206.18 198.68,-218.89"/>
+<polygon fill="#506983" stroke="#506983" points="197.29,-220.93 204.65,-221.87 199.49,-216.55 197.29,-220.93"/>
+</g>
+<!-- FAST -->
+<g id="node9" class="node">
+<title>FAST</title>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M292.65,-178C292.65,-178 194.99,-178 194.99,-178 188.99,-178 182.99,-172 182.99,-166 182.99,-166 182.99,-154 182.99,-154 182.99,-148 188.99,-142 194.99,-142 194.99,-142 292.65,-142 292.65,-142 298.65,-142 304.65,-148 304.65,-154 304.65,-154 304.65,-166 304.65,-166 304.65,-172 298.65,-178 292.65,-178"/>
+<text xml:space="preserve" text-anchor="middle" x="243.82" y="-156.4" font-family="Arial" font-size="12.00">Intraday fast graph</text>
+</g>
+<!-- INPUT&#45;&gt;FAST -->
+<g id="edge3" class="edge">
+<title>INPUT&#45;&gt;FAST</title>
+<path fill="none" stroke="#506983" d="M130.1,-160C144.06,-160 159.53,-160 174.42,-160"/>
+<polygon fill="#506983" stroke="#506983" points="174.11,-162.45 181.11,-160 174.11,-157.55 174.11,-162.45"/>
 </g>
 <!-- GROUP -->
-<g id="node9" class="node">
+<g id="node10" class="node">
 <title>GROUP</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M472.33,-305C472.33,-305 355.32,-305 355.32,-305 349.32,-305 343.32,-299 343.32,-293 343.32,-293 343.32,-281 343.32,-281 343.32,-275 349.32,-269 355.32,-269 355.32,-269 472.33,-269 472.33,-269 478.33,-269 484.33,-275 484.33,-281 484.33,-281 484.33,-293 484.33,-293 484.33,-299 478.33,-305 472.33,-305"/>
-<text xml:space="preserve" text-anchor="middle" x="413.82" y="-283.4" font-family="Arial" font-size="12.00">Research group graph</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M472.33,-318C472.33,-318 355.32,-318 355.32,-318 349.32,-318 343.32,-312 343.32,-306 343.32,-306 343.32,-294 343.32,-294 343.32,-288 349.32,-282 355.32,-282 355.32,-282 472.33,-282 472.33,-282 478.33,-282 484.33,-288 484.33,-294 484.33,-294 484.33,-306 484.33,-306 484.33,-312 478.33,-318 472.33,-318"/>
+<text xml:space="preserve" text-anchor="middle" x="413.82" y="-296.4" font-family="Arial" font-size="12.00">Research group graph</text>
 </g>
 <!-- RUN&#45;&gt;GROUP -->
-<g id="edge6" class="edge">
+<g id="edge12" class="edge">
 <title>RUN&#45;&gt;GROUP</title>
-<path fill="none" stroke="#506983" d="M294.77,-243.43C313.64,-250.4 335.28,-258.38 354.83,-265.6"/>
-<polygon fill="#506983" stroke="#506983" points="353.94,-267.88 361.35,-268.01 355.64,-263.28 353.94,-267.88"/>
+<path fill="none" stroke="#506983" d="M297.06,-259.34C314.67,-265.53 334.47,-272.48 352.65,-278.87"/>
+<polygon fill="#506983" stroke="#506983" points="351.49,-281.06 358.9,-281.06 353.11,-276.43 351.49,-281.06"/>
 </g>
 <!-- MODEL -->
-<g id="node12" class="node">
+<g id="node13" class="node">
 <title>MODEL</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M778.97,-271C778.97,-271 673.32,-271 673.32,-271 667.32,-271 661.32,-265 661.32,-259 661.32,-259 661.32,-247 661.32,-247 661.32,-241 667.32,-235 673.32,-235 673.32,-235 778.97,-235 778.97,-235 784.97,-235 790.97,-241 790.97,-247 790.97,-247 790.97,-259 790.97,-259 790.97,-265 784.97,-271 778.97,-271"/>
-<text xml:space="preserve" text-anchor="middle" x="726.14" y="-249.4" font-family="Arial" font-size="12.00">ResearchModel port</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M778.97,-277C778.97,-277 673.32,-277 673.32,-277 667.32,-277 661.32,-271 661.32,-265 661.32,-265 661.32,-253 661.32,-253 661.32,-247 667.32,-241 673.32,-241 673.32,-241 778.97,-241 778.97,-241 784.97,-241 790.97,-247 790.97,-253 790.97,-253 790.97,-265 790.97,-265 790.97,-271 784.97,-277 778.97,-277"/>
+<text xml:space="preserve" text-anchor="middle" x="726.14" y="-255.4" font-family="Arial" font-size="12.00">ResearchModel port</text>
 </g>
 <!-- RUN&#45;&gt;MODEL -->
-<g id="edge8" class="edge">
+<g id="edge14" class="edge">
 <title>RUN&#45;&gt;MODEL</title>
-<path fill="none" stroke="#506983" d="M311.61,-231.1C329.18,-232.71 343.32,-234 343.32,-234 343.32,-234 542.05,-243.89 652.76,-249.4"/>
-<polygon fill="#506983" stroke="#506983" points="652.61,-251.84 659.72,-249.74 652.85,-246.95 652.61,-251.84"/>
+<path fill="none" stroke="#506983" d="M311.61,-245.07C329.18,-246.14 343.32,-247 343.32,-247 343.32,-247 542.05,-253.25 652.76,-256.73"/>
+<polygon fill="#506983" stroke="#506983" points="652.65,-259.17 659.72,-256.94 652.8,-254.28 652.65,-259.17"/>
 </g>
 <!-- EVENTS -->
-<g id="node14" class="node">
+<g id="node15" class="node">
 <title>EVENTS</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M468.65,-223C468.65,-223 359,-223 359,-223 353,-223 347,-217 347,-211 347,-211 347,-199 347,-199 347,-193 353,-187 359,-187 359,-187 468.65,-187 468.65,-187 474.65,-187 480.65,-193 480.65,-199 480.65,-199 480.65,-211 480.65,-211 480.65,-217 474.65,-223 468.65,-223"/>
-<text xml:space="preserve" text-anchor="middle" x="413.82" y="-201.4" font-family="Arial" font-size="12.00">ResearchEvents port</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M468.65,-236C468.65,-236 359,-236 359,-236 353,-236 347,-230 347,-224 347,-224 347,-212 347,-212 347,-206 353,-200 359,-200 359,-200 468.65,-200 468.65,-200 474.65,-200 480.65,-206 480.65,-212 480.65,-212 480.65,-224 480.65,-224 480.65,-230 474.65,-236 468.65,-236"/>
+<text xml:space="preserve" text-anchor="middle" x="413.82" y="-214.4" font-family="Arial" font-size="12.00">ResearchEvents port</text>
 </g>
 <!-- RUN&#45;&gt;EVENTS -->
-<g id="edge15" class="edge">
+<g id="edge21" class="edge">
 <title>RUN&#45;&gt;EVENTS</title>
-<path fill="none" stroke="#506983" d="M311.7,-217.04C320.44,-216 329.44,-214.93 338.29,-213.87"/>
-<polygon fill="#506983" stroke="#506983" points="338.56,-216.31 345.22,-213.05 337.98,-211.44 338.56,-216.31"/>
+<path fill="none" stroke="#506983" d="M311.7,-231.84C320.44,-230.65 329.44,-229.42 338.29,-228.2"/>
+<polygon fill="#506983" stroke="#506983" points="338.62,-230.63 345.22,-227.26 337.95,-225.78 338.62,-230.63"/>
 </g>
 <!-- RESULT -->
-<g id="node15" class="node">
+<g id="node16" class="node">
 <title>RESULT</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M455.31,-165C455.31,-165 372.34,-165 372.34,-165 366.34,-165 360.34,-159 360.34,-153 360.34,-153 360.34,-141 360.34,-141 360.34,-135 366.34,-129 372.34,-129 372.34,-129 455.31,-129 455.31,-129 461.31,-129 467.31,-135 467.31,-141 467.31,-141 467.31,-153 467.31,-153 467.31,-159 461.31,-165 455.31,-165"/>
-<text xml:space="preserve" text-anchor="middle" x="413.82" y="-143.4" font-family="Arial" font-size="12.00">ResearchResult</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M455.31,-178C455.31,-178 372.34,-178 372.34,-178 366.34,-178 360.34,-172 360.34,-166 360.34,-166 360.34,-154 360.34,-154 360.34,-148 366.34,-142 372.34,-142 372.34,-142 455.31,-142 455.31,-142 461.31,-142 467.31,-148 467.31,-154 467.31,-154 467.31,-166 467.31,-166 467.31,-172 461.31,-178 455.31,-178"/>
+<text xml:space="preserve" text-anchor="middle" x="413.82" y="-156.4" font-family="Arial" font-size="12.00">ResearchResult</text>
 </g>
 <!-- RUN&#45;&gt;RESULT -->
-<g id="edge17" class="edge">
+<g id="edge23" class="edge">
 <title>RUN&#45;&gt;RESULT</title>
-<path fill="none" stroke="#506983" d="M281.78,-206.61C309.73,-192.71 343.32,-176 343.32,-176 343.32,-176 350.89,-172.84 361.03,-168.61"/>
-<polygon fill="#506983" stroke="#506983" points="361.89,-170.91 367.41,-165.95 360,-166.38 361.89,-170.91"/>
+<path fill="none" stroke="#506983" d="M279.83,-222.52C308.14,-207.57 343.32,-189 343.32,-189 343.32,-189 350.89,-185.84 361.03,-181.61"/>
+<polygon fill="#506983" stroke="#506983" points="361.89,-183.91 367.41,-178.95 360,-179.38 361.89,-183.91"/>
 </g>
 <!-- EXPERT -->
-<g id="node10" class="node">
+<g id="node11" class="node">
 <title>EXPERT</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M617.32,-329C617.32,-329 528.33,-329 528.33,-329 522.33,-329 516.33,-323 516.33,-317 516.33,-317 516.33,-305 516.33,-305 516.33,-299 522.33,-293 528.33,-293 528.33,-293 617.32,-293 617.32,-293 623.32,-293 629.32,-299 629.32,-305 629.32,-305 629.32,-317 629.32,-317 629.32,-323 623.32,-329 617.32,-329"/>
-<text xml:space="preserve" text-anchor="middle" x="572.82" y="-307.4" font-family="Arial" font-size="12.00">Expert tool graph</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M617.32,-342C617.32,-342 528.33,-342 528.33,-342 522.33,-342 516.33,-336 516.33,-330 516.33,-330 516.33,-318 516.33,-318 516.33,-312 522.33,-306 528.33,-306 528.33,-306 617.32,-306 617.32,-306 623.32,-306 629.32,-312 629.32,-318 629.32,-318 629.32,-330 629.32,-330 629.32,-336 623.32,-342 617.32,-342"/>
+<text xml:space="preserve" text-anchor="middle" x="572.82" y="-320.4" font-family="Arial" font-size="12.00">Expert tool graph</text>
+</g>
+<!-- FAST&#45;&gt;EXPERT -->
+<g id="edge4" class="edge">
+<title>FAST&#45;&gt;EXPERT</title>
+<path fill="none" stroke="#506983" d="M304.96,-142.3C325.46,-136.26 343.32,-131 343.32,-131 343.32,-131 484.33,-131 484.33,-131 484.33,-131 516.33,-226 516.33,-226 516.33,-226 540.75,-269.13 557.19,-298.16"/>
+<polygon fill="#506983" stroke="#506983" points="555.06,-299.37 560.64,-304.25 559.32,-296.95 555.06,-299.37"/>
+</g>
+<!-- FAST&#45;&gt;MODEL -->
+<g id="edge5" class="edge">
+<title>FAST&#45;&gt;MODEL</title>
+<path fill="none" stroke="#506983" d="M298.39,-141.51C321.5,-133.53 343.32,-126 343.32,-126 343.32,-126 484.33,-126 484.33,-126 484.33,-126 615.74,-198.58 684.41,-236.5"/>
+<polygon fill="#506983" stroke="#506983" points="683.02,-238.54 690.33,-239.78 685.39,-234.25 683.02,-238.54"/>
+</g>
+<!-- FAST&#45;&gt;EVENTS -->
+<g id="edge6" class="edge">
+<title>FAST&#45;&gt;EVENTS</title>
+<path fill="none" stroke="#506983" d="M297.98,-178.35C314.98,-184.22 333.95,-190.77 351.49,-196.83"/>
+<polygon fill="#506983" stroke="#506983" points="350.59,-199.11 358,-199.07 352.19,-194.47 350.59,-199.11"/>
+</g>
+<!-- FAST&#45;&gt;RESULT -->
+<g id="edge7" class="edge">
+<title>FAST&#45;&gt;RESULT</title>
+<path fill="none" stroke="#506983" d="M305,-160C320.17,-160 336.48,-160 351.7,-160"/>
+<polygon fill="#506983" stroke="#506983" points="351.51,-162.45 358.51,-160 351.51,-157.55 351.51,-162.45"/>
 </g>
 <!-- GROUP&#45;&gt;EXPERT -->
-<g id="edge7" class="edge">
+<g id="edge13" class="edge">
 <title>GROUP&#45;&gt;EXPERT</title>
-<path fill="none" stroke="#506983" d="M484.6,-297.67C492.3,-298.84 500.11,-300.04 507.73,-301.2"/>
-<polygon fill="#506983" stroke="#506983" points="507.13,-303.59 514.42,-302.23 507.87,-298.75 507.13,-303.59"/>
+<path fill="none" stroke="#506983" d="M484.6,-310.67C492.3,-311.84 500.11,-313.04 507.73,-314.2"/>
+<polygon fill="#506983" stroke="#506983" points="507.13,-316.59 514.42,-315.23 507.87,-311.75 507.13,-316.59"/>
 </g>
 <!-- GROUP&#45;&gt;MODEL -->
-<g id="edge9" class="edge">
+<g id="edge15" class="edge">
 <title>GROUP&#45;&gt;MODEL</title>
-<path fill="none" stroke="#506983" d="M484.46,-279.37C534.57,-273.88 601.98,-266.49 652.71,-260.94"/>
-<polygon fill="#506983" stroke="#506983" points="652.82,-263.39 659.52,-260.19 652.29,-258.52 652.82,-263.39"/>
+<path fill="none" stroke="#506983" d="M484.46,-290.8C534.57,-284.18 601.98,-275.27 652.71,-268.57"/>
+<polygon fill="#506983" stroke="#506983" points="652.9,-271.02 659.52,-267.67 652.26,-266.16 652.9,-271.02"/>
 </g>
 <!-- EXPERT&#45;&gt;MODEL -->
-<g id="edge10" class="edge">
+<g id="edge16" class="edge">
 <title>EXPERT&#45;&gt;MODEL</title>
-<path fill="none" stroke="#506983" d="M621.7,-292.65C636.88,-286.83 653.79,-280.35 669.47,-274.34"/>
-<polygon fill="#506983" stroke="#506983" points="669.98,-276.77 675.64,-271.97 668.23,-272.19 669.98,-276.77"/>
+<path fill="none" stroke="#506983" d="M616.78,-305.55C634.83,-297.79 655.95,-288.72 674.74,-280.65"/>
+<polygon fill="#506983" stroke="#506983" points="675.22,-283.11 680.69,-278.1 673.29,-278.61 675.22,-283.11"/>
 </g>
 <!-- TOOLS -->
-<g id="node13" class="node">
+<g id="node14" class="node">
 <title>TOOLS</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M777.3,-329C777.3,-329 674.99,-329 674.99,-329 668.99,-329 662.99,-323 662.99,-317 662.99,-317 662.99,-305 662.99,-305 662.99,-299 668.99,-293 674.99,-293 674.99,-293 777.3,-293 777.3,-293 783.3,-293 789.3,-299 789.3,-305 789.3,-305 789.3,-317 789.3,-317 789.3,-323 783.3,-329 777.3,-329"/>
-<text xml:space="preserve" text-anchor="middle" x="726.14" y="-307.4" font-family="Arial" font-size="12.00">ResearchTools port</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M777.3,-340C777.3,-340 674.99,-340 674.99,-340 668.99,-340 662.99,-334 662.99,-328 662.99,-328 662.99,-316 662.99,-316 662.99,-310 668.99,-304 674.99,-304 674.99,-304 777.3,-304 777.3,-304 783.3,-304 789.3,-310 789.3,-316 789.3,-316 789.3,-328 789.3,-328 789.3,-334 783.3,-340 777.3,-340"/>
+<text xml:space="preserve" text-anchor="middle" x="726.14" y="-318.4" font-family="Arial" font-size="12.00">ResearchTools port</text>
 </g>
 <!-- EXPERT&#45;&gt;TOOLS -->
-<g id="edge13" class="edge">
+<g id="edge19" class="edge">
 <title>EXPERT&#45;&gt;TOOLS</title>
-<path fill="none" stroke="#506983" d="M629.74,-311C637.67,-311 645.92,-311 654.1,-311"/>
-<polygon fill="#506983" stroke="#506983" points="654.06,-313.45 661.06,-311 654.06,-308.55 654.06,-313.45"/>
+<path fill="none" stroke="#506983" d="M629.74,-323.26C637.67,-323.16 645.92,-323.05 654.1,-322.94"/>
+<polygon fill="#506983" stroke="#506983" points="654.09,-325.39 661.06,-322.85 654.03,-320.49 654.09,-325.39"/>
 </g>
 <!-- POLICY -->
-<g id="node11" class="node">
+<g id="node12" class="node">
 <title>POLICY</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M132.32,-308.6C132.32,-308.6 28,-308.6 28,-308.6 22,-308.6 16,-302.6 16,-296.6 16,-296.6 16,-277.4 16,-277.4 16,-271.4 22,-265.4 28,-265.4 28,-265.4 132.32,-265.4 132.32,-265.4 138.32,-265.4 144.32,-271.4 144.32,-277.4 144.32,-277.4 144.32,-296.6 144.32,-296.6 144.32,-302.6 138.32,-308.6 132.32,-308.6"/>
-<text xml:space="preserve" text-anchor="middle" x="80.16" y="-290.6" font-family="Arial" font-size="12.00">ResearchPolicy and</text>
-<text xml:space="preserve" text-anchor="middle" x="80.16" y="-276.2" font-family="Arial" font-size="12.00">shared Budget</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M132.32,-287.6C132.32,-287.6 28,-287.6 28,-287.6 22,-287.6 16,-281.6 16,-275.6 16,-275.6 16,-256.4 16,-256.4 16,-250.4 22,-244.4 28,-244.4 28,-244.4 132.32,-244.4 132.32,-244.4 138.32,-244.4 144.32,-250.4 144.32,-256.4 144.32,-256.4 144.32,-275.6 144.32,-275.6 144.32,-281.6 138.32,-287.6 132.32,-287.6"/>
+<text xml:space="preserve" text-anchor="middle" x="80.16" y="-269.6" font-family="Arial" font-size="12.00">ResearchPolicy and</text>
+<text xml:space="preserve" text-anchor="middle" x="80.16" y="-255.2" font-family="Arial" font-size="12.00">shared Budget</text>
 </g>
 <!-- POLICY&#45;&gt;RUN -->
-<g id="edge3" class="edge">
+<g id="edge9" class="edge">
 <title>POLICY&#45;&gt;RUN</title>
-<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M138.61,-264.97C154.37,-258.92 171.42,-252.39 187.07,-246.38"/>
-<polygon fill="#506983" stroke="#506983" points="187.56,-248.82 193.22,-244.02 185.81,-244.24 187.56,-248.82"/>
+<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M144.59,-256.19C152.12,-255.03 159.87,-253.83 167.55,-252.64"/>
+<polygon fill="#506983" stroke="#506983" points="167.81,-255.08 174.35,-251.59 167.06,-250.24 167.81,-255.08"/>
+</g>
+<!-- POLICY&#45;&gt;FAST -->
+<g id="edge8" class="edge">
+<title>POLICY&#45;&gt;FAST</title>
+<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M114.66,-244.04C141.94,-226.15 180.33,-200.97 207.97,-182.85"/>
+<polygon fill="#506983" stroke="#506983" points="208.98,-185.12 213.49,-179.23 206.29,-181.02 208.98,-185.12"/>
 </g>
 <!-- POLICY&#45;&gt;GROUP -->
-<g id="edge4" class="edge">
+<g id="edge10" class="edge">
 <title>POLICY&#45;&gt;GROUP</title>
-<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M144.72,-287C198.77,-287 276.6,-287 334.5,-287"/>
-<polygon fill="#506983" stroke="#506983" points="334.38,-289.45 341.38,-287 334.38,-284.55 334.38,-289.45"/>
+<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M144.72,-272.52C198.77,-278.06 276.6,-286.04 334.5,-291.97"/>
+<polygon fill="#506983" stroke="#506983" points="334.17,-294.4 341.38,-292.68 334.67,-289.53 334.17,-294.4"/>
 </g>
 <!-- POLICY&#45;&gt;EXPERT -->
-<g id="edge5" class="edge">
+<g id="edge11" class="edge">
 <title>POLICY&#45;&gt;EXPERT</title>
-<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M144.62,-294.02C222.21,-302.6 343.32,-316 343.32,-316 343.32,-316 484.33,-316 484.33,-316 484.33,-316 494.42,-315.42 507.75,-314.66"/>
-<polygon fill="#506983" stroke="#506983" points="507.55,-317.13 514.4,-314.28 507.28,-312.23 507.55,-317.13"/>
+<path fill="none" stroke="#506983" stroke-dasharray="5,2" d="M144.64,-281.34C162.09,-285.56 176.32,-289 176.32,-289 176.32,-289 343.32,-329 343.32,-329 343.32,-329 484.33,-329 484.33,-329 484.33,-329 494.42,-328.42 507.75,-327.66"/>
+<polygon fill="#506983" stroke="#506983" points="507.55,-330.13 514.4,-327.28 507.28,-325.23 507.55,-330.13"/>
 </g>
 <!-- MODEL&#45;&gt;GATEWAY -->
-<g id="edge11" class="edge">
+<g id="edge17" class="edge">
 <title>MODEL&#45;&gt;GATEWAY</title>
-<path fill="none" stroke="#506983" d="M791.42,-255.25C798.89,-255.51 806.58,-255.78 814.25,-256.05"/>
-<polygon fill="#506983" stroke="#506983" points="813.97,-258.49 821.05,-256.29 814.14,-253.6 813.97,-258.49"/>
+<path fill="none" stroke="#506983" d="M791.42,-259C798.89,-259 806.58,-259 814.25,-259"/>
+<polygon fill="#506983" stroke="#506983" points="814.05,-261.45 821.05,-259 814.05,-256.55 814.05,-261.45"/>
 </g>
 <!-- TOOLS&#45;&gt;DETAILS -->
-<g id="edge14" class="edge">
+<g id="edge20" class="edge">
 <title>TOOLS&#45;&gt;DETAILS</title>
-<path fill="none" stroke="#506983" d="M789.48,-314.64C805.29,-315.56 822.24,-316.55 837.95,-317.47"/>
-<polygon fill="#506983" stroke="#506983" points="837.4,-319.89 844.53,-317.85 837.69,-315 837.4,-319.89"/>
+<path fill="none" stroke="#506983" d="M789.48,-321.64C805.29,-321.54 822.24,-321.44 837.95,-321.35"/>
+<polygon fill="#506983" stroke="#506983" points="837.54,-323.81 844.53,-321.31 837.52,-318.91 837.54,-323.81"/>
 </g>
 <!-- EVENTS&#45;&gt;SINK -->
-<g id="edge16" class="edge">
+<g id="edge22" class="edge">
 <title>EVENTS&#45;&gt;SINK</title>
-<path fill="none" stroke="#506983" d="M481.06,-204.45C570.58,-203.71 729.77,-202.4 823.56,-201.62"/>
-<polygon fill="#506983" stroke="#506983" points="823.38,-204.07 830.36,-201.56 823.34,-199.17 823.38,-204.07"/>
+<path fill="none" stroke="#506983" d="M481.06,-215.67C570.58,-212.53 729.77,-206.93 823.56,-203.63"/>
+<polygon fill="#506983" stroke="#506983" points="823.45,-206.09 830.36,-203.39 823.28,-201.19 823.45,-206.09"/>
 </g>
 <!-- RESULT&#45;&gt;SAVE -->
-<g id="edge18" class="edge">
+<g id="edge24" class="edge">
 <title>RESULT&#45;&gt;SAVE</title>
-<path fill="none" stroke="#506983" d="M467.5,-146.13C556,-144.66 734.34,-141.71 831.56,-140.11"/>
-<polygon fill="#506983" stroke="#506983" points="831.38,-142.56 838.34,-139.99 831.3,-137.66 831.38,-142.56"/>
+<path fill="none" stroke="#506983" d="M467.5,-157.71C556,-153.87 734.34,-146.13 831.56,-141.91"/>
+<polygon fill="#506983" stroke="#506983" points="831.45,-144.36 838.34,-141.61 831.24,-139.47 831.45,-144.36"/>
 </g>
 </g>
 </svg>

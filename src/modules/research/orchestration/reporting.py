@@ -42,7 +42,10 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             epochs[group] = max(epochs.get(group, 0), a["epoch"])
     latest = {identity: a for identity, a in latest.items() if a["role"] not in {"manager", "bull", "bear"}
               or a["epoch"] >= epochs.get(identity[0], 0)}
+    fast = research.get("graph") == "intraday_fast"
     accepted = {c for a in latest.values() if a["role"] == "manager" for c in a["report"].get("accepted_claim_ids", [])}
+    if fast:
+        accepted = {c["id"] for a in latest.values() if a["role"] in {"technical", "events"} for c in a["report"].get("claims", [])}
     facts = {}
     for e in sorted(sources.values(), key=lambda e: (e["available_at"], e["id"].endswith("/detail"))):
         facts[(e["stock_key"], e["domain"])] = e["content"]
@@ -56,11 +59,11 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             for c in a["report"].get("claims", []) if c["stock_key"] == key and c["id"] in accepted))
 
     completion = research.get("completion", "complete")
-    states = {"complete": tr("研究完成", "Complete"), "timeout": tr("研究超时", "Timed out"),
+    states = {"complete": tr("研究完成", "Complete"), "skipped": tr("无实质变化，已跳过研究", "No material change; research skipped"), "timeout": tr("研究超时", "Timed out"),
         "budget_exhausted": tr("研究预算耗尽", "Budget exhausted"), "validation_failed": tr("结论校验未通过", "Validation failed"),
         "risk_rejected": tr("风控未通过", "Risk rejected")}
     lines = [f"{states.get(completion, completion)} · {tr('数据截至', 'Data as of')} {stamp(as_of)}"]
-    if completion != "complete":
+    if completion not in {"complete", "skipped"}:
         lines += [tr("**研究未完成：以下仅为草案，未发布正式建议或预测。**", "**Incomplete research: drafts only; no formal recommendations or predictions published.**")]
         if research.get("reason"):
             lines.append(tr("原因：", "Reason: ") + research["reason"])
@@ -125,7 +128,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         lines.append(tr("- **账户与执行**：", "- **Account and execution**: ") + "；".join(account_limits))
     focus = {"daily_report": tr("明日关注", "Next-session watchlist"), "premarket_outlook": tr("今日关注", "Today's watchlist"), "intraday_monitor": tr("后续关注", "What to monitor next")}[agent_name]
     lines.append("## " + focus)
-    if completion != "complete":
+    if completion not in {"complete", "skipped"}:
         lines.append(tr("研究未完成，以下仅为草案中的待核实条件。", "Research is incomplete; these are draft conditions to verify."))
     for key, rec in plans.items():
         lines.append(f"- **{name(key)}**：" + "；".join(rec.get("triggers") or [tr("暂无明确触发条件，等待补充证据。", "No explicit trigger; await further evidence.")]))
@@ -133,7 +136,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         lines.append(tr("暂无有效关注条件，需补充证据并完成研究。", "No validated watch conditions; further evidence and completed research are required."))
 
     actions, summary = [], ["## " + tr("操作建议", "Action summary")]
-    if completion != "complete":
+    if completion not in {"complete", "skipped"}:
         summary.append(tr("**研究未完成，暂无正式操作建议；草案不作为操作指令。**", "**Research incomplete: no formal action; drafts are not instructions.**"))
     for key, rec in plans.items() if completion == "complete" else []:
         actions.append({**rec, "stock_name": names.get(key, key)})
@@ -149,15 +152,18 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         summary.append(tr("暂无有效操作建议。", "No validated action available."))
     action_summary = "\n\n".join(summary)
 
-    roles = {"technical": tr("技术分析", "Technical analysis"), "flow": tr("资金分析", "Capital-flow analysis"), "events": tr("事件分析", "Event analysis"),
+    roles = {"gate": tr("异动门控", "Change gate"), "technical": tr("技术分析", "Technical analysis"), "flow": tr("资金分析", "Capital-flow analysis"), "events": tr("事件分析", "Event analysis"),
         "bull": tr("多头论证", "Bull case"), "bear": tr("空头复核", "Bear case"), "manager": tr("研究经理裁定", "Research manager"),
         "strategy": tr("组合策略", "Portfolio strategy"), "risk": tr("风险审查", "Risk review"), "decision": tr("最终决策", "Final decision")}
+    if fast:
+        roles["strategy"] = tr("盘中决策", "Intraday decision")
+        roles["risk"] = tr("规则校验", "Rule checks")
     def group_label(a):
         group = a["id"].split("/")[0]
         return tr("跨股组合", "Portfolio") if group == "portfolio" else tr("研究组 ", "Research group ") + str(int(group) + 1)
     active_ids = {v["id"] for v in latest.values()}
     process = [{"id": a["id"], "role": a["role"], "group": a["id"].split("/")[0], "epoch": a["epoch"],
-                "verdict": a["report"].get("verdict", "ready"), "active": a["id"] in active_ids,
+                "verdict": a["report"].get("verdict", "ready"), "kind": a.get("kind", "model"), "active": a["id"] in active_ids,
                 "feedback_roles": list(dict.fromkeys(i.get("respondent") or i["domain"] for i in a["report"].get("issues", []))),
                 "title": f"{roles[a['role']]} · {group_label(a)} · {tr('轮次', 'Round')} {a['epoch'] + 1}", "content": a["report"]["summary"]}
                for a in sorted(artifacts, key=lambda a: (a["epoch"], list(roles).index(a["role"]), a["id"]))]
@@ -199,5 +205,5 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             "title": f"{name(e['stock_key'])} · {domains[e['domain']]} · {text(', '.join(providers) or e['source'])}", "content": "\n\n".join(content)})
     return {"version": 3, "body": "\n\n".join(lines), "action_summary": action_summary, "actions": actions,
             "content": "\n\n".join([lines[0], action_summary, *lines[1:]]), "process": process, "evidence": evidence_rows,
-            "runtime": {"completion": completion, "as_of": stamp(as_of), "stock_count": len(keys), "elapsed_seconds": elapsed_seconds},
+            "runtime": {"completion": completion, "graph": research.get("graph", "research"), "as_of": stamp(as_of), "stock_count": len(keys), "elapsed_seconds": elapsed_seconds},
             "models": sorted({a["model"] for a in artifacts if a.get("model")}), "usage": research.get("usage", {})}

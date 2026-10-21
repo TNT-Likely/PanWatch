@@ -147,11 +147,17 @@ class IntradayMonitorAgent(BaseAgent):
             news_hours=24,
             portfolio=context.portfolio,
             include_technical=True,
-            include_capital_flow=True,
+            include_capital_flow=not getattr(context, "_research_fast", False),
             include_events=True,
             events_days=3,
         )
         pack = packs.get(symbol)
+
+        if getattr(context, "_research_fast", False):
+            # Delay historical context/fulltext work until the change gate admits this stock.
+            return {"signal_pack": pack, "stock_data": pack.quote if pack else None,
+                "kline_summary": pack.technical if pack else {}, "symbol_context": {},
+                "timestamp": datetime.now().isoformat()}
 
         context_builder = ContextBuilder()
         context_pack = await context_builder.build_symbol_contexts(

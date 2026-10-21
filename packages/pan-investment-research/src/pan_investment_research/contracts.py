@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
-Role = Literal["technical", "flow", "events", "bull", "bear", "manager", "strategy", "risk", "decision"]
+Role = Literal["gate", "technical", "flow", "events", "bull", "bear", "manager", "strategy", "risk", "decision"]
 Action = Literal["buy", "add", "reduce", "sell", "hold", "watch", "avoid"]
 
 
@@ -33,6 +33,14 @@ class Security(Contract):
     sellable_quantity: FiniteFloat | None = Field(default=None, ge=0)
 
 
+class ResearchSignal(Contract):
+    stock_key: str
+    domain: Literal["technical", "events"]
+    reasons: list[str] = Field(min_length=1)
+    observed_at: AwareDatetime
+    material: bool = False
+
+
 class ResearchInput(Contract):
     run_id: str = Field(min_length=1)
     as_of: AwareDatetime
@@ -40,6 +48,7 @@ class ResearchInput(Contract):
     evidence: list[Evidence]
     language: Literal["zh-CN", "en-US"] = "zh-CN"
     portfolio: dict[str, Any] = Field(default_factory=dict)
+    signals: list[ResearchSignal] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_scope(self):
@@ -51,6 +60,8 @@ class ResearchInput(Contract):
             raise ValueError("evidence outside research scope")
         if any(e.available_at > self.as_of for e in self.evidence):
             raise ValueError("evidence was unavailable at the analysis cutoff")
+        if any(s.stock_key not in keys or s.observed_at > self.as_of for s in self.signals):
+            raise ValueError("signal outside research scope or analysis cutoff")
         return self
 
 
@@ -101,6 +112,7 @@ class RoleReport(Contract):
     issues: list[Issue] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
     verdict: Literal["ready", "pass", "revise", "evidence_needed", "rebuttal", "reject"] = "ready"
+    debate_requested: bool = False
 
 
 class Artifact(Contract):
@@ -110,12 +122,14 @@ class Artifact(Contract):
     report: RoleReport
     evidence: list[Evidence] = Field(default_factory=list)
     model: str = ""
+    kind: Literal["model", "rule"] = "model"
 
 
 class ResearchResult(Contract):
     run_id: str
-    status: Literal["ready", "review"]
-    completion: Literal["complete", "timeout", "budget_exhausted", "validation_failed", "risk_rejected"] = "complete"
+    status: Literal["ready", "review", "skipped"]
+    completion: Literal["complete", "skipped", "timeout", "budget_exhausted", "validation_failed", "risk_rejected"] = "complete"
+    graph: Literal["research", "intraday_fast"] = "research"
     recommendations: list[Recommendation]
     artifacts: list[Artifact]
     reason: str = ""
@@ -124,8 +138,11 @@ class ResearchResult(Contract):
 
 class ResearchPolicy(Contract):
     profile: Literal["postmarket", "premarket", "intraday"] = "postmarket"
+    graph: Literal["research", "intraday_fast"] = "research"
     specialists: list[Literal["technical", "flow", "events"]] = Field(default_factory=lambda: ["technical", "flow", "events"], min_length=1)
+    trigger_mode: Literal["changes", "always"] = "changes"
     debate: bool = True
+    debate_on: Literal["always", "material"] = "always"
     max_feedback: int = Field(default=1, ge=0, le=2)
     max_attempts: int = Field(default=18, ge=1, le=100)
     max_tools: int = Field(default=6, ge=0, le=30)
@@ -141,4 +158,9 @@ class ResearchPolicy(Contract):
     def unique_roles(self):
         if len(self.specialists) != len(set(self.specialists)):
             raise ValueError("duplicate specialist")
+        if self.graph == "intraday_fast":
+            if self.profile != "intraday" or set(self.specialists) - {"technical", "events"}:
+                raise ValueError("intraday_fast supports intraday technical/event specialists only")
+            if self.debate or self.max_feedback:
+                raise ValueError("intraday_fast does not run debate or feedback")
         return self

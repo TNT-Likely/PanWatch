@@ -11,7 +11,7 @@
 包只依赖 Pydantic 与 LangGraph，不导入 PanWatch，不读数据库或凭证，不发通知，
 不下单。宿主注入模型、只读工具和事件接口，取得类型化建议及带版本的研究产物。
 
-运行图、研究子图和专家工具子图分别负责组合决策、研究协作及工具回路。
+四张编译图分别负责完整组合决策、研究协作、专家工具回路和盘中轻量决策。
 专家并行，子图完整结束后才参与父图汇合。关键争议可定向补证或回应，风控可退回
 策略修改；这些反馈共用额度，不会无限循环。
 
@@ -38,6 +38,7 @@ flowchart LR
     subgraph PACKAGE["pan_investment_research"]
         INPUT["ResearchInput"]
         RUN["投研运行图"]
+        FAST["盘中轻量图"]
         GROUP["研究组子图"]
         EXPERT["专家工具子图"]
         POLICY["ResearchPolicy 与共享 Budget"]
@@ -48,6 +49,12 @@ flowchart LR
     end
     PROVIDER["已配置的模型服务"]
     COL --> INPUT --> RUN
+    INPUT --> FAST
+    FAST --> EXPERT
+    FAST --> MODEL
+    FAST --> EVENTS
+    FAST --> RESULT
+    POLICY -.-> FAST
     POLICY -.-> RUN
     POLICY -.-> GROUP
     POLICY -.-> EXPERT
@@ -116,7 +123,7 @@ flowchart TD
     TECH --> POSITIONS
     FLOW --> POSITIONS
     EVENT --> POSITIONS
-    POSITIONS{"positions：是否开启牛熊论证？"}
+    POSITIONS{"positions：是否开启且触发牛熊论证？"}
     POSITIONS -->|"开启；并发"| BULL["bull：多头论据"]
     POSITIONS -->|"开启；并发"| BEAR["bear：空头反证"]
     BULL --> MANAGER["manager：裁定与采纳论点 ID"]
@@ -162,48 +169,95 @@ flowchart TD
 补造证据或修改已有证据身份。JSON 修复消耗模型尝试数，并使用全运行共享的一次
 修复机会，与反馈次数分别计数。校验失败交由运行入口返回对应的未完成状态。
 
-### 时段配置与效率
+### 4. 盘中轻量图：变化门控、定向专家与一次决策
 
-以下为 PanWatch 宿主适配层选择的默认值。独立包仅设置 `profile` 不会自动套用这些
-预设。
+![盘中轻量图](docs/diagrams/intraday-fast.zh-CN.svg)
 
-| 宿主时段 | 初始专家 | 牛熊论证 | 尝试数／时间默认上限 | 其他默认项 |
+<details>
+<summary>Mermaid 源码（可维护的控制流说明）</summary>
+
+```mermaid
+flowchart TD
+    START(["已采集快照与类型化变化信号"]) --> GATE["gate：确定性检查变化及已启用领域"]
+    GATE -->|"无信号"| SKIP(["skipped：零模型调用；保留上次正式建议"])
+    GATE -->|"仅变化股票"| DISPATCH["dispatch：按专家分组活动股票"]
+    DISPATCH -->|"技术变化"| TECH["technical：复用专家工具子图"]
+    DISPATCH -->|"新采集事件"| EVENT["events：复用专家工具子图"]
+    TECH --> STRATEGY["strategy：一次精简的条件性组合决策"]
+    EVENT --> STRATEGY
+    STRATEGY --> RULES["rules：股票覆盖、证据引用、持仓及执行限制"]
+    RULES --> DONE(["完成；仅发布已校验建议"])
+    GUARD["共享尝试、Token、工具与时间限制"]
+    GUARD -.-> REVIEW(["超时、额度或校验失败时转人工复核"])
+```
+
+</details>
+
+宿主采集行情与新闻，确定性识别 ATR／成交量／技术状态／持仓风险变化及有时间的
+新事件。仅在成功或跳过后保存按市场隔离的门控基线；研究失败时同一变化仍可重试。
+无变化仍采集数据，但跳过昂贵的历史上下文补全和全部模型调用。仅变化股票及对应
+的已启用专家进入模型。最后的规则校验必经，且不调用模型。轻图省去研究经理、
+牛熊和模型风控委员会，因此独立质疑深度低于完整图。数据缺失不等于没有变化。
+
+### 时段模板与效率
+
+PanWatch 宿主选择以下预设；独立包只设置 `profile` 不会自动套用宿主模板。
+
+| 宿主模板 | 专家 | 牛熊论证 | 尝试数／时间默认上限 | 其他默认项 |
 | --- | --- | --- | --- | --- |
-| 收盘 | 技术、资金、事件 | 开启 | 18 / 180秒 | 沿用包默认值 |
-| 盘前 | 技术、资金、事件 | 默认关闭；有已采集事件条目时开启 | 14 / 90秒 | 可显式配置 |
-| 盘中 | 技术；有已采集事件条目时增加事件专家 | 默认关闭；有事件条目时开启 | 10 / 45秒 | 无反馈；2次工具；并发2 |
+| `postmarket_deep` | 技术、资金、事件 | 重大事件或专家请求时 | 18 / 180秒 | 完整图，有界反馈 |
+| `premarket_balanced` | 技术、资金、事件 | 重大事件或专家请求时 | 14 / 90秒 | 完整图，4次工具，3072输出 Token |
+| `intraday_fast` | 仅触发的技术／事件专家 | 省略 | 6 / 45秒 | 2次工具，并发2，无反馈，1536输出 Token |
+| `custom_research` | 自选专家 | 关闭、重大争议、始终 | 沿用时段默认 | 保留完整图供对照 |
 
-显式配置专家和论证开关会覆盖自动选择。宿主按股票数量／研究组调整默认尝试、
-Token、工具和输出容量，但不自动延长时间上限。额度不等于耗时保证，也不意味着
-所有模型都能在默认时间内完成。
+Agent 的研究配置弹窗从后端读取可用模板，可配置专家、论证／触发策略、尝试数、
+时间，以及高级 Token／工具／并发／反馈限制。切换模板会恢复其默认值。后端拒绝
+不支持的专家、任意节点／边、轻图牛熊与反馈配置；必经规则校验不能关闭。
+轻图默认 `changes`；显式选择 `always` 会研究全部选中股票及专家。
 
-不含工具、修复和反馈时，逻辑模型调用数为 `G × (S + 2 × D + 1) + 3`：`G` 是
-研究组数，`S` 是启用专家数，论证开启时 `D=1`、否则为 `0`。默认完整单组路径
-需要9次调用。专家和牛熊并发、按需论证、批量读取详情、压缩下游输入及定向修订
-用于减少重复工作。角色更多不自动代表结论更准，数据／模型质量、耗时与成本仍需
-单独评估。
+执行模式仍显式选择 `legacy`／`shadow`／`langgraph`，不会静默切换已有部署。旧盘中
+配置若显式要求资金专家、牛熊或反馈，会保留完整图。宿主可按多股规模扩展未显式
+设置的默认容量；用户显式设置的额度始终是整轮上限，不自动上调，也不延长时间。
 
-### 提示词归属与旧流程兼容
+不含工具、重试、修复和反馈时，完整图模型调用数为
+`G × (S + 1) + 2 × B + 3`：`G` 为研究组数，`S` 为每组专家数，`B` 为实际论证的组数。
+单组三专家无论证为7次，开启论证为9次。轻图为每个活动专家／组一次，加一次统一
+决策：无变化0次，单组单领域2次，单组双领域3次。多分组、详情工具和修复会增加
+调用。这些计数不代表耗时或费用保证。
 
-| PanWatch 模式 | 实际使用的提示词 | 正式输出 |
+### 提示词归属与旧规则迁移
+
+| PanWatch 模式 | 实际提示词 | 正式输出 |
 | --- | --- | --- |
-| `legacy`（默认） | 原 `prompts/daily_report.txt`、`premarket_outlook.txt`、`intraday_monitor.txt` | 原 Agent 分析与报告流程 |
-| `shadow` | 新角色提示词用于影子研究，随后旧提示词用于原流程 | 原流程输出；保留影子研究产物供检查 |
-| `langgraph` | `engine.py` 中的 `ROLES`、公共指令与各角色 schema | 结构化投研结果，由宿主生成报告 |
+| `legacy`（默认） | 现有时段提示词文件 | 原 Agent 流程 |
+| `shadow` | 新角色指令，随后原提示词 | 原流程输出，另存影子研究审计产物 |
+| `langgraph` | `prompts.py` 的角色／时段指令及各角色 schema | 结构化结果，由宿主生成报告 |
 
-新图复用原采集器，不调用旧 `build_prompt()`，也不继承它组装的全部输入叙述。
-旧 prompt 中的 ATR／异动规则、交易风格、相对强弱和深度研究参考等指令**不会自动
-继承**。其中有用的业务语义，需要明确迁入证据、契约、角色提示词或确定性校验并
-验证；报告章节与排版交给宿主渲染器。独立包不读取 PanWatch 的旧提示词文件，当前
-也没有运行时注入自定义提示词模板的接口。模式切换是显式的，新图异常不自动重试
-旧流程。
+新图复用采集器，不复用旧 `build_prompt()` 的整段叙述。有用的规则明确迁移，
+不把原单 Agent prompt 整段复制给多个角色：
+
+| 业务规则 | 新归属 |
+| --- | --- |
+| ATR 阈值、量能及技术状态变化 | 宿主确定性门控与技术证据 |
+| 交易风格、止损／止盈警示 | 持仓范围内的门控规则与策略上下文 |
+| 相对强弱、历史深度投研 | 已采集技术上下文；历史假设不能当作当前事实 |
+| RSI／KDJ／布林带、资金背离、事件时效 | `prompts.py` 的领域指令 |
+| 盘前情景、收盘复盘、盘中变化 | `prompts.py` 的时段指令 |
+| 引用、持仓与动作一致性、购买力 | 必经校验与执行限制 |
+| 大盘／个股／风险／后续关注章节 | 宿主报告渲染器 |
+
+独立包不读取旧 PanWatch prompt 文件，也不支持任意运行时提示词注入或图编辑器。
+保留 legacy 用于受控对照；新图异常不会自动重试旧流程。脚本回放验证的是契约和
+调用减少，不能证明真实投研准确率或收益提高。
 
 ### 源码索引
 
 | 文件 | 职责 |
 | --- | --- |
 | [contracts.py](src/pan_investment_research/contracts.py) | 输入、证据、角色报告、建议、策略与结果契约 |
-| [engine.py](src/pan_investment_research/engine.py) | 三层图、角色提示词、反馈、校验及执行限制 |
+| [engine.py](src/pan_investment_research/engine.py) | 完整图、反馈、校验及执行限制 |
+| [fast.py](src/pan_investment_research/fast.py) | 轻图门控、定向专家、一次方案与必经规则 |
+| [prompts.py](src/pan_investment_research/prompts.py) | 共享角色指令与迁移的时段规则 |
 | [budget.py](src/pan_investment_research/budget.py) | 共享尝试／Token／工具／反馈计数和并发控制 |
 | [ports.py](src/pan_investment_research/ports.py) | 模型、可选只读工具与可选事件端口 |
 | [tests/test_research.py](tests/test_research.py) | 脚本模型契约与图回归场景 |
@@ -216,7 +270,7 @@ python -m pytest packages/pan-investment-research/tests -q
 ```
 
 ```python
-from pan_investment_research import InvestmentResearch, ResearchInput, ResearchPolicy
+from pan_investment_research import InvestmentResearch, ResearchInput, ResearchPolicy, ResearchSignal
 
 result = await InvestmentResearch().run(
     ResearchInput.model_validate(prepared_input),
@@ -225,6 +279,18 @@ result = await InvestmentResearch().run(
     events=my_event_sink,
     policy=ResearchPolicy(),
 )
+```
+
+宿主准备好含 `ResearchSignal` 的盘中输入后可选择轻图：
+
+```python
+policy = ResearchPolicy(
+    profile="intraday", graph="intraday_fast", specialists=["technical", "events"],
+    debate=False, max_feedback=0, max_attempts=6, max_tools=2, deadline_seconds=45,
+)
+# prepared.signals = [ResearchSignal(stock_key="CN:600519", domain="technical",
+#     reasons=["atr_price_change"], observed_at=prepared.as_of)]
+result = await InvestmentResearch().run(prepared, model=my_model_adapter, policy=policy)
 ```
 
 接口见 `ports.py`。模型适配器的每次真实发送，包括 fallback 和 retry，都必须先
@@ -237,9 +303,12 @@ result = await InvestmentResearch().run(
 
 ## 预算与结论
 
-单研究组完整基础路径为九次逻辑调用，工具、修复和反馈另外计数；多研究组需要
+单研究组三专家与牛熊的完整路径为九次逻辑调用，无牛熊为七次，工具、修复和反馈另外计数；多研究组需要
 独立核算预算，组合策略、风控和决策统一执行。限制包括实际尝试数、保守 token
 预留、工具数、反馈数、并发、输出规模与时间。预估 token 不等于真实账单。
+
+`completion=skipped` 表示轻图未发现已启用领域的新变化：不写正式建议、预测或通知，
+保留上次建议，只留确定性门控审计产物及零调用记录。
 
 `ready` 表示产物通过包内已经实现的检查，不代表收益保证、完整市场规则验证或
 已经核验购买力。缺少币种、结算资料不能授权数量。最终决策不能改变已过风控的

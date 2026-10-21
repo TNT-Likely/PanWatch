@@ -77,10 +77,12 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
             ResearchRun.status == "completed", ResearchRun.engine == "langgraph").first()
         payload = {"title": result.title, "content": result.content, "raw_data": result.raw_data}
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-        db.add(ResearchDelivery(run_id=run_id, payload_hash=digest, payload=payload, status="stale" if newer else "committed"))
+        db.add(ResearchDelivery(run_id=run_id, payload_hash=digest, payload=payload, status="stale" if newer else "skipped" if research.completion == "skipped" else "committed"))
         db.flush()  # Unique run_id claims ALL business writes in the same transaction.
         if newer:
             return "stale"
+        if research.completion == "skipped":
+            return "skipped"
         day = result.raw_data["analysis_date"]
         names = {s.key: s.name for s in prepared.securities}
         for rec in research.recommendations if research.completion == "complete" else []:
