@@ -51,6 +51,9 @@ def normalize_suggestion(suggestion: dict, *, agent_name: str = "") -> dict:
         action = "watch"
         review = True  # An unrecognized answer is not an actionable recommendation.
 
+    if separated and action in {"watch", "hold", "avoid"}:
+        result.update(execution_status="not_applicable", quantity=None)
+
     result.update(
         action=action,
         action_label=ACTION_LABELS[action],

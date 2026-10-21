@@ -51,7 +51,7 @@ def test_report_recovers_readable_sections_without_changing_plan(sample, agent, 
     assert "Models:" not in content and "Usage:" not in content
     assert report["process"][0]["content"] == "完整研究过程"
     assert len(report["evidence"]) == 2 and research == before
-    cn_section = content.split("### A 股样本")[1].split("### 港股样本")[0]
+    cn_section = report["body"].split("### A 股样本")[1].split("### 港股样本")[0]
     assert "HK:12345 技术结论" not in cn_section
 
 
@@ -127,7 +127,7 @@ def test_graph_metadata_and_evidence_previews_preserve_rounds_and_safe_links(sam
             {'title': 'Unsafe URL', 'url': 'javascript:alert(1)'},
         ]}})
     report = build_report('daily_report', research, scope=keys, elapsed_seconds=82.4)
-    assert report['version'] == 2 and report['runtime']['elapsed_seconds'] == 82.4
+    assert report['version'] == 3 and report['runtime']['elapsed_seconds'] == 82.4
     assert report['runtime']['stock_count'] == 2
     technical = [p for p in report['process'] if p['role'] == 'technical']
     assert [p['active'] for p in technical] == [False, True]
@@ -152,7 +152,7 @@ def test_cached_v1_report_gets_graph_metadata_without_rewriting_its_text(sample)
             created_at=datetime(2026, 10, 19, 10, 0), finished_at=datetime(2026, 10, 19, 10, 1, 22)))
         db.add(row); db.commit()
         result = get_history_detail(row.id, db)
-        assert result.research_report['version'] == 2 and result.research_report['content'] == cached['content']
+        assert result.research_report['version'] == 3 and result.research_report['body'] == cached['content']
         assert result.research_report['runtime']['elapsed_seconds'] == 82
         assert result.research_report['process'][0]['role'] == 'technical'
         db.expire_all()
@@ -160,3 +160,29 @@ def test_cached_v1_report_gets_graph_metadata_without_rewriting_its_text(sample)
         db.query(ResearchRun).delete(); db.commit()
         assert get_history_detail(row.id, db).research_report == cached
     engine.dispose()
+
+
+def test_actions_lead_reports_and_plain_notifications_without_changing_directions(sample):
+    from src.platform.notifications.notifier import sanitize_for_telegram
+    from src.modules.research.signals.actions import normalize_suggestion
+    keys, research = sample
+    research['recommendations'][0]['action'] = 'watch'
+    research['recommendations'][1]['action'] = 'avoid'
+    before = deepcopy(research)
+    report = build_report('daily_report', research, scope=keys)
+    assert [r['action'] for r in report['actions']] == ['watch', 'avoid']
+    assert all(r['execution_status'] == 'not_applicable' for r in report['actions'])
+    assert report['content'].index('## 操作建议') < report['content'].index('## 大盘概览')
+    assert '执行受限' not in report['content'] and '无需下单' in report['content']
+    plain = sanitize_for_telegram(report['content'])
+    assert plain.index('操作建议：观望') < plain.index('大盘概览')
+    assert '操作建议：回避' in plain and keys[0] + ' 放量确认' in plain
+    assert research == before and normalize_suggestion(research['recommendations'][0])['execution_status'] == 'not_applicable'
+
+
+def test_incomplete_summary_never_promotes_drafts_to_action_cards(sample):
+    keys, research = sample
+    research['completion'] = 'risk_rejected'
+    report = build_report('daily_report', research, scope=keys)
+    assert report['actions'] == []
+    assert '暂无正式操作建议' in report['action_summary'] and '草案' in report['body']

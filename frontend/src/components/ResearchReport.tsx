@@ -4,6 +4,8 @@ import { Clock, Cpu, Wrench, ArrowDown, ArrowUp, RotateCcw } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@panwatch/base-ui/components/ui/tabs'
 import { ResearchProcessGraph } from './ResearchProcessGraph'
 import { ResearchEvidenceBoard } from './ResearchEvidenceBoard'
+import { AiSuggestionBadge } from '@panwatch/biz-ui/components/ai-suggestion-badge'
+import type { SuggestionStateInput } from '@panwatch/biz-ui/components/suggestion-action'
 
 export interface ProcessItem {
   id?: string; role?: string; group?: string; epoch?: number; verdict?: string; active?: boolean
@@ -18,6 +20,8 @@ export interface EvidenceItem {
 export interface ResearchReportData {
   version: number
   content: string
+  body?: string
+  actions?: (SuggestionStateInput & { stock_key: string; stock_name: string; triggers: string[]; invalidations: string[] })[]
   process: ProcessItem[]
   evidence: EvidenceItem[]
   models: string[]
@@ -26,6 +30,21 @@ export interface ResearchReportData {
 }
 
 export const markdownClass = 'prose prose-sm dark:prose-invert max-w-none break-words text-[13px] md:text-sm [&_h2]:border-b [&_h2]:border-border/50 [&_h2]:pb-2 [&_h2]:mt-5 [&_h2]:mb-3 [&_h3]:text-base [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-2 [&_p]:leading-6 [&_li]:my-1 [&_li]:leading-6 [&_ul]:my-2 [&_code]:break-all'
+
+function ActionSummary({ report }: { report: ResearchReportData }) {
+  const { t } = useTranslation('configuration')
+  return <section aria-label={t('p4.history.actionSummary')} className="space-y-3 rounded-xl border-2 border-primary/20 bg-primary/5 p-3 md:p-4">
+    <h2 className="text-base font-semibold">{t('p4.history.actionSummary')}</h2>
+    <p className="text-xs text-muted-foreground">{report.runtime?.as_of} · {t('p4.history.conditionalNotice')}</p>
+    {report.actions?.map(item => <article key={item.stock_key} className="min-w-0 space-y-2 rounded-lg border border-border/60 bg-card p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{item.stock_name}<span className="ml-2 text-xs font-normal text-muted-foreground">{item.stock_key}</span></h3><AiSuggestionBadge {...item} size="lg" /></div>
+      <p className="text-xs text-muted-foreground">{t(`p4.history.outlooks.${item.outlook}`, { defaultValue: item.outlook || '' })}{item.confidence != null && ` · ${Math.round(item.confidence * 100)}%`}</p>
+      <div className="text-sm leading-6"><span className="font-medium">{t('p4.history.actionTriggers')}：</span>{item.triggers.length ? item.triggers.join('；') : t('p4.history.noTriggers')}</div>
+      {item.invalidations.length > 0 && <p className="text-xs leading-5 text-muted-foreground">{t('p4.history.actionInvalidations')}：{item.invalidations.join('；')}</p>}
+      {item.execution_status === 'blocked' ? <p className="break-words text-xs leading-5 text-muted-foreground">{t('p4.history.orderRestrictions')}：{item.execution_constraints?.join('；')}</p> : <p className="text-xs text-muted-foreground">{t(item.execution_status === 'not_applicable' ? 'p4.history.noOrder' : 'p4.history.confirmBeforeOrder')}</p>}
+    </article>)}
+  </section>
+}
 
 function RunOverview({ report }: { report: ResearchReportData }) {
   const { t, i18n } = useTranslation('configuration')
@@ -57,7 +76,8 @@ export function ResearchReport({ content, report }: { content: string; report?: 
   const { t } = useTranslation('configuration')
   return (
     <div className="min-w-0 space-y-4" data-testid="research-report">
-      <div className={`${markdownClass} [&>p:first-child]:text-xs [&>p:first-child]:text-muted-foreground`}><ReactMarkdown>{report?.content || content}</ReactMarkdown></div>
+      {!!report?.actions?.length && <ActionSummary report={report} />}
+      <div className={`${markdownClass} [&>p:first-child]:text-xs [&>p:first-child]:text-muted-foreground`}><ReactMarkdown>{report?.actions?.length ? report.body || report.content : report?.content || content}</ReactMarkdown></div>
       {report && (
         <Tabs defaultValue="process" className="not-prose min-w-0 border-t border-border/50 pt-4 text-sm">
           <TabsList className="grid h-auto w-full grid-cols-3">

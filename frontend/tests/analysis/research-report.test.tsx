@@ -91,3 +91,15 @@ describe('reader-facing research report', () => {
     expect(screen.getByRole('button', { name: 'Expand all details' })).toBeTruthy()
   })
 })
+
+it('leads with prominent actions and triggers while avoiding duplicate notification summaries', () => {
+  const item = { stock_key: 'CN:600519', stock_name: '茅台', action: 'watch', outlook: 'bullish' as const,
+    confidence: .6, execution_status: 'not_applicable' as const, triggers: ['回踩确认后重新评估'], invalidations: ['跌破支撑'] }
+  render(<ResearchReport content="" report={{ ...report, version: 3, content: 'notification summary duplicate', body: report.content, actions: [item] }} />)
+  const summary = screen.getByRole('region', { name: '操作建议' })
+  expect(within(summary).getByText('观望')).toBeTruthy()
+  expect(within(summary).getByText(/回踩确认后重新评估/)).toBeTruthy()
+  expect(within(summary).getByText('无需下单')).toBeTruthy()
+  expect(screen.queryByText('notification summary duplicate')).toBeNull()
+  expect(screen.getByRole('heading', { name: '明日关注' })).toBeTruthy()
+})

@@ -77,13 +77,13 @@ class HistoryResponse(BaseModel):
 def _research_reports(records, db):
     """Project earlier graph runs at read time; never rewrite historical records."""
     ids = [(r.raw_data or {}).get("research_run_id") for r in records
-           if (r.raw_data or {}).get("engine") == "langgraph" and ((r.raw_data or {}).get("research_report") or {}).get("version") != 2]
+           if (r.raw_data or {}).get("engine") == "langgraph" and ((r.raw_data or {}).get("research_report") or {}).get("version") != 3]
     runs = {r.id: r for r in db.query(ResearchRun).filter(ResearchRun.id.in_(ids)).all()} if ids else {}
     reports = {}
     for record in records:
         raw = record.raw_data or {}
         report = raw.get("research_report")
-        if isinstance(report, dict) and report.get("version") == 2:
+        if isinstance(report, dict) and report.get("version") == 3:
             reports[record.id] = report
         elif (run := runs.get(raw.get("research_run_id"))) and run.agent_name == record.agent_name and isinstance(run.payload, dict) and "completion" in run.payload:
             try:
@@ -91,10 +91,11 @@ def _research_reports(records, db):
                     language="en-US" if any(h in record.content for h in ("## Research conclusions", "## Market overview", "## Overnight markets")) else "zh-CN",
                     timezone=Settings().app_timezone, elapsed_seconds=max(0, (run.finished_at - run.created_at).total_seconds()) if run.finished_at and run.created_at else None)
                 if isinstance(report, dict) and report.get("version") == 1:
-                    reports[record.id]["content"] = report["content"]
+                    reports[record.id]["body"] = report["content"]
+                    reports[record.id]["content"] = reports[record.id]["action_summary"] + "\n\n" + report["content"]
             except (KeyError, ValueError, TypeError):
                 logger.warning("Unable to project research report for history %s", record.id)
-        if record.id not in reports and isinstance(report, dict) and report.get("version") == 1:
+        if record.id not in reports and isinstance(report, dict) and report.get("version") in {1, 2}:
             reports[record.id] = report
     return reports
 

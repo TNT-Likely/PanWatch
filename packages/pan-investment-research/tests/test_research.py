@@ -465,3 +465,15 @@ def test_quote_expiring_during_risk_tightens_execution_without_losing_research()
     assert result.recommendations[0].action == "buy"
     assert result.recommendations[0].execution_status == "blocked"
     assert "quote_unavailable_or_expired" in result.recommendations[0].execution_constraints
+
+
+@pytest.mark.parametrize('action', ['watch', 'hold', 'avoid'])
+def test_non_order_advice_is_not_blocked_by_model_account_notes(action):
+    from pan_investment_research import Recommendation
+    from pan_investment_research.engine import constrain_execution
+    data = prepared()
+    before = Recommendation(stock_key=data.securities[0].key, outlook='neutral', confidence=.7,
+        action=action, reason='wait', execution_status='blocked', execution_constraints=['insufficient_funds'])
+    rec = constrain_execution(data, [before])[0]
+    assert rec.action == action and rec.execution_status == 'not_applicable' and rec.quantity is None
+    assert rec.execution_constraints == before.execution_constraints and before.execution_status == 'blocked'

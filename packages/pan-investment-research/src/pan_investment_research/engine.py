@@ -22,7 +22,7 @@ ROLES = {
     "bull": "Present the strongest evidence-backed supporting case and its necessary conditions.",
     "bear": "Challenge the supporting case with counterevidence and failure scenarios.",
     "manager": "Adjudicate market claims independently of account cash. Exclude unsupported claims and state limitations. An absent specialist does not establish that its source data is unavailable. Request evidence or a rebuttal only if the dispute prevents any bounded conclusion.",
-    "strategy": "For EVERY target, assess market outlook (bullish/neutral/bearish) and confidence (0-1) from evidence, then propose a conditional portfolio action. Zero or unverified cash restricts execution, not outlook or a supported buy opportunity. Use hold/add/reduce/sell only for an existing position; otherwise use buy/watch/avoid. Do not invent buying power or quantities.",
+    "strategy": "For EVERY target, assess market outlook (bullish/neutral/bearish) and confidence (0-1) from evidence, then propose a conditional portfolio action. Zero or unverified cash restricts execution, not outlook or a supported buy opportunity. Use hold/add/reduce/sell only for an existing position; otherwise use buy/watch/avoid. Watch/hold/avoid require no order: execution_status must be not_applicable and quantity null; account notes do not block these actions. State concrete triggers and invalidations. Do not invent buying power or quantities.",
     "risk": "Challenge this exact plan. Return pass, revise, evidence_needed or reject. Never relax hard constraints.",
     "decision": "Copy every approved plan field EXACTLY, including outlook, confidence, execution state, flags and lists. Only reason may be reworded. Do not append risks or conditions.",
 }
@@ -551,9 +551,10 @@ def constrain_execution(prepared, recommendations):
             elif stock.sellable_quantity is None:
                 limits.append("sellable_quantity_unverified")
         limits = list(dict.fromkeys(limits))
-        status = "blocked" if limits or rec.execution_status == "blocked" else "conditional" if rec.action in {"buy", "add", "reduce", "sell"} else "not_applicable"
+        trades = rec.action in {"buy", "add", "reduce", "sell"}
+        status = ("blocked" if limits or rec.execution_status == "blocked" else "conditional") if trades else "not_applicable"
         result.append(rec.model_copy(update={"execution_constraints": limits, "execution_status": status,
-                                            "quantity": None if status == "blocked" else rec.quantity}, deep=True))
+                                            "quantity": rec.quantity if status == "conditional" else None}, deep=True))
     return result
 
 

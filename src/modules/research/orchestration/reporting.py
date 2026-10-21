@@ -4,7 +4,7 @@ import math
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from src.modules.research.signals.actions import ACTION_LABELS, ACTION_LABELS_EN
+from src.modules.research.signals.actions import ACTION_LABELS, ACTION_LABELS_EN, normalize_suggestion
 
 
 def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), as_of="", language="zh-CN", timezone="Asia/Shanghai", elapsed_seconds=None):
@@ -80,14 +80,14 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
     if not indices:
         lines.append(tr("本次未采集大盘指数，暂不判断整体市场。", "No index snapshot was captured; no broad-market assessment is available."))
 
-    plans = {r["stock_key"]: r for r in research.get("recommendations", []) if r["stock_key"] in keys}
+    plans = {r["stock_key"]: normalize_suggestion(r) for r in research.get("recommendations", []) if r["stock_key"] in keys}
     constraints = {"buying_power_unverified": tr("币种与结算购买力未核实", "Currency and settled buying power unverified"),
         "account_missing": tr("未配置交易账户", "No trading account configured"), "insufficient_funds": tr("账户可用资金不足", "Insufficient available funds"),
         "sellable_quantity_unverified": tr("可卖数量未核实", "Sellable quantity unverified"),
         "quote_unavailable_or_expired": tr("报价缺失或已过期", "Quote unavailable or expired"),
         "review_required": tr("需人工复核", "Human review required"), "research_incomplete": tr("研究尚未完成", "Research incomplete")}
     outlooks = {"bullish": tr("看多", "Bullish"), "neutral": tr("中性", "Neutral"), "bearish": tr("看空", "Bearish")}
-    executions = {"conditional": tr("待条件确认", "Conditional"), "blocked": tr("执行受限", "Blocked"), "not_applicable": tr("无交易动作", "No trade action")}
+    executions = {"conditional": tr("待条件确认", "Conditional"), "blocked": tr("执行受限", "Blocked"), "not_applicable": tr("无需下单", "No order needed")}
     lines.append("## " + tr("个股分析", "Stock analysis"))
     for key in keys:
         lines.append("### " + name(key))
@@ -131,6 +131,23 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         lines.append(f"- **{name(key)}**：" + "；".join(rec.get("triggers") or [tr("暂无明确触发条件，等待补充证据。", "No explicit trigger; await further evidence.")]))
     if not plans:
         lines.append(tr("暂无有效关注条件，需补充证据并完成研究。", "No validated watch conditions; further evidence and completed research are required."))
+
+    actions, summary = [], ["## " + tr("操作建议", "Action summary")]
+    if completion != "complete":
+        summary.append(tr("**研究未完成，暂无正式操作建议；草案不作为操作指令。**", "**Research incomplete: no formal action; drafts are not instructions.**"))
+    for key, rec in plans.items() if completion == "complete" else []:
+        actions.append({**rec, "stock_name": names.get(key, key)})
+        action = (ACTION_LABELS_EN if en else ACTION_LABELS)[rec["action"]]
+        summary += [f"### {name(key)} · {tr('操作建议', 'Action')}：**{action}**",
+            f"{outlooks[rec['outlook']]} · {tr('置信度', 'Confidence')} {rec['confidence']:.0%}",
+            tr("**关注 / 触发条件：** ", "**Watch / trigger conditions:** ") + "；".join(rec.get("triggers") or [tr("暂无明确条件，等待补充证据。", "No explicit conditions; await evidence.")])]
+        if rec["execution_status"] == "blocked":
+            summary.append(tr("**下单限制：** ", "**Order restrictions:** ") + "；".join(constraints.get(c, c) for c in rec.get("execution_constraints", [])))
+        else:
+            summary.append(tr("无需下单" if rec["execution_status"] == "not_applicable" else "仅在条件满足并核实下单条件后执行", "No order needed" if rec["execution_status"] == "not_applicable" else "Act only after confirming triggers and order eligibility"))
+    if completion == "complete" and not actions:
+        summary.append(tr("暂无有效操作建议。", "No validated action available."))
+    action_summary = "\n\n".join(summary)
 
     roles = {"technical": tr("技术分析", "Technical analysis"), "flow": tr("资金分析", "Capital-flow analysis"), "events": tr("事件分析", "Event analysis"),
         "bull": tr("多头论证", "Bull case"), "bear": tr("空头复核", "Bear case"), "manager": tr("研究经理裁定", "Research manager"),
@@ -180,6 +197,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             "items": [{"title": str(item.get("title") or ""), "source": str(item.get("source") or ""), "time": str(item.get("time") or ""),
                        "url": item.get("url") if urlsplit(item.get("url") or "").scheme in {"https", "http"} else ""} for item in body.get("items") or []],
             "title": f"{name(e['stock_key'])} · {domains[e['domain']]} · {text(', '.join(providers) or e['source'])}", "content": "\n\n".join(content)})
-    return {"version": 2, "content": "\n\n".join(lines), "process": process, "evidence": evidence_rows,
+    return {"version": 3, "body": "\n\n".join(lines), "action_summary": action_summary, "actions": actions,
+            "content": "\n\n".join([lines[0], action_summary, *lines[1:]]), "process": process, "evidence": evidence_rows,
             "runtime": {"completion": completion, "as_of": stamp(as_of), "stock_count": len(keys), "elapsed_seconds": elapsed_seconds},
             "models": sorted({a["model"] for a in artifacts if a.get("model")}), "usage": research.get("usage", {})}

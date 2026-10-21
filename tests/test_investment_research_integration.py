@@ -378,3 +378,20 @@ def test_multi_target_default_capacities_preserve_explicit_global_limits():
     scoped = service.scope_policy(explicit, caps, 30)
     assert all(getattr(scoped, key) == value for key, value in caps.items())
     assert service.scope_policy(default, {}, 30).max_total_tokens <= 1000000
+
+
+def test_notification_starts_with_the_same_actions_saved_in_the_report(host, monkeypatch):
+    from src.platform.notifications.notifier import sanitize_for_telegram
+    engine, _ = host
+    agent = DailyReportAgent()
+    configure(engine, agent.name)
+    monkeypatch.setattr(agent, 'collect', collected)
+    context = make_context('action-notification')
+    context.suppress_notify = False
+    result = asyncio.run(agent.run(context))
+    title, message = context.notifier.notify_with_result.call_args.args
+    assert message == result.content and title == result.title
+    assert message.index('## 操作建议') < message.index('## 大盘概览')
+    assert '操作建议：**' + result.raw_data['suggestions']['CN:600519']['action_label'] + '**' in message
+    plain = sanitize_for_telegram(message)
+    assert plain.index('操作建议') < plain.index('大盘概览')

@@ -72,8 +72,8 @@ export function suggestionPresentation(suggestion: SuggestionStateInput) {
   const review = state.review_required === true || state.status === 'review' ||
     state.action === 'review' || state.rating_raw === 'review' || /待.*复核|review required/i.test(state.action_label || '')
   const separated = !!state.outlook && !!state.execution_status
-  const blocked = separated && state.execution_status === 'blocked'
   const action = review && !separated ? 'watch' : resolveSuggestionAction(state.rating_raw || state.action, state.action_label)
+  const blocked = separated && state.execution_status === 'blocked' && ['buy', 'add', 'reduce', 'sell'].includes(action)
   const attention = state.attention_required === true || action === 'alert'
   return {
     action: action === 'alert' ? 'watch' as const : action,
@@ -81,6 +81,6 @@ export function suggestionPresentation(suggestion: SuggestionStateInput) {
     attention,
     labelKey: review && !separated ? 'suggestionBadge.review' : `kline.actions.${attention && (action === 'alert' || action === 'watch') ? 'alert' : action}`,
     stateLabelKey: blocked ? 'suggestionBadge.blocked' : separated && review ? 'suggestionBadge.review' : null,
-    colorClass: review || blocked ? 'bg-orange-500 text-white' : suggestionActionColors[attention && action === 'watch' ? 'alert' : action],
+    colorClass: review && !separated ? 'bg-orange-500 text-white' : suggestionActionColors[attention && action === 'watch' ? 'alert' : action],
   }
 }

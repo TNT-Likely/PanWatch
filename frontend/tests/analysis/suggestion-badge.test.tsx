@@ -22,13 +22,14 @@ describe('suggestion badges', () => {
   it('keeps the AI corner tag, independent attention state and technical action', () => {
     render(<SuggestionBadge suggestion={suggestion} kline={technical} hasPosition />)
     expect(screen.getByRole('button', { name: '提醒 AI' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '持有' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '指标 · 持有' })).toBeTruthy()
     expect(screen.getByText('AI').className).toContain('absolute')
-    expect(screen.queryByText(/AI ·|指标 ·/)).toBeNull()
+    expect(screen.queryByText(/AI ·/)).toBeNull()
+    expect(screen.getByRole('button', { name: '指标 · 持有' })).toBeTruthy()
   })
   it('does not display watch as the conclusion of missing technical data', () => {
     render(<SuggestionBadge suggestion={suggestion} kline={null} />)
-    expect(screen.getByRole('button', { name: '暂无数据' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '指标 · 暂无数据' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '观望' })).toBeNull()
   })
   it('recovers REVIEW from an old label even when the stored direction is hold', () => {
@@ -61,5 +62,14 @@ describe('suggestion badges', () => {
     await i18n.changeLanguage('en-US')
     rerender(<SuggestionBadge suggestion={research} showTechnicalCompanion={false} />)
     expect(screen.getByRole('button', { name: 'Buy · Execution blocked AI' })).toBeTruthy()
+  })
+})
+
+describe('non-order research advice', () => {
+  it.each(['watch', 'hold', 'avoid'])('does not mark %s as blocked merely because the archived model said so', action => {
+    const view = suggestionPresentation({ action, outlook: 'neutral', execution_status: 'blocked' })
+    expect(view.stateLabelKey).toBeNull()
+    expect(view.colorClass).not.toContain('orange')
+    expect(view.action).toBe(action)
   })
 })
