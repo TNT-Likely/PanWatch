@@ -130,6 +130,12 @@ class InvestmentResearch:
             schema["properties"].pop("claims")
         schema["$defs"]["Recommendation"]["properties"]["quantity"] = {"type": "null", "default": None}
         schema["$defs"]["Recommendation"]["properties"]["execution_constraints"]["maxItems"] = 0
+        sources = payload.get("input", {}).get("evidence", []) if role in {"technical", "flow", "events"} else [
+            e.model_dump(mode="json") for e in deps.prepared.evidence + [e for a in deps.artifacts.values() for e in a.evidence]]
+        source_ids = sorted({e["id"] for e in sources if e["domain"] != "portfolio" and e["stock_key"] in {*keys, "*"}})
+        if source_ids:
+            for name in ("Claim", "Recommendation", "SessionNote"):
+                schema["$defs"][name]["properties"]["evidence_ids"]["items"]["enum"] = source_ids
         # Unused definitions confuse smaller models and inflate every role request.
         pending, used = [schema["properties"]], set()
         while pending:
@@ -163,8 +169,8 @@ class InvestmentResearch:
                   "Nonblocking limitations belong in summary; ready/pass must leave issues empty. "
                   "Manager/strategy/risk/decision ready/pass must have no unresolved blocking issues. "
                   + json.dumps(schema, ensure_ascii=False))
-        messages = messages or [{"role": "system", "content": prompt},
-                                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+        messages = ([{"role": "system", "content": prompt}, *messages[1:]] if messages else [
+            {"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
         if len(json.dumps(messages, ensure_ascii=False)) > deps.policy.max_input_chars:
             raise BudgetExceeded("role input exceeds context budget")
         permitted = False
@@ -193,7 +199,8 @@ class InvestmentResearch:
         ids = {e.id: e for e in evidence}
         for claim in report.claims:
             if claim.stock_key not in keys or not set(claim.evidence_ids) <= ids.keys():
-                raise ValueError("claim has out-of-scope evidence or security")
+                allowed = sorted(i for i, e in ids.items() if e.stock_key in {claim.stock_key, "*"})
+                raise ValueError(f"claim has out-of-scope evidence or security: stock={claim.stock_key}, unknown_ids={sorted(set(claim.evidence_ids) - ids.keys())}; copy exact supplied IDs {allowed} and security keys {sorted(keys)}")
             if any(ids[i].stock_key not in {claim.stock_key, "*"} for i in claim.evidence_ids):
                 raise ValueError(f"claim for {claim.stock_key} cites another security; retain only its own or global evidence IDs")
         for item in report.recommendations:
@@ -356,7 +363,7 @@ class InvestmentResearch:
                 deps.repaired = True
                 messages = state["messages"] + [{"role": "assistant", "content": reply.content},
                     {"role": "user", "content": f"Repair the JSON contract without adding facts: {exc}"}]
-                reply, _ = await self._model(state["role"], {}, deps, messages=messages)
+                reply, _ = await self._model(state["role"], {"input": market_input(prepared)}, deps, messages=messages)
                 report = RoleReport.model_validate_json(reply.content)
                 self._validate(report, prepared, prepared.evidence, state["role"])
             return self._store(state, state["role"], report, reply.model,

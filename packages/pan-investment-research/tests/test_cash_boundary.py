@@ -79,3 +79,28 @@ def test_postmarket_cannot_claim_to_verify_a_nonexistent_morning_plan():
             return reply
     result = asyncio.run(InvestmentResearch().run(prepared(), model=Hindsight()))
     assert result.completion == 'validation_failed' and 'absent prior' in result.reason
+
+
+def test_tool_continuation_refreshes_exact_citation_ids_in_the_model_contract():
+    from test_research import Tools
+    data = prepared()
+    detail = next(e for e in data.evidence if e.domain == 'events').model_copy(update={'id': 'CN:600519/events/detail'})
+    class DetailTools(Tools):
+        async def execute(self, *args, **kwargs):
+            return [detail]
+    class CitationModel(Model):
+        async def complete(self, **kwargs):
+            # The prompt sent over the real gateway must match the current schema,
+            # including IDs discovered after a read-only tool call.
+            assert json.dumps(kwargs['schema'], ensure_ascii=False) in kwargs['messages'][0]['content']
+            reply = await super().complete(**kwargs)
+            if kwargs['role'] == 'events' and not reply.tool_calls:
+                assert detail.id in kwargs['schema']['$defs']['Claim']['properties']['evidence_ids']['items']['enum']
+                report = json.loads(reply.content)
+                report['claims'][0]['evidence_ids'] = [detail.id]
+                reply.content = json.dumps(report)
+            return reply
+    result = asyncio.run(InvestmentResearch().run(data, model=CitationModel(tools=True), tools=DetailTools(data)))
+    assert result.completion == 'complete', result.reason
+    events = next(a for a in result.artifacts if a.role == 'events')
+    assert events.report.claims[0].evidence_ids == [detail.id]
