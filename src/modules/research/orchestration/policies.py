@@ -34,9 +34,9 @@ def validate_config(config, agent_name):
     if agent_name not in PROFILES:
         raise ValueError("research graph is unavailable for this agent")
     config = dict(config or {})
-    mode = config.pop("engine", "legacy")
-    if mode not in {"legacy", "shadow", "langgraph"}:
-        raise ValueError("invalid research engine")
+    mode = config.pop("engine", "langgraph")
+    if mode != "langgraph":
+        raise ValueError("legacy and shadow session engines have been retired; use langgraph")
     template = template_for(config, agent_name)
     config.pop("template", None)
     config.pop("profile", None)

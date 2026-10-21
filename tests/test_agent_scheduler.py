@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from test_investment_research_integration import host, make_context
 from src.modules.automation import agent_scheduler, scheduling_policy
 from src.platform.marketdata.models import MarketCode
 
@@ -102,13 +103,15 @@ def test_context_failure_is_still_recorded(monkeypatch):
     {"stocks": [], "stock_data": None, "skip_reason": "市场休市"},
     {"stocks": [], "stock_data": None},
 ])
-def test_real_intraday_batch_without_data_does_not_call_ai_or_record_report(monkeypatch, data):
+def test_real_intraday_batch_without_data_does_not_call_ai_or_record_report(monkeypatch, data, host):
     from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 
     scheduler, _, context, record = scheduler_fixture(
         monkeypatch, mode="batch", markets=[MarketCode.HK],
     )
+    context = make_context("no-data", keys=((MarketCode.HK, "STOCK-0"),))
     context.ai_client = SimpleNamespace(chat=AsyncMock())
+    scheduler.set_context_builder(lambda _: context)
     agent = IntradayMonitorAgent()
     monkeypatch.setattr(agent, "collect", AsyncMock(return_value=data))
     scheduler.agents["intraday_monitor"] = agent

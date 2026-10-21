@@ -70,8 +70,6 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
         run.as_of = prepared.as_of.isoformat()
         for artifact in research.artifacts:
             db.add(ResearchArtifact(run_id=run_id, artifact_id=artifact.id, payload=artifact.model_dump(mode="json")))
-        if run.engine == "shadow":
-            return "shadow"
         newer = db.query(ResearchRun).filter(ResearchRun.agent_name == agent.name,
             ResearchRun.scope_hash == run.scope_hash, ResearchRun.as_of > run.as_of,
             ResearchRun.status == "completed", ResearchRun.engine == "langgraph").first()

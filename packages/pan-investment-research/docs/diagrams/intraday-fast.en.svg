@@ -110,9 +110,9 @@
 <g id="node8" class="node">
 <title>RULES</title>
 <path fill="#edf4fb" stroke="#b7c8dc" d="M429.11,-151.69C429.11,-151.69 256.73,-151.69 256.73,-151.69 250.73,-151.69 244.73,-145.69 244.73,-139.69 244.73,-139.69 244.73,-106.09 244.73,-106.09 244.73,-100.09 250.73,-94.09 256.73,-94.09 256.73,-94.09 429.11,-94.09 429.11,-94.09 435.11,-94.09 441.11,-100.09 441.11,-106.09 441.11,-106.09 441.11,-139.69 441.11,-139.69 441.11,-145.69 435.11,-151.69 429.11,-151.69"/>
-<text xml:space="preserve" text-anchor="middle" x="342.92" y="-133.69" font-family="Arial" font-size="12.00">rules:</text>
+<text xml:space="preserve" text-anchor="middle" x="342.92" y="-133.69" font-family="Arial" font-size="12.00">execution:</text>
 <text xml:space="preserve" text-anchor="middle" x="342.92" y="-119.29" font-family="Arial" font-size="12.00">coverage, citations, holdings and</text>
-<text xml:space="preserve" text-anchor="middle" x="342.92" y="-104.89" font-family="Arial" font-size="12.00">execution constraints</text>
+<text xml:space="preserve" text-anchor="middle" x="342.92" y="-104.89" font-family="Arial" font-size="12.00">order constraints</text>
 </g>
 <!-- STRATEGY&#45;&gt;RULES -->
 <g id="edge8" class="edge">

@@ -29,7 +29,7 @@ def test_only_triggered_experts_and_one_decision_use_the_model(domains, calls):
     assert result.status == 'ready', result.reason
     assert result.graph == 'intraday_fast' and result.usage['attempts'] == calls
     assert set(model.calls) == {*domains, 'strategy'}
-    assert [a.role for a in result.artifacts if a.kind == 'rule'] == ['gate', 'risk']
+    assert [a.role for a in result.artifacts if a.kind == 'rule'] == ['gate', 'execution']
     assert result.recommendations[0].execution_status == 'not_applicable'
 
 

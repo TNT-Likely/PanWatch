@@ -6,6 +6,8 @@ import json
 
 from pan_investment_research import Evidence, ResearchInput, ResearchSignal, Security
 from .signals import inspect_changes, published, material
+from . import repository
+from src.platform.persistence.worker import run_db_operation
 
 from src.modules.automation.scheduling_policy import scoped_context
 from src.platform.persistence.json_safe import to_jsonable
@@ -19,6 +21,7 @@ async def prepare(agent, context, run_id):
         groups.setdefault(key, []).append(stock)
     securities, evidence, details, snapshots, signals = [], [], [], {}, []
     context._research_gate_observations = {}
+    market_snapshots = {}
     for stocks in groups.values():
         scoped = scoped_context(context, stocks)
         scoped.config = deepcopy(scoped.config)
@@ -61,12 +64,35 @@ async def prepare(agent, context, run_id):
                         packs={stock.symbol: pack}, realtime_hours=6, extended_hours=24, history_days=7,
                         kline_days=60, persist_snapshot=False)
                     symbol_context = enriched.get("symbols", {}).get(stock.symbol) or {}
+            if getattr(context, "_research_fast", False) and found and stock.market.value == "CN":
+                if stock.market not in market_snapshots:
+                    from src.modules.automation.daily_report import DailyReportAgent
+                    try:
+                        market_snapshots[stock.market] = await DailyReportAgent()._fetch_index_for_market(stock.market)
+                    except Exception:
+                        market_snapshots[stock.market] = []
+                data["indices"] = market_snapshots[stock.market]
+            indices = to_jsonable(data.get("indices") or data.get("us_indices") or [])
+            if indices:
+                captured = datetime.now(timezone.utc)
+                evidence.append(Evidence(id=f"{stock_key}/market-snapshot", stock_key=stock_key, domain="market",
+                    source="PanWatch captured indices", observed_at=captured, available_at=captured, content={"indices": indices}))
             snapshots[stock_key] = to_jsonable(symbol_context)
+            if agent.name == "daily_report":
+                prior = await prior_plan(stock_key, observed, context.config.settings.app_timezone)
+                if prior:
+                    evidence.append(Evidence(id=f"{stock_key}/prior-plan", stock_key=stock_key, domain="market",
+                        source="saved premarket plan", observed_at=observed, available_at=observed, content={"prior_plan": prior}))
             news = (pack.news.items if pack.news else []) + (pack.events.items if pack.events else [])
             # Preserve useful legacy input semantics without importing its formatting prompt.
             analysis_context = {k: symbol_context.get(k) for k in ("relative_strength", "ta_verdict") if symbol_context.get(k)}
+            if "ta_verdict" in analysis_context:
+                prior = analysis_context["ta_verdict"]
+                # Retain a dated market rating without recycling old account-limited prose.
+                analysis_context["ta_verdict"] = {k: v for k, v in prior.items() if k in {"rating", "action_label", "date", "age_days", "days_ago"}}
             analysis_context["trading_styles"] = sorted({p.trading_style for p in positions})
             analysis_context["volatility_rules"] = {k: v for k, v in rule_context.items() if k != "position_warnings"}
+            analysis_context["position_alerts"] = sorted({str(value).split(":")[-1] for value in rule_context.get("position_warnings", [])})
             enriched_events = {item.get("url"): item for item in (symbol_context.get("events") or []) if isinstance(item, dict) and item.get("url")}
             news = [{**item, **enriched_events.get(item.get("url"), {})} for item in news]
             news = [item for item in news if (t := published(item, observed, stock.market.value)) is None or t <= observed]
@@ -76,15 +102,8 @@ async def prepare(agent, context, run_id):
                 "technical": {"quote": quote, "indicators": pack.technical, "missing": pack.missing, "analysis_context": analysis_context},
                 "flow": {"capital_flow": pack.capital_flow, "indices": data.get("indices") or data.get("us_indices"),
                          "unsupported_or_missing": pack.capital_flow is None},
-                "events": {"items": news, "historical_context": {
-                    "daily": None if getattr(context, "_research_fast", False) else data.get("daily_analysis"), "premarket": None if getattr(context, "_research_fast", False) else data.get("premarket_analysis")}},
+                "events": {"items": news},
             }
-            if agent.name == "intraday_monitor" and not getattr(context, "_research_fast", False) and agent.event_only and pack.quote and not getattr(context, "_research_shadow", False):
-                from src.modules.strategy.intraday_event_gate import check_and_update
-                gate = check_and_update(symbol=stock_key, change_pct=pack.quote.change_pct,
-                    volume_ratio=(pack.technical or {}).get("volume_ratio"), kline_summary=pack.technical,
-                    price_threshold=agent.price_alert_threshold, volume_threshold=agent.volume_alert_ratio)
-                domains["technical"]["event_gate"] = {"reasons": gate.reasons, "should_analyze": gate.should_analyze}
             for domain, payload in domains.items():
                 payload["sources"] = pack.sources
                 full = to_jsonable(payload)
@@ -95,7 +114,7 @@ async def prepare(agent, context, run_id):
                 # Preserve all source identities; limit long document bodies, not target coverage.
                 preview = _preview(full)
                 evidence.append(Evidence(id=f"{stock_key}/{domain}/{token}/summary", content=preview, **common))
-    if not securities:
+    if not securities or not any(e.domain in {"technical", "flow", "events"} for e in evidence):
         return None, details, snapshots
     portfolio = to_jsonable(context.portfolio)
     portfolio["research_rules"] = {"stop_loss_warning": getattr(agent, "stop_loss_warning", -5), "take_profit_warning": getattr(agent, "take_profit_warning", 10)}
@@ -113,3 +132,24 @@ def _preview(value):
     if isinstance(value, list):
         return [_preview(v) for v in value]
     return value
+
+
+async def prior_plan(key, cutoff, app_timezone):
+    """Only same-market, same-day market fields; no prior account narrative reaches models."""
+    from sqlalchemy import select
+    from zoneinfo import ZoneInfo
+    from src.platform.persistence.models import AnalysisHistory
+    day = cutoff.astimezone(ZoneInfo(app_timezone)).date().isoformat()
+    def read(db):
+        rows = db.scalars(select(AnalysisHistory).where(
+            AnalysisHistory.agent_name == "premarket_outlook", AnalysisHistory.analysis_date == day,
+            AnalysisHistory.created_at <= cutoff.replace(tzinfo=None),
+            AnalysisHistory.updated_at <= cutoff.replace(tzinfo=None)).order_by(AnalysisHistory.updated_at.desc(), AnalysisHistory.created_at.desc())).all()
+        for row in rows:
+            raw = row.raw_data if isinstance(row.raw_data, dict) else {}
+            rec = (raw.get("suggestions") or {}).get(key)
+            if not isinstance(rec, dict):
+                continue
+            return {"analysis_date": day, **{name: rec[name] for name in ("outlook", "action", "triggers", "invalidations") if name in rec}}
+        return None
+    return await run_db_operation(repository.engine, read)

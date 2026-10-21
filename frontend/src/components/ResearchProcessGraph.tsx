@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
 import { markdownClass, type ProcessItem } from './ResearchReport'
 
-const LAYERS = [['gate'], ['technical', 'flow', 'events'], ['bull', 'bear'], ['manager'], ['strategy'], ['risk'], ['decision']]
+const LAYERS = [['gate'], ['technical', 'flow', 'events'], ['bull', 'bear'], ['manager'], ['strategy'], ['risk'], ['decision'], ['execution']]
 
 export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
   const { t } = useTranslation('configuration')

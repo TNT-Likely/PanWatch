@@ -66,81 +66,81 @@
 <polygon fill="#506983" stroke="#506983" points="636.14,-346 637.36,-338.69 631.85,-343.65 636.14,-346"/>
 <text xml:space="preserve" text-anchor="middle" x="662.44" y="-356.19" font-family="Arial" font-size="10.00">未解决的研究裁定</text>
 </g>
-<!-- CONSTRAINTS -->
+<!-- RISK -->
 <g id="node5" class="node">
-<title>CONSTRAINTS</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M466.63,-263.46C466.63,-263.46 379.01,-263.46 379.01,-263.46 373.01,-263.46 367.01,-257.46 367.01,-251.46 367.01,-251.46 367.01,-239.46 367.01,-239.46 367.01,-233.46 373.01,-227.46 379.01,-227.46 379.01,-227.46 466.63,-227.46 466.63,-227.46 472.63,-227.46 478.63,-233.46 478.63,-239.46 478.63,-239.46 478.63,-251.46 478.63,-251.46 478.63,-257.46 472.63,-263.46 466.63,-263.46"/>
-<text xml:space="preserve" text-anchor="middle" x="422.82" y="-241.86" font-family="Arial" font-size="12.00">确定性施加执行限制</text>
+<title>RISK</title>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M490.96,-263.46C490.96,-263.46 354.67,-263.46 354.67,-263.46 348.67,-263.46 342.67,-257.46 342.67,-251.46 342.67,-251.46 342.67,-239.46 342.67,-239.46 342.67,-233.46 348.67,-227.46 354.67,-227.46 354.67,-227.46 490.96,-227.46 490.96,-227.46 496.96,-227.46 502.96,-233.46 502.96,-239.46 502.96,-239.46 502.96,-251.46 502.96,-251.46 502.96,-257.46 496.96,-263.46 490.96,-263.46"/>
+<text xml:space="preserve" text-anchor="middle" x="422.82" y="-241.86" font-family="Arial" font-size="12.00">risk：审查该方案与所引用证据</text>
 </g>
-<!-- STRATEGY&#45;&gt;CONSTRAINTS -->
+<!-- STRATEGY&#45;&gt;RISK -->
 <g id="edge4" class="edge">
-<title>STRATEGY&#45;&gt;CONSTRAINTS</title>
+<title>STRATEGY&#45;&gt;RISK</title>
 <path fill="none" stroke="#506983" d="M422.82,-298.68C422.82,-290.73 422.82,-281.12 422.82,-272.33"/>
 <polygon fill="#506983" stroke="#506983" points="425.27,-272.4 422.82,-265.4 420.37,-272.4 425.27,-272.4"/>
 </g>
-<!-- RISK -->
-<g id="node6" class="node">
-<title>RISK</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M490.96,-194.46C490.96,-194.46 354.67,-194.46 354.67,-194.46 348.67,-194.46 342.67,-188.46 342.67,-182.46 342.67,-182.46 342.67,-170.46 342.67,-170.46 342.67,-164.46 348.67,-158.46 354.67,-158.46 354.67,-158.46 490.96,-158.46 490.96,-158.46 496.96,-158.46 502.96,-164.46 502.96,-170.46 502.96,-170.46 502.96,-182.46 502.96,-182.46 502.96,-188.46 496.96,-194.46 490.96,-194.46"/>
-<text xml:space="preserve" text-anchor="middle" x="422.82" y="-172.86" font-family="Arial" font-size="12.00">risk：审查该方案与所引用证据</text>
-</g>
-<!-- CONSTRAINTS&#45;&gt;RISK -->
-<g id="edge5" class="edge">
-<title>CONSTRAINTS&#45;&gt;RISK</title>
-<path fill="none" stroke="#506983" d="M422.82,-227.2C422.82,-219.92 422.82,-211.27 422.82,-203.25"/>
-<polygon fill="#506983" stroke="#506983" points="425.27,-203.4 422.82,-196.4 420.37,-203.4 425.27,-203.4"/>
-</g>
 <!-- DECISION -->
-<g id="node7" class="node">
+<g id="node6" class="node">
 <title>DECISION</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M339.64,-112.09C339.64,-112.09 207.99,-112.09 207.99,-112.09 201.99,-112.09 195.99,-106.09 195.99,-100.09 195.99,-100.09 195.99,-88.09 195.99,-88.09 195.99,-82.09 201.99,-76.09 207.99,-76.09 207.99,-76.09 339.64,-76.09 339.64,-76.09 345.64,-76.09 351.64,-82.09 351.64,-88.09 351.64,-88.09 351.64,-100.09 351.64,-100.09 351.64,-106.09 345.64,-112.09 339.64,-112.09"/>
-<text xml:space="preserve" text-anchor="middle" x="273.82" y="-90.49" font-family="Arial" font-size="12.00">decision：保持已审方案字段</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M339.64,-181.09C339.64,-181.09 207.99,-181.09 207.99,-181.09 201.99,-181.09 195.99,-175.09 195.99,-169.09 195.99,-169.09 195.99,-157.09 195.99,-157.09 195.99,-151.09 201.99,-145.09 207.99,-145.09 207.99,-145.09 339.64,-145.09 339.64,-145.09 345.64,-145.09 351.64,-151.09 351.64,-157.09 351.64,-157.09 351.64,-169.09 351.64,-169.09 351.64,-175.09 345.64,-181.09 339.64,-181.09"/>
+<text xml:space="preserve" text-anchor="middle" x="273.82" y="-159.49" font-family="Arial" font-size="12.00">decision：保持已审方案字段</text>
 </g>
 <!-- RISK&#45;&gt;DECISION -->
-<g id="edge6" class="edge">
+<g id="edge5" class="edge">
 <title>RISK&#45;&gt;DECISION</title>
-<path fill="none" stroke="#506983" d="M390.49,-158.02C367.84,-145.8 337.43,-129.41 313.34,-116.41"/>
-<polygon fill="#506983" stroke="#506983" points="314.74,-114.38 307.42,-113.22 312.41,-118.7 314.74,-114.38"/>
-<text xml:space="preserve" text-anchor="middle" x="367.8" y="-133.46" font-family="Arial" font-size="10.00">pass</text>
+<path fill="none" stroke="#506983" d="M390.49,-227.02C367.84,-214.8 337.43,-198.41 313.34,-185.41"/>
+<polygon fill="#506983" stroke="#506983" points="314.74,-183.38 307.42,-182.22 312.41,-187.7 314.74,-183.38"/>
+<text xml:space="preserve" text-anchor="middle" x="367.8" y="-202.46" font-family="Arial" font-size="10.00">pass</text>
 </g>
 <!-- REVISE -->
 <g id="node9" class="node">
 <title>REVISE</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M725.63,-112.09C725.63,-112.09 606,-112.09 606,-112.09 600,-112.09 594,-106.09 594,-100.09 594,-100.09 594,-88.09 594,-88.09 594,-82.09 600,-76.09 606,-76.09 606,-76.09 725.63,-76.09 725.63,-76.09 731.63,-76.09 737.63,-82.09 737.63,-88.09 737.63,-88.09 737.63,-100.09 737.63,-100.09 737.63,-106.09 731.63,-112.09 725.63,-112.09"/>
-<text xml:space="preserve" text-anchor="middle" x="665.82" y="-90.49" font-family="Arial" font-size="12.00">revise：消耗共享反馈额度</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M725.63,-181.09C725.63,-181.09 606,-181.09 606,-181.09 600,-181.09 594,-175.09 594,-169.09 594,-169.09 594,-157.09 594,-157.09 594,-151.09 600,-145.09 606,-145.09 606,-145.09 725.63,-145.09 725.63,-145.09 731.63,-145.09 737.63,-151.09 737.63,-157.09 737.63,-157.09 737.63,-169.09 737.63,-169.09 737.63,-175.09 731.63,-181.09 725.63,-181.09"/>
+<text xml:space="preserve" text-anchor="middle" x="665.82" y="-159.49" font-family="Arial" font-size="12.00">revise：消耗共享反馈额度</text>
 </g>
 <!-- RISK&#45;&gt;REVISE -->
 <g id="edge8" class="edge">
 <title>RISK&#45;&gt;REVISE</title>
-<path fill="none" stroke="#506983" d="M494.27,-157.99C526.65,-150.08 557.82,-142.46 557.82,-142.46 557.82,-142.46 589.48,-128.57 618.52,-115.84"/>
-<polygon fill="#506983" stroke="#506983" points="619.4,-118.13 624.83,-113.07 617.43,-113.64 619.4,-118.13"/>
-<text xml:space="preserve" text-anchor="middle" x="597.25" y="-133.46" font-family="Arial" font-size="10.00">revise</text>
+<path fill="none" stroke="#506983" d="M494.27,-226.99C526.65,-219.08 557.82,-211.46 557.82,-211.46 557.82,-211.46 589.48,-197.57 618.52,-184.84"/>
+<polygon fill="#506983" stroke="#506983" points="619.4,-187.13 624.83,-182.07 617.43,-182.64 619.4,-187.13"/>
+<text xml:space="preserve" text-anchor="middle" x="597.25" y="-202.46" font-family="Arial" font-size="10.00">revise</text>
 </g>
 <!-- PATCH -->
 <g id="node10" class="node">
 <title>PATCH</title>
-<path fill="#edf4fb" stroke="#b7c8dc" d="M161.63,-112.09C161.63,-112.09 12,-112.09 12,-112.09 6,-112.09 0,-106.09 0,-100.09 0,-100.09 0,-88.09 0,-88.09 0,-82.09 6,-76.09 12,-76.09 12,-76.09 161.63,-76.09 161.63,-76.09 167.63,-76.09 173.63,-82.09 173.63,-88.09 173.63,-88.09 173.63,-100.09 173.63,-100.09 173.63,-106.09 167.63,-112.09 161.63,-112.09"/>
-<text xml:space="preserve" text-anchor="middle" x="86.82" y="-90.49" font-family="Arial" font-size="12.00">revise：相关专家补证与经理裁定</text>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M161.63,-181.09C161.63,-181.09 12,-181.09 12,-181.09 6,-181.09 0,-175.09 0,-169.09 0,-169.09 0,-157.09 0,-157.09 0,-151.09 6,-145.09 12,-145.09 12,-145.09 161.63,-145.09 161.63,-145.09 167.63,-145.09 173.63,-151.09 173.63,-157.09 173.63,-157.09 173.63,-169.09 173.63,-169.09 173.63,-175.09 167.63,-181.09 161.63,-181.09"/>
+<text xml:space="preserve" text-anchor="middle" x="86.82" y="-159.49" font-family="Arial" font-size="12.00">revise：相关专家补证与经理裁定</text>
 </g>
 <!-- RISK&#45;&gt;PATCH -->
 <g id="edge10" class="edge">
 <title>RISK&#45;&gt;PATCH</title>
-<path fill="none" stroke="#506983" d="M342.27,-159.54C299.58,-151.1 255.86,-142.46 255.86,-142.46 255.86,-142.46 203.3,-127.73 156.8,-114.7"/>
-<polygon fill="#506983" stroke="#506983" points="157.66,-112.4 150.26,-112.87 156.34,-117.12 157.66,-112.4"/>
-<text xml:space="preserve" text-anchor="middle" x="295.34" y="-133.46" font-family="Arial" font-size="10.00">evidence_needed</text>
+<path fill="none" stroke="#506983" d="M342.27,-228.54C299.58,-220.1 255.86,-211.46 255.86,-211.46 255.86,-211.46 203.3,-196.73 156.8,-183.7"/>
+<polygon fill="#506983" stroke="#506983" points="157.66,-181.4 150.26,-181.87 156.34,-186.12 157.66,-181.4"/>
+<text xml:space="preserve" text-anchor="middle" x="295.34" y="-202.46" font-family="Arial" font-size="10.00">evidence_needed</text>
 </g>
 <!-- REJECT -->
 <g id="node11" class="node">
 <title>REJECT</title>
-<ellipse fill="#edf4fb" stroke="#b7c8dc" cx="472.82" cy="-94.09" rx="98.74" ry="20.36"/>
-<text xml:space="preserve" text-anchor="middle" x="472.82" y="-90.49" font-family="Arial" font-size="12.00">人工复核：risk_rejected</text>
+<ellipse fill="#edf4fb" stroke="#b7c8dc" cx="472.82" cy="-163.09" rx="98.74" ry="20.36"/>
+<text xml:space="preserve" text-anchor="middle" x="472.82" y="-159.49" font-family="Arial" font-size="12.00">人工复核：risk_rejected</text>
 </g>
 <!-- RISK&#45;&gt;REJECT -->
 <g id="edge12" class="edge">
 <title>RISK&#45;&gt;REJECT</title>
-<path fill="none" stroke="#506983" d="M433.67,-158.02C440.23,-147.47 448.74,-133.8 456.14,-121.9"/>
-<polygon fill="#506983" stroke="#506983" points="458.17,-123.28 459.78,-116.04 454.01,-120.69 458.17,-123.28"/>
-<text xml:space="preserve" text-anchor="middle" x="501.93" y="-133.46" font-family="Arial" font-size="10.00">reject 或其他不支持的裁定</text>
+<path fill="none" stroke="#506983" d="M433.67,-227.02C440.23,-216.47 448.74,-202.8 456.14,-190.9"/>
+<polygon fill="#506983" stroke="#506983" points="458.17,-192.28 459.78,-185.04 454.01,-189.69 458.17,-192.28"/>
+<text xml:space="preserve" text-anchor="middle" x="501.93" y="-202.46" font-family="Arial" font-size="10.00">reject 或其他不支持的裁定</text>
+</g>
+<!-- EXECUTION -->
+<g id="node7" class="node">
+<title>EXECUTION</title>
+<path fill="#edf4fb" stroke="#b7c8dc" d="M368.31,-109.73C368.31,-109.73 179.32,-109.73 179.32,-109.73 173.32,-109.73 167.32,-103.73 167.32,-97.73 167.32,-97.73 167.32,-85.73 167.32,-85.73 167.32,-79.73 173.32,-73.73 179.32,-73.73 179.32,-73.73 368.31,-73.73 368.31,-73.73 374.31,-73.73 380.31,-79.73 380.31,-85.73 380.31,-85.73 380.31,-97.73 380.31,-97.73 380.31,-103.73 374.31,-109.73 368.31,-109.73"/>
+<text xml:space="preserve" text-anchor="middle" x="273.82" y="-88.13" font-family="Arial" font-size="12.00">execution：确定性资金、报价与下单检查</text>
+</g>
+<!-- DECISION&#45;&gt;EXECUTION -->
+<g id="edge6" class="edge">
+<title>DECISION&#45;&gt;EXECUTION</title>
+<path fill="none" stroke="#506983" d="M273.82,-144.95C273.82,-137 273.82,-127.4 273.82,-118.6"/>
+<polygon fill="#506983" stroke="#506983" points="276.27,-118.67 273.82,-111.67 271.37,-118.67 276.27,-118.67"/>
 </g>
 <!-- COMPLETE -->
 <g id="node8" class="node">
@@ -148,23 +148,23 @@
 <ellipse fill="#edf4fb" stroke="#b7c8dc" cx="273.82" cy="-20.36" rx="108.17" ry="20.36"/>
 <text xml:space="preserve" text-anchor="middle" x="273.82" y="-16.76" font-family="Arial" font-size="12.00">研究完成：ready 或 review</text>
 </g>
-<!-- DECISION&#45;&gt;COMPLETE -->
+<!-- EXECUTION&#45;&gt;COMPLETE -->
 <g id="edge7" class="edge">
-<title>DECISION&#45;&gt;COMPLETE</title>
-<path fill="none" stroke="#506983" d="M273.82,-75.73C273.82,-67.81 273.82,-58.24 273.82,-49.34"/>
-<polygon fill="#506983" stroke="#506983" points="276.27,-49.61 273.82,-42.62 271.37,-49.62 276.27,-49.61"/>
+<title>EXECUTION&#45;&gt;COMPLETE</title>
+<path fill="none" stroke="#506983" d="M273.82,-73.58C273.82,-66.26 273.82,-57.52 273.82,-49.3"/>
+<polygon fill="#506983" stroke="#506983" points="276.27,-49.52 273.82,-42.52 271.37,-49.52 276.27,-49.52"/>
 </g>
 <!-- REVISE&#45;&gt;STRATEGY -->
 <g id="edge9" class="edge">
 <title>REVISE&#45;&gt;STRATEGY</title>
-<path fill="none" stroke="#506983" d="M647.64,-112.48C602.68,-155.49 489.82,-263.46 489.82,-263.46 489.82,-263.46 469.83,-279.08 451.69,-293.26"/>
-<polygon fill="#506983" stroke="#506983" points="450.33,-291.21 446.32,-297.45 453.34,-295.07 450.33,-291.21"/>
+<path fill="none" stroke="#506983" d="M647.48,-181.46C633.21,-194.98 615.82,-211.46 615.82,-211.46 615.82,-211.46 518.96,-263.84 462.47,-294.38"/>
+<polygon fill="#506983" stroke="#506983" points="461.44,-292.15 456.45,-297.64 463.77,-296.46 461.44,-292.15"/>
 </g>
 <!-- PATCH&#45;&gt;STRATEGY -->
 <g id="edge11" class="edge">
 <title>PATCH&#45;&gt;STRATEGY</title>
-<path fill="none" stroke="#506983" d="M113.06,-112.33C173.54,-152.07 322.66,-250.03 389.48,-293.93"/>
-<polygon fill="#506983" stroke="#506983" points="387.99,-295.88 395.19,-297.67 390.68,-291.78 387.99,-295.88"/>
+<path fill="none" stroke="#506983" d="M125.43,-181.53C187.71,-209.66 310.11,-264.93 376.82,-295.05"/>
+<polygon fill="#506983" stroke="#506983" points="375.51,-297.15 382.89,-297.8 377.52,-292.68 375.51,-297.15"/>
 </g>
 <!-- GUARD -->
 <g id="node13" class="node">

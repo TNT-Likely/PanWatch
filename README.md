@@ -354,9 +354,9 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 
 ### LangGraph investment research
 
-The premarket, intraday and postmarket workflows have an opt-in **Research orchestration** dialog on the Agents page. Choose the existing workflow, shadow evaluation, or multi-agent research; configure the request-attempt budget and total collection/research deadline. Existing installations keep the legacy engine. Shadow mode records graph audit artifacts while the existing workflow owns business output.
+Premarket, intraday and postmarket all use the independently installable [Pan Investment Research package](packages/pan-investment-research/README.md). Choose validated graph templates, specialists, debate policy and per-run budgets in **Research orchestration** on the Agents page. Intraday uses a deterministic change gate and a short expert/decision graph; quiet snapshots use no model and preserve previous advice. Premarket adds opening scenarios; postmarket adds attribution and evidence-linked review of supplied premarket plans.
 
-The repository-local [Pan Investment Research package](packages/pan-investment-research/README.md) is independently installable and has no PanWatch imports. It provides specialist research, supporting/opposing arguments, manager adjudication, portfolio strategy, risk challenge and final decisions through three LangGraph graphs. Intraday starts with a shorter path; captured event evidence adds event research and bounded debate. Premarket can run without a previous postmarket report.
+Market models do not receive account cash. Mandatory execution rules apply account and quote restrictions after market research. Migration v139 retires the old legacy/shadow execution modes while preserving settings and history. The three old session prompts and text parsers are removed; TradingAgents deep analysis remains independent.
 
 Premarket and postmarket analyze all bound stocks together, sharing specialists within groups and running portfolio strategy, risk and finalization once. Evidence details support batch reads across stocks. Default context, output and token capacities adjust to target count; explicit global caps remain effective, and time and concurrency limits do not grow with the watchlist.
 

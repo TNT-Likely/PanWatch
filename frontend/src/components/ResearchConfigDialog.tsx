@@ -14,7 +14,7 @@ type TemplateId = 'intraday_fast' | 'premarket_balanced' | 'postmarket_deep' | '
 type Specialist = 'technical' | 'flow' | 'events'
 interface Template { id: TemplateId; graph: string; defaults: Record<string, unknown>; allowed_specialists: Specialist[] }
 interface Templates { default_template: TemplateId; templates: Template[] }
-type ResearchLabel = 'title' | 'description' | 'engine' | 'legacy' | 'shadow' | 'langgraph' | 'attempts' | 'deadline' | 'cancel' | 'save' | 'saved' | 'failed' | 'template' | 'templateHint' | 'specialists' | 'debate' | 'never' | 'material' | 'always' | 'preview' | 'fastHint' | 'rulesRequired' | 'advanced' | 'tools' | 'feedback' | 'concurrency' | 'tokens' | 'output' | 'loading' | 'invalid' | 'loadFailed' | 'triggerMode' | 'changes' | 'continuous'
+type ResearchLabel = 'title' | 'description' | 'attempts' | 'deadline' | 'cancel' | 'save' | 'saved' | 'failed' | 'template' | 'templateHint' | 'specialists' | 'debate' | 'never' | 'material' | 'always' | 'preview' | 'fastHint' | 'rulesRequired' | 'advanced' | 'tools' | 'feedback' | 'concurrency' | 'tokens' | 'output' | 'loading' | 'invalid' | 'loadFailed' | 'triggerMode' | 'changes' | 'continuous'
 
 export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
   agent: ResearchAgentConfig | null; onClose: () => void; onSaved: () => void
@@ -38,7 +38,7 @@ export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
       const compatible = agent.name === 'intraday_monitor' && !current.template &&
         ((current.specialists as string[] || []).includes('flow') || current.debate || Number(current.max_feedback || 0) > 0)
       const selected = data.templates.find(item => item.id === current.template) || data.templates.find(item => item.id === (compatible ? 'custom_research' : data.default_template))!
-      setValue({ ...selected.defaults, ...current, template: selected.id, engine: current.engine || 'legacy' })
+      setValue({ ...selected.defaults, ...current, template: selected.id, engine: 'langgraph' })
       setMetadata(data)
     }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'research_config_invalid') })
     return () => { active = false }
@@ -65,12 +65,6 @@ export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
       {error && <p role="alert" className="text-sm text-destructive">{key('loadFailed')}：{error}</p>}
       {!metadata && !error && <p role="status">{key('loading')}</p>}
       {metadata && <div className="space-y-4">
-        <div className="space-y-2"><Label htmlFor="research-engine">{key('engine')}</Label>
-          <Select value={String(value.engine || 'legacy')} onValueChange={engine => setValue({ ...value, engine })}>
-            <SelectTrigger id="research-engine" aria-label={key('engine')}><SelectValue /></SelectTrigger>
-            <SelectContent>{(['legacy', 'shadow', 'langgraph'] as const).map(engine => <SelectItem key={engine} value={engine}>{key(engine)}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
         <div className="space-y-2"><Label htmlFor="research-template">{key('template')}</Label>
           <Select value={String(value.template)} onValueChange={template => { const next = metadata.templates.find(item => item.id === template)!; setValue({ ...next.defaults, engine: value.engine, template }) }}>
             <SelectTrigger id="research-template" aria-label={key('template')}><SelectValue /></SelectTrigger>
@@ -87,7 +81,7 @@ export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
         <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs leading-6" role="img" aria-label={key('preview')}>
           {fast && <p>{t('p4.history.graphRoles.gate')} ↓</p>}<p>{specialists.map(roleLabel).join(' / ')} ↓</p>
           {!fast && <><p>{debate !== 'never' ? `${t('p4.history.graphRoles.bull')} / ${t('p4.history.graphRoles.bear')} (${key(debate === 'material' ? 'material' : 'always')}) ↓` : ''}</p><p>{t('p4.history.graphRoles.manager')} ↓</p></>}
-          <p>{t('p4.history.graphRoles.strategy')} ↓</p><p>{fast ? t('p4.history.ruleChecks') : t('p4.history.graphRoles.risk')}</p>{!fast && <p>↓ {t('p4.history.graphRoles.decision')}</p>}
+          <p>{t('p4.history.graphRoles.strategy')} ↓</p><p>{fast ? t('p4.history.graphRoles.execution') : t('p4.history.graphRoles.risk')}</p>{!fast && <><p>↓ {t('p4.history.graphRoles.decision')}</p><p>↓ {t('p4.history.graphRoles.execution')}</p></>}
         </div>
         <p className="text-xs text-muted-foreground">{key(fast ? 'fastHint' : 'rulesRequired')}</p>
         <div className="grid grid-cols-2 gap-3">{numberInput('attempts', 'max_attempts', 1, 100)}{numberInput('deadline', 'deadline_seconds', 1, 600)}</div>

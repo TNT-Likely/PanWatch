@@ -56,3 +56,26 @@ def test_research_migration_matches_orm_and_preserves_records(existing_tables):
     finally:
         engine.dispose()
         reference.dispose()
+
+
+def test_retire_legacy_and_shadow_without_changing_other_settings_or_history(tmp_path):
+    import json
+    from src.platform.persistence.migrations import _m139_retire_session_legacy
+    engine = create_engine(f"sqlite:///{tmp_path / 'retirement.db'}")
+    with engine.begin() as db:
+        db.execute(text('CREATE TABLE agent_configs (id INTEGER PRIMARY KEY, name TEXT, config JSON)'))
+        db.execute(text('CREATE TABLE analysis_history (id INTEGER PRIMARY KEY, content TEXT)'))
+        db.execute(text("INSERT INTO analysis_history VALUES (1, 'Historical report')"))
+        for index, (name, mode) in enumerate([('daily_report', 'legacy'), ('premarket_outlook', 'shadow'), ('intraday_monitor', 'langgraph'), ('tradingagents', 'legacy')], 1):
+            config = {'unrelated': 'preserved', 'research_graph': {'engine': mode, 'max_attempts': 22, 'deadline_seconds': 240}}
+            db.execute(text('INSERT INTO agent_configs VALUES (:id,:name,:config)'), {'id': index, 'name': name, 'config': json.dumps(config)})
+        _m139_retire_session_legacy(db)
+        once = db.execute(text('SELECT config FROM agent_configs ORDER BY id')).fetchall()
+        _m139_retire_session_legacy(db)
+        assert once == db.execute(text('SELECT config FROM agent_configs ORDER BY id')).fetchall()
+        for index, (value,) in enumerate(once):
+            config = json.loads(value)
+            assert config['unrelated'] == 'preserved' and config['research_graph']['max_attempts'] == 22
+            assert config['research_graph']['engine'] == ('legacy' if index == 3 else 'langgraph')
+        assert db.execute(text('SELECT content FROM analysis_history')).scalar_one() == 'Historical report'
+    engine.dispose()

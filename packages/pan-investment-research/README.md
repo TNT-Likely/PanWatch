@@ -93,10 +93,10 @@ flowchart TD
     START(["Start"]) --> DISPATCH["dispatch: partition targets by max_group_size"]
     DISPATCH -->|"Send per group; concurrent"| RESEARCH["research: await group research graphs"]
     RESEARCH -->|"All groups ready/pass; merge artifacts"| STRATEGY["strategy: one plan covering every target"]
-    STRATEGY --> CONSTRAINTS["Apply deterministic execution constraints"]
-    CONSTRAINTS --> RISK["risk: exact plan and cited evidence"]
+    STRATEGY --> RISK["risk: exact plan and cited evidence"]
     RISK -->|"pass"| DECISION["decision: preserve approved plan fields"]
-    DECISION --> COMPLETE(["Complete result: ready or review"])
+    DECISION --> EXECUTION["execution: deterministic cash, quote and order checks"]
+    EXECUTION --> COMPLETE(["Complete result: ready or review"])
     RISK -->|"revise"| REVISE["revise: consume shared feedback quota"]
     REVISE --> STRATEGY
     RISK -->|"evidence_needed"| PATCH["revise: affected experts and manager"]
@@ -197,7 +197,7 @@ flowchart TD
     DISPATCH -->|"New captured event"| EVENT["events: shared expert tool graph"]
     TECH --> STRATEGY["strategy: one compact conditional portfolio decision"]
     EVENT --> STRATEGY
-    STRATEGY --> RULES["rules: coverage, citations, holdings and execution constraints"]
+    STRATEGY --> RULES["execution: coverage, citations, holdings and order constraints"]
     RULES --> DONE(["Complete; publish only validated recommendations"])
     GUARD["Shared attempt, token, tool and deadline limits"]
     GUARD -.-> REVIEW(["Review on timeout, budget or validation failure"])
@@ -210,7 +210,7 @@ changes and new dated events. It persists a market-scoped baseline only after a
 successful or skipped run; failed research can retry the same change. Quiet runs
 still collect data but skip expensive historical enrichment and all model calls.
 Only changed stocks and the corresponding enabled specialists reach the model.
-The final rule node is mandatory and makes no model call. This template omits the
+When an active CN stock is admitted, a cached-per-run index snapshot also supplies market context. The final rule node is mandatory and makes no model call. This template omits the
 research manager, bull/bear and model risk committee, so it offers less independent
 challenge than the complete graph. Missing data is not classified as unchanged.
 
@@ -233,11 +233,13 @@ validation rejects unsupported specialists, arbitrary nodes/edges, fast debate
 and feedback. Required rule checks cannot be disabled. `changes` is the normal
 fast trigger; `always` explicitly reviews every selected target and expert.
 
-Legacy engine selection remains explicit (`legacy`, `shadow`, `langgraph`);
-no existing deployment is silently switched. Older intraday configurations that
-explicitly requested flow, debate or feedback retain the complete graph. Host
-scope sizing can raise omitted default capacities for larger portfolios; explicit
-caps apply to the entire run and are never raised. Deadlines are not extended.
+All three PanWatch session agents now use LangGraph. Migration v139 changes stored
+legacy/shadow engine settings to langgraph, preserving other settings, budgets,
+bindings and historical records. New legacy/shadow configurations are rejected;
+their execution branches, three prompt files and loose text parsers are removed.
+Older explicit full-graph intraday settings still retain that graph. Host scope
+sizing can raise omitted default capacities; explicit whole-run caps are never
+raised, and deadlines are not extended.
 
 Without tools, retries, repair or feedback, the full graph uses
 `G × (S + 1) + 2 × B + 3` model calls: `G` groups, `S` specialists per group,
@@ -249,11 +251,10 @@ calls. These counts are not latency or cost guarantees.
 
 ### Prompt ownership and migrated rules
 
-| PanWatch mode | Prompts used | Published output |
-| --- | --- | --- |
-| `legacy` (default) | Existing session prompt files | Existing agent path |
-| `shadow` | New role instructions, then legacy prompts | Legacy output plus shadow audit artifacts |
-| `langgraph` | `prompts.py` role/session guidance and role schemas | Typed graph result rendered by the host |
+The shared `prompts.py` role/session instructions are the sole prompt source for
+these three sessions. Historical legacy and shadow records remain readable; they
+are not executable engine choices. Other agents, including TradingAgents deep
+analysis and onboarding first analysis, keep their own execution paths.
 
 The graph reuses collectors, not the old `build_prompt()` narrative. Useful rules
 are explicitly migrated, rather than copying a whole single-agent prompt:
@@ -268,9 +269,9 @@ are explicitly migrated, rather than copying a whole single-agent prompt:
 | Evidence references, holding/action consistency, buying power | Mandatory validation and execution constraints |
 | Market/stocks/risks/next-session focus sections | Host report renderer |
 
-The package never reads old PanWatch prompt files. There is no arbitrary runtime
-prompt injection or graph editor. Legacy stays available for controlled comparison;
-graph failure does not automatically retry it. Scripted replay verifies contracts
+The three old session prompt files have been deleted. There is no arbitrary runtime
+prompt injection, graph editor or single-prompt fallback. Historical comparison can
+use archived artifacts or a prior Git revision. Scripted replay verifies contracts
 and call reductions, not improved investment accuracy or profitability.
 
 ### Source map
@@ -357,8 +358,18 @@ Each recommendation carries an evidence-based `outlook` (`bullish`, `neutral`,
 `execution_status` / `execution_constraints`. Confidence is not calibrated return
 probability. Zero cash, unverified buying power, stale quotes and human review
 block execution without rewriting a supported outlook or buy opportunity to watch.
-Market specialists do not receive account snapshots. Verified account limits are
-applied deterministically before risk review and finalization.
+No model role receives account cash, buying power or raw portfolio records.
+Only position presence reaches the proposal model; market evidence contains dated
+ratings, not recycled account-restricted report bodies. Strategy/risk/decision
+complete a market plan before the mandatory `execution` rule node applies cash,
+quote age, sellable quantity and review restrictions. Model-authored quantities,
+account constraints and explicit cash-based recommendation rationales are rejected.
+
+Premarket strategy must produce evidence-linked `session_notes` for every stock,
+with upside/downside conditional responses. Postmarket notes attribute observed
+moves and evaluate only a supplied same-day, same-market premarket `prior_plan`.
+Without one, `prior_verdict=no_prior` is required; pending triggers are not wins.
+These notes reuse the strategy call and add no model role.
 
 `completion=skipped` means no enabled change triggered fast research: no formal
 advice, predictions or notification should be written, and previous advice stays.

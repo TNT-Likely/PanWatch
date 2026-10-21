@@ -208,15 +208,9 @@ class BaseAgent(ABC):
         """采集数据"""
         ...
 
-    @abstractmethod
     def build_prompt(self, data: dict, context: AgentContext) -> tuple[str, str]:
-        """
-        构建 prompt。
-
-        Returns:
-            (system_prompt, user_content)
-        """
-        ...
+        """Single-prompt agents override this; session agents use graph role prompts."""
+        raise NotImplementedError("This agent uses graph role prompts")
 
     async def analyze(self, context: AgentContext, data: dict) -> AnalysisResult:
         """调用 AI 分析"""

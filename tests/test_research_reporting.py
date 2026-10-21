@@ -186,3 +186,16 @@ def test_incomplete_summary_never_promotes_drafts_to_action_cards(sample):
     report = build_report('daily_report', research, scope=keys)
     assert report['actions'] == []
     assert '暂无正式操作建议' in report['action_summary'] and '草案' in report['body']
+
+
+def test_new_session_notes_render_scenarios_attribution_and_no_hindsight(sample):
+    keys, research = sample
+    research['artifacts'].append({'id': 'portfolio/0/strategy', 'epoch': 0, 'role': 'strategy', 'model': 'fixture', 'evidence': [],
+        'report': {'summary': 'Strategy', 'session_notes': [{'stock_key': key, 'summary': 'Evidence-backed attribution',
+            'upside': 'Resistance confirms -> reassess', 'downside': 'Support fails -> risk review', 'prior_verdict': 'no_prior'} for key in keys]}})
+    pre = build_report('premarket_outlook', research, scope=keys)
+    post = build_report('daily_report', research, scope=keys)
+    assert pre['content'].count('**开盘情景') == 2 and 'Resistance confirms' in pre['content'] and 'Support fails' in pre['content']
+    assert post['content'].count('**收盘归因') == 2 and '未提供同日盘前计划，不作兑现评价' in post['content']
+    english = build_report('daily_report', research, scope=keys, language='en-US')
+    assert 'Session attribution' in english['content'] and 'no fulfilment assessment' in english['content']

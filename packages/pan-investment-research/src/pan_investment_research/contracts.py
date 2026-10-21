@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
-Role = Literal["gate", "technical", "flow", "events", "bull", "bear", "manager", "strategy", "risk", "decision"]
+Role = Literal["gate", "execution", "technical", "flow", "events", "bull", "bear", "manager", "strategy", "risk", "decision"]
 Action = Literal["buy", "add", "reduce", "sell", "hold", "watch", "avoid"]
 
 
@@ -105,6 +105,15 @@ class Recommendation(Contract):
         return self
 
 
+class SessionNote(Contract):
+    stock_key: str
+    summary: str = Field(min_length=1)
+    upside: str = ""
+    downside: str = ""
+    prior_verdict: Literal["confirmed", "refuted", "mixed", "unresolved", "no_prior"] = "no_prior"
+    evidence_ids: list[str] = Field(min_length=1)
+
+
 class RoleReport(Contract):
     summary: str = Field(min_length=1)
     claims: list[Claim] = Field(default_factory=list)
@@ -113,6 +122,7 @@ class RoleReport(Contract):
     recommendations: list[Recommendation] = Field(default_factory=list)
     verdict: Literal["ready", "pass", "revise", "evidence_needed", "rebuttal", "reject"] = "ready"
     debate_requested: bool = False
+    session_notes: list[SessionNote] = Field(default_factory=list)
 
 
 class Artifact(Contract):

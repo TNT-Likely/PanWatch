@@ -94,7 +94,6 @@ COPY --from=python-builder /install/ /usr/local/
 # 复制后端代码
 COPY src/ ./src/
 COPY server.py ./
-COPY prompts/ ./prompts/
 
 # 写入版本号；延后声明，避免换版本号时让系统依赖安装缓存失效。
 ARG VERSION=dev

@@ -55,28 +55,27 @@ async def execute(agent, context, config):
     run_id = hashlib.sha256(f"{trace}/{agent.name}/{scope}/{mode}".encode()).hexdigest()
     prior = await repository.start(run_id, trace, agent.name, scope, mode)
     if prior is not None:
-        if prior.get("busy") or mode == "shadow":
-            return None if mode == "shadow" else AnalysisResult(agent.name, agent.display_name, "Research already running", raw_data={"skipped": True})
+        if prior.get("busy"):
+            return AnalysisResult(agent.name, agent.display_name, "Research already running", raw_data={"skipped": True})
         return AnalysisResult(agent.name, **prior)
     try:
         started = time.monotonic()
         context = copy(context)
         context.config, context.portfolio = deepcopy(context.config), deepcopy(context.portfolio)
-        context._research_shadow = mode == "shadow"
+        context._research_shadow = False
         context._research_fast = policy.graph == "intraday_fast"
         context._research_specialists = policy.specialists
         context._research_force = policy.trigger_mode == "always"
         prepared, details, snapshots = await asyncio.wait_for(prepare(agent, context, run_id), policy.deadline_seconds)
         if prepared is None:
             await repository.fail(run_id, "No eligible targets")
-            return None if mode == "shadow" else AnalysisResult(agent.name, agent.display_name, "No eligible targets", raw_data={"skipped": True})
+            return AnalysisResult(agent.name, agent.display_name, "No eligible targets", raw_data={"skipped": True})
         # Input groups get an explicit run budget, preserving every target.
         policy = scope_policy(policy, config, len(prepared.securities))
         remaining = policy.deadline_seconds - (time.monotonic() - started)
         if remaining <= 0:
             raise TimeoutError("Research preparation exhausted the deadline")
         policy = policy.model_copy(update={"deadline_seconds": remaining})
-        events = any(e.domain == "events" and e.content.get("items") for e in prepared.evidence)
         research = await InvestmentResearch().run(prepared, model=ResearchModelGateway(context.ai_client),
             tools=EvidenceTools(details), events=Events(run_id), policy=policy)
         result = present(agent, context, prepared, research, elapsed_seconds=time.monotonic() - started)
@@ -90,7 +89,7 @@ async def execute(agent, context, config):
         ttl = (0 if getattr(agent, "bypass_throttle", False) else agent.throttle_minutes) if agent.name == "intraday_monitor" else agent._notify_dedupe_ttl_minutes(context)
         status = await repository.commit(run_id, agent, prepared, research, result, snapshots,
                                         [key for key, _ in targets], notify, ttl)
-        if mode != "shadow" and status != "stale" and research.completion in {"complete", "skipped"}:
+        if status != "stale" and research.completion in {"complete", "skipped"}:
             from .signals import acknowledge
             try:
                 await asyncio.to_thread(acknowledge, getattr(context, "_research_gate_observations", {}))
@@ -99,8 +98,6 @@ async def execute(agent, context, config):
                 logger.warning("Intraday change baseline could not be saved; next run may reanalyse")
                 await repository.progress(run_id, {"role": "gate", "status": "warning", "baseline_saved": False})
         result.raw_data["notified"] = False
-        if mode == "shadow":
-            return None
         if status == "stale":
             result.raw_data["notify_skipped"] = "stale_input"
             return result

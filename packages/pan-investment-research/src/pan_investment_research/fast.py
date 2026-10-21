@@ -63,38 +63,25 @@ def build_fast_graph(engine, state_schema, context_schema):
         from .engine import compact_input
         payload = {"input": compact_input(prepared), "reports": reports, "plan": []}
         report, model = await engine._report("strategy", payload, deps, prepared)
-        # Reuse the exact deterministic constraints used by the full graph.
-        from .engine import constrain_execution
-        report.recommendations = constrain_execution(prepared, report.recommendations)
         deps.plan = report.recommendations
         return {**engine._store(state, "strategy", report, model, deps),
                 "plan": [r.model_dump(mode="json") for r in report.recommendations]}
 
     async def rules(state, runtime):
-        from .engine import constrain_execution, validate_plan
-        deps = runtime.context
         prepared = ResearchInput.model_validate(state["prepared"])
-        plans = constrain_execution(prepared, deps.plan)
-        errors = validate_plan(prepared, plans)
-        if errors:
-            raise ValueError("; ".join(errors))
-        en = deps.prepared.language == "en-US"
-        report = RoleReport(verdict="pass", summary=(
-            "Rule checks passed: target coverage, citations, position/action consistency and order constraints. Blocked orders remain blocked; this is not a model risk review."
-            if en else "规则校验通过：股票覆盖、证据引用、持仓与动作一致性及执行限制。受限交易仍保留限制；本节点未调用风控模型。"))
-        update = engine._store(state, "risk", report, "", deps, kind="rule")
-        await deps.emit("risk", "done", kind="rule")
-        return {**update, "verdict": "pass", "plan": [r.model_dump(mode="json") for r in plans]}
+        result = engine.execution_rules(state, runtime.context, prepared)
+        await runtime.context.emit("execution", "done", kind="rule")
+        return result
 
     graph.add_node("gate", gate)
     graph.add_node("dispatch", dispatch)
     graph.add_node("expert", expert)
     graph.add_node("strategy", strategy)
-    graph.add_node("rules", rules)
+    graph.add_node("execution", rules)
     graph.add_edge(START, "gate")
     graph.add_conditional_edges("gate", lambda s: END if s["skipped"] else "dispatch", [END, "dispatch"])
     graph.add_conditional_edges("dispatch", sends, ["expert"])
     graph.add_edge("expert", "strategy")
-    graph.add_edge("strategy", "rules")
-    graph.add_edge("rules", END)
+    graph.add_edge("strategy", "execution")
+    graph.add_edge("execution", END)
     return graph.compile()

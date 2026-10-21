@@ -1,8 +1,6 @@
 """Recommendation meaning must survive parsing, persistence and legacy reads."""
 
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,9 +8,6 @@ from sqlalchemy.orm import sessionmaker
 
 from src.modules.automation import suggestion_pool
 from src.modules.automation.agent_prediction_evaluation import group_prediction_outcomes
-from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-from src.modules.automation.premarket_outlook import PremarketOutlookAgent
-from src.modules.automation.daily_report import DailyReportAgent
 from src.modules.automation.tradingagents.operations import _compute_stats
 from src.modules.research.signals.actions import normalize_suggestion
 from src.platform.persistence.database import Base
@@ -71,25 +66,8 @@ def test_attention_is_separate_from_direction_and_notification_choice_is_kept(po
     assert latest['should_alert'] is False
 
 
-@pytest.mark.parametrize('agent_cls', [PremarketOutlookAgent, DailyReportAgent])
-def test_report_parsers_share_action_labels_and_attention_state(agent_cls):
-    watchlist = [SimpleNamespace(symbol='601238', market='CN', name='广汽集团')]
-    result = agent_cls()._parse_suggestions_json({'suggestions': [
-        {'symbol': '601238', 'action': 'alert', 'action_label': '设置预警'},
-    ]}, watchlist)['601238']
-    assert result['action'] == 'watch'
-    assert result['attention_required'] is True
-    assert result['should_alert'] is True
 
 
-def test_intraday_parser_accepts_attention_without_inventing_an_action():
-    result = IntradayMonitorAgent()._parse_suggestion(
-        '{"action":"watch","action_label":"观望","attention_required":true,"reason":"风险上升"}'
-    )
-    assert result['action'] == 'watch'
-    assert result['attention_required'] is True
-    assert result['should_alert'] is True
-    assert normalize_suggestion({'action': 'unknown'})['review_required'] is True
 
 
 def test_review_never_contributes_to_ta_hit_rates():
@@ -126,32 +104,6 @@ def test_attention_only_or_review_predictions_are_not_flat_hits(state):
     assert result[0]['attention_required'] is state.get('attention_required', False)
 
 
-@pytest.mark.parametrize('state_key', ['attention_required', 'review_required'])
-def test_intraday_analysis_records_state_for_prediction_evaluation(monkeypatch, state_key):
-    from src.modules.automation import intraday_monitor as module
-    from src.modules.automation.tradingagents import operations
-    from src.platform.marketdata.models import MarketCode
-
-    agent = IntradayMonitorAgent()
-    monkeypatch.setattr(agent, 'build_prompt', lambda *_: ('system', 'prompt'))
-    response = '{"action":"watch","' + state_key + '":true,"reason":"风险上升"}'
-    context = SimpleNamespace(ai_client=SimpleNamespace(chat=AsyncMock(return_value=response)),
-                              report_language='zh-CN', model_label='')
-    stock = SimpleNamespace(symbol='601238', name='广汽集团', market=MarketCode.CN,
-                            current_price=5.84, change_pct=1.0)
-    predictions = Mock(return_value=True)
-    monkeypatch.setattr(module, 'save_suggestion', Mock(return_value=True))
-    monkeypatch.setattr(module, 'save_agent_context_run', Mock(return_value=True))
-    monkeypatch.setattr(module, 'save_agent_prediction_outcome', predictions)
-    monkeypatch.setattr(operations, 'try_auto_trigger', Mock())
-
-    result = asyncio.run(agent.analyze(context, {'stock_data': stock, 'timestamp': '2026-10-03'}))
-
-    assert result.raw_data['suggestion'][state_key] is True
-    assert predictions.call_count == 2
-    for call in predictions.call_args_list:
-        assert call.kwargs['meta']['suggestion_state'][state_key] is True
-        assert call.kwargs['action'] == 'watch'
 
 
 def test_backfill_preserves_canonical_direction_and_confidence(pool, monkeypatch):
@@ -173,16 +125,3 @@ def test_backfill_preserves_canonical_direction_and_confidence(pool, monkeypatch
     latest = suggestion_pool.get_latest_suggestions(['601238'])['CN:601238']
     assert latest['action'] == 'add'
     assert latest['meta']['confidence'] == 7.5
-
-
-@pytest.mark.parametrize('agent_cls', [PremarketOutlookAgent, DailyReportAgent])
-@pytest.mark.parametrize(('line', 'expected'), [
-    ('「601238」减仓：风险上升，避免盲目买入', 'reduce'),
-    ('「601238」买入：企稳后轻仓参与，跌破支撑则卖出', 'buy'),
-    ('「601238」继续持有：观察是否需要减仓', 'hold'),
-])
-def test_report_text_fallback_uses_recommendation_before_its_reason(agent_cls, line, expected):
-    from src.platform.marketdata.models import MarketCode
-    watchlist = [SimpleNamespace(symbol='601238', market=MarketCode.CN, name='广汽集团')]
-    result = agent_cls()._parse_suggestions(line, watchlist)
-    assert result['601238']['action'] == expected

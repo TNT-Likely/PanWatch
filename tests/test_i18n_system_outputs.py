@@ -140,33 +140,6 @@ def test_price_alert_notification_follows_interface_language(
         engine.dispose()
 
 
-def test_intraday_notification_summary_follows_report_language():
-    from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-    from src.platform.marketdata.models import MarketCode, StockData
-
-    stock = StockData(
-        symbol="AAPL",
-        name="Apple",
-        market=MarketCode.US,
-        current_price=200,
-        change_pct=2.5,
-        change_amount=5,
-        volume=1,
-        turnover=1,
-        open_price=195,
-        high_price=201,
-        low_price=194,
-        prev_close=195,
-    )
-    content = IntradayMonitorAgent()._format_human_readable_content(
-        stock,
-        {"action_label": "Buy", "signal": "Breakout", "reason": "Momentum improved"},
-        "{}",
-        "en-US",
-    )
-
-    assert "Current price: 200.00" in content
-    assert not _contains_han(content)
 
 
 def test_selfcheck_test_notification_follows_report_language(monkeypatch):

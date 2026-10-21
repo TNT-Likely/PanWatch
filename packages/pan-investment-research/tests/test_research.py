@@ -63,6 +63,11 @@ class Model:
                 for s in payload["input"]["securities"]]
             if self.mutate and role == "decision":
                 report["recommendations"][0].update(action="buy", triggers=["confirmed"], invalidations=["failed"])
+        if role == "strategy" and "session: intraday" not in messages[0]["content"]:
+            report["session_notes"] = [{"stock_key": target["key"], "summary": "Controlled session attribution and focus",
+                "upside": "Resistance confirms -> reassess the opportunity", "downside": "Support fails -> reassess risk",
+                "prior_verdict": "no_prior", "evidence_ids": [e["id"] for e in payload["input"]["evidence"] if e["stock_key"] == target["key"]][:1]}
+                for target in payload["input"]["securities"]]
         if role == "risk":
             report["verdict"] = "pass"
             if self.risk_feedback and self.calls[role] == 1:
@@ -112,7 +117,7 @@ def test_complete_nine_role_research_and_separate_usage():
     model = Model()
     result = run(model)
     assert result.status == "ready", result.reason
-    assert len(result.artifacts) == 9
+    assert len(result.artifacts) == 10
     assert result.usage["attempts"] == 9
     assert result.usage["input_tokens"] == 90
     assert set(model.calls) == {"technical", "flow", "events", "bull", "bear", "manager", "strategy", "risk", "decision"}

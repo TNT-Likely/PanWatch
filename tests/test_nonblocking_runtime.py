@@ -265,14 +265,6 @@ def test_legacy_unscoped_report_and_wrong_market_are_not_reused(history_db):
     assert get_scoped_analysis_context('daily_report', [StockConfig('LI','理想汽车',MarketCode.US)], before_date=date(2026,10,3)) is None
 
 
-def test_premarket_prompt_ignores_even_supplied_postmarket_report():
-    from src.modules.automation.base import AgentContext
-    from src.modules.automation.premarket_outlook import PremarketOutlookAgent
-    config = AppConfig(settings=Settings(), watchlist=[StockConfig('601238','广汽集团',MarketCode.CN)])
-    context = AgentContext(ai_client=None, notifier=None, config=config)
-    system, prompt = PremarketOutlookAgent().build_prompt({'yesterday_analysis':'赛力斯（601127）盘后日报'}, context)
-    assert '赛力斯' not in prompt and '601127' not in prompt and '盘后分析回顾' not in prompt
-    assert '广汽集团' in prompt and '昨日盘后分析' not in system
 
 
 def test_feedback_migration_drops_only_manual_tables_and_is_idempotent(tmp_path):

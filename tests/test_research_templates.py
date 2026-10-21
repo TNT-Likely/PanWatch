@@ -55,7 +55,7 @@ def test_changed_then_repeated_snapshot_keeps_last_valid_advice_and_skips_second
     first = asyncio.run(IntradayMonitorAgent().run(make_context('changed')))
     assert first.raw_data['completion'] == 'complete', first.content
     assert first.raw_data['usage']['attempts'] == 2
-    assert {a['role'] for a in first.raw_data['research_report']['process']} == {'gate', 'technical', 'strategy', 'risk'}
+    assert {a['role'] for a in first.raw_data['research_report']['process']} == {'gate', 'technical', 'strategy', 'execution'}
     assert '技术面：' in first.content and 'technical finding' in first.content
     before = dict(model.calls)
     second = asyncio.run(IntradayMonitorAgent().run(make_context('repeated')))
@@ -138,3 +138,19 @@ def test_template_api_and_invalid_update_preserve_stored_config(host):
     with Session(engine) as db:
         row = db.scalars(select(AgentConfig).where(AgentConfig.name == 'intraday_monitor')).one()
         assert row.config['research_graph']['template'] == 'intraday_fast' and not row.config['research_graph'].get('debate', False)
+
+
+def test_active_stock_captures_market_context_but_quiet_run_does_not(host, monkeypatch, tmp_path):
+    from src.modules.automation.daily_report import DailyReportAgent
+    engine, _ = host
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    fast_config(engine)
+    indices = AsyncMock(return_value=[{'name': 'Controlled index', 'symbol': '000001', 'market': 'CN', 'current_price': 3000, 'change_pct': 1}])
+    monkeypatch.setattr(DailyReportAgent, '_fetch_index_for_market', indices)
+    monkeypatch.setattr(IntradayMonitorAgent, 'collect', lambda self, context: changed(context))
+    result = asyncio.run(IntradayMonitorAgent().run(make_context('market-active')))
+    assert 'Controlled index' in result.content and result.raw_data['completion'] == 'complete'
+    indices.assert_awaited_once()
+    result = asyncio.run(IntradayMonitorAgent().run(make_context('market-quiet')))
+    assert result.raw_data['completion'] == 'skipped'
+    indices.assert_awaited_once()

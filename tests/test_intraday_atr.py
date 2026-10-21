@@ -3,7 +3,7 @@
 覆盖:
 1. kline_collector._calculate_atr / get_technical_indicators 的 atr / atr_pct 字段
 2. intraday_event_gate.is_abnormal_move 自适应异动判定(含固定阈值兜底)
-3. intraday_monitor.build_prompt 注入 ATR 与自适应异动规则文案
+3. 图门控与 ATR 注入见 test_research_signals.py / test_research_templates.py
 """
 
 from __future__ import annotations
@@ -122,66 +122,3 @@ def test_is_abnormal_move_default_k() -> None:
     # 默认 k=1.5, atr_pct=2 -> 阈值=3.0
     assert is_abnormal_move(change_pct=3.5, atr_pct=2.0) is True
     assert is_abnormal_move(change_pct=2.5, atr_pct=2.0) is False
-
-
-# ── intraday_monitor build_prompt 注入 ATR / 自适应规则 ───────────────────
-
-
-def _build_intraday_prompt_with_atr(atr_pct):
-    """构造最小 AgentContext/data,跑 build_prompt,返回 user_content。"""
-    from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-    from src.platform.marketdata.models import MarketCode, StockData
-
-    stock = StockData(
-        symbol="000001",
-        name="平安银行",
-        market=MarketCode.CN,
-        current_price=20.0,
-        change_pct=5.0,
-        change_amount=1.0,
-        open_price=19.0,
-        high_price=20.5,
-        low_price=18.8,
-        prev_close=19.0,
-        volume=10000,
-        turnover=200000,
-    )
-
-    class _Portfolio:
-        total_available_funds = 100000.0
-        accounts: list = []
-
-        def get_positions_for_stock(self, symbol):
-            return []
-
-    class _Ctx:
-        portfolio = _Portfolio()
-
-    data = {
-        "stock_data": stock,
-        "kline_summary": {"atr": 0.6, "atr_pct": atr_pct, "trend": "多头排列"},
-        "symbol_context": {},
-    }
-    agent = IntradayMonitorAgent(price_alert_threshold=3.0)
-    _system, user_content = agent.build_prompt(data, _Ctx())
-    return user_content
-
-
-def test_build_prompt_injects_atr_and_adaptive_rule() -> None:
-    """盘中监控 — prompt 注入 ATR% 与自适应价格异动阈值文案。"""
-    content = _build_intraday_prompt_with_atr(atr_pct=2.0)
-    # ATR 数值出现在技术摘要里
-    assert "ATR" in content
-    # 自适应阈值: max(固定阈值 3.0, 1.5×ATR%=3.0) -> 文案体现自适应
-    assert "自适应" in content
-    # change_pct=5.0 超过自适应阈值 -> 应标注触发
-    assert "触发" in content
-
-
-def test_build_prompt_falls_back_when_atr_missing() -> None:
-    """盘中监控 — atr_pct 缺失时退回固定阈值,prompt 仍正常生成。"""
-    content = _build_intraday_prompt_with_atr(atr_pct=None)
-    # 固定阈值仍展示
-    assert "3.0%" in content or "3.0" in content
-    # change_pct=5.0 > 固定阈值 3.0 -> 触发
-    assert "触发" in content

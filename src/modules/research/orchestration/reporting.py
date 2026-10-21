@@ -58,6 +58,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         return list(dict.fromkeys(c["statement"] for a in latest.values() if a["role"] == domain
             for c in a["report"].get("claims", []) if c["stock_key"] == key and c["id"] in accepted))
 
+    notes = {n["stock_key"]: n for a in latest.values() if a["role"] == "strategy" for n in a["report"].get("session_notes", [])}
     completion = research.get("completion", "complete")
     states = {"complete": tr("研究完成", "Complete"), "skipped": tr("无实质变化，已跳过研究", "No material change; research skipped"), "timeout": tr("研究超时", "Timed out"),
         "budget_exhausted": tr("研究预算耗尽", "Budget exhausted"), "validation_failed": tr("结论校验未通过", "Validation failed"),
@@ -106,7 +107,22 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
                 values = [str(indicators[k]) for k in ("trend", "macd_status", "rsi_status", "volume_trend") if indicators.get(k)]
                 lines.append(f"**{label}：** " + (" · ".join(values) or tr("仅有指标快照，未形成可采纳的分析。", "Indicators only; no accepted assessment.")))
             else:
-                lines.append(f"**{label}：** " + tr("暂无可采纳的研究结论。", "No accepted assessment available."))
+                candidates = [a for a in latest.values() if a["role"] == domain and
+                    {e["stock_key"] for e in a.get("evidence", []) if e["stock_key"] != "*"} == {key}]
+                missing = (candidates[-1]["report"]["summary"] if fast and candidates else
+                    tr("本轻图未运行该领域专家。", "This fast run did not include this domain specialist.") if fast and not any(a["role"] == domain for a in latest.values()) else
+                    tr("暂无可采纳的研究结论。", "No accepted assessment available."))
+                lines.append(f"**{label}：** " + missing)
+        if note := notes.get(key):
+            if agent_name == "premarket_outlook":
+                lines += ["**" + tr("开盘情景", "Opening scenarios") + "：** " + note["summary"],
+                    "- " + tr("向上情景：", "Upside scenario: ") + note["upside"],
+                    "- " + tr("向下情景：", "Downside scenario: ") + note["downside"]]
+            elif agent_name == "daily_report":
+                verdicts = {"confirmed": tr("已印证", "Supported"), "refuted": tr("被推翻", "Refuted"), "mixed": tr("部分印证", "Mixed"),
+                    "unresolved": tr("尚待验证", "Unresolved"), "no_prior": tr("未提供同日盘前计划，不作兑现评价", "No same-day premarket plan supplied; no fulfilment assessment")}
+                lines += ["**" + tr("收盘归因", "Session attribution") + "：** " + note["summary"],
+                    "- " + tr("盘前计划复核：", "Premarket plan review: ") + verdicts[note["prior_verdict"]]]
         rec = plans.get(key)
         if not rec:
             lines.append(tr("**最终结论：** 尚无有效投研结论。", "**Conclusion:** No validated recommendation available."))
@@ -152,7 +168,7 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         summary.append(tr("暂无有效操作建议。", "No validated action available."))
     action_summary = "\n\n".join(summary)
 
-    roles = {"gate": tr("异动门控", "Change gate"), "technical": tr("技术分析", "Technical analysis"), "flow": tr("资金分析", "Capital-flow analysis"), "events": tr("事件分析", "Event analysis"),
+    roles = {"execution": tr("执行校验", "Execution checks"), "gate": tr("异动门控", "Change gate"), "technical": tr("技术分析", "Technical analysis"), "flow": tr("资金分析", "Capital-flow analysis"), "events": tr("事件分析", "Event analysis"),
         "bull": tr("多头论证", "Bull case"), "bear": tr("空头复核", "Bear case"), "manager": tr("研究经理裁定", "Research manager"),
         "strategy": tr("组合策略", "Portfolio strategy"), "risk": tr("风险审查", "Risk review"), "decision": tr("最终决策", "Final decision")}
     if fast:

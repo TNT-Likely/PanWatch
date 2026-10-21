@@ -1,8 +1,9 @@
-"""Three nested graphs: investment run, group research, and expert tool loop."""
+"""Full and fast research graphs with cash-blind models and final execution rules."""
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated, TypedDict
@@ -40,8 +41,19 @@ def active_artifacts(artifacts):
             if a["role"] not in {"bull", "bear", "manager"} or a["epoch"] >= epochs.get(a["id"].split("/")[0], 0)}
 
 
-def compact_input(prepared):
+def market_input(prepared):
+    """Only position presence reaches models; cash and account records stay in the host boundary."""
     value = prepared.model_dump(mode="json")
+    value["portfolio"] = {}
+    value["evidence"] = [e for e in value["evidence"] if e["domain"] != "portfolio"]
+    for stock in value["securities"]:
+        stock["held_quantity"] = None if stock["held_quantity"] is None else int(stock["held_quantity"] > 0)
+        stock["sellable_quantity"] = None
+    return value
+
+
+def compact_input(prepared):
+    value = market_input(prepared)
     for item in value["evidence"]:
         content = json.dumps(item["content"], ensure_ascii=False)
         if len(content) > 600:
@@ -99,7 +111,7 @@ class InvestmentResearch:
         reserve = (0 if role == "strategy" else 1) if deps.policy.graph == "intraday_fast" else {"manager": 3, "strategy": 2, "risk": 1, "decision": 0}.get(role, 4)
         schema = RoleReport.model_json_schema()
         keys = [s["key"] for s in payload.get("input", {}).get("securities", [])] or [s.key for s in deps.prepared.securities]
-        for name in ("Claim", "Issue", "Recommendation"):
+        for name in ("Claim", "Issue", "Recommendation", "SessionNote"):
             schema["$defs"][name]["properties"]["stock_key"]["enum"] = [*keys, "*"] if name == "Issue" else keys
         if role not in {"strategy", "decision"}:
             schema["properties"].pop("recommendations")
@@ -107,10 +119,17 @@ class InvestmentResearch:
             size = len(keys)
             schema["properties"]["recommendations"].update(minItems=size, maxItems=size)
             schema["required"].append("recommendations")
+        if role != "strategy" or deps.policy.profile == "intraday":
+            schema["properties"].pop("session_notes")
+        else:
+            schema["properties"]["session_notes"].update(minItems=len(keys), maxItems=len(keys))
+            schema["required"].append("session_notes")
         if role != "manager":
             schema["properties"].pop("accepted_claim_ids")
         if role in {"manager", "strategy", "risk", "decision"}:
             schema["properties"].pop("claims")
+        schema["$defs"]["Recommendation"]["properties"]["quantity"] = {"type": "null", "default": None}
+        schema["$defs"]["Recommendation"]["properties"]["execution_constraints"]["maxItems"] = 0
         # Unused definitions confuse smaller models and inflate every role request.
         pending, used = [schema["properties"]], set()
         while pending:
@@ -135,7 +154,7 @@ class InvestmentResearch:
                   "Specialists/bull/bear produce claims, not recommendations. "
                   "Be concise: use at most three material claims per target and a brief group summary. "
                   "Manager cites accepted claim IDs without restating claims. Strategy/decision give one recommendation per target; risk gives its verdict and concrete issues. "
-                  "Market outlook and confidence depend on market evidence, not account cash. Account limitations belong in execution_constraints. review_required does not change the investment direction. "
+                  "No account cash or buying power is supplied to any model role. Never invent it, mention it in reasons, or infer it from position absence. Model execution_constraints must be empty and quantity null; a deterministic node adds actual order restrictions after all model decisions. review_required does not change market direction. "
                   "Tools only expose longer versions of captured documents; do not query for data explicitly marked missing. "
                   "Manager produces accepted_claim_ids for the claims supporting its ruling and a verdict. Strategy/decision produce recommendations. "
                   "Omit fields absent from the schema. accepted_claim_ids must copy exact canonical claim IDs from reports. "
@@ -178,14 +197,22 @@ class InvestmentResearch:
             if any(ids[i].stock_key not in {claim.stock_key, "*"} for i in claim.evidence_ids):
                 raise ValueError(f"claim for {claim.stock_key} cites another security; retain only its own or global evidence IDs")
         for item in report.recommendations:
+            if re.search(r"可用资金|账户(?:现金|资金|余额)|购买力|资金不足|available\s+(?:cash|funds)|buying\s+power|insufficient\s+(?:cash|funds)|account\s+(?:cash|balance)|(?:zero|no)\s+cash", item.reason, re.I):
+                raise ValueError("market reason invents account information; explain market evidence only")
+            if item.quantity is not None or item.execution_constraints:
+                raise ValueError("models cannot supply order quantities or account execution constraints")
             if item.stock_key not in keys or not set(item.evidence_ids) <= ids.keys():
                 raise ValueError("recommendation has invalid references")
             if any(ids[i].stock_key not in {item.stock_key, "*"} for i in item.evidence_ids):
                 raise ValueError("recommendation cites another security")
+            if any(ids[i].domain == "portfolio" for i in item.evidence_ids):
+                raise ValueError("market views cannot cite private account evidence")
             if not item.evidence_ids:
                 raise ValueError("market outlook needs cited evidence")
         if any(issue.stock_key not in keys | {"*"} for issue in report.issues):
             raise ValueError(f"issue outside research scope; use {sorted(keys)} or '*' for a group-wide limitation")
+        if role != "strategy" and report.session_notes:
+            raise ValueError("only strategy authors session notes")
         if role not in {"strategy", "decision"} and report.recommendations:
             raise ValueError("role cannot issue a trading plan")
         if role in {"strategy", "decision"}:
@@ -202,6 +229,8 @@ class InvestmentResearch:
                 report = RoleReport.model_validate_json(reply.content)
                 evidence = (prepared or deps.prepared).evidence + [e for a in deps.artifacts.values() for e in a.evidence]
                 self._validate(report, prepared or deps.prepared, evidence, role)
+                if role == "strategy":
+                    self._validate_session(report, prepared or deps.prepared, deps.policy.profile, evidence)
                 if role == "decision" and trade_fingerprint(payload["plan"]) != trade_fingerprint(
                     [r.model_dump(mode="json") for r in report.recommendations]
                 ):
@@ -214,6 +243,37 @@ class InvestmentResearch:
                 messages += [{"role": "assistant", "content": reply.content},
                              {"role": "user", "content": f"Repair this contract error without adding facts: {exc}"}]
                 reply, _ = await self._model(role, payload, deps, messages=messages)
+
+    def _validate_session(self, report, prepared, profile, visible_evidence):
+        if profile == "intraday":
+            return
+        keys = {s.key for s in prepared.securities}
+        if len(report.session_notes) != len(keys) or {n.stock_key for n in report.session_notes} != keys:
+            raise ValueError("session_notes must cover every target exactly once")
+        evidence = {e.id: e for e in visible_evidence}
+        for note in report.session_notes:
+            if any(i not in evidence or evidence[i].stock_key not in {note.stock_key, "*"} or evidence[i].domain == "portfolio" for i in note.evidence_ids):
+                raise ValueError("session note cites invalid evidence")
+            if profile == "premarket" and (not note.upside.strip() or not note.downside.strip()):
+                raise ValueError("premarket requires both upside and downside conditional responses")
+            if profile == "postmarket" and note.prior_verdict != "no_prior" and not any(
+                e.stock_key == note.stock_key and e.content.get("prior_plan") for e in prepared.evidence):
+                raise ValueError("postmarket cannot claim to evaluate an absent prior plan")
+            if profile == "postmarket" and note.prior_verdict != "no_prior" and not any(
+                i in evidence and evidence[i].content.get("prior_plan") for i in note.evidence_ids):
+                raise ValueError("postmarket prior assessment must cite the supplied prior plan")
+
+    def execution_rules(self, state, deps, prepared):
+        plan = constrain_execution(prepared, deps.plan)
+        errors = validate_plan(prepared, plan)
+        if errors:
+            raise ValueError("; ".join(errors))
+        en = prepared.language == "en-US"
+        report = RoleReport(verdict="pass", summary=(
+            "Deterministic order checks applied after market research: cash, quote age, sellable quantity and human review only affect execution, never the market view. No model was called." if en else
+            "市场研究定稿后确定性核对资金、报价时效、可卖数量和人工复核要求；仅限制执行，不改写市场观点与条件性建议。本节点未调用模型。"))
+        return {**self._store(state, "execution", report, "", deps, kind="rule"),
+                "verdict": "pass", "plan": [r.model_dump(mode="json") for r in plan]}
 
     def _store(self, state, role, report, model, deps, evidence=(), *, kind="model"):
         key = f"{state.get('group', 'portfolio')}/{state.get('epoch', 0)}/{role}"
@@ -235,8 +295,8 @@ class InvestmentResearch:
             prepared = ResearchInput.model_validate(state["prepared"])
             role = state["role"]
             prepared.portfolio = {}  # Market specialists do not assess account execution.
-            prepared.evidence = [e for e in prepared.evidence if e.domain in {role, "portfolio", "market"}]
-            payload = {"input": prepared.model_dump(mode="json"), "issues": state.get("issues", [])}
+            prepared.evidence = [e for e in prepared.evidence if e.domain in {role, "market"}]
+            payload = {"input": market_input(prepared), "issues": state.get("issues", [])}
             schemas = deps.tools.schemas(role) if deps.tools and state.get("rounds", 0) < deps.policy.max_tool_rounds else []
             reply, messages = await self._model(role, payload, deps, messages=state.get("messages"), tools=schemas)
             return {"reply": reply, "messages": messages, "prepared": prepared.model_dump(mode="json")}
@@ -269,6 +329,8 @@ class InvestmentResearch:
                     await deps.emit(state["role"], "tool_rejected", tool=fn["name"])
                     continue
                 found = [Evidence.model_validate(item) for item in found]
+                if any(e.domain == "portfolio" for e in found):
+                    raise ValueError("private account evidence cannot enter market tools")
                 for item in found:
                     item = Evidence.model_validate(item)
                     if item.id in evidence and item != evidence[item.id]:
@@ -320,7 +382,7 @@ class InvestmentResearch:
 
         async def expert(state, runtime: Runtime[Dependencies]):
             prepared = ResearchInput.model_validate(state["prepared"])
-            prepared.evidence = [e for e in prepared.evidence if e.domain in {state["role"], "portfolio", "market"}]
+            prepared.evidence = [e for e in prepared.evidence if e.domain in {state["role"], "market"}]
             state = {**state, "prepared": prepared.model_dump(mode="json")}
             result = await self.expert_graph.ainvoke(state, context=runtime.context)
             return {"artifacts": result["artifacts"]}
@@ -432,10 +494,10 @@ class InvestmentResearch:
                 payload["cited_evidence"] = [sources[i].model_dump(mode="json") for i in sorted(requested)]
             report, model = await self._report(role, payload, deps)
             if role in {"strategy", "decision"}:
-                report.recommendations = constrain_execution(deps.prepared, report.recommendations)
-                plan = [r.model_dump(mode="json") for r in report.recommendations]
                 if role == "strategy":
-                    deps.plan = report.recommendations
+                    report.recommendations = [r.model_copy(update={"execution_status": "not_applicable" if r.action in {"watch", "hold", "avoid"} else "blocked" if r.review_required else "conditional"}) for r in report.recommendations]
+                plan = [r.model_dump(mode="json") for r in report.recommendations]
+                deps.plan = report.recommendations
             update = self._store(state, role, report, model, deps)
             if role in {"strategy", "decision"}:
                 update["plan"] = plan
@@ -487,13 +549,19 @@ class InvestmentResearch:
         graph.add_node("risk", risk)
         graph.add_node("decision", decision)
         graph.add_node("revise", revise)
+        async def execution(state, runtime):
+            result = self.execution_rules(state, runtime.context, runtime.context.prepared)
+            await runtime.context.emit("execution", "done", kind="rule")
+            return result
+        graph.add_node("execution", execution)
         graph.add_edge(START, "dispatch")
         graph.add_conditional_edges("dispatch", sends, ["research"])
         graph.add_edge("research", "strategy")
         graph.add_edge("strategy", "risk")
         graph.add_conditional_edges("risk", lambda s: "decision" if s["verdict"] == "pass" else "revise" if s["verdict"] in {"revise", "evidence_needed"} else END)
         graph.add_edge("revise", "strategy")
-        graph.add_edge("decision", END)
+        graph.add_edge("decision", "execution")
+        graph.add_edge("execution", END)
         return graph.compile()
 
     async def run(self, prepared: ResearchInput, *, model: ResearchModel, tools=None, events=None,

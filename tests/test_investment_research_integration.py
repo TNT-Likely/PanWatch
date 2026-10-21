@@ -33,6 +33,7 @@ def host(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     monkeypatch.setattr(repository, "engine", engine)
     monkeypatch.setattr(entry, "engine", engine)
+    monkeypatch.setattr(DailyReportAgent, "_fetch_index_for_market", AsyncMock(return_value=[]))
     model = scripts.Model()
     monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
     yield engine, model
@@ -85,18 +86,17 @@ def test_all_three_entrypoints_produce_persisted_graph_results(host, agent_cls, 
     assert model.calls["strategy"] == model.calls["risk"] == 1
 
 
-def test_shadow_records_artifacts_but_leaves_business_delivery_to_legacy(host, monkeypatch):
-    engine, _ = host
+@pytest.mark.parametrize("mode", ["legacy", "shadow"])
+def test_retired_engines_cannot_start_or_fall_back_to_single_prompt(host, monkeypatch, mode):
+    engine, model = host
     agent = DailyReportAgent()
-    configure(engine, agent.name, "shadow")
-    monkeypatch.setattr(agent, "collect", collected)
-    context = make_context()
-    assert asyncio.run(entry.maybe_run_research(agent, context)) is None
+    configure(engine, agent.name, mode)
+    monkeypatch.setattr(agent, "collect", AsyncMock(side_effect=AssertionError("must reject before collection")))
+    with pytest.raises(ValueError, match="retired"):
+        asyncio.run(agent.run(make_context()))
+    assert not model.calls
     with Session(engine) as db:
-        assert len(db.scalars(select(ResearchArtifact)).all()) == 9
-        assert not db.scalars(select(StockSuggestion)).all()
-        assert not db.scalars(select(ResearchOutbox)).all()
-        assert not db.scalars(select(AnalysisHistory)).all()
+        assert not db.scalars(select(ResearchRun)).all()
 
 
 def test_business_transaction_rolls_back_every_write_on_required_failure(host, monkeypatch):
@@ -395,3 +395,39 @@ def test_notification_starts_with_the_same_actions_saved_in_the_report(host, mon
     assert '操作建议：**' + result.raw_data['suggestions']['CN:600519']['action_label'] + '**' in message
     plain = sanitize_for_telegram(message)
     assert plain.index('操作建议') < plain.index('大盘概览')
+
+
+@pytest.mark.parametrize('agent_cls', [DailyReportAgent, PremarketOutlookAgent, IntradayMonitorAgent])
+def test_missing_graph_configuration_uses_session_graph_without_legacy_prompt(host, monkeypatch, agent_cls):
+    _, model = host
+    agent = agent_cls()
+    monkeypatch.setattr(agent, 'collect', collected)
+    result = asyncio.run(agent.run(make_context('no-legacy-' + agent.name)))
+    assert result.raw_data['engine'] == 'langgraph'
+    if agent.name == 'intraday_monitor':
+        assert result.raw_data['completion'] == 'skipped' and not model.calls
+    else:
+        assert result.raw_data['completion'] == 'complete', result.content
+    with pytest.raises(NotImplementedError):
+        agent.build_prompt({}, make_context())
+
+
+def test_prior_plan_is_same_market_day_before_cutoff_and_excludes_account_prose(host):
+    from datetime import timedelta
+    from src.modules.research.orchestration.evidence import prior_plan
+    engine, _ = host
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Shanghai')).date().isoformat()
+    with Session(engine) as db, db.begin():
+        db.add(AnalysisHistory(agent_name='premarket_outlook', stock_symbol='*', analysis_date=day,
+            content='PRIVATE_CASH_PROSE', created_at=now - timedelta(hours=1), updated_at=now - timedelta(hours=1), raw_data={
+                'suggestions': {'CN:600519': {'outlook': 'bullish', 'action': 'buy', 'reason': 'PRIVATE_CASH_PROSE',
+                    'execution_constraints': ['insufficient_funds'], 'triggers': ['Break resistance'], 'invalidations': ['Break support']}}}))
+    result = asyncio.run(prior_plan('CN:600519', now, 'Asia/Shanghai'))
+    assert result['action'] == 'buy' and result['triggers'] == ['Break resistance']
+    assert 'PRIVATE_CASH_PROSE' not in str(result) and 'execution_constraints' not in result
+    assert asyncio.run(prior_plan('HK:600519', now, 'Asia/Shanghai')) is None
+    with Session(engine) as db, db.begin():
+        row = db.scalars(select(AnalysisHistory)).one()
+        row.updated_at = now + timedelta(hours=1)
+    assert asyncio.run(prior_plan('CN:600519', now, 'Asia/Shanghai')) is None
