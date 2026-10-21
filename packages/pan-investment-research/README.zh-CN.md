@@ -20,6 +20,11 @@
 以下图描述当前实现的控制流，不代表每次运行都执行全部节点。跨包边界的箭头表示
 注入端口调用或返回值，投研包不反向导入宿主适配器。
 
+![投研包与宿主架构](docs/diagrams/architecture.zh-CN.svg)
+
+<details>
+<summary>Mermaid 源码（可维护的控制流说明）</summary>
+
 ```mermaid
 flowchart LR
     subgraph HOST["宿主：PanWatch 适配层"]
@@ -55,12 +60,19 @@ flowchart LR
     RUN --> RESULT --> SAVE --> VIEW
 ```
 
+</details>
+
 每次运行的端口、策略、预算和产物放在 `Runtime.context` 的 `Dependencies` 中。
 编译后的图可以复用，请求之间不共享可变运行状态。所有研究组、模型回退、工具、
 修复和反馈使用同一份运行预算。各层都可通过可选事件端口记录进度。PanWatch 当前
 工具只读取已采集证据的完整版本，不在研究中获取更新时点的行情或新闻。
 
 ### 1. 投研运行图：多股分组后统一决策
+
+![组合投研运行图](docs/diagrams/investment-run.zh-CN.svg)
+
+<details>
+<summary>Mermaid 源码（可维护的控制流说明）</summary>
 
 ```mermaid
 flowchart TD
@@ -81,12 +93,19 @@ flowchart TD
     GUARD -.-> STOP(["人工复核：budget_exhausted 或 timeout"])
 ```
 
+</details>
+
 每个 `research` worker 等待子图完整结束后才参与父图汇合。组合策略、风控与最终
 决策对全部股票统一执行一次。两个修订框表示同一 `revise` 节点的内部路径：补证
 只重跑受影响研究组的责任专家及经理，纯方案修订不重跑完整专家和牛熊论证。
 研究未完成不能发布正式建议；图已完成仍可能需要人工复核。
 
 ### 2. 研究组子图：专家、牛熊与经理裁定
+
+![研究组子图](docs/diagrams/research-group.zh-CN.svg)
+
+<details>
+<summary>Mermaid 源码（可维护的控制流说明）</summary>
 
 ```mermaid
 flowchart TD
@@ -111,11 +130,18 @@ flowchart TD
     MANAGER -->|"其他未解决裁定"| UNRESOLVED(["父图拒绝未解决研究"])
 ```
 
+</details>
+
 三个专家框是同一 `expert` worker 按角色分别调用。牛熊是 `positions` 节点内部的
 两次并发调用，不是无限辩论。两个补证／回应框是 `patch` 的内部路径：定向处理后
 直接回经理，不重新执行全部专家，也不自动重跑双边论证。各反馈路径共享运行额度。
 
 ### 3. 专家工具子图：有限轮次的只读补证
+
+![专家工具子图](docs/diagrams/expert-tools.zh-CN.svg)
+
+<details>
+<summary>Mermaid 源码（可维护的控制流说明）</summary>
 
 ```mermaid
 flowchart TD
@@ -129,6 +155,8 @@ flowchart TD
     REPAIR --> REPORT
     REPORT -->|"不合法；无剩余修复机会"| FAIL(["校验失败"])
 ```
+
+</details>
 
 每次模型实际发送都先申请尝试额度。工具轮次与调用总数受限，不能扩大股票范围、
 补造证据或修改已有证据身份。JSON 修复消耗模型尝试数，并使用全运行共享的一次

@@ -25,6 +25,11 @@ These diagrams describe the implemented control flow, not the execution trace of
 every run. Arrows across the package boundary are injected port calls or returned
 values; the package does not import the host adapters.
 
+![Package and host architecture](docs/diagrams/architecture.en.svg)
+
+<details>
+<summary>Mermaid source (editable control-flow specification)</summary>
+
 ```mermaid
 flowchart LR
     subgraph HOST["Host: PanWatch adapters"]
@@ -60,6 +65,8 @@ flowchart LR
     RUN --> RESULT --> SAVE --> VIEW
 ```
 
+</details>
+
 `Dependencies` in `Runtime.context` holds each run's ports, policy, budget and
 artifacts. Compiled graphs are reusable; mutable run state is not shared between
 requests. The shared budget covers all groups, tools, model fallbacks, repairs
@@ -68,6 +75,11 @@ PanWatch's current tools read longer captured evidence, without fetching fresh
 market data during research.
 
 ### 1. Investment run: combine all stock groups
+
+![Investment run graph](docs/diagrams/investment-run.en.svg)
+
+<details>
+<summary>Mermaid source (editable control-flow specification)</summary>
 
 ```mermaid
 flowchart TD
@@ -88,6 +100,8 @@ flowchart TD
     GUARD -.-> STOP(["Review: budget_exhausted or timeout"])
 ```
 
+</details>
+
 Each `research` worker awaits its child graph before joining the portfolio stage.
 Strategy, risk and decision run once for the combined portfolio. The two revision
 boxes describe branches inside the single `revise` node. An evidence patch
@@ -96,6 +110,11 @@ does not repeat the full specialist/debate sequence. An unfinished graph cannot
 publish formal suggestions. A complete graph can still require human review.
 
 ### 2. Research group: specialists and adjudication
+
+![Research group graph](docs/diagrams/research-group.en.svg)
+
+<details>
+<summary>Mermaid source (editable control-flow specification)</summary>
 
 ```mermaid
 flowchart TD
@@ -120,6 +139,8 @@ flowchart TD
     MANAGER -->|"Other unresolved verdict"| UNRESOLVED(["Parent rejects unresolved research"])
 ```
 
+</details>
+
 The specialist boxes invoke the same `expert` worker with different role state.
 Bull and bear are concurrent calls inside `positions`, not an unbounded
 conversation. The two patch boxes are branches inside `patch`: targeted work
@@ -127,6 +148,11 @@ returns directly to the manager without restarting all specialists or both
 opposing views. These feedback paths share the run-wide feedback quota.
 
 ### 3. Expert: bounded read-only tool loop
+
+![Expert tool graph](docs/diagrams/expert-tools.en.svg)
+
+<details>
+<summary>Mermaid source (editable control-flow specification)</summary>
 
 ```mermaid
 flowchart TD
@@ -140,6 +166,8 @@ flowchart TD
     REPAIR --> REPORT
     REPORT -->|"Invalid; no repair remaining"| FAIL(["Validation failure"])
 ```
+
+</details>
 
 Every provider send acquires an attempt permit. Tool rounds and total tool calls
 are bounded; a tool cannot expand the scope or invent fresh evidence. JSON
