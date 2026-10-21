@@ -103,3 +103,13 @@ it('leads with prominent actions and triggers while avoiding duplicate notificat
   expect(screen.queryByText('notification summary duplicate')).toBeNull()
   expect(screen.getByRole('heading', { name: '明日关注' })).toBeTruthy()
 })
+
+it('keeps a blocked buy prominent and translates its machine constraints', () => {
+  const item = { stock_key: 'CN:600519', stock_name: '茅台', action: 'buy', outlook: 'bullish' as const,
+    execution_status: 'blocked' as const, execution_constraints: ['insufficient_funds'], triggers: ['条件确认'], invalidations: [] }
+  render(<ResearchReport content="" report={{ ...report, body: report.content, actions: [item] }} />)
+  const summary = screen.getByRole('region', { name: '操作建议' })
+  expect(within(summary).getByText('买入 · 执行受限')).toBeTruthy()
+  expect(within(summary).getByText('下单限制：账户可用资金不足')).toBeTruthy()
+  expect(within(summary).queryByText('insufficient_funds')).toBeNull()
+})

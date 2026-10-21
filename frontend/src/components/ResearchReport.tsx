@@ -41,7 +41,7 @@ function ActionSummary({ report }: { report: ResearchReportData }) {
       <p className="text-xs text-muted-foreground">{t(`p4.history.outlooks.${item.outlook}`, { defaultValue: item.outlook || '' })}{item.confidence != null && ` · ${Math.round(item.confidence * 100)}%`}</p>
       <div className="text-sm leading-6"><span className="font-medium">{t('p4.history.actionTriggers')}：</span>{item.triggers.length ? item.triggers.join('；') : t('p4.history.noTriggers')}</div>
       {item.invalidations.length > 0 && <p className="text-xs leading-5 text-muted-foreground">{t('p4.history.actionInvalidations')}：{item.invalidations.join('；')}</p>}
-      {item.execution_status === 'blocked' ? <p className="break-words text-xs leading-5 text-muted-foreground">{t('p4.history.orderRestrictions')}：{item.execution_constraints?.join('；')}</p> : <p className="text-xs text-muted-foreground">{t(item.execution_status === 'not_applicable' ? 'p4.history.noOrder' : 'p4.history.confirmBeforeOrder')}</p>}
+      {item.execution_status === 'blocked' ? <p className="break-words text-xs leading-5 text-muted-foreground">{t('p4.history.orderRestrictions')}：{item.execution_constraints?.map(value => t(`p4.history.constraints.${value}`, { defaultValue: value })).join('；')}</p> : <p className="text-xs text-muted-foreground">{t(item.execution_status === 'not_applicable' ? 'p4.history.noOrder' : 'p4.history.confirmBeforeOrder')}</p>}
     </article>)}
   </section>
 }
