@@ -104,3 +104,19 @@ def test_tool_continuation_refreshes_exact_citation_ids_in_the_model_contract():
     assert result.completion == 'complete', result.reason
     events = next(a for a in result.artifacts if a.role == 'events')
     assert events.report.claims[0].evidence_ids == [detail.id]
+
+
+def test_risk_receives_capture_limits_and_previous_feedback_for_plan_revision():
+    class RiskRevision(Model):
+        async def complete(self, **kwargs):
+            if kwargs['role'] == 'risk':
+                prompt = kwargs['messages'][0]['content']
+                assert 'they cannot fetch a missing announcement' in prompt
+                assert 'request revise to remove unsupported causal certainty' in prompt
+                if self.calls['risk']:
+                    payload = json.loads(kwargs['messages'][1]['content'])
+                    assert payload['issues'][0]['question'] == 'Verify timing'
+            return await super().complete(**kwargs)
+    result = asyncio.run(InvestmentResearch().run(prepared(), model=RiskRevision(risk_feedback='revise')))
+    assert result.completion == 'complete', result.reason
+    assert result.usage['feedback'] == 1
