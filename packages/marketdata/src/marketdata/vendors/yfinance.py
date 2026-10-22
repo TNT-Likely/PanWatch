@@ -35,21 +35,26 @@ class YFinanceQuoteVendor(QuoteVendor):
         for s in symbols:
             try:
                 info = yf.Ticker(_yf_ticker(s)).fast_info
-                last = float(info["last_price"]) if info.get("last_price") else None
-                if last is None:
+                # fast_info.get() uses camelCase mapping keys; [] accepts snake_case.
+                last_value = info.get("lastPrice") or info.get("last_price")
+                if last_value is None:
                     record_error(f"yfinance {_yf_ticker(s)}: 返回空(last_price 缺失,可能 Yahoo 不可达/被限流/需要代理)")
                     continue
-                prev = float(info["previous_close"]) if info.get("previous_close") else None
+                last = float(last_value)
+                prev_value = info.get("previousClose") or info.get("previous_close")
+                prev = float(prev_value) if prev_value is not None else None
                 chg = last - prev if prev else 0.0
                 pct = (chg / prev * 100) if prev else 0.0
                 out.append(Quote(
                     symbol=s.code, market=s.market.value, name="",
                     current_price=last, prev_close=prev,
                     open_price=float(info.get("open") or 0),
-                    high_price=float(info.get("day_high") or 0),
-                    low_price=float(info.get("day_low") or 0),
+                    high_price=float(info.get("dayHigh") or info.get("day_high") or 0),
+                    low_price=float(info.get("dayLow") or info.get("day_low") or 0),
                     change_amount=chg, change_pct=pct,
-                    volume=float(info.get("last_volume") or 0),
+                    volume=float(
+                        info.get("lastVolume") or info.get("last_volume") or 0
+                    ),
                 ))
             except Exception as e:
                 logger.debug(f"yfinance 拉取 {s.code} 失败: {e}")
