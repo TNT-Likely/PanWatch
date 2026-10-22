@@ -1,6 +1,8 @@
 export const auth = {
   title: { setup: '设置访问密码', login: '登录' },
   setupHint: '首次使用，请设置访问密码以保护您的数据',
+  oidcHint: '通过此安装配置的身份提供商继续登录。',
+  passwordFallback: '或使用本地密码登录',
   fields: {
     username: '用户名',
     usernamePlaceholder: '请输入用户名',
@@ -12,12 +14,19 @@ export const auth = {
     confirmPasswordPlaceholder: '再次输入密码',
   },
   actions: {
+    oidcLogin: '通过 SSO 登录',
+    continuing: '正在跳转…',
+    retry: '重试',
     login: '登录',
     setup: '设置密码并进入',
     showPassword: '显示密码',
     hidePassword: '隐藏密码',
   },
   messages: {
+    checking: '正在检查登录状态',
+    statusFailed: '无法检查登录选项，请检查网络连接后重试。',
+    oidcFailed: 'SSO 登录未完成，请重试或联系此安装的管理员。',
+    logoutFailed: '退出登录失败，您的会话可能仍然有效，请重试。',
     passwordMismatch: '两次密码不一致',
     passwordTooShort: '密码长度至少 6 位',
     setupSuccess: '密码设置成功',

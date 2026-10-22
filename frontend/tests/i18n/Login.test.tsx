@@ -7,9 +7,9 @@ import { ToastProvider } from '@panwatch/base-ui/components/ui/toast'
 import { changeLocale } from '@/i18n'
 import LoginPage from '@/pages/Login'
 
-vi.mock('@panwatch/api', () => ({
+vi.mock('@panwatch/api/auth', () => ({
   authApi: {
-    status: vi.fn().mockResolvedValue({ initialized: true }),
+    status: vi.fn().mockResolvedValue({ initialized: true, oidc_enabled: false, password_enabled: true, authenticated: false, auth_method: null, csrf_token: null, oidc_login_url: null }),
     login: vi.fn(),
     setup: vi.fn(),
   },
