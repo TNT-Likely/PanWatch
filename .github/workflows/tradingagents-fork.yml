@@ -1,0 +1,35 @@
+name: TradingAgents source contracts
+on:
+  pull_request:
+    paths: ['.github/workflows/tradingagents-fork.yml', 'src/modules/automation/tradingagents/**', 'tests/test_tradingagents*.py', 'tests/test_ta*.py', 'requirements*.txt', 'Dockerfile', 'scripts/prepare-tradingagents-requirements.py']
+permissions:
+  contents: read
+concurrency:
+  group: tradingagents-fork-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  wrappers:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - layout: official
+            source: ''
+          - layout: custom
+            source: git+https://github.com/idkwhodatis/TradingAgents.git@77240b1f2ab2ca5a93af4534edb864c1a0857539
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install selected runtime source
+        env:
+          TRADINGAGENTS_SOURCE: ${{ matrix.source }}
+        run: python scripts/prepare-tradingagents-requirements.py --install
+      - run: python -m pip install pytest
+      - name: Installed wrapper contracts
+        run: python -m pytest -q tests/test_tradingagents*.py tests/test_ta*.py
+      - name: Build selected Python dependency stage
+        env:
+          TRADINGAGENTS_SOURCE: ${{ matrix.source }}
+        run: docker build --target python-builder --build-arg TRADINGAGENTS_SOURCE -t panwatch-dependencies .

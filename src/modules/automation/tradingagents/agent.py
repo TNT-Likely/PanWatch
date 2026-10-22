@@ -56,26 +56,8 @@ class TradingAgentsUnavailable(RuntimeError):
 
 
 def _bounded_graph_class(graph_cls):
-    """让 TradingAgentsGraph 把请求边界传给 LangChain LLM 客户端。
-
-    TradingAgents 0.5.0 已支持 ``llm_max_retries``，但当前
-    版本的 ``_get_provider_kwargs`` 尚未读取自定义 timeout。通过一个很小的
-    子类适配该差异，避免直接修改 site-packages，也兼容后续上游自行支持
-    timeout 的版本。
-    """
-
-    class BoundedTradingAgentsGraph(graph_cls):
-        def _get_provider_kwargs(self):
-            kwargs = dict(super()._get_provider_kwargs())
-            timeout = self.config.get("llm_timeout_seconds")
-            if timeout is not None and timeout != "":
-                kwargs["timeout"] = float(timeout)
-            return kwargs
-
-    BoundedTradingAgentsGraph.__name__ = (
-        f"Bounded{getattr(graph_cls, '__name__', 'TradingAgentsGraph')}"
-    )
-    return BoundedTradingAgentsGraph
+    from .upstream_compat import bounded_graph_class
+    return bounded_graph_class(graph_cls)
 
 
 class TradingAgentsAgent(BaseAgent):
@@ -485,11 +467,12 @@ class TradingAgentsAgent(BaseAgent):
         try:
             import tradingagents  # noqa: F401
             from tradingagents.graph.trading_graph import TradingAgentsGraph  # noqa: F401
+            from .upstream_compat import validate_upstream_contract
+            validate_upstream_contract()
         except ImportError as e:
             return False, (
-                "tradingagents 未安装。运行 `pip install -r requirements.txt` "
-                "(或单独 `pip install \"tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git\"`)。"
-                "公司代理下若失败,临时 `env -u HTTP_PROXY -u HTTPS_PROXY pip install -r requirements.txt`。"
+                "tradingagents 未安装、依赖不完整或来源 API 不兼容。运行 `pip install -r requirements.txt` "
+                "恢复默认依赖；自定义来源见 docs/tradingagents-source.md。"
                 f"原始错误: {e}"
             )
         except Exception as e:
@@ -562,18 +545,23 @@ class TradingAgentsAgent(BaseAgent):
             trace_id=trace_id_for_ctx,
             cancel_event=cancel_event,
         ):
+            from .observability import PanWatchCancellationHandler
+
+            callbacks = [progress_handler] if progress_handler else []
+            if cancel_event is not None:
+                callbacks.append(PanWatchCancellationHandler(cancel_event))
             graph = _bounded_graph_class(TradingAgentsGraph)(
                 selected_analysts=ta_config["selected_analysts"],
                 debug=False,
                 config=ta_config,
                 # callbacks 接受 langchain BaseCallbackHandler 列表;LLM 级别用
-                callbacks=[progress_handler] if progress_handler else None,
+                callbacks=callbacks or None,
             )
 
             # 注入 LangGraph 节点级 callbacks(propagator.get_graph_args 默认 callbacks=None,
             # 不会触发 on_chain_start/end → 进度条永远卡 pending)
-            if progress_handler is not None:
-                self._inject_graph_callbacks(graph, progress_handler)
+            for callback in callbacks:
+                self._inject_graph_callbacks(graph, callback)
 
             # 0.5.0 原生提供 instrument_context；标的元数据不应污染 past_context。
             if stock_metadata_context:
@@ -583,7 +571,9 @@ class TradingAgentsAgent(BaseAgent):
             final_state, decision = graph.propagate(
                 symbol,
                 date_str,
-                portfolio=to_tradingagents_portfolio(portfolio),
+                portfolio=to_tradingagents_portfolio(
+                    portfolio, preserve_markets=getattr(graph, "_panwatch_preserve_portfolio_markets", False),
+                ),
             )
 
         # Keep upstream cost metadata for legacy consumers, without fabricating

@@ -49,6 +49,11 @@ _CURRENT_TRACE_ID: contextvars.ContextVar[str] = contextvars.ContextVar(
 _CANCEL_EVENT: contextvars.ContextVar[threading.Event | None] = contextvars.ContextVar(
     "_TA_CANCEL_EVENT", default=None
 )
+# Only modern news enrichment understands an explicit primary availability signal.
+# Keep the legacy router text unchanged, including when both layouts coexist.
+_MODERN_NEWS_PRIMARY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_TA_MODERN_NEWS_PRIMARY", default=False
+)
 
 # 所有上游 monkeypatch 和 PanWatch 数据注入都集中在本文件；其它模块只依赖这些入口。
 __all__ = [
@@ -122,8 +127,8 @@ def _emit_toolkit_log(level: str, action: str, method_name: str, symbol: str, **
 
 
 def is_a_share(symbol: str) -> bool:
-    """A 股代码判定:6 位纯数字。"""
-    return bool(symbol) and len(symbol) == 6 and symbol.isdigit()
+    """A 股代码及现代 graph 的大陆交易所 canonical alias。"""
+    return bool(re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", str(symbol or "").upper()))
 
 
 def is_hk_share(symbol: str) -> bool:
@@ -191,6 +196,7 @@ def _yfinance_response_has_data(text: str) -> bool:
 # 只 patch 源头模块属性不够 —— 必须把每个 import site 的 module-level
 # 名字都替换掉,所有调用才会走我们的拦截。
 _ROUTE_TO_VENDOR_IMPORT_SITES = (
+    "tradingagents.agents.tools",
     "tradingagents.agents.utils.fundamental_data_tools",
     "tradingagents.agents.utils.news_data_tools",
     "tradingagents.agents.utils.core_stock_tools",
@@ -233,6 +239,20 @@ def _cached_symbol() -> str:
     return str(getattr(stock, "symbol", "") or "").strip()
 
 
+def _cancellation_boundary(function):
+    from functools import wraps
+
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        _raise_if_cancelled()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _raise_if_cancelled()
+    return guarded
+
+
+@_cancellation_boundary
 def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     """模块级无状态 patch:A 股走 PanWatch(读 _cache()),港股先试上游再兜底,其余放行。
 
@@ -263,8 +283,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
     snapshot_symbol_mismatch = bool(
         symbol
         and is_panwatch_routable(symbol)
-        and cached_symbol
-        and symbol != cached_symbol
+        and not _snapshot_matches(symbol)
         and _cache()
     )
     if snapshot_symbol_mismatch and is_a_share(symbol):
@@ -417,7 +436,8 @@ def patch_route_to_vendor():
     global _patch_refcount, _real_route_to_vendor
 
     try:
-        from tradingagents.dataflows import interface as ta_interface
+        from .upstream_compat import vendor_router
+        ta_interface = vendor_router()
     except ImportError:
         logger.warning("[TA toolkit] tradingagents 未安装,跳过 monkeypatch")
         yield
@@ -454,6 +474,13 @@ def patch_route_to_vendor():
                     _patch_saved_sites.append((mod, "route_to_vendor", mod.route_to_vendor))
                     mod.route_to_vendor = _patched_route_to_vendor
                     logger.debug(f"[TA toolkit] patched route_to_vendor in {module_path}")
+            try:
+                _install_cancellation_guards()
+            except BaseException:
+                for mod, attr, orig in reversed(_patch_saved_sites):
+                    setattr(mod, attr, orig)
+                _patch_saved_sites.clear()
+                raise
         _patch_refcount += 1
 
     try:
@@ -468,6 +495,92 @@ def patch_route_to_vendor():
                 _patch_saved_sites.clear()
 
 
+class _CancelledNewsPrimary(BaseException):
+    """Escape upstream's broad Exception handler, then restore public cancellation."""
+
+
+def _install_cancellation_guards() -> None:
+    """Stop new requests and memory writes; in-flight I/O keeps its SDK timeout.
+
+    These shared wrappers read the current run's ContextVar only. Their install
+    and restoration use the same reference count as the vendor routing patch.
+    """
+    from functools import wraps
+    from importlib import import_module
+
+    def guard_memory_lock(original):
+        @contextmanager
+        @wraps(original)
+        def guarded(*args, **kwargs):
+            _raise_if_cancelled()
+            with original(*args, **kwargs) as acquired:
+                # Another process/run may have held the memory file while this
+                # task was canceled. Check before the write body, retaining the
+                # SDK context manager's normal release on every exit path.
+                _raise_if_cancelled()
+                yield acquired
+        return guarded
+
+    def guard_news(original):
+        @wraps(original)
+        def guarded(primary, *args, **kwargs):
+            _raise_if_cancelled()
+            def checked_primary():
+                token = _MODERN_NEWS_PRIMARY.set(True)
+                try:
+                    _raise_if_cancelled()
+                    result = primary()
+                    _raise_if_cancelled()
+                    return result
+                except TradingAgentsCancelled as exc:
+                    raise _CancelledNewsPrimary() from exc
+                finally:
+                    _MODERN_NEWS_PRIMARY.reset(token)
+                    event = _CANCEL_EVENT.get()
+                    if event is not None and event.is_set():
+                        raise _CancelledNewsPrimary()
+            try:
+                result = original(checked_primary, *args, **kwargs)
+            except _CancelledNewsPrimary:
+                raise TradingAgentsCancelled("TradingAgents task cancelled") from None
+            _raise_if_cancelled()
+            return result
+        return guarded
+
+    for path, name, wrapper in (
+        ("tradingagents.agents.tools", "retrieve_news", guard_news),
+        ("tradingagents.extensions.news_evidence", "retrieve_news", guard_news),
+        ("tradingagents.extensions.duckduckgo_news", "fetch_news", _cancellation_boundary),
+        ("tradingagents.extensions.company_website", "resolve_company_website", _cancellation_boundary),
+        ("tradingagents.extensions.ashare_announcements", "fetch_announcements", _cancellation_boundary),
+        # A single enrichment call can make multiple HTTP requests. Check at
+        # DDG's per-request seam *after* acquiring its locks and pacing, as well
+        # as before/after those waits. Announcement discovery imports DDG's
+        # _read_response, whose globals use these same guarded seams.
+        ("tradingagents.extensions.duckduckgo_news", "_check_provider_ready", _cancellation_boundary),
+        ("tradingagents.extensions.duckduckgo_news", "_read_response_unpaced", _cancellation_boundary),
+        # SEC company verification performs separate ticker and submissions
+        # lookups; guarding the outer resolver alone cannot stop the second.
+        ("tradingagents.extensions.company_website", "_get_json", _cancellation_boundary),
+        # Mainland identity resolution precedes the graph's first callback and
+        # may query SSE, SZSE, an English label and BSE in separate requests.
+        ("tradingagents.extensions.ashare_identity", "_get_json", _cancellation_boundary),
+        # Only this module's imported binding changes. Other SDK sessions have
+        # no PanWatch cancel event, and unrelated file locks remain untouched.
+        ("tradingagents.memory.log", "locked", guard_memory_lock),
+    ):
+        try:
+            module = import_module(path)
+        except ModuleNotFoundError as exc:
+            if exc.name and (path == exc.name or path.startswith(exc.name + ".")):
+                continue
+            raise
+        original = getattr(module, name, None)
+        if callable(original):
+            _patch_saved_sites.append((module, name, original))
+            setattr(module, name, wrapper(original))
+
+
 # ---------------------------------------------------------------------------
 # load_ohlcv 接管
 # 新上游 get_verified_market_snapshot → market_data_validator.load_ohlcv 直连 yfinance,
@@ -478,6 +591,8 @@ def patch_route_to_vendor():
 _LOAD_OHLCV_PATCHED = False
 _real_load_ohlcv: Any = None
 _LOAD_OHLCV_IMPORT_SITES = (
+    "tradingagents.dataflows.vendors.yahoo.market",
+    "tradingagents.dataflows.vendors.yahoo.snapshot",
     "tradingagents.dataflows.market_data_validator",
     "tradingagents.dataflows.interface",
     "tradingagents.dataflows.y_finance",
@@ -486,6 +601,7 @@ _LOAD_OHLCV_IMPORT_SITES = (
 _MARKET_SNAPSHOT_PATCHED = False
 _real_build_verified_market_snapshot: Any = None
 _MARKET_SNAPSHOT_IMPORT_SITES = (
+    "tradingagents.agents.tools",
     "tradingagents.agents.utils.market_data_validation_tools",
 )
 
@@ -501,23 +617,57 @@ def _market_for_symbol(symbol: str):
     return MarketCode.US
 
 
+def _panwatch_identity(symbol: str, market=None):
+    """Compare provider aliases only within their explicit market identity.
+
+    Only exact numeric mainland suffixes are aliases; US dotted symbols and
+    HK tickers must never be reduced to mainland codes.
+    """
+    from src.platform.marketdata.models import MarketCode
+
+    value = str(symbol or "").strip().upper()
+    market = MarketCode(getattr(market, "value", market)) if market is not None else _market_for_symbol(value)
+    if market == MarketCode.CN and re.fullmatch(r"[0-9]{6}(?:\.(?:SS|SZ|BJ))?", value):
+        from src.platform.marketdata.cn_symbol import get_cn_exchange
+
+        code, _, suffix = value.partition(".")
+        expected = {"SH": "SS", "SZ": "SZ", "BJ": "BJ"}[get_cn_exchange(code)]
+        # A bare CN code uses PanWatch's stock namespace. The same digits on
+        # another exchange can identify an index or a different security.
+        if not suffix or suffix == expected:
+            value = code
+    if market.value in {"TSX", "TSXV"}:
+        from marketdata.symbol import Symbol
+        value = Symbol.parse(value, market.value).code
+    return market, value
+
+
+def _snapshot_matches(symbol: str, market=None) -> bool:
+    stock = _cache().get("stock")
+    cached_symbol = getattr(stock, "symbol", "")
+    cached_market = getattr(stock, "market", None)
+    if not cached_symbol or cached_market is None:
+        return False
+    return _panwatch_identity(symbol, market) == _panwatch_identity(cached_symbol, cached_market)
+
+
 def _build_panwatch_ohlcv_df(symbol: str, curr_date: str):
     """用 PanWatch K线构建与原生 load_ohlcv 同结构的 DataFrame(Date/Open/High/Low/Close/Volume)。"""
     _raise_if_cancelled()
     import pandas as pd
 
     from src.platform.marketdata.collectors.kline_collector import KlineCollector
-    market = _market_for_symbol(symbol)
+    market, provider_symbol = _panwatch_identity(symbol)
     # collect() 已经为本次分析准备了 K 线；验证快照只需要同一份数据，
     # 不应因为上游默认 lookback=750 再向东财发起一轮可能阻塞的请求。
     cached_klines = _cache().get("klines")
-    cached_stock = _cache().get("stock")
-    cached_symbol = getattr(cached_stock, "symbol", "") if cached_stock is not None else ""
-    cache_matches_symbol = bool(cached_symbol) and str(cached_symbol) == str(symbol)
+    cache_matches_symbol = _snapshot_matches(symbol, market)
     if cache_matches_symbol and isinstance(cached_klines, (list, tuple)):
         klines = list(cached_klines)
     else:
-        klines = KlineCollector(market).get_klines(symbol, days=750)
+        if market.value == "CN" and "." in provider_symbol:
+            raise ValueError(f"No verified PanWatch listing for {symbol}")
+        klines = KlineCollector(market).get_klines(provider_symbol, days=750)
     if not klines:
         return None
     df = pd.DataFrame(
@@ -667,7 +817,8 @@ def _ensure_load_ohlcv_patched() -> None:
     if _LOAD_OHLCV_PATCHED:
         return
     try:
-        from tradingagents.dataflows import stockstats_utils
+        from .upstream_compat import ohlcv_module
+        stockstats_utils = ohlcv_module()
     except ImportError:
         return
     if not hasattr(stockstats_utils, "load_ohlcv"):
@@ -697,7 +848,8 @@ def _ensure_market_snapshot_patched() -> None:
     if _MARKET_SNAPSHOT_PATCHED:
         return
     try:
-        from tradingagents.dataflows import market_data_validator
+        from .upstream_compat import snapshot_module
+        market_data_validator = snapshot_module()
     except ImportError:
         return
     if not hasattr(market_data_validator, "build_verified_market_snapshot"):
@@ -859,8 +1011,17 @@ def _serve_from_panwatch(method_name: str, symbol: str, kwargs: dict, args: tupl
         events = _cache().get("events") or []
         if events:
             return f"{header}\n\n{_events_to_text(events, limit=20)}"
+        # collect() also uses [] after an events-provider failure. This is no
+        # cached evidence, never proof that the company has no news. Signal only
+        # this known empty result, not arbitrary upstream prose or cached events.
+        # Global news stays company-scoped here; do not enable unrelated global
+        # fallback searches by marking get_global_news as an empty primary.
+        status = (
+            "DATA_UNAVAILABLE: PanWatch has no cached company news/events.\n\n"
+            if method == "get_news" and _MODERN_NEWS_PRIMARY.get() else ""
+        )
         return (
-            f"{header}\n\n[No company-specific news/events available for {symbol}. "
+            f"{status}{header}\n\n[No company-specific news/events available for {symbol}. "
             "DO NOT pull unrelated global news as a substitute — focus the analysis "
             "on the metadata above and other tool outputs.]"
         )

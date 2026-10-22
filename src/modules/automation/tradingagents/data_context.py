@@ -290,21 +290,22 @@ def _finite_number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def to_tradingagents_portfolio(portfolio: Any):
+def to_tradingagents_portfolio(portfolio: Any, *, preserve_markets: bool = False):
     """把 ``PortfolioInfo`` 转为 TradingAgents 0.5.0 的 ``PortfolioContext``。
 
     多账户中同一 ticker 的仓位按数量加权平均成本价聚合。没有账户快照时返回
     ``None``，让上游明确区分“用户未提供组合”与“组合现金/仓位均为零”。
+    Modern graphs opt into market-tagged lots and aggregate after identity resolution.
     """
     accounts: Iterable[Any] = getattr(portfolio, "accounts", ()) or ()
     accounts = list(accounts)
     if not accounts:
         return None
 
-    from tradingagents.portfolio import PortfolioContext, Position
+    from tradingagents.portfolio import PortfolioContext
 
     cash = 0.0
-    by_ticker: dict[str, list[tuple[float, float | None]]] = {}
+    lots = []
     for account in accounts:
         available_funds = _finite_number(getattr(account, "available_funds", 0))
         if available_funds is not None:
@@ -318,10 +319,54 @@ def to_tradingagents_portfolio(portfolio: Any):
             if not ticker or quantity is None or quantity == 0:
                 continue
             average_price = _finite_number(getattr(position, "cost_price", None))
-            by_ticker.setdefault(ticker, []).append((quantity, average_price))
+            market = getattr(position, "market", "")
+            market = str(getattr(market, "value", market) or "").strip().upper()
+            lots.append((ticker, market, quantity, average_price))
+
+    # The modern graph must resolve its canonical identity before aggregating
+    # aliases. Keep the original lots so mixed long/short cost weights survive.
+    if preserve_markets:
+        position_type, context_type = _market_portfolio_types()
+        positions = [position_type(ticker=ticker, market=market, quantity=quantity, average_price=price)
+                     for ticker, market, quantity, price in lots]
+    else:
+        positions = _aggregate_portfolio_positions(lots)
+        context_type = PortfolioContext
+    return context_type(cash=cash, positions=positions)
+
+
+def _market_portfolio_types():
+    """Keep market identity in the modern book, including its fingerprint."""
+    from tradingagents.portfolio import PortfolioContext, Position
+
+    class MarketPosition(Position):
+        market: str
+
+    class MarketPortfolio(PortfolioContext):
+        positions: list[MarketPosition]
+
+        def position_in(self, ticker):
+            import re
+
+            symbol = ticker.strip().upper()
+            if re.fullmatch(r"[0-9]{6}\.(?:SS|SZ|BJ)", symbol):
+                return next((p for p in self.positions if p.market == "CN" and p.ticker == symbol), None)
+            return super().position_in(ticker)
+
+    return MarketPosition, MarketPortfolio
+
+
+def _aggregate_portfolio_positions(lots, *, preserve_markets=False, position_type=None):
+    from tradingagents.portfolio import Position
+
+    position_type = position_type or Position
+    by_ticker = {}
+    for ticker, market, quantity, average_price in lots:
+        key = (ticker, market if preserve_markets else "")
+        by_ticker.setdefault(key, []).append((quantity, average_price))
 
     positions = []
-    for ticker, lots in by_ticker.items():
+    for (ticker, market), lots in by_ticker.items():
         quantity = sum(lot_quantity for lot_quantity, _ in lots)
         priced_lots = [
             (lot_quantity, average_price)
@@ -338,10 +383,11 @@ def to_tradingagents_portfolio(portfolio: Any):
             else None
         )
         positions.append(
-            Position(ticker=ticker, quantity=quantity, average_price=average_price)
+            position_type(ticker=ticker, quantity=quantity, average_price=average_price,
+                          **({"market": market} if preserve_markets else {}))
         )
 
-    return PortfolioContext(cash=cash, positions=positions)
+    return positions
 
 
 def patch_instrument_context(graph: Any, metadata_context: str) -> None:
