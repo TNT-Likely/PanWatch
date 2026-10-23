@@ -26,7 +26,9 @@ export function analysisChapters(markdown: string): { title: string; markdown: s
   for (const line of markdown.split('\n')) {
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (marker) fence = fence ? (marker[0] === fence ? '' : fence) : marker[0]
-    const heading = !fence && !marker && (/^#{1,4}\s+(.+?)\s*#*$/.exec(line) || /^\*\*([^*\n]{1,80})\*\*\s*[:：]\s*(.*)$/.exec(line))
+    const heading = !fence && !marker && (/^#{1,4}\s+(.+?)\s*#*$/.exec(line)
+      || /^\*\*([^*\n]{1,80})\*\*\s*[:：]\s*(.*)$/.exec(line)
+      || /^(Bull Analyst|Bear Analyst|Aggressive Analyst|Conservative Analyst|Neutral Analyst)\s*[:：]\s*(.*)$/.exec(line))
     if (heading) {
       if (current.markdown.trim()) chapters.push(current)
       current = { title: heading[1].replace(/[*`]/g, ''), markdown: heading[2] || '' }

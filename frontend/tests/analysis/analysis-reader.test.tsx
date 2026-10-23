@@ -63,6 +63,11 @@ describe('faithful report formatting', () => {
     expect(chapters[0].markdown).toContain('```md\n## Literal heading\n```')
     expect(chapters[1].markdown.trim()).toBe('Original caveat.')
   })
+  it('keeps debate turns separate without merging opposing arguments', () => {
+    const chapters = analysisChapters('Bull Analyst: Original bullish case.\n\nBear Analyst: Original bearish case.\n\nNeutral Analyst: Original risk caveat.')
+    expect(chapters.map(chapter => chapter.title)).toEqual(['Bull Analyst', 'Bear Analyst', 'Neutral Analyst'])
+    expect(chapters.map(chapter => chapter.markdown.trim())).toEqual(['Original bullish case.', 'Original bearish case.', 'Original risk caveat.'])
+  })
 })
 
 it('opens only clicked diagnostic details, supports text focus/Escape and restores the row focus', async () => {
@@ -99,6 +104,11 @@ it('consumes the first Escape inside a real parent Dialog before allowing the se
   expect(screen.queryByText('Original diagnostic detail.')).toBeNull()
   expect(onOpenChange).not.toHaveBeenCalled()
   expect(document.activeElement).toBe(trigger)
+  await user.keyboard('{Escape}')
+  expect(onOpenChange).toHaveBeenCalledWith(false)
+  onOpenChange.mockClear()
+  await user.click(trigger)
+  await user.click(screen.getByRole('button', { name: 'PM 最终决策', exact: true }))
   await user.keyboard('{Escape}')
   expect(onOpenChange).toHaveBeenCalledWith(false)
 })

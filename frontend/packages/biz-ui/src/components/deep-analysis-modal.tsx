@@ -347,7 +347,8 @@ export function DeepAnalysisModal({
       <DialogContent ref={contentRef} onEscapeKeyDown={event => {
         // Radix handles Escape in document capture, before the inline preview's
         // React handler. Let that handler collapse the detail before closing.
-        if (contentRef.current?.querySelector('[data-toolkit-expanded]')) event.preventDefault()
+        const expandedDetail = contentRef.current?.querySelector('[data-toolkit-expanded]')
+        if (event.target instanceof Node && expandedDetail?.contains(event.target)) event.preventDefault()
       }} className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
         <DialogHeader className="shrink-0 mb-0 border-b border-border/50 p-4 pr-14">
           <DialogTitle className="flex items-center gap-2">
