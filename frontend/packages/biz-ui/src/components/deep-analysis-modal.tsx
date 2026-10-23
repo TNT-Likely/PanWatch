@@ -16,6 +16,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@panwatch/base-ui/comp
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { AnalysisReader } from './analysis-reader'
+import { ToolkitDiagnostics } from './toolkit-diagnostics'
+export { ToolkitDiagnostics } from './toolkit-diagnostics'
 import {
   subscribeSSE,
   tradingAgentsApi,
@@ -519,75 +521,6 @@ function DataCollectionDiagnostics({ sources }: { sources: ProgressDataSource[] 
   )
 }
 
-interface ToolkitDiagItem {
-  action?: string
-  method?: string
-  symbol?: string
-  chars?: number
-  snippet?: string
-  source?: string
-  reason?: string
-}
-interface ToolkitDiagSummary {
-  hit: number
-  miss: number
-  passthrough: number
-  fallthrough?: number
-  error: number
-}
-
-export function ToolkitDiagnostics({ summary, recent }: {
-  summary: ToolkitDiagSummary | undefined
-  recent: ToolkitDiagItem[]
-}) {
-  const { t } = useTranslation('bizUi')
-  const tr = (key: string, options?: Record<string, unknown>) =>
-    (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
-  if (!summary && recent.length === 0) return null
-  const ACTION_CLS: Record<string, string> = {
-    HIT: 'text-emerald-600 dark:text-emerald-400',
-    MISS: 'text-amber-600 dark:text-amber-400',
-    PASSTHROUGH: 'text-sky-600 dark:text-sky-400',
-    FALLTHROUGH: 'text-orange-600 dark:text-orange-400',
-    ERROR: 'text-rose-600 dark:text-rose-400',
-  }
-  return (
-    <section aria-label={tr('toolkit.title')} className="rounded-xl border border-border/50 bg-muted/20 p-3 text-[12px]">
-      <div className="flex flex-wrap items-center gap-2">
-        <h4 className="font-medium">{tr('toolkit.title')}</h4>
-        <span className="text-[11px] text-muted-foreground">{tr('toolkit.subtitle')}</span>
-        <span className="ml-auto text-[11px]">
-          <span className={ACTION_CLS.HIT}>HIT {summary?.hit ?? 0}</span>
-          <span className="text-muted-foreground"> · MISS {summary?.miss ?? 0}</span>
-          <span className={ACTION_CLS.PASSTHROUGH}> · {tr('toolkit.passthrough')} {summary?.passthrough ?? 0}</span>
-          {!!summary?.fallthrough && <span className={ACTION_CLS.FALLTHROUGH}> · {tr('toolkit.fallback')} {summary.fallthrough}</span>}
-          {!!summary?.error && <span className={ACTION_CLS.ERROR}> · {tr('toolkit.error')} {summary.error}</span>}
-        </span>
-      </div>
-      <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
-        HIT: {tr('toolkit.legendHit')} · MISS: {tr('toolkit.legendMiss')} · {tr('toolkit.passthrough')}: {tr('toolkit.legendPassthrough')} · {tr('toolkit.fallback')}: {tr('toolkit.legendFallback')}
-      </p>
-      {recent.length === 0 ? <p className="mt-2 text-[11px] text-muted-foreground">{tr('toolkit.empty')}</p> : (
-        <div role="region" aria-label={tr('toolkit.records')} tabIndex={0} className="mt-3 max-h-96 space-y-3 overflow-y-auto scrollbar overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {recent.map((item, index) => (
-            <article key={index} className="min-w-0 rounded-lg border border-border/50 bg-card p-3 [overflow-wrap:anywhere]">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[11px]">
-                <span className={`font-semibold ${ACTION_CLS[(item.action || '').toUpperCase()] || 'text-muted-foreground'}`}>{item.action}</span>
-                <span>{item.method} ({item.symbol || '-'})</span>
-                <span className="text-muted-foreground">{item.source}{item.chars != null && tr('toolkit.chars', { count: item.chars })}</span>
-              </div>
-              {item.reason && <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">{item.reason}</p>}
-              {item.snippet && <pre tabIndex={0} className="mt-2 whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed text-foreground [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {item.snippet}
-                {item.chars != null && item.chars > item.snippet.length && <span className="text-muted-foreground">{'\n\n'}{tr('toolkit.truncated', { total: item.chars, shown: item.snippet.length })}</span>}
-              </pre>}
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
 
 function StageRow({ stage }: { stage: ProgressStage }) {
   const { t } = useTranslation('bizUi')

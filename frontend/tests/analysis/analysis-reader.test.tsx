@@ -120,17 +120,87 @@ describe('faithful report formatting', () => {
   })
 })
 
-it('shows all diagnostic snippets directly, without an accordion, row buttons or hover popovers', () => {
-  render(<ToolkitDiagnostics summary={{ hit: 1, miss: 1, passthrough: 0, error: 0 }} recent={[
-    { action: 'HIT', method: 'get_stock_data', symbol: '002594', snippet: 'No kline data available.' },
-    { action: 'MISS', method: 'get_indicators', symbol: '002594', snippet: 'Indicator unavailable.', reason: 'Not implemented.' },
-  ]} />)
-  const diagnostics = screen.getByRole('region', { name: '数据注入诊断' })
-  expect(within(diagnostics).getByText('No kline data available.')).toBeTruthy()
-  expect(within(diagnostics).getByText('Indicator unavailable.')).toBeTruthy()
-  expect(within(diagnostics).getByText('Not implemented.')).toBeTruthy()
-  expect(within(diagnostics).queryByRole('button')).toBeNull()
-  expect(diagnostics.querySelector('details')).toBeNull()
+const diagnosticSummary = { hit: 1, miss: 1, passthrough: 0, error: 0 }
+const diagnosticRecords = [
+  { action: 'HIT', method: 'get_stock_data', symbol: '002594', snippet: 'No kline data available.', chars: 100 },
+  { action: 'MISS', method: 'get_indicators', symbol: '002594', snippet: 'Indicator unavailable.', reason: 'Not implemented.' },
+]
+
+it('keeps one hover preview and opens a focused detail dialog on click', async () => {
+  const user = userEvent.setup()
+  render(<ToolkitDiagnostics summary={diagnosticSummary} recent={diagnosticRecords} />)
+  expect(screen.queryByText('No kline data available.')).toBeNull()
+  const first = screen.getByRole('button', { name: /get_stock_data/ })
+  const second = screen.getByRole('button', { name: /get_indicators/ })
+  await user.hover(first)
+  expect(within(screen.getByRole('region', { name: '数据注入预览' })).getByText('No kline data available.')).toBeTruthy()
+  await user.hover(second)
+  expect(screen.getAllByRole('region', { name: '数据注入预览' })).toHaveLength(1)
+  expect(screen.queryByText('No kline data available.')).toBeNull()
+  await user.click(second)
+  const detail = screen.getByRole('dialog', { name: '数据注入详情 · get_indicators' })
+  expect(within(detail).getByText('Indicator unavailable.')).toBeTruthy()
+  expect(within(detail).getByText('Not implemented.')).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '数据注入预览' })).toBeNull()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.activeElement).toBe(second)
+})
+
+it('opens all saved records together and preserves truncation notices', async () => {
+  const user = userEvent.setup()
+  render(<ToolkitDiagnostics summary={diagnosticSummary} recent={diagnosticRecords} />)
+  await user.click(screen.getByRole('button', { name: '查看全部数据注入' }))
+  const all = screen.getByRole('dialog', { name: '全部数据注入（2 条）' })
+  expect(within(all).getByText('No kline data available.')).toBeTruthy()
+  expect(within(all).getByText('Indicator unavailable.')).toBeTruthy()
+  expect(within(all).getByText(/共 100 字符/)).toBeTruthy()
+  expect(within(all).getByRole('region', { name: '数据注入内容' }).querySelectorAll('article')).toHaveLength(2)
+  await user.keyboard('{Escape}')
+  const first = screen.getByRole('button', { name: /get_stock_data/ })
+  await user.click(first)
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '查看全部数据注入' }))
+  expect(screen.getByRole('dialog', { name: '全部数据注入（2 条）' })).toBeTruthy()
+  await user.keyboard('{Escape}')
+  expect(document.activeElement).toBe(first)
+})
+
+it('supports keyboard and touch details without relying on hover; retains a clicked record during live updates', async () => {
+  const user = userEvent.setup()
+  const { rerender } = render(<ToolkitDiagnostics summary={diagnosticSummary} recent={diagnosticRecords} />)
+  const first = screen.getByRole('button', { name: /get_stock_data/ })
+  first.focus()
+  await user.keyboard('{Enter}')
+  rerender(<ToolkitDiagnostics summary={diagnosticSummary} recent={[{ ...diagnosticRecords[0], snippet: 'A later polling result.' }]} />)
+  expect(within(screen.getByRole('dialog')).getByText('No kline data available.')).toBeTruthy()
+  expect(within(screen.getByRole('dialog')).queryByText('A later polling result.')).toBeNull()
+  await user.keyboard('{Escape}')
+  await user.pointer([{ keys: '[TouchA>]', target: first }, { keys: '[/TouchA]' }])
+  expect(screen.getByRole('dialog')).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '数据注入预览' })).toBeNull()
+})
+
+it('dismisses the preview and diagnostic dialogs before the actual parent dialog', async () => {
+  const user = userEvent.setup()
+  const onOpenChange = vi.fn()
+  render(<DeepAnalysisModal open onOpenChange={onOpenChange} stockId={2} stockName="比亚迪" stockSymbol="002594" initialResult={{ ...report, raw_data: { ...report.raw_data, toolkit_diagnostic: { summary: diagnosticSummary, recent: diagnosticRecords } } }} />)
+  const first = screen.getByRole('button', { name: /get_stock_data/ })
+  await user.hover(first)
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('region', { name: '数据注入预览' })).toBeNull()
+  expect(onOpenChange).not.toHaveBeenCalled()
+  await user.click(first)
+  await user.keyboard('{Escape}')
+  expect(onOpenChange).not.toHaveBeenCalled()
+  expect(document.activeElement).toBe(first)
+  const all = screen.getByRole('button', { name: '查看全部数据注入', exact: true })
+  await user.click(all)
+  await user.keyboard('{Escape}')
+  expect(onOpenChange).not.toHaveBeenCalled()
+  expect(document.activeElement).toBe(all)
+  await user.keyboard('{Escape}')
+  expect(onOpenChange).toHaveBeenCalledTimes(1)
+  expect(onOpenChange).toHaveBeenCalledWith(false)
 })
 
 it('closes the nested node dialog first, restores its node, then closes the real parent dialog', async () => {
@@ -139,7 +209,7 @@ it('closes the nested node dialog first, restores its node, then closes the real
   render(<DeepAnalysisModal open onOpenChange={onOpenChange} stockId={2} stockName="比亚迪" stockSymbol="002594" initialResult={{ ...report, raw_data: { ...report.raw_data, toolkit_diagnostic: {
     summary: { hit: 1, miss: 0, passthrough: 0, error: 0 }, recent: [{ action: 'HIT', method: 'get_stock_data', snippet: 'Original diagnostic detail.' }],
   } } }} />)
-  expect(screen.getByText('Original diagnostic detail.')).toBeTruthy()
+  expect(screen.queryByText('Original diagnostic detail.')).toBeNull()
   await openGraph(user)
   const opener = screen.getByRole('button', { name: 'PM 最终决策', exact: true })
   await user.click(opener)
