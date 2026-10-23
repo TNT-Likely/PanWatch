@@ -89,7 +89,6 @@ export function AnalysisReader({ result, documentView, onModeChange }: {
   const selected = layers.flat().find(item => item.id === selectedId)
   const readerId = useId().replace(/:/g, '')
   const viewportRef = useRef<HTMLDivElement>(null)
-  const documentRef = useRef<HTMLDivElement>(null)
   const documentTabRef = useRef<HTMLButtonElement>(null)
   const navigateOriginal = useRef(false)
   const focusOriginal = useRef(false)
@@ -99,12 +98,8 @@ export function AnalysisReader({ result, documentView, onModeChange }: {
     onModeChange?.(next)
   }
   useEffect(() => {
-    if (mode === 'document' && navigateOriginal.current) {
-      documentRef.current?.querySelector(`#sec-${originalSection}`)?.scrollIntoView({ block: 'start' })
-      navigateOriginal.current = false
-    }
     if (mode === 'map' && viewportRef.current) viewportRef.current.scrollLeft = (960 * zoom - viewportRef.current.clientWidth) / 2
-  }, [mode, originalSection, zoom])
+  }, [mode, zoom])
 
   const width = 960, nodeWidth = 216, nodeHeight = 136, rowGap = 58, top = 82
   const positioned = layers.map((layer, row) => layer.map((item, column) => ({ ...item, x: width / 2 + (column - (layer.length - 1) / 2) * (nodeWidth + 20) - nodeWidth / 2, y: top + row * (nodeHeight + rowGap) })))
@@ -124,7 +119,14 @@ export function AnalysisReader({ result, documentView, onModeChange }: {
         <TabsTrigger ref={documentTabRef} value="document" className="gap-1.5 inline-flex items-center px-3 py-2 text-[12px]"><FileText className="h-3.5 w-3.5" aria-hidden="true" />{tr('document')}</TabsTrigger>
         <TabsTrigger value="map" className="gap-1.5 inline-flex items-center px-3 py-2 text-[12px]"><GitBranch className="h-3.5 w-3.5" aria-hidden="true" />{tr('map')}</TabsTrigger>
       </TabsList>
-      <TabsContent value="document"><div ref={documentRef}>{documentView(originalSection)}</div></TabsContent>
+      <TabsContent value="document"><div ref={element => {
+        // Radix mounts the tab panel after the mode change. Wait for its DOM and
+        // the dialog's focus handoff before positioning a long report section.
+        if (element && navigateOriginal.current) {
+          navigateOriginal.current = false
+          requestAnimationFrame(() => { if (element.isConnected) element.querySelector(`#sec-${originalSection}`)?.scrollIntoView({ block: 'start' }) })
+        }
+      }}>{documentView(originalSection)}</div></TabsContent>
       <TabsContent value="map">
         <p className="mb-3 text-[12px] text-muted-foreground">{tr('hint')}</p>
         <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/20">

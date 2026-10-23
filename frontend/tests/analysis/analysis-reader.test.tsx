@@ -1,5 +1,5 @@
 import i18n from '@/i18n'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { DeepAnalysisResult } from '@panwatch/api'
@@ -25,7 +25,8 @@ async function openGraph(user: ReturnType<typeof userEvent.setup>) {
 describe('analysis reading graph', () => {
   it('defaults to original reading and opens node reports in a dialog with matching original navigation', async () => {
     const user = userEvent.setup()
-    render(<AnalysisReader result={report} documentView={id => <div data-testid="original">{id}</div>} />)
+    const originalScroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+    render(<AnalysisReader result={report} documentView={id => <div id={`sec-${id}`} data-testid="original">{id}</div>} />)
     expect(screen.getByRole('tab', { name: '原文阅读' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByTestId('original').textContent).toBe('decision')
     expect(screen.queryByRole('region', { name: '决策流程图' })).toBeNull()
@@ -41,6 +42,9 @@ describe('analysis reading graph', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: '原文阅读' }))
     expect(originalFocus).toHaveBeenCalledWith({ preventScroll: true })
+    await waitFor(() => expect(originalScroll.mock.instances).toContain(screen.getByTestId('original')))
+    originalScroll.mockRestore()
+    originalFocus.mockRestore()
   })
 
   it('shows conclusion excerpts and keeps all five debate roles distinct', async () => {
