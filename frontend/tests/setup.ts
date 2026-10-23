@@ -1,5 +1,5 @@
 import { afterEach, beforeEach } from 'vitest'
-import i18n from '../src/i18n'
+import i18n, { i18nReady } from '../src/i18n'
 
 // jsdom has no native top-layer state. NWSAPI 2.2.27 recursively calls
 // Element.matches for these selectors when Floating UI positions a popover.
@@ -11,13 +11,15 @@ Element.prototype.matches = function (selector: string) {
 }
 
 beforeEach(async () => {
+  await i18nReady
+  await i18n.loadNamespaces(['common', 'auth', 'navigation', 'settings', 'configuration', 'bizUi'])
   window.localStorage.removeItem('panwatch-locale')
   await i18n.changeLanguage('zh-CN')
 })
 
-afterEach(() => {
+afterEach(async () => {
   window.localStorage.removeItem('panwatch-locale')
-  void i18n.changeLanguage('zh-CN')
+  await i18n.changeLanguage('zh-CN')
 })
 
 // Radix Select relies on browser pointer capture and scrolling APIs absent in jsdom.

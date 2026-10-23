@@ -1,3 +1,4 @@
+import { useQuoteRefresh } from '@/hooks/useQuoteRefresh'
 import { useConfirm } from '@panwatch/base-ui/components/ui/confirm-dialog'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -229,7 +230,6 @@ export default function StocksPage() {
   const [autoRefresh, setAutoRefresh] = useLocalStorage('panwatch_stocks_autoRefresh', false)
   const [refreshInterval, setRefreshInterval] = useLocalStorage('panwatch_stocks_refreshInterval', 30)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval>>()
 
   type ViewTab = 'positions' | 'watchlist'
   const [savedViewTab, setViewTab] = useLocalStorage<ViewTab>('panwatch_stocks_viewTab', 'positions')
@@ -504,7 +504,7 @@ export default function StocksPage() {
     }
   }, [refreshMarketStatus])
 
-  const refreshQuotes = useCallback(async (automatic = false) => {
+  const refreshQuotes = useCallback(async (automatic = false, signal?: AbortSignal) => {
     const statuses = marketStatusRef.current
     const items = buildQuoteItems().filter(item => !automatic ||
       !statuses.some(status => status.code === item.market) ||
@@ -513,8 +513,8 @@ export default function StocksPage() {
 
     setQuotesLoading(true)
     try {
-      const data = await requestQuotes(items)
-      if (data.length > 0) {
+      const data = await requestQuotes(items, signal)
+      if (!signal?.aborted && data.length > 0) {
         setQuotes(previous => ({ ...previous, ...toQuoteMap(data) }))
         setLastRefreshTime(new Date())
       }
@@ -864,27 +864,7 @@ export default function StocksPage() {
     return () => { cancelled = true }
   }, [agentDialogStock, agents, schedulePreviewCache, schedulePreviewLoading])
 
-  // Auto-refresh timer
-  useEffect(() => {
-    if (autoRefresh) {
-      refreshQuotes(true)
-      refreshTimerRef.current = setInterval(() => {
-        refreshQuotes(true)
-      }, refreshInterval * 1000)
-    } else {
-      // Clear interval when disabled
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-        refreshTimerRef.current = undefined
-      }
-    }
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current)
-      }
-    }
-  }, [autoRefresh, refreshInterval, refreshQuotes])
+  useQuoteRefresh(autoRefresh, refreshInterval, refreshQuotes)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

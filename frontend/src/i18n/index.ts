@@ -1,7 +1,7 @@
-import i18n from 'i18next'
+import i18n, { type BackendModule } from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
-import { resources } from './resources'
+import { resourceLoaders } from './loaders'
 
 export const DEFAULT_LOCALE = 'zh-CN' as const
 export const LOCALE_STORAGE_KEY = 'panwatch-locale'
@@ -41,7 +41,8 @@ function readInitialLocale(): SupportedLocale {
 function applyLocale(locale: string) {
   const normalized = normalizeLocale(locale)
   if (typeof document !== 'undefined') {
-    const metadata = resources[normalized].common.product
+    const metadata = i18n.getResource(normalized, 'common', 'product')
+    if (!metadata) return
     document.documentElement.lang = normalized
     document.title = metadata.pageTitle
     document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', metadata.description)
@@ -53,15 +54,26 @@ function applyLocale(locale: string) {
 
 i18n.on('languageChanged', applyLocale)
 
-void i18n
+const backend: BackendModule = {
+  type: 'backend',
+  init() {},
+  read(language, namespace, callback) {
+    const loader = resourceLoaders[normalizeLocale(language)][namespace as keyof typeof resourceLoaders['zh-CN']]
+    if (!loader) { callback(new Error(`Unknown translation namespace: ${namespace}`), false); return }
+    void loader().then(resource => callback(null, resource), error => callback(error, false))
+  },
+}
+
+export const i18nReady = i18n
+  .use(backend)
   .use(initReactI18next)
   .init({
-    resources,
     lng: readInitialLocale(),
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: [...SUPPORTED_LOCALES],
     defaultNS: 'common',
-    ns: ['common', 'auth', 'navigation', 'settings', 'configuration', 'bizUi'],
+    ns: ['common', 'auth', 'navigation'],
+    load: 'currentOnly',
     interpolation: {
       escapeValue: false,
     },

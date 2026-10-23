@@ -181,50 +181,54 @@ export async function fetchAPI<T>(path: string, options?: ApiRequestOptions): Pr
     headers['Content-Type'] = 'application/json'
   }
 
-  const timeoutController = options?.signal ? null : new AbortController()
+  const timeoutController = new AbortController()
+  const callerSignal = options?.signal
+  const cancel = () => timeoutController.abort(callerSignal?.reason)
+  if (callerSignal?.aborted) cancel()
+  else callerSignal?.addEventListener('abort', cancel, { once: true })
+  let timedOut = false
   const timeoutMs = typeof options?.timeoutMs === 'number' && options.timeoutMs > 0
     ? options.timeoutMs
     : DEFAULT_TIMEOUT_MS
-  const timeoutId = timeoutController
-    ? window.setTimeout(() => timeoutController.abort(), timeoutMs)
-    : null
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true
+    timeoutController.abort()
+  }, timeoutMs)
 
-  let res: Response
   try {
     const { timeoutMs: _timeoutMs, ...requestOptions } = options || {}
-    res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${API_BASE}${path}`, {
       ...requestOptions,
       headers: {
         ...headers,
         ...(requestOptions.headers as Record<string, string> | undefined),
       },
-      signal: requestOptions.signal || timeoutController?.signal,
+      signal: timeoutController.signal,
     })
+
+    if (res.status === 401 && token) {
+      logout()
+      throw new Error(interfaceText('登录已过期', 'Your session has expired. Sign in again.'))
+    }
+
+    const body: ApiResponse<T> = await res.json().catch((error) => {
+      if (timeoutController.signal.aborted) throw error
+      return { code: res.status, data: null as T, message: `HTTP ${res.status}` }
+    })
+    if (body.code !== 0 || body.success === false) {
+      throw new Error(localizedApiError(body, res.status))
+    }
+    return body.data
   } catch (error: any) {
-    if (error?.name === 'AbortError') {
+    if (timedOut) {
       throw new Error(interfaceText('请求超时，请稍后重试', 'The request timed out. Try again later.'))
     }
+    // Preserve AbortError for callers that intentionally cancel stale requests.
     throw error
   } finally {
-    if (timeoutId !== null) {
-      window.clearTimeout(timeoutId)
-    }
+    window.clearTimeout(timeoutId)
+    callerSignal?.removeEventListener('abort', cancel)
   }
-
-  if (res.status === 401 && token) {
-    logout()
-    throw new Error(interfaceText('登录已过期', 'Your session has expired. Sign in again.'))
-  }
-
-  const body: ApiResponse<T> = await res.json().catch(() => ({
-    code: res.status,
-    data: null as T,
-    message: `HTTP ${res.status}`,
-  }))
-  if (body.code !== 0 || body.success === false) {
-    throw new Error(localizedApiError(body, res.status))
-  }
-  return body.data
 }
 
 export const apiClient = {

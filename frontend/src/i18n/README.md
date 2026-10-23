@@ -18,3 +18,8 @@ Chinese is the runtime fallback for missing translation resources.
 Run `pnpm check:i18n` to ensure surfaces already declared migrated do not regress by
 adding Chinese UI literals. The checker intentionally ignores comments and console
 diagnostics; expand its `migratedFiles` list whenever a new page completes migration.
+
+Runtime dictionaries are loaded by language and namespace through `loaders.ts`.
+Await `i18nReady` before mounting the app; components request additional namespaces
+with `useTranslation`. `resources.ts` remains the static type/catalog source and
+should only be imported as a type by application code.
