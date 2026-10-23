@@ -44,16 +44,17 @@ export function buildAnalysisSections(
   }
 
   // 看多看空辩论(研究团队:辩论历史 + 研究主管裁决)
-  if (debate?.history) {
-    let dc = debate.history
+  if (debate?.history || debate?.judge_decision) {
+    let dc = debate.history || ''
     if (debate.judge_decision) dc += `\n\n### ⚖️ ${english ? 'Research manager decision' : '研究主管裁决'}\n\n${debate.judge_decision}`
     sections.push({ id: 'debate', title: english ? 'Bull/bear debate' : '看多看空辩论', markdown: dc })
   }
 
   // 风控辩论(风控团队:激进/中立/保守辩论 + 风控裁决)
-  if (riskDebate?.history) {
-    let rc = riskDebate.history
-    if (riskDebate.judge_decision) rc += `\n\n### 🛡️ ${english ? 'Risk decision' : '风控裁决'}\n\n${riskDebate.judge_decision}`
+  const riskDecision = riskDebate?.judge_decision || rawData.risk_judgment
+  if (riskDebate?.history || riskDecision) {
+    let rc = riskDebate?.history || ''
+    if (riskDecision) rc += `\n\n### 🛡️ ${english ? 'Risk decision' : '风控裁决'}\n\n${riskDecision}`
     sections.push({ id: 'risk', title: english ? 'Risk debate' : '风控辩论', markdown: rc })
   }
 

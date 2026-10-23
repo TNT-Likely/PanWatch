@@ -28,6 +28,7 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { useTranslation } from 'react-i18next'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 import { AnalysisMetadata } from '@panwatch/biz-ui/components/analysis-metadata'
+import { AnalysisReader } from '@panwatch/biz-ui/components/analysis-reader'
 import ShareCardModal from '../components/ShareCardModal'
 import { suggestionPresentation, type SuggestionStateInput } from '@panwatch/biz-ui/components/suggestion-action'
 import { marketSignTextClass } from '@/lib/market-colors'
@@ -126,6 +127,7 @@ export default function AnalysisDetailPage() {
   })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [readingMode, setReadingMode] = useState<'map' | 'document'>('map')
 
   const handleExportPdf = async () => {
     if (pdfBusy) return
@@ -205,7 +207,7 @@ export default function AnalysisDetailPage() {
     els.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, toc.length])
+  }, [result, toc.length, readingMode])
 
   if (loading) {
     return <div className="p-12 text-center text-muted-foreground">{analysisT('assistantPage.analysis.loading')}</div>
@@ -281,9 +283,9 @@ export default function AnalysisDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-5xl mx-auto px-4 pb-12 flex gap-8">
+      <div className={`${readingMode === 'map' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto px-4 pb-12 flex gap-8`}>
         {/* 左列:标题栏 + 正文(标题栏只占左列宽度,不压到右侧目录) */}
-        <div className="flex-1 min-w-0 max-w-3xl">
+        <div className={`flex-1 min-w-0 ${readingMode === 'document' ? 'max-w-3xl' : ''}`}>
           {/* 顶部栏 */}
           <div className="border-b border-border/40 pb-3 mb-4 flex items-center gap-3">
             <button
@@ -330,6 +332,7 @@ export default function AnalysisDetailPage() {
             </div>
           )}
 
+          <AnalysisReader result={result} onModeChange={setReadingMode} documentView={() => <>
           {/* 移动端目录:吸顶折叠条,显示当前段,展开下拉(覆盖式),选完/点外部收起(桌面隐藏) */}
           <div className="lg:hidden sticky top-16 z-30 mb-6">
             <div className="relative">
@@ -372,6 +375,7 @@ export default function AnalysisDetailPage() {
               </section>
             )
           })}
+          </>} />
 
           {/* 历史决策对比 */}
           <section id="sec-history" className="mb-10 scroll-mt-24">
@@ -441,7 +445,7 @@ export default function AnalysisDetailPage() {
         </div>
 
         {/* 右列:最终决策 + 目录合并到同一张卡片(与标题同高起始,不被标题压住;主题 token 适配日/夜) */}
-        <aside className="hidden lg:block w-52 shrink-0">
+        <aside className={`${readingMode === 'map' ? 'hidden' : 'hidden lg:block'} w-52 shrink-0`}>
           <div className="sticky top-24 rounded-xl border border-border bg-card overflow-hidden">
             {/* 最终决策摘要 */}
             {sug && (

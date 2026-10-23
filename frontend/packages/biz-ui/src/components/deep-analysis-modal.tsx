@@ -6,7 +6,8 @@
  * 2. 运行中 — polling /agents/runs/{trace_id}/progress,显示阶段进度
  * 3. 完成 — 顶层摘要 + Markdown 推理 + 可展开 4 分析师报告 + 辩论
  */
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useId } from 'react'
+import { ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
@@ -15,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@panwatch/base-ui/components/ui/tabs'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
-import { HoverPopover } from '@panwatch/base-ui/components/ui/hover-popover'
+import { AnalysisReader } from './analysis-reader'
 import {
   subscribeSSE,
   tradingAgentsApi,
@@ -342,8 +343,8 @@ export function DeepAnalysisModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-6xl max-h-[85vh] overflow-y-auto scrollbar">
-        <DialogHeader>
+      <DialogContent className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="shrink-0 mb-0 border-b border-border/50 p-4 pr-14">
           <DialogTitle className="flex items-center gap-2">
             {tr('title', { name: stockName, symbol: stockSymbol })}
           </DialogTitle>
@@ -351,7 +352,7 @@ export function DeepAnalysisModal({
             {tr('description')}
           </DialogDescription>
         </DialogHeader>
-
+        <div className="min-h-0 overflow-y-auto scrollbar overscroll-contain p-4">
         {stage === 'idle' && (
           <IdleView
             stockSymbol={stockSymbol}
@@ -382,6 +383,7 @@ export function DeepAnalysisModal({
             </div>
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -547,6 +549,9 @@ export function ToolkitDiagnostics({
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const detailId = useId()
+  const triggers = useRef<(HTMLButtonElement | null)[]>([])
   if (!summary && recent.length === 0) return null
 
   const hit = summary?.hit ?? 0
@@ -590,11 +595,12 @@ export function ToolkitDiagnostics({
           {tr('toolkit.empty')}
         </div>
       ) : (
-        <div className="mt-2 space-y-1 max-h-64 overflow-y-auto scrollbar">
+        <div className="mt-2 space-y-1 max-h-80 overflow-y-auto scrollbar overscroll-contain">
           {recent.map((h, i) => {
             const action = (h.action || '').toUpperCase()
+            const hasDetail = !!(h.snippet || h.reason)
             const row = (
-              <div className="font-mono text-[10.5px] flex items-center gap-2 hover:bg-accent/30 px-1 rounded cursor-help w-full">
+              <>
                 <span className={`${ACTION_CLS[action] || 'text-muted-foreground'} w-20 shrink-0`}>
                   {action}
                 </span>
@@ -604,33 +610,39 @@ export function ToolkitDiagnostics({
                   {h.chars != null && <span className="text-muted-foreground">{tr('toolkit.chars', { count: h.chars })}</span>}
                   {h.source && <span className="text-muted-foreground/70"> · {h.source}</span>}
                 </span>
-              </div>
+                {hasDetail && <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded === i ? 'rotate-180' : ''}`} />}
+              </>
             )
-            const hasDetail = !!(h.snippet || h.reason)
-            if (!hasDetail) return <div key={i}>{row}</div>
             return (
-              <HoverPopover
-                key={i}
-                className="block w-full"
-                trigger={row}
-                title={
-                  <span>
-                    <span className={ACTION_CLS[action] || 'text-muted-foreground'}>{action}</span>
-                    <span className="text-muted-foreground"> · {h.method}({h.symbol || '-'})</span>
-                    {h.source && (
-                      <span className="text-muted-foreground/70"> · {h.source}</span>
-                    )}
-                  </span>
-                }
-                content={
-                  <div className="space-y-2">
+              <div key={i} className="min-w-0 rounded-lg border border-border/40 bg-card">
+                <button
+                  ref={element => { triggers.current[i] = element }}
+                  type="button"
+                  disabled={!hasDetail}
+                  aria-expanded={hasDetail ? expanded === i : undefined}
+                  aria-controls={hasDetail ? `${detailId}-${i}` : undefined}
+                  onClick={() => setExpanded(expanded === i ? null : i)}
+                  className="w-full min-w-0 flex items-center gap-2 rounded-lg p-2 text-left font-mono text-[11px] hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                >{row}</button>
+                {expanded === i && hasDetail && (
+                  <div
+                    id={`${detailId}-${i}`}
+                    className="space-y-2 border-t border-border/40 p-3"
+                    onKeyDown={event => {
+                      if (event.key === 'Escape') {
+                        event.stopPropagation()
+                        setExpanded(null)
+                        triggers.current[i]?.focus()
+                      }
+                    }}
+                  >
                     {h.reason && (
                       <div className="text-[11px] text-amber-600 dark:text-amber-400">
                         {h.reason}
                       </div>
                     )}
                     {h.snippet && (
-                      <pre className="whitespace-pre-wrap break-words font-mono text-[10.5px] leading-snug bg-accent/30 rounded p-2 text-foreground/85 max-h-[60vh] overflow-y-auto scrollbar">
+                      <pre tabIndex={0} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-mono text-[11px] leading-relaxed bg-muted/50 rounded p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         {h.snippet}
                         {h.chars != null && h.chars > h.snippet.length && (
                           <span className="text-muted-foreground/60">
@@ -640,11 +652,8 @@ export function ToolkitDiagnostics({
                       </pre>
                     )}
                   </div>
-                }
-                popoverClassName="w-[44rem] max-w-[90vw]"
-                side="top"
-                align="start"
-              />
+                )}
+              </div>
             )
           })}
         </div>
@@ -705,12 +714,15 @@ function DoneView({
   const analysisDate = analysisDateForResult(result)
 
   return (
-    <div className="space-y-4 text-[13px]">
-      <AnalysisMetadata result={result} />
+    <div className="space-y-3 text-[13px]">
+      <details className="text-[11px] text-muted-foreground">
+        <summary className="cursor-pointer rounded leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('analysisReader.metadata')} · {analysisDate}</summary>
+        <div className="pt-2"><AnalysisMetadata result={result} /></div>
+      </details>
       {fromCache && (
-        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[12px] text-amber-700 dark:text-amber-400 flex items-center justify-between">
+        <div className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
           <span>{tr('done.cached')}</span>
-          <Button variant="outline" size="sm" onClick={onRerun} className="ml-3 h-7 text-[11px]">
+          <Button variant="ghost" size="sm" onClick={onRerun} className="shrink-0 h-7 text-[11px]">
             {tr('done.rerun')}
           </Button>
         </div>
@@ -736,7 +748,7 @@ function DoneView({
       </div>
 
       {/* 统一 tab:最终决策 + 四位分析师 + 看多看空辩论 + 风控辩论(完整 + GFM 表格) */}
-      <AnalysisTabs sections={sections} />
+      <AnalysisReader result={result} documentView={sectionId => <AnalysisTabs initialSection={sectionId} sections={sections.length ? sections : [{ id: 'decision', title: tr('stages.final_decision'), markdown: result.content || '' }]} />} />
 
       {/* 数据注入诊断(历史报告):从 raw_data.toolkit_diagnostic 拿 */}
       {rawData.toolkit_diagnostic && (
@@ -755,11 +767,11 @@ function DoneView({
 }
 
 /** 决策与分析统一 tab。内容由 buildAnalysisSections 组装(弹窗与详细页共用),只渲染有内容的 tab。 */
-function AnalysisTabs({ sections }: { sections: AnalysisSection[] }) {
+function AnalysisTabs({ sections, initialSection }: { sections: AnalysisSection[]; initialSection?: string }) {
   if (sections.length === 0) return null
   return (
     <div className="rounded-lg border border-border/50 p-4">
-      <Tabs defaultValue={sections[0].id}>
+      <Tabs defaultValue={sections.find(section => section.id === initialSection)?.id || sections[0].id}>
         <TabsList>
           {sections.map((s) => (
             <TabsTrigger key={s.id} value={s.id}>
