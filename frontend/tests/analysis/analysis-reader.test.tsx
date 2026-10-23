@@ -1,10 +1,10 @@
 import i18n from '@/i18n'
 import { render, screen, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DeepAnalysisResult } from '@panwatch/api'
 import { AnalysisReader, analysisChapters, analysisExcerpt } from '@panwatch/biz-ui/components/analysis-reader'
-import { ToolkitDiagnostics } from '@panwatch/biz-ui/components/deep-analysis-modal'
+import { DeepAnalysisModal, ToolkitDiagnostics } from '@panwatch/biz-ui/components/deep-analysis-modal'
 import { buildAnalysisSections } from '@panwatch/biz-ui/analysis-sections'
 
 const report = {
@@ -83,4 +83,22 @@ it('opens only clicked diagnostic details, supports text focus/Escape and restor
   fireEvent.keyDown(snippet, { key: 'Escape' })
   expect(screen.queryByText('Indicator unavailable.')).toBeNull()
   expect(document.activeElement).toBe(screen.getByRole('button', { name: /get_indicators/ }))
+})
+
+it('consumes the first Escape inside a real parent Dialog before allowing the second to close it', async () => {
+  const user = userEvent.setup()
+  const onOpenChange = vi.fn()
+  render(<DeepAnalysisModal open onOpenChange={onOpenChange} stockId={2} stockName="比亚迪" stockSymbol="002594" initialResult={{ ...report, raw_data: { ...report.raw_data, toolkit_diagnostic: {
+    summary: { hit: 1, miss: 0, passthrough: 0, error: 0 }, recent: [{ action: 'HIT', method: 'get_stock_data', snippet: 'Original diagnostic detail.' }],
+  } } }} />)
+  await user.click(screen.getByText('数据注入诊断', { exact: true }))
+  const trigger = screen.getByRole('button', { name: /get_stock_data/ })
+  await user.click(trigger)
+  screen.getByText('Original diagnostic detail.').focus()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByText('Original diagnostic detail.')).toBeNull()
+  expect(onOpenChange).not.toHaveBeenCalled()
+  expect(document.activeElement).toBe(trigger)
+  await user.keyboard('{Escape}')
+  expect(onOpenChange).toHaveBeenCalledWith(false)
 })

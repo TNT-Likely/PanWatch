@@ -110,6 +110,7 @@ export function DeepAnalysisModal({
   const [result, setResult] = useState<DeepAnalysisResult | null>(initialResult)
   const [error, setError] = useState<string>('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
   const sseCloseRef = useRef<(() => void) | null>(null)
 
@@ -343,7 +344,11 @@ export function DeepAnalysisModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
+      <DialogContent ref={contentRef} onEscapeKeyDown={event => {
+        // Radix handles Escape in document capture, before the inline preview's
+        // React handler. Let that handler collapse the detail before closing.
+        if (contentRef.current?.querySelector('[data-toolkit-expanded]')) event.preventDefault()
+      }} className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
         <DialogHeader className="shrink-0 mb-0 border-b border-border/50 p-4 pr-14">
           <DialogTitle className="flex items-center gap-2">
             {tr('title', { name: stockName, symbol: stockSymbol })}
@@ -570,7 +575,14 @@ export function ToolkitDiagnostics({
   }
 
   return (
-    <details className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]" open={defaultOpen}>
+    <details data-toolkit-expanded={expanded !== null ? '' : undefined} onKeyDown={event => {
+      if (event.key === 'Escape' && expanded !== null) {
+        event.stopPropagation()
+        const previous = expanded
+        setExpanded(null)
+        triggers.current[previous]?.focus()
+      }
+    }} className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]" open={defaultOpen}>
       <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
         <span className="font-medium">{tr('toolkit.title')}</span>
         <span className="text-[11px] text-muted-foreground">
@@ -628,13 +640,6 @@ export function ToolkitDiagnostics({
                   <div
                     id={`${detailId}-${i}`}
                     className="space-y-2 border-t border-border/40 p-3"
-                    onKeyDown={event => {
-                      if (event.key === 'Escape') {
-                        event.stopPropagation()
-                        setExpanded(null)
-                        triggers.current[i]?.focus()
-                      }
-                    }}
                   >
                     {h.reason && (
                       <div className="text-[11px] text-amber-600 dark:text-amber-400">
