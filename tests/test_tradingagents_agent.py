@@ -483,16 +483,25 @@ class TestPhaseBFeatures(unittest.TestCase):
         """上游未读取 timeout 配置时，适配类仍需把它传给 ChatOpenAI。"""
         from src.modules.automation.tradingagents.agent import _bounded_graph_class
 
+        from tradingagents.graph import trading_graph
+        original = trading_graph.create_tier_client
+        captured = []
+
+        def factory(config, tier, **kwargs):
+            captured.append((tier, kwargs))
+            return tier
+
         class BaseGraph:
             def __init__(self, config):
-                self.config = config
+                self.deep = trading_graph.create_tier_client(config, "deep")
+                self.quick = trading_graph.create_tier_client(config, "quick")
 
-            def _get_provider_kwargs(self):
-                return {"max_retries": 0}
-
-        graph_cls = _bounded_graph_class(BaseGraph)
-        graph = graph_cls(config={"llm_timeout_seconds": 7})
-        self.assertEqual(graph._get_provider_kwargs(), {"max_retries": 0, "timeout": 7.0})
+        with patch.object(trading_graph, "create_tier_client", factory):
+            graph = _bounded_graph_class(BaseGraph)(config={"llm_timeout_seconds": 7})
+            self.assertIs(trading_graph.create_tier_client, factory)
+        self.assertEqual(captured, [("deep", {"timeout": 7.0}), ("quick", {"timeout": 7.0})])
+        self.assertEqual((graph.deep, graph.quick), ("deep", "quick"))
+        self.assertIs(trading_graph.create_tier_client, original)
 
     def test_paper_trading_bridge_disabled_skips(self):
         """模拟盘 bridge — enabled=False 直接 skip,不写库"""

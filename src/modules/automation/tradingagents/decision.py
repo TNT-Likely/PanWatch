@@ -82,13 +82,15 @@ def map_state_to_result(
     rating_labels = RATING_LABEL_MAP_EN if english else RATING_LABEL_MAP
     hold_label = "Hold" if english else "持有"
 
-    # 评级以 PM 正文(final_trade_decision,用户实际看到的最终决策书)为权威来源:
-    # 上游 propagate() 第二个返回的 decision 是对正文的二次提炼,会失真(正文写"卖出"
-    # 却返回 "HOLD"),所以优先解析正文里的显式评级标签。
-    # 优先级:正文显式标签 > 上游 decision > 正文模糊扫描兜底。
+    # v0.7 final_rating 已排除引用他人评级；它是新运行的权威来源。
+    # 只有旧状态没有该字段时才沿用正文标签/decision 的历史兼容逻辑。
     final_text = state.get("final_trade_decision") or ""
     upstream_rating = (ta_result.get("decision") or "").strip().lower()
-    if upstream_rating == REVIEW_RATING:
+    if "final_rating" in state:
+        rating_raw = str(state.get("final_rating") or REVIEW_RATING).strip().lower()
+        if rating_raw not in RATING_LABEL_MAP:
+            rating_raw = REVIEW_RATING
+    elif upstream_rating == REVIEW_RATING:
         # REVIEW 是上游对整份 PM 输出的不可解析判定,不能被正文里的评级词覆盖。
         rating_raw = REVIEW_RATING
     else:
@@ -165,6 +167,8 @@ def map_state_to_result(
             },
             "final_decision": state.get("final_trade_decision") or "",
             "trader_plan": state.get("trader_investment_plan") or "",
+            "run_settings": state.get("run_settings") or {},
+            "memory_note": state.get("memory_note") or "",
         },
     )
 
@@ -300,13 +304,14 @@ def _extract_debate(state: dict) -> dict:
     return {
         "history": debate.get("history", ""),
         "current_response": debate.get("current_response", ""),
-        "judge_decision": debate.get("judge_decision", ""),
+        "judge_decision": state.get("investment_plan") or debate.get("judge_decision", ""),
     }
 
 
 def _risk_judgment(state: dict) -> str:
-    """风控团队裁决:上游在 risk_debate_state.judge_decision(激进/中立/保守辩论后的结论);
-    上游根本没有顶层 risk_judge_decision 字段,早先读它导致风控裁决一直空白。"""
+    """新版 PM 的 final_trade_decision 是风控裁决；旧状态仍可读取。"""
+    if "final_rating" in state:
+        return (state.get("final_trade_decision") or "").strip()
     rds = state.get("risk_debate_state")
     if isinstance(rds, dict):
         jd = (rds.get("judge_decision") or "").strip()
@@ -323,7 +328,7 @@ def _extract_risk_debate(state: dict) -> dict:
         return {}
     return {
         "history": rds.get("history", ""),
-        "judge_decision": rds.get("judge_decision", ""),
+        "judge_decision": _risk_judgment(state),
     }
 
 
@@ -385,7 +390,7 @@ def _render_markdown(
         parts.append(f"### 💼 Trader execution plan\n\n{state['trader_investment_plan']}\n" if english else f"### 💼 交易员执行计划\n\n{state['trader_investment_plan']}\n")
 
     # 研究主管裁决 — 看多/看空辩论后的结论,之前只在折叠的辩论 section 末尾
-    debate = state.get("investment_debate_state") or {}
+    debate = _extract_debate(state)
     judge_decision = ""
     if isinstance(debate, dict):
         judge_decision = (debate.get("judge_decision") or "").strip()

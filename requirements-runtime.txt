@@ -25,11 +25,10 @@ xhtml2pdf>=0.2.17
 # 不在 PyPI,用 git+ URL 安装。会拉 langchain/langgraph/yfinance 等较重依赖
 # (~115 个包,首次安装 2-5 分钟)。
 # 用户启用「TradingAgents 深度分析」Agent 时才会真正调用它;不启用零开销。
-# 锁定到 v0.5.0(release tag,非 @main)。该版本新增原生 portfolio 参数、按 filing
-# 时间的 SEC EDGAR 基本面与独立决策回测。适配层依赖的
-# route_to_vendor/load_ohlcv/get_graph_args/create_initial_state 仍保持签名稳定；
-# REVIEW 不是可交易的 Hold，必须由 result_mapper 显式展示为“待人工复核”。
-tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.5.0
+# 锁定官方 v0.7.0 release tag，避免同名 PyPI 包和浮动 main。
+# Python >=3.11；适配新版 tools/router、as_of_date、并行分析师和 final_rating。
+# REVIEW 保持待人工复核，不能变成可交易的 Hold。
+tradingagents @ git+https://github.com/TauricResearch/TradingAgents.git@v0.7.0
 
 # 本仓内独立行情数据包(editable 本地安装;发 PyPI 前不占外部依赖)
 -e ./packages/marketdata

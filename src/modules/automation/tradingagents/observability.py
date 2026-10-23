@@ -125,7 +125,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
         # 供工作线程里的 callback 把节点/LLM 子 span 挂到 root span 下(关闭时为 None)。
         self._otel_parent = otel.capture_context()
         self._otel_stage_spans: dict[str, Any] = {}
-        self._otel_llm_span: Any = None
+        self._otel_llm_spans: dict[str, Any] = {}
 
     @property
     def elapsed_sec(self) -> float:
@@ -192,7 +192,7 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
         # OTel:TA 的一次 LLM 调用 -> gen_ai 子 span(遵循 GenAI 语义约定)。
-        self._otel_llm_span = otel.start_detached_span(
+        span = otel.start_detached_span(
             f"chat {model}".strip() if model else "chat",
             parent_context=self._otel_parent,
             attributes={
@@ -201,6 +201,8 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
                 **({otel.GEN_AI_REQUEST_MODEL: model} if model else {}),
             },
         )
+        if span is not None:
+            self._otel_llm_spans[operation_id] = span
 
     def on_llm_end(self, response, **kwargs):
         # Prefer aggregate provider usage; modern chat/stream responses expose
@@ -231,16 +233,16 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
             **({"agent": agent, "langgraph_node": agent} if agent else {}),
         )
         # OTel:回填 token 用量并结束 gen_ai span。
-        if self._otel_llm_span is not None:
+        span = self._otel_llm_spans.pop(operation_id, None)
+        if span is not None:
             otel.set_span_attributes(
-                self._otel_llm_span,
+                span,
                 {
                     otel.GEN_AI_USAGE_INPUT_TOKENS: int(prompt_tokens),
                     otel.GEN_AI_USAGE_OUTPUT_TOKENS: int(completion_tokens),
                 },
             )
-            otel.end_span(self._otel_llm_span)
-            self._otel_llm_span = None
+            otel.end_span(span)
 
     def on_chain_start(self, serialized, inputs, **kwargs):
         # LangGraph 节点切换。节点名优先取 kwargs.name/metadata.langgraph_node，
@@ -282,6 +284,10 @@ class PanWatchProgressHandler(_LCBaseCallbackHandler):
 
     def on_llm_error(self, error, **kwargs):
         run_id = str(kwargs.get("run_id") or "")
+        self._llm_runs.pop(run_id, None)
+        span = self._otel_llm_spans.pop(run_id, None)
+        if span is not None:
+            otel.end_span(span)
         with self._usage_lock:
             if not run_id or run_id not in self._usage_run_ids:
                 self._usage_completed_calls += 1

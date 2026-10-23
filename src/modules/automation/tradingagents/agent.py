@@ -23,6 +23,7 @@ from src.modules.automation.tradingagents.observability import (
 from src.modules.automation.tradingagents.runtime_support import (
     VALID_ANALYSTS,
     apply_compat_patches,
+    bounded_tier_clients,
     build_ta_llm_config,
     inject_api_key_env,
 )
@@ -58,19 +59,14 @@ class TradingAgentsUnavailable(RuntimeError):
 def _bounded_graph_class(graph_cls):
     """让 TradingAgentsGraph 把请求边界传给 LangChain LLM 客户端。
 
-    TradingAgents 0.5.0 已支持 ``llm_max_retries``，但当前
-    版本的 ``_get_provider_kwargs`` 尚未读取自定义 timeout。通过一个很小的
-    子类适配该差异，避免直接修改 site-packages，也兼容后续上游自行支持
-    timeout 的版本。
+    TradingAgents 0.7.0 通过 create_tier_client 构造两个模型。
+    仅在构造期间适配 timeout，保持上游工厂和并行图执行行为。
     """
 
     class BoundedTradingAgentsGraph(graph_cls):
-        def _get_provider_kwargs(self):
-            kwargs = dict(super()._get_provider_kwargs())
-            timeout = self.config.get("llm_timeout_seconds")
-            if timeout is not None and timeout != "":
-                kwargs["timeout"] = float(timeout)
-            return kwargs
+        def __init__(self, *args, **kwargs):
+            with bounded_tier_clients():
+                super().__init__(*args, **kwargs)
 
     BoundedTradingAgentsGraph.__name__ = (
         f"Bounded{getattr(graph_cls, '__name__', 'TradingAgentsGraph')}"
@@ -591,7 +587,7 @@ class TradingAgentsAgent(BaseAgent):
         cost_usd = self._extract_cost_from_graph(graph)
 
         return {
-            "decision": str(decision or "HOLD").upper(),
+            "decision": str(decision or "REVIEW").upper(),
             "final_state": dict(final_state) if final_state else {},
             "cost_usd": float(cost_usd or 0.0),
             "token_usage": progress_handler.token_usage if progress_handler else None,

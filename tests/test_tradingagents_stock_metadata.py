@@ -162,74 +162,35 @@ def test_serve_klines_with_data_returns_csv():
     assert "2026-05-15,80,85,79,83.26,1000" in result
 
 
-def test_patch_route_to_vendor_handles_positional_args():
-    """根因修复:上游 route_to_vendor(method, ticker, ...) 是 positional 调用,
-    patch 必须接 *args,否则 TypeError 直接放行到 yfinance"""
-    import sys
-    from unittest.mock import MagicMock
+def test_patch_route_to_vendor_handles_positional_args(monkeypatch):
+    """Real v0.7 router imports must intercept positional A-share tools."""
+    from tradingagents.dataflows import router
+    from unittest.mock import Mock
     from src.modules.automation.tradingagents.toolkit_adapter import patch_route_to_vendor
 
-    # 构造一个假的 tradingagents.dataflows.interface 模块用于测试
-    fake_ti = MagicMock()
-    captured_calls = []
-
-    def original_func(method, *args, **kwargs):
-        captured_calls.append((method, args, kwargs))
-        return "ORIGINAL_RESULT"
-
-    fake_ti.route_to_vendor = original_func
-    fake_module = type(sys)("tradingagents.dataflows.interface")
-    fake_module.route_to_vendor = original_func
-
-    # patch sys.modules 让 toolkit_adapter import 拿到我们的假模块
-    sys.modules["tradingagents"] = type(sys)("tradingagents")
-    sys.modules["tradingagents.dataflows"] = type(sys)("tradingagents.dataflows")
-    sys.modules["tradingagents.dataflows"].interface = fake_module
-    sys.modules["tradingagents.dataflows.interface"] = fake_module
-
-    try:
-        stock = _FakeStock("赛力斯", "601127", "CN")
-        with panwatch_data_context({"stock": stock, "klines": [], "quote": {}}):
-            with patch_route_to_vendor():
-                # 模拟上游 positional 调用:route_to_vendor("get_fundamentals", "601127", "2026-05-17")
-                result = fake_module.route_to_vendor("get_fundamentals", "601127", "2026-05-17")
-
-        # 我们的 patch 必须能识别 positional ticker,不能 TypeError
-        assert "赛力斯" in result
-        assert "601127" in result
-        # 不应该放行到 original(那会触发 captured_calls 增加)
-        assert len(captured_calls) == 0
-    finally:
-        for k in ["tradingagents.dataflows.interface", "tradingagents.dataflows", "tradingagents"]:
-            sys.modules.pop(k, None)
+    original = Mock(return_value="ORIGINAL_RESULT")
+    monkeypatch.setattr(router, "route_to_vendor", original)
+    stock = _FakeStock("赛力斯", "601127", "CN")
+    with panwatch_data_context({"stock": stock, "klines": [], "quote": {}}):
+        with patch_route_to_vendor():
+            result = router.route_to_vendor("get_fundamentals", "601127", "2026-05-17")
+    assert "赛力斯" in result and "601127" in result
+    original.assert_not_called()
+    assert router.route_to_vendor is original
 
 
-def test_patch_route_to_vendor_intercepts_global_news_with_cache():
-    """get_global_news(curr_date, look_back_days, limit) 不带 symbol,
-    但 cache 里有 A 股标的时,必须拦截,避免拉 Yahoo 无关全球新闻"""
-    import sys
+def test_patch_route_to_vendor_intercepts_global_news_with_cache(monkeypatch):
+    """The symbol-less global-news route follows the A-share run context."""
+    from tradingagents.dataflows import router
+    from unittest.mock import Mock
     from src.modules.automation.tradingagents.toolkit_adapter import patch_route_to_vendor
 
-    def original_func(method, *args, **kwargs):
-        return "GLOBAL_SHOE_NEWS_LEAKED"
-
-    fake_module = type(sys)("tradingagents.dataflows.interface")
-    fake_module.route_to_vendor = original_func
-    sys.modules["tradingagents"] = type(sys)("tradingagents")
-    sys.modules["tradingagents.dataflows"] = type(sys)("tradingagents.dataflows")
-    sys.modules["tradingagents.dataflows"].interface = fake_module
-    sys.modules["tradingagents.dataflows.interface"] = fake_module
-
-    try:
-        stock = _FakeStock("赛力斯", "601127", "CN")
-        with panwatch_data_context({"stock": stock, "events": [], "quote": {}}):
-            with patch_route_to_vendor():
-                # get_global_news 第一个参数是日期,不是 ticker
-                result = fake_module.route_to_vendor(
-                    "get_global_news", "2026-05-17", 7, 20
-                )
-        assert "GLOBAL_SHOE_NEWS_LEAKED" not in result
-        assert "DO NOT pull unrelated global news" in result
-    finally:
-        for k in ["tradingagents.dataflows.interface", "tradingagents.dataflows", "tradingagents"]:
-            sys.modules.pop(k, None)
+    original = Mock(return_value="GLOBAL_SHOE_NEWS_LEAKED")
+    monkeypatch.setattr(router, "route_to_vendor", original)
+    stock = _FakeStock("赛力斯", "601127", "CN")
+    with panwatch_data_context({"stock": stock, "events": [], "quote": {}}):
+        with patch_route_to_vendor():
+            result = router.route_to_vendor("get_global_news", "2026-05-17", 7, 20)
+    assert "GLOBAL_SHOE_NEWS_LEAKED" not in result
+    assert "DO NOT pull unrelated global news" in result
+    original.assert_not_called()

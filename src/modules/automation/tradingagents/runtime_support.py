@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ __all__ = [
     "apply_compat_patches",
     "build_ta_llm_config",
     "inject_api_key_env",
+    "bounded_tier_clients",
 ]
 
 
@@ -49,7 +52,7 @@ def build_ta_llm_config(
 ) -> dict[str, Any]:
     """生成 TradingAgents 期望的 config dict。
 
-    继承 tradingagents.default_config.DEFAULT_CONFIG (含 data_cache_dir / project_dir /
+    继承 tradingagents.default_config.DEFAULT_CONFIG (含 data_cache_dir /
     memory_log_path 等必需字段),再覆盖 PanWatch 配置:
     - llm_provider: 统一走 openrouter 兼容协议(走 chat completions,避开 OpenAI Responses API)
     - backend_url: PanWatch AI 服务的 base_url
@@ -61,8 +64,8 @@ def build_ta_llm_config(
     - selected_analysts: ["market", "social", "news", "fundamentals"]
     - output_language: "Chinese" / "English"
 
-    注意:TA 上游 deep + quick 共用 backend_url,所以两个模型必须在**同一个 endpoint** 后面。
-    要混 Claude + GPT 推荐 LiteLLM proxy 把多 provider 聚合到一个 endpoint。
+    PanWatch 的两个模型共用选定 AI 服务；显式覆盖上游 tier provider/endpoint，
+    避免 TRADINGAGENTS_* 环境默认值把某一层模型送到其他服务。
     """
     analysts = list(selected_analysts or VALID_ANALYSTS)
     invalid = [a for a in analysts if a not in VALID_ANALYSTS]
@@ -71,7 +74,7 @@ def build_ta_llm_config(
             f"非法 analyst 名: {invalid}; 合法值: {sorted(VALID_ANALYSTS)}"
         )
 
-    # 继承上游默认 config(含 data_cache_dir / project_dir / memory_log_path 等),
+    # 继承上游默认 config(含 data_cache_dir / memory_log_path 等),
     # 否则 TradingAgentsGraph.__init__ 用 os.makedirs(config["data_cache_dir"]) 会 KeyError。
     try:
         from tradingagents.default_config import DEFAULT_CONFIG as _UPSTREAM_DEFAULT
@@ -129,6 +132,10 @@ def build_ta_llm_config(
     config.update({
         "llm_provider": "openrouter",
         "backend_url": ai_client.base_url,
+        "deep_think_provider": "openrouter",
+        "quick_think_provider": "openrouter",
+        "deep_think_backend_url": ai_client.base_url,
+        "quick_think_backend_url": ai_client.base_url,
         "deep_think_llm": deep_llm,
         "quick_think_llm": quick_llm,
         "max_debate_rounds": max(1, int(debate_rounds)),
@@ -144,6 +151,44 @@ def build_ta_llm_config(
         "llm_max_retries": max(0, int(llm_max_retries)),
     })
     return config
+
+
+_tier_patch_lock = threading.RLock()
+_tier_patch_users = 0
+_real_create_tier_client = None
+
+
+@contextmanager
+def bounded_tier_clients():
+    """Forward each graph's request timeout through v0.7's tier factory.
+
+    The removed ``_get_provider_kwargs`` hook no longer bounds SDK requests.
+    Reference counting lets concurrent constructors share this stateless wrapper;
+    each call reads its own config, and the last constructor restores upstream.
+    """
+    from tradingagents.graph import trading_graph
+
+    global _tier_patch_users, _real_create_tier_client
+    with _tier_patch_lock:
+        if _tier_patch_users == 0:
+            original = trading_graph.create_tier_client
+            _real_create_tier_client = original
+
+            def create_bounded_client(config, tier, **extra):
+                timeout = config.get("llm_timeout_seconds")
+                if timeout is not None and timeout != "":
+                    extra["timeout"] = float(timeout)
+                return original(config, tier, **extra)
+
+            trading_graph.create_tier_client = create_bounded_client
+        _tier_patch_users += 1
+    try:
+        yield
+    finally:
+        with _tier_patch_lock:
+            _tier_patch_users -= 1
+            if _tier_patch_users == 0:
+                trading_graph.create_tier_client = _real_create_tier_client
 
 
 def inject_api_key_env(ai_client: AIClient) -> None:

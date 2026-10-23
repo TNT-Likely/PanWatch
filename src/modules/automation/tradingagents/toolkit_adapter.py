@@ -1,6 +1,6 @@
 """把 PanWatch Provider 体系适配进 TradingAgents 数据流。
 
-TradingAgents 上游(0.2.x)默认通过 `tradingagents.dataflows.interface.route_to_vendor`
+TradingAgents 上游(0.7.0)默认通过 `tradingagents.dataflows.router.route_to_vendor`
 把数据请求路由到 yfinance / alpha_vantage 等 vendor。**没有公开 toolkit 注入入口**。
 
 我们的策略:**monkeypatch route_to_vendor**。当 LangGraph 节点调用 `get_stockstats_*`
@@ -186,16 +186,11 @@ def _yfinance_response_has_data(text: str) -> bool:
     return True
 
 
-# 上游 tool 文件用 `from tradingagents.dataflows.interface import route_to_vendor`,
+# 上游 tool 文件用 `from tradingagents.dataflows.router import route_to_vendor`,
 # 这是 import-time binding,每个模块持有 **原函数引用**。
 # 只 patch 源头模块属性不够 —— 必须把每个 import site 的 module-level
 # 名字都替换掉,所有调用才会走我们的拦截。
-_ROUTE_TO_VENDOR_IMPORT_SITES = (
-    "tradingagents.agents.utils.fundamental_data_tools",
-    "tradingagents.agents.utils.news_data_tools",
-    "tradingagents.agents.utils.core_stock_tools",
-    "tradingagents.agents.utils.technical_indicators_tools",
-)
+_ROUTE_TO_VENDOR_IMPORT_SITES = ("tradingagents.agents.tools",)
 
 
 # patch 引用计数:多个并发深度分析共享同一次安装,第一个进入者保存真
@@ -404,7 +399,7 @@ def _patched_route_to_vendor(method_name: str, *args, **kwargs):
 
 @contextmanager
 def patch_route_to_vendor():
-    """Monkeypatch tradingagents.dataflows.interface.route_to_vendor + 所有 import sites。
+    """Monkeypatch tradingagents.dataflows.router.route_to_vendor + 所有 import sites。
 
     当请求 A 股代码时,从 _PANWATCH_DATA(当前 context)返回 PanWatch 已拉的数据。
     非 A 股放行到原函数。
@@ -417,7 +412,7 @@ def patch_route_to_vendor():
     global _patch_refcount, _real_route_to_vendor
 
     try:
-        from tradingagents.dataflows import interface as ta_interface
+        from tradingagents.dataflows import router as ta_interface
     except ImportError:
         logger.warning("[TA toolkit] tradingagents 未安装,跳过 monkeypatch")
         yield
@@ -478,16 +473,13 @@ def patch_route_to_vendor():
 _LOAD_OHLCV_PATCHED = False
 _real_load_ohlcv: Any = None
 _LOAD_OHLCV_IMPORT_SITES = (
-    "tradingagents.dataflows.market_data_validator",
-    "tradingagents.dataflows.interface",
-    "tradingagents.dataflows.y_finance",
+    "tradingagents.dataflows.vendors.yahoo.snapshot",
+    "tradingagents.dataflows.vendors.yahoo.market",
 )
 
 _MARKET_SNAPSHOT_PATCHED = False
 _real_build_verified_market_snapshot: Any = None
-_MARKET_SNAPSHOT_IMPORT_SITES = (
-    "tradingagents.agents.utils.market_data_validation_tools",
-)
+_MARKET_SNAPSHOT_IMPORT_SITES = ("tradingagents.agents.tools",)
 
 
 def _market_for_symbol(symbol: str):
@@ -552,6 +544,7 @@ def _is_market_data_failure(error: Exception) -> bool:
             "yfratelimiterror",
             "nomarketdataerror",
             "vendorratelimiterror",
+            "vendorunavailableerror",
             "vendornotconfigurederror",
         }
         or any(token in detail for token in (
@@ -612,14 +605,14 @@ def _load_panwatch_ohlcv_or_raise(symbol: str, curr_date: str, *, fallback: bool
         )
 
 
-def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
+def _panwatch_load_ohlcv(symbol: str, as_of_date: str, fill_gaps: bool = True):
     """A/HK 直接走 MarketData；美股优先 Yahoo，失败时再降级 MarketData。"""
     _raise_if_cancelled()
     if is_panwatch_routable(symbol):
-        return _load_panwatch_ohlcv_or_raise(symbol, curr_date)
+        return _load_panwatch_ohlcv_or_raise(symbol, as_of_date)
 
     try:
-        upstream_df = _real_load_ohlcv(symbol, curr_date, *args, **kwargs)
+        upstream_df = _real_load_ohlcv(symbol, as_of_date, fill_gaps=fill_gaps)
         if upstream_df is not None and not upstream_df.empty:
             _emit_toolkit_log("info", "PASSTHROUGH", "load_ohlcv", symbol, source="yfinance")
             return upstream_df
@@ -630,19 +623,19 @@ def _panwatch_load_ohlcv(symbol: str, curr_date: str, *args, **kwargs):
         logger.warning(f"[TA toolkit] Yahoo OHLCV 不可用，降级 MarketData symbol={symbol}: {exc}")
         _emit_toolkit_log("warning", "DEGRADE", "load_ohlcv", symbol, source="yfinance", error=str(exc)[:200])
     _raise_if_cancelled()
-    return _load_panwatch_ohlcv_or_raise(symbol, curr_date, fallback=True)
+    return _load_panwatch_ohlcv_or_raise(symbol, as_of_date, fallback=True)
 
 
 def _safe_build_verified_market_snapshot(
     symbol: str,
-    curr_date: str,
+    as_of_date: str,
     look_back_days: int = 30,
     indicators: Any = None,
 ) -> str:
     """行情全部不可用时返回约束性提示，避免单个工具异常中断图执行。"""
     try:
         return _real_build_verified_market_snapshot(
-            symbol, curr_date, look_back_days, indicators=indicators
+            symbol, as_of_date, look_back_days, indicators=indicators
         )
     except Exception as exc:
         if not _is_market_data_failure(exc):
@@ -653,7 +646,7 @@ def _safe_build_verified_market_snapshot(
         )
         return (
             f"## Verified market data unavailable for {symbol.upper()}\n\n"
-            f"- Requested analysis date: {curr_date}\n"
+            f"- Requested analysis date: {as_of_date}\n"
             "- No usable OHLCV data was returned by the configured providers.\n\n"
             "Do not make exact price, indicator, stop-loss, or trade-action claims. "
             "State that market data is temporarily unavailable and limit the analysis "
@@ -667,7 +660,7 @@ def _ensure_load_ohlcv_patched() -> None:
     if _LOAD_OHLCV_PATCHED:
         return
     try:
-        from tradingagents.dataflows import stockstats_utils
+        from tradingagents.dataflows.vendors.yahoo import ohlcv as stockstats_utils
     except ImportError:
         return
     if not hasattr(stockstats_utils, "load_ohlcv"):
@@ -697,7 +690,7 @@ def _ensure_market_snapshot_patched() -> None:
     if _MARKET_SNAPSHOT_PATCHED:
         return
     try:
-        from tradingagents.dataflows import market_data_validator
+        from tradingagents.dataflows.vendors.yahoo import snapshot as market_data_validator
     except ImportError:
         return
     if not hasattr(market_data_validator, "build_verified_market_snapshot"):
