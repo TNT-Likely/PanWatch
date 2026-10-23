@@ -157,7 +157,7 @@ export function AnalysisReader({ result, documentView, onModeChange }: {
           </div>
         </div>
         <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelectedId(null) }}>
-          <DialogContent className="w-[94vw] max-w-4xl flex max-h-[90vh] flex-col overflow-hidden p-0" onCloseAutoFocus={event => { if (focusOriginal.current) { event.preventDefault(); documentTabRef.current?.focus(); focusOriginal.current = false } }}>
+          <DialogContent className="w-[94vw] max-w-4xl flex max-h-[90vh] flex-col overflow-hidden p-0" onCloseAutoFocus={event => { if (focusOriginal.current) { event.preventDefault(); documentTabRef.current?.focus({ preventScroll: true }); focusOriginal.current = false } }}>
             <DialogHeader className="mb-0 shrink-0 border-b border-border/50 p-4 pr-14">
               <DialogTitle>{selected?.title}</DialogTitle>
               <DialogDescription>{tr('detailHint')}</DialogDescription>

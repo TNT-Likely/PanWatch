@@ -30,6 +30,7 @@ describe('analysis reading graph', () => {
     expect(screen.getByTestId('original').textContent).toBe('decision')
     expect(screen.queryByRole('region', { name: '决策流程图' })).toBeNull()
     await openGraph(user)
+    const originalFocus = vi.spyOn(screen.getByRole('tab', { name: '原文阅读' }), 'focus')
     expect(screen.getByRole('button', { name: '情绪分析师' }).hasAttribute('disabled')).toBe(true)
     await user.click(screen.getByRole('button', { name: '新闻分析师' }))
     const reading = screen.getByRole('dialog', { name: '新闻分析师' })
@@ -39,6 +40,7 @@ describe('analysis reading graph', () => {
     expect(screen.getByTestId('original').textContent).toBe('news')
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: '原文阅读' }))
+    expect(originalFocus).toHaveBeenCalledWith({ preventScroll: true })
   })
 
   it('shows conclusion excerpts and keeps all five debate roles distinct', async () => {
