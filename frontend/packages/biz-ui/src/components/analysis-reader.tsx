@@ -134,7 +134,7 @@ export function AnalysisReader({ result, documentView, onModeChange }: {
             <Button size="sm" variant="ghost" aria-label={tr('zoomIn')} disabled={zoom >= 1.3} onClick={() => setZoom(value => Math.min(1.3, value + 0.1))}><Plus className="h-3.5 w-3.5" aria-hidden="true" /></Button>
             <Button size="sm" variant="ghost" className="gap-1.5 text-[12px]" onClick={() => setZoom(Math.max(0.3, Math.min(1.3, ((viewportRef.current?.clientWidth || 960) - 16) / width)))}><Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />{tr('fit')}</Button>
           </div>
-          <div ref={viewportRef} role="region" aria-label={tr('map')} tabIndex={0} className="max-h-[70vh] overflow-auto scrollbar overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
+          <div ref={viewportRef} role="region" aria-label={tr('map')} tabIndex={0} className="max-h-[70vh] overflow-auto scrollbar overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundImage: 'radial-gradient(hsl(var(--border)) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
             <div className="relative mx-auto" style={{ width: width * zoom, height: (endY + 50) * zoom }}>
               <div className="absolute left-0 top-0 origin-top-left" style={{ width, height: endY + 50, transform: `scale(${zoom})` }}>
                 <svg width={width} height={endY + 50} className="pointer-events-none absolute inset-0 text-muted-foreground/50" aria-hidden="true">
