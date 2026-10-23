@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#-feature-overview">Feature overview</a> · <a href="#core-features">Core features</a> · <a href="#quick-start">Quick start</a> · <a href="#reference">Reference</a> · <a href="#support-the-project">Support</a> · <a href="#contributing">Contributing</a>
+  <a href="#-feature-overview">Feature overview</a> · <a href="#core-features">Core features</a> · <a href="#quick-start">Quick start</a> · <a href="#one-click-deploy">One-click deploy</a> · <a href="#reference">Reference</a> · <a href="#support-the-project">Support</a> · <a href="#contributing">Contributing</a>
 </p>
 
 <p align="center">
@@ -142,6 +142,14 @@ The image includes Playwright's system dependencies. Chromium's headless shell f
 If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BROWSER_INSTALL=1` to skip this installation.
 
 </details>
+
+## One-Click Deploy
+
+<a href="https://repocloud.io/details/PanWatch/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" height="42"></a>
+<a href="https://railway.com/deploy/panwatch"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="42"></a>
+
+- RepoCloud: One-click template, no other instructions required.
+- Railway: Login credentials are preset by the template, as described in its [deployment notes](https://railway.com/deploy/panwatch).
 
 ## Reference
 
