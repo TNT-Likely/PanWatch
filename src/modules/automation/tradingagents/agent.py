@@ -581,6 +581,8 @@ class TradingAgentsAgent(BaseAgent):
                 date_str,
                 portfolio=to_tradingagents_portfolio(portfolio),
             )
+            # Upstream includes settings in its disk log, but not propagate's state.
+            final_state = {**dict(final_state or {}), "run_settings": graph.run_settings()}
 
         # Keep upstream cost metadata for legacy consumers, without fabricating
         # a charge from assumed tokens/model prices. The UI shows provider usage.
