@@ -121,7 +121,7 @@ def test_tier_defaults_cannot_override_the_selected_panwatch_service(monkeypatch
     monkeypatch.setitem(DEFAULT_CONFIG, "quick_think_backend_url", "https://other.example/v1")
     client = SimpleNamespace(base_url="https://selected.example/v1", model="chosen")
     config = build_ta_llm_config(client)
-    assert config["deep_think_provider"] == config["quick_think_provider"] == "openrouter"
+    assert config["deep_think_provider"] == config["quick_think_provider"] == "openai_compatible"
     assert config["deep_think_backend_url"] == config["quick_think_backend_url"] == client.base_url
 
 

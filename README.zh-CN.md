@@ -214,7 +214,7 @@ docker compose up -d
 <details>
 <summary>本地开发</summary>
 
-**环境要求**：Python 3.10+ / Node.js 24.14.0 / pnpm 9.15.9
+**环境要求**：Python 3.11+ / Node.js 24.14.0 / pnpm 9.15.9
 
 ```bash
 # 一键开发（推荐）

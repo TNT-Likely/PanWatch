@@ -1,13 +1,15 @@
 import json
 import logging
 import os
-import shutil
+import sqlite3
 import time
 from datetime import datetime
+from contextlib import closing
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
+from src.platform.runtime.paths import get_data_dir
 
 from src.platform.persistence.migrations import (
     has_pending_migrations,
@@ -16,7 +18,7 @@ from src.platform.persistence.migrations import (
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "panwatch.db")
+DB_PATH = str(get_data_dir() / "panwatch.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # SQLite 适合本地开发和单实例部署，但并发写入时不能无限等待锁。
@@ -82,14 +84,15 @@ def init_db():
 
 
 def _init_db_once() -> None:
+    # Take the recovery snapshot before any schema or legacy data changes.
+    if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0 and has_pending_migrations(engine):
+        _backup_db_before_migration()
     Base.metadata.create_all(bind=engine)
     _migrate(engine)
     _migrate_old_providers(engine)
     _migrate_settings_to_models(engine)
     _migrate_positions_to_accounts(engine)
     _migrate_remove_stock_enabled(engine)
-    if has_pending_migrations(engine):
-        _backup_db_before_migration()
     run_versioned_migrations(engine)
 
 
@@ -187,13 +190,17 @@ def _backup_db_before_migration() -> None:
     except Exception:
         return
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     backup_path = f"{DB_PATH}.bak.{ts}"
     try:
-        shutil.copy2(DB_PATH, backup_path)
+        # The backup API includes committed WAL frames and a consistent snapshot.
+        with closing(sqlite3.connect(DB_PATH, timeout=5)) as source, closing(sqlite3.connect(backup_path)) as target:
+            source.backup(target)
         logger.info(f"数据库迁移前备份已创建: {backup_path}")
     except Exception as e:
-        logger.warning(f"数据库迁移前备份失败: {e}")
+        if os.path.exists(backup_path):
+            os.unlink(backup_path)
+        raise RuntimeError("Database migration aborted: recovery backup failed") from e
 
 
 def _migrate(engine):

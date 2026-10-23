@@ -95,7 +95,9 @@ def test_marketdata_stock_list_keeps_its_project_level_cache_location():
     """Moving the adapter must not silently create a second cache under src/."""
     from src.platform.marketdata.stock_list import CACHE_FILE
 
-    assert Path(CACHE_FILE).resolve().parent == SOURCE_ROOT.parent / "data"
+    from src.platform.runtime.paths import get_data_dir
+
+    assert Path(CACHE_FILE).resolve().parent == get_data_dir()
 
 
 def test_removed_transition_facades_are_not_reintroduced():

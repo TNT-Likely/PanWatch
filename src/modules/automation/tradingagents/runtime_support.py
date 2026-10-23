@@ -14,6 +14,7 @@ import logging
 import os
 import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,6 @@ __all__ = [
     "VALID_ANALYSTS",
     "apply_compat_patches",
     "build_ta_llm_config",
-    "inject_api_key_env",
     "bounded_tier_clients",
 ]
 
@@ -54,7 +54,7 @@ def build_ta_llm_config(
 
     继承 tradingagents.default_config.DEFAULT_CONFIG (含 data_cache_dir /
     memory_log_path 等必需字段),再覆盖 PanWatch 配置:
-    - llm_provider: 统一走 openrouter 兼容协议(走 chat completions,避开 OpenAI Responses API)
+    - llm_provider: 统一走 openai_compatible 兼容协议(走 chat completions,避开 OpenAI Responses API)
     - backend_url: PanWatch AI 服务的 base_url
     - deep_think_llm: 推理/辩论/风控/PM 用的"强模型"。默认走 ai_client.model;
       可由 deep_model 参数覆盖,允许辩论用 claude-sonnet / o3 这种贵但准的模型
@@ -118,11 +118,9 @@ def build_ta_llm_config(
     })
 
     # PanWatch 覆盖。
-    # ⚠️ llm_provider 故意不用 "openai":TA 检测到 openai 会强制开 use_responses_api=True
-    # (OpenAI Responses API,/v1/responses 端点),硅基流动/智谱/Ollama 等第三方 OpenAI 兼容
-    # 服务不支持这个端点,会 404。
-    # 用 "openrouter" 走标准 chat completions (/v1/chat/completions),同时 backend_url
-    # 覆盖默认 openrouter 端点为 PanWatch 配置的真实 base_url。
+    # Upstream's openrouter provider requires an ambient key before honoring
+    # explicit kwargs. Its generic compatible provider accepts instance keys
+    # and retains Chat Completions for remote gateways and keyless local models.
     # 双模型解析:
     # - deep_model 未指定 → 用 ai_client.model
     # - quick_model 未指定 → 用 deep_model(单模型场景退化)
@@ -130,10 +128,10 @@ def build_ta_llm_config(
     quick_llm = (quick_model or deep_llm or "").strip() or deep_llm
 
     config.update({
-        "llm_provider": "openrouter",
+        "llm_provider": "openai_compatible",
         "backend_url": ai_client.base_url,
-        "deep_think_provider": "openrouter",
-        "quick_think_provider": "openrouter",
+        "deep_think_provider": "openai_compatible",
+        "quick_think_provider": "openai_compatible",
         "deep_think_backend_url": ai_client.base_url,
         "quick_think_backend_url": ai_client.base_url,
         "deep_think_llm": deep_llm,
@@ -153,13 +151,14 @@ def build_ta_llm_config(
     return config
 
 
+_tier_api_key: ContextVar[str | None] = ContextVar("tradingagents_api_key", default=None)
 _tier_patch_lock = threading.RLock()
 _tier_patch_users = 0
 _real_create_tier_client = None
 
 
 @contextmanager
-def bounded_tier_clients():
+def bounded_tier_clients(api_key: str | None = None):
     """Forward each graph's request timeout through v0.7's tier factory.
 
     The removed ``_get_provider_kwargs`` hook no longer bounds SDK requests.
@@ -168,6 +167,7 @@ def bounded_tier_clients():
     """
     from tradingagents.graph import trading_graph
 
+    token = _tier_api_key.set(api_key)
     global _tier_patch_users, _real_create_tier_client
     with _tier_patch_lock:
         if _tier_patch_users == 0:
@@ -178,6 +178,10 @@ def bounded_tier_clients():
                 timeout = config.get("llm_timeout_seconds")
                 if timeout is not None and timeout != "":
                     extra["timeout"] = float(timeout)
+                # Instance-owned credentials never pass through process globals.
+                key = _tier_api_key.get()
+                if key is not None:
+                    extra["api_key"] = key or "panwatch-local"
                 return original(config, tier, **extra)
 
             trading_graph.create_tier_client = create_bounded_client
@@ -185,30 +189,11 @@ def bounded_tier_clients():
     try:
         yield
     finally:
+        _tier_api_key.reset(token)
         with _tier_patch_lock:
             _tier_patch_users -= 1
             if _tier_patch_users == 0:
                 trading_graph.create_tier_client = _real_create_tier_client
-
-
-def inject_api_key_env(ai_client: AIClient) -> None:
-    """把 PanWatch AI 服务的 API key 注入到环境变量。
-
-    TradingAgents llm_clients 按 provider 读不同 env var
-    (OPENAI_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY 等)。
-    我们 PanWatch 走 openrouter 兼容模式(chat completions),所以注入
-    OPENROUTER_API_KEY。同时也设 OPENAI_API_KEY 作 fallback。
-
-    注意:这是进程级 env var,如果同进程并发跑多个不同 key 的请求,可能竞态。
-    P0 假设 max_workers=2 且只用一个 AI service,可接受。
-    """
-    if not ai_client.api_key:
-        logger.warning("[TA] AIClient 没有 api_key,TradingAgents LLM 调用大概率失败")
-        return
-    # 覆盖多个候选 env var,让 TA 不管走哪条 provider 分支都能取到 key
-    os.environ["OPENROUTER_API_KEY"] = ai_client.api_key
-    os.environ["OPENAI_API_KEY"] = ai_client.api_key
-    os.environ["DEEPSEEK_API_KEY"] = ai_client.api_key
 
 
 # ============================================================================

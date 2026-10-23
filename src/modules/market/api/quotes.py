@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -9,6 +10,7 @@ from src.platform.marketdata.quote_display import daily_quote_fields
 from src.web.errors import api_error
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class QuoteItem(BaseModel):
@@ -17,7 +19,7 @@ class QuoteItem(BaseModel):
 
 
 class QuoteBatchRequest(BaseModel):
-    items: list[QuoteItem]
+    items: list[QuoteItem] = Field(default_factory=list, max_length=500)
 
 
 def _parse_market(market: str) -> MarketCode:
@@ -96,8 +98,17 @@ async def get_quotes_batch(payload: QuoteBatchRequest):
         market_items.setdefault(market_code, []).append(item.symbol)
 
     quotes_by_market: dict[MarketCode, dict[str, dict]] = {}
-    for market_code, symbols in market_items.items():
-        rows = await asyncio.to_thread(md_quote_rows, symbols, market_code.value)
+    async def load(market_code, symbols):
+        try:
+            return market_code, await asyncio.wait_for(
+                asyncio.to_thread(md_quote_rows, list(dict.fromkeys(symbols)), market_code.value),
+                timeout=15,
+            )
+        except Exception:
+            logger.warning("Batch quotes unavailable for market %s", market_code.value, exc_info=True)
+            return market_code, []
+
+    for market_code, rows in await asyncio.gather(*(load(market, symbols) for market, symbols in market_items.items())):
         quotes_by_market[market_code] = {item.get("symbol"): item for item in rows}
 
     results = []

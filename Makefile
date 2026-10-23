@@ -83,7 +83,7 @@ eval:
 
 # 命令行系统自检:跑一遍数据源/AI/通知 + DB/磁盘/调度,打印结果与修复建议
 doctor:
-	@$(VENV_PYTHON) -m src.core.doctor
+	@$(VENV_PYTHON) -m src.modules.administration.doctor
 
 # 用法: make build VERSION=0.3.0
 build:

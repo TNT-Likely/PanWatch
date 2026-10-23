@@ -12,12 +12,13 @@ from pan_investment_research import ResearchSignal
 
 from src.modules.strategy.intraday_event_gate import adaptive_price_threshold
 from src.platform.persistence.json_store import read_json, write_json_atomic
+from src.platform.runtime.paths import get_data_dir
 
 _LOCK = threading.Lock()
 
 
 def _path():
-    return str(Path(os.environ.get("DATA_DIR", "./data")) / "state/intraday_research_signals.json")
+    return str(get_data_dir() / "state/intraday_research_signals.json")
 
 
 def number(value):

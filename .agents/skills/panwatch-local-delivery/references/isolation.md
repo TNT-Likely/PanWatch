@@ -8,11 +8,11 @@ React/Vite 前端与 Python/FastAPI 后端；正常入口 `server:app`。先记�
 
 | 位置 | 当前行为 | QA 适配 |
 |---|---|---|
-| `src/platform/persistence/database.py` | DB 固定在源码根 `data/panwatch.db`，导入即创建目录/engine | 独立源码副本；仅设 DATA_DIR 无法隔离 |
-| `src/platform/marketdata/stock_list.py` | 股票缓存固定在源码根 `data/` | 随源码副本隔离 |
+| `src/platform/persistence/database.py` | DB 使用统一 DATA_DIR，默认源码根 data/，导入即创建目录/engine | 独立源码副本与显式 QA DATA_DIR |
+| `src/platform/marketdata/stock_list.py` | 股票缓存遵循统一 DATA_DIR | 与 QA DB 使用相同 data/ |
 | `src/platform/runtime/config.py` | 从 cwd 的 `.env` 加载 | cwd 固定为 QA 源码；生成空 QA .env |
 | 事件状态、头像 | 部分写入读取 DATA_DIR | 显式设为 QA 源码的 data/ |
-| `server.py` | 合并证书写源码根 data/，浏览器可能写共享缓存 | 检查缓存位置，禁止启动时自动安装浏览器 |
+| `server.py` | 合并证书遵循统一 DATA_DIR，浏览器可能写共享缓存 | 检查缓存位置，禁止启动时自动安装浏览器 |
 | 静态路由 | 服务源码根 `static/` | QA 副本构建前端并记录产物 hash |
 | `frontend/vite.config.ts` | dev 默认 5183，代理到现用 8000 | 使用后端同源静态产物 |
 | 本地 package editable 安装 | .venv 可能导入原 checkout | 置顶副本 package 路径，实际核对模块来源 |

@@ -1,8 +1,7 @@
 """股票标的清单的数据源适配器、项目级缓存与模糊搜索。
 
 清单可被 API、任务调度和业务模块共同使用，因此属于市场数据平台，而不是
-HTTP 层。缓存仍固定保存在项目根目录的 ``data/``，避免移动代码后悄然生成
-另一份 ``src/data`` 缓存。
+HTTP 层。缓存遵循 DATA_DIR；未配置时沿用项目根目录的 data/。
 """
 import json
 import os
@@ -15,11 +14,12 @@ from pathlib import Path
 import httpx
 
 from src.platform.marketdata.instruments import infer_asset_type
+from src.platform.runtime.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = get_data_dir()
 CACHE_FILE = DATA_DIR / "stock_list_cache.json"
 CACHE_TTL = 86400 * 7  # 7 days
 CACHE_VERSION = 2  # Include listed ETFs; refresh pre-ETF catalogs once.

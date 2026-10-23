@@ -8,8 +8,8 @@
 - 平仓(event):逐日检查止损/止盈;同日双触保守判为先止损;达最大持有交易日按收盘平。
 - 跳空:开盘已越过止损/止盈则按开盘价成交(gap)。
 - 仓位:默认每笔固定名义资金,买 A 股 100 股整数倍(可注入 sizer 供 Phase 1 替换)。
-- 净值曲线:按平仓日累积已实现盈亏(简化);并发持仓的逐日浮动 mark 留作后续扩展。
-- 涨跌停无法成交约束未建模(TODO:需前收 + 板块判定)。
+- 净值曲线:逐交易日按收盘价估值，买入占用现金，按实际持有期间计算风险。
+- 成交约束:停牌/零成交量与显式价格边界；未提供涨跌停价时不猜测板块规则。
 
 另提供 horizon_return():复刻 strategy_engine.evaluate_strategy_outcomes 口径,用于交叉验证。
 """
@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -65,6 +65,7 @@ class BacktestResult:
     metrics: dict
     initial_capital: float
     skipped: int = 0
+    open_positions: list[BTTrade] = field(default_factory=list)
 
 
 PositionSizer = Callable[[float], int]  # price -> qty
@@ -111,7 +112,8 @@ class Backtester:
             return None
         entry_bar = bars[ei]
         entry_price = entry_bar.open if signal.entry_price is None else float(signal.entry_price)
-        if entry_price <= 0:
+        if (entry_price <= 0 or not entry_bar.tradable or entry_bar.volume <= 0
+                or (entry_bar.limit_up is not None and entry_price >= entry_bar.limit_up)):
             return None
         qty = self.sizer(entry_price)
         if qty <= 0:
@@ -127,6 +129,8 @@ class Backtester:
         for j in range(ei + 1, len(bars)):
             held = j - ei
             bar = bars[j]
+            if not bar.tradable or bar.volume <= 0 or (bar.limit_down is not None and bar.high <= bar.limit_down):
+                continue
             if stop and stop > 0:
                 if bar.open <= stop:  # 跳空跌破
                     exit_price, exit_date, exit_reason = bar.open, bar.date, "stop_loss"
@@ -147,10 +151,16 @@ class Backtester:
 
         if exit_price is None:
             last = bars[-1]
-            exit_price, exit_date, exit_reason = last.close, last.date, "eod"
+            can_sell = (len(bars) - 1 > ei and last.tradable and last.volume > 0
+                        and (last.limit_down is None or last.high > last.limit_down))
+            exit_price, exit_date, exit_reason = last.close, last.date, "eod" if can_sell else "open"
             held = len(bars) - 1 - ei
 
         rt = self.cost.round_trip_pnl(entry_price, exit_price, qty)
+        if exit_reason == "open":
+            buy = rt["buy"]
+            pnl = exit_price * qty + buy.cash_delta
+            rt.update(pnl=round(pnl, 4), pnl_pct=pnl / -buy.cash_delta * 100, total_cost=buy.friction)
         return BTTrade(
             symbol=signal.symbol,
             market=signal.market,
@@ -173,36 +183,59 @@ class Backtester:
 
         bars_by_symbol: 键可为 (symbol, market) 或 symbol。
         """
-        trades: list[BTTrade] = []
+        planned: list[BTTrade] = []
+        histories: dict[tuple[str, str], dict[str, PriceBar]] = {}
         skipped = 0
         for sig in signals:
-            bars = bars_by_symbol.get((sig.symbol, sig.market)) or bars_by_symbol.get(sig.symbol)
-            if not bars:
+            bars = bars_by_symbol.get((sig.symbol, sig.market)) or bars_by_symbol.get(sig.symbol) or []
+            trade = self.run_single(sig, bars)
+            if trade is None:
                 skipped += 1
                 continue
-            t = self.run_single(sig, bars)
-            if t is None:
-                skipped += 1
-                continue
-            trades.append(t)
+            planned.append(trade)
+            histories[(sig.symbol, sig.market)] = {bar.date: bar for bar in bars}
 
-        trades_sorted = sorted(trades, key=lambda t: t.exit_date)
-        equity = self.initial_capital
-        curve = [self.initial_capital]
-        dates = [""]
-        for t in trades_sorted:
-            equity += t.pnl
+        baseline = min((sig.signal_date for sig in signals), default="")
+        end = max((trade.exit_date for trade in planned), default=baseline)
+        days = sorted({day for history in histories.values() for day in history if baseline < day <= end})
+        entries: dict[str, list[BTTrade]] = {}
+        for trade in sorted(planned, key=lambda t: (t.entry_date, t.market, t.symbol)):
+            entries.setdefault(trade.entry_date, []).append(trade)
+        cash = self.initial_capital
+        curve, dates = [cash], [baseline]
+        held: dict[tuple[str, str], tuple[BTTrade, float]] = {}
+        trades: list[BTTrade] = []
+        for day in days:
+            # Open purchases cannot spend the proceeds of a later intraday sale.
+            for trade in entries.get(day, []):
+                key = (trade.symbol, trade.market)
+                buy = self.cost.fill("buy", trade.entry_price, trade.quantity)
+                if key in held or -buy.cash_delta > cash:
+                    skipped += 1
+                    continue
+                cash += buy.cash_delta
+                held[key] = (trade, trade.entry_price)
+            for key, (trade, last_price) in list(held.items()):
+                bar = histories[key].get(day)
+                if bar is not None:
+                    last_price = bar.close
+                held[key] = (trade, last_price)
+                if trade.exit_date == day and trade.exit_reason != "open":
+                    cash += self.cost.fill("sell", trade.exit_price, trade.quantity).cash_delta
+                    trades.append(trade)
+                    del held[key]
+            equity = cash + sum(trade.quantity * mark for trade, mark in held.values())
             curve.append(round(equity, 4))
-            dates.append(t.exit_date)
+            dates.append(day)
 
-        pnls = [t.pnl for t in trades]
         return BacktestResult(
             trades=trades,
             equity_curve=curve,
             equity_dates=dates,
-            metrics=M.summarize(curve, pnls),
+            metrics=M.summarize(curve, [trade.pnl for trade in trades]),
             initial_capital=self.initial_capital,
             skipped=skipped,
+            open_positions=[trade for trade, _ in held.values()],
         )
 
 

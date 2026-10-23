@@ -21,6 +21,7 @@ from src.platform.persistence.models import (
 )
 from src.platform.observability.log_handler import DBLogHandler
 from src.platform.runtime.config import Settings, AppConfig, StockConfig
+from src.platform.runtime.paths import get_data_dir
 from src.platform.marketdata.models import MarketCode
 from src.platform.marketdata.javascript_runtime import warmup_javascript_runtime
 from src.platform.ai.ai_client import AIClient
@@ -117,7 +118,7 @@ def setup_ssl():
 
     import certifi
 
-    bundle_path = os.path.join(os.path.dirname(__file__), "data", "ca-bundle.pem")
+    bundle_path = str(get_data_dir() / "ca-bundle.pem")
     os.makedirs(os.path.dirname(bundle_path), exist_ok=True)
 
     need_rebuild = not os.path.exists(bundle_path) or os.path.getmtime(
@@ -228,7 +229,7 @@ def setup_playwright():
         logger.info(f"使用自定义 Playwright 路径: {browser_dir}")
     # Docker 环境下安装到 data 目录
     elif os.environ.get("DOCKER") == "1":
-        data_dir = os.environ.get("DATA_DIR", "./data")
+        data_dir = str(get_data_dir())
         browser_dir = os.path.join(data_dir, "playwright")
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_dir
         logger.info(f"Docker 环境，Playwright 路径: {browser_dir}")

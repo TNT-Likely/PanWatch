@@ -101,4 +101,5 @@ def test_backtest_run_aggregates():
     sigs = [Signal("X", "CN", "2026-01-01", stop_loss=5, target_price=20, holding_days=3)]
     res = Backtester().run(sigs, {("X", "CN"): bars})
     assert len(res.trades) == 1 and res.metrics["trades"] == 1
-    assert len(res.equity_curve) == 2
+    assert len(res.equity_curve) == len(res.equity_dates)
+    assert len(res.equity_curve) > 2

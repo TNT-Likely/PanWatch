@@ -6,7 +6,15 @@
 
 from __future__ import annotations
 
+import atexit
+import os
+import tempfile
 from unittest.mock import AsyncMock
+
+# Set before importing application modules; never initialize a developer database.
+_TEST_DATA = tempfile.TemporaryDirectory(prefix="panwatch-pytest-")
+os.environ["DATA_DIR"] = _TEST_DATA.name
+atexit.register(_TEST_DATA.cleanup)
 
 import pytest
 

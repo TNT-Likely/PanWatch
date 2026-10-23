@@ -25,7 +25,6 @@ from src.modules.automation.tradingagents.runtime_support import (
     apply_compat_patches,
     bounded_tier_clients,
     build_ta_llm_config,
-    inject_api_key_env,
 )
 from src.modules.automation.tradingagents.data_context import (
     build_stock_metadata_context,
@@ -56,7 +55,7 @@ class TradingAgentsUnavailable(RuntimeError):
     """tradingagents 库未安装或上游 API 变更导致不可用。"""
 
 
-def _bounded_graph_class(graph_cls):
+def _bounded_graph_class(graph_cls, *, api_key: str | None = None):
     """让 TradingAgentsGraph 把请求边界传给 LangChain LLM 客户端。
 
     TradingAgents 0.7.0 通过 create_tier_client 构造两个模型。
@@ -65,7 +64,7 @@ def _bounded_graph_class(graph_cls):
 
     class BoundedTradingAgentsGraph(graph_cls):
         def __init__(self, *args, **kwargs):
-            with bounded_tier_clients():
+            with bounded_tier_clients(api_key):
                 super().__init__(*args, **kwargs)
 
     BoundedTradingAgentsGraph.__name__ = (
@@ -538,7 +537,7 @@ class TradingAgentsAgent(BaseAgent):
         """在 worker 线程跑同步 TradingAgents 流程。
 
         步骤:
-        1. inject_api_key_env 注入 API key 到环境变量
+        1. 在模型客户端构造时传入本次运行的 API key
         2. patch_route_to_vendor 让 A 股请求路由到 PanWatch 数据
         3. TradingAgentsGraph.propagate 跑 3-5 分钟
         4. 返回 decision + final_state + cost_usd
@@ -549,7 +548,6 @@ class TradingAgentsAgent(BaseAgent):
         # 应用 LangChain 兼容性补丁:让小模型 (Qwen 7B 等) 返回的
         # tool_calls.args 字符串被自动转 dict。
         apply_compat_patches()
-        inject_api_key_env(ai_client)
 
         # patch + 数据上下文,确保 TradingAgents 调 route_to_vendor 时拿到 PanWatch 数据
         trace_id_for_ctx = getattr(progress_handler, "trace_id", "") if progress_handler else ""
@@ -558,7 +556,7 @@ class TradingAgentsAgent(BaseAgent):
             trace_id=trace_id_for_ctx,
             cancel_event=cancel_event,
         ):
-            graph = _bounded_graph_class(TradingAgentsGraph)(
+            graph = _bounded_graph_class(TradingAgentsGraph, api_key=ai_client.api_key or "panwatch-local")(
                 selected_analysts=ta_config["selected_analysts"],
                 debug=False,
                 config=ta_config,

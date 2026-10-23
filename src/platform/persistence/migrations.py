@@ -2299,8 +2299,10 @@ LIMIT 1
 
 
 def has_pending_migrations(engine: Engine) -> bool:
-    with engine.begin() as conn:
-        _ensure_schema_table(conn)
+    with engine.connect() as conn:
+        # Detection must be read-only so backup precedes all schema writes.
+        if not conn.execute(text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'")).first():
+            return True
         for m in MIGRATIONS:
             rec = _get_applied(conn, m.version)
             if not rec or rec[2] != 1 or rec[1] != m.checksum:

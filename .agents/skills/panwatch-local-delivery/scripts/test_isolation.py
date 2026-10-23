@@ -39,9 +39,9 @@ class IsolationTests(unittest.TestCase):
         files = {
             ".gitignore": ".env\ndata/\n.docs/\n.venv/\n.claude/\n",
             str(qa.SKILL_PATH / "SKILL.md"): "---\nname: panwatch-local-delivery\ndescription: Test\nmetadata:\n  version: '1.0.0'\n---\nTest\n",
-            "server.py": "import os\nstatic_dir = os.path.join(os.path.dirname(__file__), 'static')\nbundle_path = os.path.join(os.path.dirname(__file__), 'data', 'ca-bundle.pem')\n",
-            "src/platform/persistence/database.py": "import os\nDB_PATH = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'panwatch.db')\n",
-            "src/platform/marketdata/stock_list.py": "from pathlib import Path\nPROJECT_ROOT = Path(__file__).resolve().parents[3]\nDATA_DIR = PROJECT_ROOT / 'data'\n",
+            "server.py": "import os\nstatic_dir = os.path.join(os.path.dirname(__file__), 'static')\nbundle_path = str(get_data_dir() / 'ca-bundle.pem')\n",
+            "src/platform/persistence/database.py": "import os\nDB_PATH = str(get_data_dir() / 'panwatch.db')\n",
+            "src/platform/marketdata/stock_list.py": "from pathlib import Path\nPROJECT_ROOT = Path(__file__).resolve().parents[3]\nDATA_DIR = get_data_dir()\n",
             "src/platform/runtime/config.py": "class Settings:\n    model_config = {'env_file': '.env'}\n",
             "tracked.py": "original = True\n",
             "deleted.py": "remove_me = True\n",

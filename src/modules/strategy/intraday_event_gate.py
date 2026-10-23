@@ -13,10 +13,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.platform.persistence.json_store import read_json, write_json_atomic
+from src.platform.runtime.paths import get_data_dir
 
 
 def _data_dir() -> str:
-    return os.environ.get("DATA_DIR", "./data")
+    return str(get_data_dir())
 
 
 def _state_path() -> str:

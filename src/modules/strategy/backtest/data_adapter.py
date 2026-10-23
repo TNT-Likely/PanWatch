@@ -23,6 +23,9 @@ class PriceBar:
     low: float
     close: float
     volume: float
+    limit_up: float | None = None
+    limit_down: float | None = None
+    tradable: bool = True
 
 
 def from_klines(klines) -> list[PriceBar]:
@@ -38,6 +41,9 @@ def from_klines(klines) -> list[PriceBar]:
                     low=float(k.low),
                     close=float(k.close),
                     volume=float(k.volume or 0),
+                    limit_up=getattr(k, "limit_up", None),
+                    limit_down=getattr(k, "limit_down", None),
+                    tradable=getattr(k, "tradable", True),
                 )
             )
         except Exception:

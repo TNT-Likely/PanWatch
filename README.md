@@ -218,7 +218,7 @@ Select the brain icon beside a holding to start TradingAgents deep analysis. Fou
 <details>
 <summary>Local development</summary>
 
-**Requirements:** Python 3.10+ / Node.js 24.14.0 / pnpm 9.15.9
+**Requirements:** Python 3.11+ / Node.js 24.14.0 / pnpm 9.15.9
 
 ```bash
 # One-command development setup (recommended)

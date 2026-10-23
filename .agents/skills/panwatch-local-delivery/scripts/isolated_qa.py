@@ -111,11 +111,11 @@ def assignment(path: Path, name: str) -> ast.AST:
 
 def check_mapping(source: Path) -> None:
     expressions = (
-        ("src/platform/persistence/database.py", "DB_PATH", "os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'panwatch.db')"),
+        ("src/platform/persistence/database.py", "DB_PATH", "str(get_data_dir() / 'panwatch.db')"),
         ("src/platform/marketdata/stock_list.py", "PROJECT_ROOT", "Path(__file__).resolve().parents[3]"),
-        ("src/platform/marketdata/stock_list.py", "DATA_DIR", "PROJECT_ROOT / 'data'"),
+        ("src/platform/marketdata/stock_list.py", "DATA_DIR", "get_data_dir()"),
         ("server.py", "static_dir", "os.path.join(os.path.dirname(__file__), 'static')"),
-        ("server.py", "bundle_path", "os.path.join(os.path.dirname(__file__), 'data', 'ca-bundle.pem')"),
+        ("server.py", "bundle_path", "str(get_data_dir() / 'ca-bundle.pem')"),
     )
     for file, name, expression in expressions:
         expected = ast.parse(expression, mode="eval").body

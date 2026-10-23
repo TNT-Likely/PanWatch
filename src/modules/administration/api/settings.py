@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AppSettings
 from src.platform.runtime.config import Settings
+from src.platform.runtime.paths import get_data_dir
 from src.modules.administration.update_checker import check_update
 from src.web.errors import api_error
 
@@ -112,7 +113,7 @@ AVATAR_KEY = "ui_avatar"  # DB 仅存文件名;图片本体落在 data/avatars/
 
 
 def _avatar_dir() -> str:
-    d = os.path.join(os.environ.get("DATA_DIR", "./data"), "avatars")
+    d = str(get_data_dir() / "avatars")
     os.makedirs(d, exist_ok=True)
     return d
 

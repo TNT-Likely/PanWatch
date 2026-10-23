@@ -23,7 +23,7 @@ from src.modules.automation.tradingagents.observability import (
 from src.modules.automation.tradingagents.runtime_support import (
     VALID_ANALYSTS,
     build_ta_llm_config,
-    inject_api_key_env,
+    bounded_tier_clients,
 )
 from src.modules.automation.tradingagents.observability import (
     PanWatchProgressHandler,
@@ -62,7 +62,7 @@ class TestLLMAdapter(unittest.TestCase):
             ai_client, debate_rounds=2, selected_analysts=["market", "news"]
         )
         # 用 openrouter 走标准 chat completions,避开 OpenAI Responses API 的兼容性问题
-        self.assertEqual(config["llm_provider"], "openrouter")
+        self.assertEqual(config["llm_provider"], "openai_compatible")
         self.assertEqual(config["backend_url"], "https://api.deepseek.com")
         self.assertEqual(config["deep_think_llm"], "deepseek-chat")
         self.assertEqual(config["max_debate_rounds"], 2)
@@ -163,23 +163,15 @@ class TestLLMAdapter(unittest.TestCase):
         finally:
             upstream_config._config = original_config
 
-    def test_inject_api_key_env(self):
-        """API key 注入到环境变量 — OPENAI_API_KEY 被设置"""
+    def test_credentials_do_not_change_process_environment(self):
         import os
-        ai_client = MagicMock(api_key="sk-test-key")
-        previous = {
-            key: os.environ.get(key)
-            for key in ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY")
-        }
-        try:
-            inject_api_key_env(ai_client)
-            self.assertEqual(os.environ.get("OPENAI_API_KEY"), "sk-test-key")
-        finally:
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
+        from tradingagents.graph import trading_graph
+        before = dict(os.environ)
+        with patch.object(trading_graph, "create_tier_client", return_value="client") as factory:
+            with bounded_tier_clients("review-key"):
+                trading_graph.create_tier_client({}, "deep")
+            self.assertEqual(factory.call_args.kwargs["api_key"], "review-key")
+        self.assertEqual(dict(os.environ), before)
 
 
 # ============================================================================
@@ -733,7 +725,6 @@ class TestPortfolioContext(unittest.TestCase):
         with (
             patch.object(trading_graph, "TradingAgentsGraph", FakeGraph),
             patch.object(agent_module, "apply_compat_patches"),
-            patch.object(agent_module, "inject_api_key_env"),
             patch.object(agent_module, "patch_route_to_vendor", lambda: nullcontext()),
             patch.object(agent_module, "panwatch_data_context", lambda *args, **kwargs: nullcontext()),
         ):
