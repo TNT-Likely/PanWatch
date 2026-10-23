@@ -127,7 +127,7 @@ export default function AnalysisDetailPage() {
   })
   const [pdfBusy, setPdfBusy] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const [readingMode, setReadingMode] = useState<'map' | 'document'>('map')
+  const [readingMode, setReadingMode] = useState<'map' | 'document'>('document')
 
   const handleExportPdf = async () => {
     if (pdfBusy) return

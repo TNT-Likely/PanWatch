@@ -6,8 +6,7 @@
  * 2. 运行中 — polling /agents/runs/{trace_id}/progress,显示阶段进度
  * 3. 完成 — 顶层摘要 + Markdown 推理 + 可展开 4 分析师报告 + 辩论
  */
-import { useEffect, useState, useCallback, useRef, useId } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAnalysisSections, type AnalysisSection } from '../analysis-sections'
@@ -110,7 +109,6 @@ export function DeepAnalysisModal({
   const [result, setResult] = useState<DeepAnalysisResult | null>(initialResult)
   const [error, setError] = useState<string>('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
   // SSE 订阅取消函数(进度优先走 SSE,失败降级 polling)
   const sseCloseRef = useRef<(() => void) | null>(null)
 
@@ -344,12 +342,7 @@ export function DeepAnalysisModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent ref={contentRef} onEscapeKeyDown={event => {
-        // Radix handles Escape in document capture, before the inline preview's
-        // React handler. Let that handler collapse the detail before closing.
-        const expandedDetail = contentRef.current?.querySelector('[data-toolkit-expanded]')
-        if (event.target instanceof Node && expandedDetail?.contains(event.target)) event.preventDefault()
-      }} className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
+      <DialogContent className="w-[92vw] max-w-6xl max-h-[92vh] flex flex-col overflow-hidden p-0">
         <DialogHeader className="shrink-0 mb-0 border-b border-border/50 p-4 pr-14">
           <DialogTitle className="flex items-center gap-2">
             {tr('title', { name: stockName, symbol: stockSymbol })}
@@ -543,128 +536,56 @@ interface ToolkitDiagSummary {
   error: number
 }
 
-export function ToolkitDiagnostics({
-  summary,
-  recent,
-  defaultOpen = false,
-}: {
+export function ToolkitDiagnostics({ summary, recent }: {
   summary: ToolkitDiagSummary | undefined
   recent: ToolkitDiagItem[]
-  defaultOpen?: boolean
 }) {
   const { t } = useTranslation('bizUi')
   const tr = (key: string, options?: Record<string, unknown>) =>
     (t as unknown as (key: string, options?: Record<string, unknown>) => string)(`deepAnalysis.${key}`, options)
-  const [expanded, setExpanded] = useState<number | null>(null)
-  const detailId = useId()
-  const triggers = useRef<(HTMLButtonElement | null)[]>([])
   if (!summary && recent.length === 0) return null
-
-  const hit = summary?.hit ?? 0
-  const miss = summary?.miss ?? 0
-  const pass = summary?.passthrough ?? 0
-  const fall = summary?.fallthrough ?? 0
-  const err = summary?.error ?? 0
-  const total = hit + miss + pass + fall + err
-
   const ACTION_CLS: Record<string, string> = {
     HIT: 'text-emerald-600 dark:text-emerald-400',
     MISS: 'text-amber-600 dark:text-amber-400',
     PASSTHROUGH: 'text-sky-600 dark:text-sky-400',
     FALLTHROUGH: 'text-orange-600 dark:text-orange-400',
-    ERROR: 'text-rose-600',
+    ERROR: 'text-rose-600 dark:text-rose-400',
   }
-
   return (
-    <details data-toolkit-expanded={expanded !== null ? '' : undefined} onKeyDown={event => {
-      if (event.key === 'Escape' && expanded !== null) {
-        event.stopPropagation()
-        const previous = expanded
-        setExpanded(null)
-        triggers.current[previous]?.focus()
-      }
-    }} className="rounded-lg border border-border/40 bg-accent/10 p-3 text-[12px]" open={defaultOpen}>
-      <summary className="cursor-pointer flex items-center gap-2 flex-wrap">
-        <span className="font-medium">{tr('toolkit.title')}</span>
-        <span className="text-[11px] text-muted-foreground">
-          {tr('toolkit.subtitle')}
+    <section aria-label={tr('toolkit.title')} className="rounded-xl border border-border/50 bg-muted/20 p-3 text-[12px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="font-medium">{tr('toolkit.title')}</h4>
+        <span className="text-[11px] text-muted-foreground">{tr('toolkit.subtitle')}</span>
+        <span className="ml-auto text-[11px]">
+          <span className={ACTION_CLS.HIT}>HIT {summary?.hit ?? 0}</span>
+          <span className="text-muted-foreground"> · MISS {summary?.miss ?? 0}</span>
+          <span className={ACTION_CLS.PASSTHROUGH}> · {tr('toolkit.passthrough')} {summary?.passthrough ?? 0}</span>
+          {!!summary?.fallthrough && <span className={ACTION_CLS.FALLTHROUGH}> · {tr('toolkit.fallback')} {summary.fallthrough}</span>}
+          {!!summary?.error && <span className={ACTION_CLS.ERROR}> · {tr('toolkit.error')} {summary.error}</span>}
         </span>
-        <span className="ml-auto text-[11px] whitespace-nowrap">
-          <span className={ACTION_CLS.HIT}>HIT {hit}</span>
-          <span className="text-muted-foreground"> · MISS {miss}</span>
-          <span className={ACTION_CLS.PASSTHROUGH}> · {tr('toolkit.passthrough')} {pass}</span>
-          {fall > 0 && <span className={ACTION_CLS.FALLTHROUGH}> · {tr('toolkit.fallback')} {fall}</span>}
-          {err > 0 && <span className="text-rose-600"> · {tr('toolkit.error')} {err}</span>}
-        </span>
-      </summary>
-      <div className="text-[10.5px] text-muted-foreground/80 mt-2 leading-relaxed">
-        <span className={ACTION_CLS.HIT}>HIT</span>: {tr('toolkit.legendHit')} ·{' '}
-        <span className={ACTION_CLS.MISS}>MISS</span>: {tr('toolkit.legendMiss')} ·{' '}
-        <span className={ACTION_CLS.PASSTHROUGH}>{tr('toolkit.passthrough')}</span>: {tr('toolkit.legendPassthrough')} ·{' '}
-        <span className={ACTION_CLS.FALLTHROUGH}>{tr('toolkit.fallback')}</span>: {tr('toolkit.legendFallback')}
       </div>
-      {total === 0 ? (
-        <div className="text-[11px] text-muted-foreground mt-2">
-          {tr('toolkit.empty')}
-        </div>
-      ) : (
-        <div className="mt-2 space-y-1 max-h-80 overflow-y-auto scrollbar overscroll-contain">
-          {recent.map((h, i) => {
-            const action = (h.action || '').toUpperCase()
-            const hasDetail = !!(h.snippet || h.reason)
-            const row = (
-              <>
-                <span className={`${ACTION_CLS[action] || 'text-muted-foreground'} w-20 shrink-0`}>
-                  {action}
-                </span>
-                <span className="text-foreground/80 truncate flex-1 text-left">
-                  {h.method} ({h.symbol || '-'})
-                  {h.reason && <span className="text-muted-foreground"> · {h.reason}</span>}
-                  {h.chars != null && <span className="text-muted-foreground">{tr('toolkit.chars', { count: h.chars })}</span>}
-                  {h.source && <span className="text-muted-foreground/70"> · {h.source}</span>}
-                </span>
-                {hasDetail && <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded === i ? 'rotate-180' : ''}`} />}
-              </>
-            )
-            return (
-              <div key={i} className="min-w-0 rounded-lg border border-border/40 bg-card">
-                <button
-                  ref={element => { triggers.current[i] = element }}
-                  type="button"
-                  disabled={!hasDetail}
-                  aria-expanded={hasDetail ? expanded === i : undefined}
-                  aria-controls={hasDetail ? `${detailId}-${i}` : undefined}
-                  onClick={() => setExpanded(expanded === i ? null : i)}
-                  className="w-full min-w-0 flex items-center gap-2 rounded-lg p-2 text-left font-mono text-[11px] hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                >{row}</button>
-                {expanded === i && hasDetail && (
-                  <div
-                    id={`${detailId}-${i}`}
-                    className="space-y-2 border-t border-border/40 p-3"
-                  >
-                    {h.reason && (
-                      <div className="text-[11px] text-amber-600 dark:text-amber-400">
-                        {h.reason}
-                      </div>
-                    )}
-                    {h.snippet && (
-                      <pre tabIndex={0} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-mono text-[11px] leading-relaxed bg-muted/50 rounded p-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        {h.snippet}
-                        {h.chars != null && h.chars > h.snippet.length && (
-                          <span className="text-muted-foreground/60">
-                            {'\n\n'}{tr('toolkit.truncated', { total: h.chars, shown: h.snippet.length })}
-                          </span>
-                        )}
-                      </pre>
-                    )}
-                  </div>
-                )}
+      <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
+        HIT: {tr('toolkit.legendHit')} · MISS: {tr('toolkit.legendMiss')} · {tr('toolkit.passthrough')}: {tr('toolkit.legendPassthrough')} · {tr('toolkit.fallback')}: {tr('toolkit.legendFallback')}
+      </p>
+      {recent.length === 0 ? <p className="mt-2 text-[11px] text-muted-foreground">{tr('toolkit.empty')}</p> : (
+        <div role="region" aria-label={tr('toolkit.records')} tabIndex={0} className="mt-3 max-h-96 space-y-3 overflow-y-auto scrollbar overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {recent.map((item, index) => (
+            <article key={index} className="min-w-0 rounded-lg border border-border/50 bg-card p-3 [overflow-wrap:anywhere]">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[11px]">
+                <span className={`font-semibold ${ACTION_CLS[(item.action || '').toUpperCase()] || 'text-muted-foreground'}`}>{item.action}</span>
+                <span>{item.method} ({item.symbol || '-'})</span>
+                <span className="text-muted-foreground">{item.source}{item.chars != null && tr('toolkit.chars', { count: item.chars })}</span>
               </div>
-            )
-          })}
+              {item.reason && <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">{item.reason}</p>}
+              {item.snippet && <pre tabIndex={0} className="mt-2 whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed text-foreground [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {item.snippet}
+                {item.chars != null && item.chars > item.snippet.length && <span className="text-muted-foreground">{'\n\n'}{tr('toolkit.truncated', { total: item.chars, shown: item.snippet.length })}</span>}
+              </pre>}
+            </article>
+          ))}
         </div>
       )}
-    </details>
+    </section>
   )
 }
 
