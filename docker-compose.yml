@@ -1,0 +1,30 @@
+services:
+  panwatch:
+    image: sunxiao0721/panwatch:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: panwatch
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+      - ./packages:/app/packages
+      - ./tests:/app/tests
+      - ./server.py:/app/server.py
+    environment:
+      - TZ=Asia/Shanghai
+      - DATA_DIR=/app/data
+      - PLAYWRIGHT_BROWSERS_PATH=/app/data/playwright
+      - PYTHONPATH=/app/packages/pan-agent-token-meter/src:/app/packages/pan-agent-tool-research/src:/app/packages/marketdata/src:/app/packages/pan-agent-runtime/src:/app
+      # 出站代理配置（如果宿主机运行有 Clash/v2ray 等代理）
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - http_proxy=${http_proxy:-}
+      - https_proxy=${https_proxy:-}
+      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+    # 允许容器通过 host.docker.internal 访问宿主机上的服务或代理
+    extra_hosts:
+      - "host.docker.internal:${HOST_IP:-host-gateway}"
