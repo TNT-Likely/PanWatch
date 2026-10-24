@@ -283,6 +283,7 @@ def _migrate(engine):
             "meta",
             "ALTER TABLE stock_suggestions ADD COLUMN meta TEXT DEFAULT '{}'",
         ),
+        ("positions", "currency", "ALTER TABLE positions ADD COLUMN currency TEXT"),
     ]
     with engine.connect() as conn:
         for table, column, sql in migrations:
