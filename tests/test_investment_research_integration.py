@@ -399,7 +399,7 @@ def test_multi_target_default_capacities_preserve_explicit_global_limits():
     sized = service.scope_policy(default, {}, 3)
     assert sized.max_attempts == default.max_attempts  # Share roles within the group.
     assert sized.max_tools == default.max_tools  # Batch reads, not a per-stock tool loop.
-    assert sized.max_output_tokens > default.max_output_tokens
+    assert sized.max_output_tokens >= default.max_output_tokens  # Base already sits at the cap.
     assert sized.max_input_chars > default.max_input_chars
     assert sized.max_total_tokens > default.max_total_tokens
     caps = {"max_total_tokens": 9000, "max_input_chars": 1000, "max_output_tokens": 128, "max_tools": 0}

@@ -185,7 +185,11 @@ class InvestmentResearch:
 
         async def permit():
             nonlocal permitted
-            await deps.budget.attempt(reserve, len(json.dumps(messages, ensure_ascii=False).encode()) + deps.policy.max_output_tokens)
+            # Reserve input as an estimated token count, not raw bytes: CJK JSON runs ~3 bytes
+            # per character, so bytes // 3 stays conservative while a byte-for-byte reservation
+            # would crowd out attempts once the output ceiling is generous.
+            input_estimate = len(json.dumps(messages, ensure_ascii=False).encode()) // 3
+            await deps.budget.attempt(reserve, input_estimate + deps.policy.max_output_tokens)
             permitted = True
 
         await deps.emit(role, "running")
