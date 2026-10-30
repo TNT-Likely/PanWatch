@@ -263,6 +263,33 @@ def test_gateway_meters_each_fallback_and_disables_sdk_retries(with_tools):
     assert reply.model == "actual-model" and reply.usage == {"input_tokens": 12, "output_tokens": 4}
 
 
+def test_gateway_clamps_max_tokens_to_the_advertised_range():
+    import httpx
+    from openai import BadRequestError
+    from src.modules.research.orchestration.gateway import ResearchModelGateway
+    request = httpx.Request("POST", "http://test")
+    sent_kwargs, permits = [], []
+    response = SimpleNamespace(model="actual-model", usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3),
+        choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content='{}', tool_calls=[]))])
+    async def create(**kwargs):
+        sent_kwargs.append(kwargs)
+        if kwargs.get("max_tokens", 0) > 1024:
+            raise BadRequestError("max_tokens参数非法：限制数值范围[1,1024]",
+                                  response=httpx.Response(400, request=request), body=None)
+        return response
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    def with_options(**kwargs):
+        return sdk
+    client = SimpleNamespace(_iter_candidates=lambda: [(SimpleNamespace(model="deepseek-v4", client=SimpleNamespace(with_options=with_options)), "qa-only")])
+    async def permit():
+        permits.append(1)
+    reply = asyncio.run(ResearchModelGateway(client).complete(role="technical", messages=[], tools=[], schema={},
+        max_output_tokens=16000, timeout=10, before_attempt=permit))
+    assert len(permits) == 2 and len(sent_kwargs) == 2
+    assert sent_kwargs[0]["max_tokens"] == 16000 and sent_kwargs[1]["max_tokens"] == 1024
+    assert reply.model == "actual-model"
+
+
 def test_gateway_strips_json_mode_when_the_endpoint_rejects_it():
     import httpx
     from openai import BadRequestError

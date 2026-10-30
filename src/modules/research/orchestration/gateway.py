@@ -1,5 +1,6 @@
 """Request-scoped model metadata and attempt accounting over the existing candidate route."""
 import asyncio
+import re
 
 from openai import BadRequestError
 
@@ -11,6 +12,31 @@ from src.platform.ai.ai_failover import _mark_fail, _mark_ok, classify_ai_error,
 class ResearchModelGateway:
     def __init__(self, client):
         self.client = client
+
+    @staticmethod
+    def _retry_kwargs(exc, kwargs):
+        """Same-candidate parameter fixes for provider-specific 400s; None gives up on it."""
+        if not isinstance(exc, BadRequestError):
+            return None
+        message = str(exc).lower()
+        if "response_format" in message and "response_format" in kwargs:
+            fixed = dict(kwargs)
+            fixed.pop("response_format")
+            return fixed
+        if "max_tokens" in message:
+            # Providers advertise the accepted range in several shapes, e.g.
+            # "限制数值范围[1,1024]" — clamp to the advertised bound and retry.
+            bound = None
+            for pattern in (r"\[1,(\d+)\]", r"1\s*[-~到]\s*(\d+)"):
+                found = re.search(pattern, str(exc))
+                if found:
+                    bound = int(found.group(1))
+                    break
+            if bound and bound < kwargs.get("max_tokens", 0):
+                fixed = dict(kwargs)
+                fixed["max_tokens"] = bound
+                return fixed
+        return None
 
     @staticmethod
     def _extras(model, tools):
@@ -49,19 +75,21 @@ class ResearchModelGateway:
             kwargs = {"model": client.model, "messages": messages, "max_tokens": max_output_tokens}
             if tools:
                 kwargs["tools"] = tools
+            full = {**kwargs, **self._extras(client.model, tools)}
             try:
-                reply = await call(client, {**kwargs, **self._extras(client.model, tools)})
+                reply = await call(client, full)
             except Exception as exc:
-                if not (isinstance(exc, BadRequestError) and "response_format" in str(exc).lower()):
+                fixed = self._retry_kwargs(exc, full)
+                if fixed is None:
                     if classify_ai_error(exc) == ERR_FATAL:
                         raise
                     _mark_fail(label)
                     last_error = exc
                     continue
-                # JSON mode rejected by this endpoint: retry the same candidate without it.
+                # Provider-specific parameter rejection: retry this candidate once, adjusted.
                 await before_attempt()
                 try:
-                    reply = await call(client, kwargs)
+                    reply = await call(client, fixed)
                 except Exception as retry_exc:
                     if classify_ai_error(retry_exc) == ERR_FATAL:
                         raise
