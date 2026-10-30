@@ -160,7 +160,7 @@ class ResearchPolicy(Contract):
     concurrency: int = Field(default=3, ge=1, le=6)
     deadline_seconds: float = Field(default=600, gt=0, le=600)
     max_output_tokens: int = Field(default=16000, ge=128, le=16000)
-    max_input_chars: int = Field(default=60000, ge=1000, le=250000)
+    max_input_chars: int = Field(default=250000, ge=1000, le=250000)
     max_total_tokens: int = Field(default=800000, ge=1000, le=1000000)
     max_group_size: int = Field(default=8, ge=1, le=30)
 
