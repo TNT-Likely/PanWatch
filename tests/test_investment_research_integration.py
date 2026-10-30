@@ -258,7 +258,36 @@ def test_gateway_meters_each_fallback_and_disables_sdk_retries(with_tools):
     assert len(sent) == 2 and all(o["max_retries"] == 0 for o in options)
     assert succeeded.call_args.kwargs["reasoning_effort"] == "low"
     assert succeeded.call_args.kwargs.get("response_format") == (None if with_tools else {"type": "json_object"})
+    assert failed.call_args.kwargs.get("response_format") == (None if with_tools else {"type": "json_object"})
+    assert "reasoning_effort" not in failed.call_args.kwargs
     assert reply.model == "actual-model" and reply.usage == {"input_tokens": 12, "output_tokens": 4}
+
+
+def test_gateway_strips_json_mode_when_the_endpoint_rejects_it():
+    import httpx
+    from openai import BadRequestError
+    from src.modules.research.orchestration.gateway import ResearchModelGateway
+    request = httpx.Request("POST", "http://test")
+    sent_kwargs, permits = [], []
+    response = SimpleNamespace(model="actual-model", usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3),
+        choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content='{}', tool_calls=[]))])
+    async def create(**kwargs):
+        sent_kwargs.append(kwargs)
+        if "response_format" in kwargs:
+            raise BadRequestError("response_format is not supported by this endpoint",
+                                  response=httpx.Response(400, request=request), body=None)
+        return response
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    def with_options(**kwargs):
+        return sdk
+    client = SimpleNamespace(_iter_candidates=lambda: [(SimpleNamespace(model="deepseek-v4", client=SimpleNamespace(with_options=with_options)), "qa-only")])
+    async def permit():
+        permits.append(1)
+    reply = asyncio.run(ResearchModelGateway(client).complete(role="technical", messages=[], tools=[], schema={},
+        max_output_tokens=2048, timeout=10, before_attempt=permit))
+    assert len(permits) == 2 and len(sent_kwargs) == 2
+    assert "response_format" in sent_kwargs[0] and "response_format" not in sent_kwargs[1]
+    assert reply.model == "actual-model" and reply.usage == {"input_tokens": 7, "output_tokens": 3}
 
 
 def test_bullish_buy_survives_review_and_zero_cash_through_storage_and_readback(host, monkeypatch):
@@ -370,8 +399,8 @@ def test_multi_target_default_capacities_preserve_explicit_global_limits():
     sized = service.scope_policy(default, {}, 3)
     assert sized.max_attempts == default.max_attempts  # Share roles within the group.
     assert sized.max_tools == default.max_tools  # Batch reads, not a per-stock tool loop.
-    assert sized.max_output_tokens > default.max_output_tokens
-    assert sized.max_input_chars > default.max_input_chars
+    assert sized.max_output_tokens >= default.max_output_tokens  # Base already sits at the cap.
+    assert sized.max_input_chars >= default.max_input_chars  # Base already sits at the cap.
     assert sized.max_total_tokens > default.max_total_tokens
     caps = {"max_total_tokens": 9000, "max_input_chars": 1000, "max_output_tokens": 128, "max_tools": 0}
     _, explicit = service.validate_config(caps, "daily_report")

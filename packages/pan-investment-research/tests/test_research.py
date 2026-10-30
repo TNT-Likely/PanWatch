@@ -236,6 +236,39 @@ def test_multi_group_and_same_symbol_in_different_markets():
     assert result.usage["attempts"] == 15
 
 
+class DoubleFaultModel(Model):
+    """Four different roles each fail their first report; per-role repair must save every one."""
+
+    async def complete(self, *, role, messages, before_attempt, **kwargs):
+        reply = await super().complete(role=role, messages=messages, before_attempt=before_attempt, **kwargs)
+        if role in {"technical", "events", "manager", "decision"} and self.calls[role] == 1:
+            reply.content = "not-json-at-all"
+        return reply
+
+
+class FencedManagerModel(Model):
+    async def complete(self, *, role, messages, before_attempt, **kwargs):
+        reply = await super().complete(role=role, messages=messages, before_attempt=before_attempt, **kwargs)
+        if role == "manager" and self.calls["manager"] == 1:
+            reply.content = "```json\n" + reply.content + "\n```"
+        return reply
+
+
+def test_repair_budget_is_per_role_not_per_run():
+    model = DoubleFaultModel()
+    result = run(model)
+    assert result.status == "ready", result.reason
+    assert model.calls["technical"] == 2 and model.calls["events"] == 2
+    assert model.calls["manager"] == 2 and model.calls["decision"] == 2
+
+
+def test_fenced_json_report_is_parsed_without_spending_the_repair():
+    model = FencedManagerModel()
+    result = run(model)
+    assert result.status == "ready", result.reason
+    assert model.calls["manager"] == 1
+
+
 def test_independent_concurrent_runs_share_no_messages_or_budget():
     async def both():
         engine = InvestmentResearch()

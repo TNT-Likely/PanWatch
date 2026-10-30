@@ -9,9 +9,9 @@ DEFAULT_TEMPLATES = {"daily_report": "postmarket_deep", "premarket_outlook": "pr
 PRESETS = {
     "intraday_fast": {"graph": "intraday_fast", "specialists": ["technical", "events"], "debate": False,
         "max_feedback": 0, "max_attempts": 6, "max_tools": 2, "concurrency": 2,
-        "max_output_tokens": 3072, "max_total_tokens": 120000, "deadline_seconds": 45},
+        "max_output_tokens": 16000, "max_total_tokens": 200000, "deadline_seconds": 120},
     "premarket_balanced": {"specialists": ["technical", "flow", "events"], "debate": True, "debate_on": "material",
-        "max_attempts": 14, "max_tools": 4, "max_output_tokens": 6144, "deadline_seconds": 90},
+        "max_attempts": 14, "max_tools": 4, "max_output_tokens": 16000, "deadline_seconds": 480},
     "postmarket_deep": {"specialists": ["technical", "flow", "events"], "debate": True, "debate_on": "material"},
 }
 
@@ -46,7 +46,7 @@ def validate_config(config, agent_name):
     if template == "custom_research":
         if agent_name != "daily_report":
             defaults.update(debate=False, max_attempts=14 if agent_name == "premarket_outlook" else 10,
-                deadline_seconds=90 if agent_name == "premarket_outlook" else 45)
+                deadline_seconds=480 if agent_name == "premarket_outlook" else 120)
         if agent_name == "intraday_monitor":
             defaults.update(specialists=["technical"], max_feedback=0, max_tools=2, concurrency=2)
     else:

@@ -103,6 +103,12 @@ def test_templates_validate_dependencies_and_preserve_explicit_global_budget_cap
     assert result.max_attempts == 5 and result.max_tools == 1
 
 
+def test_session_deadline_defaults_leave_headroom_for_slow_providers():
+    assert validate_config({}, 'premarket_outlook')[1].deadline_seconds == 480
+    assert validate_config({}, 'daily_report')[1].deadline_seconds == 600
+    assert validate_config({}, 'intraday_monitor')[1].deadline_seconds == 120
+
+
 def test_explicit_review_runs_without_price_trigger_and_baseline_failure_preserves_audit(host, monkeypatch, tmp_path):
     engine, _ = host
     monkeypatch.setenv('DATA_DIR', str(tmp_path))

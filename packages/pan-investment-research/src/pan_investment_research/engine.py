@@ -20,6 +20,14 @@ from .prompts import ROLES, instructions
 from .fast import build_fast_graph
 
 
+def strip_code_fence(content: str) -> str:
+    """Models keep wrapping the JSON contract in Markdown fences despite prompts; accept the fenced form."""
+    lines = content.strip().splitlines()
+    if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return content
+
+
 def merge_artifacts(left, right):
     for key in left.keys() & right.keys():
         if left[key] != right[key]:
@@ -90,7 +98,7 @@ class Dependencies:
     budget: Budget
     artifacts: dict = field(default_factory=dict)
     plan: list = field(default_factory=list)
-    repaired: bool = False
+    repaired: set = field(default_factory=set)
 
     async def emit(self, role, status, **details):
         if self.events:
@@ -177,7 +185,11 @@ class InvestmentResearch:
 
         async def permit():
             nonlocal permitted
-            await deps.budget.attempt(reserve, len(json.dumps(messages, ensure_ascii=False).encode()) + deps.policy.max_output_tokens)
+            # Reserve input as an estimated token count, not raw bytes: CJK JSON runs ~3 bytes
+            # per character, so bytes // 3 stays conservative while a byte-for-byte reservation
+            # would crowd out attempts once the output ceiling is generous.
+            input_estimate = len(json.dumps(messages, ensure_ascii=False).encode()) // 3
+            await deps.budget.attempt(reserve, input_estimate + deps.policy.max_output_tokens)
             permitted = True
 
         await deps.emit(role, "running")
@@ -233,7 +245,7 @@ class InvestmentResearch:
         reply, messages = await self._model(role, payload, deps)
         for attempt in range(2):
             try:
-                report = RoleReport.model_validate_json(reply.content)
+                report = RoleReport.model_validate_json(strip_code_fence(reply.content))
                 evidence = (prepared or deps.prepared).evidence + [e for a in deps.artifacts.values() for e in a.evidence]
                 self._validate(report, prepared or deps.prepared, evidence, role)
                 if role == "strategy":
@@ -244,11 +256,12 @@ class InvestmentResearch:
                     raise ValueError("final decision changed the approved plan")
                 return report, reply.model
             except ValueError as exc:
-                if attempt or deps.repaired:
+                if attempt or role in deps.repaired:
                     raise
-                deps.repaired = True
+                deps.repaired.add(role)
                 messages += [{"role": "assistant", "content": reply.content},
-                             {"role": "user", "content": f"Repair this contract error without adding facts: {exc}"}]
+                             {"role": "user", "content": f"Repair this contract error without adding facts: {exc} "
+                              "Return only the raw JSON object matching the schema; no Markdown fences or commentary."}]
                 reply, _ = await self._model(role, payload, deps, messages=messages)
 
     def _validate_session(self, report, prepared, profile, visible_evidence):
@@ -328,9 +341,10 @@ class InvestmentResearch:
                     found = await asyncio.wait_for(deps.tools.execute(fn["name"], args,
                         stock_keys=[s.key for s in prepared.securities]), deps.budget.remaining())
                 except ValueError:
-                    if deps.repaired:
+                    key = f"{state.get('group', 'portfolio')}/{state.get('epoch', 0)}/{state['role']}"
+                    if key in deps.repaired:
                         raise
-                    deps.repaired = True
+                    deps.repaired.add(key)
                     messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps({
                         "error": "Invalid or out-of-scope detail request; no evidence retrieved. Use only the evidence already supplied, disclose missing details, and return the report without further tool calls."})})
                     await deps.emit(state["role"], "tool_rejected", tool=fn["name"])
@@ -354,17 +368,19 @@ class InvestmentResearch:
         async def finish(state, runtime: Runtime[Dependencies]):
             prepared = ResearchInput.model_validate(state["prepared"])
             deps, reply = runtime.context, state["reply"]
+            key = f"{state.get('group', 'portfolio')}/{state.get('epoch', 0)}/{state['role']}"
             try:
-                report = RoleReport.model_validate_json(reply.content)
+                report = RoleReport.model_validate_json(strip_code_fence(reply.content))
                 self._validate(report, prepared, prepared.evidence, state["role"])
             except ValueError as exc:
-                if deps.repaired:
+                if key in deps.repaired:
                     raise
-                deps.repaired = True
+                deps.repaired.add(key)
                 messages = state["messages"] + [{"role": "assistant", "content": reply.content},
-                    {"role": "user", "content": f"Repair the JSON contract without adding facts: {exc}"}]
+                    {"role": "user", "content": f"Repair the JSON contract without adding facts: {exc} "
+                     "Return only the raw JSON object matching the schema; no Markdown fences or commentary."}]
                 reply, _ = await self._model(state["role"], {"input": market_input(prepared)}, deps, messages=messages)
-                report = RoleReport.model_validate_json(reply.content)
+                report = RoleReport.model_validate_json(strip_code_fence(reply.content))
                 self._validate(report, prepared, prepared.evidence, state["role"])
             return self._store(state, state["role"], report, reply.model,
                                runtime.context, prepared.evidence)
