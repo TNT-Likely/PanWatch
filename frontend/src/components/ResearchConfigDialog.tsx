@@ -86,7 +86,7 @@ export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
         <p className="text-xs text-muted-foreground">{key(fast ? 'fastHint' : 'rulesRequired')}</p>
         <div className="grid grid-cols-2 gap-3">{numberInput('attempts', 'max_attempts', 1, 100)}{numberInput('deadline', 'deadline_seconds', 1, 600)}</div>
         <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm">{key('advanced')}</summary><div className="mt-3 grid grid-cols-2 gap-3">
-          {numberInput('tools', 'max_tools', 0, 30)}{numberInput('concurrency', 'concurrency', 1, 6)}{!fast && numberInput('feedback', 'max_feedback', 0, 2)}{numberInput('tokens', 'max_total_tokens', 1000, 1000000)}{numberInput('output', 'max_output_tokens', 128, 8000)}
+          {numberInput('tools', 'max_tools', 0, 30)}{numberInput('concurrency', 'concurrency', 1, 6)}{!fast && numberInput('feedback', 'max_feedback', 0, 2)}{numberInput('tokens', 'max_total_tokens', 1000, 1000000)}{numberInput('output', 'max_output_tokens', 128, 16000)}
         </div></details>
         {!valid && <p role="alert" className="text-xs text-destructive">{key('invalid')}</p>}
       </div>}

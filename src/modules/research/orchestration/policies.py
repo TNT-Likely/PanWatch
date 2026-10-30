@@ -9,9 +9,9 @@ DEFAULT_TEMPLATES = {"daily_report": "postmarket_deep", "premarket_outlook": "pr
 PRESETS = {
     "intraday_fast": {"graph": "intraday_fast", "specialists": ["technical", "events"], "debate": False,
         "max_feedback": 0, "max_attempts": 6, "max_tools": 2, "concurrency": 2,
-        "max_output_tokens": 1536, "max_total_tokens": 80000, "deadline_seconds": 45},
+        "max_output_tokens": 3072, "max_total_tokens": 120000, "deadline_seconds": 45},
     "premarket_balanced": {"specialists": ["technical", "flow", "events"], "debate": True, "debate_on": "material",
-        "max_attempts": 14, "max_tools": 4, "max_output_tokens": 3072, "deadline_seconds": 90},
+        "max_attempts": 14, "max_tools": 4, "max_output_tokens": 6144, "deadline_seconds": 90},
     "postmarket_deep": {"specialists": ["technical", "flow", "events"], "debate": True, "debate_on": "material"},
 }
 

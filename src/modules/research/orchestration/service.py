@@ -33,7 +33,7 @@ def scope_policy(policy, config, targets):
         "max_tools": min(30, policy.max_tools * groups),
         "max_total_tokens": min(1000000, policy.max_total_tokens * targets),
         "max_input_chars": min(250000, policy.max_input_chars + 12000 * (targets - 1)),
-        "max_output_tokens": min(8000, policy.max_output_tokens + 768 * (targets - 1)),
+        "max_output_tokens": min(16000, policy.max_output_tokens + 1024 * (targets - 1)),
     }
     updates.update({key: value for key, value in defaults.items() if key not in config})
     return ResearchPolicy.model_validate({**policy.model_dump(), **updates})
