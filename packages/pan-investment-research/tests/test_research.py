@@ -229,7 +229,7 @@ def test_feedback_budget_is_shared_across_research_and_risk():
 def test_multi_group_and_same_symbol_in_different_markets():
     data = prepared(("CN:SAME", "US:SAME"))
     model = Model()
-    result = run(model, data, ResearchPolicy(max_group_size=1, max_attempts=28, max_total_tokens=200000))
+    result = run(model, data, ResearchPolicy(max_group_size=1, max_attempts=28, max_output_tokens=4096, max_total_tokens=200000))
     assert result.status == "ready", result.reason
     assert len(result.recommendations) == 2
     assert model.calls["strategy"] == model.calls["risk"] == model.calls["decision"] == 1

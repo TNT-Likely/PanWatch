@@ -159,9 +159,9 @@ class ResearchPolicy(Contract):
     max_tool_rounds: int = Field(default=1, ge=0, le=2)
     concurrency: int = Field(default=3, ge=1, le=6)
     deadline_seconds: float = Field(default=180, gt=0, le=600)
-    max_output_tokens: int = Field(default=4096, ge=128, le=8000)
+    max_output_tokens: int = Field(default=6144, ge=128, le=16000)
     max_input_chars: int = Field(default=60000, ge=1000, le=250000)
-    max_total_tokens: int = Field(default=250000, ge=1000, le=1000000)
+    max_total_tokens: int = Field(default=400000, ge=1000, le=1000000)
     max_group_size: int = Field(default=8, ge=1, le=30)
 
     @model_validator(mode="after")
