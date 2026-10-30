@@ -1,6 +1,8 @@
 """Request-scoped model metadata and attempt accounting over the existing candidate route."""
 import asyncio
 
+from openai import BadRequestError
+
 from pan_investment_research import ModelReply
 
 from src.platform.ai.ai_failover import _mark_fail, _mark_ok, classify_ai_error, ERR_FATAL
@@ -10,35 +12,64 @@ class ResearchModelGateway:
     def __init__(self, client):
         self.client = client
 
+    @staticmethod
+    def _extras(model, tools):
+        # Research roles always answer with one JSON object; request JSON mode from every
+        # OpenAI-compatible endpoint unless tool schemas occupy the response. Endpoints that
+        # reject it fall back to the bare request below.
+        extras = {}
+        if not tools:
+            extras["response_format"] = {"type": "json_object"}
+        if "glm-5.3" in model.lower():
+            extras["reasoning_effort"] = "low"
+        return extras
+
+    @staticmethod
+    def _reply(reply, label):
+        _mark_ok(label)
+        message = reply.choices[0].message
+        usage = {"input_tokens": reply.usage.prompt_tokens, "output_tokens": reply.usage.completion_tokens} if reply.usage else {}
+        calls = [c.model_dump() for c in (message.tool_calls or [])]
+        return ModelReply(message.content or "", str(getattr(reply, "model", None) or label), calls, usage, reply.choices[0].finish_reason or "")
+
     async def complete(self, *, role, messages, tools, schema, max_output_tokens, timeout, before_attempt):
         candidates = self.client._iter_candidates() if hasattr(self.client, "_iter_candidates") else [(self.client, self.client.model)]
         last_error = None
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
+
+        async def call(client, kwargs):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError("research model deadline")
+            return await client.client.with_options(max_retries=0, timeout=remaining).chat.completions.create(**kwargs)
+
         for client, label in candidates:
             await before_attempt()
+            kwargs = {"model": client.model, "messages": messages, "max_tokens": max_output_tokens}
+            if tools:
+                kwargs["tools"] = tools
             try:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    raise TimeoutError("research model deadline")
-                kwargs = {"model": client.model, "messages": messages, "max_tokens": max_output_tokens}
-                if client.model.startswith("glm-5.3"):
-                    kwargs["reasoning_effort"] = "low"
-                    if not tools:
-                        kwargs["response_format"] = {"type": "json_object"}
-                if tools:
-                    kwargs["tools"] = tools
-                reply = await client.client.with_options(max_retries=0, timeout=remaining).chat.completions.create(**kwargs)
-                _mark_ok(label)
-                message = reply.choices[0].message
-                usage = {"input_tokens": reply.usage.prompt_tokens, "output_tokens": reply.usage.completion_tokens} if reply.usage else {}
-                calls = [c.model_dump() for c in (message.tool_calls or [])]
-                return ModelReply(message.content or "", str(getattr(reply, "model", None) or label), calls, usage, reply.choices[0].finish_reason or "")
+                reply = await call(client, {**kwargs, **self._extras(client.model, tools)})
             except Exception as exc:
-                if classify_ai_error(exc) == ERR_FATAL:
-                    raise
-                _mark_fail(label)
-                last_error = exc
+                if not (isinstance(exc, BadRequestError) and "response_format" in str(exc).lower()):
+                    if classify_ai_error(exc) == ERR_FATAL:
+                        raise
+                    _mark_fail(label)
+                    last_error = exc
+                    continue
+                # JSON mode rejected by this endpoint: retry the same candidate without it.
+                await before_attempt()
+                try:
+                    reply = await call(client, kwargs)
+                except Exception as retry_exc:
+                    if classify_ai_error(retry_exc) == ERR_FATAL:
+                        raise
+                    _mark_fail(label)
+                    last_error = retry_exc
+                    continue
+                return self._reply(reply, label)
+            return self._reply(reply, label)
         raise RuntimeError("All configured research model candidates failed") from last_error
 
 

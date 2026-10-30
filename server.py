@@ -1132,6 +1132,10 @@ def build_scheduler() -> AgentScheduler:
             from src.modules.automation.scheduling_policy import schedule_plans
             plans = schedule_plans(db, cfg)
             if not plans:
+                logger.warning(
+                    f"Agent {cfg.display_name}({cfg.name}) 已启用但没有任何个股绑定或调度计划，"
+                    "调度器不会运行它；请在股票详情中绑定该 Agent 后重载调度器"
+                )
                 continue
 
             agent_kwargs = cfg.config or {}

@@ -1,6 +1,7 @@
 import asyncio
 from copy import deepcopy
 import logging
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -95,6 +96,13 @@ def _public_agent_config(config: dict | None) -> dict:
     return value
 
 
+def _scheduler_agent_names():
+    """Live scheduler registrations; None when the server module is absent (tests, scripts)."""
+    runtime = sys.modules.get("server")
+    agents = getattr(getattr(runtime, "scheduler", None), "agents", None)
+    return set(agents) if isinstance(agents, dict) else None
+
+
 @router.get("/health")
 def agents_health(
     include_internal: bool = Query(default=False),
@@ -109,6 +117,7 @@ def agents_health(
 
     now = datetime.now(tzinfo)
     horizon = now + timedelta(hours=24)
+    registered = _scheduler_agent_names()
 
     query = db.query(AgentConfig)
     if not include_internal:
@@ -152,6 +161,13 @@ def agents_health(
             if a.enabled and (last.status or "") == "failed":
                 recent_failed_count += 1
 
+        scheduled = None
+        warnings: list[str] = []
+        if registered is not None:
+            scheduled = a.name in registered
+            if a.enabled and (a.kind or infer_agent_kind(a.name)) == AGENT_KIND_WORKFLOW and not scheduled:
+                warnings.append("已启用但未注册到调度器：没有任何个股绑定或调度计划，请在股票详情中绑定后重载调度器")
+
         out.append(
             {
                 "name": a.name,
@@ -163,6 +179,8 @@ def agents_health(
                 "execution_mode": a.execution_mode or "batch",
                 "next_runs": next_runs,
                 "last_run": last_run,
+                "scheduled": scheduled,
+                "warnings": warnings,
             }
         )
 
