@@ -360,13 +360,3 @@ Community chat (Telegram): [t.me/panwatch](https://t.me/panwatch)
 ## License
 
 [MIT](LICENSE)
-
-### LangGraph investment research
-
-Premarket, intraday and postmarket all use the independently installable [Pan Investment Research package](packages/pan-investment-research/README.md). Choose validated graph templates, specialists, debate policy and per-run budgets in **Research orchestration** on the Agents page. Intraday uses a deterministic change gate and a short expert/decision graph; quiet snapshots use no model and preserve previous advice. Premarket adds opening scenarios; postmarket adds attribution and evidence-linked review of supplied premarket plans.
-
-Market models do not receive account cash. Mandatory execution rules apply account and quote restrictions after market research. Migration v139 retires the old legacy/shadow execution modes while preserving settings and history. The three old session prompts and text parsers are removed; TradingAgents deep analysis remains independent.
-
-Premarket and postmarket analyze all bound stocks together, sharing specialists within groups and running portfolio strategy, risk and finalization once. Evidence details support batch reads across stocks. Default context, output and token capacities adjust to target count; explicit global caps remain effective, and time and concurrency limits do not grow with the watchlist.
-
-Model candidates and read-only evidence tools share explicit attempt, token, concurrency and time limits. Unresolved objections or exhausted budgets mark research incomplete and retain only validated strategy drafts; no watch suggestion is fabricated when no strategy finished. Completed graph artifacts, normalized suggestions, prediction tracking and delivery claims commit atomically; incomplete research does not publish formal suggestions or prediction outcomes. Unknown notification acknowledgements are recorded without blind replay. Cross-process graph resumption and automatic outbox recovery are not enabled. This research output does not place orders or establish verified buying power.
