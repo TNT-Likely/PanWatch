@@ -214,7 +214,7 @@ def test_multi_stock_coverage_uses_one_bounded_repair_without_publishing_a_parti
 
 
 def test_exhausted_budget_never_turns_unreviewed_plan_into_ready():
-    result = run(policy=ResearchPolicy(max_attempts=5))
+    result = run(policy=ResearchPolicy(budget_enabled=True, max_attempts=5))
     assert result.status == "review"
     assert result.usage["attempts"] <= 5
     assert all(r.review_required for r in result.recommendations)
@@ -294,7 +294,7 @@ def test_future_evidence_and_duplicate_security_are_rejected():
 
 def test_atomic_budget_does_not_oversubscribe_parallel_attempts():
     async def exercise():
-        budget = Budget(ResearchPolicy(max_attempts=3))
+        budget = Budget(ResearchPolicy(budget_enabled=True, max_attempts=3))
         outcomes = await asyncio.gather(*(budget.attempt() for _ in range(10)), return_exceptions=True)
         assert budget.attempts == 3
         assert sum(isinstance(x, BudgetExceeded) for x in outcomes) == 7
@@ -302,7 +302,7 @@ def test_atomic_budget_does_not_oversubscribe_parallel_attempts():
 
 
 def test_tiny_token_budget_stops_before_provider_send():
-    result = run(policy=ResearchPolicy(max_total_tokens=1000))
+    result = run(policy=ResearchPolicy(budget_enabled=True, max_total_tokens=1000))
     assert result.status == "review"
     assert result.usage["attempts"] == 0
 
@@ -320,11 +320,61 @@ def test_output_truncation_is_budget_review_without_wasting_format_repair():
         async def complete(self, *, before_attempt, **kwargs):
             await before_attempt()
             return ModelReply("", "script", usage={"output_tokens": 4096}, finish_reason="length")
-    result = run(Truncated(), policy=ResearchPolicy(specialists=["technical"], debate=False))
+    result = run(Truncated(), policy=ResearchPolicy(budget_enabled=True, specialists=["technical"], debate=False))
     assert result.status == "review"
     assert result.usage["attempts"] == 1
     assert result.usage["output_tokens"] == 4096
     assert "output exhausted" in result.reason
+
+
+@pytest.mark.parametrize("role", ["technical", "strategy", "risk", "decision"])
+def test_unlimited_research_recovers_truncated_roles_and_accounts_for_every_reply(role):
+    class TruncatedOnce(Model):
+        def __init__(self):
+            super().__init__()
+            self.limits = []
+
+        async def complete(self, *, role: str, **kwargs):
+            if role == target:
+                self.limits.append(kwargs["max_output_tokens"])
+            reply = await super().complete(role=role, **kwargs)
+            if role == target and self.calls[role] == 1:
+                reply.content = '{"summary":'
+                reply.finish_reason = "length"
+            return reply
+
+    target = role
+    model = TruncatedOnce()
+    result = run(model)
+    assert result.completion == "complete", result.reason
+    assert model.limits == [None, 32768]
+    assert result.usage["attempts"] == 10 and result.usage["output_tokens"] == 50
+    assert len(result.recommendations) == 1
+
+
+def test_provider_truncation_recovery_converges_without_publishing_partial_json():
+    class AlwaysTruncated(Model):
+        async def complete(self, *, before_attempt, **kwargs):
+            await before_attempt()
+            return ModelReply('{"summary":', "script", usage={"output_tokens": 16000}, finish_reason="length")
+
+    result = run(AlwaysTruncated(), policy=ResearchPolicy(specialists=["technical"], debate=False))
+    assert result.completion == "budget_exhausted" and not result.recommendations
+    assert result.usage["attempts"] == 3 and result.usage["output_tokens"] == 48000
+    assert "automatic recovery" in result.reason
+
+
+def test_disabled_budgets_ignore_old_caps_but_keep_usage_and_execution_checks():
+    policy = ResearchPolicy(max_attempts=1, max_total_tokens=1000, max_input_chars=1000,
+        max_output_tokens=128, max_tools=0, deadline_seconds=.0001)
+    data = prepared()
+    tools = Tools(data)
+    result = run(Model(tools=True), data, policy, tools)
+    assert result.completion == "complete", result.reason
+    assert result.usage["attempts"] == 10 and result.usage["tools"] == 1
+    assert any(a.role == "execution" for a in result.artifacts)
+    assert result.usage["input_tokens"] == 90 and result.usage["output_tokens"] == 45
+    assert result.usage["unknown_usage"] == 1
 
 
 def test_roles_only_receive_schema_fields_they_can_author():
@@ -399,7 +449,7 @@ def test_deadline_review_always_explains_why_research_stopped():
         async def complete(self, *, before_attempt, **kwargs):
             await before_attempt()
             await asyncio.sleep(.1)
-    result = run(Slow(), policy=ResearchPolicy(deadline_seconds=.01, specialists=["technical"], debate=False))
+    result = run(Slow(), policy=ResearchPolicy(budget_enabled=True, deadline_seconds=.01, specialists=["technical"], debate=False))
     assert result.status == "review" and "deadline" in result.reason.lower()
     assert all(r.reason and r.review_required for r in result.recommendations)
 
@@ -474,11 +524,11 @@ def test_timeout_after_strategy_keeps_its_view_but_cannot_publish_a_plan():
             if role == "risk":
                 await asyncio.sleep(.2)
             return await super().complete(role=role, **kwargs)
-    result = run(SlowRisk(), policy=ResearchPolicy(deadline_seconds=.05))
+    result = run(SlowRisk(), policy=ResearchPolicy(budget_enabled=True, deadline_seconds=.05))
     assert result.completion == "timeout" and result.status == "review"
     assert result.recommendations[0].action == "buy"
     assert result.recommendations[0].execution_status == "blocked"
-    early = run(policy=ResearchPolicy(max_attempts=1))
+    early = run(policy=ResearchPolicy(budget_enabled=True, max_attempts=1))
     assert early.completion == "budget_exhausted" and early.recommendations == []
 
 

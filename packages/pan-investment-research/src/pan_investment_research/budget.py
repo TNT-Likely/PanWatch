@@ -12,7 +12,7 @@ class BudgetExceeded(RuntimeError):
 class Budget:
     def __init__(self, policy: ResearchPolicy):
         self.policy = policy
-        self.expires = time.monotonic() + policy.deadline_seconds
+        self.expires = time.monotonic() + policy.deadline_seconds if policy.budget_enabled else None
         self.attempts = self.tools = self.feedback = 0
         self.input_tokens = self.output_tokens = 0
         self.unknown_usage = 0
@@ -22,6 +22,8 @@ class Budget:
         self.semaphore = asyncio.Semaphore(policy.concurrency)
 
     def remaining(self):
+        if self.expires is None:
+            return None
         value = self.expires - time.monotonic()
         if value <= 0:
             raise BudgetExceeded("research deadline exceeded")
@@ -30,9 +32,9 @@ class Budget:
     async def attempt(self, reserve=0, tokens=0):
         async with self.lock:
             self.remaining()
-            if self.attempts + reserve >= self.policy.max_attempts:
+            if self.policy.budget_enabled and self.attempts + reserve >= self.policy.max_attempts:
                 raise BudgetExceeded("model attempt budget exhausted")
-            if self.reserved_tokens + tokens > self.policy.max_total_tokens:
+            if self.policy.budget_enabled and self.reserved_tokens + tokens > self.policy.max_total_tokens:
                 raise BudgetExceeded("estimated token budget exhausted")
             self.attempts += 1
             self.reserved_tokens += tokens
@@ -40,14 +42,15 @@ class Budget:
     async def tool(self):
         async with self.lock:
             self.remaining()
-            if self.tools >= self.policy.max_tools:
+            if self.policy.budget_enabled and self.tools >= self.policy.max_tools:
                 raise BudgetExceeded("tool budget exhausted")
             self.tools += 1
 
     async def use_feedback(self, reserve=0):
         async with self.lock:
             self.remaining()
-            if self.feedback >= self.policy.max_feedback or self.attempts + reserve >= self.policy.max_attempts:
+            # Feedback bounds convergence, even when resource budgets are disabled.
+            if self.feedback >= self.policy.max_feedback or (self.policy.budget_enabled and self.attempts + reserve >= self.policy.max_attempts):
                 raise BudgetExceeded("feedback budget exhausted")
             self.feedback += 1
 

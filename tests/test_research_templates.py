@@ -109,6 +109,15 @@ def test_session_deadline_defaults_leave_headroom_for_slow_providers():
     assert validate_config({}, 'intraday_monitor')[1].deadline_seconds == 120
 
 
+@pytest.mark.parametrize('name', ['daily_report', 'premarket_outlook', 'intraday_monitor'])
+def test_default_and_existing_configs_disable_resource_caps_until_explicitly_enabled(name):
+    for config in [{}, {'max_attempts': 1, 'max_output_tokens': 128, 'deadline_seconds': 1}]:
+        assert validate_config(config, name)[1].budget_enabled is False
+        assert validate_config({**config, 'budget_enabled': True}, name)[1].budget_enabled is True
+    metadata = templates_for(name)
+    assert all(t['defaults']['budget_enabled'] is False for t in metadata['templates'])
+
+
 def test_explicit_review_runs_without_price_trigger_and_baseline_failure_preserves_audit(host, monkeypatch, tmp_path):
     engine, _ = host
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
