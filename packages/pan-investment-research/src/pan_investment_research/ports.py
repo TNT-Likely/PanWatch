@@ -21,7 +21,7 @@ class ModelReply:
 
 class ResearchModel(Protocol):
     async def complete(self, *, role: Role, messages: list[dict], tools: list[dict],
-                       schema: dict, max_output_tokens: int, timeout: float,
+                       schema: dict, max_output_tokens: int | None, timeout: float | None,
                        before_attempt: AttemptPermit) -> ModelReply: ...
 
 

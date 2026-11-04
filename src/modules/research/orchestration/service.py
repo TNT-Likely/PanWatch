@@ -33,7 +33,7 @@ def scope_policy(policy, config, targets):
         "max_tools": min(30, policy.max_tools * groups),
         "max_total_tokens": min(1000000, policy.max_total_tokens * targets),
         "max_input_chars": min(250000, policy.max_input_chars + 12000 * (targets - 1)),
-        "max_output_tokens": min(16000, policy.max_output_tokens + 1024 * (targets - 1)),
+        "max_output_tokens": policy.max_output_tokens,
     }
     updates.update({key: value for key, value in defaults.items() if key not in config})
     return ResearchPolicy.model_validate({**policy.model_dump(), **updates})
@@ -66,16 +66,18 @@ async def execute(agent, context, config):
         context._research_fast = policy.graph == "intraday_fast"
         context._research_specialists = policy.specialists
         context._research_force = policy.trigger_mode == "always"
-        prepared, details, snapshots = await asyncio.wait_for(prepare(agent, context, run_id), policy.deadline_seconds)
+        prepared, details, snapshots = await asyncio.wait_for(prepare(agent, context, run_id),
+            policy.deadline_seconds if policy.budget_enabled else None)
         if prepared is None:
             await repository.fail(run_id, "No eligible targets")
             return AnalysisResult(agent.name, agent.display_name, "No eligible targets", raw_data={"skipped": True})
         # Input groups get an explicit run budget, preserving every target.
         policy = scope_policy(policy, config, len(prepared.securities))
-        remaining = policy.deadline_seconds - (time.monotonic() - started)
-        if remaining <= 0:
-            raise TimeoutError("Research preparation exhausted the deadline")
-        policy = policy.model_copy(update={"deadline_seconds": remaining})
+        if policy.budget_enabled:
+            remaining = policy.deadline_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                raise TimeoutError("Research preparation exhausted the deadline")
+            policy = policy.model_copy(update={"deadline_seconds": remaining})
         research = await InvestmentResearch().run(prepared, model=ResearchModelGateway(context.ai_client),
             tools=EvidenceTools(details), events=Events(run_id), policy=policy)
         result = present(agent, context, prepared, research, elapsed_seconds=time.monotonic() - started)

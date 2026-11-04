@@ -147,6 +147,7 @@ class ResearchResult(Contract):
 
 
 class ResearchPolicy(Contract):
+    budget_enabled: bool = False
     profile: Literal["postmarket", "premarket", "intraday"] = "postmarket"
     graph: Literal["research", "intraday_fast"] = "research"
     specialists: list[Literal["technical", "flow", "events"]] = Field(default_factory=lambda: ["technical", "flow", "events"], min_length=1)
@@ -159,7 +160,7 @@ class ResearchPolicy(Contract):
     max_tool_rounds: int = Field(default=1, ge=0, le=2)
     concurrency: int = Field(default=3, ge=1, le=6)
     deadline_seconds: float = Field(default=600, gt=0, le=600)
-    max_output_tokens: int = Field(default=16000, ge=128, le=16000)
+    max_output_tokens: int = Field(default=16000, ge=128)
     max_input_chars: int = Field(default=250000, ge=1000, le=250000)
     max_total_tokens: int = Field(default=800000, ge=1000, le=1000000)
     max_group_size: int = Field(default=8, ge=1, le=30)

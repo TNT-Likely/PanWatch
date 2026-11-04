@@ -179,9 +179,10 @@ class InvestmentResearch:
                   + json.dumps(schema, ensure_ascii=False))
         messages = ([{"role": "system", "content": prompt}, *messages[1:]] if messages else [
             {"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
-        if len(json.dumps(messages, ensure_ascii=False)) > deps.policy.max_input_chars:
+        if deps.policy.budget_enabled and len(json.dumps(messages, ensure_ascii=False)) > deps.policy.max_input_chars:
             raise BudgetExceeded("role input exceeds context budget")
         permitted = False
+        output_limit = deps.policy.max_output_tokens if deps.policy.budget_enabled else None
 
         async def permit():
             nonlocal permitted
@@ -189,20 +190,34 @@ class InvestmentResearch:
             # per character, so bytes // 3 stays conservative while a byte-for-byte reservation
             # would crowd out attempts once the output ceiling is generous.
             input_estimate = len(json.dumps(messages, ensure_ascii=False).encode()) // 3
-            await deps.budget.attempt(reserve, input_estimate + deps.policy.max_output_tokens)
+            await deps.budget.attempt(reserve, input_estimate + (output_limit or 0))
             permitted = True
 
         await deps.emit(role, "running")
-        async with deps.budget.semaphore:
-            reply = await asyncio.wait_for(deps.model.complete(
-                role=role, messages=messages, tools=tools or [],
-                schema=schema, max_output_tokens=deps.policy.max_output_tokens,
-                timeout=deps.budget.remaining(), before_attempt=permit), deps.budget.remaining())
-        if not permitted:
-            raise RuntimeError("model adapter did not acquire an attempt permit")
-        deps.budget.record_usage(reply.usage)
-        if reply.finish_reason == "length":
-            raise BudgetExceeded("model output exhausted its token limit; increase the configured output budget")
+        for recovery in range(3):
+            permitted = False
+            async with deps.budget.semaphore:
+                reply = await asyncio.wait_for(deps.model.complete(
+                    role=role, messages=messages, tools=tools or [],
+                    schema=schema, max_output_tokens=output_limit,
+                    timeout=deps.budget.remaining(), before_attempt=permit), deps.budget.remaining())
+            if not permitted:
+                raise RuntimeError("model adapter did not acquire an attempt permit")
+            deps.budget.record_usage(reply.usage)
+            if reply.finish_reason != "length":
+                break
+            if deps.policy.budget_enabled:
+                raise BudgetExceeded("model output exhausted its configured token limit")
+            if recovery == 2:
+                raise BudgetExceeded("model output remained truncated after automatic recovery; provider output capacity exhausted")
+            # Regenerate the whole contract. Appending incomplete JSON or tool calls would
+            # contaminate the next request and cannot safely complete a research artifact.
+            output_limit = max(32768, 2 * (output_limit or int(reply.usage.get("output_tokens", 0) or 0)))
+            messages = [*messages, {"role": "user", "content":
+                "The previous response was truncated. Regenerate the complete JSON object from the supplied evidence. "
+                "Keep summaries, claims and reasons brief; omit optional empty fields. Cover every target exactly once. "
+                "Do not repeat source documents or add facts. Return the full object, not a continuation."}]
+            await deps.emit(role, "retrying", reason="output_truncated", max_output_tokens=output_limit)
         await deps.emit(role, "done", model=reply.model, usage=deps.budget.snapshot())
         return reply, messages
 
@@ -594,7 +609,8 @@ class InvestmentResearch:
         deps = Dependencies(prepared, policy, model, tools, events, Budget(policy))
         try:
             graph = self.fast_graph if policy.graph == "intraday_fast" else self.graph
-            state = await asyncio.wait_for(graph.ainvoke({"artifacts": {}, "epoch": 0}, context=deps), policy.deadline_seconds)
+            state = await asyncio.wait_for(graph.ainvoke({"artifacts": {}, "epoch": 0}, context=deps),
+                policy.deadline_seconds if policy.budget_enabled else None)
             if state.get("skipped"):
                 return ResearchResult(run_id=prepared.run_id, graph=policy.graph, status="skipped", completion="skipped", reason="no_material_change", recommendations=[], artifacts=list(deps.artifacts.values()), usage=deps.budget.snapshot())
             if state.get("verdict") != "pass":

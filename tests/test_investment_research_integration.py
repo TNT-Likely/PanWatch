@@ -52,7 +52,7 @@ def make_context(trace="test-host", keys=((MarketCode.CN, "600519"),)):
 def configure(engine, name, mode="langgraph", **policy):
     with Session(engine) as db, db.begin():
         db.add(AgentConfig(name=name, display_name=name, enabled=False, config={"research_graph": {
-            "engine": mode, "template": "custom_research", "specialists": ["technical", "flow", "events"], "max_attempts": 25,
+            "engine": mode, "budget_enabled": True, "template": "custom_research", "specialists": ["technical", "flow", "events"], "max_attempts": 25,
             "max_total_tokens": 250000, **policy}}))
 
 
@@ -288,6 +288,72 @@ def test_gateway_strips_json_mode_when_the_endpoint_rejects_it():
     assert len(permits) == 2 and len(sent_kwargs) == 2
     assert "response_format" in sent_kwargs[0] and "response_format" not in sent_kwargs[1]
     assert reply.model == "actual-model" and reply.usage == {"input_tokens": 7, "output_tokens": 3}
+
+
+@pytest.mark.parametrize('managed_output', [True, False])
+def test_gateway_allows_provider_managed_output_and_negotiates_recovery_capacity(managed_output):
+    import httpx
+    from openai import BadRequestError
+    from src.modules.research.orchestration.gateway import ResearchModelGateway
+    sent, options, permits = [], [], []
+    response = SimpleNamespace(model='provider-model', usage=None, choices=[SimpleNamespace(
+        finish_reason='stop', message=SimpleNamespace(content='{}', tool_calls=[]))])
+    request = httpx.Request('POST', 'http://test')
+
+    async def create(**kwargs):
+        sent.append(kwargs)
+        if 'max_tokens' in kwargs:
+            raise BadRequestError('max_tokens is unsupported; use max_completion_tokens',
+                response=httpx.Response(400, request=request), body=None)
+        if kwargs.get('max_completion_tokens', 0) > 16384:
+            raise BadRequestError('max_completion_tokens must be in [1, 16384]',
+                response=httpx.Response(400, request=request), body=None)
+        return response
+
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    def with_options(**kwargs):
+        options.append(kwargs)
+        return sdk
+    client = SimpleNamespace(model='provider-model', client=SimpleNamespace(with_options=with_options))
+    async def permit():
+        permits.append(1)
+    reply = asyncio.run(ResearchModelGateway(client).complete(role='technical', messages=[], tools=[],
+        schema={}, max_output_tokens=None if managed_output else 32768, timeout=None, before_attempt=permit))
+    assert reply.model == 'provider-model'
+    assert all(o == {'max_retries': 0} for o in options)
+    assert len(permits) == len(sent) == (1 if managed_output else 3)
+    if managed_output:
+        assert 'max_tokens' not in sent[0] and 'max_completion_tokens' not in sent[0]
+    else:
+        assert sent[-1]['max_completion_tokens'] == 16384
+
+
+@pytest.mark.parametrize('agent_cls', [DailyReportAgent, PremarketOutlookAgent, IntradayMonitorAgent])
+def test_existing_low_caps_and_a_truncated_reply_do_not_prevent_publication(host, monkeypatch, agent_cls):
+    from src.platform.runtime.config import StockConfig
+    engine, _ = host
+    class TruncatedOnce(scripts.Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == 'technical' and self.calls[role] == 1:
+                reply.content = '{"summary":'
+                reply.finish_reason = 'length'
+            return reply
+    model, agent = TruncatedOnce(), agent_cls()
+    monkeypatch.setattr(service, 'ResearchModelGateway', lambda client: model)
+    configure(engine, agent.name, budget_enabled=False, max_attempts=1, max_total_tokens=1000,
+        max_input_chars=1000, max_output_tokens=128, max_tools=0, deadline_seconds=.0001)
+    monkeypatch.setattr(agent, 'collect', collected)
+    context = make_context(keys=((MarketCode.CN, '601238'), (MarketCode.CN, '601127')))
+    result = asyncio.run(agent.run(context))
+    assert result.raw_data['completion'] == 'complete', result.content
+    assert len(result.raw_data['suggestions']) == 2 and model.calls['technical'] == 2
+    context.notifier.notify_with_result.assert_not_awaited()
+    with Session(engine) as db:
+        assert len(db.scalars(select(StockSuggestion)).all()) == 2
+        assert len(db.scalars(select(AgentPredictionOutcome)).all()) == 4
+        assert len(db.scalars(select(AnalysisHistory)).all()) == 1
+        assert db.scalars(select(ResearchRun)).one().payload['completion'] == 'complete'
 
 
 def test_bullish_buy_survives_review_and_zero_cash_through_storage_and_readback(host, monkeypatch):

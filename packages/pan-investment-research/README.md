@@ -334,8 +334,18 @@ Documents are treated as data, never as agent instructions.
 One full research group with three experts and debate needs nine logical calls
 before tools, repair and feedback (seven without debate). Multiple groups need separate budgets; strategy/risk/decision run once
 for the combined portfolio. Request attempts, estimated token reservations,
-tool calls, feedback, concurrency, output size and time are bounded. Estimated
-tokens are conservative preflight accounting, not measured billing.
+and tool calls are always recorded. Resource budgets are disabled by default,
+including for existing host configurations: `budget_enabled=False` ignores the
+configured attempt, total-token, input-size, tool-read and run-deadline caps and
+omits the provider output-token parameter. Enable `budget_enabled=True` to opt
+back into these caps; output limits may exceed the former 16,000-token ceiling.
+Estimated tokens are preflight accounting, not measured billing.
+
+Truncated outputs regenerate the complete contract up to twice, requesting more
+output capacity and a concise response. Partial JSON is never published. Usage
+from every reply is counted. Provider capacity and request/network timeouts still
+apply. Concurrency, bounded tool rounds/feedback and contract/evidence/execution
+checks remain active to keep the graph convergent and the result verifiable.
 
 `ready` means the produced plan passed the package's implemented checks. It is
 not a promise of profitability, complete exchange-rule validation or executable

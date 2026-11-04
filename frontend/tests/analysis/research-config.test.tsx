@@ -22,9 +22,24 @@ async function open() {
 }
 
 describe('validated research graph configuration', () => {
+  it('saves existing budgets as disabled by default and preserves the stored caps', async () => {
+    const onSaved = vi.fn()
+    render(<ResearchConfigDialog agent={{ ...agent, config: { research_graph: { max_attempts: 1, deadline_seconds: 1 } } }} onClose={vi.fn()} onSaved={onSaved} />)
+    await screen.findByRole('switch', { name: '限制研究预算' })
+    expect(screen.queryByLabelText('整轮模型尝试上限')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
+    const call = vi.mocked(fetchAPI).mock.calls.find(([, options]) => options?.method === 'PUT')!
+    const saved = JSON.parse(String(call[1]?.body)).config.research_graph
+    expect(saved.budget_enabled).toBe(false)
+    expect(saved.max_attempts).toBe(1)
+    expect(saved.deadline_seconds).toBe(1)
+  })
+
   it('saves selected specialists and per-run caps while preserving other agent settings', async () => {
     const { onSaved, onClose } = await open()
     fireEvent.click(screen.getByRole('switch', { name: '事件分析' }))
+    fireEvent.click(screen.getByRole('switch', { name: '限制研究预算' }))
     fireEvent.change(screen.getByLabelText('整轮模型尝试上限'), { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }))
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce())
@@ -34,6 +49,7 @@ describe('validated research graph configuration', () => {
     expect(body.config.research_graph.template).toBe('intraday_fast')
     expect(body.config.research_graph.specialists).toEqual(['technical'])
     expect(body.config.research_graph.max_attempts).toBe(8)
+    expect(body.config.research_graph.budget_enabled).toBe(true)
     expect(body.config.research_graph.debate).toBe(false)
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -42,6 +58,8 @@ describe('validated research graph configuration', () => {
     await open()
     fireEvent.keyDown(screen.getByRole('combobox', { name: '图模板' }), { key: 'ArrowDown' })
     fireEvent.click(await screen.findByRole('option', { name: '完整研究图（自定义）' }))
+    expect((screen.getByRole('switch', { name: '限制研究预算' })).getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(screen.getByRole('switch', { name: '限制研究预算' }))
     expect((screen.getByLabelText('整轮模型尝试上限') as HTMLInputElement).value).toBe('10')
     expect(within(screen.getByRole('img', { name: '编排结构预览' })).getByText(/研究裁定/)).toBeTruthy()
     expect(screen.getByRole('combobox', { name: '牛熊论证' })).toBeTruthy()
