@@ -507,7 +507,8 @@ class InvestmentResearch:
                 stocks = deps.prepared.securities[start:start + deps.policy.max_group_size]
                 keys = {s.key for s in stocks}
                 prepared = deps.prepared.model_copy(update={"securities": stocks,
-                    "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"]})
+                    "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"],
+                    "signals": [s for s in deps.prepared.signals if s.stock_key in keys]})
                 jobs.append(Send("research", {"prepared": prepared.model_dump(mode="json"), "group": group, "artifacts": {}}))
             return jobs
 
@@ -567,7 +568,8 @@ class InvestmentResearch:
                     if not issues:
                         continue
                     prepared = deps.prepared.model_copy(update={"securities": stocks,
-                        "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"]})
+                        "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"],
+                        "signals": [s for s in deps.prepared.signals if s.stock_key in keys]})
                     current = {**state, "prepared": prepared.model_dump(mode="json"),
                                "group": str(index // deps.policy.max_group_size), "epoch": state.get("epoch", 0) + 1,
                                "issues": issues, "messages": [], "rounds": 0}
