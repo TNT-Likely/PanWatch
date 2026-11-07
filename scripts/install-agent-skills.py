@@ -17,6 +17,7 @@ AGENTS = ("codex", "claude", "cursor", "gemini")
 SOURCE_DIR = Path(".agents/skills")
 CLAUDE_DIR = Path(".claude/skills")
 OWNER = "panwatch-project-skill-installer-v1"
+MODES = ("link", "hardlink", "copy")
 
 
 class InstallError(ValueError):
@@ -83,7 +84,7 @@ def read_receipt(path: Path, name: str) -> dict | None:
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
         raise InstallError(f"Invalid installer receipt: {path.name}") from exc
-    if not isinstance(receipt, dict) or receipt.get("owner") != OWNER or receipt.get("name") != name or receipt.get("mode") not in ("link", "copy"):
+    if not isinstance(receipt, dict) or receipt.get("owner") != OWNER or receipt.get("name") != name or receipt.get("mode") not in MODES:
         raise InstallError(f"Receipt is not owned by this installer: {path.name}")
     return receipt
 
@@ -99,14 +100,34 @@ def inspect_entry(target: Path, source: Path, receipt: dict | None) -> str:
         if receipt and (receipt["mode"] != "link" or os.readlink(target) != receipt.get("link")):
             raise InstallError(f"Installed link has changed: {target.name}")
         return "link" if receipt else "unmanaged-link"
-    if not target.is_dir() or not receipt or receipt["mode"] != "copy":
+    if not target.is_dir() or not receipt or receipt["mode"] not in ("hardlink", "copy"):
         raise InstallError(f"Refusing to overwrite an existing skill: {target.name}")
-    if inventory(target) != receipt.get("files"):
-        raise InstallError(f"Installed copy has local changes: {target.name}")
-    return "copy"
+    current = inventory(target)
+    recorded = receipt.get("files")
+    if receipt["mode"] == "hardlink":
+        # In-place source edits also change the linked file. Atomic replacements
+        # leave the old inode intact; only its recorded content is safe to replace.
+        unchanged = isinstance(recorded, dict) and current.keys() == recorded.keys() and all(
+            digest == recorded[relative]
+            or ((source / relative).is_file() and (target / relative).samefile(source / relative))
+            for relative, digest in current.items()
+        )
+    else:
+        unchanged = current == recorded
+    if not unchanged:
+        raise InstallError(f"Installed {receipt['mode']} has local changes: {target.name}")
+    return receipt["mode"]
+
+
+def hardlinks_match(target: Path, source: Path, files: dict[str, str]) -> bool:
+    return inventory(target).keys() == files.keys() and all(
+        (target / relative).samefile(source / relative) for relative in files
+    )
 
 
 def operate(project: Path, agents: tuple[str, ...], *, mode: str = "link", check: bool = False, uninstall: bool = False, dry_run: bool = False) -> list[str]:
+    if mode not in MODES:
+        raise InstallError(f"Unknown entry mode: {mode}")
     project = project.resolve()
     skill_sources = sources(project)
     messages = []
@@ -126,7 +147,11 @@ def operate(project: Path, agents: tuple[str, ...], *, mode: str = "link", check
                     raise InstallError(f"Cannot uninstall an entry not owned by this tool: {source.name}")
                 action = "remove" if kind != "absent" else "absent"
             elif check:
-                if kind == "absent" or (kind == "copy" and inventory(target) != files):
+                if (
+                    kind == "absent"
+                    or (kind == "copy" and inventory(target) != files)
+                    or (kind == "hardlink" and not hardlinks_match(target, source, files))
+                ):
                     raise InstallError(f"Claude entry missing or out of date: {source.name}; run installer")
                 action = "ready"
             elif kind == "unmanaged-link":
@@ -135,6 +160,8 @@ def operate(project: Path, agents: tuple[str, ...], *, mode: str = "link", check
                 action = "install"
             elif kind != mode:
                 raise InstallError(f"Uninstall the owned {kind} entry before changing mode: {source.name}")
+            elif kind == "hardlink" and (receipt["files"] != files or not hardlinks_match(target, source, files)):
+                action = "update"
             elif kind == "copy" and receipt["files"] != files:
                 action = "update"
             else:
@@ -167,7 +194,13 @@ def operate(project: Path, agents: tuple[str, ...], *, mode: str = "link", check
                 for relative in files:
                     destination = stage / relative
                     destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(source / relative, destination)
+                    if mode == "hardlink":
+                        try:
+                            os.link(source / relative, destination)
+                        except OSError as exc:
+                            raise InstallError("Cannot create project hard link; retry explicitly with --mode link or --mode copy") from exc
+                    else:
+                        shutil.copy2(source / relative, destination)
                 if action == "update":
                     shutil.rmtree(target)
                 stage.rename(target)
@@ -181,7 +214,7 @@ def operate(project: Path, agents: tuple[str, ...], *, mode: str = "link", check
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", choices=(*AGENTS, "all"), action="append", help="Repeat to select agents; default: all")
-    parser.add_argument("--mode", choices=("link", "copy"), default="link", help="Claude project entry mode")
+    parser.add_argument("--mode", choices=MODES, default="link", help="Claude project entry mode (hardlink links each file, not directories)")
     parser.add_argument("--dry-run", action="store_true")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--check", action="store_true", help="Verify filesystem installation without writes")
