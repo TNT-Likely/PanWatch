@@ -38,7 +38,7 @@ export interface NotificationSelection extends NotificationFilter { ids?: number
 export type NotificationTarget =
   | { kind: 'assistant_conversation'; conversation_id: number }
   | { kind: 'assistant_export'; export_id: number; conversation_id: number }
-  | { kind: 'agent_run'; id: number; agent_name: string; template_params?: NotificationItem['template_params']; status: string; result: string; error: string; occurred_at: string; notify_attempted: boolean; notify_sent: boolean }
+  | { kind: 'agent_run'; id: number; agent_name: string; template_params?: NotificationItem['template_params']; status: string; completion?: string | null; result_status?: string | null; research_reason?: string | null; result: string; error: string; occurred_at: string; notify_attempted: boolean; notify_sent: boolean }
   | { kind: 'price_alert_hit'; id: number; rule_id: number; name: string; symbol: string; occurred_at: string; notify_success: boolean; deliveries?: { id: number; channel_id: number | null; event_id: string; status: string; error_code: string }[]; snapshot: { quote?: { current_price?: number; change_pct?: number }; conditions?: { type: string; op: string; target: unknown; actual: number | null; matched: boolean }[] } }
 export const notificationsApi = {
   summary: (signal?: AbortSignal) => fetchAPI<NotificationSummary>('/notifications/summary', { signal }),

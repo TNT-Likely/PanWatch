@@ -197,7 +197,7 @@ describe('global notifications', () => {
     fireEvent.click(await screen.findByRole('button', { name: '查看全部通知' }))
     fireEvent.click(await screen.findByRole('button', { name: '查看报告' }))
     expect(await screen.findByText('Report result')).toBeTruthy()
-    expect(screen.getByText('运行已完成')).toBeTruthy()
+    expect(screen.getByText('运行已结束')).toBeTruthy()
     expect(screen.getByText('外部渠道未送达、未配置或已跳过')).toBeTruthy()
   })
 })

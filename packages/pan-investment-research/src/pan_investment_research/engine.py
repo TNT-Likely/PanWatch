@@ -196,11 +196,15 @@ class InvestmentResearch:
         await deps.emit(role, "running")
         for recovery in range(3):
             permitted = False
-            async with deps.budget.semaphore:
-                reply = await asyncio.wait_for(deps.model.complete(
-                    role=role, messages=messages, tools=tools or [],
-                    schema=schema, max_output_tokens=output_limit,
-                    timeout=deps.budget.remaining(), before_attempt=permit), deps.budget.remaining())
+            try:
+                async with deps.budget.semaphore:
+                    reply = await asyncio.wait_for(deps.model.complete(
+                        role=role, messages=messages, tools=tools or [],
+                        schema=schema, max_output_tokens=output_limit,
+                        timeout=deps.budget.remaining(), before_attempt=permit), deps.budget.remaining())
+            except Exception as exc:
+                await deps.emit(role, "failed", reason=str(exc), usage=deps.budget.snapshot())
+                raise
             if not permitted:
                 raise RuntimeError("model adapter did not acquire an attempt permit")
             deps.budget.record_usage(reply.usage)
@@ -218,7 +222,7 @@ class InvestmentResearch:
                 "Keep summaries, claims and reasons brief; omit optional empty fields. Cover every target exactly once. "
                 "Do not repeat source documents or add facts. Return the full object, not a continuation."}]
             await deps.emit(role, "retrying", reason="output_truncated", max_output_tokens=output_limit)
-        await deps.emit(role, "done", model=reply.model, usage=deps.budget.snapshot())
+        await deps.emit(role, "response_received", model=reply.model, usage=deps.budget.snapshot())
         return reply, messages
 
     def _validate(self, report, prepared, evidence, role):
@@ -269,11 +273,14 @@ class InvestmentResearch:
                     [r.model_dump(mode="json") for r in report.recommendations]
                 ):
                     raise ValueError("final decision changed the approved plan")
+                await deps.emit(role, "done", model=reply.model, usage=deps.budget.snapshot())
                 return report, reply.model
             except ValueError as exc:
                 if attempt or role in deps.repaired:
+                    await deps.emit(role, "failed", reason=str(exc), usage=deps.budget.snapshot())
                     raise
                 deps.repaired.add(role)
+                await deps.emit(role, "retrying", reason="contract_validation_failed")
                 messages += [{"role": "assistant", "content": reply.content},
                              {"role": "user", "content": f"Repair this contract error without adding facts: {exc} "
                               "Return only the raw JSON object matching the schema; no Markdown fences or commentary."}]
@@ -384,21 +391,24 @@ class InvestmentResearch:
             prepared = ResearchInput.model_validate(state["prepared"])
             deps, reply = runtime.context, state["reply"]
             key = f"{state.get('group', 'portfolio')}/{state.get('epoch', 0)}/{state['role']}"
-            try:
-                report = RoleReport.model_validate_json(strip_code_fence(reply.content))
-                self._validate(report, prepared, prepared.evidence, state["role"])
-            except ValueError as exc:
-                if key in deps.repaired:
-                    raise
-                deps.repaired.add(key)
-                messages = state["messages"] + [{"role": "assistant", "content": reply.content},
-                    {"role": "user", "content": f"Repair the JSON contract without adding facts: {exc} "
-                     "Return only the raw JSON object matching the schema; no Markdown fences or commentary."}]
-                reply, _ = await self._model(state["role"], {"input": market_input(prepared)}, deps, messages=messages)
-                report = RoleReport.model_validate_json(strip_code_fence(reply.content))
-                self._validate(report, prepared, prepared.evidence, state["role"])
-            return self._store(state, state["role"], report, reply.model,
-                               runtime.context, prepared.evidence)
+            for attempt in range(2):
+                try:
+                    report = RoleReport.model_validate_json(strip_code_fence(reply.content))
+                    self._validate(report, prepared, prepared.evidence, state["role"])
+                    break
+                except ValueError as exc:
+                    if attempt or key in deps.repaired:
+                        await deps.emit(state["role"], "failed", reason=str(exc), usage=deps.budget.snapshot())
+                        raise
+                    deps.repaired.add(key)
+                    await deps.emit(state["role"], "retrying", reason="contract_validation_failed")
+                    messages = state["messages"] + [{"role": "assistant", "content": reply.content},
+                        {"role": "user", "content": f"Repair the JSON contract without adding facts: {exc} "
+                         "Return only the raw JSON object matching the schema; no Markdown fences or commentary."}]
+                    reply, _ = await self._model(state["role"], {"input": market_input(prepared)}, deps, messages=messages)
+            result = self._store(state, state["role"], report, reply.model, runtime.context, prepared.evidence)
+            await deps.emit(state["role"], "done", model=reply.model, usage=deps.budget.snapshot())
+            return result
 
         graph.add_node("model", turn)
         graph.add_node("tools", tools)

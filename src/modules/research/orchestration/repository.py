@@ -5,7 +5,7 @@ import json
 import uuid
 from copy import deepcopy
 
-from sqlalchemy import update
+from sqlalchemy import func, update
 from sqlalchemy.dialects.sqlite import insert
 
 from src.modules.automation.suggestion_pool import save_suggestion, AGENT_EXPIRY_HOURS
@@ -44,10 +44,13 @@ async def start(run_id, trace, agent, scope, mode):
 
 async def progress(run_id, event):
     def apply(db):
-        row = db.get(ResearchRun, run_id)
-        stages = dict(row.progress or {})
-        stages[event["role"]] = event
-        row.progress = stages
+        # Parallel roles update independent JSON keys without overwriting each other's events.
+        result = db.execute(update(ResearchRun).where(ResearchRun.id == run_id).values(
+            progress=func.json_set(func.coalesce(func.nullif(ResearchRun.progress, 'null'), '{}'), '$.' + event['role'],
+                                   func.json(json.dumps(event, ensure_ascii=False))))
+            .execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            raise ValueError('Unknown research run')
     await transaction(apply)
 
 

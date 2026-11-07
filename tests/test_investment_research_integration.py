@@ -401,6 +401,35 @@ def test_incomplete_research_keeps_history_but_never_publishes_fake_watch_predic
         assert db.scalars(select(ResearchRun)).one().payload["completion"] != "complete"
 
 
+@pytest.mark.parametrize("persistent", [False, True])
+def test_decision_notes_violation_preserves_publication_gate(host, monkeypatch, persistent):
+    import json
+    engine, _ = host
+    class DecisionNotes(scripts.Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == "decision" and (persistent or self.calls[role] == 1):
+                report = json.loads(reply.content)
+                report["session_notes"] = [{"stock_key": "CN:600519", "summary": "Forbidden final note",
+                    "evidence_ids": report["recommendations"][0]["evidence_ids"]}]
+                reply.content = json.dumps(report)
+            return reply
+    model, agent = DecisionNotes(), PremarketOutlookAgent()
+    monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
+    configure(engine, agent.name)
+    monkeypatch.setattr(agent, "collect", collected)
+    result = asyncio.run(agent.run(make_context()))
+    assert model.calls["decision"] == 2
+    assert result.raw_data["completion"] == ("validation_failed" if persistent else "complete")
+    with Session(engine) as db:
+        assert len(db.scalars(select(AnalysisHistory)).all()) == 1
+        assert len(db.scalars(select(StockSuggestion)).all()) == (0 if persistent else 1)
+        assert len(db.scalars(select(AgentPredictionOutcome)).all()) == (0 if persistent else 2)
+        run = db.scalars(select(ResearchRun)).one()
+        assert run.progress["decision"]["status"] == ("failed" if persistent else "done")
+        assert ("研究未完成" in result.content) == persistent
+
+
 def test_english_report_distinguishes_market_view_from_account_execution(host, monkeypatch):
     engine, _ = host
     agent = DailyReportAgent()

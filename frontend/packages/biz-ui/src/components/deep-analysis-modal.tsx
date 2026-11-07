@@ -528,12 +528,16 @@ function StageRow({ stage }: { stage: ProgressStage }) {
   const translated = (t as unknown as (key: string) => string)(translationKey)
   const label = translated === translationKey ? stage.name : translated
   const icon =
-    stage.status === 'done' ? '✓' : stage.status === 'running' ? '🔄' : '⏸'
+    stage.status === 'done' ? '✓' : stage.status === 'running' ? '🔄' : stage.status === 'failed' ? '✗' : stage.status === 'review' ? '!' : '⏸'
   const cls =
     stage.status === 'done'
       ? 'text-emerald-600 dark:text-emerald-400'
       : stage.status === 'running'
       ? 'text-primary'
+      : stage.status === 'failed'
+      ? 'text-destructive'
+      : stage.status === 'review'
+      ? 'text-amber-600 dark:text-amber-400'
       : 'text-muted-foreground/60'
   return (
     <div className={`flex items-center gap-2 text-[12px] ${cls}`}>

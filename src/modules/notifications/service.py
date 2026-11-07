@@ -190,8 +190,14 @@ class NotificationService:
             job = self.db.get(AssistantContextExport, int(event.subject_id))
             return dict(kind='assistant_export', export_id=job.id, conversation_id=job.conversation_id)
         if event.subject_kind == 'agent_run':
+            from src.modules.research.orchestration.models import ResearchRun
             run = self.db.get(AgentRun, int(event.subject_id))
+            research = self.db.query(ResearchRun).filter(
+                ResearchRun.trace_id == run.trace_id, ResearchRun.agent_name == run.agent_name
+            ).order_by(ResearchRun.created_at.desc()).first() if run.trace_id else None
+            payload = (research.payload or {}) if research else {}
             return dict(kind='agent_run', id=run.id, agent_name=run.agent_name, status=run.status, result=run.result,
+                        completion=payload.get('completion'), result_status=payload.get('status'), research_reason=payload.get('reason'),
                         template_params={**agent_notification_params(self.db, [run])[run.id], **(event.template_params or {})},
                         error=run.error, occurred_at=utc(run.created_at), notify_attempted=run.notify_attempted, notify_sent=run.notify_sent)
         hit = self.db.get(PriceAlertHit, int(event.subject_id))

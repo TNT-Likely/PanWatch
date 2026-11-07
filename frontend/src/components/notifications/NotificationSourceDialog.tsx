@@ -9,11 +9,23 @@ export default function NotificationSourceDialog({ target, onClose }: { target: 
   const { t } = useTranslation('configuration')
   const translate = t as unknown as (key: string) => string
   const tr = (key: string) => translate(`notifications.${key}`)
+  const research = target.kind === 'agent_run' ? target : null
+  const incomplete = !!research && (research.completion
+    ? !['complete', 'skipped'].includes(research.completion)
+    : research.result_status === 'review' && !!research.research_reason)
+  const runLabel = research?.status === 'failed' ? tr('runFailed')
+    : incomplete ? tr('researchIncomplete')
+      : research?.completion === 'complete' ? (research.result_status === 'review' ? tr('researchReview') : translate('p4.history.completion.complete'))
+        : research?.completion === 'skipped' ? translate('p4.history.completion.skipped') : tr('runEnded')
+  const completionLabel = incomplete && research?.completion
+    ? t(`p4.history.completion.${research.completion}`, { defaultValue: research.completion }) : ''
   return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="p-4 sm:p-6" data-testid="notification-source-detail">
     <DialogHeader><DialogTitle>{tr(target.kind === 'agent_run' ? 'report' : 'hit')}</DialogTitle><DialogDescription>{formatDate(target.occurred_at)}</DialogDescription></DialogHeader>
     {target.kind === 'agent_run' ? <>
       <p className="text-[13px] font-semibold">{notificationTitle({ source: 'agent', title: target.agent_name, template_params: target.template_params || {} }, translate)}</p>
-      <p className="text-[12px]">{tr(target.status === 'success' ? 'runCompleted' : 'runFailed')}</p>
+      <p className="text-[12px]">{runLabel}</p>
+      {completionLabel && <p className="break-words text-[12px] text-muted-foreground">{completionLabel}</p>}
+      {target.research_reason && <p className="whitespace-pre-wrap break-words text-[12px] text-muted-foreground">{target.research_reason}</p>}
       {target.notify_attempted && <p className="text-[12px] text-muted-foreground">{tr(target.notify_sent ? 'deliverySent' : 'deliveryFailed')}</p>}
       {target.result && <AssistantMarkdown content={target.result} />}
       {target.error && <p className="whitespace-pre-wrap break-words text-[12px] text-destructive">{target.error}</p>}
